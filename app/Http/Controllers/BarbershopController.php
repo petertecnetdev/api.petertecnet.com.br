@@ -261,6 +261,35 @@ class BarbershopController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao excluir a barbearia.'], 500);
         }
     }
+    public function listByUser(Request $request)
+    {
+        try {
+            // Verificar se o usuário está autenticado
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-    
+            // Obter o usuário autenticado
+            $user = Auth::user();
+
+            // Verificar se o usuário possui permissão para listar suas barbearias
+            if (!$user->hasPermission('barbershop_list')) {
+                return response()->json(['error' => 'Você não tem permissão para listar suas barbearias.'], 403);
+            }
+
+            // Obter as barbearias do usuário autenticado
+            $barbershops = Barbershop::where('user_id', $user->id)->paginate(10); // Defina a quantidade de barbearias por página
+
+            // Retornar a lista de barbearias do usuário
+            return response()->json([
+                'message' => 'Barbearias listadas com sucesso.',
+                'barbershops' => $barbershops,
+            ], 200);
+
+        } catch (\Exception $e) {
+            // Log do erro e retorno de mensagem genérica
+            Log::error('Erro ao listar barbearias do usuário: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao listar suas barbearias.'], 500);
+        }
+    }
 }

@@ -100,7 +100,6 @@ Route::group([
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
     Route::get('/event/{eventId}', [ItemController::class, 'listByEvent'])->name('item.listByEvent'); // Listar itens por evento
 });
-
 Route::group([
     'middleware' => 'api',
     'prefix' => 'barbershop'
@@ -110,6 +109,7 @@ Route::group([
     Route::get('/show/{id}', [BarberShopController::class, 'show'])->name('barbershop.show'); // Mostrar detalhes de um serviço específico
     Route::put('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
     Route::delete('/{id}', [BarberShopController::class, 'destroy'])->name('barbershop.destroy'); // Excluir um serviço de barbearia
+    Route::get('/user', [BarberShopController::class, 'listByUser'])->name('barbershop.listByUser'); // Listar barbearias do usuário autenticado
     Route::get('/{slug}', [BarberShopController::class, 'view'])->name('barbershop.view'); // Visualizar um serviço de barbearia por slug
 });
 
