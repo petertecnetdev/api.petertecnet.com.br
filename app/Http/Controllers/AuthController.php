@@ -367,49 +367,11 @@ class AuthController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function me(Request $request)
+    public function me()
     {
-        try {
-            // Obtém o usuário autenticado
-            $user = Auth::user();
-    
-            if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 401);
-            }
-    
-            // Registra a interação
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'me';
-            $interaction->entity_id = $user->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
-    
-            // Busca o usuário com seu perfil
-            $userWithProfile = User::with('profile')
-                ->where('id', $user->id)
-                ->first();
-    
-            if (!$userWithProfile) {
-                return response()->json(['error' => 'Perfil do usuário não encontrado'], 404);
-            }
-    
-            // Retorna as informações do usuário e seu perfil
-            return response()->json([
-                'user' => $userWithProfile
-            ], 200);
-    
-        } catch (Exception $e) {
-            // Registra o erro no log
-            Log::error('Erro ao obter informações do usuário: ' . $e->getMessage(), [
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-    
-            // Retorna uma resposta com erro genérico
-            return response()->json(['error' => 'Erro ao obter informações do usuário. Tente novamente mais tarde.'], 500);
-        }
+        return response()->json( User::with('profile')
+        ->where('user_name', Auth::user()->user_name)
+        ->first());
     }
     
     
