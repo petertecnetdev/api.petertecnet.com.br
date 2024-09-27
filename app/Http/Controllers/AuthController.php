@@ -377,6 +377,9 @@ class AuthController extends Controller
                 return response()->json(['error' => 'Usuário não autenticado'], 401);
             }
     
+            // Carrega também o perfil relacionado ao usuário
+            $user->load('profile');  // Supondo que a relação no model User esteja definida como belongsTo
+    
             // Registra a interação
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
@@ -385,8 +388,11 @@ class AuthController extends Controller
             $interaction->entity_type = 'user';
             $interaction->save();
     
-            // Retorna as informações do usuário autenticado
-            return response()->json($user);
+            // Retorna as informações do usuário e seu perfil
+            return response()->json([
+                'user' => $user,
+                'profile' => $user->profile // Dados do perfil carregados pela relação
+            ]);
         } catch (Exception $e) {
             // Registra o erro no log
             Log::error('Erro ao obter informações do usuário: ' . $e->getMessage(), [
@@ -399,6 +405,7 @@ class AuthController extends Controller
             return response()->json(['error' => 'Erro ao obter informações do usuário. Tente novamente mais tarde.'], 500);
         }
     }
+    
     
 
     /**
