@@ -32,6 +32,6 @@ class ItensPurchasedMail extends Mailable
     public function build()
     {
         return $this->view('emails.itens_purchased')
-            ->subject('Seus Itens Adquiridos na Gatenex');
+            ->subject('Seus Itens Adquiridos na Peter Tecnet');
     }
 }

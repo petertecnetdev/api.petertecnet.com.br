@@ -2,7 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\{AuthController, UserController, ProfileController,
-     ProductionController, EventController, TicketController, PaymentController};
+     ProductionController, EventController, TicketController, BarbershopController, ItemController};
 
 Route::group([
     'middleware' => 'api',
@@ -88,5 +88,29 @@ Route::group([
 });
 
 
-Route::post('/payments/create-charge', [PaymentController::class, 'createCharge']);
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'item'
+], function ($router) {
+    Route::post('/', [ItemController::class, 'store'])->name('item.store');
+    Route::get('/', [ItemController::class, 'list'])->name('item.list');
+    Route::get('/app/{appId}', [ItemController::class, 'listByApp'])->name('item.listByApp'); // Listar itens por aplicativo
+    Route::get('/show/{id}', [ItemController::class, 'show'])->name('item.show'); 
+    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
+    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
+    Route::get('/event/{eventId}', [ItemController::class, 'listByEvent'])->name('item.listByEvent'); // Listar itens por evento
+});
+
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'barbershop'
+], function ($router) {
+    Route::post('/', [BarberShopController::class, 'store'])->name('barbershop.store'); // Criar um novo serviço de barbearia
+    Route::get('/', [BarberShopController::class, 'list'])->name('barbershop.list'); // Listar todos os serviços de barbearia
+    Route::get('/show/{id}', [BarberShopController::class, 'show'])->name('barbershop.show'); // Mostrar detalhes de um serviço específico
+    Route::put('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
+    Route::delete('/{id}', [BarberShopController::class, 'destroy'])->name('barbershop.destroy'); // Excluir um serviço de barbearia
+    Route::get('/{slug}', [BarberShopController::class, 'view'])->name('barbershop.view'); // Visualizar um serviço de barbearia por slug
+});
+
 

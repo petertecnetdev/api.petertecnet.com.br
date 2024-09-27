@@ -36,6 +36,6 @@ class VerificationCodeMail extends Mailable
     public function build()
     {
         return $this->view('emails.verification-code')
-                    ->subject('Código de Verificação para Registro na Cutinapp');
+                    ->subject('Código de Verificação para Registro na Peter Tecnet');
     }
 }
