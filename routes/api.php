@@ -12,14 +12,14 @@ Route::group([
     Route::post('/register', [AuthController::class, 'register']);
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->name('passwordEmail');
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('passwordReset');
-    Route::post('/logout', [AuthController::class, 'logout']);
-    Route::post('/refresh', [AuthController::class, 'refresh']);
+    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::post('/refresh', [AuthController::class, 'refresh'])->name('refresh');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api')->name('me');
     Route::get('/checkauth', [AuthController::class, 'checkauth'])->middleware('auth:api')->name('checkAuth');
     Route::post('/email-verify', [AuthController::class, 'emailVerify'])->middleware('auth:api')->name('emailVerify');
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:api')->name('changePassword');
-    Route::post('/password-update', [AuthController::class, 'resetPassword'])->name('passwordUpdate'); // Corrigido o nome da rota
-    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('auth:api')->name('verification.resend'); // Corrigido o nome da rota
+    Route::post('/password-update', [AuthController::class, 'resetPassword'])->name('resetPassword'); // Corrigido o nome da rota
+    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('auth:api')->name('resendCodeEmailVerification'); // Corrigido o nome da rota
 });
 
 Route::group([

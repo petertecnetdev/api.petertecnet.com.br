@@ -1,15 +1,14 @@
-<!-- resources/views/emails/reset_password.blade.php -->
-
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email de Recuperação de Senha - Peter Tecnet</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
             background-color: #f4f4f4;
-            color: #333;
+            color: rgb(0, 116, 138);
             margin: 0;
             padding: 0;
         }
@@ -24,42 +23,57 @@
         }
 
         h1 {
-            color: #e44d26;
+            color: rgb(0, 116, 138);
+            text-align: center;
+            font-size: 28px;
+            margin-bottom: 20px;
         }
 
         p {
             margin-bottom: 15px;
+            font-size: 16px;
+            line-height: 1.5;
         }
 
-        .reset-link {
-            font-size: 18px;
+        .verification-code {
+            font-size: 24px;
             font-weight: bold;
-            color: #e44d26;
-            text-decoration: none;
+            color: rgb(1, 29, 45);
             padding: 10px;
             background-color: #f9f9f9;
             border-radius: 5px;
+            text-align: center;
+            margin: 20px 0;
         }
 
         .footer {
             margin-top: 20px;
             text-align: center;
             color: #777;
+            font-size: 14px;
+        }
+
+        .logo {
+            display: block;
+            margin: 0 auto 20px;
+            width: 150px; /* Ajuste o tamanho da logo */
         }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>Redefinição de Senha</h1>
-    <p>Você está recebendo este e-mail porque uma solicitação de redefinição de senha foi feita para sua conta.</p>
-    <p>Por favor, use o código abaixo para redefinir sua senha:</p>
-    <h2>{{ $code }}</h2>
-    <p>Se você não solicitou uma redefinição de senha, ignore este e-mail.</p>
-    <p>Este código será invalidado em 10 minutos.</p>
+    <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo" />
+    <h1>Olá {{ $user->name }},</h1>
+    <p>Recebemos um pedido para redefinir sua senha. Se você não solicitou esta alteração, pode ignorar este e-mail.</p>
+    <p>O código de redefinição de senha abaixo é necessário para que você possa criar uma nova senha:</p>
+    <div class="verification-code">{{ $code }}</div>
+    <p>Por favor, utilize este código na página de redefinição de senha para continuar.</p>
+    <p>Este código é válido por 10 minutos. Certifique-se de utilizá-lo a tempo!</p>
+    <p>Estamos aqui para ajudar caso você tenha qualquer dúvida.</p>
 </div>
 
-    <div class="footer">
-        <p>© {{ date('Y') }} Cutinapp. Todos os direitos reservados.</p>
-    </div>
+<div class="footer">
+    <p>© {{ date('Y') }} Peter Tecnet. Todos os direitos reservados.</p>
+</div>
 </body>
 </html>

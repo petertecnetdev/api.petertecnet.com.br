@@ -17,7 +17,6 @@ class BarbershopController extends Controller
             'name.unique' => 'Já existe uma barbearia cadastrada com esse nome.',
             'email.required' => 'O email da barbearia é obrigatório.',
             'email.email' => 'O email fornecido não é válido.',
-            'email.unique' => 'Já existe uma barbearia cadastrada com esse email.',
             'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
             'address.required' => 'O endereço é obrigatório.',
             'city.required' => 'A cidade é obrigatória.',
@@ -33,22 +32,24 @@ class BarbershopController extends Controller
             'background_image.max' => 'O nome do arquivo da imagem de fundo deve ter no máximo 255 caracteres.',
             'social_media_links.json' => 'Os links de redes sociais devem estar em formato JSON.',
         ];
-    }
-
-    public function store(Request $request)
+    }public function store(Request $request)
     {
         try {
             // Verificar se o usuário está autenticado
             if (!Auth::check()) {
+                Log::warning('Tentativa de cadastro sem autenticação.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-     // Obter o usuário autenticado
-     $user = Auth::user();
-
-     // Verificar se o usuário possui permissão para listar barbearias
-     if (!$user->hasPermission('barbershop_store')) {
-         return response()->json(['error' => 'Você não tem permissão para cadastrar barbearias.'], 403);
-     }
+    
+            // Obter o usuário autenticado
+            $user = Auth::user();
+            Log::info('Usuário autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
+    
+            // Verificar se o usuário possui permissão para cadastrar barbearias
+            if (!$user->hasPermission('barbershop_store')) {
+                Log::warning('Usuário sem permissão para cadastrar barbearias.', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não tem permissão para cadastrar barbearias.'], 403);
+            }
     
             // Validação dos dados da requisição
             $validatedData = $request->validate([
@@ -59,17 +60,24 @@ class BarbershopController extends Controller
                 'city' => 'required|string|max:100',
                 'state' => 'required|string|max:100',
                 'zipcode' => 'required|string|max:10',
-                'website' => 'nullable|url',
+                'website' => 'nullable|string', // Permitimos string para validação manual
                 'latitude' => 'nullable|numeric',
                 'longitude' => 'nullable|numeric',
                 'status' => 'required|integer',
-                'logo' => 'nullable|image|mimes:jpeg,png,bmp,gif,svg|max:2048',
-                'background_image' => 'nullable|image|mimes:jpeg,png,bmp,gif,svg|max:2048',
                 'social_media_links' => 'nullable|json',
             ], $this->getValidationMessages());
     
-            // Console log para mostrar os dados recebidos
-            Log::info('Dados recebidos para criação da barbearia:', $validatedData);
+            Log::info('Dados validados para a criação da barbearia.', $validatedData);
+    
+            // Verificar e corrigir o formato do website, se fornecido
+            if (!empty($validatedData['website'])) {
+                $website = $validatedData['website'];
+                if (!preg_match('/^https?:\/\//', $website)) {
+                    // Adicionar o prefixo 'http://' se não houver
+                    $validatedData['website'] = 'http://' . $website;
+                    Log::info('Website corrigido para URL válida:', ['website' => $validatedData['website']]);
+                }
+            }
     
             // Criação da barbearia
             $barbershop = Barbershop::create([
@@ -85,28 +93,36 @@ class BarbershopController extends Controller
                 'longitude' => $validatedData['longitude'],
                 'status' => (int) $validatedData['status'],
                 'social_media_links' => $validatedData['social_media_links'],
-                'user_id' => $user->id, // Aqui você associa o user_id
+                'user_id' => $user->id, // Associar o user_id
             ]);
+    
+            Log::info('Barbearia criada com sucesso.', ['barbershop_id' => $barbershop->id]);
     
             // Processar e salvar a logo, se fornecida
             if ($request->hasFile('logo')) {
+                Log::info('Logo fornecida, processando...');
                 $logoPath = $request->file('logo')->store('public/barbershops');
                 $barbershop->logo = str_replace('public/', '', $logoPath);
                 $barbershop->save();
+                Log::info('Logo salva.', ['logo_path' => $barbershop->logo]);
             }
     
             // Processar e salvar a imagem de fundo, se fornecida
             if ($request->hasFile('background_image')) {
+                Log::info('Imagem de fundo fornecida, processando...');
                 $backgroundImagePath = $request->file('background_image')->store('public/barbershops/backgrounds');
                 $barbershop->background_image = str_replace('public/', '', $backgroundImagePath);
                 $barbershop->save();
+                Log::info('Imagem de fundo salva.', ['background_image_path' => $barbershop->background_image]);
             }
     
             // Retornar sucesso
+            Log::info('Cadastro da barbearia finalizado com sucesso.');
             return response()->json(['message' => 'Barbearia cadastrada com sucesso.', 'barbershop' => $barbershop], 201);
     
         } catch (ValidationException $e) {
             // Captura erros de validação e retorna como resposta JSON
+            Log::error('Erro de validação ao cadastrar a barbearia.', ['errors' => $e->errors()]);
             return response()->json([
                 'errors' => $e->errors(),
             ], 422);
@@ -184,8 +200,6 @@ class BarbershopController extends Controller
                 'latitude' => 'nullable|numeric',
                 'longitude' => 'nullable|numeric',
                 'status' => 'required|integer',
-                'logo' => 'nullable|image|mimes:jpeg,png,bmp,gif,svg|max:2048',
-                'background_image' => 'nullable|image|mimes:jpeg,png,bmp,gif,svg|max:2048',
                 'social_media_links' => 'nullable|json',
             ], $this->getValidationMessages());
     

@@ -19,8 +19,8 @@ class CreateBarbershopsTable extends Migration
             $table->string('state'); // Estado
             $table->string('zipcode'); // CEP
             $table->string('website')->nullable(); // Website da barbearia
-            $table->decimal('latitude', 10, 8)->nullable(); // Latitude
-            $table->decimal('longitude', 11, 8)->nullable(); // Longitude
+            $table->string('latitude')->nullable(); // Latitude como string
+            $table->string('longitude')->nullable(); // Longitude como string
             $table->decimal('rating', 2, 1)->default(0); // Avaliação média
             $table->integer('status')->default(1); // Status da barbearia
             $table->foreignId('user_id')->constrained('users'); // Relaciona com o usuário (gerente da barbearia)
