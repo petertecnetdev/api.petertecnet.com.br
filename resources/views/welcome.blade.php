@@ -38,7 +38,7 @@
 <body>
     <div class="content">
         <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo"> <!-- Substituído por uma imagem responsiva -->
-        <p class="welcome-message">Peter Tecnet!</p>
+        <p class="welcome-message">Peter Tecnet</p>
     </div>
 </body>
 </html>
