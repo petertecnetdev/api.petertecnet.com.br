@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Peter Tecnet - Sua plataforma de gestão e descoberta de eventos</title>
+    <title>Peter Tecnet - API </title>
     <meta name="description" content="Com a Peter Tecnet, você pode gerenciar seus eventos e descobrir atividades emocionantes na sua região. Personalize seus eventos, compre ingressos e acompanhe suas atividades com facilidade.">
     <meta name="keywords" content="Peter Tecnet, eventos, ingressos, gestão de eventos, descoberta de eventos">
     <link rel="icon" href="/image/icon.png" type="image/png"> <!-- Adicionado o ícone da página -->
@@ -38,8 +38,7 @@
 <body>
     <div class="content">
         <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo"> <!-- Substituído por uma imagem responsiva -->
-        <h1 class="welcome-message">Bem-vindo à Peter Tecnet!</h1>
-        <p>Gerencie seus eventos e descubra atividades emocionantes na sua região.</p>
+        <p class="welcome-message">Peter Tecnet!</p>
     </div>
 </body>
 </html>
