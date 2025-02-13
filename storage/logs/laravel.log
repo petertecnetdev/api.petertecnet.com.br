@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 [2024-10-01 17:44:26] local.INFO: Validação do e-mail realizada com sucesso {"email":"pedadwdfefewuva@gmail.com"} 
 [2024-10-01 17:44:28] local.WARNING: E-mail não encontrado no banco de dados {"email":"pedadwdfefewuva@gmail.com"} 
 [2024-10-01 17:44:40] local.INFO: Validação do e-mail realizada com sucesso {"email":"petertecnet@gmail.com"} 
@@ -6515,3 +6516,68 @@ Aqui, autenticidade é nosso valor central. Acreditamos que cada cliente merece 
 [2024-12-12 15:20:04] local.INFO: Usuário atualizado com sucesso: 4  
 [2024-12-12 15:20:10] local.INFO: Iniciando atualização do usuário. {"userId":"25"} 
 [2024-12-12 15:21:37] local.INFO: Iniciando atualização do usuário. {"userId":"25"} 
+=======
+[2025-02-13 04:11:16] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:11:16] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:17] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:11:19] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:11:19] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:20] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:11:21] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:11:21] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:22] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:11:22] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\phpCFC7.tmp"}} 
+[2025-02-13 04:11:22] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:11:22] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:11:22] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:14:05] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:14:05] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:05] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:14:08] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:14:08] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:08] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:14:10] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:14:10] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:11] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:14:11] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\php61CE.tmp"}} 
+[2025-02-13 04:14:11] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:14:11] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:14:11] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:15:33] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:15:33] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:34] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:15:36] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:15:36] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:37] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:15:41] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:15:41] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:42] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:15:42] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\phpC631.tmp"}} 
+[2025-02-13 04:15:42] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:15:42] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:15:42] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:21:13] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:13] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:14] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:16] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:16] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:17] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:21] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:21:21] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:22] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:21:22] local.INFO: Dados validados com sucesso:  
+[2025-02-13 04:21:22] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:21:22] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:21:42] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:42] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:43] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:45] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:45] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:46] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:49] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:21:49] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:50] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:21:50] local.INFO: Dados validados com sucesso:  
+[2025-02-13 04:21:50] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:21:50] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+>>>>>>> origin/main

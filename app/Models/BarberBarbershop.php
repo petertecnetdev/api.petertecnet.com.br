@@ -26,4 +26,12 @@ class BarberBarbershop extends Pivot
     {
         return $this->belongsTo(Barbershop::class);
     }
+<<<<<<< HEAD
+=======
+
+    public function items()
+    {
+        return $this->hasMany(Item::class, 'barbershop_id');  // Defina a chave estrangeira correta
+    }
+>>>>>>> origin/main
 }

@@ -109,30 +109,48 @@ class UserController extends Controller
             if ($request->has('verification_code')) {
                 $userToUpdate->verification_code = $request->input('verification_code');
             }
-
             if ($request->has('avatar')) {
+                Log::info('Avatar fornecido, processando...');
+
                 $avatar = $request->file('avatar');
                 $userId = $userToUpdate->id;
                 $extension = $avatar->getClientOriginalExtension();
                 $avatarName = $userId . '-' . time() . '.' . $extension;
+<<<<<<< HEAD
                 $avatarPath = 'public/users/avatar';
+=======
+>>>>>>> origin/main
 
-                // Salva a imagem original
-                $avatar->storeAs($avatarPath, $avatarName);
+                // Definir o caminho do diretório público para imagens
+                $destinationPath = public_path('images'); // Usar diretamente a pasta images
 
-                // Abre a imagem com o Intervention Image
-                $image = Image::make(storage_path('app/' . $avatarPath . '/' . $avatarName));
+                // Salvar a imagem original
+                $avatar->move($destinationPath, $avatarName);
 
+<<<<<<< HEAD
                 // Redimensiona a imagem para 500x500 mantendo a proporção
+=======
+                // Redimensionar a imagem para 512x512 mantendo a proporção
+                $image = Image::make($destinationPath . '/' . $avatarName);
+>>>>>>> origin/main
                 $image->resize(512, 512, function ($constraint) {
                     $constraint->aspectRatio();
                 });
+                $image->save();
 
-                // Salva a imagem redimensionada
-                $image->save(storage_path('app/' . $avatarPath . '/' . $avatarName));
+                // Excluir o avatar anterior, se houver
+                if ($userToUpdate->avatar) {
+                    File::delete(public_path('images/' . $userToUpdate->avatar));
+                }
 
+<<<<<<< HEAD
                 // Atualiza o caminho do avatar no usuário
                 $userToUpdate->avatar = 'users/avatar/' . $avatarName;
+=======
+                // Atualizar o caminho do avatar no banco de dados
+                $userToUpdate->avatar = 'images/' . $avatarName; // Caminho para a pasta images
+                $userToUpdate->save();
+>>>>>>> origin/main
             } else {
                 // Log de erro se não houver arquivo de avatar enviado
                 error_log("Nenhum arquivo de avatar enviado.");
@@ -235,8 +253,14 @@ class UserController extends Controller
             // Retornar uma resposta de sucesso
             return response()->json(['message' => 'Usuário atualizado com sucesso.'], 200);
 
+        } catch (ModelNotFoundException $e) {
+            Log::error('Usuário não encontrado para atualização.', ['userId' => $userId]);
+            return response()->json(['error' => 'Usuário não encontrado.'], 404);
         } catch (\Exception $e) {
-            Log::error('Erro ao atualizar o usuário: ' . $e->getMessage());
+            Log::error('Erro inesperado ao atualizar usuário.', [
+                'userId' => $userId,
+                'exception' => $e->getMessage()
+            ]);
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o usuário.'], 500);
         }
     }
@@ -286,35 +310,35 @@ class UserController extends Controller
     }
 
     public function list()
-{
-    try {
-        // Verificar se o usuário está autenticado
-        $user = Auth::user();
-        if (!$user) {
-            Log::error('Usuário não autenticado.');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    {
+        try {
+            // Verificar se o usuário está autenticado
+            $user = Auth::user();
+            if (!$user) {
+                Log::error('Usuário não autenticado.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            // Verificar se o usuário tem permissão para listar usuários
+            if (!$user->hasPermission('user_list')) {
+                Log::error('Usuário não tem permissão para listar usuários.');
+                return response()->json(['error' => 'Você não tem permissão para listar usuários.'], 403);
+            }
+
+            // Buscar todos os usuários
+            $users = User::all();
+
+            // Buscar todos os perfis
+            $profiles = Profile::all();
+
+            // Retornar os usuários e perfis encontrados
+            return response()->json(['users' => $users, 'profiles' => $profiles], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar usuários: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao listar usuários.'], 500);
         }
-
-        // Verificar se o usuário tem permissão para listar usuários
-        if (!$user->hasPermission('user_list')) {
-            Log::error('Usuário não tem permissão para listar usuários.');
-            return response()->json(['error' => 'Você não tem permissão para listar usuários.'], 403);
-        }
-
-        // Buscar todos os usuários
-        $users = User::all();
-
-        // Buscar todos os perfis
-        $profiles = Profile::all();
-
-        // Retornar os usuários e perfis encontrados
-        return response()->json(['users' => $users, 'profiles' => $profiles], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar usuários: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar usuários.'], 500);
     }
-}
 
     public function show($id)
     {
@@ -353,21 +377,23 @@ class UserController extends Controller
                 Log::error('Usuário não autenticado.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-    
+
             // Buscar o usuário pelo user_name
-            $userToShow = User::with(['productions' => function ($query) {
-                $query->orderBy('created_at', 'desc');
-            }])->where('user_name', $userName)->first();
-            
+            $userToShow = User::with([
+                'productions' => function ($query) {
+                    $query->orderBy('created_at', 'desc');
+                }
+            ])->where('user_name', $userName)->first();
+
 
             // Verificar se o usuário foi encontrado
             if (!$userToShow) {
                 return response()->json(['error' => 'Usuário não encontrado.'], 404);
             }
-    
+
             // Retornar os dados do usuário, incluindo as produções e os eventos associados
             return response()->json(['user' => $userToShow], 200);
-    
+
         } catch (\Exception $e) {
             Log::error('Erro ao mostrar o perfil do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao mostrar o perfil do usuário.'], 500);
@@ -378,7 +404,7 @@ class UserController extends Controller
     {
         try {
             $currentUser = Auth::user();
-            
+
             if (!$currentUser) {
                 Log::error('Usuário não autenticado.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
@@ -406,7 +432,7 @@ class UserController extends Controller
         }
     }
 
-    
+
 
 }
 

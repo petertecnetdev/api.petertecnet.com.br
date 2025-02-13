@@ -19,6 +19,7 @@ class AuthController extends Controller
 {
 
     protected function getValidationMessages()
+<<<<<<< HEAD
 {
     return [
         'first_name.required' => 'O campo nome é obrigatório.',
@@ -44,6 +45,33 @@ class AuthController extends Controller
 }
 
     
+=======
+    {
+        return [
+            'first_name.required' => 'O campo nome é obrigatório.',
+            'first_name.regex' => 'O nome não pode conter caracteres especiais ou números.',
+            'email.required' => 'O campo e-mail é obrigatório.',
+            'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
+            'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário. Caso seja seu e-mail, você pode recuperar a senha pelo link no formulário.',
+            'password.required' => 'O campo senha é obrigatório.',
+            'password.min' => 'A senha deve ter no mínimo :min caracteres.',
+            'password.regex' => 'A senha deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
+            'verification_code.required' => 'O campo código de verificação é obrigatório.',
+            'verification_code.string' => 'O código de verificação deve ser uma sequência de caracteres.',
+            'verification_code.size' => 'O código de verificação deve ter exatamente :size caracteres.',
+            'reset_password_code.required' => 'O campo código de redefinição de senha é obrigatório.',
+            'reset_password_code.string' => 'O código de redefinição de senha deve ser uma sequência de caracteres.',
+            'reset_password_code.size' => 'O código de redefinição de senha deve ter exatamente :size caracteres.',
+            'current_password.required' => 'O campo senha atual é obrigatório.',
+            'current_password.regex' => 'A senha atual deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
+            'password_confirmation.required' => 'O campo confirmação de senha é obrigatório.',
+            'password_confirmation.same' => 'A confirmação de senha deve coincidir com a senha.',
+            'default' => 'Um erro ocorreu. Por favor, tente novamente.',
+        ];
+    }
+
+
+>>>>>>> origin/main
 
     /**
      * Create a new AuthController instance.
@@ -219,20 +247,36 @@ class AuthController extends Controller
                 'new_password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
                 'password_confirmation' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
+<<<<<<< HEAD
     
             if ($validator->fails()) {
                 throw new ValidationException($validator);
             }
     
+=======
+
+            if ($validator->fails()) {
+                throw new ValidationException($validator);
+            }
+
+>>>>>>> origin/main
             // Verifica se a senha atual está correta
             if (!Hash::check($request->input('current_password'), $user->password)) {
                 return response()->json(['error' => 'A senha atual está incorreta.'], 401);
             }
+<<<<<<< HEAD
     
             // Atualiza a senha do usuário
             $user->password = bcrypt($request->input('new_password'));
             $user->save();
     
+=======
+
+            // Atualiza a senha do usuário
+            $user->password = bcrypt($request->input('new_password'));
+            $user->save();
+
+>>>>>>> origin/main
             // Interação registrada
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
@@ -240,7 +284,11 @@ class AuthController extends Controller
             $interaction->entity_id = $user->id;
             $interaction->entity_type = 'user';
             $interaction->save();
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> origin/main
             return response()->json(['message' => 'Senha alterada com sucesso!'], 200);
         } catch (ValidationException $exception) {
             return response()->json($exception->errors(), 422);
@@ -250,6 +298,7 @@ class AuthController extends Controller
         }
     }
     
+
 
 
     /**
@@ -358,18 +407,30 @@ class AuthController extends Controller
                     'regex:/[!@#$%^&*(),.?":{}|<>]/',
                 ]
             ], $this->getValidationMessages());
+<<<<<<< HEAD
           
     
             // Verifica se o e-mail existe no banco de dados
             $user = User::where('email', $request->email)->first();
     
+=======
+
+
+            // Verifica se o e-mail existe no banco de dados
+            $user = User::where('email', $request->email)->first();
+
+>>>>>>> origin/main
             if (!$user) {
                 return response()->json([
                     'error' => true,
                     'message' => 'E-mail não encontrado. Se você ainda não tem um cadastro, por favor, cadastre-se.'
                 ], 404);
             }
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> origin/main
             // Verifica se o código de redefinição de senha corresponde e não está expirado
             if ($user->reset_password_code !== $request->reset_password_code || now()->gt($user->reset_password_expires_at)) {
                 return response()->json([
@@ -377,16 +438,27 @@ class AuthController extends Controller
                     'message' => 'Código de redefinição de senha inválido ou expirado. Por favor, solicite um novo código.'
                 ], 400);
             }
+<<<<<<< HEAD
     
+=======
+
+>>>>>>> origin/main
             // Atualiza a senha do usuário
             $user->password = Hash::make($request->password);
             $user->reset_password_code = null; // Limpa o código de redefinição
             $user->reset_password_expires_at = null; // Limpa a expiração
             $user->save();
+<<<<<<< HEAD
     
             // Registra a interação do usuário
             $this->logPasswordChangedInteraction($user);
     
+=======
+
+            // Registra a interação do usuário
+            $this->logPasswordChangedInteraction($user);
+
+>>>>>>> origin/main
             return response()->json([
                 'error' => false,
                 'message' => 'Senha redefinida com sucesso. Agora é só digitar suas novas credenciais para efetuar o login.'
@@ -399,7 +471,11 @@ class AuthController extends Controller
             ], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao redefinir senha', [
+<<<<<<< HEAD
                 'email' => $request->email, 
+=======
+                'email' => $request->email,
+>>>>>>> origin/main
                 'error' => $e->getMessage()
             ]);
             return response()->json([
@@ -460,10 +536,17 @@ class AuthController extends Controller
             $interaction->entity_type = 'user';
             $interaction->save();
             // Retorna o usuário com sucesso
+<<<<<<< HEAD
                // Retornar os dados do barbeiro com o usuário e suas barbearias
                return response()->json([
                 'message' => 'Usuário encontrado com sucesso.',
                 'user' => $user, 
+=======
+            // Retornar os dados do barbeiro com o usuário e suas barbearias
+            return response()->json([
+                'message' => 'Usuário encontrado com sucesso.',
+                'user' => $user,
+>>>>>>> origin/main
             ], 200);
 
         } catch (\Exception $e) {
