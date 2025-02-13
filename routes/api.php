@@ -1,36 +1,47 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\{AuthController, UserController, ProfileController,
-     ProductionController, EventController, TicketController, BarbershopController, ItemController};
+use App\Http\Controllers\{
+    AuthController,
+    UserController,
+    ProfileController,
+    ProductionController,
+    EventController,
+    TicketController,
+    BarbershopController,
+    ItemController,
+    NewsController,
+    BarberController
+};
+
 
 Route::group([
     'middleware' => 'api',
     'prefix' => 'auth'
 ], function ($router) {
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->name('passwordEmail');
-    Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('passwordReset');
+    Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('resetPassword');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::post('/refresh', [AuthController::class, 'refresh'])->name('refresh');
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api')->name('me');
-    Route::get('/checkauth', [AuthController::class, 'checkauth'])->middleware('auth:api')->name('checkAuth');
+    Route::get('/check-auth', [AuthController::class, 'checkauth'])->middleware('auth:api')->name('checkAuth');
     Route::post('/email-verify', [AuthController::class, 'emailVerify'])->middleware('auth:api')->name('emailVerify');
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:api')->name('changePassword');
-    Route::post('/password-update', [AuthController::class, 'resetPassword'])->name('resetPassword'); // Corrigido o nome da rota
-    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('auth:api')->name('resendCodeEmailVerification'); // Corrigido o nome da rota
+    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('auth:api')->name('resendVerificationCode');
 });
+
 
 Route::group([
     'middleware' => 'api',
     'prefix' => 'user'
 ], function ($router) {
     Route::get('/', [UserController::class, 'list'])->name('user.list');
-    Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show'); 
-    Route::get('/{userName}', [UserController::class, 'view'])->name('user.view'); 
+    Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
+    Route::get('/{userName}', [UserController::class, 'view'])->name('user.view');
     Route::post('/new', [UserController::class, 'store'])->name('user.store');
-    Route::post('/{user}', [UserController::class, 'update'])->name('user.update'); 
+    Route::post('/{user}', [UserController::class, 'update'])->name('user.update');
     Route::delete('/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 });
 
@@ -53,12 +64,12 @@ Route::group([
 ], function ($router) {
     Route::post('/', [ProductionController::class, 'store'])->name('production.store');
     Route::get('/', [ProductionController::class, 'list'])->name('production.list');
-    Route::get('/show/{id}', [ProductionController::class, 'show'])->name('production.show'); 
+    Route::get('/show/{id}', [ProductionController::class, 'show'])->name('production.show');
     Route::post('/{id}', [ProductionController::class, 'update'])->name('production.update');
-    Route::delete('/{id}', [ProductionController::class, 'delete'])->name('production.delete'); 
-    Route::get('/{slug}', [ProductionController::class, 'view'])->name('production.view'); 
-    Route::get('/cnpj/get-company-info', [ProductionController::class, 'getCompanyInfo'])->name('production.getCompanyInfo'); 
-  
+    Route::delete('/{id}', [ProductionController::class, 'delete'])->name('production.delete');
+    Route::get('/{slug}', [ProductionController::class, 'view'])->name('production.view');
+    Route::get('/cnpj/get-company-info', [ProductionController::class, 'getCompanyInfo'])->name('production.getCompanyInfo');
+
 });
 
 Route::group([
@@ -67,11 +78,11 @@ Route::group([
 ], function ($router) {
     Route::post('/', [EventController::class, 'store'])->name('event.store');
     Route::get('/', [EventController::class, 'list'])->name('event.list');
-    Route::get('/show/{id}', [EventController::class, 'show'])->name('event.show'); 
+    Route::get('/show/{id}', [EventController::class, 'show'])->name('event.show');
     Route::post('/{id}', [EventController::class, 'update'])->name('event.update');
-    Route::delete('/{id}', [EventController::class, 'delete'])->name('event.delete'); 
-    Route::get('/{slug}', [EventController::class, 'view'])->name('event.view'); 
-    Route::get('/myevents/list', [EventController::class, 'myEvents'])->name('event.myevents'); 
+    Route::delete('/{id}', [EventController::class, 'delete'])->name('event.delete');
+    Route::get('/{slug}', [EventController::class, 'view'])->name('event.view');
+    Route::get('/myevents/list', [EventController::class, 'myEvents'])->name('event.myevents');
 });
 Route::group([
     'middleware' => 'api',
@@ -95,22 +106,49 @@ Route::group([
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::get('/', [ItemController::class, 'list'])->name('item.list');
     Route::get('/app/{appId}', [ItemController::class, 'listByApp'])->name('item.listByApp'); // Listar itens por aplicativo
-    Route::get('/show/{id}', [ItemController::class, 'show'])->name('item.show'); 
+    Route::get('/show/{id}', [ItemController::class, 'show'])->name('item.show');
     Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
+    Route::get('/entity/{entityId}', [ItemController::class, 'listByEntity'])->name('item.listByEntity'); // Listar itens por entidade
     Route::get('/event/{eventId}', [ItemController::class, 'listByEvent'])->name('item.listByEvent'); // Listar itens por evento
 });
+
 Route::group([
     'middleware' => 'api',
     'prefix' => 'barbershop'
 ], function ($router) {
     Route::post('/', [BarberShopController::class, 'store'])->name('barbershop.store'); // Criar um novo serviço de barbearia
+    Route::get('/myBarbershops', [BarberShopController::class, 'myBarbershops'])->name('barbershop.myBarbershops'); // Listar todos os serviços de barbearia
     Route::get('/', [BarberShopController::class, 'list'])->name('barbershop.list'); // Listar todos os serviços de barbearia
     Route::get('/show/{id}', [BarberShopController::class, 'show'])->name('barbershop.show'); // Mostrar detalhes de um serviço específico
-    Route::put('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
+    Route::get('/view/{slug}', [BarberShopController::class, 'view'])->name('barbershop.view'); // Mostrar detalhes de um serviço específico
+    Route::post('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
     Route::delete('/{id}', [BarberShopController::class, 'destroy'])->name('barbershop.destroy'); // Excluir um serviço de barbearia
     Route::get('/user', [BarberShopController::class, 'listByUser'])->name('barbershop.listByUser'); // Listar barbearias do usuário autenticado
     Route::get('/{slug}', [BarberShopController::class, 'view'])->name('barbershop.view'); // Visualizar um serviço de barbearia por slug
 });
 
+
+// Rotas de notícias
+Route::group(['middleware' => 'api', 'prefix' => 'news'], function () {
+    Route::post('/', [NewsController::class, 'store'])->name('news.store');
+    Route::get('/', [NewsController::class, 'list'])->name('news.list');
+    Route::get('/show/{id}', [NewsController::class, 'show'])->name('news.show');
+    Route::post('/{id}', [NewsController::class, 'update'])->name('news.update');
+    Route::delete('/{id}', [NewsController::class, 'destroy'])->name('news.destroy');
+    Route::get('/search', [NewsController::class, 'search'])->name('news.search');
+    Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
+});
+
+
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'barber'
+], function () {
+    Route::post('/', [BarberController::class, 'store'])->name('barber.store');
+    Route::delete('/', [BarberController::class, 'destroy'])->name('barber.destroy');
+    Route::get('/{username}', [BarberController::class, 'view'])->name('barber.view');
+    Route::get('/', [BarberController::class, 'list'])->name('barber.list');
+    Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
+});
 

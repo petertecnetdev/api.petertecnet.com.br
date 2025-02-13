@@ -10,7 +10,8 @@ class CreateInteractionsTable extends Migration
     {
         Schema::create('interactions', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('user_id')->nullable(); // Permitir que user_id seja nulo
+            $table->string('user_name')->nullable(); // Campo para armazenar o nome do usuário não logado
             $table->unsignedBigInteger('entity_id');
             $table->string('entity_type'); // Pode ser 'event', 'blog', 'production', etc.
             $table->string('interaction_type'); // Tipos de interações possíveis

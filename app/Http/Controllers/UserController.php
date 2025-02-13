@@ -34,6 +34,8 @@ class UserController extends Controller
     public function update(Request $request, $userId)
     {
         try {
+            Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
+
             // Verificar se o usuário está autenticado
             $user = Auth::user();
             if (!$user) {
@@ -80,6 +82,8 @@ class UserController extends Controller
                 'is_participant' => 'nullable|boolean',
                 'is_promoter' => 'nullable|boolean',
                 'is_partner' => 'nullable|boolean',
+                'is_barber' => 'nullable|boolean',
+                'is_barbershoper' => 'nullable|boolean',
                 'is_ticket_seller' => 'nullable|boolean',
                 'extra_info' => 'nullable',
                 // Adicione validações para outros campos conforme necessário
@@ -111,7 +115,7 @@ class UserController extends Controller
                 $userId = $userToUpdate->id;
                 $extension = $avatar->getClientOriginalExtension();
                 $avatarName = $userId . '-' . time() . '.' . $extension;
-                $avatarPath = 'public/users/' . $userId . '/avatar';
+                $avatarPath = 'public/users/avatar';
 
                 // Salva a imagem original
                 $avatar->storeAs($avatarPath, $avatarName);
@@ -120,7 +124,7 @@ class UserController extends Controller
                 $image = Image::make(storage_path('app/' . $avatarPath . '/' . $avatarName));
 
                 // Redimensiona a imagem para 500x500 mantendo a proporção
-                $image->resize(250, 250, function ($constraint) {
+                $image->resize(512, 512, function ($constraint) {
                     $constraint->aspectRatio();
                 });
 
@@ -128,7 +132,7 @@ class UserController extends Controller
                 $image->save(storage_path('app/' . $avatarPath . '/' . $avatarName));
 
                 // Atualiza o caminho do avatar no usuário
-                $userToUpdate->avatar = 'users/' . $userId . '/avatar/' . $avatarName;
+                $userToUpdate->avatar = 'users/avatar/' . $avatarName;
             } else {
                 // Log de erro se não houver arquivo de avatar enviado
                 error_log("Nenhum arquivo de avatar enviado.");
@@ -207,6 +211,12 @@ class UserController extends Controller
             }
             if ($request->has('is_promoter')) {
                 $userToUpdate->is_promoter = $request->input('is_promoter');
+            }
+            if ($request->has('is_barber')) {
+                $userToUpdate->is_barber = $request->input('is_barber');
+            }
+            if ($request->has('is_barbershoper')) {
+                $userToUpdate->is_barbershoper = $request->input('is_barbershoper');
             }
             if ($request->has('is_partner')) {
                 $userToUpdate->is_partner = $request->input('is_partner');

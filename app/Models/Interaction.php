@@ -15,6 +15,8 @@ class Interaction extends Model
         'entity_type',
         'interaction_type',
         'comment',
+        'name',
+        'content',
     ];
 
     public function user()

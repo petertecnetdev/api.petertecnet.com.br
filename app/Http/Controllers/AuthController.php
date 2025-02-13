@@ -17,18 +17,34 @@ use Exception;
 
 class AuthController extends Controller
 {
+
     protected function getValidationMessages()
-    {
-        return [
-            'first_name.required' => 'O campo nome é obrigatório.',
-            'email.required' => 'O campo e-mail é obrigatório.',
-            'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
-            'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário. Caso seja seu email você pode recuperar a senha pelo link no formulário.',
-            'password.required' => 'O campo senha é obrigatório.',
-            'password.min' => 'A senha deve ter no mínimo :min caracteres.',
-            'password.regex' => 'A senha deve conter pelo menos uma letra maiúscula,  um número e um caractere especial.',
-        ];
-    }
+{
+    return [
+        'first_name.required' => 'O campo nome é obrigatório.',
+        'first_name.regex' => 'O nome não pode conter caracteres especiais ou números.',
+        'email.required' => 'O campo e-mail é obrigatório.',
+        'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
+        'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário. Caso seja seu e-mail, você pode recuperar a senha pelo link no formulário.',
+        'password.required' => 'O campo senha é obrigatório.',
+        'password.min' => 'A senha deve ter no mínimo :min caracteres.',
+        'password.regex' => 'A senha deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
+        'verification_code.required' => 'O campo código de verificação é obrigatório.',
+        'verification_code.string' => 'O código de verificação deve ser uma sequência de caracteres.',
+        'verification_code.size' => 'O código de verificação deve ter exatamente :size caracteres.',
+        'reset_password_code.required' => 'O campo código de redefinição de senha é obrigatório.',
+        'reset_password_code.string' => 'O código de redefinição de senha deve ser uma sequência de caracteres.',
+        'reset_password_code.size' => 'O código de redefinição de senha deve ter exatamente :size caracteres.',
+        'current_password.required' => 'O campo senha atual é obrigatório.',
+        'current_password.regex' => 'A senha atual deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
+        'password_confirmation.required' => 'O campo confirmação de senha é obrigatório.',
+        'password_confirmation.same' => 'A confirmação de senha deve coincidir com a senha.',
+        'default' => 'Um erro ocorreu. Por favor, tente novamente.',
+    ];
+}
+
+    
+
     /**
      * Create a new AuthController instance.
      *
@@ -45,48 +61,48 @@ class AuthController extends Controller
      * @return \Illuminate\Http\JsonResponse
      */
     public function login(Request $request)
-{
-    try {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-        ], $this->getValidationMessages());
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'email' => 'required|email',
+                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+            ], $this->getValidationMessages());
 
-        if ($validator->fails()) {
-            throw new ValidationException($validator);
-        }
-
-        if (!$token = auth()->attempt($validator->validated())) {
-            // Verificar se o e-mail está cadastrado
-            $user = User::where('email', $request->email)->first();
-            if (!$user) {
-                return response()->json(['error' => 'Este e-mail não está cadastrado.'], 404);
+            if ($validator->fails()) {
+                throw new ValidationException($validator);
             }
-            // Se o e-mail estiver cadastrado, mas a senha estiver incorreta
-            return response()->json(['error' => 'Senha incorreta.'], 401);
+
+            if (!$token = auth()->attempt($validator->validated())) {
+                // Verificar se o e-mail está cadastrado
+                $user = User::where('email', $request->email)->first();
+                if (!$user) {
+                    return response()->json(['error' => 'Este e-mail não está cadastrado.'], 404);
+                }
+                // Se o e-mail estiver cadastrado, mas a senha estiver incorreta
+                return response()->json(['error' => 'Senha incorreta.'], 401);
+            }
+
+            $interaction = new Interaction();
+            $interaction->user_id = auth()->user()->id;
+            $interaction->interaction_type = 'login';
+            $interaction->entity_id = auth()->user()->id;
+            $interaction->entity_type = 'user';
+            $interaction->save();
+            return response()->json([
+                'message' => 'Login realizado com sucesso!',
+                'token' => $this->createNewToken($token),
+                'user' => auth()->user(),
+            ], 200);
+
+
+
+        } catch (ValidationException $exception) {
+            return response()->json($exception->errors(), 422);
+        } catch (\Exception $exception) {
+            // Lidar com outras exceções conforme necessário
+            return response()->json(['error' => 'Teste Erro durante o login'], 500);
         }
-
-        $interaction = new Interaction();
-        $interaction->user_id = auth()->user()->id;
-        $interaction->interaction_type = 'login';
-        $interaction->entity_id = auth()->user()->id;
-        $interaction->entity_type = 'user';
-        $interaction->save();
-        return response()->json([
-            'message' => 'Login realizado com sucesso!',
-            'token' => $this->createNewToken($token),
-            'user' => auth()->user(),
-        ], 200);
-
-        
-       
-    } catch (ValidationException $exception) {
-        return response()->json($exception->errors(), 422);
-    } catch (\Exception $exception) {
-        // Lidar com outras exceções conforme necessário
-        return response()->json(['error' => 'Teste Erro durante o login'], 500);
     }
-}
 
     /**
      * Register a User.
@@ -99,7 +115,7 @@ class AuthController extends Controller
         try {
             // Validação dos dados de entrada
             $validator = Validator::make($request->all(), [
-                'first_name' => 'required',
+                'first_name' => ['required', 'regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
                 'email' => 'required|email|unique:users',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
@@ -196,40 +212,44 @@ class AuthController extends Controller
     {
         try {
             $user = auth()->user();
-
+            
             // Validação dos dados recebidos
             $validator = Validator::make($request->all(), [
-                'current_password' => 'required|string|min:6',
-                'new_password' => 'required|string|min:6|different:current_password',
-                'confirm_password' => 'required|string|same:new_password',
-            ]);
-
+                'current_password' => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                'new_password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
+                'password_confirmation' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+            ], $this->getValidationMessages());
+    
             if ($validator->fails()) {
                 throw new ValidationException($validator);
             }
-
-            // Verificar se a senha atual do usuário está correta
+    
+            // Verifica se a senha atual está correta
             if (!Hash::check($request->input('current_password'), $user->password)) {
-                throw new \Exception('A senha atual está incorreta');
+                return response()->json(['error' => 'A senha atual está incorreta.'], 401);
             }
-
-            // Atualizar a senha do usuário
+    
+            // Atualiza a senha do usuário
             $user->password = bcrypt($request->input('new_password'));
             $user->save();
+    
+            // Interação registrada
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'changePassword';
+            $interaction->interaction_type = 'password_change';
             $interaction->entity_id = $user->id;
             $interaction->entity_type = 'user';
             $interaction->save();
-            return response()->json(['message' => 'Senha atualizada com sucesso']);
-        } catch (ValidationException $e) {
-            return response()->json(['error' => 'Erro de validação', 'errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Exception: ' . $e->getMessage());
-            return response()->json(['error' => 'Erro durante a atualização da senha'], 500);
+    
+            return response()->json(['message' => 'Senha alterada com sucesso!'], 200);
+        } catch (ValidationException $exception) {
+            return response()->json($exception->errors(), 422);
+        } catch (\Exception $exception) {
+            Log::error('Exception: ' . $exception->getMessage());
+            return response()->json(['error' => 'Erro durante a alteração da senha'], 500);
         }
     }
+    
 
 
     /**
@@ -239,15 +259,16 @@ class AuthController extends Controller
      */
 
     public function logout()
-    { $interaction = new Interaction();
+    {
+        $interaction = new Interaction();
         $interaction->user_id = Auth()->user()->id;
         $interaction->interaction_type = 'logout';
         $interaction->entity_id = Auth()->user()->id;
         $interaction->entity_type = 'user';
         $interaction->save();
-        
+
         if (Auth::check()) {
-           
+
             Auth::logout();
             return response()->json(['message' => 'Logout realizado com sucesso']);
         } else {
@@ -261,36 +282,36 @@ class AuthController extends Controller
             $validator = $request->validate([
                 'email' => 'required|email',
             ], $this->getValidationMessages());
-    
+
             Log::info('Validação do e-mail realizada com sucesso', ['email' => $request->email]);
-    
+
             // Verifica se o e-mail existe no banco de dados
             $user = User::where('email', $request->email)->first();
-    
+
             if (!$user) {
                 Log::warning('E-mail não encontrado no banco de dados', ['email' => $request->email]);
                 return response()->json(['message' => 'E-mail  não encontrado.'], 404);
             }
-    
+
             Log::info('Usuário encontrado', ['user_id' => $user->id]);
-    
+
             // Gera um código de redefinição de senha
             $code = Str::random(8);
             Log::info('Código de redefinição de senha gerado', ['code' => $code]);
-    
+
             // Salva o código de redefinição de senha no usuário
             $user->reset_password_code = $code;
             $user->reset_password_expires_at = now()->addMinutes(10); // Define o tempo de expiração para 10 minutos
             $user->save();
             Log::info('Código de redefinição de senha salvo no usuário', ['user_id' => $user->id]);
-    
+
             // Envia o e-mail com o código de redefinição de senha
-            Mail::to($user->email)->send(new ResetPasswordMail($code,  $user));
+            Mail::to($user->email)->send(new ResetPasswordMail($code, $user));
             Log::info('E-mail de redefinição de senha enviado', ['email' => $user->email]);
-    
+
             // Log da geração do código de redefinição de senha
             Log::info('Código de redefinição de senha gerado e enviado por e-mail', ['email' => $request->email, 'code' => $code]);
-    
+
             // Registra a interação
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
@@ -299,7 +320,7 @@ class AuthController extends Controller
             $interaction->entity_type = 'user';
             $interaction->save();
             Log::info('Interação registrada', ['user_id' => $user->id, 'interaction_type' => 'ResetCode']);
-    
+
             return response()->json(['message' => 'Código de redefinição de senha enviado por e-mail']);
         } catch (ValidationException $e) {
             Log::error('Erro de validação', ['error' => $e->getMessage()]);
@@ -313,7 +334,7 @@ class AuthController extends Controller
             return response()->json(['message' => 'Falha ao enviar o código de redefinição de senha por e-mail'], 500);
         }
     }
-    
+
 
     /**
      * Redefine a senha do usuário.
@@ -321,63 +342,73 @@ class AuthController extends Controller
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-public function resetPassword(Request $request)
-{
-    try {
-        // Validação dos dados recebidos
-        $request->validate([
-            'email' => 'required|email',
-            'reset_password_code' => 'required|string',
-            'password' => 'required|string|min:8|confirmed',
-        ], $this->getValidationMessages());
-
-        // Verifica se o e-mail existe no banco de dados
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user) {
+    public function resetPassword(Request $request)
+    {
+        try {
+            Log::info('Validação foi executada com os seguintes dados', $request->all());
+            $request->validate([
+                'email' => 'required|email',
+                'reset_password_code' => 'required|string|size:8',
+                'password' => [
+                    'required',
+                    'string',
+                    'min:6',
+                    'regex:/[A-Z]/',
+                    'regex:/[a-z]/',
+                    'regex:/[!@#$%^&*(),.?":{}|<>]/',
+                ]
+            ], $this->getValidationMessages());
+          
+    
+            // Verifica se o e-mail existe no banco de dados
+            $user = User::where('email', $request->email)->first();
+    
+            if (!$user) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'E-mail não encontrado. Se você ainda não tem um cadastro, por favor, cadastre-se.'
+                ], 404);
+            }
+    
+            // Verifica se o código de redefinição de senha corresponde e não está expirado
+            if ($user->reset_password_code !== $request->reset_password_code || now()->gt($user->reset_password_expires_at)) {
+                return response()->json([
+                    'error' => true,
+                    'message' => 'Código de redefinição de senha inválido ou expirado. Por favor, solicite um novo código.'
+                ], 400);
+            }
+    
+            // Atualiza a senha do usuário
+            $user->password = Hash::make($request->password);
+            $user->reset_password_code = null; // Limpa o código de redefinição
+            $user->reset_password_expires_at = null; // Limpa a expiração
+            $user->save();
+    
+            // Registra a interação do usuário
+            $this->logPasswordChangedInteraction($user);
+    
+            return response()->json([
+                'error' => false,
+                'message' => 'Senha redefinida com sucesso. Agora é só digitar suas novas credenciais para efetuar o login.'
+            ]);
+        } catch (ValidationException $e) {
+            // Captura mensagens de validação específicas
             return response()->json([
                 'error' => true,
-                'message' => 'E-mail não encontrado.Se você ainda não tem um cadastro, por favor, cadastre-se.'
-            ], 404);
-        }
-
-        // Verifica se o código de redefinição de senha corresponde e não está expirado
-        if ($user->reset_password_code !== $request->reset_password_code || now()->gt($user->reset_password_expires_at)) {
+                'message' => $e->validator->errors()->first() // Retorna a primeira mensagem de erro
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro ao redefinir senha', [
+                'email' => $request->email, 
+                'error' => $e->getMessage()
+            ]);
             return response()->json([
                 'error' => true,
-                'message' => 'Código de redefinição de senha inválido ou expirado'
-            ], 400);
+                'message' => 'Ocorreu um erro ao redefinir a senha. Tente novamente mais tarde.'
+            ], 500);
         }
-
-        // Atualiza a senha do usuário
-        $user->password = Hash::make($request->password);
-        $user->reset_password_code = null;
-        $user->reset_password_expires_at = null;
-        $user->save();
-
-        // Registra a interação do usuário
-        $this->logPasswordChangedInteraction($user);
-
-        return response()->json([
-            'error' => false,
-            'message' => 'Senha redefinida com sucesso. Agora é só digitar suas novas credenciais para efetuar o login.'
-        ]);
-    } catch (ValidationException $e) {
-        return response()->json([
-            'error' => true,
-            'message' => $e->getMessage()
-        ], 422);
-    } catch (\Exception $e) {
-        Log::error('Erro ao redefinir senha ', ['email' => $request->email, 'error' => $e->getMessage()]);
-        return response()->json([
-            'error' => true,
-            'message' => 'Ocorreu um erro ao redefinir a senha'
-        ], 500);
     }
-}
 
-    
-    
     private function logPasswordChangedInteraction($user)
     {
         $interaction = new Interaction();
@@ -387,7 +418,7 @@ public function resetPassword(Request $request)
         $interaction->entity_type = 'user';
         $interaction->save();
     }
-    
+
     public function checkauth()
     {
         if (Auth::check()) {
@@ -417,27 +448,31 @@ public function resetPassword(Request $request)
             $user = User::with('profile')
                 ->where('user_name', Auth::user()->user_name)
                 ->first();
-    
+
             // Verifica se o usuário foi encontrado
             if (!$user) {
                 return response()->json(['error' => 'Usuario não autenticado'], 404);
             }
-          $interaction = new Interaction();
+            $interaction = new Interaction();
             $interaction->user_id = auth()->user()->id;
             $interaction->interaction_type = 'me';
             $interaction->entity_id = auth()->user()->id;
             $interaction->entity_type = 'user';
             $interaction->save();
             // Retorna o usuário com sucesso
-            return response()->json($user, 200);
-    
+               // Retornar os dados do barbeiro com o usuário e suas barbearias
+               return response()->json([
+                'message' => 'Usuário encontrado com sucesso.',
+                'user' => $user, 
+            ], 200);
+
         } catch (\Exception $e) {
             // Tratamento de exceção, retornando uma resposta com o erro
             return response()->json(['error' => 'An error occurred: ' . $e->getMessage()], 500);
         }
     }
-    
-    
+
+
 
     /**
      * Get the token array structure.
@@ -458,21 +493,21 @@ public function resetPassword(Request $request)
     public function resendCodeEmailVerification()
     {
         try {
-    
+
             // Busca pelo usuário com o e-mail fornecido
             $user = auth()->user();
-    
+
             if (!$user) {
                 return response()->json(['message' => 'Nenhum usuário encontrado com este e-mail.'], 404);
             }
-    
+
             // Geração de um novo código de verificação
             $newVerificationCode = Str::random(4);
-    
+
             // Atualização do código de verificação no banco de dados
             $user->verification_code = $newVerificationCode;
             $user->save();
-    
+
             // Envio do e-mail de verificação com o novo código
             Mail::to($user->email)->send(new ResendVerificationCodeMail($newVerificationCode, $user));
             $interaction = new Interaction();

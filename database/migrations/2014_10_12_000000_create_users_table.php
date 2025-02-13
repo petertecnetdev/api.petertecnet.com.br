@@ -50,6 +50,8 @@ class CreateUsersTable extends Migration
             $table->boolean('is_participant')->nullable();
             $table->boolean('is_promoter')->nullable();
             $table->boolean('is_partner')->nullable();
+            $table->boolean('is_barber')->nullable();
+            $table->boolean('is_barbershoper')->nullable();
             $table->boolean('is_ticket_seller')->nullable();
             $table->json('extra_info')->nullable();
             $table->unsignedBigInteger('profile_id')->nullable();

@@ -52,6 +52,8 @@ class User extends Authenticatable implements JWTSubject
         'is_producer',
         'is_participant',
         'is_promoter',
+        'is_barber',
+        'is_barbershoper',
         'is_partner',
         'is_ticket_seller',
         'extra_info',
@@ -121,4 +123,10 @@ public function events()
 {
     return $this->hasManyThrough(Event::class, Production::class);
 }
+
+public function barber()
+{
+    return $this->hasOne(Barber::class);
+}
+
 }
