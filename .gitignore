@@ -1,5 +1,11 @@
+# Ignorar o arquivo .env
 .env
+
+# Ignorar tudo dentro de /storage, mas mantendo algumas pastas
 /storage/*
 !/storage/app/
 !/storage/framework/
 !/storage/logs/
+
+# Ignorar imagens públicas (se você não quer rastrear essas imagens)
+public/images
