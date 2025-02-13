@@ -115,15 +115,6 @@ class BarbershopController extends Controller
             // Processar e salvar a logo
             if ($request->hasFile('logo')) {
                 Log::info('Imagem de logo fornecida, processando...');
-<<<<<<< HEAD
-                $imageLogoPath = $request->file('logo')->store('public/barbershops');
-                $image = Image::make(storage_path('app/' . $imageLogoPath));
-                $image->fit(150, 150);
-                $image->save();
-
-                // Atualizar o caminho da logo na barbearia
-                $barbershop->logo = str_replace('public/', '', $imageLogoPath);
-=======
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -141,25 +132,12 @@ class BarbershopController extends Controller
 
                 // Atualizar o caminho da logo no banco
                 $barbershop->logo = 'images/' . $imageName;
->>>>>>> origin/main
                 $barbershop->save();
             }
 
             // Processar e salvar o background (obrigatório)
             if ($request->hasFile('background_image')) {
                 Log::info('Imagem de background fornecida, processando...');
-<<<<<<< HEAD
-                $imageBackgroundPath = $request->file('background_image')->store('public/barbershops');
-                $image = Image::make(storage_path('app/' . $imageBackgroundPath));
-                $image->fit(1920, 600);
-                $image->save();
-
-                // Atualizar o caminho do background na barbearia
-                $barbershop->background_image = str_replace('public/', '', $imageBackgroundPath);
-                $barbershop->save();
-            }
-
-=======
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -181,7 +159,6 @@ class BarbershopController extends Controller
             }
 
 
->>>>>>> origin/main
             Log::info('Barbearia criada com sucesso.', ['barbershop_id' => $barbershop->id]);
 
             $slug = Str::slug($request->input('name'));
@@ -332,10 +309,6 @@ class BarbershopController extends Controller
 
             // Obter os barbeiros associados à barbearia pela relação many-to-many
             $barbers = $barbershop->barbers()->with('user')->get();
-<<<<<<< HEAD
-
-=======
->>>>>>> origin/main
             // Montar os dados detalhados dos barbeiros
             $barbersDetails = $barbers->map(function ($barber) {
                 return [
@@ -371,20 +344,14 @@ class BarbershopController extends Controller
             $interaction->entity_type = 'barbershop';
             $interaction->save();
 
-<<<<<<< HEAD
-=======
             // Buscar os itens relacionados à barbearia
             $items = $barbershop->items()->get();  // Corrigido para usar get() com parênteses
 
->>>>>>> origin/main
             // Retornar as informações da barbearia, barbeiros e outras barbearias
             return response()->json([
                 'message' => 'Barbearia encontrada com sucesso.',
                 'barbershop' => $barbershop,
-<<<<<<< HEAD
-=======
                 'items' => $items,
->>>>>>> origin/main
                 'owner' => $barbershop->user,
                 'barbers' => $barbersDetails, // Dados completos dos barbeiros
                 'otherBarbershops' => $otherBarbershopDetails // Outras barbearias para navegação
@@ -448,15 +415,6 @@ class BarbershopController extends Controller
             // Processar e salvar a logo se fornecida
             if ($request->hasFile('logo')) {
                 Log::info('Imagem de logo fornecida, processando...');
-<<<<<<< HEAD
-                $imageLogoPath = $request->file('logo')->store('public/barbershops');
-                $image = Image::make(storage_path('app/' . $imageLogoPath));
-                $image->fit(150, 150);
-                $image->save();
-
-                // Atualizar o caminho da logo na barbearia
-                $barbershop->logo = str_replace('public/', '', $imageLogoPath);
-=======
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -474,22 +432,12 @@ class BarbershopController extends Controller
 
                 // Atualizar o caminho da logo no banco
                 $barbershop->logo = 'images/' . $imageName;
->>>>>>> origin/main
                 $barbershop->save();
             }
 
             // Processar e salvar o background se fornecido
             if ($request->hasFile('background_image')) {
                 Log::info('Imagem de background fornecida, processando...');
-<<<<<<< HEAD
-                $imageBackgroundPath = $request->file('background_image')->store('public/barbershops');
-                $image = Image::make(storage_path('app/' . $imageBackgroundPath));
-                $image->fit(1920, 600);
-                $image->save();
-
-                // Atualizar o caminho do background na barbearia
-                $barbershop->background_image = str_replace('public/', '', $imageBackgroundPath);
-=======
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -507,7 +455,6 @@ class BarbershopController extends Controller
 
                 // Atualizar o caminho do background no banco
                 $barbershop->background_image = 'images/' . $imageName;
->>>>>>> origin/main
                 $barbershop->save();
             }
 

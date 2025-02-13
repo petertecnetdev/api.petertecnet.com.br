@@ -116,10 +116,6 @@ class UserController extends Controller
                 $userId = $userToUpdate->id;
                 $extension = $avatar->getClientOriginalExtension();
                 $avatarName = $userId . '-' . time() . '.' . $extension;
-<<<<<<< HEAD
-                $avatarPath = 'public/users/avatar';
-=======
->>>>>>> origin/main
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images'); // Usar diretamente a pasta images
@@ -127,12 +123,8 @@ class UserController extends Controller
                 // Salvar a imagem original
                 $avatar->move($destinationPath, $avatarName);
 
-<<<<<<< HEAD
-                // Redimensiona a imagem para 500x500 mantendo a proporção
-=======
                 // Redimensionar a imagem para 512x512 mantendo a proporção
                 $image = Image::make($destinationPath . '/' . $avatarName);
->>>>>>> origin/main
                 $image->resize(512, 512, function ($constraint) {
                     $constraint->aspectRatio();
                 });
@@ -143,14 +135,9 @@ class UserController extends Controller
                     File::delete(public_path('images/' . $userToUpdate->avatar));
                 }
 
-<<<<<<< HEAD
-                // Atualiza o caminho do avatar no usuário
-                $userToUpdate->avatar = 'users/avatar/' . $avatarName;
-=======
                 // Atualizar o caminho do avatar no banco de dados
                 $userToUpdate->avatar = 'images/' . $avatarName; // Caminho para a pasta images
                 $userToUpdate->save();
->>>>>>> origin/main
             } else {
                 // Log de erro se não houver arquivo de avatar enviado
                 error_log("Nenhum arquivo de avatar enviado.");

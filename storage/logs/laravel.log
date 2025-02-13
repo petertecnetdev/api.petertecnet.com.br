@@ -6839,3 +6839,14 @@ Aqui, autenticidade é nosso valor central. Acreditamos que cada cliente merece 
 #19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\artisan(35): Illuminate\\Foundation\\Console\\Kernel->handle(Object(Symfony\\Component\\Console\\Input\\ArgvInput), Object(Symfony\\Component\\Console\\Output\\ConsoleOutput))
 #20 {main}
 "} 
+[2025-02-13 05:46:26] local.INFO: Iniciando a busca de todos os itens da API.  
+[2025-02-13 05:46:26] local.INFO: Itens encontrados: {"total":19} 
+[2025-02-13 05:46:36] local.INFO: Iniciando a exibição do item com ID: 13  
+[2025-02-13 05:46:36] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 05:46:37] local.INFO: Item encontrado. {"item_id":13} 
+[2025-02-13 05:46:44] local.INFO: Iniciando a atualização de um item. {"item_id":"13"} 
+[2025-02-13 05:46:44] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 05:46:45] local.INFO: Validando dados da requisição.  
+[2025-02-13 05:46:45] local.INFO: Dados validados com sucesso: {"name":"Teste Teste","type":"Serviços","price":50.0,"stock":0,"status":true,"availability_start":"2025-01-27","availability_end":"2025-12-31","discount":15,"expiration_date":null,"app_id":1} 
+[2025-02-13 05:46:46] local.INFO: Item atualizado no banco de dados. {"item_id":13} 
+[2025-02-13 05:46:46] local.INFO: Item atualizado com sucesso. {"item_id":13} 

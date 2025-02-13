@@ -171,16 +171,6 @@ class BarberController extends Controller
             // Atualizar a imagem de avatar, se fornecida
             if ($request->hasFile('avatar')) {
                 Log::info('Imagem de avatar fornecida, processando...');
-<<<<<<< HEAD
-                // Armazenar a imagem com um caminho único
-                $imageavatarPath = $request->file('avatar')->store('public/barbershops');
-                $image = Image::make(storage_path('app/' . $imageavatarPath));
-                $image->fit(150, 150); // Ajuste de tamanho
-                $image->save();
-
-                // Atualizar o caminho da imagem no banco
-                $barber->avatar = str_replace('public/', '', $imageavatarPath);
-=======
 
                 // Definindo o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -198,7 +188,6 @@ class BarberController extends Controller
 
                 // Atualizar o caminho da imagem no banco
                 $barber->avatar = 'images/' . $imageName;
->>>>>>> origin/main
             }
 
             // Atualizar as barbearias associadas
@@ -246,20 +235,6 @@ class BarberController extends Controller
             $barbershops = $barber->barbershops;
 
             $otherBarbers = User::where('user_name', '!=', $user_name)
-<<<<<<< HEAD
-            ->inRandomOrder()
-            ->limit(3)
-            ->get();
-
-        // Criar um array de outras barbearias com as informações necessárias
-        $otherBarbershopDetails = $otherBarbers->map(function ($otherBarber) {
-            return [
-                'name' => $otherBarber->first_name,
-                'slug' => $otherBarber->slug,
-                'avatar' => $otherBarber->avatar,
-            ];
-        });
-=======
                 ->inRandomOrder()
                 ->limit(3)
                 ->get();
@@ -272,7 +247,6 @@ class BarberController extends Controller
                     'avatar' => $otherBarber->avatar,
                 ];
             });
->>>>>>> origin/main
 
             return response()->json([
                 'message' => 'Barbeiro encontrado com sucesso.',
@@ -285,12 +259,8 @@ class BarberController extends Controller
             Log::error('Erro ao buscar barbeiro pelo nome de usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao buscar o barbeiro.'], 500);
         }
-<<<<<<< HEAD
-    }public function destroy(Request $request)
-=======
     }
     public function destroy(Request $request)
->>>>>>> origin/main
     {
         // Log inicial para identificar a requisição recebida
         Log::info('Iniciando a remoção de um barbeiro de uma barbearia.', [
