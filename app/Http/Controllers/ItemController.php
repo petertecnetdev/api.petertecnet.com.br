@@ -319,7 +319,7 @@ class ItemController extends Controller
                 $image->save();
 
                 // Atualizar o caminho da logo no banco
-                $item->logo = 'images/' . $imageName;
+                $item->image = 'images/' . $imageName;
                 $item->save();
             }
             // Retornar sucesso
