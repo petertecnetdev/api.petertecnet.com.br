@@ -20,7 +20,7 @@ Route::group([
     'middleware' => 'api',
     'prefix' => 'auth'
 ], function ($router) {
-    Route::post('/login', [AuthController::class, 'login'])->name('login');
+    Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->name('passwordEmail');
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('resetPassword');
@@ -113,8 +113,7 @@ Route::group([
     Route::post('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
     Route::delete('/{id}', [BarberShopController::class, 'destroy'])->name('barbershop.destroy'); // Excluir um serviço de barbearia
     Route::get('/user', [BarberShopController::class, 'listByUser'])->name('barbershop.listByUser'); // Listar barbearias do usuário autenticado
-    Route::get('/{slug}', [BarberShopController::class, 'view'])->name('barbershop.view'); // Visualizar um serviço de barbearia por slug
-});
+ });
 
 
 // Rotas de notícias

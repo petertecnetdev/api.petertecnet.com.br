@@ -37,7 +37,7 @@
 </head>
 <body>
     <div class="content">
-        <img src="/image/writedlogo.png" alt="Logo Peter Tecnet" class="logo"> <!-- Substituído por uma imagem responsiva -->
+        <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo"> <!-- Substituído por uma imagem responsiva -->
         <h1 class="welcome-message">Bem-vindo à Peter Tecnet!</h1>
         <p>Gerencie seus eventos e descubra atividades emocionantes na sua região.</p>
     </div>
