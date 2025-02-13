@@ -1,3 +1,5 @@
 .env
-.laravel.log
-.storage/logs/laravel.log
+/storage/*
+!/storage/app/
+!/storage/framework/
+!/storage/logs/
