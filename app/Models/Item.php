@@ -90,4 +90,9 @@ class Item extends Model
                (is_null($this->availability_start) || $this->availability_start <= now()) && 
                (is_null($this->availability_end) || $this->availability_end >= now());
     }
+
+    public function barbershop()
+    {
+        return $this->belongsTo(Barbershop::class);
+    }
 }

@@ -60,7 +60,7 @@
 </head>
 <body>
 <div class="container">
-    <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo" />
+    <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
     <h1>Bem-vindo ao Peter Tecnet!</h1>
     <p>Olá {{ $user->first_name }},</p>
     <p>Estamos muito felizes em tê-lo(a) como parte da nossa comunidade! Abaixo estão suas credenciais de acesso:</p>

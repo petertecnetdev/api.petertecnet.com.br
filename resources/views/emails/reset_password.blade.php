@@ -63,7 +63,7 @@
 <body>
 <div class="container">
     <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo" />
-    <h1>Olá {{ $user->name }},</h1>
+    <h1>Olá {{ $user->first_name }},</h1>
     <p>Recebemos um pedido para redefinir sua senha. Se você não solicitou esta alteração, pode ignorar este e-mail.</p>
     <p>O código de redefinição de senha abaixo é necessário para que você possa criar uma nova senha:</p>
     <div class="verification-code">{{ $code }}</div>

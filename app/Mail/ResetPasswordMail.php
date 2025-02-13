@@ -37,7 +37,7 @@ class ResetPasswordMail extends Mailable
                     ->view('emails.reset_password')
                     ->with([
                         'code' => $this->code,
-                        'userName' => $this->user->name,
+                        'userName' => $this->user->first_name,
                     ]);
     }
 }

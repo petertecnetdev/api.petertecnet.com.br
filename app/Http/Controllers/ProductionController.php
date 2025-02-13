@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use App\Models\{Production,Event, Interaction};
+use App\Models\{Production, Event, Interaction};
 use Illuminate\Support\Facades\File;
 use Intervention\Image\Facades\Image;
 use Illuminate\Support\Str;
@@ -32,7 +32,7 @@ class ProductionController extends Controller
             // Obter todas as produções cadastradas com o nome do produtor
             $productions = Production::with('user')->orderBy('created_at', 'desc')->get();
 
-      
+
             // Retornar as produções com o nome do produtor como resposta em formato JSON
             return response()->json(['productions' => $productions], 200);
         } catch (\Exception $e) {
@@ -80,24 +80,52 @@ class ProductionController extends Controller
                 'total_tickets_available' => $request->input('total_tickets_available'),
             ]);
 
+            // Processar e salvar a logo, se fornecida
             if ($request->hasFile('logo')) {
-                $imageLogoPath = $request->file('logo')->store('public/productions');
-                $image = Image::make(storage_path('app/' . $imageLogoPath));
+                Log::info('Imagem de logo fornecida, processando...');
+
+                // Definir o caminho do diretório público para imagens
+                $destinationPath = public_path('images');
+
+                // Gerar um nome único para a imagem da logo
+                $imageLogoName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
+
+                // Mover a imagem para o diretório público "images"
+                $request->file('logo')->move($destinationPath, $imageLogoName);
+
+                // Redimensionar a imagem para 150x150
+                $image = Image::make($destinationPath . '/' . $imageLogoName);
                 $image->fit(150, 150);
                 $image->save();
 
-                $production->logo = str_replace('public/', '', $imageLogoPath);
+                // Atualizar o caminho da logo na produção
+                $production->logo = 'images/' . $imageLogoName;
                 $production->save();
             }
+
+            // Processar e salvar o background, se fornecido
             if ($request->hasFile('background')) {
-                $imageBackgroundPath = $request->file('background')->store('public/productions');
-                $image = Image::make(storage_path('app/' . $imageBackgroundPath));
+                Log::info('Imagem de background fornecida, processando...');
+
+                // Definir o caminho do diretório público para imagens
+                $destinationPath = public_path('images');
+
+                // Gerar um nome único para a imagem de background
+                $imageBackgroundName = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
+
+                // Mover a imagem para o diretório público "images"
+                $request->file('background')->move($destinationPath, $imageBackgroundName);
+
+                // Redimensionar a imagem para 1920x600
+                $image = Image::make($destinationPath . '/' . $imageBackgroundName);
                 $image->fit(1920, 600);
                 $image->save();
 
-                $production->background = str_replace('public/', '', $imageBackgroundPath);
+                // Atualizar o caminho do background na produção
+                $production->background = 'images/' . $imageBackgroundName;
                 $production->save();
             }
+
 
             $slug = Str::slug($request->input('name'));
             $count = Production::where('slug', $slug)->count();
@@ -123,9 +151,9 @@ class ProductionController extends Controller
         try {
             // Verificar se a produção existe
             $production = Production::findOrFail($id);
-    
+
             // Verificar se o usuário tem permissão para atualizar a produção
-           
+
             if ($production->user_id === auth()->user()->id) {
                 // Se for o fundador, ele pode atualizar independentemente da permissão
                 $canUpdate = true;
@@ -133,7 +161,7 @@ class ProductionController extends Controller
                 // Se não for o fundador, verifique se ele tem permissão para atualizar produções
                 $canUpdate = Auth::user()->hasPermission('production_update');
             }
-    
+
             // Se não tiver permissão para atualizar e não for o fundador, retorne erro
             if (!$canUpdate) {
                 Log::error('Usuário não tem permissão para atualizar esta produção.');
@@ -169,37 +197,63 @@ class ProductionController extends Controller
                 'total_tickets_sold' => $request->input('total_tickets_sold', $production->total_tickets_sold),
                 'total_tickets_available' => $request->input('total_tickets_available', $production->total_tickets_available),
             ]);
-    
+
+
             // Atualizar a imagem do logo, se houver
             if ($request->hasFile('logo')) {
-                $imageLogoPath = $request->file('logo')->store('public/productions');
-                $image = Image::make(storage_path('app/' . $imageLogoPath));
+                Log::info('Imagem de logo fornecida, processando...');
+
+                // Definir o caminho do diretório público para imagens
+                $destinationPath = public_path('images');
+
+                // Gerar um nome único para a imagem do logo
+                $imageLogoName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
+
+                // Mover a imagem para o diretório público "images"
+                $request->file('logo')->move($destinationPath, $imageLogoName);
+
+                // Redimensionar a imagem para 150x150
+                $image = Image::make($destinationPath . '/' . $imageLogoName);
                 $image->fit(150, 150);
                 $image->save();
-    
+
                 // Excluir a imagem anterior, se existir
                 if ($production->logo) {
-                    File::delete(storage_path('app/public/' . $production->logo));
+                    File::delete(public_path('images/' . $production->logo));
                 }
-    
-                $production->logo = str_replace('public/', '', $imageLogoPath);
+
+                // Atualizar o caminho da logo na produção
+                $production->logo = 'images/' . $imageLogoName;
                 $production->save();
             }
+
+            // Atualizar o background, se houver
             if ($request->hasFile('background')) {
-                $imageBackgroundPath = $request->file('background')->store('public/productions');
-                $image = Image::make(storage_path('app/' . $imageBackgroundPath));
+                Log::info('Imagem de background fornecida, processando...');
+
+                // Definir o caminho do diretório público para imagens
+                $destinationPath = public_path('images');
+
+                // Gerar um nome único para a imagem de background
+                $imageBackgroundName = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
+
+                // Mover a imagem para o diretório público "images"
+                $request->file('background')->move($destinationPath, $imageBackgroundName);
+
+                // Redimensionar a imagem para 1920x600
+                $image = Image::make($destinationPath . '/' . $imageBackgroundName);
                 $image->fit(1920, 600);
                 $image->save();
-    
+
                 // Excluir a imagem anterior, se existir
                 if ($production->background) {
-                    File::delete(storage_path('app/public/' . $production->background));
+                    File::delete(public_path('images/' . $production->background));
                 }
-    
-                $production->background = str_replace('public/', '', $imageBackgroundPath);
+
+                // Atualizar o caminho do background na produção
+                $production->background = 'images/' . $imageBackgroundName;
                 $production->save();
             }
-    
             // Atualizar o slug da produção
             $slug = Str::slug($request->input('name'));
             $count = Production::where('slug', $slug)->where('id', '!=', $id)->count();
@@ -208,9 +262,9 @@ class ProductionController extends Controller
             }
             $production->slug = $slug;
             $production->save();
-    
+
             return response()->json(['message' => 'Produção atualizada com sucesso.'], 200);
-    
+
         } catch (\Exception $e) {
             Log::error('Erro ao atualizar a produção: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao atualizar a produção.'], 500);
@@ -218,143 +272,145 @@ class ProductionController extends Controller
     }
 
     public function show($id)
-{
-    try {
-        // Encontrar a produção pelo ID
-        $production = Production::where('id', $id)->with('user')->firstOrFail();
-        $productionEvents = Event::where('production_id', $production->id)->get();
-      
-      
+    {
+        try {
+            // Encontrar a produção pelo ID
+            $production = Production::where('id', $id)->with('user')->firstOrFail();
+            $productionEvents = Event::where('production_id', $production->id)->get();
 
-        // Retornar a produção como resposta em formato JSON
-        return response()->json(['production' => $production,
-                                'productionEvents'=> $productionEvents], 200);
-    } catch (\Exception $e) {
-        // Em caso de erro, retornar uma mensagem de erro em formato JSON
-        return response()->json(['error' => 'Ocorreu um erro ao obter os detalhes da produção.', $e->getMessage()], 500);
+
+
+            // Retornar a produção como resposta em formato JSON
+            return response()->json([
+                'production' => $production,
+                'productionEvents' => $productionEvents
+            ], 200);
+        } catch (\Exception $e) {
+            // Em caso de erro, retornar uma mensagem de erro em formato JSON
+            return response()->json(['error' => 'Ocorreu um erro ao obter os detalhes da produção.', $e->getMessage()], 500);
+        }
     }
-}
-public function view($slug)
-{
-    try {
-        // Log para verificar o slug fornecido
-        \Log::info('Slug fornecido:', ['slug' => $slug]);
+    public function view($slug)
+    {
+        try {
+            // Log para verificar o slug fornecido
+            \Log::info('Slug fornecido:', ['slug' => $slug]);
 
-        $production = Production::where('slug', $slug)->with('user')->firstOrFail(); 
-        $productionEvents = Event::where('production_id', $production->id)->get();
-      
-        // Log para verificar a produção encontrada pelo slug
-        \Log::info('Produção encontrada:', ['production' => $production]);
+            $production = Production::where('slug', $slug)->with('user')->firstOrFail();
+            $productionEvents = Event::where('production_id', $production->id)->get();
 
-        $productions = Production::all();
-        $userHasLikedPost = false; // Valor padrão
-        $currentDate = now(); // Obtém a data atual
-        $nextevent = Event::where('start_date', '>', $currentDate)
-            ->where('production_id', '=', $production->id)
-            ->orderBy('start_date', 'asc')
-            ->first();
-        $radonevent = Event::where('start_date', '>', $currentDate)
-            ->where('production_id', '!=', $production->id)
-            ->inRandomOrder() // Ordena os resultados de forma aleatória
-            ->first();
-        $radonproduction = Production::where('id', '!=', $production->id)->inRandomOrder() // Ordena os resultados de forma aleatória
-            ->first();
+            // Log para verificar a produção encontrada pelo slug
+            \Log::info('Produção encontrada:', ['production' => $production]);
 
-       
+            $productions = Production::all();
+            $userHasLikedPost = false; // Valor padrão
+            $currentDate = now(); // Obtém a data atual
+            $nextevent = Event::where('start_date', '>', $currentDate)
+                ->where('production_id', '=', $production->id)
+                ->orderBy('start_date', 'asc')
+                ->first();
+            $radonevent = Event::where('start_date', '>', $currentDate)
+                ->where('production_id', '!=', $production->id)
+                ->inRandomOrder() // Ordena os resultados de forma aleatória
+                ->first();
+            $radonproduction = Production::where('id', '!=', $production->id)->inRandomOrder() // Ordena os resultados de forma aleatória
+                ->first();
 
-        // Verifica se o usuário está autenticado
-        if (Auth::check()) {
-            $user = Auth::user();
-            $interaction = Interaction::where([
-                'user_id' => $user->id,
-                'entity_id' => $production->id,
-                'entity_type' => 'production',
-                'interaction_type' => 'like'
-            ])->first();
 
-            if ($interaction) {
-                $userHasLikedPost = true;
+
+            // Verifica se o usuário está autenticado
+            if (Auth::check()) {
+                $user = Auth::user();
+                $interaction = Interaction::where([
+                    'user_id' => $user->id,
+                    'entity_id' => $production->id,
+                    'entity_type' => 'production',
+                    'interaction_type' => 'like'
+                ])->first();
+
+                if ($interaction) {
+                    $userHasLikedPost = true;
+                }
+
+                $interaction = new Interaction();
+                $interaction->user_id = $user->id;
+                $interaction->interaction_type = 'view';
+                $interaction->entity_id = $production->id;
+                $interaction->entity_type = 'production';
+                $interaction->save();
             }
 
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'view';
-            $interaction->entity_id = $production->id;
-            $interaction->entity_type = 'production';
-            $interaction->save();
-        }
+            $views = Interaction::where([
+                'entity_id' => $production->id,
+                'entity_type' => 'production',
+                'interaction_type' => 'view'
+            ])->distinct('user_id')->count();
 
-        $views = Interaction::where([
-            'entity_id' => $production->id,
-            'entity_type' => 'production',
-            'interaction_type' => 'view'
-        ])->distinct('user_id')->count();
-        
-        
-        return response()->json([
-            'views' => $views,
-            'radonevent' => $radonevent,
-            'radonproduction' => $radonproduction,
-            'nextevent' => $nextevent,
-            'productions' => $productions,
-            'production' => $production,
-            'liked' => $userHasLikedPost,
-            'productionEvents'=> $productionEvents
-        ]);
-    } catch (\Exception $exception) {
-        // Log para registrar o erro
-        \Log::error('Erro ao carregar informações da produção:', ['exception' => $exception]);
-        
-        return response()->json(['error' => 'Erro ao carregar informações da produção.'], 500);
+
+            return response()->json([
+                'views' => $views,
+                'radonevent' => $radonevent,
+                'radonproduction' => $radonproduction,
+                'nextevent' => $nextevent,
+                'productions' => $productions,
+                'production' => $production,
+                'liked' => $userHasLikedPost,
+                'productionEvents' => $productionEvents
+            ]);
+        } catch (\Exception $exception) {
+            // Log para registrar o erro
+            \Log::error('Erro ao carregar informações da produção:', ['exception' => $exception]);
+
+            return response()->json(['error' => 'Erro ao carregar informações da produção.'], 500);
+        }
     }
-}
-public function delete($id)
-{
-    try {
-        // Verificar se a produção existe
-        $production = Production::findOrFail($id);
+    public function delete($id)
+    {
+        try {
+            // Verificar se a produção existe
+            $production = Production::findOrFail($id);
 
-        // Verificar se o usuário tem permissão para excluir a produção
-        if (!Auth::user()->hasPermission('production_delete')) {
-            Log::error('Usuário não tem permissão para excluir esta produção.');
-            return response()->json(['error' => 'Você não tem permissão para excluir esta produção.'], 403);
+            // Verificar se o usuário tem permissão para excluir a produção
+            if (!Auth::user()->hasPermission('production_delete')) {
+                Log::error('Usuário não tem permissão para excluir esta produção.');
+                return response()->json(['error' => 'Você não tem permissão para excluir esta produção.'], 403);
+            }
+            if ($production->user_id !== auth()->user()->id) {
+                Log::error('Usuário não tem permissão para atualizar esta produção.');
+                return response()->json(['error' => 'Você não é o fundador desta produção.'], 403);
+            }
+            // Excluir a produção
+            $production->delete();
+
+            return response()->json(['message' => 'Produção excluída com sucesso.'], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao excluir a produção: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao excluir a produção.'], 500);
         }
-        if ($production->user_id !== auth()->user()->id) {
-            Log::error('Usuário não tem permissão para atualizar esta produção.');
-            return response()->json(['error' => 'Você não é o fundador desta produção.'], 403);
-        }
-        // Excluir a produção
-        $production->delete();
-
-        return response()->json(['message' => 'Produção excluída com sucesso.'], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao excluir a produção: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao excluir a produção.'], 500);
     }
-}
 
-public function getCompanyInfo(Request $request)
-{
-    try {
-        $cnpj = $request->input('cnpj');
-        $response = Http::get("https://www.receitaws.com.br/v1/cnpj/$cnpj");
+    public function getCompanyInfo(Request $request)
+    {
+        try {
+            $cnpj = $request->input('cnpj');
+            $response = Http::get("https://www.receitaws.com.br/v1/cnpj/$cnpj");
 
-        // Verifica se a requisição foi bem-sucedida
-        if ($response->successful()) {
-            return $response->json();
-        } else {
-            // Log da resposta da requisição caso não seja bem-sucedida
-            \Log::error('Erro ao obter informações da empresa: else ' . $response->json());
-            // Se a requisição não foi bem-sucedida, retorna uma mensagem de erro
-            return response()->json(['error' => 'Erro ao obter informações da empresa try'], $response->status());
+            // Verifica se a requisição foi bem-sucedida
+            if ($response->successful()) {
+                return $response->json();
+            } else {
+                // Log da resposta da requisição caso não seja bem-sucedida
+                \Log::error('Erro ao obter informações da empresa: else ' . $response->json());
+                // Se a requisição não foi bem-sucedida, retorna uma mensagem de erro
+                return response()->json(['error' => 'Erro ao obter informações da empresa try'], $response->status());
+            }
+        } catch (\Exception $e) {
+            // Em caso de exceção, retorna uma mensagem de erro
+            \Log::error('Erro ao obter informações da empresa: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao obter informações da empresa catch'], 500);
         }
-    } catch (\Exception $e) {
-        // Em caso de exceção, retorna uma mensagem de erro
-        \Log::error('Erro ao obter informações da empresa: ' . $e->getMessage());
-        return response()->json(['error' => 'Erro ao obter informações da empresa catch'], 500);
     }
-}
 
 
 

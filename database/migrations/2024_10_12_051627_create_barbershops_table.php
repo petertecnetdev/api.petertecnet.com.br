@@ -10,15 +10,18 @@ class CreateBarbershopsTable extends Migration
     {
         Schema::create('barbershops', function (Blueprint $table) {
             $table->id();
-            $table->string('name')->unique(); // Nome da barbearia
-            $table->string('email')->unique(); // Email da barbearia
+            $table->string('name'); // Nome da barbearia
+            $table->string('email')->nullable();  // Email da barbearia
             $table->string('phone')->nullable(); // Telefone da barbearia
             $table->text('description')->nullable(); // Descrição da barbearia
+            $table->text('instagram')->nullable(); // Descrição da barbearia
+            $table->string('slug')->nullable();
             $table->string('address'); // Endereço
             $table->string('city'); // Cidade
             $table->string('state'); // Estado
             $table->string('zipcode'); // CEP
-            $table->string('website')->nullable(); // Website da barbearia
+            $table->string('website')->nullable();
+            $table->text('location')->nullable(); // Website da barbearia
             $table->string('latitude')->nullable(); // Latitude como string
             $table->string('longitude')->nullable(); // Longitude como string
             $table->decimal('rating', 2, 1)->default(0); // Avaliação média
@@ -30,6 +33,8 @@ class CreateBarbershopsTable extends Migration
             $table->string('background_image')->nullable(); // Imagem de fundo
             $table->text('terms_of_service')->nullable(); // Termos de serviço
             $table->json('social_media_links')->nullable(); // Links de redes sociais
+            $table->json('barbers')->nullable(); // Campo JSON para lista de barbeiros
+
             $table->timestamps(); // Cria as colunas created_at e updated_at
         });
     }

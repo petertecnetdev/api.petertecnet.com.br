@@ -1,53 +1,63 @@
-[2024-10-01 17:44:26] local.INFO: Validação do e-mail realizada com sucesso {"email":"pedadwdfefewuva@gmail.com"} 
-[2024-10-01 17:44:28] local.WARNING: E-mail não encontrado no banco de dados {"email":"pedadwdfefewuva@gmail.com"} 
-[2024-10-01 17:44:40] local.INFO: Validação do e-mail realizada com sucesso {"email":"petertecnet@gmail.com"} 
-[2024-10-01 17:44:43] local.INFO: Usuário encontrado {"user_id":4} 
-[2024-10-01 17:44:43] local.INFO: Código de redefinição de senha gerado {"code":"evmsvNIt"} 
-[2024-10-01 17:44:43] local.INFO: Código de redefinição de senha salvo no usuário {"user_id":4} 
-[2024-10-01 17:44:51] local.INFO: E-mail de redefinição de senha enviado {"email":"petertecnet@gmail.com"} 
-[2024-10-01 17:44:51] local.INFO: Código de redefinição de senha gerado e enviado por e-mail {"email":"petertecnet@gmail.com","code":"evmsvNIt"} 
-[2024-10-01 17:44:51] local.INFO: Interação registrada {"user_id":4,"interaction_type":"ResetCode"} 
-[2024-10-01 17:45:03] local.INFO: Validação do e-mail realizada com sucesso {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:45:06] local.WARNING: E-mail não encontrado no banco de dados {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:45:25] local.INFO: Validação do e-mail realizada com sucesso {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:45:28] local.WARNING: E-mail não encontrado no banco de dados {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:56:43] local.INFO: Validação do e-mail realizada com sucesso {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 17:56:45] local.WARNING: E-mail não encontrado no banco de dados {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 17:58:47] local.INFO: Validação do e-mail realizada com sucesso {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:58:49] local.WARNING: E-mail não encontrado no banco de dados {"email":"afafaea@gmail.com"} 
-[2024-10-01 17:58:55] local.INFO: Validação do e-mail realizada com sucesso {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 17:58:57] local.WARNING: E-mail não encontrado no banco de dados {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 18:00:11] local.INFO: Validação do e-mail realizada com sucesso {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 18:00:14] local.WARNING: E-mail não encontrado no banco de dados {"email":"trasfregaegg@gmail.com"} 
-[2024-10-01 19:16:10] local.ERROR: Exception: SQLSTATE[HY000] [2002] Uma tentativa de conexão falhou porque o componente conectado não respondeu
-corretamente após um período de tempo ou a conexão estabelecida falhou
-porque o host conectado não respondeu (SQL: select count(*) as aggregate from `users` where `email` = pedauva@gmail.com)  
-[2024-10-01 19:17:19] local.ERROR: Exception: SQLSTATE[HY000] [2002] Uma tentativa de conexão falhou porque o componente conectado não respondeu
-corretamente após um período de tempo ou a conexão estabelecida falhou
-porque o host conectado não respondeu (SQL: select count(*) as aggregate from `users` where `email` = pedauva@gmail.com)  
-[2024-10-01 19:18:52] local.ERROR: Exception: SQLSTATE[HY000] [2002] Uma tentativa de conexão falhou porque o componente conectado não respondeu
-corretamente após um período de tempo ou a conexão estabelecida falhou
-porque o host conectado não respondeu (SQL: select count(*) as aggregate from `users` where `email` = pedauva@gmail.com)  
-[2024-10-01 19:19:40] local.ERROR: Exception: SQLSTATE[HY000] [2002] Uma tentativa de conexão falhou porque o componente conectado não respondeu
-corretamente após um período de tempo ou a conexão estabelecida falhou
-porque o host conectado não respondeu (SQL: select count(*) as aggregate from `users` where `email` = pedauva@gmail.com)  
-[2024-10-01 19:20:36] local.ERROR: Exception: SQLSTATE[HY000] [2002] Uma tentativa de conexão falhou porque o componente conectado não respondeu
-corretamente após um período de tempo ou a conexão estabelecida falhou
-porque o host conectado não respondeu (SQL: select count(*) as aggregate from `users` where `email` = pedauva@gmail.com)  
-[2024-10-01 19:21:39] local.ERROR: ValidationException: Este e-mail já está sendo utilizado por outro usuário. Caso seja seu email você pode recuperar a senha pelo link no formulário. (and 1 more error)  
-[2024-10-01 21:55:02] local.ERROR: ValidationException: O campo nome é obrigatório. (and 1 more error)  
-[2024-10-01 21:56:01] local.ERROR: ValidationException: Este e-mail já está sendo utilizado por outro usuário. Caso seja seu email você pode recuperar a senha pelo link no formulário.  
-[2024-10-01 21:57:54] local.INFO: Validação do e-mail realizada com sucesso {"email":"pedauva@gmail.com"} 
-[2024-10-01 21:57:55] local.INFO: Usuário encontrado {"user_id":21} 
-[2024-10-01 21:57:55] local.INFO: Código de redefinição de senha gerado {"code":"GnalJfba"} 
-[2024-10-01 21:57:56] local.INFO: Código de redefinição de senha salvo no usuário {"user_id":21} 
-[2024-10-01 21:58:01] local.INFO: E-mail de redefinição de senha enviado {"email":"pedauva@gmail.com"} 
-[2024-10-01 21:58:01] local.INFO: Código de redefinição de senha gerado e enviado por e-mail {"email":"pedauva@gmail.com","code":"GnalJfba"} 
-[2024-10-01 21:58:02] local.INFO: Interação registrada {"user_id":21,"interaction_type":"ResetCode"} 
-[2024-10-01 21:59:52] local.INFO: Validação do e-mail realizada com sucesso {"email":"pedauva@gmail.com"} 
-[2024-10-01 21:59:53] local.INFO: Usuário encontrado {"user_id":21} 
-[2024-10-01 21:59:53] local.INFO: Código de redefinição de senha gerado {"code":"DVmApEUD"} 
-[2024-10-01 21:59:54] local.INFO: Código de redefinição de senha salvo no usuário {"user_id":21} 
-[2024-10-01 21:59:57] local.INFO: E-mail de redefinição de senha enviado {"email":"pedauva@gmail.com"} 
-[2024-10-01 21:59:57] local.INFO: Código de redefinição de senha gerado e enviado por e-mail {"email":"pedauva@gmail.com","code":"DVmApEUD"} 
-[2024-10-01 21:59:58] local.INFO: Interação registrada {"user_id":21,"interaction_type":"ResetCode"} 
+[2025-02-13 04:11:16] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:11:16] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:17] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:11:19] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:11:19] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:20] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:11:21] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:11:21] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:11:22] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:11:22] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\phpCFC7.tmp"}} 
+[2025-02-13 04:11:22] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:11:22] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:11:22] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:14:05] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:14:05] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:05] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:14:08] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:14:08] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:08] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:14:10] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:14:10] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:14:11] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:14:11] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\php61CE.tmp"}} 
+[2025-02-13 04:14:11] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:14:11] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:14:11] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:15:33] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:15:33] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:34] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:15:36] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:15:36] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:37] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:15:41] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:15:41] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:15:42] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:15:42] local.INFO: Dados validados com sucesso: {"image":{"Illuminate\\Http\\UploadedFile":"C:\\Development\\xamp\\tmp\\phpC631.tmp"}} 
+[2025-02-13 04:15:42] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:15:42] local.INFO: Imagem do item fornecida, processando...  
+[2025-02-13 04:15:42] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:21:13] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:13] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:14] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:16] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:16] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:17] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:21] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:21:21] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:22] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:21:22] local.INFO: Dados validados com sucesso:  
+[2025-02-13 04:21:22] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:21:22] local.INFO: Item atualizado com sucesso. {"item_id":23} 
+[2025-02-13 04:21:42] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:42] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:43] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:45] local.INFO: Iniciando a exibição do item com ID: 23  
+[2025-02-13 04:21:45] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:46] local.INFO: Item encontrado. {"item_id":23} 
+[2025-02-13 04:21:49] local.INFO: Iniciando a atualização de um item. {"item_id":"23"} 
+[2025-02-13 04:21:49] local.INFO: Usuário autenticado: {"id":4,"name":null} 
+[2025-02-13 04:21:50] local.INFO: Validando dados da requisição.  
+[2025-02-13 04:21:50] local.INFO: Dados validados com sucesso:  
+[2025-02-13 04:21:50] local.INFO: Item atualizado no banco de dados. {"item_id":23} 
+[2025-02-13 04:21:50] local.INFO: Item atualizado com sucesso. {"item_id":23} 
