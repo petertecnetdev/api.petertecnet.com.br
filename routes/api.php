@@ -2,10 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\{
-<<<<<<< HEAD
-=======
     AppointmentController,
->>>>>>> origin/main
     AuthController,
     UserController,
     ProfileController,
@@ -15,11 +12,7 @@ use App\Http\Controllers\{
     BarbershopController,
     ItemController,
     NewsController,
-<<<<<<< HEAD
-    BarberController
-=======
     BarberController,
->>>>>>> origin/main
 };
 
 
@@ -107,22 +100,6 @@ Route::group([
 });
 
 
-<<<<<<< HEAD
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'item'
-], function ($router) {
-    Route::post('/', [ItemController::class, 'store'])->name('item.store');
-    Route::get('/', [ItemController::class, 'list'])->name('item.list');
-    Route::get('/app/{appId}', [ItemController::class, 'listByApp'])->name('item.listByApp'); // Listar itens por aplicativo
-    Route::get('/show/{id}', [ItemController::class, 'show'])->name('item.show');
-    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
-    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
-    Route::get('/entity/{entityId}', [ItemController::class, 'listByEntity'])->name('item.listByEntity'); // Listar itens por entidade
-    Route::get('/event/{eventId}', [ItemController::class, 'listByEvent'])->name('item.listByEvent'); // Listar itens por evento
-});
-=======
->>>>>>> origin/main
 
 Route::group([
     'middleware' => 'api',
@@ -151,11 +128,7 @@ Route::group(['middleware' => 'api', 'prefix' => 'news'], function () {
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
 });
 
-<<<<<<< HEAD
-
-=======
 // Rotas de barbeiros
->>>>>>> origin/main
 Route::group([
     'middleware' => 'api',
     'prefix' => 'barber'
@@ -167,8 +140,6 @@ Route::group([
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
 });
 
-<<<<<<< HEAD
-=======
 // Rotas de agendamentos
 Route::group([
     'middleware' => 'api',
@@ -200,4 +171,3 @@ Route::group([
 
 
 
->>>>>>> origin/main

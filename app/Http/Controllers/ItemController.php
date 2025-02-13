@@ -5,11 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-<<<<<<< HEAD
-use App\Models\{Item,Interaction};
-=======
 use App\Models\{Item, Interaction};
->>>>>>> origin/main
 use Illuminate\Support\Facades\File;
 use Intervention\Image\Facades\Image;
 use Illuminate\Support\Str;
@@ -196,102 +192,6 @@ class ItemController extends Controller
         }
     }
 
-<<<<<<< HEAD
-public function listByEntity(Request $request)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-        // Verificar se o usuário possui permissão para listar itens
-        if (!$user->hasPermission('item_list')) {
-            return response()->json(['error' => 'Você não tem permissão para listar itens.'], 403);
-        }
-
-        // Validação dos parâmetros da requisição
-        $validatedData = $request->validate([
-            'entity_id' => 'required|integer',
-            'entity_name' => 'required|string|max:100',
-        ], [
-            'entity_id.required' => 'O campo ID da entidade é obrigatório.',
-            'entity_id.integer' => 'O campo ID da entidade deve ser um número inteiro.',
-            'entity_name.required' => 'O campo nome da entidade é obrigatório.',
-            'entity_name.string' => 'O campo nome da entidade deve ser uma string válida.',
-        ]);
-
-        // Obter itens filtrando pelo entity_id e entity_name
-        $items = Item::where('entity_id', $validatedData['entity_id'])
-            ->where('entity_name', $validatedData['entity_name'])
-            ->paginate(10); // Defina a quantidade de itens por página
-
-        // Retornar os itens filtrados
-        return response()->json([
-            'message' => 'Itens listados com sucesso.',
-            'items' => $items,
-        ], 200);
-        
-    } catch (ValidationException $e) {
-        // Retorna erros de validação
-        return response()->json([
-            'errors' => $e->errors(),
-        ], 422);
-
-    } catch (\Exception $e) {
-        // Log do erro e retorno de mensagem genérica
-        Log::error('Erro ao listar itens: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar os itens.'], 500);
-    }
-}
-
-public function show($id)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-            // Criar registro de interação
-          
-           
-        // Buscar o item pelo ID
-        $item = Item::findOrFail($id);
-
-
-        $interaction = new Interaction();
-        $interaction->user_id = auth()->user()->id;
-        $interaction->interaction_type = 'View';
-        $interaction->entity_id = $id;
-        $interaction->content = "O usuário {$user->first_name} acessou o item {$item->name} de id {$item->id}.";
-        $interaction->entity_type = 'item';
-        $interaction->save();
-
-
-        // Retornar os detalhes do item e do aplicativo associado
-        return response()->json([
-            'message' => 'Item recuperado com sucesso.',
-            'item' => $item,
-        ], 200);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['error' => 'Item não encontrado.'], 404);
-    } catch (\Exception $e) {
-        // Log do erro e retorno de mensagem genérica
-        Log::error('Erro ao recuperar item: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao recuperar o item.'], 500);
-    }
-}
-
-}    
-=======
 
     public function show($id)
     {
@@ -581,4 +481,3 @@ public function show($id)
 
 
 }
->>>>>>> origin/main

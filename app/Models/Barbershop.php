@@ -53,14 +53,11 @@ class Barbershop extends Model
     {
         return $this->belongsToMany(Barber::class, 'barber_barbershop')
             ->withTimestamps();
-<<<<<<< HEAD
-=======
     }  
     
     public function items()
     {
         return $this->hasMany(Item::class, 'entity_id')->where('entity_name', 'barbershop');
->>>>>>> origin/main
     }
 
 }
