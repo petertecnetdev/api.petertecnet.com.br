@@ -300,13 +300,12 @@ class ItemController extends Controller
 
             \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
 
-            // Processar e salvar a imagem se fornecida
-            if ($request->hasFile('image')) {
-                Log::info('Imagem do item fornecida, processando...');
+             // Processar e salvar a logo se fornecida
+             if ($request->hasFile('image')) {
+                Log::info('Imagem do item  fornecida, processando...');
 
                 // Definir o caminho do diretório público para imagens
-                $destinationPath = env('IMAGE_STORAGE_PATH', 'public/images');
-
+                $destinationPath = public_path('images');
 
                 // Gerar um nome único para a imagem
                 $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
@@ -319,11 +318,10 @@ class ItemController extends Controller
                 $image->fit(150, 150);
                 $image->save();
 
-                // Atualizar o caminho da imagem no item
-                $item->image = 'images/' . $imageName;
+                // Atualizar o caminho da logo no banco
+                $item->logo = 'images/' . $imageName;
                 $item->save();
             }
-
             // Retornar sucesso
             \Log::info('Item atualizado com sucesso.', ['item_id' => $item->id]);
             return response()->json(['message' => 'Item atualizado com sucesso.', 'item' => $item], 200);
