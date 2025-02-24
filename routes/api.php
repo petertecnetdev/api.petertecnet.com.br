@@ -13,6 +13,7 @@ use App\Http\Controllers\{
     ItemController,
     NewsController,
     BarberController,
+    ReportController
 };
 
 
@@ -169,4 +170,10 @@ Route::group([
 
 
 
-
+// Rotas para geração de relatórios
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'report'
+], function ($router) {
+    Route::post('/generate', [ReportController::class, 'generatePDF'])->name('report.generate');
+});
