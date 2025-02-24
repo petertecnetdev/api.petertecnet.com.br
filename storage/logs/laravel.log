@@ -57,3 +57,7 @@
 [2025-02-13 07:09:52] local.INFO: Item atualizado no banco de dados. {"item_id":13} 
 [2025-02-13 07:09:52] local.INFO: Imagem do item  fornecida, processando...  
 [2025-02-13 07:09:52] local.INFO: Item atualizado com sucesso. {"item_id":13} 
+[2025-02-24 18:42:20] local.INFO: Iniciando a listagem de agendamentos.  
+[2025-02-24 18:42:20] local.WARNING: Usuário não autenticado tentou acessar o recurso.  
+[2025-02-24 18:42:40] local.INFO: Iniciando a exibição do item com ID: 13  
+[2025-02-24 18:42:40] local.WARNING: Usuário não autenticado tentou acessar o recurso de exibição de item.  

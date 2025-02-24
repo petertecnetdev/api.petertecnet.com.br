@@ -63,47 +63,55 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
+            Log::info('Tentativa de login', ['email' => $request->email]);
+    
             $validator = Validator::make($request->all(), [
                 'email' => 'required|email',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
-
+    
             if ($validator->fails()) {
+                Log::warning('Falha na validação do login', ['erros' => $validator->errors()]);
                 throw new ValidationException($validator);
             }
-
+    
             if (!$token = auth()->attempt($validator->validated())) {
+                Log::warning('Falha na autenticação', ['email' => $request->email]);
+    
                 // Verificar se o e-mail está cadastrado
                 $user = User::where('email', $request->email)->first();
                 if (!$user) {
+                    Log::error('Tentativa de login com e-mail não cadastrado', ['email' => $request->email]);
                     return response()->json(['error' => 'Este e-mail não está cadastrado.'], 404);
                 }
-                // Se o e-mail estiver cadastrado, mas a senha estiver incorreta
+    
+                Log::error('Senha incorreta para o e-mail', ['email' => $request->email]);
                 return response()->json(['error' => 'Senha incorreta.'], 401);
             }
-
+    
+            Log::info('Login realizado com sucesso', ['user_id' => auth()->user()->id]);
+    
             $interaction = new Interaction();
             $interaction->user_id = auth()->user()->id;
             $interaction->interaction_type = 'login';
             $interaction->entity_id = auth()->user()->id;
             $interaction->entity_type = 'user';
             $interaction->save();
+    
             return response()->json([
                 'message' => 'Login realizado com sucesso!',
                 'token' => $this->createNewToken($token),
                 'user' => auth()->user(),
             ], 200);
-
-
-
+    
         } catch (ValidationException $exception) {
+            Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
             return response()->json($exception->errors(), 422);
         } catch (\Exception $exception) {
-            // Lidar com outras exceções conforme necessário
-            return response()->json(['error' => 'Teste Erro durante o login'], 500);
+            Log::error('Erro inesperado durante o login', ['message' => $exception->getMessage(), 'trace' => $exception->getTraceAsString()]);
+            return response()->json(['error' => 'Erro durante o login'], 500);
         }
     }
-
     /**
      * Register a User.
      *
