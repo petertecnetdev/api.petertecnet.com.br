@@ -57,6 +57,22 @@ class ReportController extends Controller
         $photosBase64   = $data['photosBase64'];
         $primaryColor   = $data['primaryColor'];
         $secundaryColor = $data['secundaryColor'];
+        $verifications  = $data['verifications'] ?? [];
+
+        // Converter imagens dos documentos para Base64
+        $docs['documentFront']['photo'] = $this->convertImageToBase64($docs['documentFront']['photo']);
+        $docs['documentBack']['photo'] = $this->convertImageToBase64($docs['documentBack']['photo']);
+
+        // Converter as imagens do array photosBase64 (caso não estejam em base64)
+        $keys = ['documentFront', 'documentBack', 'faceMatchPerson', 'faceMatchDocument', 'qrCode'];
+        foreach ($keys as $key) {
+            if (isset($photosBase64[$key]) && !str_starts_with($photosBase64[$key], 'data:')) {
+                $photosBase64[$key] = $this->convertImageToBase64($photosBase64[$key]);
+            }
+        }
+
+        // Converter a logo da Peter Tecnet (localizada em public/images)
+        $logoPeterTecnet = $this->convertImageToBase64(public_path('images/peterlogo.png'));
 
         // Gera o PDF utilizando a view "reports.criminal_record"
         $pdf = Pdf::loadView('reports.criminal_record', compact(
@@ -67,11 +83,33 @@ class ReportController extends Controller
             'docs',
             'photosBase64',
             'primaryColor',
-            'secundaryColor'
+            'secundaryColor',
+            'verifications',
+            'logoPeterTecnet'
         ));
 
         // Retorna o PDF como resposta para download
         return $pdf->stream('relatorio_antecedentes_criminais.pdf');
+    }
+
+    /**
+     * Converte uma URL de imagem para uma string Base64.
+     *
+     * @param string $imageUrl
+     * @return string|null
+     */
+    private function convertImageToBase64($imageUrl)
+    {
+        try {
+            $imageData = file_get_contents($imageUrl);
+            if ($imageData === false) {
+                return null;
+            }
+            $imageType = pathinfo($imageUrl, PATHINFO_EXTENSION);
+            return 'data:image/' . $imageType . ';base64,' . base64_encode($imageData);
+        } catch (\Exception $e) {
+            return null;
+        }
     }
 
     /**
@@ -82,7 +120,6 @@ class ReportController extends Controller
         return [
             'json_data.required' => 'O campo "json_data" é obrigatório e deve conter o JSON válido.',
             'json_data.array' => 'O campo "json_data" deve ser um objeto JSON.',
-
             'person.required' => 'O campo "person" é obrigatório.',
             'person.array' => 'O campo "person" deve ser um objeto JSON.',
             'group.required' => 'O campo "group" é obrigatório.',

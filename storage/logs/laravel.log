@@ -82,3 +82,430 @@
 #9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
 #10 {main}
 "} 
+[2025-02-25 10:10:10] local.ERROR: Undefined variable $verifications {"view":{"view":"C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php","data":{"person":"<pre class=sf-dump id=sf-dump-1753901917 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>id</span>\" => \"<span class=sf-dump-str title=\"36 characters\">08c5d747-c044-40c0-917b-597cb4877671</span>\"
+  \"<span class=sf-dump-key>createdAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-04-19T16:24:32.116Z</span>\"
+  \"<span class=sf-dump-key>modifiedAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-06-07T18:25:43.000Z</span>\"
+  \"<span class=sf-dump-key>groupsCount</span>\" => <span class=sf-dump-num>1</span>
+  \"<span class=sf-dump-key>name</span>\" => \"<span class=sf-dump-str title=\"24 characters\">DANIEL BOABAID DALCANALE</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-1753901917\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","group":"<pre class=sf-dump id=sf-dump-374966911 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>id</span>\" => \"<span class=sf-dump-str title=\"36 characters\">ac2801b6-bc99-4cc9-a8f2-e211f6de0dd0</span>\"
+  \"<span class=sf-dump-key>createdAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-03-10T18:25:13.250Z</span>\"
+  \"<span class=sf-dump-key>modifiedAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-12-09T19:00:25.602Z</span>\"
+  \"<span class=sf-dump-key>name</span>\" => \"<span class=sf-dump-str title=\"8 characters\">Equality</span>\"
+  \"<span class=sf-dump-key>cnpj</span>\" => \"<span class=sf-dump-str title=\"18 characters\">47.810.919/0001-04</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-374966911\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","qr":"<pre class=sf-dump id=sf-dump-1439747373 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"80 characters\">9c43c5ed874d944bff33cdb227fbf0dcf7b84965f9d1e7b013afd901dd1f6f1beaba6ab98e3ba15d</span>\"
+</pre><script>Sfdump(\"sf-dump-1439747373\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","qrPage":"<pre class=sf-dump id=sf-dump-1237609390 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"30 characters\">https://pre-qr.liberadoapp.com</span>\"
+</pre><script>Sfdump(\"sf-dump-1237609390\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","docs":"<pre class=sf-dump id=sf-dump-1891500517 data-indent-pad=\"  \"><span class=sf-dump-note>array:2</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>documentBack</span>\" => <span class=sf-dump-note>array:4</span> [<samp data-depth=2 class=sf-dump-compact>
+    \"<span class=sf-dump-key>photo</span>\" => \"<span class=sf-dump-str title=\"53 characters\">https://liberadoapp-prd.s3.amazonaws.com/docs/54ff...</span>\"
+    \"<span class=sf-dump-key>ratio</span>\" => <span class=sf-dump-num>0</span>
+    \"<span class=sf-dump-key>type</span>\" => \"<span class=sf-dump-str title=\"2 characters\">RG</span>\"
+    \"<span class=sf-dump-key>score</span>\" => <span class=sf-dump-num>0.88</span>
+  </samp>]
+  \"<span class=sf-dump-key>documentFront</span>\" => <span class=sf-dump-note>array:4</span> [<samp data-depth=2 class=sf-dump-compact>
+    \"<span class=sf-dump-key>photo</span>\" => \"<span class=sf-dump-str title=\"53 characters\">https://liberadoapp-prd.s3.amazonaws.com/docs/a066...</span>\"
+    \"<span class=sf-dump-key>ratio</span>\" => <span class=sf-dump-num>0.949</span>
+    \"<span class=sf-dump-key>type</span>\" => \"<span class=sf-dump-str title=\"2 characters\">RG</span>\"
+    \"<span class=sf-dump-key>score</span>\" => <span class=sf-dump-num>0.84</span>
+  </samp>]
+</samp>]
+</pre><script>Sfdump(\"sf-dump-1891500517\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","photosBase64":"<pre class=sf-dump id=sf-dump-602438351 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>documentFront</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQ...</span>\"
+  \"<span class=sf-dump-key>documentBack</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQ...</span>\"
+  \"<span class=sf-dump-key>faceMatchPerson</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQ...</span>\"
+  \"<span class=sf-dump-key>faceMatchDocument</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQ...</span>\"
+  \"<span class=sf-dump-key>qrCode</span>\" => \"<span class=sf-dump-str title=\"53 characters\">PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJ5ZXMiPz...</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-602438351\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","primaryColor":"<pre class=sf-dump id=sf-dump-1091082394 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"7 characters\">#ff0000</span>\"
+</pre><script>Sfdump(\"sf-dump-1091082394\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","secundaryColor":"<pre class=sf-dump id=sf-dump-577502809 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"7 characters\">#423a15</span>\"
+</pre><script>Sfdump(\"sf-dump-577502809\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+"}},"exception":"[object] (Spatie\\LaravelIgnition\\Exceptions\\ViewException(code: 0): Undefined variable $verifications at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php:170)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 171)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php(170): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 171)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(109): require('C:\\\\Development\\\\...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(110): Illuminate\\Filesystem\\Filesystem::Illuminate\\Filesystem\\{closure}()
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\PhpEngine.php(58): Illuminate\\Filesystem\\Filesystem->getRequire('C:\\\\Development\\\\...', Array)
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\CompilerEngine.php(70): Illuminate\\View\\Engines\\PhpEngine->evaluatePath('C:\\\\Development\\\\...', Array)
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(195): Illuminate\\View\\Engines\\CompilerEngine->get('C:\\\\Development\\\\...', Array)
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(178): Illuminate\\View\\View->getContents()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(147): Illuminate\\View\\View->renderContents()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(142): Illuminate\\View\\View->render()
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\Facade\\Pdf.php(66): Barryvdh\\DomPDF\\PDF->loadView('reports.crimina...', Array)
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(62): Barryvdh\\DomPDF\\Facade\\Pdf::__callStatic('loadView', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#49 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#50 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#51 {main}
+
+[previous exception] [object] (ErrorException(code: 0): Undefined variable $verifications at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\storage\\framework\\views\\71a78d888016e930b318c8d730cf47bc43d034b6.php:171)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 171)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\storage\\framework\\views\\71a78d888016e930b318c8d730cf47bc43d034b6.php(171): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 171)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(109): require('C:\\\\Development\\\\...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(110): Illuminate\\Filesystem\\Filesystem::Illuminate\\Filesystem\\{closure}()
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\PhpEngine.php(58): Illuminate\\Filesystem\\Filesystem->getRequire('C:\\\\Development\\\\...', Array)
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\CompilerEngine.php(70): Illuminate\\View\\Engines\\PhpEngine->evaluatePath('C:\\\\Development\\\\...', Array)
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(195): Illuminate\\View\\Engines\\CompilerEngine->get('C:\\\\Development\\\\...', Array)
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(178): Illuminate\\View\\View->getContents()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(147): Illuminate\\View\\View->renderContents()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(142): Illuminate\\View\\View->render()
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\Facade\\Pdf.php(66): Barryvdh\\DomPDF\\PDF->loadView('reports.crimina...', Array)
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(62): Barryvdh\\DomPDF\\Facade\\Pdf::__callStatic('loadView', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#49 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#50 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#51 {main}
+"} 
+[2025-02-25 10:55:34] local.ERROR: Undefined variable $logoPeterTecnet {"view":{"view":"C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php","data":{"person":"<pre class=sf-dump id=sf-dump-408981294 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>id</span>\" => \"<span class=sf-dump-str title=\"36 characters\">08c5d747-c044-40c0-917b-597cb4877671</span>\"
+  \"<span class=sf-dump-key>createdAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-04-19T16:24:32.116Z</span>\"
+  \"<span class=sf-dump-key>modifiedAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-06-07T18:25:43.000Z</span>\"
+  \"<span class=sf-dump-key>groupsCount</span>\" => <span class=sf-dump-num>1</span>
+  \"<span class=sf-dump-key>name</span>\" => \"<span class=sf-dump-str title=\"24 characters\">DANIEL BOABAID DALCANALE</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-408981294\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","group":"<pre class=sf-dump id=sf-dump-1684878363 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>id</span>\" => \"<span class=sf-dump-str title=\"36 characters\">ac2801b6-bc99-4cc9-a8f2-e211f6de0dd0</span>\"
+  \"<span class=sf-dump-key>createdAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-03-10T18:25:13.250Z</span>\"
+  \"<span class=sf-dump-key>modifiedAt</span>\" => \"<span class=sf-dump-str title=\"24 characters\">2024-12-09T19:00:25.602Z</span>\"
+  \"<span class=sf-dump-key>name</span>\" => \"<span class=sf-dump-str title=\"8 characters\">Equality</span>\"
+  \"<span class=sf-dump-key>cnpj</span>\" => \"<span class=sf-dump-str title=\"18 characters\">47.810.919/0001-04</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-1684878363\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","qr":"<pre class=sf-dump id=sf-dump-1851510111 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"80 characters\">9c43c5ed874d944bff33cdb227fbf0dcf7b84965f9d1e7b013afd901dd1f6f1beaba6ab98e3ba15d</span>\"
+</pre><script>Sfdump(\"sf-dump-1851510111\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","qrPage":"<pre class=sf-dump id=sf-dump-1671553221 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"30 characters\">https://pre-qr.liberadoapp.com</span>\"
+</pre><script>Sfdump(\"sf-dump-1671553221\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","docs":"<pre class=sf-dump id=sf-dump-1200808076 data-indent-pad=\"  \"><span class=sf-dump-note>array:2</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>documentBack</span>\" => <span class=sf-dump-note>array:4</span> [<samp data-depth=2 class=sf-dump-compact>
+    \"<span class=sf-dump-key>photo</span>\" => \"<span class=sf-dump-str title=\"53 characters\">https://liberadoapp-prd.s3.amazonaws.com/docs/54ff...</span>\"
+    \"<span class=sf-dump-key>ratio</span>\" => <span class=sf-dump-num>0</span>
+    \"<span class=sf-dump-key>type</span>\" => \"<span class=sf-dump-str title=\"2 characters\">RG</span>\"
+    \"<span class=sf-dump-key>score</span>\" => <span class=sf-dump-num>0.88</span>
+  </samp>]
+  \"<span class=sf-dump-key>documentFront</span>\" => <span class=sf-dump-note>array:4</span> [<samp data-depth=2 class=sf-dump-compact>
+    \"<span class=sf-dump-key>photo</span>\" => \"<span class=sf-dump-str title=\"53 characters\">https://liberadoapp-prd.s3.amazonaws.com/docs/a066...</span>\"
+    \"<span class=sf-dump-key>ratio</span>\" => <span class=sf-dump-num>0.949</span>
+    \"<span class=sf-dump-key>type</span>\" => \"<span class=sf-dump-str title=\"2 characters\">RG</span>\"
+    \"<span class=sf-dump-key>score</span>\" => <span class=sf-dump-num>0.84</span>
+  </samp>]
+</samp>]
+</pre><script>Sfdump(\"sf-dump-1200808076\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","photosBase64":"<pre class=sf-dump id=sf-dump-382657064 data-indent-pad=\"  \"><span class=sf-dump-note>array:5</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>documentFront</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQ...</span>\"
+  \"<span class=sf-dump-key>documentBack</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQ...</span>\"
+  \"<span class=sf-dump-key>faceMatchPerson</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQ...</span>\"
+  \"<span class=sf-dump-key>faceMatchDocument</span>\" => \"<span class=sf-dump-str title=\"53 characters\">/9j/4AAQSkZJRgABAQAAAQABAAD/4gHYSUNDX1BST0ZJTEUAAQ...</span>\"
+  \"<span class=sf-dump-key>qrCode</span>\" => \"<span class=sf-dump-str title=\"53 characters\">PD94bWwgdmVyc2lvbj0iMS4wIiBzdGFuZGFsb25lPSJ5ZXMiPz...</span>\"
+</samp>]
+</pre><script>Sfdump(\"sf-dump-382657064\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","primaryColor":"<pre class=sf-dump id=sf-dump-450221583 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"7 characters\">#ff0000</span>\"
+</pre><script>Sfdump(\"sf-dump-450221583\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","secundaryColor":"<pre class=sf-dump id=sf-dump-683753373 data-indent-pad=\"  \">\"<span class=sf-dump-str title=\"7 characters\">#423a15</span>\"
+</pre><script>Sfdump(\"sf-dump-683753373\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+","verifications":"<pre class=sf-dump id=sf-dump-445151556 data-indent-pad=\"  \"><span class=sf-dump-note>array:4</span> [<samp data-depth=1 class=sf-dump-expanded>
+  \"<span class=sf-dump-key>identities</span>\" => []
+  \"<span class=sf-dump-key>criminal</span>\" => []
+  \"<span class=sf-dump-key>credit</span>\" => []
+  \"<span class=sf-dump-key>social</span>\" => []
+</samp>]
+</pre><script>Sfdump(\"sf-dump-445151556\", {\"maxDepth\":3,\"maxStringLength\":160})</script>
+"}},"exception":"[object] (Spatie\\LaravelIgnition\\Exceptions\\ViewException(code: 0): Undefined variable $logoPeterTecnet at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php:158)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 158)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\resources\\views\\reports\\criminal_record.blade.php(158): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 158)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(109): require('C:\\\\Development\\\\...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(110): Illuminate\\Filesystem\\Filesystem::Illuminate\\Filesystem\\{closure}()
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\PhpEngine.php(58): Illuminate\\Filesystem\\Filesystem->getRequire('C:\\\\Development\\\\...', Array)
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\CompilerEngine.php(70): Illuminate\\View\\Engines\\PhpEngine->evaluatePath('C:\\\\Development\\\\...', Array)
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(195): Illuminate\\View\\Engines\\CompilerEngine->get('C:\\\\Development\\\\...', Array)
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(178): Illuminate\\View\\View->getContents()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(147): Illuminate\\View\\View->renderContents()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(142): Illuminate\\View\\View->render()
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\Facade\\Pdf.php(66): Barryvdh\\DomPDF\\PDF->loadView('reports.crimina...', Array)
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(64): Barryvdh\\DomPDF\\Facade\\Pdf::__callStatic('loadView', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#49 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#50 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#51 {main}
+
+[previous exception] [object] (ErrorException(code: 0): Undefined variable $logoPeterTecnet at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\storage\\framework\\views\\71a78d888016e930b318c8d730cf47bc43d034b6.php:158)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 158)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\storage\\framework\\views\\71a78d888016e930b318c8d730cf47bc43d034b6.php(158): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined varia...', 'C:\\\\Development\\\\...', 158)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(109): require('C:\\\\Development\\\\...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Filesystem\\Filesystem.php(110): Illuminate\\Filesystem\\Filesystem::Illuminate\\Filesystem\\{closure}()
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\PhpEngine.php(58): Illuminate\\Filesystem\\Filesystem->getRequire('C:\\\\Development\\\\...', Array)
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\Engines\\CompilerEngine.php(70): Illuminate\\View\\Engines\\PhpEngine->evaluatePath('C:\\\\Development\\\\...', Array)
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(195): Illuminate\\View\\Engines\\CompilerEngine->get('C:\\\\Development\\\\...', Array)
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(178): Illuminate\\View\\View->getContents()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\View\\View.php(147): Illuminate\\View\\View->renderContents()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(142): Illuminate\\View\\View->render()
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\Facade\\Pdf.php(66): Barryvdh\\DomPDF\\PDF->loadView('reports.crimina...', Array)
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(64): Barryvdh\\DomPDF\\Facade\\Pdf::__callStatic('loadView', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#49 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#50 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#51 {main}
+"} 
+[2025-02-25 11:14:36] local.ERROR: Undefined array key "data" {"exception":"[object] (ErrorException(code: 0): Undefined array key \"data\" at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Helpers.php:299)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined array...', 'C:\\\\Development\\\\...', 299)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Helpers.php(299): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined array...', 'C:\\\\Development\\\\...', 299)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Image\\Cache.php(105): Dompdf\\Helpers::parse_data_uri('data:image/png&...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\FrameDecorator\\Image.php(55): Dompdf\\Image\\Cache::resolve_url('data:image/png&...', 'data://', '', 'C:\\\\Development\\\\...', Object(Dompdf\\Options))
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Frame\\Factory.php(198): Dompdf\\FrameDecorator\\Image->__construct(Object(Dompdf\\Frame), Object(Dompdf\\Dompdf))
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Dompdf.php(774): Dompdf\\Frame\\Factory::decorate_frame(Object(Dompdf\\Frame), Object(Dompdf\\Dompdf), Object(Dompdf\\FrameDecorator\\Page))
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(244): Dompdf\\Dompdf->render()
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(188): Barryvdh\\DomPDF\\PDF->render()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(229): Barryvdh\\DomPDF\\PDF->output()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(92): Barryvdh\\DomPDF\\PDF->stream('relatorio_antec...')
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#49 {main}
+"} 
+[2025-02-25 11:22:00] local.ERROR: Undefined array key "data" {"exception":"[object] (ErrorException(code: 0): Undefined array key \"data\" at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Helpers.php:299)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\HandleExceptions.php(270): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->handleError(2, 'Undefined array...', 'C:\\\\Development\\\\...', 299)
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Helpers.php(299): Illuminate\\Foundation\\Bootstrap\\HandleExceptions->Illuminate\\Foundation\\Bootstrap\\{closure}(2, 'Undefined array...', 'C:\\\\Development\\\\...', 299)
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Image\\Cache.php(105): Dompdf\\Helpers::parse_data_uri('data:image/png?...')
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\FrameDecorator\\Image.php(55): Dompdf\\Image\\Cache::resolve_url('data:image/png?...', 'data://', '', 'C:\\\\Development\\\\...', Object(Dompdf\\Options))
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Frame\\Factory.php(198): Dompdf\\FrameDecorator\\Image->__construct(Object(Dompdf\\Frame), Object(Dompdf\\Dompdf))
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\dompdf\\dompdf\\src\\Dompdf.php(774): Dompdf\\Frame\\Factory::decorate_frame(Object(Dompdf\\Frame), Object(Dompdf\\Dompdf), Object(Dompdf\\FrameDecorator\\Page))
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(244): Dompdf\\Dompdf->render()
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(188): Barryvdh\\DomPDF\\PDF->render()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\barryvdh\\laravel-dompdf\\src\\PDF.php(229): Barryvdh\\DomPDF\\PDF->output()
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\app\\Http\\Controllers\\ReportController.php(92): Barryvdh\\DomPDF\\PDF->stream('relatorio_antec...')
+#10 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Controller.php(54): App\\Http\\Controllers\\ReportController->generatePDF(Object(Illuminate\\Http\\Request))
+#11 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\ControllerDispatcher.php(43): Illuminate\\Routing\\Controller->callAction('generatePDF', Array)
+#12 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(259): Illuminate\\Routing\\ControllerDispatcher->dispatch(Object(Illuminate\\Routing\\Route), Object(App\\Http\\Controllers\\ReportController), 'generatePDF')
+#13 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Route.php(205): Illuminate\\Routing\\Route->runController()
+#14 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(798): Illuminate\\Routing\\Route->run()
+#15 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Routing\\Router->Illuminate\\Routing\\{closure}(Object(Illuminate\\Http\\Request))
+#16 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\SubstituteBindings.php(50): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#17 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\SubstituteBindings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#18 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(126): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#19 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(92): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequest(Object(Illuminate\\Http\\Request), Object(Closure), Array)
+#20 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Middleware\\ThrottleRequests.php(54): Illuminate\\Routing\\Middleware\\ThrottleRequests->handleRequestUsingNamedLimiter(Object(Illuminate\\Http\\Request), Object(Closure), 'api', Object(Closure))
+#21 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Routing\\Middleware\\ThrottleRequests->handle(Object(Illuminate\\Http\\Request), Object(Closure), 'api')
+#22 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#23 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(797): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#24 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(776): Illuminate\\Routing\\Router->runRouteWithinStack(Object(Illuminate\\Routing\\Route), Object(Illuminate\\Http\\Request))
+#25 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(740): Illuminate\\Routing\\Router->runRoute(Object(Illuminate\\Http\\Request), Object(Illuminate\\Routing\\Route))
+#26 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Routing\\Router.php(729): Illuminate\\Routing\\Router->dispatchToRoute(Object(Illuminate\\Http\\Request))
+#27 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(190): Illuminate\\Routing\\Router->dispatch(Object(Illuminate\\Http\\Request))
+#28 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(141): Illuminate\\Foundation\\Http\\Kernel->Illuminate\\Foundation\\Http\\{closure}(Object(Illuminate\\Http\\Request))
+#29 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\fruitcake\\laravel-cors\\src\\HandleCors.php(52): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#30 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Fruitcake\\Cors\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#31 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#32 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull.php(31): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#33 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ConvertEmptyStringsToNull->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#34 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest.php(21): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#35 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\TrimStrings.php(40): Illuminate\\Foundation\\Http\\Middleware\\TransformsRequest->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#36 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\TrimStrings->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#37 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize.php(27): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#38 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\ValidatePostSize->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#39 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance.php(86): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#40 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Foundation\\Http\\Middleware\\PreventRequestsDuringMaintenance->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#41 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\HandleCors.php(62): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#42 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\HandleCors->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#43 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Http\\Middleware\\TrustProxies.php(39): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#44 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(180): Illuminate\\Http\\Middleware\\TrustProxies->handle(Object(Illuminate\\Http\\Request), Object(Closure))
+#45 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Pipeline\\Pipeline.php(116): Illuminate\\Pipeline\\Pipeline->Illuminate\\Pipeline\\{closure}(Object(Illuminate\\Http\\Request))
+#46 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(165): Illuminate\\Pipeline\\Pipeline->then(Object(Closure))
+#47 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#48 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#49 {main}
+"} 
