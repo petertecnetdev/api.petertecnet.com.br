@@ -12,3 +12,5 @@
 # Ignorar arquivos do ambiente
 .env
 .env.example
+/vendor
+/composer.lock
