@@ -170,7 +170,7 @@
 
     <!-- CAPA DO RELATÓRIO -->
     <div class="container cover">
-        <img src="images/peterlogo.png" alt="Logo Peter Tecnet" class="img-fluid rounded"
+        <img src="images/p1itlogo.png" alt="Logo p1it" class="img-fluid rounded"
             style="width: 180px; height: auto;">
         <h1>Relatório de Antecedentes Criminais</h1>
         <h2>{{ $person['name'] }}</h2>
