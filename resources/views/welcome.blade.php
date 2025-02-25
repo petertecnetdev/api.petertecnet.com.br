@@ -1,44 +1,70 @@
 <!DOCTYPE html>
 <html lang="pt-br">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Peter Tecnet - API </title>
-    <meta name="description" content="Com a Peter Tecnet, você pode gerenciar seus eventos e descobrir atividades emocionantes na sua região. Personalize seus eventos, compre ingressos e acompanhe suas atividades com facilidade.">
-    <meta name="keywords" content="Peter Tecnet, eventos, ingressos, gestão de eventos, descoberta de eventos">
-    <link rel="icon" href="/image/icon.png" type="image/png"> <!-- Adicionado o ícone da página -->
+    <title>Peter Tecnet - API</title>
+    <meta name="description"
+        content="A Peter Tecnet oferece soluções de software inovadoras para diversos segmentos, como gerenciamento de barbearias, clínicas médicas, advocacia e gestão de eventos. Também fornecemos uma API robusta para a criação de aplicativos sob medida ou personalizados conforme suas necessidades." />
+    <meta name="keywords"
+        content="Peter Tecnet, soluções de software, gerenciamento de barbearia, software para clínicas, advocacia, gestão de eventos, API, aplicativos personalizados, transformação digital, aplicações empresariais" />
+    <link rel="icon" href="/image/icon.png" type="image/png">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
         body {
             margin: 0;
             padding: 0;
-            background-color: #000; /* Alterado para fundo preto */
+            background-color: #000;
             font-family: Arial, sans-serif;
             height: 100vh;
             display: flex;
             justify-content: center;
-            align-items: center; /* Centraliza verticalmente */
+            align-items: center;
         }
+
         .content {
             text-align: center;
             color: white;
             padding: 20px;
-            max-width: 600px; /* Limite de largura para melhor visualização */
+            max-width: 600px;
         }
+
         .logo {
             max-width: 100%;
             height: auto;
-            margin-bottom: 20px; /* Espaçamento entre logo e texto */
+            margin-bottom: 20px;
+            animation: pulse 2s infinite;
         }
+
         .welcome-message {
-            font-size: 1.5rem; /* Aumenta o tamanho da fonte da mensagem */
+            font-size: 1.5rem;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            50% {
+                transform: scale(1.05);
+                opacity: 0.8;
+            }
+
+            100% {
+                transform: scale(1);
+                opacity: 1;
+            }
         }
     </style>
 </head>
+
 <body>
     <div class="content">
-        <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo"> <!-- Substituído por uma imagem responsiva -->
+        <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
         <p class="welcome-message">Peter Tecnet</p>
     </div>
 </body>
+
 </html>
