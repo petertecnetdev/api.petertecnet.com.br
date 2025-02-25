@@ -12,3 +12,24 @@ public/images
 
  storage/logs/laravel.log
  vendor/
+
+ # Ignorar dependências geradas
+/vendor
+/composer.lock
+/node_modules
+
+# Ignorar arquivos de log e cache do Laravel
+/storage/logs
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/views
+
+# Ignorar arquivos do ambiente
+.env
+.env.example
+/vendor/
+composer.lock
+storage/logs/
+.env
+node_modules/
+public/storage
