@@ -1,15 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'laravel/laravel',
-<<<<<<< HEAD
-        'pretty_version' => 'dev-develop',
-        'version' => 'dev-develop',
-        'reference' => '6f24435650341f3de22ae7b556f2f775fc85e282',
-=======
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => 'f280aa65ea80060b697f1e5e2a899825812dfe3a',
->>>>>>> f7df5954ae0755b554d4ebf7a8137ef561a693e6
+        'reference' => 'a4fb7a971b2eb4df03c868e4800a87d5997344f9',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -115,25 +109,6 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-<<<<<<< HEAD
-        'fakerphp/faker' => array(
-            'pretty_version' => 'v1.23.1',
-            'version' => '1.23.1.0',
-            'reference' => 'bfb4fe148adbf78eff521199619b93a52ae3554b',
-            'type' => 'library',
-            'install_path' => __DIR__ . '/../fakerphp/faker',
-            'aliases' => array(),
-            'dev_requirement' => true,
-        ),
-        'filp/whoops' => array(
-            'pretty_version' => '2.15.4',
-            'version' => '2.15.4.0',
-            'reference' => 'a139776fa3f5985a50b509f2a02ff0f709d2a546',
-            'type' => 'library',
-            'install_path' => __DIR__ . '/../filp/whoops',
-            'aliases' => array(),
-            'dev_requirement' => true,
-        ),
         'fruitcake/laravel-cors' => array(
             'pretty_version' => 'v3.0.0',
             'version' => '3.0.0.0',
@@ -143,8 +118,6 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
-=======
->>>>>>> f7df5954ae0755b554d4ebf7a8137ef561a693e6
         'fruitcake/php-cors' => array(
             'pretty_version' => 'v1.3.0',
             'version' => '1.3.0.0',
@@ -410,15 +383,9 @@
             'dev_requirement' => false,
         ),
         'laravel/laravel' => array(
-<<<<<<< HEAD
-            'pretty_version' => 'dev-develop',
-            'version' => 'dev-develop',
-            'reference' => '6f24435650341f3de22ae7b556f2f775fc85e282',
-=======
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => 'f280aa65ea80060b697f1e5e2a899825812dfe3a',
->>>>>>> f7df5954ae0755b554d4ebf7a8137ef561a693e6
+            'reference' => 'a4fb7a971b2eb4df03c868e4800a87d5997344f9',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
