@@ -1,9 +1,9 @@
 <?php return array(
     'root' => array(
         'name' => 'laravel/laravel',
-        'pretty_version' => 'dev-main',
-        'version' => 'dev-main',
-        'reference' => 'a4fb7a971b2eb4df03c868e4800a87d5997344f9',
+        'pretty_version' => 'dev-develop',
+        'version' => 'dev-develop',
+        'reference' => '6f24435650341f3de22ae7b556f2f775fc85e282',
         'type' => 'project',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -383,9 +383,9 @@
             'dev_requirement' => false,
         ),
         'laravel/laravel' => array(
-            'pretty_version' => 'dev-main',
-            'version' => 'dev-main',
-            'reference' => 'a4fb7a971b2eb4df03c868e4800a87d5997344f9',
+            'pretty_version' => 'dev-develop',
+            'version' => 'dev-develop',
+            'reference' => '6f24435650341f3de22ae7b556f2f775fc85e282',
             'type' => 'project',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -577,6 +577,15 @@
             'aliases' => array(),
             'dev_requirement' => false,
         ),
+        'nunomaduro/collision' => array(
+            'pretty_version' => 'v6.4.0',
+            'version' => '6.4.0.0',
+            'reference' => 'f05978827b9343cba381ca05b8c7deee346b6015',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../nunomaduro/collision',
+            'aliases' => array(),
+            'dev_requirement' => true,
+        ),
         'nunomaduro/termwind' => array(
             'pretty_version' => 'v1.17.0',
             'version' => '1.17.0.0',
@@ -706,8 +715,8 @@
         'psr/log-implementation' => array(
             'dev_requirement' => false,
             'provided' => array(
-                0 => '1.0|2.0|3.0',
-                1 => '1.0.0 || 2.0.0 || 3.0.0',
+                0 => '1.0.0 || 2.0.0 || 3.0.0',
+                1 => '1.0|2.0|3.0',
             ),
         ),
         'psr/simple-cache' => array(

@@ -198,7 +198,9 @@ return [
         App\Providers\RouteServiceProvider::class,
       
         Barryvdh\DomPDF\ServiceProvider::class,
-        
+        env('APP_ENV') !== 'production'
+        ? NunoMaduro\Collision\Adapters\Laravel\CollisionServiceProvider::class
+        : null,
     ],
 
     /*
