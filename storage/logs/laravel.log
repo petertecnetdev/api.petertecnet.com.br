@@ -1,2 +1,14 @@
 [2025-02-25 17:38:41] local.INFO: Tentativa de login {"email":"petertecnet@gmail.com"} 
 [2025-02-25 17:38:41] local.INFO: Login realizado com sucesso {"user_id":4} 
+[2025-02-25 19:14:43] production.ERROR: Class name must be a valid object or a string {"exception":"[object] (Error(code: 0): Class name must be a valid object or a string at /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/ProviderRepository.php:206)
+[stacktrace]
+#0 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/ProviderRepository.php(142): Illuminate\\Foundation\\ProviderRepository->createProvider()
+#1 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/ProviderRepository.php(61): Illuminate\\Foundation\\ProviderRepository->compileManifest()
+#2 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(689): Illuminate\\Foundation\\ProviderRepository->load()
+#3 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/Bootstrap/RegisterProviders.php(17): Illuminate\\Foundation\\Application->registerConfiguredProviders()
+#4 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/Application.php(265): Illuminate\\Foundation\\Bootstrap\\RegisterProviders->bootstrap()
+#5 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(383): Illuminate\\Foundation\\Application->bootstrapWith()
+#6 /var/www/api.petertecnet.com.br/vendor/laravel/framework/src/Illuminate/Foundation/Console/Kernel.php(153): Illuminate\\Foundation\\Console\\Kernel->bootstrap()
+#7 /var/www/api.petertecnet.com.br/artisan(35): Illuminate\\Foundation\\Console\\Kernel->handle()
+#8 {main}
+"} 
