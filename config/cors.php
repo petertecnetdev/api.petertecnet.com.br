@@ -22,6 +22,7 @@ return [
         'https://rasoio.petertecnet.com.br',
         'http://rasoio.petertecnet.com.br',
         'https://cutinapp.petertecnet.com.br',
+        'https://petertecnet.com.br'
     ],
 
     'allowed_origins_patterns' => [],
