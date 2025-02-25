@@ -20,6 +20,7 @@ return [
     'allowed_methods' => ['*'],
     'allowed_origins' => [
         'https://rasoio.petertecnet.com.br',
+        'http://rasoio.petertecnet.com.br',
         'https://cutinapp.petertecnet.com.br',
     ],
 
