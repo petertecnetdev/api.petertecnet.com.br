@@ -18,10 +18,13 @@ return [
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
-    'allowed_origins' => [
-        'https://rasoio.petertecnet.com.br',
-        'https://cutinapp.petertecnet.com.br',
-    ],
+   'allowed_origins' => [
+    'https://rasoio.petertecnet.com.br',
+    'https://cutinapp.petertecnet.com.br',
+    'http://localhost:3000'
+],
+
+
 
     'allowed_origins_patterns' => [],
 
