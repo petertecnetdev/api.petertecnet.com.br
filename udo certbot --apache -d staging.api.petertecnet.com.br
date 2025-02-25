@@ -1,0 +1,2343 @@
+Feb 24 13:00:41 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 4882.[0m
+Feb 24 13:00:41 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 4882.[0m
+Feb 24 18:58:05 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11439.[0m
+Feb 24 18:58:05 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11439 and the job result is done.[0m
+Feb 24 19:01:26 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11544.[0m
+Feb 24 19:01:26 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11544 and the job result is done.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11545.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11545 and the job result is done.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: apache2.service: Consumed 2.397s CPU time, 10.0M memory peak, 0B memory swap peak.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11545.[0m
+Feb 24 19:02:38 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11545.[0m
+Feb 24 19:09:09 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11857.[0m
+Feb 24 19:09:10 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11857 and the job result is done.[0m
+Feb 24 19:13:16 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11962.[0m
+Feb 24 19:13:16 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:13:16 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11962 and the job result is done.[0m
+Feb 24 19:13:16 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11962.[0m
+Feb 24 19:13:16 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 11962.[0m
+Feb 24 19:13:53 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12066.[0m
+Feb 24 19:13:54 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:13:54 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12066 and the job result is done.[0m
+Feb 24 19:13:54 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12066.[0m
+Feb 24 19:13:54 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12066.[0m
+Feb 24 19:31:01 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12691.[0m
+Feb 24 19:31:01 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:31:01 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12691 and the job result is done.[0m
+Feb 24 19:31:01 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12691.[0m
+Feb 24 19:31:01 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 12691.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13420.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13420 and the job result is done.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13420.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13420.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13524.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13524 and the job result is done.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13524.[0m
+Feb 24 19:33:58 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13524.[0m
+Feb 24 19:33:59 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13628.[0m
+Feb 24 19:33:59 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:33:59 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13628 and the job result is done.[0m
+Feb 24 19:33:59 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13628.[0m
+Feb 24 19:33:59 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13628.[0m
+Feb 24 19:35:26 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13732.[0m
+Feb 24 19:35:26 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:35:26 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13732 and the job result is done.[0m
+Feb 24 19:35:26 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13732.[0m
+Feb 24 19:35:26 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13732.[0m
+Feb 24 19:36:12 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13836.[0m
+Feb 24 19:36:12 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 19:36:12 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13836 and the job result is done.[0m
+Feb 24 19:36:12 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13836.[0m
+Feb 24 19:36:12 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 13836.[0m
+Feb 24 20:27:24 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 14772.[0m
+Feb 24 20:27:24 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 20:27:24 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 14772 and the job result is done.[0m
+Feb 24 20:27:24 srv735442 systemd[1]: apache2.service: Consumed 1.313s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 20:27:25 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 14772.[0m
+Feb 24 20:27:25 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 14772.[0m
+Feb 24 21:14:49 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 15604.[0m
+Feb 24 21:14:50 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 21:14:50 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 15604 and the job result is done.[0m
+Feb 24 21:14:50 srv735442 systemd[1]: apache2.service: Consumed 1.882s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 21:14:50 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 15604.[0m
+Feb 24 21:14:50 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 15604.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16020.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16020 and the job result is done.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: apache2.service: Consumed 1.950s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16020.[0m
+Feb 24 21:32:37 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16020.[0m
+Feb 24 21:40:24 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16552.[0m
+Feb 24 21:40:24 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 21:40:24 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16552 and the job result is done.[0m
+Feb 24 21:40:24 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16552.[0m
+Feb 24 21:40:24 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 16552.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 17929.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 17929 and the job result is done.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: apache2.service: Consumed 1.576s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 17929.[0m
+Feb 24 22:21:45 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 17929.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18033.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Killing process 38903 (apache2) with signal SIGKILL.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18033 and the job result is done.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18033.[0m
+Feb 24 22:24:21 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18033.[0m
+Feb 24 22:25:25 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18137.[0m
+Feb 24 22:25:25 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:25:25 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18137 and the job result is done.[0m
+Feb 24 22:25:25 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18137.[0m
+Feb 24 22:25:25 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18137.[0m
+Feb 24 22:28:20 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18241.[0m
+Feb 24 22:28:20 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:28:20 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18241 and the job result is done.[0m
+Feb 24 22:28:20 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18241.[0m
+Feb 24 22:28:20 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18241.[0m
+Feb 24 22:28:55 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18345.[0m
+Feb 24 22:28:55 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:28:55 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18345 and the job result is done.[0m
+Feb 24 22:28:55 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18345.[0m
+Feb 24 22:28:55 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18345.[0m
+Feb 24 22:34:22 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18553.[0m
+Feb 24 22:34:22 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:34:22 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18553 and the job result is done.[0m
+Feb 24 22:34:22 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18553.[0m
+Feb 24 22:34:22 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18553.[0m
+Feb 24 22:39:29 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18761.[0m
+Feb 24 22:39:29 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:39:29 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18761 and the job result is done.[0m
+Feb 24 22:39:29 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18761.[0m
+Feb 24 22:39:29 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 18761.[0m
+Feb 24 22:49:55 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19073.[0m
+Feb 24 22:49:55 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:49:55 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19073 and the job result is done.[0m
+Feb 24 22:49:55 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19073.[0m
+Feb 24 22:49:55 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19073.[0m
+Feb 24 22:54:12 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19385.[0m
+Feb 24 22:54:12 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:54:12 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19385 and the job result is done.[0m
+Feb 24 22:54:12 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19385.[0m
+Feb 24 22:54:12 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19385.[0m
+Feb 24 22:54:25 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19489.[0m
+Feb 24 22:54:25 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:54:25 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19489 and the job result is done.[0m
+Feb 24 22:54:25 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19489.[0m
+Feb 24 22:54:25 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19489.[0m
+Feb 24 22:56:15 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19593.[0m
+Feb 24 22:56:15 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:56:15 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19593 and the job result is done.[0m
+Feb 24 22:56:15 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19593.[0m
+Feb 24 22:56:15 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19593.[0m
+Feb 24 22:58:13 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19697.[0m
+Feb 24 22:58:13 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:58:13 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19697 and the job result is done.[0m
+Feb 24 22:58:13 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19697.[0m
+Feb 24 22:58:13 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19697.[0m
+Feb 24 22:59:20 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19801.[0m
+Feb 24 22:59:20 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 22:59:20 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19801 and the job result is done.[0m
+Feb 24 22:59:20 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19801.[0m
+Feb 24 22:59:20 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 19801.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20325.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20325 and the job result is done.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: apache2.service: Consumed 1.659s CPU time, 50.9M memory peak, 0B memory swap peak.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20325.[0m
+Feb 24 23:17:23 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20325.[0m
+Feb 24 23:17:33 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20534.[0m
+Feb 24 23:17:33 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 23:17:33 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20534 and the job result is done.[0m
+Feb 24 23:17:33 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20534.[0m
+Feb 24 23:17:33 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20534.[0m
+Feb 24 23:18:03 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20638.[0m
+Feb 24 23:18:03 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 23:18:03 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20638 and the job result is done.[0m
+Feb 24 23:18:03 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20638.[0m
+Feb 24 23:18:03 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 20638.[0m
+Feb 24 23:47:10 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 21158.[0m
+Feb 24 23:47:11 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 24 23:47:11 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 21158 and the job result is done.[0m
+Feb 24 23:47:11 srv735442 systemd[1]: apache2.service: Consumed 1.051s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 24 23:47:11 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 21158.[0m
+Feb 24 23:47:11 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 21158.[0m
+Feb 25 00:58:52 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22718.[0m
+Feb 25 00:58:52 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 00:58:52 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22718 and the job result is done.[0m
+Feb 25 00:58:52 srv735442 systemd[1]: apache2.service: Consumed 2.390s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 25 00:58:53 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22718.[0m
+Feb 25 00:58:53 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22718.[0m
+Feb 25 01:04:58 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22926.[0m
+Feb 25 01:04:58 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 01:04:58 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22926 and the job result is done.[0m
+Feb 25 01:04:58 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22926.[0m
+Feb 25 01:04:58 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 22926.[0m
+Feb 25 01:05:09 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23030.[0m
+Feb 25 01:05:09 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 01:05:09 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23030 and the job result is done.[0m
+Feb 25 01:05:09 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23030.[0m
+Feb 25 01:05:09 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23030.[0m
+Feb 25 01:09:02 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23551.[0m
+Feb 25 01:09:02 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 01:09:02 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23551 and the job result is done.[0m
+Feb 25 01:09:02 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23551.[0m
+Feb 25 01:09:03 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23551.[0m
+Feb 25 01:09:24 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23655.[0m
+Feb 25 01:09:24 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 01:09:24 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23655 and the job result is done.[0m
+Feb 25 01:09:25 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23655.[0m
+Feb 25 01:09:25 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23655.[0m
+Feb 25 01:10:54 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23863.[0m
+Feb 25 01:10:54 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 01:10:54 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23863 and the job result is done.[0m
+Feb 25 01:10:54 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23863.[0m
+Feb 25 01:10:54 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 23863.[0m
+Feb 25 06:38:59 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 29897.[0m
+Feb 25 06:39:07 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 06:39:07 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 29897 and the job result is done.[0m
+Feb 25 06:39:07 srv735442 systemd[1]: apache2.service: Consumed 4.277s CPU time, 63.3M memory peak, 0B memory swap peak.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 25 06:39:07 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 29897.[0m
+Feb 25 06:39:08 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 29897.[0m
+Feb 25 12:16:07 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36306.[0m
+Feb 25 12:16:07 srv735442 apachectl[47068]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:16:07 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36306 and the job result is done.[0m
+Feb 25 12:22:10 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36418.[0m
+Feb 25 12:22:10 srv735442 apachectl[47156]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:22:10 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 12:22:10 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36418 and the job result is done.[0m
+Feb 25 12:22:10 srv735442 systemd[1]: apache2.service: Consumed 9.512s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 25 12:22:10 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36418.[0m
+Feb 25 12:22:10 srv735442 apachectl[47163]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:22:10 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36418.[0m
+Feb 25 12:26:05 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36626.[0m
+Feb 25 12:26:05 srv735442 apachectl[47372]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:26:05 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 12:26:05 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36626 and the job result is done.[0m
+Feb 25 12:26:05 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36626.[0m
+Feb 25 12:26:05 srv735442 apachectl[47378]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:26:05 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36626.[0m
+Feb 25 12:37:01 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36938.[0m
+Feb 25 12:37:01 srv735442 apachectl[47555]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:37:01 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Killing process 47381 (apache2) with signal SIGKILL.[0m
+Feb 25 12:37:01 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 12:37:01 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36938 and the job result is done.[0m
+Feb 25 12:37:01 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36938.[0m
+Feb 25 12:37:01 srv735442 apachectl[47562]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:37:01 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 36938.[0m
+Feb 25 12:47:42 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 37250.[0m
+Feb 25 12:47:42 srv735442 apachectl[48937]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:47:42 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 12:47:42 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 37250 and the job result is done.[0m
+Feb 25 12:47:42 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 37250.[0m
+Feb 25 12:47:42 srv735442 apachectl[48944]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 12:47:42 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 37250.[0m
+Feb 25 15:10:04 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 39850.[0m
+Feb 25 15:10:04 srv735442 apachectl[49625]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:10:04 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 39850 and the job result is done.[0m
+Feb 25 15:12:26 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40164.[0m
+Feb 25 15:12:26 srv735442 apachectl[55083]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:12:26 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40164 and the job result is done.[0m
+Feb 25 15:16:11 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40269.[0m
+Feb 25 15:16:11 srv735442 apachectl[55608]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:16:11 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 15:16:11 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40269 and the job result is done.[0m
+Feb 25 15:16:11 srv735442 systemd[1]: apache2.service: Consumed 4.935s CPU time, 92.4M memory peak, 0B memory swap peak.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 25 15:16:11 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40269.[0m
+Feb 25 15:16:11 srv735442 apachectl[55616]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:16:11 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40269.[0m
+Feb 25 15:18:10 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40373.[0m
+Feb 25 15:18:10 srv735442 apachectl[55640]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:18:10 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 15:18:10 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40373 and the job result is done.[0m
+Feb 25 15:18:10 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40373.[0m
+Feb 25 15:18:10 srv735442 apachectl[55646]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:18:10 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40373.[0m
+Feb 25 15:21:04 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40581.[0m
+Feb 25 15:21:04 srv735442 apachectl[55791]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:21:04 srv735442 apachectl[55791]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 15:21:04 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 40581 and the job result is done.[0m
+Feb 25 16:01:22 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41318.[0m
+Feb 25 16:01:22 srv735442 apachectl[56109]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 16:01:22 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41318 and the job result is done.[0m
+Feb 25 16:07:48 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41319.[0m
+Feb 25 16:07:48 srv735442 apachectl[56254]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 16:07:48 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41319 and the job result is done.[0m
+Feb 25 16:26:34 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41632.[0m
+Feb 25 16:26:34 srv735442 apachectl[56384]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 16:26:34 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41632 and the job result is done.[0m
+Feb 25 16:40:56 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41945.[0m
+Feb 25 16:40:56 srv735442 apachectl[56571]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 16:40:56 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41945 and the job result is done.[0m
+Feb 25 16:43:45 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41946.[0m
+Feb 25 16:43:45 srv735442 apachectl[56600]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 16:43:45 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 41946 and the job result is done.[0m
+Feb 25 17:02:42 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 42259.[0m
+Feb 25 17:02:42 srv735442 apachectl[56788]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 17:02:42 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 42259 and the job result is done.[0m
+Feb 25 18:13:06 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43404.[0m
+Feb 25 18:13:06 srv735442 apachectl[57197]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:13:06 srv735442 systemd[1]: Reloaded apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43404 and the job result is done.[0m
+Feb 25 18:15:52 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43405.[0m
+Feb 25 18:15:52 srv735442 apachectl[57229]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:15:52 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 18:15:52 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43405 and the job result is done.[0m
+Feb 25 18:15:52 srv735442 systemd[1]: apache2.service: Consumed 12.295s CPU time.
+[0;38;5;245m░░ [0m[0;32mSubject: Resources consumed by unit runtime[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service completed and consumed the indicated resources.[0m
+Feb 25 18:15:52 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43405.[0m
+Feb 25 18:15:52 srv735442 apachectl[57236]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:15:52 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43405.[0m
+Feb 25 18:16:22 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43509.[0m
+Feb 25 18:16:22 srv735442 apachectl[57251]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:16:23 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 18:16:23 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43509 and the job result is done.[0m
+Feb 25 18:16:23 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43509.[0m
+Feb 25 18:16:23 srv735442 apachectl[57258]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:16:23 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43509.[0m
+Feb 25 18:21:13 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43717.[0m
+Feb 25 18:21:13 srv735442 apachectl[57307]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:21:13 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 18:21:13 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43717 and the job result is done.[0m
+Feb 25 18:21:13 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43717.[0m
+Feb 25 18:21:13 srv735442 apachectl[57313]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:21:13 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43717.[0m
+Feb 25 18:24:52 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43821.[0m
+Feb 25 18:24:52 srv735442 apachectl[57343]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:24:52 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Killing process 57323 (apache2) with signal SIGKILL.[0m
+Feb 25 18:24:52 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 18:24:52 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43821 and the job result is done.[0m
+Feb 25 18:24:52 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43821.[0m
+Feb 25 18:24:52 srv735442 apachectl[57350]: AH00112: Warning: DocumentRoot [/var/www/rasoio/build] does not exist
+Feb 25 18:24:52 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 43821.[0m
+Feb 25 18:31:49 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44029.[0m
+Feb 25 18:31:49 srv735442 apachectl[57410]: AH00526: Syntax error on line 7 of /etc/apache2/sites-enabled/rasoio.petertecnet.com.br-le-ssl.conf:
+Feb 25 18:31:49 srv735442 apachectl[57410]: Either all Options must start with + or -, or no Option may.
+Feb 25 18:31:49 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Control process exited, code=exited, status=1/FAILURE[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit process exited[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mAn ExecStop= process belonging to unit apache2.service has exited.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe process' exit code is 'exited' and its exit status is 1.[0m
+Feb 25 18:31:50 srv735442 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mapache2.service: Failed with result 'exit-code'.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has entered the 'failed' state with result 'exit-code'.[0m
+Feb 25 18:31:50 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44029 and the job result is done.[0m
+Feb 25 18:31:50 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44029.[0m
+Feb 25 18:31:50 srv735442 apachectl[57416]: AH00526: Syntax error on line 7 of /etc/apache2/sites-enabled/rasoio.petertecnet.com.br-le-ssl.conf:
+Feb 25 18:31:50 srv735442 apachectl[57416]: Either all Options must start with + or -, or no Option may.
+Feb 25 18:31:50 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Control process exited, code=exited, status=1/FAILURE[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit process exited[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mAn ExecStart= process belonging to unit apache2.service has exited.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe process' exit code is 'exited' and its exit status is 1.[0m
+Feb 25 18:31:50 srv735442 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mapache2.service: Failed with result 'exit-code'.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has entered the 'failed' state with result 'exit-code'.[0m
+Feb 25 18:31:50 srv735442 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start apache2.service - The Apache HTTP Server.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished with a failure.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44029 and the job result is failed.[0m
+Feb 25 18:32:22 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44133.[0m
+Feb 25 18:32:22 srv735442 apachectl[57426]: AH00526: Syntax error on line 7 of /etc/apache2/sites-enabled/rasoio.petertecnet.com.br-le-ssl.conf:
+Feb 25 18:32:22 srv735442 apachectl[57426]: Either all Options must start with + or -, or no Option may.
+Feb 25 18:32:22 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Control process exited, code=exited, status=1/FAILURE[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit process exited[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mAn ExecStart= process belonging to unit apache2.service has exited.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe process' exit code is 'exited' and its exit status is 1.[0m
+Feb 25 18:32:22 srv735442 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mapache2.service: Failed with result 'exit-code'.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has entered the 'failed' state with result 'exit-code'.[0m
+Feb 25 18:32:22 srv735442 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start apache2.service - The Apache HTTP Server.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished with a failure.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44133 and the job result is failed.[0m
+Feb 25 18:33:49 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44341.[0m
+Feb 25 18:33:49 srv735442 apachectl[57459]: AH00526: Syntax error on line 7 of /etc/apache2/sites-enabled/rasoio.petertecnet.com.br-le-ssl.conf:
+Feb 25 18:33:49 srv735442 apachectl[57459]: Either all Options must start with + or -, or no Option may.
+Feb 25 18:33:49 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Control process exited, code=exited, status=1/FAILURE[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit process exited[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mAn ExecStart= process belonging to unit apache2.service has exited.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe process' exit code is 'exited' and its exit status is 1.[0m
+Feb 25 18:33:49 srv735442 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mapache2.service: Failed with result 'exit-code'.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has entered the 'failed' state with result 'exit-code'.[0m
+Feb 25 18:33:49 srv735442 systemd[1]: [0;1;31m[0;1;39m[0;1;31mFailed to start apache2.service - The Apache HTTP Server.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has failed[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished with a failure.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44341 and the job result is failed.[0m
+Feb 25 18:34:59 srv735442 systemd[1]: [0;1;38;5;185m[0;1;39m[0;1;38;5;185mapache2.service: Unit cannot be reloaded because it is inactive.[0m
+Feb 25 18:37:34 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44446.[0m
+Feb 25 18:37:35 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44446.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: Stopping apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44550.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Killing process 57509 (apache2) with signal SIGKILL.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: apache2.service: Deactivated successfully.
+[0;38;5;245m░░ [0m[0;32mSubject: Unit succeeded[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe unit apache2.service has successfully entered the 'dead' state.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: Stopped apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A stop job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA stop job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44550 and the job result is done.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: Starting apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44550.[0m
+Feb 25 18:38:41 srv735442 systemd[1]: Started apache2.service - The Apache HTTP Server.
+[0;38;5;245m░░ [0m[0;32mSubject: A start job for unit apache2.service has finished successfully[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA start job for unit apache2.service has finished successfully.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 44550.[0m
+Feb 25 21:04:50 srv735442 systemd[1]: Reloading apache2.service - The Apache HTTP Server...
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has begun execution[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has begun execution.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 47046.[0m
+Feb 25 21:04:50 srv735442 apachectl[58450]: AH00526: Syntax error on line 20 of /etc/apache2/sites-enabled/staging.api.petertecnet.com.br.conf:
+Feb 25 21:04:50 srv735442 apachectl[58450]: SSLCertificateFile: file '/etc/letsencrypt/live/staging.api.petertecnet.com.br/fullchain.pem' does not exist or is empty
+Feb 25 21:04:50 srv735442 systemd[1]: [0;1;39m[0;1;31m[0;1;39mapache2.service: Control process exited, code=exited, status=1/FAILURE[0m
+[0;38;5;245m░░ [0m[0;32mSubject: Unit process exited[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mAn ExecReload= process belonging to unit apache2.service has exited.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe process' exit code is 'exited' and its exit status is 1.[0m
+Feb 25 21:04:50 srv735442 systemd[1]: [0;1;31m[0;1;39m[0;1;31mReload failed for apache2.service - The Apache HTTP Server.[0m
+[0;38;5;245m░░ [0m[0;32mSubject: A reload job for unit apache2.service has finished[0m
+[0;38;5;245m░░[0m [0;32mDefined-By: systemd[0m
+[0;38;5;245m░░[0m [0;32mSupport: http://www.ubuntu.com/support[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mA reload job for unit apache2.service has finished.[0m
+[0;38;5;245m░░[0m [0;32m[0m
+[0;38;5;245m░░[0m [0;32mThe job identifier is 47046 and the job result is failed.[0m
