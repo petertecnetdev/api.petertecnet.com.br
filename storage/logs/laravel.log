@@ -61,3 +61,24 @@
 [2025-02-24 18:42:20] local.WARNING: Usuário não autenticado tentou acessar o recurso.  
 [2025-02-24 18:42:40] local.INFO: Iniciando a exibição do item com ID: 13  
 [2025-02-24 18:42:40] local.WARNING: Usuário não autenticado tentou acessar o recurso de exibição de item.  
+[2025-02-24 21:19:21] local.INFO: Validação do e-mail realizada com sucesso {"email":"petertecnet@gmail.com"} 
+[2025-02-24 21:19:22] local.INFO: Usuário encontrado {"user_id":4} 
+[2025-02-24 21:19:22] local.INFO: Código de redefinição de senha gerado {"code":"hxcYj0x7"} 
+[2025-02-24 21:19:22] local.INFO: Código de redefinição de senha salvo no usuário {"user_id":4} 
+[2025-02-24 21:19:26] local.INFO: E-mail de redefinição de senha enviado {"email":"petertecnet@gmail.com"} 
+[2025-02-24 21:19:26] local.INFO: Código de redefinição de senha gerado e enviado por e-mail {"email":"petertecnet@gmail.com","code":"hxcYj0x7"} 
+[2025-02-24 21:19:26] local.INFO: Interação registrada {"user_id":4,"interaction_type":"ResetCode"} 
+[2025-02-24 21:47:54] local.ERROR: Mpdf\Mpdf::__construct(): Argument #1 ($config) must be of type array, Illuminate\Foundation\Application given, called in C:\Development\xamp\htdocs\api.petertecnet.com.br\vendor\laravel\framework\src\Illuminate\Foundation\ProviderRepository.php on line 206 {"exception":"[object] (TypeError(code: 0): Mpdf\\Mpdf::__construct(): Argument #1 ($config) must be of type array, Illuminate\\Foundation\\Application given, called in C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\ProviderRepository.php on line 206 at C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\mpdf\\mpdf\\src\\Mpdf.php:1049)
+[stacktrace]
+#0 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\ProviderRepository.php(206): Mpdf\\Mpdf->__construct(Object(Illuminate\\Foundation\\Application))
+#1 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\ProviderRepository.php(142): Illuminate\\Foundation\\ProviderRepository->createProvider('Mpdf\\\\Mpdf')
+#2 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\ProviderRepository.php(61): Illuminate\\Foundation\\ProviderRepository->compileManifest(Array)
+#3 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(664): Illuminate\\Foundation\\ProviderRepository->load(Array)
+#4 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Bootstrap\\RegisterProviders.php(17): Illuminate\\Foundation\\Application->registerConfiguredProviders()
+#5 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Application.php(242): Illuminate\\Foundation\\Bootstrap\\RegisterProviders->bootstrap(Object(Illuminate\\Foundation\\Application))
+#6 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(176): Illuminate\\Foundation\\Application->bootstrapWith(Array)
+#7 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(160): Illuminate\\Foundation\\Http\\Kernel->bootstrap()
+#8 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\vendor\\laravel\\framework\\src\\Illuminate\\Foundation\\Http\\Kernel.php(134): Illuminate\\Foundation\\Http\\Kernel->sendRequestThroughRouter(Object(Illuminate\\Http\\Request))
+#9 C:\\Development\\xamp\\htdocs\\api.petertecnet.com.br\\public\\index.php(51): Illuminate\\Foundation\\Http\\Kernel->handle(Object(Illuminate\\Http\\Request))
+#10 {main}
+"} 

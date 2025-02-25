@@ -7,7 +7,7 @@
 !/storage/framework/
 !/storage/logs/
 
-# Ignorar imagens públicas (se você não quer rastrear essas imagens)
+# Ignorar imagens pÃºblicas (se vocÃª nÃ£o quer rastrear essas imagens)
 public/images
 
  storage/logs/laravel.log
