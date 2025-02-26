@@ -1,4 +1,4 @@
-# Ignorar dependências geradas
+# Ignorar depend�ncias geradas
 /vendor
 /composer.lock
 /node_modules
@@ -14,7 +14,7 @@
 .env.example
 /vendor
 /composer.lock
-# Ignorar arquivos de configuração do Composer
+# Ignorar arquivos de configura��o do Composer
 composer.lock
 composer.json
 
