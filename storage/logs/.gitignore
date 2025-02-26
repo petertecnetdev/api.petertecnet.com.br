@@ -1,1 +1,5 @@
 laravel.log
+
+storage/logs/laravel.log
+
+logs/laravel.log

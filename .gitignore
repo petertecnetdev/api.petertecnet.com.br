@@ -12,3 +12,4 @@ public/images
 
  storage/logs/laravel.log
  vendor/
+ storage/logs/laravel.log
