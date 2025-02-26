@@ -14,3 +14,10 @@
 .env.example
 /vendor
 /composer.lock
+# Ignorar arquivos de configuração do Composer
+composer.lock
+composer.json
+
+# Ignorar logs do Laravel
+storage/logs/
+storage/logs/*.log
