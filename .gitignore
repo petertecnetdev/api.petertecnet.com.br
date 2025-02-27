@@ -16,3 +16,4 @@
 .env
 .env.example
 /vendor
+.gitignore
