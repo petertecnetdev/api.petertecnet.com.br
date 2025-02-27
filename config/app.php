@@ -45,10 +45,12 @@ $providers = [
     Barryvdh\DomPDF\ServiceProvider::class,
 ];
 
-// Se não estiver em produção, adiciona o Collision
+// Se não estiver em ambiente local, o Collision não é adicionado.
+// Portanto, certifique-se de que em staging o APP_ENV esteja configurado diferente de "local".
 if (env('APP_ENV') === 'local') {
     $providers[] = NunoMaduro\Collision\Adapters\Laravel\CollisionServiceProvider::class;
 }
+
 return [
 
     'name' => env('APP_NAME', 'Laravel'),
@@ -85,5 +87,4 @@ return [
 
     'JWTAuth' => Tymon\JWTAuth\Facades\JWTAuth::class,
     'JWTFactory' => Tymon\JWTAuth\Facades\JWTFactory::class,
-    
 ];
