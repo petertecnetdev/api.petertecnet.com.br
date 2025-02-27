@@ -1,6 +1,24 @@
-# Ignorar o arquivo .env
-.env
+# Ignorar depend�ncias geradas
+/vendor
+/composer.lock
+/node_modules
 
+# Ignorar arquivos de log e cache do Laravel
+/storage/logs
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/views
+
+# Ignorar arquivos do ambiente
+.env
+.env.example
+/vendor
+/composer.lock
+# Ignorar arquivos de configura��o do Composer
+composer.lock
+composer.json
+
+<<<<<<< HEAD
 # Ignorar tudo dentro de /storage, mas mantendo algumas pastas
 /storage/*
 !/storage/app/
@@ -13,3 +31,8 @@ public/images
  storage/logs/laravel.log
  vendor/
  storage/logs/laravel.log
+=======
+# Ignorar logs do Laravel
+storage/logs/
+storage/logs/*.log
+>>>>>>> staging
