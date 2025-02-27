@@ -1,17 +1,16 @@
-# DependÃªncias do Composer
+# Dependências do Composer
 /vendor/
 
-# DependÃªncias do Node
+# Dependências do Node
 /node_modules/
 
 # Arquivos de log do Laravel
 /storage/logs/
 /storage/logs/*.log
 
-# Cache, sessÃµes e views geradas pelo Laravel
+# Cache, sessões e views geradas pelo Laravel
 /storage/framework/cache/
 /storage/framework/sessions/
-/storage/framework/views/
 
 # Arquivos de ambiente
 .env
