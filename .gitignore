@@ -1,4 +1,3 @@
-
 /vendor/
 /node_modules/
 /storage/logs/
@@ -7,10 +6,33 @@
 /storage/framework/sessions/
 .env
 .env.example
+/vendor
+.env
+/storage/*
+!/storage/app/
+!/storage/framework/
+!/storage/logs/
+storage/logs/laravel.log
+public/images
+ storage/logs/laravel.log
+ vendor/
+/vendor
+/composer.lock
+/node_modules
+/storage/logs
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/views
+.env
+.env.example
 /vendor/
 composer.lock
 storage/logs/
 .env
+/storage
 node_modules/
 public/storage
-/vendor
+.gitignore
+gitignore
+.gitignore
+composer.lock
