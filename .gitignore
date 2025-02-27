@@ -1,23 +1,12 @@
-<<<<<<< HEAD
-# Dependências do Composer
 /vendor/
-
-# Dependências do Node
 /node_modules/
-
-# Arquivos de log do Laravel
 /storage/logs/
 /storage/logs/*.log
-
-# Cache, sessões e views geradas pelo Laravel
 /storage/framework/cache/
 /storage/framework/sessions/
-
-# Arquivos de ambiente
 .env
 .env.example
 /vendor
-=======
 .env
 /storage/*
 !/storage/app/
@@ -44,5 +33,4 @@ node_modules/
 public/storage
 .gitignore
 gitignore
->>>>>>> ea70310b7222998c2b5b1dc816646a36b28addf7
 .gitignore
