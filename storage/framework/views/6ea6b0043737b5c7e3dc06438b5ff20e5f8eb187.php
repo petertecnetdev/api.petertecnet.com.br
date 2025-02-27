@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Peter Tecnet - API</title>
     <meta name="description"
-        content="A Peter Tecnet oferece soluções de software inovadoras para diversos segmentos, como gerenciamento de barbearias, clínicas médicas, advocacia e gestão de eventos. Também fornecemos uma API robusta para a criação de aplicativos sob medida ou personalizados conforme suas necessidades." />
+        content="A Peter Tecnet oferece soluï¿½ï¿½es de software inovadoras para diversos segmentos, como gerenciamento de barbearias, clï¿½nicas mï¿½dicas, advocacia e gestï¿½o de eventos. Tambï¿½m fornecemos uma API robusta para a criaï¿½ï¿½o de aplicativos sob medida ou personalizados conforme suas necessidades." />
     <meta name="keywords"
-        content="Peter Tecnet, soluções de software, gerenciamento de barbearia, software para clínicas, advocacia, gestão de eventos, API, aplicativos personalizados, transformação digital, aplicações empresariais" />
+        content="Peter Tecnet, soluï¿½ï¿½es de software, gerenciamento de barbearia, software para clï¿½nicas, advocacia, gestï¿½o de eventos, API, aplicativos personalizados, transformaï¿½ï¿½o digital, aplicaï¿½ï¿½es empresariais" />
     <link rel="icon" href="/image/icon.png" type="image/png">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
