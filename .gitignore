@@ -11,7 +11,6 @@
 # Cache, sessões e views geradas pelo Laravel
 /storage/framework/cache/
 /storage/framework/sessions/
-/storage/framework/views/
 
 # Arquivos de ambiente
 .env

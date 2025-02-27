@@ -62,10 +62,10 @@
 
 <body>
     <div class="content">
-        <img src="images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
+        <img src="/images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
         <p class="welcome-message">Peter Tecnet</p>
-   Env     <p class="text-danger text-uppercase h4">{{ config('app.env') }}</p>
+   Env     <p class="text-danger text-uppercase h4"><?php echo e(config('app.env')); ?></p>
     </div>
 </body>
 
-</html>
+</html><?php /**PATH C:\Development\xamp\htdocs\api.petertecnet.com.br\resources\views/welcome.blade.php ENDPATH**/ ?>
