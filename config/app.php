@@ -46,10 +46,9 @@ $providers = [
 ];
 
 // Se não estiver em produção, adiciona o Collision
-if (env('APP_ENV') !== 'production') {
+if (env('APP_ENV') === 'local') {
     $providers[] = NunoMaduro\Collision\Adapters\Laravel\CollisionServiceProvider::class;
 }
-
 return [
 
     'name' => env('APP_NAME', 'Laravel'),
