@@ -45,8 +45,9 @@ $providers = [
     Barryvdh\DomPDF\ServiceProvider::class,
 ];
 
-// Se não estiver em produção, adiciona o Collision
-if (env('APP_ENV') !== 'production') {
+// Se não estiver em ambiente local, o Collision não é adicionado.
+// Portanto, certifique-se de que em staging o APP_ENV esteja configurado diferente de "local".
+if (env('APP_ENV') === 'local') {
     $providers[] = NunoMaduro\Collision\Adapters\Laravel\CollisionServiceProvider::class;
 }
 
