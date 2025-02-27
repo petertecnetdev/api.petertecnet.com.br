@@ -62,7 +62,7 @@
 
 <body>
     <div class="content">
-        <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
+        <img src="images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
         <p class="welcome-message">Peter Tecnet</p>
     </div>
 </body>
