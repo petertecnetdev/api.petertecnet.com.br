@@ -33,3 +33,5 @@ storage/logs/
 .env
 node_modules/
 public/storage
+.gitignore
+gitignore
