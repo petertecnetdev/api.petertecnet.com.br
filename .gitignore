@@ -1,23 +1,18 @@
-# Ignorar depend�ncias geradas
-/vendor
-/composer.lock
-/node_modules
+# Dependências do Composer
+/vendor/
 
-# Ignorar arquivos de log e cache do Laravel
-/storage/logs
-/storage/framework/cache
-/storage/framework/sessions
-/storage/framework/views
+# Dependências do Node
+/node_modules/
 
-# Ignorar arquivos do ambiente
+# Arquivos de log do Laravel
+/storage/logs/
+/storage/logs/*.log
+
+# Cache, sessões e views geradas pelo Laravel
+/storage/framework/cache/
+/storage/framework/sessions/
+/storage/framework/views/
+
+# Arquivos de ambiente
 .env
 .env.example
-/vendor
-/composer.lock
-# Ignorar arquivos de configura��o do Composer
-composer.lock
-composer.json
-
-# Ignorar logs do Laravel
-storage/logs/
-storage/logs/*.log
