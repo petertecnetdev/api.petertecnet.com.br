@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Dependências do Composer
 /vendor/
 
@@ -16,4 +17,32 @@
 .env
 .env.example
 /vendor
+=======
+.env
+/storage/*
+!/storage/app/
+!/storage/framework/
+!/storage/logs/
+storage/logs/laravel.log
+public/images
+ storage/logs/laravel.log
+ vendor/
+/vendor
+/composer.lock
+/node_modules
+/storage/logs
+/storage/framework/cache
+/storage/framework/sessions
+/storage/framework/views
+.env
+.env.example
+/vendor/
+composer.lock
+storage/logs/
+.env
+node_modules/
+public/storage
+.gitignore
+gitignore
+>>>>>>> ea70310b7222998c2b5b1dc816646a36b28addf7
 .gitignore
