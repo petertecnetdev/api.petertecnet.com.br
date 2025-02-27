@@ -1,27 +1,17 @@
-.env
-/storage/*
-!/storage/app/
-!/storage/framework/
-!/storage/logs/
-storage/logs/laravel.log
-public/images
- storage/logs/laravel.log
- vendor/
-/vendor
-/composer.lock
-/node_modules
-/storage/logs
-/storage/framework/cache
-/storage/framework/sessions
-/storage/framework/views
+# Dependências do Composer
+/vendor/
+
+# Dependências do Node
+/node_modules/
+
+# Arquivos de log do Laravel
+/storage/logs/
+/storage/logs/*.log
+
+# Cache, sessões e views geradas pelo Laravel
+/storage/framework/cache/
+/storage/framework/sessions/
+
+# Arquivos de ambiente
 .env
 .env.example
-/vendor/
-composer.lock
-storage/logs/
-.env
-node_modules/
-public/storage
-.gitignore
-gitignore
-.gitignore
