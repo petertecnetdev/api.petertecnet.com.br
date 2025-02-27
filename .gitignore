@@ -1,30 +1,19 @@
-# Ignorar o arquivo .env
 .env
-
-# Ignorar tudo dentro de /storage, mas mantendo algumas pastas
 /storage/*
 !/storage/app/
 !/storage/framework/
 !/storage/logs/
 storage/logs/laravel.log
-# Ignorar imagens pÃºblicas (se vocÃª nÃ£o quer rastrear essas imagens)
 public/images
-
  storage/logs/laravel.log
  vendor/
-
- # Ignorar dependências geradas
 /vendor
 /composer.lock
 /node_modules
-
-# Ignorar arquivos de log e cache do Laravel
 /storage/logs
 /storage/framework/cache
 /storage/framework/sessions
 /storage/framework/views
-
-# Ignorar arquivos do ambiente
 .env
 .env.example
 /vendor/
