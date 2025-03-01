@@ -62,7 +62,7 @@
 
 <body>
     <div class="content">
-        <img src="/images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
+        <img src="images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
         <p class="welcome-message">Peter Tecnet</p>
    Env     <p class="text-danger text-uppercase h4">{{ config('app.env') }}</p>
     </div>
