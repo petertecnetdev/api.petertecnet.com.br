@@ -126,10 +126,6 @@
           <img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo da Rasoio" style="max-width: 150px; margin-top: 20px;">
         </div>
       </div>
-      <!-- Footer -->
-      <div class="footer">
-        <p>© {{ date('Y') }} Peter Tecnet. <img src="https://petertecnet.com.br/images/peterlogo.png" alt="Logo Peter Tecnet"> Todos os direitos reservados.</p>
-      </div>
     </div>
   </div>
 </body>
