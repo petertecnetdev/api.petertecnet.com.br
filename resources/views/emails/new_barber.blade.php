@@ -17,7 +17,7 @@
       background-color: rgb(0, 0, 0);
       color: #fff;
       padding: 30px 0;
-      border: 1px solid #07f7ff; /* Cor secundária */
+      border: 1px solid #07f7ff;
     }
     .email-container {
       max-width: 600px;
@@ -32,7 +32,7 @@
       padding: 20px;
       text-align: center;
       color: #fff;
-      border-bottom: 1px solid #07f7ff; /* Cor secundária */
+      border-bottom: 1px solid #07f7ff;
     }
     .header img {
       width: 60px;
@@ -45,7 +45,6 @@
     .content {
       background-color: #000;
       padding: 30px 20px;
-      border-radius: 15px;
       text-align: center;
     }
     .content h2 {
@@ -124,7 +123,7 @@
         </p>
         <a href="https://rasoio.petertecnet.com.br" class="btn-acessar">Acessar o RASOIO</a>
         <div class="text-center">
-          <img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo da Rasoio" style="max-width: 150px;">
+          <img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo da Rasoio" style="max-width: 150px; margin-top: 20px;">
         </div>
       </div>
       <!-- Footer -->
