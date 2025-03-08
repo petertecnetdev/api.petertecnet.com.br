@@ -10,11 +10,12 @@
             background-color:rgb(0, 0, 0);
             margin: 0;
             padding: 0;
+            color: #fff;
         }
         .email-wrapper {
             width: 100%;
-            background-color:rgb(0, 0, 0);
-            color: white;
+            background-color:rgb(0, 0, 0);           
+            color: #fff;
             padding: 30px 0;
             border: 1px solid #07f7ff; /* Cor secundária */
         }
@@ -22,7 +23,7 @@
             max-width: 600px;
             margin: auto;
             background-color: #fff;
-            border-radius: 8px;
+            border-radius: 15px;
             overflow: hidden;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
@@ -47,7 +48,8 @@
             background-color: #000; /* Cor principal: preto */
             padding: 20px;
             padding: 30px 20px;
-            color: #000; /* Texto em preto */
+            color: #FFF; /* Texto em preto */
+            border-radius: 15px;
         }
         .content h2 {
             font-size: 22px;
