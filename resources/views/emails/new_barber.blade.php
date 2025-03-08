@@ -31,6 +31,7 @@
             padding: 20px;
             text-align: center;
             color: #fff; /* Cor secundária: branco */
+            border: 1px solid #07f7ff; /* Cor secundária */
         }
         .header img {
             width: 60px;
@@ -113,12 +114,8 @@
                 <p>Estamos muito felizes em tê-lo(a) conosco. Faça parte da nossa equipe e otimize sua rotina com as nossas ferramentas.</p>
                 <a href="https://rasoio.petertecnet.com.br" class="btn-acessar">Acessar o RASOIO</a>
                 <div class="text-center">
-                    <img src="https://rasoio.petertecnet.com.br/static/media/logo.52a59f87256ecf830ca0.gif" alt="Logo da Rasoio" style="max-width: 150px;">
+                    <img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo da Rasoio" style="max-width: 150px;">
                 </div>
-            </div>
-            <!-- Footer -->
-            <div class="footer">
-                <p>© {{ date('Y') }} Peter Tecnet. <img src="https://petertecnet.com.br/images/peterlogo.png" alt="Logo Peter Tecnet"> Todos os direitos reservados.</p>
             </div>
         </div>
     </div>
