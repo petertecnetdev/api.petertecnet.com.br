@@ -7,14 +7,16 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            background-color: #f7f7f7;
+            background-color:rgb(0, 0, 0);
             margin: 0;
             padding: 0;
         }
         .email-wrapper {
             width: 100%;
-            background-color: #f7f7f7;
+            background-color:rgb(0, 0, 0);
+            color: white;
             padding: 30px 0;
+            border: 1px solid #07f7ff; /* Cor secundária */
         }
         .email-container {
             max-width: 600px;
@@ -59,8 +61,8 @@
             width: fit-content;
             margin: 20px auto;
             text-decoration: none;
-            background-color: #ffd700; /* Cor alternativa: amarelo */
-            color: #000;
+            background-color:rgb(0, 0, 0); /* Cor alternativa: amarelo */
+            color: #fff;
             padding: 12px 30px;
             border-radius: 30px;
             font-weight: bold;
@@ -68,7 +70,7 @@
             transition: background-color 0.3s ease;
         }
         .btn-acessar:hover {
-            background-color: #e6c200;
+            background-color: #07f7ff;
         }
         .barbershop-logo {
             display: block;
