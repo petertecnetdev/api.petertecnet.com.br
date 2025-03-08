@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Peter Tecnet - API</title>
     <meta name="description"
-        content="A Peter Tecnet oferece soluções de software inovadoras para diversos segmentos, como gerenciamento de barbearias, clínicas médicas, advocacia e gestão de eventos. Também fornecemos uma API robusta para a criação de aplicativos sob medida ou personalizados conforme suas necessidades." />
+        content="A Peter Tecnet oferece solu��es de software inovadoras para diversos segmentos, como gerenciamento de barbearias, cl�nicas m�dicas, advocacia e gest�o de eventos. Tamb�m fornecemos uma API robusta para a cria��o de aplicativos sob medida ou personalizados conforme suas necessidades." />
     <meta name="keywords"
-        content="Peter Tecnet, soluções de software, gerenciamento de barbearia, software para clínicas, advocacia, gestão de eventos, API, aplicativos personalizados, transformação digital, aplicações empresariais" />
+        content="Peter Tecnet, solu��es de software, gerenciamento de barbearia, software para cl�nicas, advocacia, gest�o de eventos, API, aplicativos personalizados, transforma��o digital, aplica��es empresariais" />
     <link rel="icon" href="/image/icon.png" type="image/png">
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
     <style>
@@ -62,9 +62,9 @@
 
 <body>
     <div class="content">
-        <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
+        <img src="images/peterlogo.png" alt="Logo Peter Tecnet" class="logo">
         <p class="welcome-message">Peter Tecnet</p>
-        <p class="text-danger">Staging</p>
+   Env     <p class="text-danger text-uppercase h4">{{ config('app.env') }}</p>
     </div>
 </body>
 
