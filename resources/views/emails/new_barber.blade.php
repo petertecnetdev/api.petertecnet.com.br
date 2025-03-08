@@ -126,11 +126,7 @@
 <div class="container text-center">
     <div class="welcome-message">
         <p>Seja bem-vindo à barbearia <strong>{{ $barbershop->name }}</strong>!</p>
-<<<<<<< HEAD
-        <img src="{{ asset('images/'.$barbershop->logo) }}" alt="Logo {{ $barbershop->name }}" class="barbershop-logo" />
-=======
         <img src="{{ asset($barbershop->logo) }}" alt="Logo {{ $barbershop->name }}" class="barbershop-logo" />
->>>>>>> develop
     </div>
     
     <h1>Olá {{ $barber->first_name }},</h1>
