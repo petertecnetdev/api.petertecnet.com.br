@@ -42,6 +42,10 @@
             margin: 0;
         }
         .content {
+            
+            color: #fff; /* Cor secundária: branco */
+            background-color: #000; /* Cor principal: preto */
+            padding: 20px;
             padding: 30px 20px;
             color: #000; /* Texto em preto */
         }
@@ -69,6 +73,7 @@
             font-weight: bold;
             box-shadow: 0 3px 8px rgba(0,0,0,0.15);
             transition: background-color 0.3s ease;
+            color: #fff;
         }
         .btn-acessar:hover {
             background-color: #07f7ff;
