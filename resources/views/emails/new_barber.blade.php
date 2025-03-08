@@ -108,19 +108,18 @@
             margin: 20px 0;
         }
         .rasoio-logo {
-    border-radius: 50%; /* Para um efeito de círculo */
-    width: 50%; /* Tamanho responsivo */
-    max-width: 200px; /* Limita o tamanho máximo */
-    height: auto; /* Mantém a proporção da imagem */
-}
-
+            border-radius: 50%; /* Para um efeito de círculo */
+            width: 50%; /* Tamanho responsivo */
+            max-width: 200px; /* Limita o tamanho máximo */
+            height: auto; /* Mantém a proporção da imagem */
+        }
     </style>
 </head>
 <body>
 <div class="container text-center">
     <div class="welcome-message">
         <p>Seja bem-vindo à barbearia <strong>{{ $barbershop->name }}</strong>!</p>
-        <img src="http://api.petertecnet.com.br/storage/{{$barbershop->logo}}" alt="Logo {{$barbershop->name}}" class="barbershop-logo" />
+        <img src="{{ asset('images/'.$barbershop->logo) }}" alt="Logo {{ $barbershop->name }}" class="barbershop-logo" />
     </div>
     
     <h1>Olá {{ $barber->first_name }},</h1>
@@ -130,15 +129,15 @@
     <p>Estamos muito felizes em tê-lo(a) conosco. Você agora faz parte da nossa equipe e estamos ansiosos para vê-lo(a) em ação!</p>
   
     <div class="welcome-message">
-         <a href="http://rasoio.petertecnet.com.br">
+         <a href="https://rasoio.petertecnet.com.br">
         <p>Clique aqui para acessar a <strong> RASOIO </strong>!</p>
-        <img src="http://rasoio.petertecnet.com.br/static/media/logo.52a59f87256ecf830ca0.gif" alt="Logo da Rasoio" class="rasoio-logo" />
+        <img src="https://rasoio.petertecnet.com.br/static/media/logo.52a59f87256ecf830ca0.gif" alt="Logo da Rasoio" class="rasoio-logo" />
         </a>
     </div>
 </div>
 
 <div class="footer">
-    <p>© {{ date('Y') }} Peter Tecnet. <img src="https://petertecnet.com.br/peterlogo.png" alt="Logo Peter Tecnet" class="peter-logo" /> Todos os direitos reservados.</p>
+    <p>© {{ date('Y') }} Peter Tecnet. <img src="https://petertecnet.com.br/images/peterlogo.png" alt="Logo Peter Tecnet" class="peter-logo" /> Todos os direitos reservados.</p>
 </div>
 </body>
 </html>
