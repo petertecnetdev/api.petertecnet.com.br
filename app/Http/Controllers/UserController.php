@@ -11,6 +11,8 @@ use App\Mail\WelcomeMail;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Intervention\Image\Facades\Image;
+use Illuminate\Support\Facades\File;
+
 
 class UserController extends Controller
 {
