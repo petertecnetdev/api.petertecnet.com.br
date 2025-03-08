@@ -4,17 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Email de Associação à Barbearia - Rasoio</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
-            font-family: 'Arial', sans-serif;
-            background-color: #ececec;
+            font-family: Arial, sans-serif;
+            background-color: #f7f7f7;
             margin: 0;
             padding: 0;
         }
         .email-wrapper {
             width: 100%;
-            background-color: #ececec;
+            background-color: #f7f7f7;
             padding: 30px 0;
         }
         .email-container {
@@ -26,10 +25,10 @@
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         }
         .header {
-            background: linear-gradient(135deg, #00748a, #0094a9);
+            background-color: #000; /* Cor principal: preto */
             padding: 20px;
             text-align: center;
-            color: #fff;
+            color: #fff; /* Cor secundária: branco */
         }
         .header img {
             width: 60px;
@@ -41,26 +40,27 @@
         }
         .content {
             padding: 30px 20px;
-            color: #333;
+            color: #000; /* Texto em preto */
         }
         .content h2 {
             font-size: 22px;
             margin-bottom: 15px;
-            color: #00748a;
             text-align: center;
+            color: #000;
         }
         .content p {
             font-size: 16px;
             line-height: 1.6;
             margin-bottom: 15px;
+            color: #000;
         }
         .btn-acessar {
             display: block;
             width: fit-content;
             margin: 20px auto;
             text-decoration: none;
-            background-color: #00748a;
-            color: #fff;
+            background-color: #ffd700; /* Cor alternativa: amarelo */
+            color: #000;
             padding: 12px 30px;
             border-radius: 30px;
             font-weight: bold;
@@ -68,21 +68,21 @@
             transition: background-color 0.3s ease;
         }
         .btn-acessar:hover {
-            background-color: #005f6b;
+            background-color: #e6c200;
         }
         .barbershop-logo {
             display: block;
             margin: 15px auto;
             width: 80px;
-            opacity: 0.8;
+            opacity: 0.9;
         }
         .footer {
-            background-color: #f7f7f7;
+            background-color: #fff; /* Cor secundária: branco */
             text-align: center;
             padding: 15px 10px;
             font-size: 14px;
-            color: #777;
-            border-top: 1px solid #eaeaea;
+            color: #000;
+            border-top: 1px solid #ddd;
         }
         .footer img {
             width: 30px;
@@ -111,7 +111,7 @@
                 <p>Estamos muito felizes em tê-lo(a) conosco. Faça parte da nossa equipe e otimize sua rotina com as nossas ferramentas.</p>
                 <a href="https://rasoio.petertecnet.com.br" class="btn-acessar">Acessar o RASOIO</a>
                 <div class="text-center">
-                    <img src="https://rasoio.petertecnet.com.br/static/media/logo.52a59f87256ecf830ca0.gif" alt="Logo da Rasoio" class="img-fluid" style="max-width: 150px;">
+                    <img src="https://rasoio.petertecnet.com.br/static/media/logo.52a59f87256ecf830ca0.gif" alt="Logo da Rasoio" style="max-width: 150px;">
                 </div>
             </div>
             <!-- Footer -->
