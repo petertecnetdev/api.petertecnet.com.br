@@ -310,6 +310,7 @@ class BarbershopController extends Controller
             $barbersDetails = $barbers->map(function ($barber) {
                 return [
                     'id' => $barber->id,
+                    'user_id' => $barber->user_id,
                     'first_name' => $barber->user->first_name,
                     'email' => $barber->user->email,
                     'avatar' => $barber->user->avatar,
