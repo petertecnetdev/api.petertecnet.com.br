@@ -108,10 +108,17 @@
             margin: 20px 0;
         }
         .rasoio-logo {
+<<<<<<< HEAD
             border-radius: 50%; /* Para um efeito de círculo */
             width: 50%; /* Tamanho responsivo */
             max-width: 200px; /* Limita o tamanho máximo */
             height: auto; /* Mantém a proporção da imagem */
+=======
+            border-radius: 50%;
+            width: 50%;
+            max-width: 200px;
+            height: auto;
+>>>>>>> develop
         }
     </style>
 </head>
@@ -119,7 +126,11 @@
 <div class="container text-center">
     <div class="welcome-message">
         <p>Seja bem-vindo à barbearia <strong>{{ $barbershop->name }}</strong>!</p>
+<<<<<<< HEAD
         <img src="{{ asset('images/'.$barbershop->logo) }}" alt="Logo {{ $barbershop->name }}" class="barbershop-logo" />
+=======
+        <img src="{{ asset($barbershop->logo) }}" alt="Logo {{ $barbershop->name }}" class="barbershop-logo" />
+>>>>>>> develop
     </div>
     
     <h1>Olá {{ $barber->first_name }},</h1>
