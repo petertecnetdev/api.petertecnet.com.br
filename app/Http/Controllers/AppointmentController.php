@@ -41,6 +41,7 @@ class AppointmentController extends Controller
             'duration.min' => 'A duração deve ser maior que zero.',
         ];
     }
+    
     public function store(Request $request)
     {
         try {
@@ -80,7 +81,7 @@ class AppointmentController extends Controller
             Log::info('Dados validados com sucesso:', $validatedData);
     
             $scheduledAt = Carbon::parse($validatedData['scheduled_at'])->setTimezone('America/Sao_Paulo');
-
+    
             if ($scheduledAt->isPast()) {
                 return response()->json(['error' => 'A data e o horário do agendamento devem ser no futuro.'], 422);
             }
@@ -116,21 +117,22 @@ class AppointmentController extends Controller
                 return response()->json(['error' => 'O prestador já possui um agendamento neste horário.'], 422);
             }
     
-            // Criar o agendamento
+            // Criar o agendamento, incluindo os service_ids
             $appointment = Appointment::create([
-                'app_id' => $validatedData['app_id'],
-                'registered_by' => Auth::user()->id,
-                'entity_name' => $validatedData['entity_name'],
-                'entity_id' => $validatedData['entity_id'],
-                'scheduled_at' => $scheduledAt,
-                'provider_id' => $validatedData['provider_id'],
-                'client_id' => $validatedData['client_id'],
-                'status' => $validatedData['status'],
-                'location' => $validatedData['location'] ?? null,
-                'notes' => $validatedData['notes'] ?? null,
-                'payment_status' => $validatedData['payment_status'] ?? null,
-                'appointment_type' => $validatedData['appointment_type'] ?? null,
-                'duration' => $validatedData['duration'],
+                'app_id'            => $validatedData['app_id'],
+                'registered_by'     => Auth::user()->id,
+                'entity_name'       => $validatedData['entity_name'],
+                'entity_id'         => $validatedData['entity_id'],
+                'scheduled_at'      => $scheduledAt,
+                'provider_id'       => $validatedData['provider_id'],
+                'client_id'         => $validatedData['client_id'],
+                'status'            => $validatedData['status'],
+                'location'          => $validatedData['location'] ?? null,
+                'notes'             => $validatedData['notes'] ?? null,
+                'payment_status'    => $validatedData['payment_status'] ?? null,
+                'appointment_type'  => $validatedData['appointment_type'] ?? null,
+                'duration'          => $validatedData['duration'],
+                'service_ids'       => json_encode($validatedData['service_ids']),
             ]);
     
             Log::info('Agendamento criado com sucesso.', ['appointment_id' => $appointment->id]);
@@ -144,8 +146,6 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao criar o agendamento.'], 500);
         }
     }
-    
-    
     
     public function listByEntity(Request $request)
     {
@@ -163,7 +163,7 @@ class AppointmentController extends Controller
             }
     
             $validatedData = $request->validate([
-                'entity_id' => 'required|integer',
+                'entity_id'   => 'required|integer',
                 'entity_name' => 'required|string|max:255',
             ], $this->getValidationMessages());
     
@@ -176,7 +176,7 @@ class AppointmentController extends Controller
     
             if ($appointments->isEmpty()) {
                 \Log::warning('Nenhum agendamento encontrado para a entidade.', [
-                    'entity_id' => $validatedData['entity_id'],
+                    'entity_id'   => $validatedData['entity_id'],
                     'entity_name' => $validatedData['entity_name'],
                 ]);
                 return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
@@ -187,9 +187,10 @@ class AppointmentController extends Controller
             $appointments->each(function ($appointment) {
                 if (!empty($appointment->service_ids)) {
                     // Converter service_ids para array corretamente
-                    $serviceIds = is_string($appointment->service_ids) ? json_decode($appointment->service_ids, true) : $appointment->service_ids;
+                    $serviceIds = is_string($appointment->service_ids)
+                        ? json_decode($appointment->service_ids, true)
+                        : $appointment->service_ids;
     
-                    // Garantir que seja um array válido antes de consultar o banco
                     if (is_array($serviceIds)) {
                         $appointment->service_names = Item::whereIn('id', $serviceIds)
                             ->where('category', 'Serviços')
@@ -215,111 +216,97 @@ class AppointmentController extends Controller
         }
     }
     
-    
-    
     public function listByProvider(Request $request)
-{
-    try {
-        Log::info('Iniciando listagem de agendamentos por provedor.');
-
-        if (!Auth::check()) {
-            Log::warning('Usuário não autenticado tentou acessar o recurso.');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    {
+        try {
+            Log::info('Iniciando listagem de agendamentos por provedor.');
+    
+            if (!Auth::check()) {
+                Log::warning('Usuário não autenticado tentou acessar o recurso.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            
+            $user = Auth::user();
+            if (!$user->hasPermission('appointment_list')) {
+                return response()->json(['error' => 'Você não tem permissão para listar agendamentos de uma entidade.'], 403);
+            }
+    
+            $validatedData = $request->validate([
+                'provider_id' => 'required|integer|exists:users,id',
+                'app_id'      => 'required|integer|exists:applications,id',
+                'entity_name' => 'required|string|max:255',
+                'entity_id'   => 'required|integer',
+            ], $this->getValidationMessages());
+    
+            Log::info('Dados validados com sucesso:', $validatedData);
+    
+            $appointments = Appointment::where('provider_id', $validatedData['provider_id'])
+                ->where('app_id', $validatedData['app_id'])
+                ->where('entity_name', $validatedData['entity_name'])
+                ->where('entity_id', $validatedData['entity_id'])
+                ->orderBy('scheduled_at', 'asc')
+                ->get();
+    
+            if ($appointments->isEmpty()) {
+                Log::warning('Nenhum agendamento encontrado para o provedor especificado.', [
+                    'provider_id' => $validatedData['provider_id'],
+                    'app_id'      => $validatedData['app_id'],
+                    'entity_name' => $validatedData['entity_name'],
+                    'entity_id'   => $validatedData['entity_id'],
+                ]);
+                return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+            }
+    
+            Log::info('Agendamentos encontrados:', ['appointments_count' => $appointments->count()]);
+    
+            return response()->json(['appointments' => $appointments], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::error('Erro de validação ao listar agendamentos: ', ['errors' => $e->errors()]);
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar agendamentos.', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao buscar os agendamentos.'], 500);
         }
-        
-        $user = Auth::user();
-        // Verificar se o usuário possui permissão para listar agendamentos
-        if (!$user->hasPermission('appointment_list')) {
-            return response()->json(['error' => 'Você não tem permissão para listar agendamentos de uma entidade.'], 403);
-        }
-
-        // Validar os dados da requisição
-        $validatedData = $request->validate([
-            'provider_id' => 'required|integer|exists:users,id',
-            'app_id' => 'required|integer|exists:applications,id',
-            'entity_name' => 'required|string|max:255',
-            'entity_id' => 'required|integer',
-        ], $this->getValidationMessages());
-
-        Log::info('Dados validados com sucesso:', $validatedData);
-
-        // Buscar os agendamentos com base nos dados validados
-        $appointments = Appointment::where('provider_id', $validatedData['provider_id'])
-            ->where('app_id', $validatedData['app_id'])
-            ->where('entity_name', $validatedData['entity_name'])
-            ->where('entity_id', $validatedData['entity_id'])
-            ->orderBy('scheduled_at', 'asc')
-            ->get();
-
-        if ($appointments->isEmpty()) {
-            Log::warning('Nenhum agendamento encontrado para o provedor especificado.', [
-                'provider_id' => $validatedData['provider_id'],
-                'app_id' => $validatedData['app_id'],
-                'entity_name' => $validatedData['entity_name'],
-                'entity_id' => $validatedData['entity_id'],
-            ]);
-            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
-        }
-
-        Log::info('Agendamentos encontrados:', ['appointments_count' => $appointments->count()]);
-
-        // Retornar os agendamentos encontrados
-        return response()->json(['appointments' => $appointments], 200);
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        // Captura de erro de validação e retorno das mensagens detalhadas
-        Log::error('Erro de validação ao listar agendamentos: ', ['errors' => $e->errors()]);
-        return response()->json(['errors' => $e->errors()], 422); // 422 é o código para erro de validação
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar agendamentos.', ['error' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro ao buscar os agendamentos.'], 500);
     }
-}
+    
     public function destroy($id)
     {
         try {
             Log::info('Iniciando o processo de cancelamento de agendamento.', ['appointment_id' => $id]);
     
-            // Verificar se o usuário está autenticado
             if (!Auth::check()) {
                 Log::warning('Usuário não autenticado tentou acessar o recurso.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
     
             $user = Auth::user();
-            // Verificar se o usuário possui permissão para realizar o cancelamento
             if (!$user->hasPermission('appointment_destroy') && !$user->hasPermission('appointment_destroy_all')) {
                 return response()->json(['error' => 'Você não tem permissão para cancelar agendamentos.'], 403);
             }
     
-            // Buscar o agendamento com o ID
-            $appointment = Appointment::find($id);  // Usamos find para buscar o agendamento pelo ID
+            $appointment = Appointment::find($id);
             if (!$appointment) {
                 Log::warning('Agendamento não encontrado.', ['appointment_id' => $id]);
                 return response()->json(['error' => 'Agendamento não encontrado.'], 404);
             }
     
-            // Obter a entidade associada ao agendamento
             $entityName = $appointment->entity_name;
-            $entityId = $appointment->entity_id;
+            $entityId   = $appointment->entity_id;
     
-            // Carregar a entidade dinamicamente com base no nome da entidade
             $entityClass = 'App\\Models\\' . $entityName;
             if (!class_exists($entityClass)) {
                 return response()->json(['error' => 'Entidade não encontrada.'], 400);
             }
     
-            // Verificar se a entidade existe
             $entity = $entityClass::find($entityId);
             if (!$entity) {
                 return response()->json(['error' => 'Entidade associada ao agendamento não encontrada.'], 404);
             }
     
-            // Verificar se o usuário é o dono da entidade OU se tem permissão para excluir qualquer agendamento
             if ($entity->user_id !== $user->id && !$user->hasPermission('appointment_destroy_all')) {
                 return response()->json(['error' => 'Você não tem permissão para cancelar o agendamento desta entidade.'], 403);
             }
     
-            // Cancelar o agendamento
             $appointment->delete();
             Log::info('Agendamento cancelado com sucesso.', ['appointment_id' => $id]);
     
@@ -329,6 +316,7 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao cancelar o agendamento.'], 500);
         }
     }
+    
     public function listByClient(Request $request)
     {
         try {
@@ -340,51 +328,45 @@ class AppointmentController extends Controller
             }
      
             $user = Auth::user();
-            // Verificar se o usuário possui permissão para listar agendamentos
             if (!$user->hasPermission('appointment_list')) {
                 return response()->json(['error' => 'Você não tem permissão para listar agendamentos.'], 403);
             }
      
-            // Validar os dados da requisição
             $validatedData = $request->validate([
-                'client_id' => 'required|integer',
+                'client_id'   => 'required|integer',
                 'entity_name' => 'required|string',
-                'entity_id' => 'required|integer',
-                'app_id' => 'required|integer',
+                'entity_id'   => 'required|integer',
+                'app_id'      => 'required|integer',
             ], $this->getValidationMessages());
      
             Log::info('Dados validados com sucesso:', $validatedData);
      
-            // Filtrar agendamentos com base no client_id, entity_name e entity_id
             $appointments = Appointment::where('client_id', $validatedData['client_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->where('app_id', $validatedData['app_id'])
-                ->orderBy('scheduled_at', 'asc') // Ordenar pela data de agendamento
+                ->orderBy('scheduled_at', 'asc')
                 ->get();
      
             if ($appointments->isEmpty()) {
                 Log::warning('Nenhum agendamento encontrado para o cliente e entidade especificados.', [
-                    'client_id' => $validatedData['client_id'],
+                    'client_id'   => $validatedData['client_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id' => $validatedData['entity_id'],
-                    'app_id' => $validatedData['app_id'],
+                    'entity_id'   => $validatedData['entity_id'],
+                    'app_id'      => $validatedData['app_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
             }
      
             Log::info('Agendamentos encontrados:', ['appointments_count' => $appointments->count()]);
      
-            // Retornar os agendamentos encontrados
             return response()->json(['appointments' => $appointments], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            // Captura de erro de validação e retorno das mensagens detalhadas
             Log::error('Erro de validação ao listar agendamentos: ', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422); // 422 é o código para erro de validação
+            return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao listar agendamentos: ', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Erro ao listar agendamentos.'], 500);
         }
     }
-    
 }
