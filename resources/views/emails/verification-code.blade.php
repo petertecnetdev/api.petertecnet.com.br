@@ -93,6 +93,10 @@
         font-size: 1.2rem;
         padding: 10px;
       }
+      .logo {
+  max-width: 150px;
+  height: auto;
+}
     }
   </style>
 </head>
