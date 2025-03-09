@@ -98,8 +98,8 @@
 </head>
 <body>
   <div class="container">
-    <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
-    <h1>Olá {{ $user->first_name }},</h1>
+  <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
+  <h1>Olá {{ $user->first_name }},</h1>
     <p>
       Obrigado por se registrar na Peter Tecnet! A Peter Tecnet é uma fábrica de soluções tecnológicas,
       comprometida em desenvolver aplicativos móveis e web que agregam valor à sociedade, resolvendo problemas reais
