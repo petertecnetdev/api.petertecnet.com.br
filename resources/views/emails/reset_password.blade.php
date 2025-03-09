@@ -97,10 +97,14 @@
             p {
                 font-size: 0.9rem;
             }
+
             .logo {
-  max-width: 150px;
-  height: auto;
-}
+                display: block;
+                margin: 0 auto 20px auto;
+                max-width: 150px;
+                height: auto;
+            }
+
             .verification-code {
                 font-size: 1.2rem;
                 padding: 10px;

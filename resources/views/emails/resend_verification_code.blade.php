@@ -65,10 +65,14 @@
             font-size: 0.9rem;
             color: #ffffff;
         }
+
         .logo {
-  max-width: 150px;
-  height: auto;
-}
+            display: block;
+            margin: 0 auto 20px auto;
+            max-width: 150px;
+            height: auto;
+        }
+
         /* Responsividade */
         @media (max-width: 600px) {
             .container {
