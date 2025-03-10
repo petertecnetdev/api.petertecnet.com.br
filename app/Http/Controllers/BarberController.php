@@ -346,5 +346,23 @@ class BarberController extends Controller
             'barbershop' => $barbershop,  // Dados da barbearia
         ]);
     }
-
+    public function showById($id)
+    {
+        try {
+            // Buscar o barbeiro pelo ID, carregando os relacionamentos com o usuário e as barbearias associadas
+            $barber = Barber::with('user', 'barbershops')->find($id);
+            if (!$barber) {
+                Log::warning('Barbeiro não encontrado: ' . $id);
+                return response()->json(['error' => 'Barbeiro não encontrado.'], 404);
+            }
+            return response()->json([
+                'message' => 'Barbeiro encontrado com sucesso.',
+                'barber'  => $barber
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar barbeiro pelo ID: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o barbeiro.'], 500);
+        }
+    }
+    
 }
