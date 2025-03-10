@@ -20,12 +20,11 @@ class CreateAppointmentsTable extends Migration
             $table->text('description')->nullable(); // Descrição do agendamento
             $table->foreignId('client_id')->constrained('users'); // Cliente que solicitou o agendamento
             $table->foreignId('registered_by')->constrained('users'); // Relaciona com o usuário (gerente da barbearia)
-            $table->enum('status', ['pendente', 'confirmado', 'cancelado', 'concluído']); // Status do agendamento
+            $table->enum('status', ['pending', 'confirmed', 'cancelled', 'completed']); // Status do agendamento
             $table->string('location')->nullable(); // Local do atendimento
             $table->integer('duration')->nullable(); // Duração estimada do serviço
             $table->text('notes')->nullable(); // Observações adicionais
-            $table->enum('payment_status', ['pendente', 'pago', 'cancelado']); // Status do pagamento
-            $table->dateTime('expected_end_time')->nullable(); // Hora de término esperada (calculada com base na duração)
+            $table->enum('payment_status', ['pending', 'paid', 'cancelled']); // Status do pagamento $table->dateTime('expected_end_time')->nullable(); // Hora de término esperada (calculada com base na duração)
             $table->timestamps(); // Created at, Updated at
         });
     }

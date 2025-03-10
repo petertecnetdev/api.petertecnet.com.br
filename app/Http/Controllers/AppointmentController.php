@@ -386,7 +386,7 @@ class AppointmentController extends Controller
             }
 
             // Em vez de deletar, atualiza o status para "cancelado"
-            $appointment->status = 'cancelado';
+            $appointment->status = 'cancelled';
             $appointment->save();
 
             Log::info('Agendamento cancelado com sucesso.', ['appointment_id' => $id]);
