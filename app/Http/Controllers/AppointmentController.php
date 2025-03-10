@@ -13,32 +13,32 @@ class AppointmentController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'app_id.required'          => 'O ID do aplicativo é obrigatório.',
-            'app_id.exists'            => 'O ID do aplicativo deve existir na tabela de aplicações.',
-            'entity_name.required'     => 'O nome da entidade é obrigatório.',
-            'entity_name.string'       => 'O nome da entidade deve ser uma string válida.',
-            'entity_id.required'       => 'O ID da entidade é obrigatório.',
-            'entity_id.integer'        => 'O ID da entidade deve ser um número inteiro.',
-            'scheduled_at.required'    => 'A data do agendamento é obrigatória.',
-            'scheduled_at.date'        => 'A data do agendamento deve ser uma data válida.',
-            'scheduled_at.after'       => 'A data do agendamento deve ser posterior à data atual.',
-            'service_ids.required'     => 'A lista de serviços é obrigatória.',
-            'service_ids.array'        => 'Os serviços devem ser enviados como uma lista.',
-            'service_ids.*.integer'    => 'Cada ID de serviço deve ser um número inteiro válido.',
-            'service_ids.*.exists'     => 'Um ou mais serviços selecionados não existem na tabela de itens.',
-            'provider_id.required'     => 'O prestador de serviço é obrigatório.',
-            'provider_id.integer'      => 'O ID do prestador de serviço deve ser um número inteiro.',
-            'client_id.required'       => 'O cliente é obrigatório.',
-            'client_id.integer'        => 'O ID do cliente deve ser um número inteiro.',
-            'status.required'          => 'O status do agendamento é obrigatório.',
-            'status.string'            => 'O status deve ser uma string válida.',
-            'location.string'          => 'A localização deve ser uma string válida.',
-            'notes.string'             => 'As observações devem ser uma string válida.',
-            'payment_status.string'    => 'O status do pagamento deve ser uma string válida.',
-            'appointment_type.string'  => 'O tipo de agendamento deve ser uma string válida.',
-            'duration.required'        => 'A duração do serviço é obrigatória.',
-            'duration.integer'         => 'A duração deve ser um número inteiro válido.',
-            'duration.min'             => 'A duração deve ser maior que zero.',
+            'app_id.required' => 'O ID do aplicativo é obrigatório.',
+            'app_id.exists' => 'O ID do aplicativo deve existir na tabela de aplicações.',
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_name.string' => 'O nome da entidade deve ser uma string válida.',
+            'entity_id.required' => 'O ID da entidade é obrigatório.',
+            'entity_id.integer' => 'O ID da entidade deve ser um número inteiro.',
+            'scheduled_at.required' => 'A data do agendamento é obrigatória.',
+            'scheduled_at.date' => 'A data do agendamento deve ser uma data válida.',
+            'scheduled_at.after' => 'A data do agendamento deve ser posterior à data atual.',
+            'service_ids.required' => 'A lista de serviços é obrigatória.',
+            'service_ids.array' => 'Os serviços devem ser enviados como uma lista.',
+            'service_ids.*.integer' => 'Cada ID de serviço deve ser um número inteiro válido.',
+            'service_ids.*.exists' => 'Um ou mais serviços selecionados não existem na tabela de itens.',
+            'provider_id.required' => 'O prestador de serviço é obrigatório.',
+            'provider_id.integer' => 'O ID do prestador de serviço deve ser um número inteiro.',
+            'client_id.required' => 'O cliente é obrigatório.',
+            'client_id.integer' => 'O ID do cliente deve ser um número inteiro.',
+            'status.required' => 'O status do agendamento é obrigatório.',
+            'status.string' => 'O status deve ser uma string válida.',
+            'location.string' => 'A localização deve ser uma string válida.',
+            'notes.string' => 'As observações devem ser uma string válida.',
+            'payment_status.string' => 'O status do pagamento deve ser uma string válida.',
+            'appointment_type.string' => 'O tipo de agendamento deve ser uma string válida.',
+            'duration.required' => 'A duração do serviço é obrigatória.',
+            'duration.integer' => 'A duração deve ser um número inteiro válido.',
+            'duration.min' => 'A duração deve ser maior que zero.',
         ];
     }
 
@@ -60,20 +60,20 @@ class AppointmentController extends Controller
             Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             $validatedData = $request->validate([
-                'app_id'           => 'required|exists:applications,id',
-                'entity_name'      => 'required|string|max:255',
-                'entity_id'        => 'required|integer',
-                'scheduled_at'     => 'required|date',
-                'service_ids'      => 'required|array|min:1',
-                'service_ids.*'    => 'integer|exists:items,id',
-                'provider_id'      => 'required|integer',
-                'client_id'        => 'required|integer',
-                'status'           => 'required|string|max:50',
-                'location'         => 'nullable|string|max:255',
-                'notes'            => 'nullable|string',
-                'payment_status'   => 'nullable|string|max:50',
+                'app_id' => 'required|exists:applications,id',
+                'entity_name' => 'required|string|max:255',
+                'entity_id' => 'required|integer',
+                'scheduled_at' => 'required|date',
+                'service_ids' => 'required|array|min:1',
+                'service_ids.*' => 'integer|exists:items,id',
+                'provider_id' => 'required|integer',
+                'client_id' => 'required|integer',
+                'status' => 'required|string|max:50',
+                'location' => 'nullable|string|max:255',
+                'notes' => 'nullable|string',
+                'payment_status' => 'nullable|string|max:50',
                 'appointment_type' => 'nullable|string|max:50',
-                'duration'         => 'required|integer|min:1',
+                'duration' => 'required|integer|min:1',
             ], $this->getValidationMessages());
 
             Log::info('Dados validados com sucesso:', $validatedData);
@@ -110,20 +110,20 @@ class AppointmentController extends Controller
             }
 
             $appointment = Appointment::create([
-                'app_id'           => $validatedData['app_id'],
-                'registered_by'    => $user->id,
-                'entity_name'      => $validatedData['entity_name'],
-                'entity_id'        => $validatedData['entity_id'],
-                'scheduled_at'     => $scheduledAt,
-                'provider_id'      => $validatedData['provider_id'],
-                'client_id'        => $validatedData['client_id'],
-                'status'           => $validatedData['status'],
-                'location'         => $validatedData['location'] ?? null,
-                'notes'            => $validatedData['notes'] ?? null,
-                'payment_status'   => $validatedData['payment_status'] ?? null,
+                'app_id' => $validatedData['app_id'],
+                'registered_by' => $user->id,
+                'entity_name' => $validatedData['entity_name'],
+                'entity_id' => $validatedData['entity_id'],
+                'scheduled_at' => $scheduledAt,
+                'provider_id' => $validatedData['provider_id'],
+                'client_id' => $validatedData['client_id'],
+                'status' => $validatedData['status'],
+                'location' => $validatedData['location'] ?? null,
+                'notes' => $validatedData['notes'] ?? null,
+                'payment_status' => $validatedData['payment_status'] ?? null,
                 'appointment_type' => $validatedData['appointment_type'] ?? null,
-                'duration'         => $validatedData['duration'],
-                'service_ids'      => json_encode($validatedData['service_ids']),
+                'duration' => $validatedData['duration'],
+                'service_ids' => json_encode($validatedData['service_ids']),
             ]);
 
             Log::info('Agendamento criado com sucesso.', ['appointment_id' => $appointment->id]);
@@ -200,10 +200,10 @@ class AppointmentController extends Controller
             }
 
             $validatedData = $request->validate([
-                'client_id'   => 'required|integer',
+                'client_id' => 'required|integer',
                 'entity_name' => 'required|string',
-                'entity_id'   => 'required|integer',
-                'app_id'      => 'required|integer',
+                'entity_id' => 'required|integer',
+                'app_id' => 'required|integer',
             ], $this->getValidationMessages());
 
             $appointments = Appointment::where('client_id', $validatedData['client_id'])
@@ -215,10 +215,10 @@ class AppointmentController extends Controller
 
             if ($appointments->isEmpty()) {
                 Log::warning('Nenhum agendamento encontrado para o cliente e entidade especificados.', [
-                    'client_id'   => $validatedData['client_id'],
+                    'client_id' => $validatedData['client_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id'   => $validatedData['entity_id'],
-                    'app_id'      => $validatedData['app_id'],
+                    'entity_id' => $validatedData['entity_id'],
+                    'app_id' => $validatedData['app_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
             }
@@ -268,7 +268,7 @@ class AppointmentController extends Controller
             }
 
             $validatedData = $request->validate([
-                'entity_id'   => 'required|integer',
+                'entity_id' => 'required|integer',
                 'entity_name' => 'required|string|max:255',
             ], $this->getValidationMessages());
 
@@ -279,7 +279,7 @@ class AppointmentController extends Controller
 
             if ($appointments->isEmpty()) {
                 Log::warning('Nenhum agendamento encontrado para a entidade.', [
-                    'entity_id'   => $validatedData['entity_id'],
+                    'entity_id' => $validatedData['entity_id'],
                     'entity_name' => $validatedData['entity_name'],
                 ]);
                 return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
@@ -331,9 +331,9 @@ class AppointmentController extends Controller
 
             $validatedData = $request->validate([
                 'provider_id' => 'required|integer|exists:users,id',
-                'app_id'      => 'required|integer|exists:applications,id',
+                'app_id' => 'required|integer|exists:applications,id',
                 'entity_name' => 'required|string|max:255',
-                'entity_id'   => 'required|integer',
+                'entity_id' => 'required|integer',
             ], $this->getValidationMessages());
 
             $appointments = Appointment::where('provider_id', $validatedData['provider_id'])
@@ -346,9 +346,9 @@ class AppointmentController extends Controller
             if ($appointments->isEmpty()) {
                 Log::warning('Nenhum agendamento encontrado para o provedor especificado.', [
                     'provider_id' => $validatedData['provider_id'],
-                    'app_id'      => $validatedData['app_id'],
+                    'app_id' => $validatedData['app_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id'   => $validatedData['entity_id'],
+                    'entity_id' => $validatedData['entity_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
             }
@@ -385,25 +385,11 @@ class AppointmentController extends Controller
                 return response()->json(['error' => 'Agendamento não encontrado.'], 404);
             }
 
-            $entityName = $appointment->entity_name;
-            $entityId   = $appointment->entity_id;
-            $entityClass = 'App\\Models\\' . $entityName;
-            if (!class_exists($entityClass)) {
-                return response()->json(['error' => 'Entidade não encontrada.'], 400);
-            }
+            // Em vez de deletar, atualiza o status para "cancelado"
+            $appointment->status = 'cancelado';
+            $appointment->save();
 
-            $entity = $entityClass::find($entityId);
-            if (!$entity) {
-                return response()->json(['error' => 'Entidade associada ao agendamento não encontrada.'], 404);
-            }
-
-            if ($entity->user_id !== $user->id && !$user->hasPermission('appointment_destroy_all')) {
-                return response()->json(['error' => 'Você não tem permissão para cancelar o agendamento desta entidade.'], 403);
-            }
-
-            $appointment->delete();
             Log::info('Agendamento cancelado com sucesso.', ['appointment_id' => $id]);
-
             return response()->json(['message' => 'Agendamento cancelado com sucesso!'], 200);
         } catch (\Exception $e) {
             Log::error('Erro ao cancelar agendamento: ' . $e->getMessage());
