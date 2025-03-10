@@ -114,7 +114,7 @@ Route::group([
     Route::post('/{id}', [BarberShopController::class, 'update'])->name('barbershop.update'); // Atualizar um serviço de barbearia existente
     Route::delete('/{id}', [BarberShopController::class, 'destroy'])->name('barbershop.destroy'); // Excluir um serviço de barbearia
     Route::get('/user', [BarberShopController::class, 'listByUser'])->name('barbershop.listByUser'); // Listar barbearias do usuário autenticado
- });
+});
 
 
 // Rotas de notícias
@@ -126,19 +126,20 @@ Route::group(['middleware' => 'api', 'prefix' => 'news'], function () {
     Route::delete('/{id}', [NewsController::class, 'destroy'])->name('news.destroy');
     Route::get('/search', [NewsController::class, 'search'])->name('news.search');
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
-});
-
-// Rotas de barbeiros
+});// Rotas de barbeiros
 Route::group([
     'middleware' => 'api',
     'prefix' => 'barber'
 ], function () {
     Route::post('/', [BarberController::class, 'store'])->name('barber.store');
     Route::delete('/', [BarberController::class, 'destroy'])->name('barber.destroy');
+    Route::get('/showbyid/{id}', [BarberController::class, 'showById'])->name('barber.showById');
     Route::get('/{username}', [BarberController::class, 'view'])->name('barber.view');
     Route::get('/', [BarberController::class, 'list'])->name('barber.list');
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
 });
+
+
 // Rotas de agendamentos
 Route::group([
     'middleware' => 'api',
@@ -160,10 +161,10 @@ Route::group([
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
-    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update'); 
+    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
     Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
-    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity'); 
+    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
     Route::get('/{id}', [ItemController::class, 'show'])->name('item.show'); // Nova rota para exibir um item específico
 });
 

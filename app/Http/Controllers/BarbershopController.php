@@ -552,7 +552,23 @@ class BarbershopController extends Controller
         }
     }
 
-
+    public function showById($id)
+    {
+        try {
+            $barber = Barber::with('user', 'barbershops')->find($id);
+            if (!$barber) {
+                return response()->json(['error' => 'Barbeiro não encontrado.'], 404);
+            }
+            return response()->json([
+                'message' => 'Barbeiro encontrado com sucesso.',
+                'barber'  => $barber
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar barbeiro pelo ID: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o barbeiro.'], 500);
+        }
+    }
+    
 
 
 }
