@@ -139,19 +139,19 @@ Route::group([
     Route::get('/', [BarberController::class, 'list'])->name('barber.list');
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
 });
-
 // Rotas de agendamentos
 Route::group([
     'middleware' => 'api',
     'prefix' => 'appointment'
 ], function ($router) {
-    // Rotas para gerenciar agendamentos
     Route::post('/', [AppointmentController::class, 'store'])->name('appointment.store');
+    Route::get('/listmy', [AppointmentController::class, 'listMy'])->name('appointment.listMy');
     Route::get('/listbyentity', [AppointmentController::class, 'listByEntity'])->name('appointment.listByEntity');
     Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
-    Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient'); // Adicionada a nova rota
+    Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
     Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
 });
+
 
 Route::group([
     'middleware' => 'api',
