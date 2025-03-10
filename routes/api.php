@@ -133,7 +133,7 @@ Route::group([
 ], function () {
     Route::post('/', [BarberController::class, 'store'])->name('barber.store');
     Route::delete('/', [BarberController::class, 'destroy'])->name('barber.destroy');
-    Route::get('/showbyid/{id}', [BarberController::class, 'showById'])->name('barber.showById');
+    Route::get('/show/{id}', [BarberController::class, 'showById'])->name('barber.showById');
     Route::get('/{username}', [BarberController::class, 'view'])->name('barber.view');
     Route::get('/', [BarberController::class, 'list'])->name('barber.list');
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');

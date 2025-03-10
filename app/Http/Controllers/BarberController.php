@@ -346,7 +346,7 @@ class BarberController extends Controller
             'barbershop' => $barbershop,  // Dados da barbearia
         ]);
     }
-    public function showById($id)
+    public function show($id)
     {
         try {
             // Buscar o barbeiro pelo ID, carregando os relacionamentos com o usuário e as barbearias associadas

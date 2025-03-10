@@ -339,12 +339,6 @@ class UserController extends Controller
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            // Verificar se o usuário tem permissão para visualizar o perfil do usuário
-            if (!$user->hasPermission('user_show')) {
-                Log::error('Usuário não tem permissão para visualizar este perfil de usuário.');
-                return response()->json(['error' => 'Você não tem permissão para visualizar este perfil de usuário.'], 403);
-            }
-
             // Buscar o usuário pelo ID
             $userToShow = User::findOrFail($id);
 
@@ -420,8 +414,6 @@ class UserController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao deletar o usuário.'], 500);
         }
     }
-
-
 
 }
 
