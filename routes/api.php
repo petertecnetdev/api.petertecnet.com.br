@@ -13,7 +13,8 @@ use App\Http\Controllers\{
     ItemController,
     NewsController,
     BarberController,
-    ReportController
+    ReportController,
+    ServiceRecordController
 };
 
 
@@ -177,4 +178,18 @@ Route::group([
     'prefix' => 'report'
 ], function ($router) {
     Route::post('/generate', [ReportController::class, 'generatePDF'])->name('report.generate');
+});
+
+
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'service-record'
+], function () {
+    Route::post('/', [ServiceRecordController::class, 'store'])->name('service-record.store'); // Registrar um novo atendimento
+    Route::get('/', [ServiceRecordController::class, 'list'])->name('service-record.list'); // Listar todos os atendimentos
+    Route::get('/show/{id}', [ServiceRecordController::class, 'show'])->name('service-record.show'); // Exibir um atendimento específico
+    Route::put('/{id}', [ServiceRecordController::class, 'update'])->name('service-record.update'); // Atualizar um atendimento
+    Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service-record.destroy'); // Excluir um atendimento
+    Route::get('/barber/{barberId}', [ServiceRecordController::class, 'listByBarber'])->name('service-record.listByBarber'); // Listar atendimentos de um barbeiro específico
+    Route::get('/barbershop/{barbershopId}', [ServiceRecordController::class, 'listByBarbershop'])->name('service-record.listByBarbershop'); // Listar atendimentos de uma barbearia específica
 });
