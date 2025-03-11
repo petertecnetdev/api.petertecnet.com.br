@@ -344,16 +344,16 @@ class ServiceRecordController extends Controller
     public function destroy($id)
     {
         try {
-            Log::info('Iniciando o cancelamento do atendimento.', ['service_record_id' => $id]);
+            Log::info('Iniciando a inativação do atendimento.', ['service_record_id' => $id]);
 
             if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou cancelar atendimento.');
+                Log::warning('Usuário não autenticado tentou inativar o atendimento.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
             if (!$user->hasPermission('service_record_destroy') && !$user->hasPermission('service_record_destroy_all')) {
-                return response()->json(['error' => 'Você não tem permissão para cancelar atendimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para inativar atendimentos.'], 403);
             }
 
             $serviceRecord = ServiceRecord::find($id);
@@ -367,7 +367,7 @@ class ServiceRecordController extends Controller
             $serviceRecord->save();
 
             Log::info('Atendimento cancelado com sucesso.', ['service_record_id' => $id]);
-            return response()->json(['message' => 'Atendimento cancelado com sucesso!'], 200);
+            return response()->json(['message' => 'Atendimento inativado com sucesso!'], 200);
         } catch (\Exception $e) {
             Log::error('Erro ao cancelar atendimento: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao cancelar o atendimento.'], 500);

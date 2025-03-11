@@ -140,7 +140,6 @@ Route::group([
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
 });
 
-
 // Rotas de agendamentos
 Route::group([
     'middleware' => 'api',
@@ -152,7 +151,9 @@ Route::group([
     Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
     Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
     Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
+    Route::patch('/{id}/status', [AppointmentController::class, 'updateStatus'])->name('appointment.updateStatus');
 });
+
 
 
 Route::group([

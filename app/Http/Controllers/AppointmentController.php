@@ -54,7 +54,7 @@ class AppointmentController extends Controller
             }
     
             $user = Auth::user();
-    
+
             // Validação dos dados da requisição
             $validatedData = $request->validate([
                 'app_id' => 'required|exists:applications,id',
@@ -399,4 +399,55 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao cancelar o agendamento.'], 500);
         }
     }
+
+    public function updateStatus(Request $request, $id)
+{
+    try {
+        Log::info('Iniciando atualização do status do agendamento.', ['appointment_id' => $id]);
+
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar o recurso.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+        if (!$user->hasPermission('appointment_update_status')) {
+            return response()->json(['error' => 'Você não tem permissão para alterar o status do agendamento.'], 403);
+        }
+
+        // Valida o novo status
+        $validatedData = $request->validate([
+            'status' => 'required|string|max:50'
+        ], $this->getValidationMessages());
+
+        $allowedStatuses = ['pending', 'confirmed', 'cancelled', 'completed'];
+        $newStatus = strtolower($validatedData['status']);
+
+        if (!in_array($newStatus, $allowedStatuses)) {
+            return response()->json(['error' => 'Status inválido.'], 422);
+        }
+
+        $appointment = Appointment::find($id);
+        if (!$appointment) {
+            Log::warning('Agendamento não encontrado.', ['appointment_id' => $id]);
+            return response()->json(['error' => 'Agendamento não encontrado.'], 404);
+        }
+
+        $appointment->status = $newStatus;
+        $appointment->save();
+
+        Log::info('Status do agendamento atualizado com sucesso.', ['appointment_id' => $id, 'status' => $newStatus]);
+        return response()->json([
+            'message' => 'Status do agendamento atualizado com sucesso!',
+            'appointment' => $appointment
+        ], 200);
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::error('Erro de validação ao atualizar status do agendamento: ', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        Log::error('Erro ao atualizar status do agendamento: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao atualizar o status do agendamento.'], 500);
+    }
+}
+
 }
