@@ -180,16 +180,15 @@ Route::group([
     Route::post('/generate', [ReportController::class, 'generatePDF'])->name('report.generate');
 });
 
-
+// Rotas de atendimentos (service_records)
 Route::group([
     'middleware' => 'api',
     'prefix' => 'service-record'
-], function () {
-    Route::post('/', [ServiceRecordController::class, 'store'])->name('service-record.store'); // Registrar um novo atendimento
-    Route::get('/', [ServiceRecordController::class, 'list'])->name('service-record.list'); // Listar todos os atendimentos
-    Route::get('/show/{id}', [ServiceRecordController::class, 'show'])->name('service-record.show'); // Exibir um atendimento específico
-    Route::put('/{id}', [ServiceRecordController::class, 'update'])->name('service-record.update'); // Atualizar um atendimento
-    Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service-record.destroy'); // Excluir um atendimento
-    Route::get('/barber/{barberId}', [ServiceRecordController::class, 'listByBarber'])->name('service-record.listByBarber'); // Listar atendimentos de um barbeiro específico
-    Route::get('/barbershop/{barbershopId}', [ServiceRecordController::class, 'listByBarbershop'])->name('service-record.listByBarbershop'); // Listar atendimentos de uma barbearia específica
+], function ($router) {
+    Route::post('/', [ServiceRecordController::class, 'store'])->name('service_record.store'); // Registrar um novo atendimento
+    Route::get('/listmy', [ServiceRecordController::class, 'listMy'])->name('service_record.listMy'); // Listar os atendimentos do usuário autenticado
+    Route::get('/listbyclient', [ServiceRecordController::class, 'listByClient'])->name('service_record.listByClient'); // Listar atendimentos de um cliente específico
+    Route::get('/listbyentity', [ServiceRecordController::class, 'listByEntity'])->name('service_record.listByEntity'); // Listar atendimentos por entidade
+    Route::get('/listbyprovider', [ServiceRecordController::class, 'listByProvider'])->name('service_record.listByProvider'); // Listar atendimentos por provedor
+    Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy'); // Cancelar um atendimento (atualizando o status)
 });
