@@ -78,7 +78,7 @@ class AppointmentController extends Controller
                 return response()->json(['error' => 'Você não tem permissão para realizar agendamentos.'], 403);
             }
     
-            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->first_name]);
     
             $scheduledAt = Carbon::parse($validatedData['scheduled_at'])->setTimezone('America/Sao_Paulo');
             if ($scheduledAt->isPast()) {
