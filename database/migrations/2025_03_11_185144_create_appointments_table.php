@@ -24,7 +24,10 @@ class CreateAppointmentsTable extends Migration
             $table->string('location')->nullable(); // Local do atendimento
             $table->integer('duration')->nullable(); // Duração estimada do serviço
             $table->text('notes')->nullable(); // Observações adicionais
-            $table->enum('payment_status', ['pending', 'paid', 'cancelled']); // Status do pagamento $table->dateTime('expected_end_time')->nullable(); // Hora de término esperada (calculada com base na duração)
+            $table->enum('payment_status', ['pending', 'paid', 'cancelled']); // Status do pagamento
+            $table->enum('attendance_status', ['attended', 'not_attended'])
+                  ->nullable()
+                  ->comment('Indica se o atendimento foi concluído como atendido ou não atendido'); // Conclusão do atendimento
             $table->timestamps(); // Created at, Updated at
         });
     }
