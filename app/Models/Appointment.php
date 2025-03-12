@@ -27,7 +27,8 @@ class Appointment extends Model
         'notes', // Observações adicionais
         'payment_status', // Status do pagamento (pendente, pago, cancelado)
         'appointment_type', // Tipo de agendamento (presencial, online, domiciliar, etc.)
-        'attendance_status'
+        'attendance_status',
+        'client_confirmation'
     ];
 
     // Cast dos campos para tipos específicos
