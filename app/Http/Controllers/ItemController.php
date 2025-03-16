@@ -195,9 +195,14 @@ class ItemController extends Controller
     // O método "show" não exige autenticação
     public function show($id)
     {
+<<<<<<< HEAD
         try{
           \Log::info('Iniciando a exibição do item com ID: ' . $id);
 
+=======
+        try {
+            Log::info('Iniciando a exibição do item com ID: ' . $id);
+>>>>>>> 70628a1 (solving conflit develop and staging on local)
 
             // Obter o usuário autenticado
             $user = Auth::user();
