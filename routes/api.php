@@ -157,19 +157,26 @@ Route::group([
 });
 
 
+// Rotas públicas de listagem de itens (sem autenticação)
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'item'
+], function ($router) {
+    Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
+    Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
+    Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
+    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
+    Route::get('/{id}', [ItemController::class, 'show'])->name('item.show'); // Exibir um item específico
+});
 
+// Rotas protegidas (exigem autenticação)
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'item'
 ], function ($router) {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
-    Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
     Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
-    Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
-    Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
-    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
-    Route::get('/{id}', [ItemController::class, 'show'])->name('item.show'); // Nova rota para exibir um item específico
 });
 
 // Rotas para geração de relatórios
