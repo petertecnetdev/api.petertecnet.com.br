@@ -452,7 +452,7 @@ class ItemController extends Controller
             $items = Item::where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->where('app_id', $validatedData['app_id'])
-                ->where('type', 'serviço')  // Filtro adicional para 'service'
+                ->where('type', 'service')  // Filtro adicional para 'service'
                 ->get();
 
             // Verificar se foram encontrados itens
