@@ -113,29 +113,29 @@ class ItemController extends Controller
 
             if ($request->hasFile('image')) {
                 \Log::info('Imagem do item fornecida, processando...');
-            
+
                 $destinationPath = '/home/petert03/api.petertecnet.com.br/public/images';
                 $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
-            
+
                 try {
                     // Salvar imagem temporariamente
                     $request->file('image')->move($destinationPath, $imageName);
-            
+
                     // Redimensionar para 250x250
                     $imagePath = $destinationPath . '/' . $imageName;
                     $image = Image::make($imagePath)->fit(250, 250);
                     $image->save($imagePath);
-            
+
                     // Atualizar o caminho no banco
                     $item->image = 'images/' . $imageName;
                     $item->save();
-            
+
                     \Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
                 } catch (\Exception $e) {
                     \Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
                 }
             }
-            
+
             // Gerar slug para o item
             \Log::info('Gerando slug para o item.');
             $slug = Str::slug($validatedData['name']);
@@ -196,37 +196,50 @@ class ItemController extends Controller
     public function show($id)
     {
         try {
-            \Log::info('Iniciando a exibição do item com ID: ' . $id);
-
+            Log::info('Iniciando a exibição do item com ID: ' . $id);
 
             // Obter o usuário autenticado
             $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             // Verificar se o usuário possui permissão para visualizar o item
             if (!$user->hasPermission('item_view')) {
-                \Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
+                Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
+                return response()->json([
+                    'error' => [
+                        'field' => 'permission',
+                        'message' => 'Você não tem permissão para visualizar itens.'
+                    ]
+                ], 403);
             }
 
             // Buscar o item pelo ID
             $item = Item::find($id);
             if (!$item) {
-                \Log::warning('Item não encontrado.', ['item_id' => $id]);
-                return response()->json(['error' => 'Item não encontrado.'], 404);
+                Log::warning('Item não encontrado.', ['item_id' => $id]);
+                return response()->json([
+                    'error' => [
+                        'field' => 'id',
+                        'message' => 'Item não encontrado.'
+                    ]
+                ], 404);
             }
 
-            \Log::info('Item encontrado.', ['item_id' => $item->id]);
+            Log::info('Item encontrado.', ['item_id' => $item->id]);
 
             // Retornar o item encontrado
             return response()->json($item, 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao buscar o item com ID: ' . $id, ['exception' => $e->getMessage()]);
-            return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
+            Log::error('Erro ao buscar o item com ID: ' . $id, ['exception' => $e->getMessage()]);
+            return response()->json([
+                'error' => [
+                    'field' => 'server',
+                    'message' => 'Ocorreu um erro ao buscar o item.'
+                ]
+            ], 500);
         }
     }
-
     public function update(Request $request, $id)
     {
         try {
@@ -295,8 +308,8 @@ class ItemController extends Controller
 
             \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
 
-             // Processar e salvar a logo se fornecida
-             if ($request->hasFile('image')) {
+            // Processar e salvar a logo se fornecida
+            if ($request->hasFile('image')) {
                 Log::info('Imagem do item  fornecida, processando...');
 
                 // Definir o caminho do diretório público para imagens
