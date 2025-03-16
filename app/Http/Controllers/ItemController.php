@@ -200,6 +200,16 @@ class ItemController extends Controller
 
             // Obter o usuário autenticado
             $user = Auth::user();
+            if (!$user) {
+                Log::warning('Tentativa de acesso sem autenticação.', ['item_id' => $id]);
+                return response()->json([
+                    'error' => [
+                        'field' => 'authentication',
+                        'message' => 'Usuário não autenticado.'
+                    ]
+                ], 401);
+            }
+
             Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             // Verificar se o usuário possui permissão para visualizar o item
@@ -229,7 +239,6 @@ class ItemController extends Controller
 
             // Retornar o item encontrado
             return response()->json($item, 200);
-
         } catch (\Exception $e) {
             Log::error('Erro ao buscar o item com ID: ' . $id, ['exception' => $e->getMessage()]);
             return response()->json([
