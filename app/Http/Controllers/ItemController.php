@@ -206,7 +206,21 @@ class ItemController extends Controller
 
             // Obter o usuário autenticado
             $user = Auth::user();
+<<<<<<< HEAD
             \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+=======
+            if (!$user) {
+                Log::warning('Tentativa de acesso sem autenticação.', ['item_id' => $id]);
+                return response()->json([
+                    'error' => [
+                        'field' => 'authentication',
+                        'message' => 'Usuário não autenticado.'
+                    ]
+                ], 401);
+            }
+
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+>>>>>>> c21d054 (solving conflit develop and staging on local)
 
             // Verificar se o usuário possui permissão para visualizar o item
             if (!$user->hasPermission('item_view')) {
