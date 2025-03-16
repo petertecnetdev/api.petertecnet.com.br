@@ -128,6 +128,8 @@ Route::group(['middleware' => 'api', 'prefix' => 'news'], function () {
     Route::get('/search', [NewsController::class, 'search'])->name('news.search');
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
 });// Rotas de barbeiros
+
+
 Route::group([
     'middleware' => 'api',
     'prefix' => 'barber'
@@ -157,7 +159,7 @@ Route::group([
 
 
 Route::group([
-    'middleware' => 'api',
+    'middleware' => ['api', 'auth:api'],
     'prefix' => 'item'
 ], function ($router) {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
@@ -169,9 +171,6 @@ Route::group([
     Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
     Route::get('/{id}', [ItemController::class, 'show'])->name('item.show'); // Nova rota para exibir um item específico
 });
-
-
-
 
 // Rotas para geração de relatórios
 Route::group([
