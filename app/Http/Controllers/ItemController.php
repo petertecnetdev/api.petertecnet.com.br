@@ -198,11 +198,6 @@ class ItemController extends Controller
         try {
             \Log::info('Iniciando a exibição do item com ID: ' . $id);
 
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso de exibição de item.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
 
             // Obter o usuário autenticado
             $user = Auth::user();
