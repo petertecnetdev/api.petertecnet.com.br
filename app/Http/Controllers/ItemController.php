@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use App\Models\{Item};
+use App\Models\Item;
 use Illuminate\Support\Facades\File;
 use Intervention\Image\Facades\Image;
 use Illuminate\Support\Str;
@@ -46,26 +46,26 @@ class ItemController extends Controller
     public function store(Request $request)
     {
         try {
-            \Log::info('Iniciando a criação de um novo item.');
+            Log::info('Iniciando a criação de um novo item.');
 
             // Verificar se o usuário está autenticado
             if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso.');
+                Log::warning('Usuário não autenticado tentou acessar o recurso.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             // Obter o usuário autenticado
             $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             // Verificar se o usuário possui permissão para cadastrar itens
             if (!$user->hasPermission('item_create')) {
-                \Log::warning('Usuário sem permissão tentou cadastrar item.', ['user_id' => $user->id]);
+                Log::warning('Usuário sem permissão tentou cadastrar item.', ['user_id' => $user->id]);
                 return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
             }
 
             // Validação dos dados da requisição
-            \Log::info('Validando dados da requisição.');
+            Log::info('Validando dados da requisição.');
             $validatedData = $request->validate([
                 'name' => 'required|string|max:255',
                 'type' => 'required|string|max:100',
@@ -82,10 +82,10 @@ class ItemController extends Controller
                 'app_id' => 'required|exists:applications,id',
             ], $this->getValidationMessages());
 
-            \Log::info('Dados validados com sucesso:', $validatedData);
+            Log::info('Dados validados com sucesso:', $validatedData);
 
             // Criação do item
-            \Log::info('Iniciando a criação do item no banco de dados.');
+            Log::info('Iniciando a criação do item no banco de dados.');
             $item = Item::create([
                 'name' => $validatedData['name'],
                 'type' => $validatedData['type'],
@@ -109,10 +109,10 @@ class ItemController extends Controller
                 'app_id' => $validatedData['app_id'],
             ]);
 
-            \Log::info('Item criado no banco de dados.', ['item_id' => $item->id]);
+            Log::info('Item criado no banco de dados.', ['item_id' => $item->id]);
 
             if ($request->hasFile('image')) {
-                \Log::info('Imagem do item fornecida, processando...');
+                Log::info('Imagem do item fornecida, processando...');
 
                 $destinationPath = '/home/petert03/api.petertecnet.com.br/public/images';
                 $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
@@ -130,14 +130,14 @@ class ItemController extends Controller
                     $item->image = 'images/' . $imageName;
                     $item->save();
 
-                    \Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
+                    Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
                 } catch (\Exception $e) {
-                    \Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
+                    Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
                 }
             }
 
             // Gerar slug para o item
-            \Log::info('Gerando slug para o item.');
+            Log::info('Gerando slug para o item.');
             $slug = Str::slug($validatedData['name']);
             $count = Item::where('slug', $slug)->count();
             if ($count > 0) {
@@ -145,18 +145,18 @@ class ItemController extends Controller
             }
             $item->slug = $slug;
             $item->save();
-            \Log::info('Slug gerado com sucesso.', ['slug' => $item->slug]);
+            Log::info('Slug gerado com sucesso.', ['slug' => $item->slug]);
 
             // Retornar sucesso
-            \Log::info('Item cadastrado com sucesso.', ['item_id' => $item->id]);
+            Log::info('Item cadastrado com sucesso.', ['item_id' => $item->id]);
             return response()->json(['message' => 'Item cadastrado com sucesso.', 'item' => $item], 201);
 
         } catch (ValidationException $e) {
-            \Log::warning('Erros de validação ao cadastrar item.', ['errors' => $e->errors()]);
+            Log::warning('Erros de validação ao cadastrar item.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao cadastrar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao cadastrar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
         }
     }
@@ -164,7 +164,7 @@ class ItemController extends Controller
     public function listByEntity(Request $request)
     {
         try {
-            \Log::info('Iniciando a busca de itens por entidade.');
+            Log::info('Iniciando a busca de itens por entidade.');
 
             // Validação dos parâmetros
             $validatedData = $request->validate([
@@ -172,56 +172,31 @@ class ItemController extends Controller
                 'entity_id' => 'required|integer',
             ], $this->getValidationMessages());
 
-            \Log::info('Parâmetros validados com sucesso:', $validatedData);
+            Log::info('Parâmetros validados com sucesso:', $validatedData);
 
             // Buscar itens com base na entidade fornecida
             $items = Item::where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->get();
 
-            \Log::info('Itens encontrados.', ['total' => $items->count()]);
+            Log::info('Itens encontrados.', ['total' => $items->count()]);
 
             return response()->json($items, 200);
 
         } catch (ValidationException $e) {
-            \Log::warning('Erro de validação na listagem de itens por entidade.', ['errors' => $e->errors()]);
+            Log::warning('Erro de validação na listagem de itens por entidade.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            \Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
+            Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
     }
 
-
+    // O método "show" não exige autenticação
     public function show($id)
     {
         try {
             Log::info('Iniciando a exibição do item com ID: ' . $id);
-
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            if (!$user) {
-                Log::warning('Tentativa de acesso sem autenticação.', ['item_id' => $id]);
-                return response()->json([
-                    'error' => [
-                        'field' => 'authentication',
-                        'message' => 'Usuário não autenticado.'
-                    ]
-                ], 401);
-            }
-
-            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            // Verificar se o usuário possui permissão para visualizar o item
-            if (!$user->hasPermission('item_view')) {
-                Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
-                return response()->json([
-                    'error' => [
-                        'field' => 'permission',
-                        'message' => 'Você não tem permissão para visualizar itens.'
-                    ]
-                ], 403);
-            }
 
             // Buscar o item pelo ID
             $item = Item::find($id);
@@ -249,36 +224,37 @@ class ItemController extends Controller
             ], 500);
         }
     }
+
     public function update(Request $request, $id)
     {
         try {
-            \Log::info('Iniciando a atualização de um item.', ['item_id' => $id]);
+            Log::info('Iniciando a atualização de um item.', ['item_id' => $id]);
 
             // Verificar se o usuário está autenticado
             if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso.', ['item_id' => $id]);
+                Log::warning('Usuário não autenticado tentou acessar o recurso.', ['item_id' => $id]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             // Obter o usuário autenticado
             $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             // Verificar se o usuário possui permissão para atualizar itens
             if (!$user->hasPermission('item_update')) {
-                \Log::warning('Usuário sem permissão tentou atualizar item.', ['user_id' => $user->id, 'item_id' => $id]);
+                Log::warning('Usuário sem permissão tentou atualizar item.', ['user_id' => $user->id, 'item_id' => $id]);
                 return response()->json(['error' => 'Você não tem permissão para atualizar itens.'], 403);
             }
 
             // Buscar o item pelo ID
             $item = Item::find($id);
             if (!$item) {
-                \Log::warning('Item não encontrado.', ['item_id' => $id]);
+                Log::warning('Item não encontrado.', ['item_id' => $id]);
                 return response()->json(['error' => 'Item não encontrado.'], 404);
             }
 
             // Validar os dados da requisição
-            \Log::info('Validando dados da requisição.');
+            Log::info('Validando dados da requisição.');
             $validatedData = $request->validate([
                 'name' => 'nullable|string|max:255',
                 'type' => 'nullable|string|max:100',
@@ -293,7 +269,7 @@ class ItemController extends Controller
                 'app_id' => 'nullable|exists:applications,id',
             ], $this->getValidationMessages());
 
-            \Log::info('Dados validados com sucesso:', $validatedData);
+            Log::info('Dados validados com sucesso:', $validatedData);
 
             // Atualizar os dados do item apenas com os campos presentes na requisição
             $item->update(array_filter([
@@ -315,11 +291,11 @@ class ItemController extends Controller
                 'notes' => $request->input('notes', $item->notes),
             ]));
 
-            \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
+            Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
 
-            // Processar e salvar a logo se fornecida
+            // Processar e salvar a imagem se fornecida
             if ($request->hasFile('image')) {
-                Log::info('Imagem do item  fornecida, processando...');
+                Log::info('Imagem do item fornecida, processando...');
 
                 // Definir o caminho do diretório público para imagens
                 $destinationPath = public_path('images');
@@ -335,20 +311,20 @@ class ItemController extends Controller
                 $image->fit(150, 150);
                 $image->save();
 
-                // Atualizar o caminho da logo no banco
+                // Atualizar o caminho da imagem no banco
                 $item->image = 'images/' . $imageName;
                 $item->save();
             }
             // Retornar sucesso
-            \Log::info('Item atualizado com sucesso.', ['item_id' => $item->id]);
+            Log::info('Item atualizado com sucesso.', ['item_id' => $item->id]);
             return response()->json(['message' => 'Item atualizado com sucesso.', 'item' => $item], 200);
 
         } catch (ValidationException $e) {
-            \Log::warning('Erros de validação ao atualizar item.', ['errors' => $e->errors()]);
+            Log::warning('Erros de validação ao atualizar item.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao atualizar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao atualizar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o item.'], 500);
         }
     }
@@ -356,79 +332,79 @@ class ItemController extends Controller
     public function destroy($id)
     {
         try {
-            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
+            Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
             // Verificar se o usuário está autenticado
             if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
+                Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             // Obter o usuário autenticado
             $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
             // Buscar o item no banco de dados
             $item = Item::find($id);
 
             if (!$item) {
-                \Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
+                Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
                 return response()->json(['error' => 'Item não encontrado.'], 404);
             }
 
             // Verificar se o usuário tem permissão para excluir o item
             if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-                \Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
+                Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
                 return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
             }
 
             // Deletar a imagem do item, se existir
             if ($item->image) {
-                \Log::info('Deletando a imagem do item.');
+                Log::info('Deletando a imagem do item.');
                 $imagePath = storage_path('app/public/items/' . $item->image);
                 if (File::exists($imagePath)) {
                     File::delete($imagePath);
-                    \Log::info('Imagem deletada com sucesso.', ['image_path' => $imagePath]);
+                    Log::info('Imagem deletada com sucesso.', ['image_path' => $imagePath]);
                 }
             }
 
             // Deletar o item do banco de dados
             $item->delete();
-            \Log::info('Item deletado com sucesso.', ['item_id' => $id]);
+            Log::info('Item deletado com sucesso.', ['item_id' => $id]);
 
             // Retornar sucesso
             return response()->json(['message' => 'Item deletado com sucesso.'], 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
         }
     }
+
     public function listByApp(Request $request)
     {
         try {
-            \Log::info('Iniciando a busca de itens por aplicativo.');
+            Log::info('Iniciando a busca de itens por aplicativo.');
 
             // Validação dos parâmetros
             $validatedData = $request->validate([
-                'app_id' => 'required|exists:applications,id', // Verifica se o app_id existe na tabela applications
+                'app_id' => 'required|exists:applications,id',
             ], $this->getValidationMessages());
 
-            \Log::info('Parâmetros validados com sucesso:', $validatedData);
+            Log::info('Parâmetros validados com sucesso:', $validatedData);
 
             // Buscar itens com base no app_id fornecido
             $items = Item::where('app_id', $validatedData['app_id'])->get();
 
-            \Log::info('Itens encontrados para o aplicativo.', ['total' => $items->count()]);
+            Log::info('Itens encontrados para o aplicativo.', ['total' => $items->count()]);
 
-            // Retornar a lista de itens
             return response()->json($items, 200);
 
         } catch (ValidationException $e) {
-            \Log::warning('Erro de validação na listagem de itens por aplicativo.', ['errors' => $e->errors()]);
+            Log::warning('Erro de validação na listagem de itens por aplicativo.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            \Log::error('Erro inesperado ao buscar itens por aplicativo.', ['message' => $e->getMessage()]);
+            Log::error('Erro inesperado ao buscar itens por aplicativo.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
     }
@@ -436,25 +412,25 @@ class ItemController extends Controller
     public function listAll(Request $request)
     {
         try {
-            \Log::info('Iniciando a busca de todos os itens da API.');
+            Log::info('Iniciando a busca de todos os itens da API.');
 
             // Buscar todos os itens
             $items = Item::all();
 
-            \Log::info('Itens encontrados:', ['total' => $items->count()]);
+            Log::info('Itens encontrados:', ['total' => $items->count()]);
 
-            // Retornar a lista de itens
             return response()->json($items, 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro inesperado ao buscar itens.', ['message' => $e->getMessage()]);
+            Log::error('Erro inesperado ao buscar itens.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
     }
+
     public function listServicesByEntity(Request $request)
     {
         try {
-            \Log::info('Iniciando a busca de serviços por entidade.');
+            Log::info('Iniciando a busca de serviços por entidade.');
 
             // Validação dos parâmetros
             $validatedData = $request->validate([
@@ -463,36 +439,31 @@ class ItemController extends Controller
                 'entity_id' => 'required|integer',
             ], $this->getValidationMessages());
 
-            \Log::info('Parâmetros validados com sucesso:', $validatedData);
+            Log::info('Parâmetros validados com sucesso:', $validatedData);
 
             // Buscar itens com base na entidade fornecida
             $items = Item::where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->where('app_id', $validatedData['app_id'])
-                ->where('type', 'service')  // Filtro adicional para 'service'
+                ->where('type', 'service')
                 ->get();
 
-            // Verificar se foram encontrados itens
             if ($items->isEmpty()) {
-                \Log::info('Nenhum item encontrado para a entidade fornecida neste aplicativo.');
+                Log::info('Nenhum item encontrado para a entidade fornecida neste aplicativo.');
                 return response()->json(['message' => 'Nenhum serviço encontrado para a entidade fornecida.'], 404);
             }
 
-            \Log::info('Serviços encontrados:', ['items' => $items]);
+            Log::info('Serviços encontrados:', ['items' => $items]);
 
             return response()->json(['services' => $items], 200);
 
         } catch (ValidationException $e) {
-            \Log::warning('Erros de validação ao buscar serviços por entidade.', ['errors' => $e->errors()]);
+            Log::warning('Erros de validação ao buscar serviços por entidade.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao buscar serviços por entidade: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao buscar serviços por entidade: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os serviços.'], 500);
         }
     }
-
-
-
-
 }
