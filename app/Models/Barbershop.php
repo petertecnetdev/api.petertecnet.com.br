@@ -36,7 +36,7 @@ class Barbershop extends Model
         'background_image',
         'terms_of_service',
         'social_media_links',
-        'barbers' // Este campo deve armazenar os IDs dos barbeiros
+        'barbers' 
     ];
 
     protected $casts = [
