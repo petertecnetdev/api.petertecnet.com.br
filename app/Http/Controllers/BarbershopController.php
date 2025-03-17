@@ -293,26 +293,26 @@ class BarbershopController extends Controller
         try {
             // Tenta obter o usuário autenticado, mas não impede o acesso se não estiver autenticado
             $user = Auth::user();
-
+    
             // Buscar a barbearia pelo slug
             $barbershop = Barbershop::where('slug', $slug)->first();
             if (!$barbershop) {
                 return response()->json(['error' => 'Barbearia não encontrada.'], 404);
             }
-
+    
             // Obter os barbeiros associados à barbearia pela relação many-to-many
             $barbers = $barbershop->barbers()->with('user')->get();
             $barbersDetails = $barbers->map(function ($barber) {
                 return [
-                    'id' => $barber->id,
-                    'user_id' => $barber->user_id,
+                    'id'         => $barber->id,
+                    'user_id'    => $barber->user_id,
                     'first_name' => $barber->user->first_name,
-                    'email' => $barber->user->email,
-                    'avatar' => $barber->user->avatar,
-                    'user_name' => $barber->user->user_name,
+                    'email'      => $barber->user->email,
+                    'avatar'     => $barber->user->avatar,
+                    'user_name'  => $barber->user->user_name,
                 ];
             });
-
+    
             // Buscar até 3 outras barbearias para sugestões
             $otherBarbershops = Barbershop::where('slug', '!=', $slug)
                 ->inRandomOrder()
@@ -320,12 +320,12 @@ class BarbershopController extends Controller
                 ->get();
             $otherBarbershopDetails = $otherBarbershops->map(function ($otherBarbershop) {
                 return [
-                    'name' => $otherBarbershop->name,
-                    'slug' => $otherBarbershop->slug,
-                    'logo' => $otherBarbershop->logo,
+                    'name'  => $otherBarbershop->name,
+                    'slug'  => $otherBarbershop->slug,
+                    'logo'  => $otherBarbershop->logo,
                 ];
             });
-
+    
             // Se o usuário estiver autenticado, registrar a interação
             if ($user) {
                 $interaction = new Interaction();
@@ -336,6 +336,7 @@ class BarbershopController extends Controller
                 $interaction->entity_type = 'barbershop';
                 $interaction->save();
             }
+<<<<<<< HEAD
 
 <<<<<<< HEAD
             // Buscar os itens relacionados à barbearia e separar em serviços e produtos
@@ -355,13 +356,29 @@ class BarbershopController extends Controller
                 'owner' => $barbershop->user,
                 'barbers' => $barbersDetails,
                 'otherBarbershops' => $otherBarbershopDetails
+=======
+    
+            // Buscar os itens relacionados à barbearia e separar em serviços e produtos
+            $services = $barbershop->items()->where('type', 'service')->get();
+            $products = $barbershop->items()->where('type', 'product')->get();
+    
+            // Retornar as informações da barbearia, barbeiros, itens e outras barbearias
+            return response()->json([
+                'message'         => 'Barbearia encontrada com sucesso.',
+                'barbershop'      => $barbershop,
+                'services'        => $services,
+                'products'        => $products,
+                'owner'           => $barbershop->user,
+                'barbers'         => $barbersDetails,
+                'otherBarbershops'=> $otherBarbershopDetails
+>>>>>>> cb0135b (solving conflit develop and staging on local)
             ], 200);
         } catch (\Exception $e) {
             Log::error('Erro ao buscar a barbearia: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao buscar a barbearia.'], 500);
         }
     }
-
+    
 
     public function update(Request $request, $id)
     {

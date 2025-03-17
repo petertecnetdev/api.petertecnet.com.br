@@ -35,6 +35,7 @@ class Barbershop extends Model
         'background_image',
         'terms_of_service',
         'social_media_links',
+<<<<<<< HEAD
         'barbers',
         'schema_markup',
         'language',
@@ -51,6 +52,9 @@ class Barbershop extends Model
         'twitter_title',
         'twitter_description',
         'twitter_image'
+=======
+        'barbers' 
+>>>>>>> cb0135b (solving conflit develop and staging on local)
     ];
 
     protected $casts = [
