@@ -13,32 +13,33 @@ class ServiceRecordController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'app_id.required' => 'O ID do aplicativo Ã© obrigatÃ³rio.',
-            'app_id.exists' => 'O ID do aplicativo deve existir na tabela de aplicaÃ§Ãµes.',
-            'entity_name.required' => 'O nome da entidade Ã© obrigatÃ³rio.',
-            'entity_name.string' => 'O nome da entidade deve ser uma string vÃ¡lida.',
-            'entity_id.required' => 'O ID da entidade Ã© obrigatÃ³rio.',
-            'entity_id.integer' => 'O ID da entidade deve ser um nÃºmero inteiro.',
-            'service_ids.required' => 'A lista de serviÃ§os Ã© obrigatÃ³ria.',
-            'service_ids.array' => 'Os serviÃ§os devem ser enviados como uma lista.',
-            'service_ids.min' => 'A lista de serviÃ§os deve conter pelo menos um serviÃ§o.',
-            'service_ids.*.integer' => 'Cada ID de serviÃ§o deve ser um nÃºmero inteiro vÃ¡lido.',
-            'service_ids.*.exists' => 'Um ou mais serviÃ§os selecionados nÃ£o existem na tabela de itens.',
-            'provider_id.required' => 'O prestador de serviÃ§o Ã© obrigatÃ³rio.',
-            'provider_id.integer' => 'O ID do prestador de serviÃ§o deve ser um nÃºmero inteiro.',
-            'client_id.required' => 'O cliente Ã© obrigatÃ³rio.',
-            'client_id.integer' => 'O ID do cliente deve ser um nÃºmero inteiro.',
-            'discount.numeric' => 'O valor do desconto deve ser um nÃºmero.',
-            'discount.min' => 'O desconto nÃ£o pode ser negativo.',
-            'payment_method.required' => 'O mÃ©todo de pagamento Ã© obrigatÃ³rio.',
-            'payment_method.string' => 'O mÃ©todo de pagamento deve ser uma string vÃ¡lida.',
-            'payment_method.in' => 'O mÃ©todo de pagamento selecionado nÃ£o Ã© vÃ¡lido.',
-            'total_price.required' => 'O valor total do atendimento Ã© obrigatÃ³rio.',
-            'total_price.numeric' => 'O valor total deve ser um nÃºmero.',
-            'total_price.min' => 'O valor total deve ser no mÃ­nimo 0.',
-            'status.required' => 'O status do atendimento Ã© obrigatÃ³rio.',
-            'status.string' => 'O status deve ser uma string vÃ¡lida.',
-            'notes.string' => 'As observaÃ§Ãµes devem ser uma string vÃ¡lida.',
+            'app_id.required' => 'O ID do aplicativo é obrigatório.',
+            'app_id.exists' => 'O ID do aplicativo deve existir na tabela de aplicações.',
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_name.string' => 'O nome da entidade deve ser uma string válida.',
+            'entity_id.required' => 'O ID da entidade é obrigatório.',
+            'entity_id.integer' => 'O ID da entidade deve ser um número inteiro.',
+            'service_ids.required' => 'A lista de serviços é obrigatória.',
+            'service_ids.array' => 'Os serviços devem ser enviados como uma lista.',
+            'service_ids.min' => 'A lista de serviços deve conter pelo menos um serviço.',
+            'service_ids.*.integer' => 'Cada ID de serviço deve ser um número inteiro válido.',
+            'service_ids.*.exists' => 'Um ou mais serviços selecionados não existem na tabela de itens.',
+            'provider_id.required' => 'O prestador de serviço é obrigatório.',
+            'provider_id.integer' => 'O ID do prestador de serviço deve ser um número inteiro.',
+            'client_id.required' => 'O cliente é obrigatório.',
+            'client_id.integer' => 'O ID do cliente deve ser um número inteiro.',
+            'discount.numeric' => 'O valor do desconto deve ser um número.',
+            'discount.min' => 'O desconto não pode ser negativo.',
+            'payment_method.required' => 'O método de pagamento é obrigatório.',
+            'payment_method.string' => 'O método de pagamento deve ser uma string válida.',
+            'payment_method.in' => 'O método de pagamento selecionado não é válido.',
+            'total_price.required' => 'O valor total do atendimento é obrigatório.',
+            'total_price.numeric' => 'O valor total deve ser um número.',
+            'total_price.min' => 'O valor total deve ser no mínimo 0.',
+            'status.required' => 'O status do atendimento é obrigatório.',
+            'status.string' => 'O status deve ser uma string válida.',
+            'notes.string' => 'As observações devem ser uma string válida.',
+
         ];
     }
 
@@ -67,7 +68,7 @@ class ServiceRecordController extends Controller
                 'provider_id' => 'required|integer',
                 'client_id' => 'required|integer',
                 'discount' => 'nullable|numeric|min:0',
-                'payment_method' => 'required|string|max:50|in:Pix,DÃ©bito,CrÃ©dito,Dinheiro,Fiado,Cortesia,TransferÃªncia bancÃ¡ria,Vale-refeiÃ§Ã£o,Cheque,PayPal',
+                'payment_method' => 'required|string|max:50|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
                 'total_price' => 'required|numeric|min:0',
                 'status' => 'required|in:pending,approved,not-approved',
                 'notes' => 'nullable|string',
@@ -119,22 +120,22 @@ class ServiceRecordController extends Controller
     {
         try {
             Log::info('Iniciando listagem dos atendimentos do usuário autenticado.');
-    
+
             if (!Auth::check()) {
                 Log::warning('Usuário não autenticado tentou acessar listMy.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-    
+
             $user = Auth::user();
             $serviceRecords = ServiceRecord::where('client_id', $user->id)
                 ->orderBy('created_at', 'asc')
                 ->get();
-    
+
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para o usuário.', ['user_id' => $user->id]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-    
+
             // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
@@ -152,55 +153,55 @@ class ServiceRecordController extends Controller
                     $record->services = collect([]);
                 }
             });
-    
+
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Exception $e) {
             Log::error('Erro ao listar atendimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
-    
+
 
     // Lista os atendimentos de um cliente especÃ­fico
     public function listByClient(Request $request)
     {
         try {
             Log::info('Iniciando listagem de atendimentos por cliente e entidade.');
-    
+
             if (!Auth::check()) {
                 Log::warning('Usuário não autenticado tentou acessar listByClient.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-    
+
             $user = Auth::user();
             if (!$user->hasPermission('service_record_list')) {
                 return response()->json(['error' => 'Você não tem permissão para listar atendimentos.'], 403);
             }
-    
+
             $validatedData = $request->validate([
-                'client_id'   => 'required|integer',
+                'client_id' => 'required|integer',
                 'entity_name' => 'required|string',
-                'entity_id'   => 'required|integer',
-                'app_id'      => 'required|integer',
+                'entity_id' => 'required|integer',
+                'app_id' => 'required|integer',
             ], $this->getValidationMessages());
-    
+
             $serviceRecords = ServiceRecord::where('client_id', $validatedData['client_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->where('app_id', $validatedData['app_id'])
                 ->orderBy('created_at', 'asc')
                 ->get();
-    
+
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para o cliente e entidade especificados.', [
-                    'client_id'   => $validatedData['client_id'],
+                    'client_id' => $validatedData['client_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id'   => $validatedData['entity_id'],
-                    'app_id'      => $validatedData['app_id'],
+                    'entity_id' => $validatedData['entity_id'],
+                    'app_id' => $validatedData['app_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-    
+
             // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
@@ -219,7 +220,7 @@ class ServiceRecordController extends Controller
                     $record->services = collect([]);
                 }
             });
-    
+
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Erro de validação ao listar atendimentos: ', ['errors' => $e->errors()]);
@@ -229,36 +230,36 @@ class ServiceRecordController extends Controller
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
-    
+
 
     // Lista todos os atendimentos de uma entidade
     public function listByEntity(Request $request)
     {
         try {
             Log::info('Iniciando listagem de atendimentos por entidade.');
-    
+
             if (!Auth::check()) {
                 Log::warning('Usuário não autenticado tentou acessar listByEntity.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-    
+
             $user = Auth::user();
             if (!$user->hasPermission('service_record_list')) {
                 return response()->json(['error' => 'Você não tem permissão para listar atendimentos.'], 403);
             }
-    
+
             $validatedData = $request->validate([
                 'entity_id' => 'required|integer',
                 'entity_name' => 'required|string|max:255',
             ], $this->getValidationMessages());
-    
+
             // Eager load as relações de usuário: provider, registeredBy e client
             $serviceRecords = ServiceRecord::where('entity_id', $validatedData['entity_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->orderBy('created_at', 'asc')
                 ->with(['provider', 'registeredBy', 'client'])
                 ->get();
-    
+
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para a entidade.', [
                     'entity_id' => $validatedData['entity_id'],
@@ -266,7 +267,7 @@ class ServiceRecordController extends Controller
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-    
+
             // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
@@ -286,7 +287,7 @@ class ServiceRecordController extends Controller
                     $record->services = collect([]);
                 }
             });
-    
+
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::error('Erro de validação ao listar atendimentos por entidade: ', ['errors' => $e->errors()]);
@@ -296,7 +297,7 @@ class ServiceRecordController extends Controller
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
-    
+
 
 
     // Lista os atendimentos do provedor
