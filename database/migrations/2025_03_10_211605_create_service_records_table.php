@@ -31,7 +31,7 @@ class CreateServiceRecordsTable extends Migration
                 'PayPal'
             ]); // Tipo de pagamento
             $table->decimal('total_price', 10, 2); // Valor total do atendimento
-            $table->enum('status', ['pending', 'completed', 'cancelled'])->default('pending'); // Status do serviço prestado
+            $table->enum('status', ['pending', 'approved', 'not-approved'])->default('pending'); 
             $table->text('notes')->nullable(); // Notas adicionais
             $table->timestamps(); // Created at, Updated at
         });
