@@ -118,47 +118,48 @@ class ServiceRecordController extends Controller
     public function listMy(Request $request)
     {
         try {
-            Log::info('Iniciando listagem dos atendimentos do usuÃ¡rio autenticado.');
-
+            Log::info('Iniciando listagem dos atendimentos do usuário autenticado.');
+    
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou acessar listMy.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuário não autenticado tentou acessar listMy.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-
+    
             $user = Auth::user();
             $serviceRecords = ServiceRecord::where('client_id', $user->id)
                 ->orderBy('created_at', 'asc')
                 ->get();
-
+    
             if ($serviceRecords->isEmpty()) {
-                Log::warning('Nenhum atendimento encontrado para o usuÃ¡rio.', ['user_id' => $user->id]);
+                Log::warning('Nenhum atendimento encontrado para o usuário.', ['user_id' => $user->id]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-
+    
+            // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
                     $serviceIds = is_string($record->service_ids)
                         ? json_decode($record->service_ids, true)
                         : $record->service_ids;
                     if (is_array($serviceIds)) {
-                        $record->service_names = Item::whereIn('id', $serviceIds)
-                            ->where('category', 'ServiÃ§os')
-                            ->pluck('name')
-                            ->toArray();
+                        $record->services = Item::whereIn('id', $serviceIds)
+                            ->where('type', 'service')
+                            ->get();
                     } else {
-                        $record->service_names = [];
+                        $record->services = collect([]);
                     }
                 } else {
-                    $record->service_names = [];
+                    $record->services = collect([]);
                 }
             });
-
+    
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Exception $e) {
-            Log::error('Erro ao listar atendimentos do usuÃ¡rio: ' . $e->getMessage());
+            Log::error('Erro ao listar atendimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
+    
 
     // Lista os atendimentos de um cliente especÃ­fico
     public function listByClient(Request $request)
