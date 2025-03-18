@@ -38,7 +38,7 @@ class ServiceRecord extends Model
         // Verifica se service_ids é um array antes de buscar os itens relacionados
         if (is_array($this->service_ids)) {
             return Item::whereIn('id', $this->service_ids)
-                       ->where('category', 'serviço') // Filtra apenas os itens de serviço
+                       ->where('category', 'service') // Filtra apenas os itens de serviço
                        ->get(); // Retorna os itens encontrados
         }
 

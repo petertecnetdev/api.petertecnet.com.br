@@ -59,18 +59,18 @@ class ServiceRecordController extends Controller
             }
 
             $validatedData = $request->validate([
-                'app_id'         => 'required|exists:applications,id',
-                'entity_name'    => 'required|string|max:255',
-                'entity_id'      => 'required|integer',
-                'service_ids'    => 'required|array|min:1',
-                'service_ids.*'  => 'integer|exists:items,id',
-                'provider_id'    => 'required|integer',
-                'client_id'      => 'required|integer',
-                'discount'       => 'nullable|numeric|min:0',
+                'app_id' => 'required|exists:applications,id',
+                'entity_name' => 'required|string|max:255',
+                'entity_id' => 'required|integer',
+                'service_ids' => 'required|array|min:1',
+                'service_ids.*' => 'integer|exists:items,id',
+                'provider_id' => 'required|integer',
+                'client_id' => 'required|integer',
+                'discount' => 'nullable|numeric|min:0',
                 'payment_method' => 'required|string|max:50|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'total_price'    => 'required|numeric|min:0',
-                'status'         => 'required|string|max:50',
-                'notes'          => 'nullable|string',
+                'total_price' => 'required|numeric|min:0',
+                'status' => 'required|string|max:50',
+                'notes' => 'nullable|string',
             ], $this->getValidationMessages());
 
             Log::info('Dados validados para registro de atendimento.', $validatedData);
@@ -88,18 +88,18 @@ class ServiceRecordController extends Controller
             }
 
             $serviceRecord = ServiceRecord::create([
-                'app_id'         => $validatedData['app_id'],
-                'entity_name'    => $validatedData['entity_name'],
-                'entity_id'      => $validatedData['entity_id'],
-                'service_ids'    => $validatedData['service_ids'],
-                'provider_id'    => $validatedData['provider_id'],
-                'client_id'      => $validatedData['client_id'],
-                'registered_by'  => $user->id,
-                'discount'       => $validatedData['discount'] ?? 0,
+                'app_id' => $validatedData['app_id'],
+                'entity_name' => $validatedData['entity_name'],
+                'entity_id' => $validatedData['entity_id'],
+                'service_ids' => $validatedData['service_ids'],
+                'provider_id' => $validatedData['provider_id'],
+                'client_id' => $validatedData['client_id'],
+                'registered_by' => $user->id,
+                'discount' => $validatedData['discount'] ?? 0,
                 'payment_method' => $validatedData['payment_method'],
-                'total_price'    => $validatedData['total_price'],
-                'status'         => $validatedData['status'],
-                'notes'          => $validatedData['notes'] ?? null,
+                'total_price' => $validatedData['total_price'],
+                'status' => $validatedData['status'],
+                'notes' => $validatedData['notes'] ?? null,
             ]);
 
             Log::info('Atendimento registrado com sucesso.', ['service_record_id' => $serviceRecord->id]);
@@ -177,10 +177,10 @@ class ServiceRecordController extends Controller
             }
 
             $validatedData = $request->validate([
-                'client_id'   => 'required|integer',
+                'client_id' => 'required|integer',
                 'entity_name' => 'required|string',
-                'entity_id'   => 'required|integer',
-                'app_id'      => 'required|integer',
+                'entity_id' => 'required|integer',
+                'app_id' => 'required|integer',
             ], $this->getValidationMessages());
 
             $serviceRecords = ServiceRecord::where('client_id', $validatedData['client_id'])
@@ -192,10 +192,10 @@ class ServiceRecordController extends Controller
 
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para o cliente e entidade especificados.', [
-                    'client_id'   => $validatedData['client_id'],
+                    'client_id' => $validatedData['client_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id'   => $validatedData['entity_id'],
-                    'app_id'      => $validatedData['app_id'],
+                    'entity_id' => $validatedData['entity_id'],
+                    'app_id' => $validatedData['app_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
@@ -245,38 +245,42 @@ class ServiceRecordController extends Controller
             }
 
             $validatedData = $request->validate([
-                'entity_id'   => 'required|integer',
+                'entity_id' => 'required|integer',
                 'entity_name' => 'required|string|max:255',
             ], $this->getValidationMessages());
 
+            // Eager load as relações de usuário: provider, registeredBy e client
             $serviceRecords = ServiceRecord::where('entity_id', $validatedData['entity_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->orderBy('created_at', 'asc')
+                ->with(['provider', 'registeredBy', 'client'])
                 ->get();
 
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para a entidade.', [
-                    'entity_id'   => $validatedData['entity_id'],
+                    'entity_id' => $validatedData['entity_id'],
                     'entity_name' => $validatedData['entity_name'],
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
 
+            // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
                     $serviceIds = is_string($record->service_ids)
                         ? json_decode($record->service_ids, true)
                         : $record->service_ids;
                     if (is_array($serviceIds)) {
-                        $record->service_names = Item::whereIn('id', $serviceIds)
+                        // Busca os itens detalhados (id e nome) que são serviços (note que o filtro 'category' deve estar de acordo com seu cadastro)
+                        $record->services = Item::whereIn('id', $serviceIds)
                             ->where('category', 'Serviços')
-                            ->pluck('name')
-                            ->toArray();
+                            ->select('id', 'name')
+                            ->get();
                     } else {
-                        $record->service_names = [];
+                        $record->services = collect([]);
                     }
                 } else {
-                    $record->service_names = [];
+                    $record->services = collect([]);
                 }
             });
 
@@ -289,6 +293,7 @@ class ServiceRecordController extends Controller
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
+
 
     // Lista os atendimentos do provedor
     public function listByProvider(Request $request)
@@ -308,9 +313,9 @@ class ServiceRecordController extends Controller
 
             $validatedData = $request->validate([
                 'provider_id' => 'required|integer|exists:users,id',
-                'app_id'      => 'required|integer|exists:applications,id',
+                'app_id' => 'required|integer|exists:applications,id',
                 'entity_name' => 'required|string|max:255',
-                'entity_id'   => 'required|integer',
+                'entity_id' => 'required|integer',
             ], $this->getValidationMessages());
 
             $serviceRecords = ServiceRecord::where('provider_id', $validatedData['provider_id'])
@@ -323,9 +328,9 @@ class ServiceRecordController extends Controller
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para o provedor especificado.', [
                     'provider_id' => $validatedData['provider_id'],
-                    'app_id'      => $validatedData['app_id'],
+                    'app_id' => $validatedData['app_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id'   => $validatedData['entity_id'],
+                    'entity_id' => $validatedData['entity_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
