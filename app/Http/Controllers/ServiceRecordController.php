@@ -275,7 +275,6 @@ class ServiceRecordController extends Controller
                         // Aqui usamos o campo 'type' com valor 'service' conforme a model Item
                         $record->services = Item::whereIn('id', $serviceIds)
                             ->where('type', 'service')
-                            ->select('id', 'name')
                             ->get();
                     } else {
                         $record->services = collect([]);
