@@ -7,31 +7,17 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use App\Models\{User, Interaction};
 use App\Mail\VerificationCodeMail;
-use App\Mail\{ResendVerificationCodeMail, ResetPasswordMail};
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use App\Mail\{ResendVerificationCodeMail, ResetPasswordMail};
 use Validator;
 use Exception;
-use Illuminate\Foundation\Auth\ThrottlesLogins;
-use Illuminate\Cache\RateLimiter;
 
 class AuthController extends Controller
 {
-    use ThrottlesLogins;
 
-    /**
-     * Retorna a chave para o throttle (limitação de tentativas).
-     */
-    public function username()
-    {
-        return 'email';
-    }
-
-    /**
-     * Mensagens de validação customizadas.
-     */
     protected function getValidationMessages()
     {
         return [
@@ -57,6 +43,8 @@ class AuthController extends Controller
         ];
     }
 
+
+
     /**
      * Create a new AuthController instance.
      *
@@ -78,7 +66,7 @@ class AuthController extends Controller
             Log::info('Tentativa de login', ['email' => $request->email]);
 
             $validator = Validator::make($request->all(), [
-                'email'    => 'required|email',
+                'email' => 'required|email',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
@@ -87,17 +75,10 @@ class AuthController extends Controller
                 throw new ValidationException($validator);
             }
 
-            // Verifica se há muitas tentativas de login
-            if ($this->hasTooManyLoginAttempts($request)) {
-                $this->fireLockoutEvent($request);
-                return $this->sendLockoutResponse($request);
-            }
-
             if (!$token = auth()->attempt($validator->validated())) {
                 Log::warning('Falha na autenticação', ['email' => $request->email]);
-                $this->incrementLoginAttempts($request);
 
-                // Verifica se o e-mail está cadastrado
+                // Verificar se o e-mail está cadastrado
                 $user = User::where('email', $request->email)->first();
                 if (!$user) {
                     Log::error('Tentativa de login com e-mail não cadastrado', ['email' => $request->email]);
@@ -107,9 +88,6 @@ class AuthController extends Controller
                 Log::error('Senha incorreta para o e-mail', ['email' => $request->email]);
                 return response()->json(['error' => 'Senha incorreta.'], 401);
             }
-
-            // Login bem-sucedido: limpa as tentativas
-            $this->clearLoginAttempts($request);
 
             Log::info('Login realizado com sucesso', ['user_id' => auth()->user()->id]);
 
@@ -122,66 +100,56 @@ class AuthController extends Controller
 
             return response()->json([
                 'message' => 'Login realizado com sucesso!',
-                'token'   => $this->createNewToken($token)->getData()->access_token,
-                'user'    => auth()->user(),
+                'token' => $this->createNewToken($token),
+                'user' => auth()->user(),
             ], 200);
 
         } catch (ValidationException $exception) {
             Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
             return response()->json($exception->errors(), 422);
         } catch (\Exception $exception) {
-            Log::error('Erro inesperado durante o login', [
-                'message' => $exception->getMessage(),
-                'trace'   => $exception->getTraceAsString()
-            ]);
+            Log::error('Erro inesperado durante o login', ['message' => $exception->getMessage(), 'trace' => $exception->getTraceAsString()]);
             return response()->json(['error' => 'Erro durante o login'], 500);
         }
     }
-
-    /**
-     * Retorna a resposta customizada em caso de muitas tentativas.
-     */
-    protected function sendLockoutResponse(Request $request)
-    {
-        $seconds = app(RateLimiter::class)->availableIn($this->throttleKey($request));
-        return response()->json([
-            'error' => "Muitas solicitações. Aguarde um momento e tente novamente. Tempo restante: {$seconds} segundos."
-        ], 429);
-    }
-
     /**
      * Register a User.
      *
      * @return \Illuminate\Http\JsonResponse
      */
+
     public function register(Request $request)
     {
         try {
+            // Validação dos dados de entrada
             $validator = Validator::make($request->all(), [
                 'first_name' => ['required', 'regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
-                'email'      => 'required|email|unique:users',
-                'password'   => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                'email' => 'required|email|unique:users',
+                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
             if ($validator->fails()) {
                 throw new ValidationException($validator);
             }
-
             $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
+
+            // Check if the generated username is unique, if not, generate a new one
             while (User::where('user_name', $username)->exists()) {
                 $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
             }
-
+            // Geração do código de verificação
             $verificationCode = Str::random(4);
 
+            // Criação do usuário no banco de dados
             $user = User::create([
-                'first_name'        => $request->input('first_name'),
-                'email'             => $request->input('email'),
-                'password'          => bcrypt($request->input('password')),
-                'user_name'         => $username,
+                'first_name' => $request->input('first_name'),
+                'email' => $request->input('email'),
+                'password' => bcrypt($request->input('password')),
+                'user_name' => $username,
                 'verification_code' => $verificationCode,
             ]);
 
+            // Envio do e-mail de verificação
             Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
 
             $interaction = new Interaction();
@@ -193,10 +161,12 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Registro bem-sucedido'], 201);
         } catch (ValidationException $e) {
+            // Captura de exceções de validação
             Log::error('ValidationException: ' . $e->getMessage());
             $errors = $e->errors();
             return response()->json(['message' => 'Erro de validação', 'errors' => $errors], 422);
         } catch (\Exception $e) {
+            // Captura de outras exceções
             Log::error('Exception: ' . $e->getMessage());
             return response()->json(['message' => 'Erro durante o registro. Por favor, tente novamente.'], 500);
         }
@@ -206,7 +176,7 @@ class AuthController extends Controller
     {
         try {
             $validator = Validator::make($request->all(), [
-                'verification_code' => 'required|string|size:4',
+                'verification_code' => 'required|string|size:4', // Supondo que o código tenha 4 caracteres
             ]);
 
             if ($validator->fails()) {
@@ -215,6 +185,7 @@ class AuthController extends Controller
 
             $user = auth()->user();
 
+            // Verifica se o email já foi verificado
             if ($user->email_verified_at !== null) {
                 return response()->json(['message' => 'O e-mail já foi verificado anteriormente'], 200);
             }
@@ -223,7 +194,7 @@ class AuthController extends Controller
 
             if ($user->verification_code === $verificationCode) {
                 $user->email_verified_at = now();
-                $user->verification_code = null;
+                $user->verification_code = null; // Limpa o código de verificação após a validação
                 $user->save();
 
                 $interaction = new Interaction();
@@ -250,9 +221,10 @@ class AuthController extends Controller
         try {
             $user = auth()->user();
 
+            // Validação dos dados recebidos
             $validator = Validator::make($request->all(), [
-                'current_password'      => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-                'new_password'          => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
+                'current_password' => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                'new_password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
                 'password_confirmation' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
@@ -260,20 +232,22 @@ class AuthController extends Controller
                 throw new ValidationException($validator);
             }
 
+            // Verifica se a senha atual está correta
             if (!Hash::check($request->input('current_password'), $user->password)) {
                 return response()->json(['error' => 'A senha atual está incorreta.'], 401);
             }
 
+            // Atualiza a senha do usuário
             $user->password = bcrypt($request->input('new_password'));
             $user->save();
 
+            // Interação registrada
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'password_change';
             $interaction->entity_id = $user->id;
             $interaction->entity_type = 'user';
             $interaction->save();
-
             return response()->json(['message' => 'Senha alterada com sucesso!'], 200);
         } catch (ValidationException $exception) {
             return response()->json($exception->errors(), 422);
@@ -283,37 +257,43 @@ class AuthController extends Controller
         }
     }
 
+
+
+
     /**
      * Log the user out (Invalidate the token).
      *
      * @return \Illuminate\Http\JsonResponse
      */
+
     public function logout()
     {
         $interaction = new Interaction();
-        $interaction->user_id = Auth::user()->id;
+        $interaction->user_id = Auth()->user()->id;
         $interaction->interaction_type = 'logout';
-        $interaction->entity_id = Auth::user()->id;
+        $interaction->entity_id = Auth()->user()->id;
         $interaction->entity_type = 'user';
         $interaction->save();
 
         if (Auth::check()) {
+
             Auth::logout();
             return response()->json(['message' => 'Logout realizado com sucesso']);
         } else {
             return response()->json(['error' => 'Usuário não autenticado'], 401);
         }
     }
-
     public function sendResetCodeEmail(Request $request)
     {
         try {
+            // Validação do e-mail (não é necessário atribuir o resultado à variável)
             $request->validate([
                 'email' => 'required|email',
             ], $this->getValidationMessages());
 
             Log::info('Validação do e-mail realizada com sucesso', ['email' => $request->email]);
 
+            // Verifica se o e-mail existe no banco de dados
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
@@ -323,17 +303,21 @@ class AuthController extends Controller
 
             Log::info('Usuário encontrado', ['user_id' => $user->id]);
 
+            // Gera um código de redefinição de senha
             $code = Str::random(8);
             Log::info('Código de redefinição de senha gerado', ['code' => $code]);
 
+            // Salva o código de redefinição de senha no usuário
             $user->reset_password_code = $code;
             $user->reset_password_expires_at = now()->addMinutes(10);
             $user->save();
             Log::info('Código de redefinição de senha salvo no usuário', ['user_id' => $user->id]);
 
+            // Envia o e-mail com o código de redefinição de senha
             Mail::to($user->email)->send(new ResetPasswordMail($code, $user));
             Log::info('E-mail de redefinição de senha enviado', ['email' => $user->email]);
 
+            // Registra a interação
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'ResetCode';
@@ -358,12 +342,13 @@ class AuthController extends Controller
     public function resetPassword(Request $request)
     {
         try {
+            // Registra log sem incluir dados sensíveis
             Log::info('Iniciando validação para redefinir senha', ['email' => $request->email]);
 
             $request->validate([
-                'email'              => 'required|email',
-                'reset_password_code'=> 'required|string|size:8',
-                'password'           => [
+                'email' => 'required|email',
+                'reset_password_code' => 'required|string|size:8',
+                'password' => [
                     'required',
                     'string',
                     'min:6',
@@ -373,6 +358,7 @@ class AuthController extends Controller
                 ]
             ], $this->getValidationMessages());
 
+            // Verifica se o e-mail existe no banco de dados
             $user = User::where('email', $request->email)->first();
 
             if (!$user) {
@@ -382,6 +368,7 @@ class AuthController extends Controller
                 ], 404);
             }
 
+            // Verifica se o código de redefinição de senha corresponde e não está expirado
             if ($user->reset_password_code !== $request->reset_password_code || now()->gt($user->reset_password_expires_at)) {
                 return response()->json([
                     'error' => true,
@@ -389,11 +376,13 @@ class AuthController extends Controller
                 ], 400);
             }
 
+            // Atualiza a senha do usuário
             $user->password = Hash::make($request->password);
             $user->reset_password_code = null;
             $user->reset_password_expires_at = null;
             $user->save();
 
+            // Registra a interação do usuário
             $this->logPasswordChangedInteraction($user);
 
             return response()->json([
@@ -427,21 +416,23 @@ class AuthController extends Controller
         $interaction->save();
     }
 
+
     public function checkauth()
     {
-        return Auth::check();
+        if (Auth::check()) {
+            return true;
+        }
+        return false;
     }
 
     public function refresh()
     {
         return $this->createNewToken(auth()->refresh());
     }
-
     public function unauthorized()
     {
         return response()->json(['error' => 'Unauthorized'], 401);
     }
-
     /**
      * Get the authenticated User.
      *
@@ -450,77 +441,90 @@ class AuthController extends Controller
     public function me()
     {
         try {
+
+            // Obtém o usuário autenticado e carrega o perfil associado
             $user = User::with('profile')
                 ->where('user_name', Auth::user()->user_name)
                 ->first();
 
+            // Verifica se o usuário foi encontrado
             if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 404);
+                return response()->json(['error' => 'Usuario não autenticado'], 404);
             }
-
             $interaction = new Interaction();
-            $interaction->user_id = Auth::user()->id;
+            $interaction->user_id = auth()->user()->id;
             $interaction->interaction_type = 'me';
-            $interaction->entity_id = Auth::user()->id;
+            $interaction->entity_id = auth()->user()->id;
             $interaction->entity_type = 'user';
             $interaction->save();
-
+            // Retorna o usuário com sucesso
+            // Retornar os dados do barbeiro com o usuário e suas barbearias
             return response()->json([
                 'message' => 'Usuário encontrado com sucesso.',
-                'user'    => $user,
+                'user' => $user,
             ], 200);
+
         } catch (\Exception $e) {
+            // Tratamento de exceção, retornando uma resposta com o erro
             return response()->json(['error' => 'An error occurred: ' . $e->getMessage()], 500);
         }
     }
+
+
 
     /**
      * Get the token array structure.
      *
      * @param  string $token
+     *
      * @return \Illuminate\Http\JsonResponse
      */
     protected function createNewToken($token)
     {
         return response()->json([
             'access_token' => $token,
-            'token_type'   => 'bearer',
-            'expires_in'   => auth()->factory()->getTTL() * 60,
-            'user'         => auth()->user()
+            'token_type' => 'bearer',
+            'expires_in' => auth()->factory()->getTTL() * 60,
+            'user' => auth()->user()
         ]);
     }
-
     public function resendCodeEmailVerification()
     {
         try {
+
+            // Busca pelo usuário com o e-mail fornecido
             $user = auth()->user();
 
             if (!$user) {
                 return response()->json(['message' => 'Nenhum usuário encontrado com este e-mail.'], 404);
             }
 
+            // Geração de um novo código de verificação
             $newVerificationCode = Str::random(4);
 
+            // Atualização do código de verificação no banco de dados
             $user->verification_code = $newVerificationCode;
             $user->save();
 
+            // Envio do e-mail de verificação com o novo código
             Mail::to($user->email)->send(new ResendVerificationCodeMail($newVerificationCode, $user));
-
             $interaction = new Interaction();
-            $interaction->user_id = Auth::user()->id;
+            $interaction->user_id = Auth()->user()->id;
             $interaction->interaction_type = 'ResetCodeVerification';
-            $interaction->entity_id = Auth::user()->id;
+            $interaction->entity_id = Auth()->user()->id;
             $interaction->entity_type = 'user';
             $interaction->save();
-
             return response()->json(['message' => 'Novo código de verificação enviado com sucesso.'], 200);
         } catch (ValidationException $e) {
+            // Captura de exceções de validação
             Log::error('ValidationException: ' . $e->getMessage());
             $errors = $e->errors();
             return response()->json(['message' => 'Erro de validação', 'errors' => $errors], 422);
         } catch (\Exception $e) {
+            // Captura de outras exceções
             Log::error('Exception: ' . $e->getMessage());
             return response()->json(['message' => 'Erro ao reenviar o código de verificação. Por favor, tente novamente.'], 500);
         }
     }
+
 }
