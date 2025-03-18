@@ -1,6 +1,5 @@
 <?php
 
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,7 +35,22 @@ class Barbershop extends Model
         'background_image',
         'terms_of_service',
         'social_media_links',
-        'barbers' 
+        'barbers',
+        'schema_markup',
+        'language',
+        'hreflang',
+        'meta_title',
+        'meta_description',
+        'meta_keywords',
+        'meta_author',
+        'meta_robots',
+        'canonical_url',
+        'og_title',
+        'og_description',
+        'og_image',
+        'twitter_title',
+        'twitter_description',
+        'twitter_image'
     ];
 
     protected $casts = [
@@ -49,15 +63,15 @@ class Barbershop extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
     public function barbers()
     {
         return $this->belongsToMany(Barber::class, 'barber_barbershop')
-            ->withTimestamps();
-    }  
+                    ->withTimestamps();
+    }
     
     public function items()
     {
         return $this->hasMany(Item::class, 'entity_id')->where('entity_name', 'barbershop');
     }
-
 }
