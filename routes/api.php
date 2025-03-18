@@ -195,4 +195,6 @@ Route::group([
     Route::get('/listbyentity', [ServiceRecordController::class, 'listByEntity'])->name('service_record.listByEntity');
     Route::get('/listbyprovider', [ServiceRecordController::class, 'listByProvider'])->name('service_record.listByProvider');
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
+    Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
+
 });
