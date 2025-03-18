@@ -165,68 +165,70 @@ class ServiceRecordController extends Controller
     {
         try {
             Log::info('Iniciando listagem de atendimentos por cliente e entidade.');
-
+    
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou acessar listByClient.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuário não autenticado tentou acessar listByClient.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-
+    
             $user = Auth::user();
             if (!$user->hasPermission('service_record_list')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para listar atendimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para listar atendimentos.'], 403);
             }
-
+    
             $validatedData = $request->validate([
-                'client_id' => 'required|integer',
+                'client_id'   => 'required|integer',
                 'entity_name' => 'required|string',
-                'entity_id' => 'required|integer',
-                'app_id' => 'required|integer',
+                'entity_id'   => 'required|integer',
+                'app_id'      => 'required|integer',
             ], $this->getValidationMessages());
-
+    
             $serviceRecords = ServiceRecord::where('client_id', $validatedData['client_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->where('entity_id', $validatedData['entity_id'])
                 ->where('app_id', $validatedData['app_id'])
                 ->orderBy('created_at', 'asc')
                 ->get();
-
+    
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para o cliente e entidade especificados.', [
-                    'client_id' => $validatedData['client_id'],
+                    'client_id'   => $validatedData['client_id'],
                     'entity_name' => $validatedData['entity_name'],
-                    'entity_id' => $validatedData['entity_id'],
-                    'app_id' => $validatedData['app_id'],
+                    'entity_id'   => $validatedData['entity_id'],
+                    'app_id'      => $validatedData['app_id'],
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-
+    
+            // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
                     $serviceIds = is_string($record->service_ids)
                         ? json_decode($record->service_ids, true)
                         : $record->service_ids;
                     if (is_array($serviceIds)) {
-                        $record->service_names = Item::whereIn('id', $serviceIds)
-                            ->where('category', 'ServiÃ§os')
-                            ->pluck('name')
-                            ->toArray();
+                        // Busca os itens detalhados (id e nome) que são serviços, filtrando pelo type 'service'
+                        $record->services = Item::whereIn('id', $serviceIds)
+                            ->where('type', 'service')
+                            ->get();
                     } else {
-                        $record->service_names = [];
+                        $record->services = collect([]);
                     }
                 } else {
-                    $record->service_names = [];
+                    $record->services = collect([]);
                 }
             });
-
+    
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Erro de validaÃ§Ã£o ao listar atendimentos: ', ['errors' => $e->errors()]);
+            Log::error('Erro de validação ao listar atendimentos: ', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao listar atendimentos: ' . $e->getMessage());
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
+    
 
     // Lista todos os atendimentos de uma entidade
     public function listByEntity(Request $request)
