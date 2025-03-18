@@ -66,7 +66,11 @@ class AuthController extends Controller
             Log::info('Tentativa de login', ['username' => $request->username]);
 
             $validator = Validator::make($request->all(), [
+<<<<<<< HEAD
                 'username' => 'required|string',
+=======
+                'email'    => 'required|email',
+>>>>>>> c23c857 (solving conflit develop and staging on local)
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
@@ -115,15 +119,27 @@ class AuthController extends Controller
 
             return response()->json([
                 'message' => 'Login realizado com sucesso!',
+<<<<<<< HEAD
                 'token' => $this->createNewToken($token),
                 'user' => auth()->user(),
+=======
+                'token'   => $this->createNewToken($token)->getData()->access_token,
+                'user'    => auth()->user(),
+>>>>>>> c23c857 (solving conflit develop and staging on local)
             ], 200);
 
         } catch (ValidationException $exception) {
             Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
             return response()->json($exception->errors(), 422);
         } catch (\Exception $exception) {
+<<<<<<< HEAD
             Log::error('Erro inesperado durante o login', ['message' => $exception->getMessage(), 'trace' => $exception->getTraceAsString()]);
+=======
+            Log::error('Erro inesperado durante o login', [
+                'message' => $exception->getMessage(),
+                'trace'   => $exception->getTraceAsString()
+            ]);
+>>>>>>> c23c857 (solving conflit develop and staging on local)
             return response()->json(['error' => 'Erro durante o login'], 500);
         }
     }
@@ -139,9 +155,14 @@ class AuthController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'first_name' => ['required', 'regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
+<<<<<<< HEAD
                 'email' => 'required|email|unique:users',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
                 'cpf' => ['nullable', 'regex:/^\d{11}$/', 'unique:users,cpf'],
+=======
+                'email'      => 'required|email|unique:users',
+                'password'   => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+>>>>>>> c23c857 (solving conflit develop and staging on local)
             ], $this->getValidationMessages());
 
             if ($validator->fails()) {
@@ -156,10 +177,10 @@ class AuthController extends Controller
             $verificationCode = Str::random(4);
 
             $user = User::create([
-                'first_name' => $request->input('first_name'),
-                'email' => $request->input('email'),
-                'password' => bcrypt($request->input('password')),
-                'user_name' => $username,
+                'first_name'        => $request->input('first_name'),
+                'email'             => $request->input('email'),
+                'password'          => bcrypt($request->input('password')),
+                'user_name'         => $username,
                 'verification_code' => $verificationCode,
                 'cpf' => $request->input('cpf'),
             ]);
@@ -236,8 +257,8 @@ class AuthController extends Controller
 
             // Validação dos dados recebidos
             $validator = Validator::make($request->all(), [
-                'current_password' => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-                'new_password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
+                'current_password'      => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                'new_password'          => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
                 'password_confirmation' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
@@ -359,9 +380,9 @@ class AuthController extends Controller
             Log::info('Iniciando validação para redefinir senha', ['email' => $request->email]);
 
             $request->validate([
-                'email' => 'required|email',
-                'reset_password_code' => 'required|string|size:8',
-                'password' => [
+                'email'              => 'required|email',
+                'reset_password_code'=> 'required|string|size:8',
+                'password'           => [
                     'required',
                     'string',
                     'min:6',
@@ -474,7 +495,7 @@ class AuthController extends Controller
             // Retornar os dados do barbeiro com o usuário e suas barbearias
             return response()->json([
                 'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
+                'user'    => $user,
             ], 200);
 
         } catch (\Exception $e) {
@@ -496,9 +517,9 @@ class AuthController extends Controller
     {
         return response()->json([
             'access_token' => $token,
-            'token_type' => 'bearer',
-            'expires_in' => auth()->factory()->getTTL() * 60,
-            'user' => auth()->user()
+            'token_type'   => 'bearer',
+            'expires_in'   => auth()->factory()->getTTL() * 60,
+            'user'         => auth()->user()
         ]);
     }
     public function resendCodeEmailVerification()
