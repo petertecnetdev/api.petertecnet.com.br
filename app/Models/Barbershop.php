@@ -67,9 +67,9 @@ class Barbershop extends Model
     public function barbers()
     {
         return $this->belongsToMany(Barber::class, 'barber_barbershop')
-                    ->withTimestamps();
+            ->withTimestamps();
     }
-    
+
     public function items()
     {
         return $this->hasMany(Item::class, 'entity_id')->where('entity_name', 'barbershop');
