@@ -233,29 +233,29 @@ class ServiceRecordController extends Controller
     {
         try {
             Log::info('Iniciando listagem de atendimentos por entidade.');
-
+    
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou acessar listByEntity.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuário não autenticado tentou acessar listByEntity.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-
+    
             $user = Auth::user();
             if (!$user->hasPermission('service_record_list')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para listar atendimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para listar atendimentos.'], 403);
             }
-
+    
             $validatedData = $request->validate([
                 'entity_id' => 'required|integer',
                 'entity_name' => 'required|string|max:255',
             ], $this->getValidationMessages());
-
-            // Eager load as relaÃ§Ãµes de usuÃ¡rio: provider, registeredBy e client
+    
+            // Eager load as relações de usuário: provider, registeredBy e client
             $serviceRecords = ServiceRecord::where('entity_id', $validatedData['entity_id'])
                 ->where('entity_name', $validatedData['entity_name'])
                 ->orderBy('created_at', 'asc')
                 ->with(['provider', 'registeredBy', 'client'])
                 ->get();
-
+    
             if ($serviceRecords->isEmpty()) {
                 Log::warning('Nenhum atendimento encontrado para a entidade.', [
                     'entity_id' => $validatedData['entity_id'],
@@ -263,17 +263,18 @@ class ServiceRecordController extends Controller
                 ]);
                 return response()->json(['message' => 'Nenhum atendimento encontrado.'], 404);
             }
-
-            // Para cada atendimento, buscar os detalhes dos serviÃ§os realizados
+    
+            // Para cada atendimento, buscar os detalhes dos serviços realizados
             $serviceRecords->each(function ($record) {
                 if (!empty($record->service_ids)) {
                     $serviceIds = is_string($record->service_ids)
                         ? json_decode($record->service_ids, true)
                         : $record->service_ids;
                     if (is_array($serviceIds)) {
-                        // Busca os itens detalhados (id e nome) que sÃ£o serviÃ§os (note que o filtro 'category' deve estar de acordo com seu cadastro)
+                        // Busca os itens detalhados (id e nome) que são serviços
+                        // Aqui usamos o campo 'type' com valor 'service' conforme a model Item
                         $record->services = Item::whereIn('id', $serviceIds)
-                            ->where('category', 'ServiÃ§os')
+                            ->where('type', 'service')
                             ->select('id', 'name')
                             ->get();
                     } else {
@@ -283,16 +284,17 @@ class ServiceRecordController extends Controller
                     $record->services = collect([]);
                 }
             });
-
+    
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Erro de validaÃ§Ã£o ao listar atendimentos por entidade: ', ['errors' => $e->errors()]);
+            Log::error('Erro de validação ao listar atendimentos por entidade: ', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao listar atendimentos por entidade: ' . $e->getMessage());
             return response()->json(['error' => 'Erro ao listar os atendimentos.'], 500);
         }
     }
+    
 
 
     // Lista os atendimentos do provedor
