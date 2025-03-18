@@ -50,13 +50,13 @@ class ServiceRecordController extends Controller
             Log::info('Iniciando o registro de um novo atendimento.');
 
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou registrar atendimento.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuario não autenticado tentou registrar atendimento.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
             if (!$user->hasPermission('service_record_store')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para registrar atendimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para registrar atendimentos.'], 403);
             }
 
             $validatedData = $request->validate([
@@ -78,8 +78,8 @@ class ServiceRecordController extends Controller
 
             $provider = User::find($validatedData['provider_id']);
             if (!$provider) {
-                Log::warning('Prestador de serviÃ§o nÃ£o encontrado.', ['provider_id' => $validatedData['provider_id']]);
-                return response()->json(['error' => 'Prestador de serviÃ§o nÃ£o encontrado.'], 404);
+                Log::warning('Prestador de serviço não encontrado.', ['provider_id' => $validatedData['provider_id']]);
+                return response()->json(['error' => 'Prestador de serviço não  encontrado.'], 404);
             }
 
             $client = User::find($validatedData['client_id']);
@@ -107,7 +107,7 @@ class ServiceRecordController extends Controller
 
             return response()->json(['message' => 'Atendimento registrado com sucesso!', 'service_record' => $serviceRecord], 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('Erros de validaÃ§Ã£o ao registrar atendimento.', ['errors' => $e->errors()]);
+            Log::warning('Erros de validação ao registrar atendimento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao registrar atendimento: ' . $e->getMessage());
@@ -115,7 +115,7 @@ class ServiceRecordController extends Controller
         }
     }
 
-    // Lista os atendimentos do usuÃ¡rio autenticado
+    // Lista os atendimentos do usuário autenticado
     public function listMy(Request $request)
     {
         try {
@@ -307,13 +307,13 @@ class ServiceRecordController extends Controller
             Log::info('Iniciando listagem de atendimentos por provedor.');
 
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou acessar listByProvider.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuário não autenticado tentou acessar listByProvider.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
             if (!$user->hasPermission('service_record_list')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para listar atendimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para listar atendimentos.'], 403);
             }
 
             $validatedData = $request->validate([
@@ -342,7 +342,7 @@ class ServiceRecordController extends Controller
 
             return response()->json(['service_records' => $serviceRecords], 200);
         } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::error('Erro de validaÃ§Ã£o ao listar atendimentos por provedor: ', ['errors' => $e->errors()]);
+            Log::error('Erro de validação ao listar atendimentos por provedor: ', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao listar atendimentos por provedor: ' . $e->getMessage());
@@ -357,19 +357,19 @@ class ServiceRecordController extends Controller
             Log::info('Iniciando a inativaÃ§Ã£o do atendimento.', ['service_record_id' => $id]);
 
             if (!Auth::check()) {
-                Log::warning('UsuÃ¡rio nÃ£o autenticado tentou inativar o atendimento.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Usuário não autenticado tentou inativar o atendimento.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
             if (!$user->hasPermission('service_record_destroy') && !$user->hasPermission('service_record_destroy_all')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para inativar atendimentos.'], 403);
+                return response()->json(['error' => 'Você nãotem permissão para inativar atendimentos.'], 403);
             }
 
             $serviceRecord = ServiceRecord::find($id);
             if (!$serviceRecord) {
-                Log::warning('Atendimento nÃ£o encontrado.', ['service_record_id' => $id]);
-                return response()->json(['error' => 'Atendimento nÃ£o encontrado.'], 404);
+                Log::warning('Atendimento não encontrado.', ['service_record_id' => $id]);
+                return response()->json(['error' => 'Atendimento não encontrado.'], 404);
             }
 
             // Atualiza o status para "cancelled" em vez de deletar o registro
