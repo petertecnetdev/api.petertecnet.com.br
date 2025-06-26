@@ -288,216 +288,74 @@ class BarbershopController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao buscar a barbearia.'], 500);
         }
     }
-    public function view($slug)
-    {
-        try {
-            // Tenta obter o usuário autenticado, mas não impede o acesso se não estiver autenticado
-            $user = Auth::user();
-    
-            // Buscar a barbearia pelo slug
-            $barbershop = Barbershop::where('slug', $slug)->first();
-            if (!$barbershop) {
-                return response()->json(['error' => 'Barbearia não encontrada.'], 404);
-            }
-    
-            // Obter os barbeiros associados à barbearia pela relação many-to-many
-            $barbers = $barbershop->barbers()->with('user')->get();
-            $barbersDetails = $barbers->map(function ($barber) {
-                return [
-                    'id'         => $barber->id,
-                    'user_id'    => $barber->user_id,
-                    'first_name' => $barber->user->first_name,
-                    'email'      => $barber->user->email,
-                    'avatar'     => $barber->user->avatar,
-                    'user_name'  => $barber->user->user_name,
-                ];
-            });
-    
-            // Buscar até 3 outras barbearias para sugestões
-            $otherBarbershops = Barbershop::where('slug', '!=', $slug)
-                ->inRandomOrder()
-                ->limit(3)
-                ->get();
-            $otherBarbershopDetails = $otherBarbershops->map(function ($otherBarbershop) {
-                return [
-                    'name'  => $otherBarbershop->name,
-                    'slug'  => $otherBarbershop->slug,
-                    'logo'  => $otherBarbershop->logo,
-                ];
-            });
-    
-            // Se o usuário estiver autenticado, registrar a interação
-            if ($user) {
-                $interaction = new Interaction();
-                $interaction->user_id = $user->id;
-                $interaction->interaction_type = 'View';
-                $interaction->entity_id = $barbershop->id;
-                $interaction->content = "O usuário " . $user->first_name . " acessou a barbearia";
-                $interaction->entity_type = 'barbershop';
-                $interaction->save();
-            }
-<<<<<<< HEAD
+  public function view($slug)
+{
+    try {
+        $user = Auth::user();
 
-<<<<<<< HEAD
-            // Buscar os itens relacionados à barbearia e separar em serviços e produtos
-            $services = $barbershop->items()->where('type', 'service')->get();
-            $products = $barbershop->items()->where('type', 'product')->get();
-=======
-            // Buscar os itens relacionados à barbearia
-            $items = $barbershop->items()->get();
->>>>>>> 7c563c7 (solving conflit develop and staging on local)
+        // Buscar a barbearia pelo slug
+        $barbershop = Barbershop::where('slug', $slug)->first();
 
-            // Retornar as informações da barbearia, barbeiros, itens e outras barbearias
-            return response()->json([
-                'message' => 'Barbearia encontrada com sucesso.',
-                'barbershop' => $barbershop,
-                'services' => $services,
-                'products' => $products,
-                'owner' => $barbershop->user,
-                'barbers' => $barbersDetails,
-                'otherBarbershops' => $otherBarbershopDetails
-=======
-    
-            // Buscar os itens relacionados à barbearia e separar em serviços e produtos
-            $services = $barbershop->items()->where('type', 'service')->get();
-            $products = $barbershop->items()->where('type', 'product')->get();
-    
-            // Retornar as informações da barbearia, barbeiros, itens e outras barbearias
-            return response()->json([
-                'message'         => 'Barbearia encontrada com sucesso.',
-                'barbershop'      => $barbershop,
-                'services'        => $services,
-                'products'        => $products,
-                'owner'           => $barbershop->user,
-                'barbers'         => $barbersDetails,
-                'otherBarbershops'=> $otherBarbershopDetails
->>>>>>> cb0135b (solving conflit develop and staging on local)
-            ], 200);
-        } catch (\Exception $e) {
-            Log::error('Erro ao buscar a barbearia: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao buscar a barbearia.'], 500);
+        if (!$barbershop) {
+            return response()->json(['error' => 'Barbearia não encontrada.'], 404);
         }
-    }
-    
 
-    public function update(Request $request, $id)
-    {
-        try {
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                Log::warning('Tentativa de atualização sem autenticação.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+        // Obter os barbeiros associados à barbearia pela relação many-to-many
+        $barbers = $barbershop->barbers()->with('user')->get();
 
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            Log::info('Usuário autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
+        $barbersDetails = $barbers->map(function ($barber) {
+            return [
+                'id' => $barber->id,
+                'user_id' => $barber->user_id,
+                'first_name' => $barber->user->first_name,
+                'email' => $barber->user->email,
+                'avatar' => $barber->user->avatar,
+                'user_name' => $barber->user->user_name,
+            ];
+        });
 
-            // Verificar se a barbearia existe
-            $barbershop = Barbershop::find($id);
-            if (!$barbershop) {
-                Log::warning('Barbearia não encontrada.', ['barbershop_id' => $id]);
-                return response()->json(['error' => 'Barbearia não encontrada.'], 404);
-            }
+        // Buscar até 3 outras barbearias para apresentar como sugestões
+        $otherBarbershops = Barbershop::where('slug', '!=', $slug)
+            ->inRandomOrder()
+            ->limit(3)
+            ->get();
 
-            // Validação dos dados da requisição
-            $validatedData = $request->validate([
-                'name' => 'nullable|string|max:255',
-                'email' => 'nullable|email|max:255',
-                'phone' => 'nullable|string|max:20',
-                'description' => 'nullable|string|max:2500',
-                'address' => 'nullable|string|max:255',
-                'city' => 'nullable|string|max:100',
-                'state' => 'nullable|string|max:100',
-                'zipcode' => 'nullable|string|max:10',
-                'website' => 'nullable|string',
-                'instagram' => 'nullable|string',
-                'rating' => 'nullable|numeric|min:0|max:5', // Avaliação opcional
-                'status' => 'nullable|integer',
-                'terms_of_service' => 'nullable|boolean', // Termos de serviço opcional
-                'social_media_links' => 'nullable|array', // Links de redes sociais opcionais
-                'logo' => 'nullable|image|max:1255', // Logo opcional
-                'background_image' => 'nullable|image|max:1255', // Background opcional
-                'location' => 'nullable|string',
-            ], $this->getValidationMessages());
+        $otherBarbershopDetails = $otherBarbershops->map(function ($otherBarbershop) {
+            return [
+                'name' => $otherBarbershop->name,
+                'slug' => $otherBarbershop->slug,
+                'logo' => $otherBarbershop->logo,
+            ];
+        });
 
-            Log::info('Dados validados para atualização da barbearia.', $validatedData);
-
-            // Atualização dos campos da barbearia
-            $barbershop->fill($validatedData);
-            $barbershop->updated_by = $user->id; // Registrar quem atualizou
-            $barbershop->save();
-
-            // Processar e salvar a logo se fornecida
-            if ($request->hasFile('logo')) {
-                Log::info('Imagem de logo fornecida, processando...');
-
-                // Definir o caminho do diretório público para imagens
-                $destinationPath = public_path('images');
-
-                // Gerar um nome único para a imagem
-                $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-
-                // Mover a imagem para o diretório público "images"
-                $request->file('logo')->move($destinationPath, $imageName);
-
-                // Redimensionar a imagem para 150x150
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(150, 150);
-                $image->save();
-
-                // Atualizar o caminho da logo no banco
-                $barbershop->logo = 'images/' . $imageName;
-                $barbershop->save();
-            }
-
-            // Processar e salvar o background se fornecido
-            if ($request->hasFile('background_image')) {
-                Log::info('Imagem de background fornecida, processando...');
-
-                // Definir o caminho do diretório público para imagens
-                $destinationPath = public_path('images');
-
-                // Gerar um nome único para a imagem
-                $imageName = uniqid('background_') . '.' . $request->file('background_image')->getClientOriginalExtension();
-
-                // Mover a imagem para o diretório público "images"
-                $request->file('background_image')->move($destinationPath, $imageName);
-
-                // Redimensionar a imagem para 1920x600
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(1920, 600);
-                $image->save();
-
-                // Atualizar o caminho do background no banco
-                $barbershop->background_image = 'images/' . $imageName;
-                $barbershop->save();
-            }
-
-            Log::info('Barbearia atualizada com sucesso.', ['barbershop_id' => $barbershop->id]);
-
+        // Registrar a interação apenas se o usuário estiver autenticado
+        if ($user) {
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'Update';
+            $interaction->interaction_type = 'View';
             $interaction->entity_id = $barbershop->id;
-            $interaction->content = "O usuário " . $user->first_name . " atualizou a barbearia " . $barbershop->name . ".";
+            $interaction->content = "O usuário " . $user->first_name . " acessou a barbearia";
             $interaction->entity_type = 'barbershop';
             $interaction->save();
-
-            // Retornar sucesso
-            return response()->json(['message' => 'Barbearia atualizada com sucesso.', 'barbershop' => $barbershop], 200);
-
-        } catch (ValidationException $e) {
-            // Captura erros de validação e retorna como resposta JSON
-            Log::error('Erro de validação ao atualizar a barbearia.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            // Log do erro e retorno de mensagem genérica
-            Log::error('Erro ao atualizar barbearia: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar a barbearia.'], 500);
         }
+
+        $items = $barbershop->items()->get();
+
+        return response()->json([
+            'message' => 'Barbearia encontrada com sucesso.',
+            'barbershop' => $barbershop,
+            'items' => $items,
+            'owner' => $barbershop->user,
+            'barbers' => $barbersDetails,
+            'otherBarbershops' => $otherBarbershopDetails
+        ], 200);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao buscar a barbearia: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao buscar a barbearia.'], 500);
     }
+}
+
 
     public function destroy($id)
     {
