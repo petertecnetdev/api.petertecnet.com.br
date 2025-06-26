@@ -195,8 +195,20 @@ class ItemController extends Controller
     // O método "show" não exige autenticação
     public function show($id)
     {
-        try {
-            Log::info('Iniciando a exibição do item com ID: ' . $id);
+        try{
+          \Log::info('Iniciando a exibição do item com ID: ' . $id);
+
+
+            // Obter o usuário autenticado
+            $user = Auth::user();
+            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+            // Verificar se o usuário possui permissão para visualizar o item
+            if (!$user->hasPermission('item_view')) {
+                \Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
+            }
+>>>>>>> 9fb03b1 (service by entity)
 
             // Buscar o item pelo ID
             $item = Item::find($id);
