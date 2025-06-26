@@ -43,12 +43,10 @@ class AppointmentController extends Controller
     }
 
     // Criação de um agendamento
-   public function store(Request $request)
+ public function store(Request $request)
 {
     try {
         Log::info('Iniciando a criação de um novo agendamento.');
-
-        Log::info('Validando dados da requisição.');
 
         $validatedData = $request->validate([
             'app_id' => 'required|exists:applications,id',
@@ -57,34 +55,23 @@ class AppointmentController extends Controller
             'scheduled_at' => 'required|date',
             'service_ids' => 'required|array|min:1',
             'service_ids.*' => 'integer|exists:items,id',
-            'provider_id' => 'required|integer',
-            'client_id' => 'required|integer',
+            'provider_id' => 'required|integer|exists:users,id',
+            'client_id' => 'required|integer|exists:users,id',
             'status' => 'required|string|max:50',
             'location' => 'nullable|string|max:255',
             'notes' => 'nullable|string',
             'payment_status' => 'nullable|string|max:50',
             'appointment_type' => 'nullable|string|max:50',
             'duration' => 'required|integer|min:1',
+            'description' => 'nullable|string',
         ], $this->getValidationMessages());
 
-        Log::info('Dados validados com sucesso:', $validatedData);
+        Log::info('Dados validados com sucesso.', $validatedData);
 
         $scheduledAt = Carbon::parse($validatedData['scheduled_at'])->setTimezone('America/Sao_Paulo');
 
         if ($scheduledAt->isPast()) {
             return response()->json(['error' => 'A data e o horário do agendamento devem ser no futuro.'], 422);
-        }
-
-        $provider = User::find($validatedData['provider_id']);
-        if (!$provider) {
-            Log::warning('Prestador de serviço não encontrado.', ['provider_id' => $validatedData['provider_id']]);
-            return response()->json(['error' => 'Prestador de serviço não encontrado.'], 404);
-        }
-
-        $client = User::find($validatedData['client_id']);
-        if (!$client) {
-            Log::warning('Cliente não encontrado.', ['client_id' => $validatedData['client_id']]);
-            return response()->json(['error' => 'Cliente não encontrado.'], 404);
         }
 
         $existingClientAppointment = Appointment::where('client_id', $validatedData['client_id'])
@@ -104,23 +91,38 @@ class AppointmentController extends Controller
         }
 
         $user = Auth::user();
-        $registeredBy = $user ? $user->id : null;
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $isSelf = $user->id === $validatedData['client_id'];
+
+        if (!$isSelf) {
+            $hasPermission = $user->hasPermissionTo("create_appointments_for_others", $validatedData['entity_name'], $validatedData['entity_id']);
+            if (!$hasPermission) {
+                return response()->json(['error' => 'Você não tem permissão para agendar para outros clientes nesta entidade.'], 403);
+            }
+        }
+
+        $expectedEndTime = (clone $scheduledAt)->addMinutes($validatedData['duration']);
 
         $appointment = Appointment::create([
-            'app_id'            => $validatedData['app_id'],
-            'registered_by'     => $registeredBy,
-            'entity_name'       => $validatedData['entity_name'],
-            'entity_id'         => $validatedData['entity_id'],
-            'scheduled_at'      => $scheduledAt,
-            'provider_id'       => $validatedData['provider_id'],
-            'client_id'         => $validatedData['client_id'],
-            'status'            => $validatedData['status'],
-            'location'          => $validatedData['location'] ?? null,
-            'notes'             => $validatedData['notes'] ?? null,
-            'payment_status'    => $validatedData['payment_status'] ?? null,
-            'appointment_type'  => $validatedData['appointment_type'] ?? null,
-            'duration'          => $validatedData['duration'],
-            'service_ids'       => json_encode($validatedData['service_ids']),
+            'app_id'             => $validatedData['app_id'],
+            'entity_name'        => $validatedData['entity_name'],
+            'entity_id'          => $validatedData['entity_id'],
+            'scheduled_at'       => $scheduledAt,
+            'expected_end_time'  => $expectedEndTime,
+            'service_ids'        => $validatedData['service_ids'],
+            'provider_id'        => $validatedData['provider_id'],
+            'description'        => $validatedData['description'] ?? null,
+            'client_id'          => $validatedData['client_id'],
+            'registered_by'      => $user->id,
+            'status'             => $validatedData['status'],
+            'location'           => $validatedData['location'] ?? null,
+            'duration'           => $validatedData['duration'],
+            'notes'              => $validatedData['notes'] ?? null,
+            'payment_status'     => $validatedData['payment_status'] ?? null,
+            'appointment_type'   => $validatedData['appointment_type'] ?? null,
         ]);
 
         Log::info('Agendamento criado com sucesso.', ['appointment_id' => $appointment->id]);
@@ -134,6 +136,7 @@ class AppointmentController extends Controller
         return response()->json(['error' => 'Ocorreu um erro ao criar o agendamento.'], 500);
     }
 }
+
 
     
 
