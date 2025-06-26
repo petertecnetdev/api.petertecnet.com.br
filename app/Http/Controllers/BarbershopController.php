@@ -337,9 +337,14 @@ class BarbershopController extends Controller
                 $interaction->save();
             }
 
+<<<<<<< HEAD
             // Buscar os itens relacionados à barbearia e separar em serviços e produtos
             $services = $barbershop->items()->where('type', 'service')->get();
             $products = $barbershop->items()->where('type', 'product')->get();
+=======
+            // Buscar os itens relacionados à barbearia
+            $items = $barbershop->items()->get();
+>>>>>>> 7c563c7 (solving conflit develop and staging on local)
 
             // Retornar as informações da barbearia, barbeiros, itens e outras barbearias
             return response()->json([
