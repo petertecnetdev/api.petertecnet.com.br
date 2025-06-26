@@ -192,88 +192,95 @@ class BarbershopController extends Controller
     }
 
     public function update(Request $request, $id)
-    {
-        try {
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-            $user = Auth::user();
+        $user = Auth::user();
 
-            $validatedData = $request->validate([
-                'name' => 'required|string|max:255',
-                'email' => 'required|email|max:255',
-                'phone' => 'required|string|max:20',
-                'description' => 'required|string|max:2500',
-                'address' => 'required|string|max:255',
-                'city' => 'required|string|max:100',
-                'state' => 'required|string|max:100',
-                'zipcode' => 'required|string|max:10',
-                'website' => 'nullable|string',
-                'location' => 'nullable|string',
-                'instagram' => 'nullable|string',
-                'latitude' => 'nullable|numeric',
-                'longitude' => 'nullable|numeric',
-                'rating' => 'nullable|numeric|min:0|max:5',
-                'status' => 'nullable|integer',
-                'terms_of_service' => 'nullable|boolean',
-                'social_media_links' => 'nullable|array',
-                'logo' => 'nullable|image|max:1255',
-                'background_image' => 'nullable|image|max:1255',
-            ], $this->getValidationMessages());
+        if (!$user->hasPermission('barbershop_update')) {
+            return response()->json(['error' => 'Você não tem permissão para atualizar barbearias.'], 403);
+        }
 
-            $barbershop = Barbershop::findOrFail($id);
+        $barbershop = Barbershop::findOrFail($id);
 
-            $barbershop->fill($validatedData);
-            $barbershop->updated_by = $user->id;
+        $validatedData = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'email' => 'sometimes|required|email|max:255',
+            'phone' => 'sometimes|required|string|max:20',
+            'description' => 'sometimes|required|string|max:2500',
+            'address' => 'sometimes|required|string|max:255',
+            'city' => 'sometimes|required|string|max:100',
+            'state' => 'sometimes|required|string|max:100',
+            'zipcode' => 'sometimes|required|string|max:10',
+            'website' => 'nullable|string',
+            'location' => 'nullable|string',
+            'instagram' => 'nullable|string',
+            'latitude' => 'nullable|numeric',
+            'longitude' => 'nullable|numeric',
+            'rating' => 'nullable|numeric|min:0|max:5',
+            'status' => 'nullable|integer',
+            'terms_of_service' => 'nullable|boolean',
+            'social_media_links' => 'nullable|array',
+            'logo' => 'nullable|image|max:1255',
+            'background_image' => 'nullable|image|max:1255',
+        ], $this->getValidationMessages());
 
-            if ($request->hasFile('logo')) {
-                $destinationPath = public_path('images');
-                $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-                $request->file('logo')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(150, 150);
-                $image->save();
-                $barbershop->logo = 'images/' . $imageName;
-            }
+        $barbershop->fill($validatedData);
+        $barbershop->updated_by = $user->id;
 
-            if ($request->hasFile('background_image')) {
-                $destinationPath = public_path('images');
-                $imageName = uniqid('background_') . '.' . $request->file('background_image')->getClientOriginalExtension();
-                $request->file('background_image')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(1920, 600);
-                $image->save();
-                $barbershop->background_image = 'images/' . $imageName;
-            }
+        if ($request->hasFile('logo')) {
+            $destinationPath = public_path('images');
+            $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
+            $request->file('logo')->move($destinationPath, $imageName);
+            $image = Image::make($destinationPath . '/' . $imageName);
+            $image->fit(150, 150);
+            $image->save();
+            $barbershop->logo = 'images/' . $imageName;
+        }
 
+        if ($request->hasFile('background_image')) {
+            $destinationPath = public_path('images');
+            $imageName = uniqid('background_') . '.' . $request->file('background_image')->getClientOriginalExtension();
+            $request->file('background_image')->move($destinationPath, $imageName);
+            $image = Image::make($destinationPath . '/' . $imageName);
+            $image->fit(1920, 600);
+            $image->save();
+            $barbershop->background_image = 'images/' . $imageName;
+        }
+
+        if ($request->has('name')) {
             $slug = Str::slug($request->input('name'));
-            $count = Barbershop::where('slug', $slug)->where('id', '!=', $id)->count();
+            $count = Barbershop::where('slug', $slug)->where('id', '!=', $barbershop->id)->count();
             if ($count > 0) {
                 $slug = $slug . '-' . ($count + 1);
             }
             $barbershop->slug = $slug;
-            $barbershop->save();
-
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'Update';
-            $interaction->entity_id = $barbershop->id;
-            $interaction->content = "O usuário " . $user->first_name . " atualizou a barbearia " . $barbershop->name . ".";
-            $interaction->entity_type = 'barbershop';
-            $interaction->save();
-
-            return response()->json(['message' => 'Barbearia atualizada com sucesso.', 'barbershop' => $barbershop], 200);
-
-        } catch (ValidationException $e) {
-            Log::error('Erro de validação ao atualizar a barbearia.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao atualizar barbearia: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar a barbearia.'], 500);
         }
+
+        $barbershop->save();
+
+        $interaction = new Interaction();
+        $interaction->user_id = $user->id;
+        $interaction->interaction_type = 'Update';
+        $interaction->entity_id = $barbershop->id;
+        $interaction->content = "O usuario " . $user->first_name . " atualizou a barbearia " . $barbershop->name . ".";
+        $interaction->entity_type = 'barbershop';
+        $interaction->save();
+
+        return response()->json(['message' => 'Barbearia atualizada com sucesso.', 'barbershop' => $barbershop], 200);
+
+    } catch (ValidationException $e) {
+        Log::error('Erro de validação ao atualizar a barbearia.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        Log::error('Erro ao atualizar barbearia: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao atualizar a barbearia.'], 500);
     }
+}
+
     public function list(Request $request)
     {
         try {
