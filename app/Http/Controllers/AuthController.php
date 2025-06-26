@@ -63,10 +63,10 @@ class AuthController extends Controller
     public function login(Request $request)
     {
         try {
-            Log::info('Tentativa de login', ['email' => $request->email]);
+            Log::info('Tentativa de login', ['username' => $request->username]);
 
             $validator = Validator::make($request->all(), [
-                'email' => 'required|email',
+                'username' => 'required|string',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
             ], $this->getValidationMessages());
 
@@ -75,17 +75,32 @@ class AuthController extends Controller
                 throw new ValidationException($validator);
             }
 
-            if (!$token = auth()->attempt($validator->validated())) {
-                Log::warning('Falha na autenticação', ['email' => $request->email]);
+            $username = $request->username;
+            $password = $request->password;
 
-                // Verificar se o e-mail está cadastrado
-                $user = User::where('email', $request->email)->first();
+            // Detectar se é CPF (só números com 11 dígitos) ou e-mail
+            if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
+                $credentials = ['email' => $username, 'password' => $password];
+            } else {
+                // Remove pontuação do CPF
+                $cpf = preg_replace('/[^0-9]/', '', $username);
+                $credentials = ['cpf' => $cpf, 'password' => $password];
+            }
+
+            if (!$token = auth()->attempt($credentials)) {
+                Log::warning('Falha na autenticação', ['username' => $username]);
+
+                // Tenta encontrar o usuário para mostrar erro mais claro
+                $user = filter_var($username, FILTER_VALIDATE_EMAIL)
+                    ? User::where('email', $username)->first()
+                    : User::where('cpf', $cpf)->first();
+
                 if (!$user) {
-                    Log::error('Tentativa de login com e-mail não cadastrado', ['email' => $request->email]);
-                    return response()->json(['error' => 'Este e-mail não está cadastrado.'], 404);
+                    Log::error('Tentativa de login com usuário não cadastrado', ['username' => $username]);
+                    return response()->json(['error' => 'Usuário não cadastrado.'], 404);
                 }
 
-                Log::error('Senha incorreta para o e-mail', ['email' => $request->email]);
+                Log::error('Senha incorreta para o usuário', ['username' => $username]);
                 return response()->json(['error' => 'Senha incorreta.'], 401);
             }
 
@@ -112,6 +127,7 @@ class AuthController extends Controller
             return response()->json(['error' => 'Erro durante o login'], 500);
         }
     }
+
     /**
      * Register a User.
      *
@@ -121,35 +137,33 @@ class AuthController extends Controller
     public function register(Request $request)
     {
         try {
-            // Validação dos dados de entrada
             $validator = Validator::make($request->all(), [
                 'first_name' => ['required', 'regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
                 'email' => 'required|email|unique:users',
                 'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+                'cpf' => ['nullable', 'regex:/^\d{11}$/', 'unique:users,cpf'],
             ], $this->getValidationMessages());
 
             if ($validator->fails()) {
                 throw new ValidationException($validator);
             }
-            $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
 
-            // Check if the generated username is unique, if not, generate a new one
+            $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
             while (User::where('user_name', $username)->exists()) {
                 $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
             }
-            // Geração do código de verificação
+
             $verificationCode = Str::random(4);
 
-            // Criação do usuário no banco de dados
             $user = User::create([
                 'first_name' => $request->input('first_name'),
                 'email' => $request->input('email'),
                 'password' => bcrypt($request->input('password')),
                 'user_name' => $username,
                 'verification_code' => $verificationCode,
+                'cpf' => $request->input('cpf'),
             ]);
 
-            // Envio do e-mail de verificação
             Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
 
             $interaction = new Interaction();
@@ -161,16 +175,15 @@ class AuthController extends Controller
 
             return response()->json(['message' => 'Registro bem-sucedido'], 201);
         } catch (ValidationException $e) {
-            // Captura de exceções de validação
             Log::error('ValidationException: ' . $e->getMessage());
             $errors = $e->errors();
             return response()->json(['message' => 'Erro de validação', 'errors' => $errors], 422);
         } catch (\Exception $e) {
-            // Captura de outras exceções
             Log::error('Exception: ' . $e->getMessage());
             return response()->json(['message' => 'Erro durante o registro. Por favor, tente novamente.'], 500);
         }
     }
+
 
     public function emailVerify(Request $request)
     {
