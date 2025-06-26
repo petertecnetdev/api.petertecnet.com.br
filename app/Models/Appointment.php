@@ -19,8 +19,8 @@ class Appointment extends Model
         'expected_end_time',
         'provider_id', // Quem irá prestar o serviço
         'description', // Descrição do agendamento
-        'client_id', // Cliente que solicitou o agendamento
-        'registered_by', // Usuário responsável pelo cadastro
+        'client_id', // Cliente que sera atendido o agendamento
+        'registered_by', // Usuário responsável pelo cadastro do agendamento
         'status', // Status do agendamento (pendente, confirmado, cancelado, concluído)
         'location', // Local do atendimento (endereço, sala, consultório, etc.)
         'duration', // Duração estimada do serviço
