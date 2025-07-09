@@ -14,7 +14,8 @@ use App\Http\Controllers\{
     NewsController,
     BarberController,
     ReportController,
-    ServiceRecordController
+    ServiceRecordController,
+    EstablishmentController
 };
 
 Route::group([
@@ -197,4 +198,26 @@ Route::group([
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
 
+});
+
+
+
+Route::group([
+    'middleware' => 'api',
+    'prefix'     => 'establishment'
+], function () {
+    Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
+    Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
+    Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
+});
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix'     => 'establishment'
+], function () {
+    Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
+    Route::post('/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
+    Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
+    Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
+    Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
 });
