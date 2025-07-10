@@ -10,7 +10,10 @@ return [
     // Usar '*' com suporte a credenciais (true) não é permitido.
     'supports_credentials' => true,
 
-    'allowed_origins' => ['http://localhost:5173'],
+    'allowed_origins' => [
+        'http://localhost:5173',
+        'http://localhost:3000',
+    ],
 
     // Se 'allowed_origins' for '*', não é necessário definir padrões de origem.
     'allowed_origins_patterns' => [],
