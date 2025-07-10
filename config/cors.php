@@ -13,6 +13,8 @@ return [
     'allowed_origins' => [
         'http://localhost:5173',
         'http://localhost:3000',
+
+        'https://rasoio.petertecnet.com.br',
     ],
 
     // Se 'allowed_origins' for '*', não é necessário definir padrões de origem.
