@@ -2,28 +2,30 @@
 
 return [
 
+    /*
+    |--------------------------------------------------------------------------
+    | CORS Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Define as configurações para requisições cross-origin.
+    | Esta configuração permite que qualquer origem acesse a API,
+    | sem suporte a cookies ou credenciais (suporte a sessões).
+    |
+    */
+
     'paths' => ['api/*', 'sanctum/csrf-cookie'],
 
     'allowed_methods' => ['*'],
 
-    // Se você não precisa enviar cookies ou autenticação via credenciais, defina como false.
-    // Usar '*' com suporte a credenciais (true) não é permitido.
-    'supports_credentials' => true,
+    'allowed_origins' => ['*'], // PERMITE QUALQUER ORIGEM
 
-    'allowed_origins' => [
-        'http://localhost:5173',
-        'http://localhost:3000',
-
-        'https://rasoio.petertecnet.com.br',
-    ],
-
-    // Se 'allowed_origins' for '*', não é necessário definir padrões de origem.
     'allowed_origins_patterns' => [],
 
-    'allowed_headers' => ['*'],
+    'allowed_headers' => ['*'], // PERMITE TODOS OS HEADERS
 
     'exposed_headers' => [],
 
     'max_age' => 0,
 
+    'supports_credentials' => false, // NÃO PERMITE USO DE COOKIES/CREDENCIAIS (OBRIGATÓRIO COM '*')
 ];
