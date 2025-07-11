@@ -117,4 +117,5 @@ class User extends Authenticatable implements JWTSubject
         }
         return in_array($permissionName, $this->profile->permissions);
     }
+    
 }

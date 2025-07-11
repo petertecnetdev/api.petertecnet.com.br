@@ -451,38 +451,42 @@ class AuthController extends Controller
      *
      * @return \Illuminate\Http\JsonResponse
      */
-    public function me()
-    {
-        try {
+    // App\Http\Controllers\AuthController.php
 
-            // Obtém o usuário autenticado e carrega o perfil associado
-            $user = User::with(['profile', 'establishments'])
+public function me()
+{
+    try {
+        // Carrega profile, establishments e barber
+        $user = User::with(['profile', 'establishments', 'barber'])
             ->where('user_name', Auth::user()->user_name)
             ->first();
 
-
-            // Verifica se o usuário foi encontrado
-            if (!$user) {
-                return response()->json(['error' => 'Usuario não autenticado'], 404);
-            }
-            $interaction = new Interaction();
-            $interaction->user_id = auth()->user()->id;
-            $interaction->interaction_type = 'me';
-            $interaction->entity_id = auth()->user()->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
-            // Retorna o usuário com sucesso
-            // Retornar os dados do barbeiro com o usuário e suas barbearias
-            return response()->json([
-                'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
-            ], 200);
-
-        } catch (\Exception $e) {
-            // Tratamento de exceção, retornando uma resposta com o erro
-            return response()->json(['error' => 'An error occurred: ' . $e->getMessage()], 500);
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
+
+        // registra interação (sem alterações)
+        Interaction::create([
+            'user_id'          => $user->id,
+            'interaction_type' => 'me',
+            'entity_id'        => $user->id,
+            'entity_type'      => 'user',
+        ]);
+
+        return response()->json([
+            'message'    => 'Usuário encontrado com sucesso.',
+            'user'       => $user,
+            'is_barber'  => $user->barber !== null,
+            'barber'     => $user->barber,   // será `null` caso não seja barbeiro
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'An error occurred: ' . $e->getMessage()
+        ], 500);
     }
+}
+
 
 
 
