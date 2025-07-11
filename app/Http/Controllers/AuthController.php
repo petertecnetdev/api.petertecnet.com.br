@@ -465,7 +465,7 @@ public function me()
             return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
 
-        // registra interação (sem alterações)
+        // registra interação
         Interaction::create([
             'user_id'          => $user->id,
             'interaction_type' => 'me',
@@ -473,11 +473,17 @@ public function me()
             'entity_type'      => 'user',
         ]);
 
+        // Extrai os dados de barber
+        $barberData = $user->barber;
+
+        // Remove a relação barber de dentro de user
+        $user->setRelation('barber', null);
+
         return response()->json([
-            'message'    => 'Usuário encontrado com sucesso.',
-            'user'       => $user,
-            'is_barber'  => $user->barber !== null,
-            'barber'     => $user->barber,   // será `null` caso não seja barbeiro
+            'message'   => 'Usuário encontrado com sucesso.',
+            'user'      => $user,
+            'is_barber' => $barberData !== null,
+            'barber'    => $barberData,   // null se não for barbeiro
         ], 200);
 
     } catch (\Exception $e) {
