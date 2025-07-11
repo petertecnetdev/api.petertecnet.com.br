@@ -262,15 +262,14 @@ public function listByUser(Request $request)
         Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
         return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
     }
-}
-public function view($slug)
+}public function view($slug)
 {
     try {
         $user = Auth::user();
 
         $establishment = Establishment::where('slug', $slug)->first();
 
-        if (!$establishment) {
+        if (! $establishment) {
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
@@ -279,32 +278,31 @@ public function view($slug)
         $otherEstablishments = Establishment::where('slug', '!=', $slug)
             ->inRandomOrder()
             ->limit(3)
-            ->get();
-
-        $otherEstablishmentDetails = $otherEstablishments->map(function ($other) {
-            return [
-                'name' => $other->name,
-                'slug' => $other->slug,
-                'logo' => $other->logo,
-            ];
-        });
+            ->get()
+            ->map(function ($other) {
+                return [
+                    'name' => $other->name,
+                    'slug' => $other->slug,
+                    'logo' => $other->logo,
+                ];
+            });
 
         if ($user) {
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'View';
             $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuário " . $user->first_name . " acessou o estabelecimento.";
+            $interaction->content = "O usuário {$user->first_name} acessou o estabelecimento {$establishment->name}.";
             $interaction->entity_type = 'establishment';
             $interaction->save();
         }
 
         return response()->json([
-            'message' => 'Estabelecimento encontrado com sucesso.',
-            'establishment' => $establishment,
-            'items' => $items,
-            'owner' => $establishment->user,
-            'otherEstablishments' => $otherEstablishmentDetails
+            'message'             => 'Estabelecimento encontrado com sucesso.',
+            'establishment'       => $establishment,
+            'items'               => $items,
+            'owner'               => $establishment->user,
+            'otherEstablishments' => $otherEstablishments,
         ], 200);
 
     } catch (\Exception $e) {
@@ -312,6 +310,7 @@ public function view($slug)
         return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
     }
 }
+
 public function show($id)
 {
     try {

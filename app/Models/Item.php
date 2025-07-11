@@ -5,13 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Item extends Model
 {
     use HasFactory;
 
-    // Atributos que podem ser preenchidos em massa
     protected $fillable = [
         'user_id',
         'slug',
@@ -41,16 +39,15 @@ class Item extends Model
         'updated_by',
     ];
 
-    // Atributos que devem ser convertidos para tipos específicos
     protected $casts = [
-        'tags' => 'array', // Converte JSON em array
+        'tags' => 'array',
         'availability_start' => 'datetime',
         'availability_end' => 'datetime',
         'expiration_date' => 'datetime',
     ];
 
     /**
-     * Relacionamento com o usuário que cadastrou o item.
+     * Usuário que criou o item.
      */
     public function user(): BelongsTo
     {
@@ -58,7 +55,7 @@ class Item extends Model
     }
 
     /**
-     * Relacionamento com o aplicativo associado.
+     * Aplicativo associado.
      */
     public function app(): BelongsTo
     {
@@ -66,7 +63,7 @@ class Item extends Model
     }
 
     /**
-     * Relacionamento com o usuário que criou o item.
+     * Usuário criador.
      */
     public function creator(): BelongsTo
     {
@@ -74,7 +71,7 @@ class Item extends Model
     }
 
     /**
-     * Relacionamento com o usuário que atualizou o item.
+     * Usuário que atualizou.
      */
     public function updater(): BelongsTo
     {
@@ -82,17 +79,33 @@ class Item extends Model
     }
 
     /**
-     * Função para verificar se o item está disponível.
+     * Relacionamento com Establishment.
+     */
+    public function establishment(): BelongsTo
+    {
+        return $this
+            ->belongsTo(Establishment::class, foreignKey: 'entity_id')
+            ->where('entity_name', 'establishment');
+    }
+
+    /**
+     * Relacionamento com Barbershop.
+     */
+    public function barbershop(): BelongsTo
+    {
+        return $this
+            ->belongsTo(Barbershop::class, 'entity_id')
+            ->where('entity_name', 'barbershop');
+    }
+
+    /**
+     * Verifica disponibilidade.
      */
     public function isAvailable(): bool
     {
-        return $this->status && ($this->stock > 0) && 
-               (is_null($this->availability_start) || $this->availability_start <= now()) && 
-               (is_null($this->availability_end) || $this->availability_end >= now());
-    }
-
-    public function barbershop()
-    {
-        return $this->belongsTo(Barbershop::class);
+        return $this->status
+            && ($this->stock > 0)
+            && (is_null($this->availability_start) || $this->availability_start <= now())
+            && (is_null($this->availability_end) || $this->availability_end >= now());
     }
 }
