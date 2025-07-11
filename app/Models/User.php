@@ -6,30 +6,22 @@ use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-
 use Tymon\JWTAuth\Contracts\JWTSubject;
-
 
 class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, Notifiable;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array
-     */
     protected $fillable = [
         'user_name',
         'first_name',
-        'user_name',
         'last_name',
         'email',
         'verification_code',
         'avatar',
         'password',
         'reset_password_code',
-        'reset_password_expires_at', 
+        'reset_password_expires_at',
         'remember_token',
         'profile_id',
         'cpf',
@@ -59,74 +51,70 @@ class User extends Authenticatable implements JWTSubject
         'extra_info',
     ];
 
-    /**
-     * The attributes that should be hidden for arrays.
-     *
-     * @var array
-     */
     protected $hidden = [
         'password',
         'remember_token',
     ];
 
-    /**
-     * The attributes that should be cast to native types.
-     *
-     * @var array
-     */
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'newsletter_subscription' => 'boolean',
+        'is_producer' => 'boolean',
+        'is_participant' => 'boolean',
+        'is_promoter' => 'boolean',
+        'is_barber' => 'boolean',
+        'is_barbershoper' => 'boolean',
+        'is_partner' => 'boolean',
+        'is_ticket_seller' => 'boolean',
+        'account_balance' => 'decimal:2',
+        'ticket_purchases' => 'integer',
     ];
 
-    /**
-     * Get the identifier that will be stored in the subject claim of the JWT.
-     *
-     * @return mixed
-     */
     public function getJWTIdentifier()
     {
         return $this->getKey();
     }
 
-    /**
-     * Return a key value array, containing any custom claims to be added to the JWT.
-     *
-     * @return array
-     */
     public function getJWTCustomClaims()
     {
         return [];
     }
-    public function profile()
-{
-    return $this->belongsTo(Profile::class);
-}
 
-public function productions()
+    public function profile()
+    {
+        return $this->belongsTo(Profile::class);
+    }
+
+    public function productions()
     {
         return $this->hasMany(Production::class);
     }
-public function hasProfile($profileName)
-{
-    return $this->profile && $this->profile->name === $profileName;
-}
-public function hasPermission($permissionName)
-{
-    if (!$this->profile || !is_array($this->profile->permissions)) {
-        return false;
+
+    public function events()
+    {
+        return $this->hasManyThrough(Event::class, Production::class);
     }
 
-    return in_array($permissionName, $this->profile->permissions);
-}
+    public function barber()
+    {
+        return $this->hasOne(Barber::class);
+    }
 
-public function events()
-{
-    return $this->hasManyThrough(Event::class, Production::class);
-}
+    public function establishments()
+    {
+        return $this->hasMany(Establishment::class);
+    }
 
-public function barber()
-{
-    return $this->hasOne(Barber::class);
-}
+    public function hasProfile($profileName)
+    {
+        return $this->profile && $this->profile->name === $profileName;
+    }
 
+    public function hasPermission($permissionName)
+    {
+        if (!$this->profile || !is_array($this->profile->permissions)) {
+            return false;
+        }
+        return in_array($permissionName, $this->profile->permissions);
+    }
 }

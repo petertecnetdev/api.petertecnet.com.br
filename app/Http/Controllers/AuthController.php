@@ -456,9 +456,10 @@ class AuthController extends Controller
         try {
 
             // Obtém o usuário autenticado e carrega o perfil associado
-            $user = User::with('profile')
-                ->where('user_name', Auth::user()->user_name)
-                ->first();
+            $user = User::with(['profile', 'establishments'])
+            ->where('user_name', Auth::user()->user_name)
+            ->first();
+
 
             // Verifica se o usuário foi encontrado
             if (!$user) {
