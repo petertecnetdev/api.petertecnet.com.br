@@ -357,24 +357,7 @@ public function list(Request $request)
         return response()->json(['error' => 'Ocorreu um erro ao listar os estabelecimentos.'], 500);
     }
 }
-public function view($slug)
-{
-    $establishment = Establishment::with(['items', 'user'])
-        ->where('slug', $slug)
-        ->first();
 
-    if (! $establishment) {
-        return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-    }
 
-    // grava interação...
-
-    return response()->json([
-        'message'       => 'Estabelecimento encontrado com sucesso.',
-        'establishment' => $establishment,        // já vem com items e user
-        'items'         => $establishment->items,  // redundante, mas fica explícito
-        'owner'         => $establishment->user,
-    ], 200);
-}
 
 }
