@@ -453,47 +453,43 @@ class AuthController extends Controller
      */
     // App\Http\Controllers\AuthController.php
 
-    public function me()
-    {
-        try {
-            // Eager-load de profile, barber e barbershops
-            $user = User::with(['profile', 'barber', 'barbershops'])
-                ->where('user_name', Auth::user()->user_name)
-                ->first();
+   public function me()
+{
+    try {
+        $user = User::with(['profile', 'barber', 'establishments'])
+            ->where('user_name', Auth::user()->user_name)
+            ->first();
 
-            if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 404);
-            }
-
-            // registra interação
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'me',
-                'entity_id' => $user->id,
-                'entity_type' => 'user',
-            ]);
-
-            // Extrai barber (se existir) e depois remove da relação interna
-            $barberData = $user->barber;
-            $user->setRelation('barber', null);
-
-            return response()->json([
-                'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
-                'is_barber' => (bool) $barberData,
-                'barber' => $barberData,              // null se não for barbeiro
-                'barbershops' => $user->barbershops,       // coleção de barbearias
-            ], 200);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Ocorreu um erro: ' . $e->getMessage()
-            ], 500);
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
+
+        Interaction::create([
+            'user_id' => $user->id,
+            'interaction_type' => 'me',
+            'entity_id' => $user->id,
+            'entity_type' => 'user'
+        ]);
+
+        $barberData = $user->barber;
+        $user->setRelation('barber', null);
+
+        $establishments = $user->establishments;
+        $user->setRelation('establishments', null);
+
+        return response()->json([
+            'message' => 'Usuário encontrado com sucesso.',
+            'user' => $user,
+            'is_barber' => (bool)$barberData,
+            'barber' => $barberData,
+            'establishments' => $establishments
+        ], 200);
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Ocorreu um erro: ' . $e->getMessage()
+        ], 500);
     }
-
-
-
+}
     /**
      * Get the token array structure.
      *
