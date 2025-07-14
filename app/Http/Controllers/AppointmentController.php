@@ -147,8 +147,15 @@ class AppointmentController extends Controller
 
             return response()->json([
                 'message' => 'Agendamento criado com sucesso!',
-                'appointment' => $appointment
+                'appointment' => $appointment,
+                'client' => [
+                    'id' => $clientId,
+                    'name' => Auth::check()
+                        ? Auth::user()->first_name
+                        : $shop->user->first_name,
+                ],
             ], 201);
+
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
