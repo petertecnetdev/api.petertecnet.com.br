@@ -456,7 +456,7 @@ class AuthController extends Controller
    public function me()
 {
     try {
-        $user = User::with(['profile', 'barber', 'establishments'])
+        $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
             ->where('user_name', Auth::user()->user_name)
             ->first();
 
@@ -471,25 +471,30 @@ class AuthController extends Controller
             'entity_type' => 'user'
         ]);
 
-        $barberData = $user->barber;
-        $user->setRelation('barber', null);
-
+        $barberData    = $user->barber;
         $establishments = $user->establishments;
+        $barbershops    = $user->barbershops;
+
+        $user->setRelation('barber', null);
         $user->setRelation('establishments', null);
+        $user->setRelation('barbershops', null);
 
         return response()->json([
-            'message' => 'Usuário encontrado com sucesso.',
-            'user' => $user,
-            'is_barber' => (bool)$barberData,
-            'barber' => $barberData,
-            'establishments' => $establishments
+            'message'         => 'Usuário encontrado com sucesso.',
+            'user'            => $user,
+            'is_barber'       => (bool) $barberData,
+            'barber'          => $barberData,
+            'establishments'  => $establishments,
+            'barbershops'     => $barbershops
         ], 200);
+
     } catch (\Exception $e) {
         return response()->json([
             'error' => 'Ocorreu um erro: ' . $e->getMessage()
         ], 500);
     }
 }
+
     /**
      * Get the token array structure.
      *
