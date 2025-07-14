@@ -15,7 +15,8 @@ use App\Http\Controllers\{
     BarberController,
     ReportController,
     ServiceRecordController,
-    EstablishmentController
+    EstablishmentController,
+    OrderController
 };
 
 Route::group([
@@ -220,4 +221,19 @@ Route::group([
     Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
     Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
     Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
+});
+
+
+
+
+Route::group([
+    'middleware' => 'api',
+    'prefix'     => 'order'
+], function ($router) {
+    Route::post('/', [OrderController::class, 'store'])->name('order.store');
+    // Futuramente, podemos adicionar:
+    // Route::get('/listmy',      [OrderController::class, 'listMy'])->name('order.listMy');
+    // Route::get('/listbyentity',[OrderController::class, 'listByEntity'])->name('order.listByEntity');
+    // Route::get('/{id}',        [OrderController::class, 'show'])->name('order.show');
+    // Route::patch('/{id}/status',[OrderController::class, 'updateStatus'])->name('order.updateStatus');
 });
