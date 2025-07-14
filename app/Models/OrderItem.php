@@ -31,4 +31,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Item::class);
     }
+
+    public function modifiers()
+    {
+        return $this->hasMany(OrderItemModifier::class, 'order_item_id');
+    }
 }
