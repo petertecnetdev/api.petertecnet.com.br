@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
-use App\Models\OrderItem;
 use App\Models\Item;
 use App\Models\Establishment;
 use Illuminate\Http\Request;
@@ -33,6 +32,12 @@ class OrderController extends Controller
             'customer_phone.string'  => 'O telefone do cliente deve ser uma string válida.',
             'access_code.required'   => 'O código de acesso é obrigatório.',
             'access_code.string'     => 'O código de acesso deve ser uma string válida.',
+            'origin.required'        => 'A origem do pedido é obrigatória.',
+            'origin.in'              => 'A origem deve ser WhatsApp, Balcão, Telefone ou App.',
+            'fulfillment.required'   => 'O tipo de consumo é obrigatório.',
+            'fulfillment.in'         => 'O consumo deve ser dine-in, take-away ou delivery.',
+            'payment_status.required'=> 'O status de pagamento é obrigatório.',
+            'payment_status.in'      => 'O status de pagamento deve ser pending, paid ou failed.',
             'payment_method.required'=> 'O método de pagamento é obrigatório.',
             'payment_method.in'      => 'O método de pagamento selecionado não é válido.',
             'notes.string'           => 'As observações devem ser uma string válida.',
@@ -51,16 +56,19 @@ class OrderController extends Controller
             Log::info('Criando novo pedido por usuário autenticado.', ['user_id' => $user->id]);
 
             $data = $request->validate([
-                'app_id'        => 'required|exists:applications,id',
-                'entity_name'   => 'required|string|max:255',
-                'entity_id'     => 'required|integer',
-                'service_ids'   => 'required|array|min:1',
-                'service_ids.*' => 'integer|exists:items,id',
-                'customer_name' => 'required|string|max:255',
-                'customer_phone'=> 'nullable|string|max:20',
-                'access_code'   => 'required|string|max:20',
-                'payment_method'=> 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'notes'         => 'nullable|string|max:500',
+                'app_id'         => 'required|exists:applications,id',
+                'entity_name'    => 'required|string|max:255',
+                'entity_id'      => 'required|integer',
+                'service_ids'    => 'required|array|min:1',
+                'service_ids.*'  => 'integer|exists:items,id',
+                'customer_name'  => 'required|string|max:255',
+                'customer_phone' => 'nullable|string|max:20',
+                'access_code'    => 'required|string|max:20',
+                'origin'         => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+                'fulfillment'    => 'required|string|in:dine-in,take-away,delivery',
+                'payment_status' => 'required|string|in:pending,paid,failed',
+                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+                'notes'          => 'nullable|string|max:500',
             ], $this->getValidationMessages());
 
             $now    = Carbon::now('America/Sao_Paulo');
@@ -78,6 +86,9 @@ class OrderController extends Controller
                 'customer_name'  => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'],
                 'access_code'    => $data['access_code'],
+                'origin'         => $data['origin'],
+                'fulfillment'    => $data['fulfillment'],
+                'payment_status' => $data['payment_status'],
                 'payment_method' => $data['payment_method'],
                 'total_price'    => 0,
                 'status'         => 'pending',
@@ -100,7 +111,6 @@ class OrderController extends Controller
             $order->update(['total_price' => $total, 'status' => 'approved']);
             Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
 
-            // Monta nota dinâmica
             $est = Establishment::find($order->entity_id);
             $ename = $est ? $est->name : strtoupper($order->entity_name);
             $lines = [];
@@ -110,7 +120,7 @@ class OrderController extends Controller
             $lines[] = '';
             $lines[] = "Pedido Nº: {$order->order_number}";
             $lines[] = '';
-            $lines[] = "{$order->access_code} - Local";
+            $lines[] = "Origem: {$order->origin} - {$order->fulfillment}";
             $lines[] = $order->order_datetime->format('d/m/Y H:i:s') . ' BRT';
             $lines[] = '';
             $lines[] = "Cliente: {$order->customer_name}";

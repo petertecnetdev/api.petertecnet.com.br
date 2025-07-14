@@ -20,6 +20,9 @@ class Order extends Model
         'customer_name',
         'customer_phone',
         'access_code',
+        'origin',
+        'fulfillment',
+        'payment_status',
         'payment_method',
         'total_price',
         'status',
@@ -44,5 +47,10 @@ class Order extends Model
     public function client()
     {
         return $this->belongsTo(User::class, 'client_id');
+    }
+
+    public function establishment()
+    {
+        return $this->morphTo();
     }
 }
