@@ -48,7 +48,7 @@ class AppointmentController extends Controller
         try {
             Log::info('Iniciando a criação de um novo agendamento.');
 
-            // 1) Validação
+            // validação
             $validated = $request->validate([
                 'app_id' => 'required|exists:applications,id',
                 'entity_name' => 'required|string|max:255',
@@ -65,38 +65,36 @@ class AppointmentController extends Controller
                 'duration' => 'required|integer|min:1',
             ], $this->getValidationMessages());
 
-            // 2) Determinar quem é o cliente / registrador
+            // determinar client_id e registered_by
             if (Auth::check()) {
-                // Usuário está autenticado
                 $user = Auth::user();
                 $clientId = $request->input('client_id', $user->id);
-                $registeredBy = $user->id;
+                $registered = $user->id;
 
                 if ($clientId !== $user->id && !$user->hasPermission('appointment_store')) {
-                    return response()->json([
-                        'error' => 'Você não tem permissão para agendar em nome de outro.'
-                    ], 403);
+                    return response()
+                        ->json(['error' => 'Você não tem permissão para agendar em nome de outro.'], 403);
                 }
             } else {
-                // Usuário não autenticado: usar o proprietário (user) da barbearia
+                // sem auth: usa o gerente da barbearia
                 $shop = Barbershop::with('user')->find($validated['entity_id']);
                 if (!$shop || !$shop->user) {
                     return response()->json([
                         'error' => 'Barbearia ou gerente não encontrado.'
                     ], 404);
                 }
-                $manager = $shop->user;
-                $clientId = $manager->id;
-                $registeredBy = $manager->id;
+
+                $clientId = $shop->user->id;
+                $registered = $shop->user->id;
 
                 Log::warning('Sem usuário autenticado; usando gerente como solicitante.', [
                     'barbershop_id' => $shop->id,
-                    'manager_id' => $manager->id,
-                    'manager_name' => $manager->first_name,
+                    'manager_id' => $shop->user->id,
+                    'manager_name' => $shop->user->first_name,
                 ]);
             }
 
-            // 3) Normalizar data/hora e checar se está no futuro
+            // normaliza horário no fuso de SP
             $scheduledAt = Carbon::parse($validated['scheduled_at'])
                 ->setTimezone('America/Sao_Paulo');
             if ($scheduledAt->isPast()) {
@@ -105,28 +103,30 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            // 4) Checar conflitos de horário
-            $existsClient = Appointment::where('client_id', $clientId)
-                ->where('scheduled_at', $scheduledAt)
-                ->exists();
-            if ($existsClient) {
+            // checar conflitos
+            if (
+                Appointment::where('client_id', $clientId)
+                    ->where('scheduled_at', $scheduledAt)
+                    ->exists()
+            ) {
                 return response()->json([
                     'error' => 'Cliente já possui um agendamento neste horário.'
                 ], 422);
             }
-            $existsProvider = Appointment::where('provider_id', $validated['provider_id'])
-                ->where('scheduled_at', $scheduledAt)
-                ->exists();
-            if ($existsProvider) {
+            if (
+                Appointment::where('provider_id', $validated['provider_id'])
+                    ->where('scheduled_at', $scheduledAt)
+                    ->exists()
+            ) {
                 return response()->json([
                     'error' => 'Prestador já possui um agendamento neste horário.'
                 ], 422);
             }
 
-            // 5) Criar o agendamento
+            // cria agendamento
             $appointment = Appointment::create([
                 'app_id' => $validated['app_id'],
-                'registered_by' => $registeredBy,
+                'registered_by' => $registered,
                 'entity_name' => $validated['entity_name'],
                 'entity_id' => $validated['entity_id'],
                 'scheduled_at' => $scheduledAt,
@@ -151,7 +151,6 @@ class AppointmentController extends Controller
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
-            // Retorna os erros de validação em 422
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
@@ -161,7 +160,6 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-
 
     // Lista os agendamentos do usuário autenticado (listMy)
     public function listMy(Request $request)
