@@ -21,7 +21,7 @@ use App\Http\Controllers\{
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'auth'
+    'prefix' => 'auth'
 ], function ($router) {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register'])->name('register');
@@ -40,7 +40,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'user'
+    'prefix' => 'user'
 ], function ($router) {
     Route::get('/', [UserController::class, 'list'])->name('user.list');
     Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
@@ -52,7 +52,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'profile'
+    'prefix' => 'profile'
 ], function ($router) {
     Route::get('/', [ProfileController::class, 'list'])->name('profile.list');
     Route::get('/{id}', [ProfileController::class, 'show'])->name('profile.show');
@@ -63,7 +63,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'production'
+    'prefix' => 'production'
 ], function ($router) {
     Route::post('/', [ProductionController::class, 'store'])->name('production.store');
     Route::get('/', [ProductionController::class, 'list'])->name('production.list');
@@ -77,7 +77,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'event'
+    'prefix' => 'event'
 ], function ($router) {
     Route::post('/', [EventController::class, 'store'])->name('event.store');
     Route::get('/', [EventController::class, 'list'])->name('event.list');
@@ -90,7 +90,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'ticket'
+    'prefix' => 'ticket'
 ], function ($router) {
     Route::get('/', [TicketController::class, 'list'])->name('ticket.list');
     Route::get('/show/{id}', [TicketController::class, 'show'])->name('ticket.show');
@@ -104,7 +104,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'barbershop'
+    'prefix' => 'barbershop'
 ], function ($router) {
     Route::get('/', [BarbershopController::class, 'list'])->name('barbershop.list');
     Route::get('/show/{id}', [BarbershopController::class, 'show'])->name('barbershop.show');
@@ -113,7 +113,7 @@ Route::group([
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'barbershop'
+    'prefix' => 'barbershop'
 ], function ($router) {
     Route::post('/', [BarbershopController::class, 'store'])->name('barbershop.store');
     Route::get('/myBarbershops', [BarbershopController::class, 'myBarbershops'])->name('barbershop.myBarbershops');
@@ -124,7 +124,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'news'
+    'prefix' => 'news'
 ], function () {
     Route::post('/', [NewsController::class, 'store'])->name('news.store');
     Route::get('/', [NewsController::class, 'list'])->name('news.list');
@@ -137,7 +137,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'barber'
+    'prefix' => 'barber'
 ], function () {
     Route::post('/', [BarberController::class, 'store'])->name('barber.store');
     Route::delete('/', [BarberController::class, 'destroy'])->name('barber.destroy');
@@ -149,7 +149,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'appointment'
+    'prefix' => 'appointment'
 ], function ($router) {
     Route::post('/', [AppointmentController::class, 'store'])->name('appointment.store');
     Route::get('/listmy', [AppointmentController::class, 'listMy'])->name('appointment.listMy');
@@ -162,7 +162,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'item'
+    'prefix' => 'item'
 ], function ($router) {
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
     Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
@@ -173,7 +173,7 @@ Route::group([
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'item'
+    'prefix' => 'item'
 ], function ($router) {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
@@ -182,14 +182,14 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'report'
+    'prefix' => 'report'
 ], function ($router) {
     Route::post('/generate', [ReportController::class, 'generatePDF'])->name('report.generate');
 });
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'service-record'
+    'prefix' => 'service-record'
 ], function ($router) {
     Route::post('/', [ServiceRecordController::class, 'store'])->name('service_record.store');
     Route::get('/listmy', [ServiceRecordController::class, 'listMy'])->name('service_record.listMy');
@@ -205,7 +205,7 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'establishment'
+    'prefix' => 'establishment'
 ], function () {
     Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
     Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
@@ -214,7 +214,7 @@ Route::group([
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'establishment'
+    'prefix' => 'establishment'
 ], function () {
     Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
     Route::post('/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
@@ -227,9 +227,9 @@ Route::group([
 
 Route::group([
     'middleware' => 'api',
-    'prefix'     => 'order'
-], function ($router) {
+    'prefix' => 'order'
+], function () {
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
-    Route::get('/listbyentity', [OrderController::class, 'listByEntity'])
-         ->name('order.listByEntity');
+    Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
+    Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
 });
