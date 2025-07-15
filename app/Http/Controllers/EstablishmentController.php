@@ -65,7 +65,6 @@ class EstablishmentController extends Controller
                 'location' => 'nullable|string',
                 'instagram_url' => 'nullable|string',
                 'logo' => 'required|image',
-                'background' => 'required|image',
             ], $this->getValidationMessages());
 
             Log::info('Dados validados para a criação do estabelecimento.', $validatedData);
