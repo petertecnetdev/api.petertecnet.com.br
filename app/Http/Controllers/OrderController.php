@@ -83,7 +83,6 @@ class OrderController extends Controller
                 'items.*.removals.*'  => 'integer|exists:items,id',
                 'customer_name'   => 'required|string|max:255',
                 'customer_phone'  => 'nullable|string|max:20',
-                'access_code'     => 'required|string|max:20',
                 'origin'          => 'required|string|in:WhatsApp,Balcão,Telefone,App',
                 'fulfillment'     => 'required|string|in:dine-in,take-away,delivery',
                 'payment_status'  => 'required|string|in:pending,paid,failed',
@@ -94,7 +93,7 @@ class OrderController extends Controller
             $now    = Carbon::now('America/Sao_Paulo');
             $last   = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
             $number = str_pad($last + 1, 3, '0', STR_PAD_LEFT);
-
+            $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
             $order = Order::create([
                 'app_id'         => $data['app_id'],
                 'entity_name'    => $data['entity_name'],
@@ -105,7 +104,7 @@ class OrderController extends Controller
                 'client_id'      => null,
                 'customer_name'  => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'],
-                'access_code'    => $data['access_code'],
+                'access_code' => $accessCode,
                 'origin'         => $data['origin'],
                 'fulfillment'    => $data['fulfillment'],
                 'payment_status' => $data['payment_status'],
