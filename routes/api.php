@@ -233,4 +233,5 @@ Route::group([
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
+    Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
 });

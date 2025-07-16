@@ -313,5 +313,99 @@ class OrderController extends Controller
             return response()->json(['error' => 'Erro ao recuperar pedido.'], 500);
         }
     }
+    public function update(Request $request, $id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            $user = Auth::user();
+
+            $data = $request->validate([
+                'app_id' => 'required|exists:applications,id',
+                'entity_name' => 'required|string|max:255',
+                'entity_id' => 'required|integer',
+                'items' => 'required|array|min:1',
+                'items.*.item_id' => 'required|integer|exists:items,id',
+                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.additions' => 'nullable|array',
+                'items.*.additions.*' => 'integer|exists:items,id',
+                'items.*.removals' => 'nullable|array',
+                'items.*.removals.*' => 'integer|exists:items,id',
+                'customer_name' => 'required|string|max:255',
+                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+                'payment_status' => 'required|string|in:pending,paid,failed,cancelled,refunded,partially_refunded',
+                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+                'notes' => 'nullable|string|max:500',
+            ], $this->getValidationMessages());
+
+            $order = Order::where('app_id', $data['app_id'])
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id', $data['entity_id'])
+                ->findOrFail($id);
+
+            foreach ($order->items as $oi) {
+                $oi->modifiers()->delete();
+            }
+            $order->items()->delete();
+
+            $total = 0;
+            foreach ($data['items'] as $entry) {
+                $item = Item::findOrFail($entry['item_id']);
+                $qty = $entry['quantity'];
+                $unitPrice = $item->price;
+                $subtotal = $unitPrice * $qty;
+
+                $orderItem = $order->items()->create([
+                    'item_id' => $item->id,
+                    'quantity' => $qty,
+                    'unit_price' => $unitPrice,
+                    'subtotal' => $subtotal,
+                ]);
+
+                if (!empty($entry['additions'])) {
+                    foreach ($entry['additions'] as $addId) {
+                        $orderItem->modifiers()->create([
+                            'modifier_id' => $addId,
+                            'type' => 'addition',
+                        ]);
+                    }
+                }
+                if (!empty($entry['removals'])) {
+                    foreach ($entry['removals'] as $remId) {
+                        $orderItem->modifiers()->create([
+                            'modifier_id' => $remId,
+                            'type' => 'removal',
+                        ]);
+                    }
+                }
+
+                $total += $subtotal;
+            }
+
+            $order->update([
+                'customer_name' => $data['customer_name'],
+                'origin' => $data['origin'],
+                'fulfillment' => $data['fulfillment'],
+                'payment_status' => $data['payment_status'],
+                'payment_method' => $data['payment_method'],
+                'notes' => $data['notes'] ?? null,
+                'total_price' => $total,
+                'status' => 'approved',
+            ]);
+
+            $order->load('items.item', 'items.modifiers.modifier');
+
+            return response()->json([
+                'message' => 'Pedido atualizado com sucesso!',
+                'order' => $order,
+            ], 200);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            return response()->json(['error' => 'Ocorreu um erro ao atualizar o pedido.'], 500);
+        }
+    }
 
 }
