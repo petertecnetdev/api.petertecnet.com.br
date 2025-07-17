@@ -167,41 +167,36 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-    /**
-     * Lista os agendamentos do usuário autenticado, incluindo dados do provider e da entidade.
-     */
     public function listMy(Request $request)
     {
-        if (!Auth::check()) {
+        if (!\Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        // Carrega provider (com username) e a entidade polimórfica
-        $appointments = Appointment::with([
-            'provider:id,first_name,username',   // username usado como "slug"
-            'entity'                             // carrega qualquer entidade (barbearia, hospital, etc.)
-        ])
-            ->where('client_id', Auth::id())
+        $appointments = Appointment::with(['provider', 'entity'])
+            ->where('client_id', \Auth::id())
             ->orderBy('scheduled_at', 'asc')
             ->get();
 
-        // Mapeia para estrutura de resposta
+        // Formata o payload
         $result = $appointments->map(function ($a) {
             return [
                 'id' => $a->id,
-                'scheduled_at' => $a->scheduled_at,
+                'scheduled_at' => $a->scheduled_at->toDateTimeString(),
                 'status' => $a->status,
-                'service_names' => $a->service_names,       // atributo virtual
+                'service_names' => $a->service_names,
+
                 'provider' => [
-                    'id' => $a->provider->id,
-                    'first_name' => $a->provider->first_name,
-                    'slug' => $a->provider->username,    // usamos username como slug
+                    'id' => optional($a->provider)->id,
+                    'first_name' => optional($a->provider)->first_name,
+                    'slug' => optional($a->provider)->slug,        // pega do Barber.slug
                 ],
+
                 'entity' => [
                     'type' => $a->entity_name,
-                    'id' => $a->entity->id,
-                    'name' => $a->entity->name,
-                    'slug' => $a->entity->slug ?? null, // exige que cada entidade tenha 'slug' na sua model
+                    'id' => optional($a->entity)->id,
+                    'name' => optional($a->entity)->name,
+                    'slug' => optional($a->entity)->slug,                // pega do Barbershop.slug, Hospital.slug, etc.
                 ],
             ];
         });

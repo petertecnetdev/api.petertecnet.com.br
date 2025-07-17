@@ -39,7 +39,7 @@ class Appointment extends Model
     ];
 
     /**
-     * Relação polimórfica para qualquer entidade agendada
+     * Entidade polimórfica (Barbershop, Hospital, Dentista…)
      */
     public function entity(): MorphTo
     {
@@ -47,19 +47,19 @@ class Appointment extends Model
     }
 
     /**
-     * Usuário que prestará o serviço
+     * Quem presta o serviço: passa a ser um Barber (não um User genérico)
      */
     public function provider(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'provider_id');
+        return $this->belongsTo(\App\Models\Barber::class, 'provider_id');
     }
 
     /**
-     * Cliente que solicitou
+     * Cliente (User)
      */
     public function client(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'client_id');
+        return $this->belongsTo(\App\Models\User::class, 'client_id');
     }
 
     /**
@@ -67,19 +67,18 @@ class Appointment extends Model
      */
     public function registeredBy(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'registered_by');
+        return $this->belongsTo(\App\Models\User::class, 'registered_by');
     }
 
     /**
-     * Retorna uma coleção com os nomes dos serviços
+     * Pluck dos nomes dos serviços
      */
     public function getServiceNamesAttribute()
     {
-        if (! is_array($this->service_ids) || empty($this->service_ids)) {
+        if (! is_array($this->service_ids)) {
             return collect();
         }
-
-        return Item::whereIn('id', $this->service_ids)
+        return \App\Models\Item::whereIn('id', $this->service_ids)
             ->where('category', 'Serviços')
             ->pluck('name');
     }
