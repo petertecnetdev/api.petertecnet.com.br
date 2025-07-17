@@ -174,17 +174,17 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        // Eager‑load de provider e da entidade (incluindo slug)
+        // Eager‑load de provider (incluindo slug) e da entidade (incluindo slug)
         $appointments = Appointment::with([
-            'provider:id,first_name',
-            'entity:id,name,slug'    // adiciona slug aqui
+            'provider:id,first_name,slug',
+            'entity:id,name,slug'
         ])
             ->where('client_id', Auth::id())
             ->orderBy('scheduled_at', 'asc')
             ->get();
 
         $result = $appointments->map(function ($a) {
-            // serviços
+            // monta lista de nomes de serviços
             $services = [];
             if ($a->service_ids) {
                 $ids = json_decode($a->service_ids, true);
@@ -202,18 +202,20 @@ class AppointmentController extends Controller
                 'provider' => [
                     'id' => $a->provider->id,
                     'first_name' => $a->provider->first_name,
+                    'slug' => $a->provider->slug,    // <— aqui
                 ],
                 'entity' => [
                     'type' => $a->entity_name,
                     'id' => $a->entity->id,
                     'name' => $a->entity->name,
-                    'slug' => $a->entity->slug,      // agora disponível
+                    'slug' => $a->entity->slug,
                 ],
             ];
         });
 
         return response()->json(['appointments' => $result], 200);
     }
+
 
 
     // Lista os agendamentos de um cliente específico (listByClient)
