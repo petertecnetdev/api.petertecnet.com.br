@@ -184,11 +184,6 @@ public function listMy(Request $request)
         }
 
         $user = Auth::user();
-        // Checa permissão
-        if (! $user->hasPermission('appointment_list')) {
-            return response()->json(['error' => 'Você não tem permissão para listar agendamentos.'], 403);
-        }
-
         // Eager‐load do usuário → barber e da entidade polimórfica
         $appointments = Appointment::with(['provider.barber', 'entity'])
             ->where('client_id', $user->id)
