@@ -171,48 +171,50 @@ class AppointmentController extends Controller
     // Lista os agendamentos do usuário autenticado (listMy)
    public function listMy(Request $request)
 {
-    if (! Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
+    $userId = auth()->id();
 
-    $user = Auth::user();
-
+    // Eager‑load provider→barber (pra slug) e a entidade polimórfica (barbershop)
     $appointments = Appointment::with([
-            // Carrega o usuário provedor
-            'provider:id,first_name',
-            // Carrega o registro de Barber (slug) vinculado ao User
-            'provider.barber:id,user_id,slug',
-            // Carrega a entidade polimórfica (ex: Barbershop) incluindo slug
-            'entity:id,name,slug',
-        ])
-        ->where('client_id', $user->id)
-        ->orderBy('scheduled_at', 'asc')
-        ->get();
+        'provider.barber',
+        'entity'           // assume que entity é Barbershop
+    ])
+    ->where('client_id', $userId)
+    ->get();
 
-    $result = $appointments->map(function ($a) {
+    $payload = $appointments->map(function(Appointment $appt) {
+        // provider (User)
+        $provider = $appt->provider;
+        $barber   = $provider ? $provider->barber : null;
+
+        // entidade (Barbershop)
+        $shop = $appt->entity;
+
         return [
-            'id'            => $a->id,
-            'scheduled_at'  => $a->scheduled_at->format('Y-m-d H:i:s'),
-            'status'        => $a->status,
-            'service_names' => $a->service_names->toArray(),
+            'id'            => $appt->id,
+            'scheduled_at'  => $appt->scheduled_at,
+            'status'        => $appt->status,
+            'service_names' => $appt->service_names,
 
-            'provider' => [
-                'id'         => optional($a->provider)->id,
-                'first_name' => optional($a->provider)->first_name,
-                'slug'       => optional($a->provider->barber)->slug,
-            ],
+            'provider' => $provider ? [
+                'id'         => $provider->id,
+                'first_name' => $provider->first_name,
+                // só tenta pegar slug se o pivot Barber existir
+                'slug'       => $barber ? $barber->slug : null,
+            ] : null,
 
-            'entity' => [
-                'type' => $a->entity_name,
-                'id'   => optional($a->entity)->id,
-                'name' => optional($a->entity)->name,
-                'slug' => optional($a->entity)->slug,
-            ],
+            'entity' => $shop ? [
+                'id'   => $shop->id,
+                'name' => $shop->name,
+                'slug' => $shop->slug,
+            ] : null,
         ];
     });
 
-    return response()->json(['appointments' => $result], 200);
+    return response()->json([
+        'appointments' => $payload,
+    ]);
 }
+
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
