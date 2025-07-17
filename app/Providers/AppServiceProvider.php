@@ -29,7 +29,7 @@ class AppServiceProvider extends ServiceProvider
 
         // 2) Mapear nomes polimórficos das entidades
         Relation::morphMap([
-            'barbearia' => \App\Models\Barbershop::class,
+            'barbershop' => \App\Models\Barbershop::class,
             // adicione aqui novas entidades...
         ]);
 
