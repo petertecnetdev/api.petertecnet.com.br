@@ -337,56 +337,46 @@ class ItemController extends Controller
     }
 
     public function destroy($id)
-    {
-        try {
-            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
+{
+    try {
+        \Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            // Buscar o item no banco de dados
-            $item = Item::find($id);
-
-            if (!$item) {
-                \Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
-                return response()->json(['error' => 'Item não encontrado.'], 404);
-            }
-
-            // Verificar se o usuário tem permissão para excluir o item
-            if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-                \Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
-                return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
-            }
-
-            // Deletar a imagem do item, se existir
-            if ($item->image) {
-                \Log::info('Deletando a imagem do item.');
-                $imagePath = storage_path('app/public/items/' . $item->image);
-                if (File::exists($imagePath)) {
-                    File::delete($imagePath);
-                    \Log::info('Imagem deletada com sucesso.', ['image_path' => $imagePath]);
-                }
-            }
-
-            // Deletar o item do banco de dados
-            $item->delete();
-            \Log::info('Item deletado com sucesso.', ['item_id' => $id]);
-
-            // Retornar sucesso
-            return response()->json(['message' => 'Item deletado com sucesso.'], 200);
-
-        } catch (\Exception $e) {
-            \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+        $item = Item::with('orderItems')->find($id);
+        if (!$item) {
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
+            return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
+        }
+
+        if ($item->orderItems()->exists()) {
+            $item->orderItems()->delete();
+        }
+
+        if ($item->image) {
+            $imagePath = storage_path('app/public/items/' . $item->image);
+            if (File::exists($imagePath)) {
+                File::delete($imagePath);
+            }
+        }
+
+        $item->delete();
+        return response()->json(['message' => 'Item deletado com sucesso.'], 200);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+        return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
     }
+}
+
     public function listByApp(Request $request)
     {
         try {
