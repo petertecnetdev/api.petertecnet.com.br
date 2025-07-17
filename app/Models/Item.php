@@ -108,4 +108,9 @@ class Item extends Model
             && (is_null($this->availability_start) || $this->availability_start <= now())
             && (is_null($this->availability_end) || $this->availability_end >= now());
     }
+
+    public function orderItems()
+{
+    return $this->hasMany(OrderItem::class, 'item_id');
+}
 }
