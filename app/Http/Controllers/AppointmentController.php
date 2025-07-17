@@ -167,29 +167,20 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-
-    // Lista os agendamentos do usuário autenticado (listMy)
-   /**
- * Lista os agendamentos do cliente autenticado
- */
-    // Lista os agendamentos do usuário autenticado (listMy)
-/**
- * Lista os agendamentos do cliente autenticado
- */
-public function listMy(Request $request)
-{
-    try {
+    public function listMy(Request $request)
+    {
         Log::info('Iniciando listagem dos meus agendamentos.');
 
-        // Checa autenticação
-        if (! Auth::check()) {
+        // Verifica se está logado
+        if (!Auth::check()) {
             Log::warning('Usuário não autenticado tentou acessar listMy.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
-        // Eager‐load do usuário → barber e da entidade polimórfica
-        $appointments = Appointment::with(['provider.barber', 'entity'])
+
+        // Eager‐load do usuário genérico provider e da entidade polimórfica
+        $appointments = Appointment::with(['providerUser', 'entity'])
             ->where('client_id', $user->id)
             ->orderBy('scheduled_at', 'asc')
             ->get();
@@ -198,26 +189,27 @@ public function listMy(Request $request)
             return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
         }
 
-        // Monta payload igual aos outros métodos
+        // Monta o payload
         $payload = $appointments->map(function (Appointment $appt) {
-            $provider = $appt->provider;            // User
-            $barber   = $provider?->barber;         // Barber (onde está o slug)
-            $shop     = $appt->entity;             // Barbershop
+            $providerUser = $appt->providerUser;         // sempre um User
+            $providerProfile = $appt->provider_profile;     // Barber/Doctor/Dentist… via accessor
+            $shop = $appt->entity;               // Barbershop, Hospital, Dentist…
 
             return [
-                'id'            => $appt->id,
-                'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
-                'status'        => $appt->status,
+                'id' => $appt->id,
+                'scheduled_at' => $appt->scheduled_at->toDateTimeString(),
+                'status' => $appt->status,
                 'service_names' => $appt->service_names->toArray(),
 
-                'provider' => $provider ? [
-                    'id'         => $provider->id,
-                    'first_name' => $provider->first_name,
-                    'slug'       => $barber?->slug,
+                'provider' => $providerUser ? [
+                    'id' => $providerUser->id,
+                    'first_name' => $providerUser->first_name,
+                    // só haverá slug se $providerProfile existir
+                    'slug' => $providerProfile?->slug,
                 ] : null,
 
                 'entity' => $shop ? [
-                    'id'   => $shop->id,
+                    'id' => $shop->id,
                     'name' => $shop->name,
                     'slug' => $shop->slug,
                 ] : null,
@@ -225,12 +217,7 @@ public function listMy(Request $request)
         });
 
         return response()->json(['appointments' => $payload], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar meus agendamentos: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar agendamentos.'], 500);
     }
-}
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)

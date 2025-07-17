@@ -39,7 +39,7 @@ class Appointment extends Model
     ];
 
     /**
-     * Entidade polimórfica (Barbershop, Hospital, Dentista…)
+     * Relação polimórfica com a entidade (Barbershop, Hospital, Dentist, etc.)
      */
     public function entity(): MorphTo
     {
@@ -47,15 +47,40 @@ class Appointment extends Model
     }
 
     /**
-     * Quem presta o serviço: passa a ser um Barber (não um User genérico)
+     * O usuário genérico que presta o serviço.
      */
-    public function provider(): BelongsTo
+    public function providerUser(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\Barber::class, 'provider_id');
+        return $this->belongsTo(\App\Models\User::class, 'provider_id');
     }
 
     /**
-     * Cliente (User)
+     * Retorna o perfil específico do prestador:
+     * - Se for barbershop, pega ->barber
+     * - Se for hospital, pega ->doctor
+     * - Se for dentist, pega ->dentist
+     */
+    public function getProviderProfileAttribute()
+    {
+        $user = $this->providerUser;
+        if (! $user) {
+            return null;
+        }
+
+        switch (strtolower($this->entity_name)) {
+            case 'barbershop':
+                return $user->barber;
+            case 'hospital':
+                return $user->doctor;
+            case 'dentist':
+                return $user->dentist;
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * Cliente que agendou (sempre um User)
      */
     public function client(): BelongsTo
     {
@@ -63,7 +88,7 @@ class Appointment extends Model
     }
 
     /**
-     * Quem registrou
+     * Quem registrou o agendamento
      */
     public function registeredBy(): BelongsTo
     {
@@ -71,13 +96,14 @@ class Appointment extends Model
     }
 
     /**
-     * Pluck dos nomes dos serviços
+     * Retorna nomes dos serviços agendados
      */
     public function getServiceNamesAttribute()
     {
         if (! is_array($this->service_ids)) {
             return collect();
         }
+
         return \App\Models\Item::whereIn('id', $this->service_ids)
             ->where('category', 'Serviços')
             ->pluck('name');
