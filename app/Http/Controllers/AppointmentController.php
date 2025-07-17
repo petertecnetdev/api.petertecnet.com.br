@@ -168,52 +168,52 @@ class AppointmentController extends Controller
         }
     }
 
-    public function listMy(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+  public function listMy(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error'=>'Usuário não autenticado.'], 401);
+    }
 
-        // Eager‑load de provider e da entidade (incluindo slug)
-        $appointments = Appointment::with([
+    // Eager‑load de provider e da entidade (incluindo slug)
+    $appointments = Appointment::with([
             'provider:id,first_name',
             'entity:id,name,slug'    // adiciona slug aqui
         ])
-            ->where('client_id', Auth::id())
-            ->orderBy('scheduled_at', 'asc')
-            ->get();
+        ->where('client_id', Auth::id())
+        ->orderBy('scheduled_at', 'asc')
+        ->get();
 
-        $result = $appointments->map(function ($a) {
-            // serviços
-            $services = [];
-            if ($a->service_ids) {
-                $ids = json_decode($a->service_ids, true);
-                $services = Item::whereIn('id', $ids)
-                    ->where('category', 'Serviços')
-                    ->pluck('name')
-                    ->toArray();
-            }
+    $result = $appointments->map(function ($a) {
+        // serviços
+        $services = [];
+        if ($a->service_ids) {
+            $ids = json_decode($a->service_ids, true);
+            $services = Item::whereIn('id', $ids)
+                ->where('category','Serviços')
+                ->pluck('name')
+                ->toArray();
+        }
 
-            return [
-                'id' => $a->id,
-                'scheduled_at' => $a->scheduled_at,
-                'status' => $a->status,
-                'service_names' => $services,
-                'provider' => [
-                    'id' => $a->provider->id,
-                    'first_name' => $a->provider->first_name,
-                ],
-                'entity' => [
-                    'type' => $a->entity_name,
-                    'id' => $a->entity->id,
-                    'name' => $a->entity->name,
-                    'slug' => $a->entity->slug,      // agora disponível
-                ],
-            ];
-        });
+        return [
+            'id'            => $a->id,
+            'scheduled_at'  => $a->scheduled_at,
+            'status'        => $a->status,
+            'service_names' => $services,
+            'provider'      => [
+                'id'         => $a->provider->id,
+                'first_name' => $a->provider->first_name,
+            ],
+            'entity'        => [
+                'type' => $a->entity_name,
+                'id'   => $a->entity->id,
+                'name' => $a->entity->name,
+                'slug' => $a->entity->slug,      // agora disponível
+            ],
+        ];
+    });
 
-        return response()->json(['appointments' => $result], 200);
-    }
+    return response()->json(['appointments'=>$result], 200);
+}
 
 
     // Lista os agendamentos de um cliente específico (listByClient)
