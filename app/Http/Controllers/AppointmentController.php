@@ -169,41 +169,49 @@ class AppointmentController extends Controller
     }
     public function listMy(Request $request)
     {
-        if (!\Auth::check()) {
+        if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        $appointments = Appointment::with(['provider', 'entity'])
-            ->where('client_id', \Auth::id())
+        $user = Auth::user();
+
+        // eager‑load provider → barber (para pegar slug) e a entidade com slug
+        $appointments = Appointment::with([
+            'provider:id,first_name',
+            'provider.barber:id,user_id,slug',
+            'entity:id,name,slug'
+        ])
+            ->where('client_id', $user->id)
             ->orderBy('scheduled_at', 'asc')
             ->get();
 
-        // Formata o payload
         $result = $appointments->map(function ($a) {
+            // via accessor getServiceNamesAttribute()
+            $services = $a->service_names->toArray();
+
             return [
                 'id' => $a->id,
-                'scheduled_at' => $a->scheduled_at->toDateTimeString(),
+                'scheduled_at' => $a->scheduled_at->format('Y-m-d H:i:s'),
                 'status' => $a->status,
-                'service_names' => $a->service_names,
+                'service_names' => $services,
 
                 'provider' => [
-                    'id' => optional($a->provider)->id,
-                    'first_name' => optional($a->provider)->first_name,
-                    'slug' => optional($a->provider)->slug,        // pega do Barber.slug
+                    'id' => $a->provider->id,
+                    'first_name' => $a->provider->first_name,
+                    'slug' => optional($a->provider->barber)->slug,
                 ],
 
                 'entity' => [
                     'type' => $a->entity_name,
-                    'id' => optional($a->entity)->id,
-                    'name' => optional($a->entity)->name,
-                    'slug' => optional($a->entity)->slug,                // pega do Barbershop.slug, Hospital.slug, etc.
+                    'id' => $a->entity->id,
+                    'name' => $a->entity->name,
+                    'slug' => $a->entity->slug ?? null,
                 ],
             ];
         });
 
         return response()->json(['appointments' => $result], 200);
     }
-
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
