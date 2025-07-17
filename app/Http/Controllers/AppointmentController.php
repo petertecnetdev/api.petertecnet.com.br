@@ -495,31 +495,52 @@ class AppointmentController extends Controller
     }
 
     public function availability(Request $request)
-{
-    $data = $request->validate([
-        'provider_id' => 'required|integer|exists:users,id',
-        'entity_id'   => 'required|integer|exists:barbershops,id',
-        'date'        => 'required|date_format:Y-m-d',
-    ]);
+    {
+        $data = $request->validate([
+            'provider_id' => 'required|integer|exists:users,id',
+            'entity_id' => 'required|integer|exists:barbershops,id',
+            'date' => 'required|date_format:Y-m-d',
+        ]);
 
-    // gera slots de 08:00 a 19:00 de 30 em 30
-    $slots = [];
-    for ($h = 8; $h < 19; $h++) {
-        $slots[] = sprintf('%02d:00', $h);
-        $slots[] = sprintf('%02d:30', $h);
+        // gera todos os slots de 08:00 a 19:00
+        $slots = [];
+        for ($h = 8; $h < 19; $h++) {
+            $slots[] = sprintf('%02d:00', $h);
+            $slots[] = sprintf('%02d:30', $h);
+        }
+        $slots[] = '19:00';
+
+        // busca os agendamentos do provider nessa data
+        $appointments = Appointment::where('provider_id', $data['provider_id'])
+            ->whereDate('scheduled_at', $data['date'])
+            ->get(['scheduled_at', 'duration', 'service_ids']);
+
+        $booked = [];
+
+        foreach ($appointments as $appt) {
+            $start = Carbon::parse($appt->scheduled_at);
+
+            // Se preferir recalcular pela lista de serviços:
+            // $services = is_string($appt->service_ids) ? json_decode($appt->service_ids, true) : $appt->service_ids;
+            // $duration = count($services) * 25;
+
+            // Ou use direto a coluna duration:
+            $duration = $appt->duration;
+
+            // quantos slots de 30m ocupa
+            $slotsNeeded = (int) ceil($duration / 30);
+
+            // marca o início e os próximos slots
+            for ($i = 0; $i < $slotsNeeded; $i++) {
+                $time = $start->copy()->addMinutes(30 * $i)->format('H:i');
+                $booked[] = $time;
+            }
+        }
+
+        // remove duplicatas e faz diff
+        $booked = array_unique($booked);
+        $available = array_values(array_diff($slots, $booked));
+
+        return response()->json(['slots' => $available]);
     }
-    $slots[] = '19:00';
-
-    // busca agendamentos existentes do barbeiro naquela data
-    $booked = Appointment::where('provider_id', $data['provider_id'])
-        ->whereDate('scheduled_at', $data['date'])
-        ->pluck('scheduled_at')
-        ->map(fn($dt) => Carbon::parse($dt)->format('H:i'))
-        ->toArray();
-
-    // remove os slots já agendados
-    $available = array_values(array_diff($slots, $booked));
-
-    return response()->json(['slots' => $available]);
-}
 }
