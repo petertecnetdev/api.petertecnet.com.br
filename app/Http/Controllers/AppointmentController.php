@@ -513,7 +513,8 @@ class AppointmentController extends Controller
         // busca os agendamentos do provider nessa data
         $appointments = Appointment::where('provider_id', $data['provider_id'])
             ->whereDate('scheduled_at', $data['date'])
-            ->get(['scheduled_at', 'duration', 'service_ids']);
+            ->where('status', '<>', 'cancelled')  // <— ignora os cancelados
+            ->get(['scheduled_at', 'duration']);
 
         $booked = [];
 
