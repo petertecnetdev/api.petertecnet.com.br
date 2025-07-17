@@ -182,8 +182,6 @@ class AppointmentController extends Controller
         $appointments = Appointment::with([
             'providerUser',
             'providerUser.barber',
-            'providerUser.doctor',
-            'providerUser.dentist',
             'entity'
         ])
             ->where('client_id', $user->id)
