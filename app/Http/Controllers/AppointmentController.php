@@ -167,50 +167,55 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-public function listMy(Request $request)
+
+    public function listMy(Request $request)
 {
-    if (! Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    if (!Auth::check()) {
+        return response()->json(['error'=>'Usuário não autenticado.'], 401);
     }
 
-    $user = Auth::user();
-
+    // Eager‑load de provider (incluindo slug) e da entidade (incluindo slug)
     $appointments = Appointment::with([
-            // Carrega o usuário provedor
-            'provider:id,first_name',
-            // Carrega o registro de Barber (slug) vinculado ao User
-            'provider.barber:id,user_id,slug',
-            // Carrega a entidade polimórfica (ex: Barbershop) incluindo slug
-            'entity:id,name,slug',
+            'provider:id,first_name,slug',
+            'entity:id,name,slug'
         ])
-        ->where('client_id', $user->id)
+        ->where('client_id', Auth::id())
         ->orderBy('scheduled_at', 'asc')
         ->get();
 
     $result = $appointments->map(function ($a) {
+        // monta lista de nomes de serviços
+        $services = [];
+        if ($a->service_ids) {
+            $ids = json_decode($a->service_ids, true);
+            $services = Item::whereIn('id', $ids)
+                ->where('category','Serviços')
+                ->pluck('name')
+                ->toArray();
+        }
+
         return [
             'id'            => $a->id,
-            'scheduled_at'  => $a->scheduled_at->format('Y-m-d H:i:s'),
+            'scheduled_at'  => $a->scheduled_at,
             'status'        => $a->status,
-            'service_names' => $a->service_names->toArray(),
-
-            'provider' => [
-                'id'         => optional($a->provider)->id,
-                'first_name' => optional($a->provider)->first_name,
-                'slug'       => optional($a->provider->barber)->slug,
+            'service_names' => $services,
+            'provider'      => [
+                'id'         => $a->provider->id,
+                'first_name' => $a->provider->first_name,
+                'slug'       => $a->provider->slug,    // <— aqui
             ],
-
-            'entity' => [
+            'entity'        => [
                 'type' => $a->entity_name,
-                'id'   => optional($a->entity)->id,
-                'name' => optional($a->entity)->name,
-                'slug' => optional($a->entity)->slug,
+                'id'   => $a->entity->id,
+                'name' => $a->entity->name,
+                'slug' => $a->entity->slug,
             ],
         ];
     });
 
     return response()->json(['appointments' => $result], 200);
 }
+
 
 
     // Lista os agendamentos de um cliente específico (listByClient)
