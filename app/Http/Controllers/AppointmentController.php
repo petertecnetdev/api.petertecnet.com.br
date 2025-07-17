@@ -169,25 +169,20 @@ class AppointmentController extends Controller
     }
 
     // Lista os agendamentos do usuário autenticado (listMy)
-   public function listMy(Request $request)
+   
+public function listMy(Request $request)
 {
     $userId = auth()->id();
 
-    // Eager‑load provider→barber (pra slug) e a entidade polimórfica (barbershop)
-    $appointments = Appointment::with([
-        'provider.barber',
-        'entity'           // assume que entity é Barbershop
-    ])
-    ->where('client_id', $userId)
-    ->get();
+    // Já trazemos o User → Barber e a entidade polimórfica (Barbershop)
+    $appointments = Appointment::with(['provider.barber', 'entity'])
+        ->where('client_id', $userId)
+        ->get();
 
-    $payload = $appointments->map(function(Appointment $appt) {
-        // provider (User)
-        $provider = $appt->provider;
-        $barber   = $provider ? $provider->barber : null;
-
-        // entidade (Barbershop)
-        $shop = $appt->entity;
+    $payload = $appointments->map(function (Appointment $appt) {
+        $provider = $appt->provider;      // é um User
+        $barber   = $provider?->barber;   // use o relacionamento barber()
+        $shop     = $appt->entity;       // Barbershop
 
         return [
             'id'            => $appt->id,
@@ -198,8 +193,8 @@ class AppointmentController extends Controller
             'provider' => $provider ? [
                 'id'         => $provider->id,
                 'first_name' => $provider->first_name,
-                // só tenta pegar slug se o pivot Barber existir
-                'slug'       => $barber ? $barber->slug : null,
+                // aqui pegamos a slug do barber, não do user
+                'slug'       => $barber?->slug,
             ] : null,
 
             'entity' => $shop ? [
@@ -213,6 +208,7 @@ class AppointmentController extends Controller
     return response()->json([
         'appointments' => $payload,
     ]);
+
 }
 
 
