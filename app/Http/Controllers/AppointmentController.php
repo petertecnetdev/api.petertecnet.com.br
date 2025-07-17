@@ -166,66 +166,58 @@ class AppointmentController extends Controller
                 'error' => 'Ocorreu um erro ao criar o agendamento.'
             ], 500);
         }
-    }public function listMy(Request $request)
-{
-    Log::info('Iniciando listagem dos meus agendamentos.');
-
-    if (! Auth::check()) {
-        Log::warning('Usuário não autenticado tentou acessar listMy.');
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
+    public function listMy(Request $request)
+    {
+        Log::info('Iniciando listagem dos meus agendamentos.');
 
-    $user = Auth::user();
+        // Verifica se está logado
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar listMy.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-    $appointments = Appointment::with([
-            'provider',            // Carrega o User
-            'provider.barber',     // Carrega o perfil Barber (pode ser null)
-            'provider.doctor',     // Carrega o perfil Doctor (pode ser null)
-            'provider.dentist',    // Carrega o perfil Dentist (pode ser null)
-            'entity'               // A entidade polimórfica (Barbershop, Hospital, Dentist…)
-        ])
-        ->where('client_id', $user->id)
-        ->orderBy('scheduled_at', 'asc')
-        ->get();
+        $user = Auth::user();
 
-    if ($appointments->isEmpty()) {
-        return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+        // Eager‐load do usuário genérico provider e da entidade polimórfica
+        $appointments = Appointment::with(['providerUser', 'entity'])
+            ->where('client_id', $user->id)
+            ->orderBy('scheduled_at', 'asc')
+            ->get();
+
+        if ($appointments->isEmpty()) {
+            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+        }
+
+        // Monta o payload
+        $payload = $appointments->map(function (Appointment $appt) {
+            $providerUser = $appt->providerUser;         // sempre um User
+            $providerProfile = $appt->provider_profile;     // Barber/Doctor/Dentist… via accessor
+            $shop = $appt->entity;               // Barbershop, Hospital, Dentist…
+
+            return [
+                'id' => $appt->id,
+                'scheduled_at' => $appt->scheduled_at->toDateTimeString(),
+                'status' => $appt->status,
+                'service_names' => $appt->service_names->toArray(),
+
+                'provider' => $providerUser ? [
+                    'id' => $providerUser->id,
+                    'first_name' => $providerUser->first_name,
+                    // só haverá slug se $providerProfile existir
+                    'slug' => $providerProfile?->slug,
+                ] : null,
+
+                'entity' => $shop ? [
+                    'id' => $shop->id,
+                    'name' => $shop->name,
+                    'slug' => $shop->slug,
+                ] : null,
+            ];
+        });
+
+        return response()->json(['appointments' => $payload], 200);
     }
-
-    $payload = $appointments->map(function (Appointment $appt) {
-        $providerUser = $appt->provider;       // sempre um User
-        // escolhe o primeiro perfil existente
-        $profile = $providerUser?->barber
-                 ?? $providerUser?->doctor
-                 ?? $providerUser?->dentist
-                 // … adicione outros perfis aqui
-                 ;
-
-        $shop = $appt->entity;                 // Barbershop, Hospital, Dentist…
-
-        return [
-            'id'            => $appt->id,
-            'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
-            'status'        => $appt->status,
-            'service_names' => $appt->service_names->toArray(),
-
-            'provider' => $providerUser ? [
-                'id'         => $providerUser->id,
-                'first_name' => $providerUser->first_name,
-                'slug'       => $profile?->slug,   // slug do perfil existente
-            ] : null,
-
-            'entity' => $shop ? [
-                'id'   => $shop->id,
-                'name' => $shop->name,
-                'slug' => $shop->slug,
-            ] : null,
-        ];
-    });
-
-    return response()->json(['appointments' => $payload], 200);
-}
-
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
