@@ -171,7 +171,6 @@ class AppointmentController extends Controller
     {
         Log::info('Iniciando listagem dos meus agendamentos.');
 
-        // Verifica se está logado
         if (!Auth::check()) {
             Log::warning('Usuário não autenticado tentou acessar listMy.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
@@ -179,8 +178,14 @@ class AppointmentController extends Controller
 
         $user = Auth::user();
 
-        // Eager‐load do usuário genérico provider e da entidade polimórfica
-        $appointments = Appointment::with(['providerUser', 'entity'])
+        // Eager‑load: traz o User, seus possíveis perfis e a entidade polimórfica
+        $appointments = Appointment::with([
+            'providerUser',
+            'providerUser.barber',
+            'providerUser.doctor',
+            'providerUser.dentist',
+            'entity'
+        ])
             ->where('client_id', $user->id)
             ->orderBy('scheduled_at', 'asc')
             ->get();
@@ -189,11 +194,10 @@ class AppointmentController extends Controller
             return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
         }
 
-        // Monta o payload
         $payload = $appointments->map(function (Appointment $appt) {
-            $providerUser = $appt->providerUser;         // sempre um User
-            $providerProfile = $appt->provider_profile;     // Barber/Doctor/Dentist… via accessor
-            $shop = $appt->entity;               // Barbershop, Hospital, Dentist…
+            $u = $appt->providerUser;          // instância de User
+            $profile = $appt->provider_profile;      // pega barber, doctor ou dentist
+            $shop = $appt->entity;                // Barbershop, Hospital…
 
             return [
                 'id' => $appt->id,
@@ -201,11 +205,10 @@ class AppointmentController extends Controller
                 'status' => $appt->status,
                 'service_names' => $appt->service_names->toArray(),
 
-                'provider' => $providerUser ? [
-                    'id' => $providerUser->id,
-                    'first_name' => $providerUser->first_name,
-                    // só haverá slug se $providerProfile existir
-                    'slug' => $providerProfile?->slug,
+                'provider' => $u ? [
+                    'id' => $u->id,
+                    'first_name' => $u->first_name,
+                    'slug' => $profile?->slug,   // slug do perfil correto
                 ] : null,
 
                 'entity' => $shop ? [
@@ -218,7 +221,6 @@ class AppointmentController extends Controller
 
         return response()->json(['appointments' => $payload], 200);
     }
-
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
     {

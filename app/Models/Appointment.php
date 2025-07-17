@@ -1,5 +1,4 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -19,7 +18,6 @@ class Appointment extends Model
         'expected_end_time',
         'service_ids',
         'provider_id',
-        'description',
         'client_id',
         'registered_by',
         'status',
@@ -29,7 +27,6 @@ class Appointment extends Model
         'payment_status',
         'appointment_type',
         'attendance_status',
-        'client_confirmation',
     ];
 
     protected $casts = [
@@ -38,16 +35,8 @@ class Appointment extends Model
         'service_ids'       => 'array',
     ];
 
-    /**
-     * Relação polimórfica com a entidade (Barbershop, Hospital, Dentist, etc.)
-     */
-    public function entity(): MorphTo
-    {
-        return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
-    }
-
-    /**
-     * O usuário genérico que presta o serviço.
+    /** 
+     * Relaciona ao usuário genérico que presta o serviço. 
      */
     public function providerUser(): BelongsTo
     {
@@ -55,55 +44,55 @@ class Appointment extends Model
     }
 
     /**
-     * Retorna o perfil específico do prestador:
-     * - Se for barbershop, pega ->barber
-     * - Se for hospital, pega ->doctor
-     * - Se for dentist, pega ->dentist
+     * Perfil de barbeiro, se existir.
+     */
+    public function barber()
+    {
+        return $this->hasOne(Barber::class, 'user_id', 'provider_id');
+    }
+
+    /**
+     * Perfil de médico, se existir.
+     */
+    public function doctor()
+    {
+        return $this->hasOne(Doctor::class, 'user_id', 'provider_id');
+    }
+
+    /**
+     * Perfil de dentista, se existir.
+     */
+    public function dentist()
+    {
+        return $this->hasOne(Dentist::class, 'user_id', 'provider_id');
+    }
+
+    /**
+     * Acesso “virtual” ao perfil ativo: barbeiro, médico, dentista...
      */
     public function getProviderProfileAttribute()
     {
-        $user = $this->providerUser;
-        if (! $user) {
-            return null;
-        }
-
-        switch (strtolower($this->entity_name)) {
-            case 'barbershop':
-                return $user->barber;
-            case 'hospital':
-                return $user->doctor;
-            case 'dentist':
-                return $user->dentist;
-            default:
-                return null;
-        }
+        return $this->barber
+             ?? $this->doctor
+             ?? $this->dentist;
     }
 
-    /**
-     * Cliente que agendou (sempre um User)
+    /**  
+     * Entidade polimórfica (Barbershop, Hospital, Clinic…).
      */
-    public function client(): BelongsTo
+    public function entity(): MorphTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'client_id');
+        return $this->morphTo();
     }
 
     /**
-     * Quem registrou o agendamento
-     */
-    public function registeredBy(): BelongsTo
-    {
-        return $this->belongsTo(\App\Models\User::class, 'registered_by');
-    }
-
-    /**
-     * Retorna nomes dos serviços agendados
+     * Nomes dos serviços (pluck dos items).
      */
     public function getServiceNamesAttribute()
     {
         if (! is_array($this->service_ids)) {
             return collect();
         }
-
         return \App\Models\Item::whereIn('id', $this->service_ids)
             ->where('category', 'Serviços')
             ->pluck('name');
