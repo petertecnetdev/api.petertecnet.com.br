@@ -172,62 +172,51 @@ class AppointmentController extends Controller
    /**
  * Lista os agendamentos do cliente autenticado
  */
-public function listMy(Request $request)
-{
-    try {
-        Log::info('Iniciando listagem dos meus agendamentos.');
+    // Lista os agendamentos do usuário autenticado (listMy)
+    public function listMy(Request $request)
+    {
+        try {
+            Log::info('Iniciando listagem dos agendamentos do usuário autenticado.');
 
-        // Checa autenticação
-        if (! Auth::check()) {
-            Log::warning('Usuário não autenticado tentou acessar listMy.');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            if (!Auth::check()) {
+                Log::warning('Usuário não autenticado tentou acessar o recurso.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $user = Auth::user();
+            $appointments = Appointment::where('client_id', $user->id)
+                ->orderBy('scheduled_at', 'asc')
+                ->get();
+
+            if ($appointments->isEmpty()) {
+                Log::warning('Nenhum agendamento encontrado para o usuário autenticado.', ['user_id' => $user->id]);
+                return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+            }
+
+            $appointments->each(function ($appointment) {
+                if (!empty($appointment->service_ids)) {
+                    $serviceIds = is_string($appointment->service_ids)
+                        ? json_decode($appointment->service_ids, true)
+                        : $appointment->service_ids;
+                    if (is_array($serviceIds)) {
+                        $appointment->service_names = Item::whereIn('id', $serviceIds)
+                            ->where('category', 'Serviços')
+                            ->pluck('name')
+                            ->toArray();
+                    } else {
+                        $appointment->service_names = [];
+                    }
+                } else {
+                    $appointment->service_names = [];
+                }
+            });
+
+            return response()->json(['appointments' => $appointments], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar os agendamentos do usuário: ', ['message' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao listar os agendamentos do usuário.'], 500);
         }
-
-        $user = Auth::user();
-        // Eager‐load do usuário → barber e da entidade polimórfica
-        $appointments = Appointment::with(['provider.barber', 'entity'])
-            ->where('client_id', $user->id)
-            ->orderBy('scheduled_at', 'asc')
-            ->get();
-
-        if ($appointments->isEmpty()) {
-            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
-        }
-
-        // Monta payload igual aos outros métodos
-        $payload = $appointments->map(function (Appointment $appt) {
-            $provider = $appt->provider;            // User
-            $barber   = $provider?->barber;         // Barber (onde está o slug)
-            $shop     = $appt->entity;             // Barbershop
-
-            return [
-                'id'            => $appt->id,
-                'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
-                'status'        => $appt->status,
-                'service_names' => $appt->service_names->toArray(),
-
-                'provider' => $provider ? [
-                    'id'         => $provider->id,
-                    'first_name' => $provider->first_name,
-                    'slug'       => $barber?->slug,
-                ] : null,
-
-                'entity' => $shop ? [
-                    'id'   => $shop->id,
-                    'name' => $shop->name,
-                    'slug' => $shop->slug,
-                ] : null,
-            ];
-        });
-
-        return response()->json(['appointments' => $payload], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar meus agendamentos: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar agendamentos.'], 500);
     }
-}
-
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
