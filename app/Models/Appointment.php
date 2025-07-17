@@ -41,9 +41,9 @@ class Appointment extends Model
      * @var array
      */
     protected $casts = [
-        'scheduled_at'      => 'datetime',
+        'scheduled_at' => 'datetime',
         'expected_end_time' => 'datetime',
-        'service_ids'       => 'array',
+        'service_ids' => 'array',
     ];
 
     /**
@@ -62,7 +62,9 @@ class Appointment extends Model
      */
     public function provider(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'provider_id');
+        // trazendo também o username para construir link no front
+        return $this->belongsTo(User::class, 'provider_id')
+            ->select(['id', 'first_name', 'username']);
     }
 
     /**
@@ -89,11 +91,45 @@ class Appointment extends Model
      */
     public function getServiceNamesAttribute()
     {
-        if (! is_array($this->service_ids)) {
+        if (!is_array($this->service_ids)) {
             return collect();
         }
         return Item::whereIn('id', $this->service_ids)
             ->where('category', 'Serviços')
             ->pluck('name');
     }
+
+    /**
+     * Inclui slug da entidade no array JSON de retorno
+     * @return array
+     */
+    public function toArray()
+    {
+        $data = parent::toArray();
+
+        // adiciona slug da entidade (ex: barbershop, hospital...)
+        if ($this->entity) {
+            $data['entity'] = [
+                'type' => $this->entity_name,
+                'id' => $this->entity->id,
+                'name' => $this->entity->name,
+                'slug' => $this->entity->slug ?? null,
+            ];
+        }
+
+        // adiciona dados do provedor
+        if ($this->provider) {
+            $data['provider'] = [
+                'id' => $this->provider->id,
+                'first_name' => $this->provider->first_name,
+                'username' => $this->provider->username,
+            ];
+        }
+
+        // adiciona service_names
+        $data['service_names'] = $this->service_names;
+
+        return $data;
+    }
+
 }

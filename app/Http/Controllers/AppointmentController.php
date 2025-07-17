@@ -167,42 +167,34 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-
     public function listMy(Request $request)
     {
         if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        // Eager‑load de provider (incluindo slug) e da entidade (incluindo slug)
+        $userId = Auth::id();
+
+        // Carrega appointments com provider (incluindo slug) e a entidade polimórfica (incluindo slug)
         $appointments = Appointment::with([
             'provider:id,first_name,slug',
             'entity:id,name,slug'
         ])
-            ->where('client_id', Auth::id())
+            ->where('client_id', $userId)
             ->orderBy('scheduled_at', 'asc')
             ->get();
 
-        $result = $appointments->map(function ($a) {
-            // monta lista de nomes de serviços
-            $services = [];
-            if ($a->service_ids) {
-                $ids = json_decode($a->service_ids, true);
-                $services = Item::whereIn('id', $ids)
-                    ->where('category', 'Serviços')
-                    ->pluck('name')
-                    ->toArray();
-            }
-
+        // Mapeia para o formato de resposta
+        $result = $appointments->map(function (Appointment $a) {
             return [
                 'id' => $a->id,
-                'scheduled_at' => $a->scheduled_at,
+                'scheduled_at' => $a->scheduled_at->toIso8601String(),
                 'status' => $a->status,
-                'service_names' => $services,
+                'service_names' => $a->service_names, // usa o accessor getServiceNamesAttribute
                 'provider' => [
                     'id' => $a->provider->id,
                     'first_name' => $a->provider->first_name,
-                    'slug' => $a->provider->slug,    // <— aqui
+                    'slug' => $a->provider->slug,
                 ],
                 'entity' => [
                     'type' => $a->entity_name,
@@ -215,8 +207,6 @@ class AppointmentController extends Controller
 
         return response()->json(['appointments' => $result], 200);
     }
-
-
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
