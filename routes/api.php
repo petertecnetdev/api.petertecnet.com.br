@@ -147,18 +147,25 @@ Route::group([
     Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
 });
 
+
 Route::group([
     'middleware' => 'api',
     'prefix' => 'appointment'
 ], function ($router) {
-    Route::post('/', [AppointmentController::class, 'store'])->name('appointment.store');
-    Route::get('/listmy', [AppointmentController::class, 'listMy'])->name('appointment.listMy');
-    Route::get('/listbyentity', [AppointmentController::class, 'listByEntity'])->name('appointment.listByEntity');
-    Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
-    Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
-    Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
-    Route::patch('/{id}/status', [AppointmentController::class, 'updateStatus'])->name('appointment.updateStatus');
+    Route::post('/',              [AppointmentController::class, 'store'])           ->name('appointment.store');
+    Route::get('/listmy',         [AppointmentController::class, 'listMy'])          ->name('appointment.listMy');
+    Route::get('/listbyentity',   [AppointmentController::class, 'listByEntity'])    ->name('appointment.listByEntity');
+    Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])  ->name('appointment.listByProvider');
+    Route::get('/listbyclient',   [AppointmentController::class, 'listByClient'])    ->name('appointment.listByClient');
+
+    // disponibilidade de horários para um barbeiro em uma data
+    Route::get('/availability',   [AppointmentController::class, 'availability'])    ->name('appointment.availability');
+
+    Route::delete('/{id}',        [AppointmentController::class, 'destroy'])         ->name('appointment.destroy');
+    Route::patch('/{id}/status',  [AppointmentController::class, 'updateStatus'])    ->name('appointment.updateStatus');
 });
+
+
 
 Route::group([
     'middleware' => 'api',

@@ -494,4 +494,32 @@ class AppointmentController extends Controller
         }
     }
 
+    public function availability(Request $request)
+{
+    $data = $request->validate([
+        'provider_id' => 'required|integer|exists:users,id',
+        'entity_id'   => 'required|integer|exists:barbershops,id',
+        'date'        => 'required|date_format:Y-m-d',
+    ]);
+
+    // gera slots de 08:00 a 19:00 de 30 em 30
+    $slots = [];
+    for ($h = 8; $h < 19; $h++) {
+        $slots[] = sprintf('%02d:00', $h);
+        $slots[] = sprintf('%02d:30', $h);
+    }
+    $slots[] = '19:00';
+
+    // busca agendamentos existentes do barbeiro naquela data
+    $booked = Appointment::where('provider_id', $data['provider_id'])
+        ->whereDate('scheduled_at', $data['date'])
+        ->pluck('scheduled_at')
+        ->map(fn($dt) => Carbon::parse($dt)->format('H:i'))
+        ->toArray();
+
+    // remove os slots já agendados
+    $available = array_values(array_diff($slots, $booked));
+
+    return response()->json(['slots' => $available]);
+}
 }
