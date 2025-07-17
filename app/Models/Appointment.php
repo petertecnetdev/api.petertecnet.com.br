@@ -52,22 +52,6 @@ class Appointment extends Model
     }
 
     /**
-     * Perfil de médico, se existir.
-     */
-    public function doctor()
-    {
-        return $this->hasOne(Doctor::class, 'user_id', 'provider_id');
-    }
-
-    /**
-     * Perfil de dentista, se existir.
-     */
-    public function dentist()
-    {
-        return $this->hasOne(Dentist::class, 'user_id', 'provider_id');
-    }
-
-    /**
      * Acesso “virtual” ao perfil ativo: barbeiro, médico, dentista...
      */
     public function getProviderProfileAttribute()
