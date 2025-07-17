@@ -168,23 +168,23 @@ class AppointmentController extends Controller
         }
     }
 
-  public function listMy(Request $request)
+    // Lista os agendamentos do usuário autenticado (listMy)
+   public function listMy(Request $request)
 {
     if (!Auth::check()) {
         return response()->json(['error'=>'Usuário não autenticado.'], 401);
     }
 
-    // Eager‑load de provider e da entidade (incluindo slug)
     $appointments = Appointment::with([
             'provider:id,first_name',
-            'entity:id,name,slug'    // adiciona slug aqui
+            'entity:id,name'  // carrega qualquer entidade via polymorph
         ])
         ->where('client_id', Auth::id())
         ->orderBy('scheduled_at', 'asc')
         ->get();
 
     $result = $appointments->map(function ($a) {
-        // serviços
+        // Serviços
         $services = [];
         if ($a->service_ids) {
             $ids = json_decode($a->service_ids, true);
@@ -193,7 +193,6 @@ class AppointmentController extends Controller
                 ->pluck('name')
                 ->toArray();
         }
-
         return [
             'id'            => $a->id,
             'scheduled_at'  => $a->scheduled_at,
@@ -207,7 +206,6 @@ class AppointmentController extends Controller
                 'type' => $a->entity_name,
                 'id'   => $a->entity->id,
                 'name' => $a->entity->name,
-                'slug' => $a->entity->slug,      // agora disponível
             ],
         ];
     });
