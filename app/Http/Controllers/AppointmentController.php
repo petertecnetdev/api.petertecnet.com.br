@@ -169,46 +169,68 @@ class AppointmentController extends Controller
     }
 
     // Lista os agendamentos do usuário autenticado (listMy)
-   
+   /**
+ * Lista os agendamentos do cliente autenticado
+ */
 public function listMy(Request $request)
 {
-    $userId = auth()->id();
+    try {
+        Log::info('Iniciando listagem dos meus agendamentos.');
 
-    // Já trazemos o User → Barber e a entidade polimórfica (Barbershop)
-    $appointments = Appointment::with(['provider.barber', 'entity'])
-        ->where('client_id', $userId)
-        ->get();
+        // Checa autenticação
+        if (! Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar listMy.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-    $payload = $appointments->map(function (Appointment $appt) {
-        $provider = $appt->provider;      // é um User
-        $barber   = $provider?->barber;   // use o relacionamento barber()
-        $shop     = $appt->entity;       // Barbershop
+        $user = Auth::user();
+        // Checa permissão
+        if (! $user->hasPermission('appointment_list')) {
+            return response()->json(['error' => 'Você não tem permissão para listar agendamentos.'], 403);
+        }
 
-        return [
-            'id'            => $appt->id,
-            'scheduled_at'  => $appt->scheduled_at,
-            'status'        => $appt->status,
-            'service_names' => $appt->service_names,
+        // Eager‐load do usuário → barber e da entidade polimórfica
+        $appointments = Appointment::with(['provider.barber', 'entity'])
+            ->where('client_id', $user->id)
+            ->orderBy('scheduled_at', 'asc')
+            ->get();
 
-            'provider' => $provider ? [
-                'id'         => $provider->id,
-                'first_name' => $provider->first_name,
-                // aqui pegamos a slug do barber, não do user
-                'slug'       => $barber?->slug,
-            ] : null,
+        if ($appointments->isEmpty()) {
+            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+        }
 
-            'entity' => $shop ? [
-                'id'   => $shop->id,
-                'name' => $shop->name,
-                'slug' => $shop->slug,
-            ] : null,
-        ];
-    });
+        // Monta payload igual aos outros métodos
+        $payload = $appointments->map(function (Appointment $appt) {
+            $provider = $appt->provider;            // User
+            $barber   = $provider?->barber;         // Barber (onde está o slug)
+            $shop     = $appt->entity;             // Barbershop
 
-    return response()->json([
-        'appointments' => $payload,
-    ]);
+            return [
+                'id'            => $appt->id,
+                'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
+                'status'        => $appt->status,
+                'service_names' => $appt->service_names->toArray(),
 
+                'provider' => $provider ? [
+                    'id'         => $provider->id,
+                    'first_name' => $provider->first_name,
+                    'slug'       => $barber?->slug,
+                ] : null,
+
+                'entity' => $shop ? [
+                    'id'   => $shop->id,
+                    'name' => $shop->name,
+                    'slug' => $shop->slug,
+                ] : null,
+            ];
+        });
+
+        return response()->json(['appointments' => $payload], 200);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar meus agendamentos: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar agendamentos.'], 500);
+    }
 }
 
 
