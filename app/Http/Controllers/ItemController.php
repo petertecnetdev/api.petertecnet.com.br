@@ -113,29 +113,29 @@ class ItemController extends Controller
 
             if ($request->hasFile('image')) {
                 \Log::info('Imagem do item fornecida, processando...');
-            
+
                 $destinationPath = '/home/petert03/api.petertecnet.com.br/public/images';
                 $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
-            
+
                 try {
                     // Salvar imagem temporariamente
                     $request->file('image')->move($destinationPath, $imageName);
-            
+
                     // Redimensionar para 250x250
                     $imagePath = $destinationPath . '/' . $imageName;
                     $image = Image::make($imagePath)->fit(250, 250);
                     $image->save($imagePath);
-            
+
                     // Atualizar o caminho no banco
                     $item->image = 'images/' . $imageName;
                     $item->save();
-            
+
                     \Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
                 } catch (\Exception $e) {
                     \Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
                 }
             }
-            
+
             // Gerar slug para o item
             \Log::info('Gerando slug para o item.');
             $slug = Str::slug($validatedData['name']);
@@ -300,8 +300,8 @@ class ItemController extends Controller
 
             \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
 
-             // Processar e salvar a logo se fornecida
-             if ($request->hasFile('image')) {
+            // Processar e salvar a logo se fornecida
+            if ($request->hasFile('image')) {
                 Log::info('Imagem do item  fornecida, processando...');
 
                 // Definir o caminho do diretório público para imagens
@@ -338,52 +338,64 @@ class ItemController extends Controller
 
     public function destroy($id)
     {
+        Log::info("Iniciando a exclusão do item com ID: {$id}");
+
+        // Verificar se o usuário está autenticado
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        // Obter o usuário autenticado
+        $user = Auth::user();
+        Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+        // Buscar o item no banco de dados
+        $item = Item::find($id);
+        if (!$item) {
+            Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        // Verificar permissão
+        if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
+            Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
+            return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
+        }
+
+        // Deletar imagem associada, se existir
+        if ($item->image) {
+            Log::info('Deletando a imagem do item.', ['image' => $item->image]);
+            $path = storage_path("app/public/items/{$item->image}");
+            if (File::exists($path)) {
+                File::delete($path);
+                Log::info('Imagem deletada com sucesso.', ['path' => $path]);
+            }
+        }
+
         try {
-            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
-
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            // Buscar o item no banco de dados
-            $item = Item::find($id);
-
-            if (!$item) {
-                \Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
-                return response()->json(['error' => 'Item não encontrado.'], 404);
-            }
-
-            // Verificar se o usuário tem permissão para excluir o item
-            if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-                \Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
-                return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
-            }
-
-            // Deletar a imagem do item, se existir
-            if ($item->image) {
-                \Log::info('Deletando a imagem do item.');
-                $imagePath = storage_path('app/public/items/' . $item->image);
-                if (File::exists($imagePath)) {
-                    File::delete($imagePath);
-                    \Log::info('Imagem deletada com sucesso.', ['image_path' => $imagePath]);
-                }
-            }
-
-            // Deletar o item do banco de dados
+            // Tenta excluir o item
             $item->delete();
-            \Log::info('Item deletado com sucesso.', ['item_id' => $id]);
-
-            // Retornar sucesso
+            Log::info('Item deletado com sucesso.', ['item_id' => $id]);
             return response()->json(['message' => 'Item deletado com sucesso.'], 200);
 
+        } catch (QueryException $e) {
+            // Falha por foreign key (itens já vinculados a pedidos)
+            if ($e->getCode() === '23000') {
+                Log::error('Falha ao excluir item por constraint de integridade.', [
+                    'item_id' => $id,
+                    'error' => $e->getMessage()
+                ]);
+                return response()->json([
+                    'error' => 'Não é possível excluir este item porque ele está associado a pedidos.'
+                ], 422);
+            }
+            // Outros erros de query
+            Log::error('QueryException ao excluir item: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro de banco ao excluir item.'], 500);
+
         } catch (\Exception $e) {
-            \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
         }
     }
