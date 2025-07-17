@@ -336,66 +336,42 @@ class ItemController extends Controller
         }
     }
 
+
     public function destroy($id)
     {
         Log::info("Iniciando a exclusão do item com ID: {$id}");
 
-        // Verificar se o usuário está autenticado
         if (!Auth::check()) {
-            Log::warning('Usuário não autenticado tentou acessar o recurso de exclusão.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        // Obter o usuário autenticado
         $user = Auth::user();
-        Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+        $item = Item::with('orderItems')->find($id);
 
-        // Buscar o item no banco de dados
-        $item = Item::find($id);
         if (!$item) {
-            Log::warning('Item não encontrado para exclusão.', ['item_id' => $id]);
             return response()->json(['error' => 'Item não encontrado.'], 404);
         }
 
-        // Verificar permissão
         if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-            Log::warning('Usuário sem permissão para excluir o item.', ['user_id' => $user->id, 'item_id' => $id]);
             return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
         }
 
-        // Deletar imagem associada, se existir
+        if ($item->orderItems()->exists()) {
+            return response()->json(['error' => 'Não é possível excluir este item porque ele está associado a pedidos.'], 422);
+        }
+
         if ($item->image) {
-            Log::info('Deletando a imagem do item.', ['image' => $item->image]);
             $path = storage_path("app/public/items/{$item->image}");
             if (File::exists($path)) {
                 File::delete($path);
-                Log::info('Imagem deletada com sucesso.', ['path' => $path]);
             }
         }
 
         try {
-            // Tenta excluir o item
             $item->delete();
-            Log::info('Item deletado com sucesso.', ['item_id' => $id]);
             return response()->json(['message' => 'Item deletado com sucesso.'], 200);
-
-        } catch (QueryException $e) {
-            // Falha por foreign key (itens já vinculados a pedidos)
-            if ($e->getCode() === '23000') {
-                Log::error('Falha ao excluir item por constraint de integridade.', [
-                    'item_id' => $id,
-                    'error' => $e->getMessage()
-                ]);
-                return response()->json([
-                    'error' => 'Não é possível excluir este item porque ele está associado a pedidos.'
-                ], 422);
-            }
-            // Outros erros de query
-            Log::error('QueryException ao excluir item: ' . $e->getMessage());
-            return response()->json(['error' => 'Erro de banco ao excluir item.'], 500);
-
         } catch (\Exception $e) {
-            Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            Log::error('Erro ao deletar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
         }
     }
