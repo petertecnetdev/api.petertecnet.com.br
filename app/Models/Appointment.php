@@ -1,10 +1,13 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\User;
+use App\Models\Barber;
 
 class Appointment extends Model
 {
@@ -35,34 +38,25 @@ class Appointment extends Model
         'service_ids'       => 'array',
     ];
 
-    /** 
-     * Relaciona ao usuário genérico que presta o serviço. 
+    /**
+     * O usuário genérico que presta o serviço.
      */
-    public function providerUser(): BelongsTo
+    public function provider(): BelongsTo
     {
-        return $this->belongsTo(\App\Models\User::class, 'provider_id');
+        return $this->belongsTo(User::class, 'provider_id');
     }
 
     /**
-     * Perfil de barbeiro, se existir.
+     * Se for barbeiro, o perfil dele.
+     * (no seu User model já existe hasOne(Barber::class))
      */
-    public function barber()
+    public function barberProfile()
     {
-        return $this->hasOne(Barber::class, 'user_id', 'provider_id');
+        return $this->provider->barber();
     }
 
     /**
-     * Acesso “virtual” ao perfil ativo: barbeiro, médico, dentista...
-     */
-    public function getProviderProfileAttribute()
-    {
-        return $this->barber
-             ?? $this->doctor
-             ?? $this->dentist;
-    }
-
-    /**  
-     * Entidade polimórfica (Barbershop, Hospital, Clinic…).
+     * Entidade polimórfica (Barbershop, futuramente Hospital etc).
      */
     public function entity(): MorphTo
     {
@@ -70,15 +64,15 @@ class Appointment extends Model
     }
 
     /**
-     * Nomes dos serviços (pluck dos items).
+     * Extrai nomes dos serviços.
      */
     public function getServiceNamesAttribute()
     {
         if (! is_array($this->service_ids)) {
             return collect();
         }
-        return \App\Models\Item::whereIn('id', $this->service_ids)
-            ->where('category', 'Serviços')
-            ->pluck('name');
+        return Item::whereIn('id', $this->service_ids)
+                   ->where('category', 'Serviços')
+                   ->pluck('name');
     }
 }

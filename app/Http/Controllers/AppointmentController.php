@@ -166,24 +166,22 @@ class AppointmentController extends Controller
                 'error' => 'Ocorreu um erro ao criar o agendamento.'
             ], 500);
         }
-    }
-    public function listMy(Request $request)
+    } public function listMy(Request $request)
     {
         Log::info('Iniciando listagem dos meus agendamentos.');
 
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             Log::warning('Usuário não autenticado tentou acessar listMy.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
 
-        // Eager‑load: traz o User, seus possíveis perfis e a entidade polimórfica
+        // Eager‑load de: provider → barber, e da entidade (barbershop)
         $appointments = Appointment::with([
-            'providerUser',
-            'providerUser.barber',
-            'entity'
-        ])
+                'provider.barber',
+                'entity'             // aqui só hão Barbershop por enquanto
+            ])
             ->where('client_id', $user->id)
             ->orderBy('scheduled_at', 'asc')
             ->get();
@@ -193,24 +191,24 @@ class AppointmentController extends Controller
         }
 
         $payload = $appointments->map(function (Appointment $appt) {
-            $u = $appt->providerUser;          // instância de User
-            $profile = $appt->provider_profile;      // pega barber, doctor ou dentist
-            $shop = $appt->entity;                // Barbershop, Hospital…
+            $u      = $appt->provider;            // User
+            $barber = $u?->barber;                // Barber|null
+            $shop   = $appt->entity;              // Barbershop
 
             return [
-                'id' => $appt->id,
-                'scheduled_at' => $appt->scheduled_at->toDateTimeString(),
-                'status' => $appt->status,
+                'id'            => $appt->id,
+                'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
+                'status'        => $appt->status,
                 'service_names' => $appt->service_names->toArray(),
 
                 'provider' => $u ? [
-                    'id' => $u->id,
+                    'id'         => $u->id,
                     'first_name' => $u->first_name,
-                    'slug' => $profile?->slug,   // slug do perfil correto
+                    'slug'       => $barber?->slug,   // só se for barbeiro
                 ] : null,
 
                 'entity' => $shop ? [
-                    'id' => $shop->id,
+                    'id'   => $shop->id,
                     'name' => $shop->name,
                     'slug' => $shop->slug,
                 ] : null,
