@@ -385,34 +385,24 @@ class AppointmentController extends Controller
 
     public function listByProvider(Request $request)
     {
-        Log::info('Iniciando listagem de agendamentos por provedor.');
-
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        $user = auth()->user();
+        if (!$user) {
+            return response()->json(['error' => 'Não autenticado'], 401);
         }
 
-        $user = Auth::user();
-
-        // aqui garantimos que só o próprio provider ou quem tenha permissão admin possa listar
-        if (
-            $user->id !== (int) $request->input('provider_id')
-            && !$user->hasPermission('appointment_list')
-        ) {
-            return response()->json(['error' => 'Você não tem permissão para listar estes agendamentos.'], 403);
-        }
-
+        // validação dos parâmetros obrigatórios
         $validated = $request->validate([
-            'provider_id' => 'required|integer|exists:users,id',
             'entity_name' => 'required|string|max:255',
             'entity_id' => 'required|integer',
             'app_id' => 'required|integer|exists:applications,id',
         ], $this->getValidationMessages());
 
-        $appointments = Appointment::with(['provider', 'entity'])
-            ->where('provider_id', $validated['provider_id'])
-            ->where('app_id', $validated['app_id'])
+        // Eager‑load de provider (User), barber (perfil), cliente e entidade
+        $appointments = Appointment::with(['provider', 'barber', 'entity'])
+            ->where('provider_id', $user->id)
             ->where('entity_name', $validated['entity_name'])
             ->where('entity_id', $validated['entity_id'])
+            ->where('app_id', $validated['app_id'])
             ->orderBy('scheduled_at', 'asc')
             ->get();
 
@@ -422,28 +412,55 @@ class AppointmentController extends Controller
 
         $payload = $appointments->map(function (Appointment $appt) {
             return [
+                // todos os campos do agendamento
                 'id' => $appt->id,
-                'scheduled_at' => $appt->scheduled_at->toDateTimeString(),
-                'expected_end' => $appt->expected_end_time?->toDateTimeString(),
-                'created_at' => $appt->created_at->toDateTimeString(),
+                'app_id' => $appt->app_id,
+                'entity_name' => $appt->entity_name,
+                'entity_id' => $appt->entity_id,
+                'scheduled_at' => $appt->scheduled_at->format('Y-m-d H:i:s'),
+                'expected_end_time' => $appt->expected_end_time?->format('Y-m-d H:i:s'),
+                'service_ids' => $appt->service_ids,
+                'service_names' => $appt->service_names,
+                'provider_id' => $appt->provider_id,
+                'client_id' => $appt->client_id,
+                'registered_by' => $appt->registered_by,
                 'status' => $appt->status,
+                'location' => $appt->location,
+                'duration' => $appt->duration,
+                'notes' => $appt->notes,
+                'payment_status' => $appt->payment_status,
+                'appointment_type' => $appt->appointment_type,
                 'attendance_status' => $appt->attendance_status,
-                'service_names' => $appt->service_names,    // seu accessor
-                'client' => [
-                    'id' => $appt->client_id,
-                    'name' => $appt->client?->first_name,
-                ],
-                'entity' => [
+                'client_confirmation' => $appt->client_confirmation,
+                'created_at' => $appt->created_at->format('Y-m-d H:i:s'),
+                'updated_at' => $appt->updated_at->format('Y-m-d H:i:s'),
+
+                // relacionamento com o usuário que presta o serviço
+                'provider' => $appt->provider ? [
+                    'id' => $appt->provider->id,
+                    'first_name' => $appt->provider->first_name,
+                    'slug' => $appt->provider->user_name,
+                ] : null,
+
+                // perfil específico do provedor, se existir
+                'barber_profile' => $appt->barber ? [
+                    'id' => $appt->barber->id,
+                    'slug' => $appt->barber->slug,
+                    // ... outros campos de Barber, se precisar
+                ] : null,
+
+                // dados da entidade (barbearia, hospital etc)
+                'entity' => $appt->entity ? [
                     'id' => $appt->entity->id,
                     'name' => $appt->entity->name,
                     'slug' => $appt->entity->slug,
-                ],
+                    // ... outros campos de Barbershop
+                ] : null,
             ];
         });
 
         return response()->json(['appointments' => $payload], 200);
     }
-
     // Cancelamento de um agendamento
     public function destroy($id)
     {
