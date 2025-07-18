@@ -179,11 +179,8 @@ class AppointmentController extends Controller
 
     $user = Auth::user();
 
-    // 1) Eager‑load do USER → BARBER e da entidade polimórfica
-    $appointments = Appointment::with([
-            'providerUser.barber',
-            'entity'
-        ])
+    // Eager‑load do User → Barber e da entidade polimórfica
+    $appointments = Appointment::with(['provider.barber', 'entity'])
         ->where('client_id', $user->id)
         ->orderBy('scheduled_at', 'asc')
         ->get();
@@ -192,23 +189,18 @@ class AppointmentController extends Controller
         return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
     }
 
-    // 2) Mapear apenas os campos desejados
     $payload = $appointments->map(function (Appointment $appt) {
-        // usuário genérico
-        $u      = $appt->providerUser;    
-        // perfil específico (Barber)
-        $barber = $u?->barber;           
-        // entidade polimórfica (Barbershop, etc)
-        $shop   = $appt->entity;         
+        $provider = $appt->provider;      // instância de User
+        $barber   = $appt->barber;        // perfil de Barber
+        $shop     = $appt->entity;        // Barbershop
 
-        // nomes dos serviços
-        $serviceNames = [];
-        if (is_array($appt->service_ids)) {
-            $serviceNames = Item::whereIn('id', $appt->service_ids)
-                ->where('category', 'Serviços')
-                ->pluck('name')
-                ->toArray();
-        }
+        // extrai nomes de serviços
+        $serviceNames = $appt->service_ids && is_array($appt->service_ids)
+            ? Item::whereIn('id', $appt->service_ids)
+                  ->where('category', 'Serviços')
+                  ->pluck('name')
+                  ->toArray()
+            : [];
 
         return [
             'id'            => $appt->id,
@@ -216,10 +208,10 @@ class AppointmentController extends Controller
             'status'        => $appt->status,
             'service_names' => $serviceNames,
 
-            'provider' => $u ? [
-                'id'         => $u->id,
-                'first_name' => $u->first_name,
-                'slug'       => $barber?->slug,  // agora não vem null
+            'provider' => $provider ? [
+                'id'         => $provider->id,
+                'first_name' => $provider->first_name,
+                'slug'       => $barber?->slug,
             ] : null,
 
             'entity' => $shop ? [

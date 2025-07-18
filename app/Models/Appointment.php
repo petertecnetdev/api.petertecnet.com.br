@@ -1,35 +1,17 @@
 <?php
-
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use App\Models\User;
-use App\Models\Barber;
 
 class Appointment extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'app_id',
-        'entity_name',
-        'entity_id',
-        'scheduled_at',
-        'expected_end_time',
-        'service_ids',
-        'provider_id',
-        'client_id',
-        'registered_by',
-        'status',
-        'location',
-        'duration',
-        'notes',
-        'payment_status',
-        'appointment_type',
-        'attendance_status',
+        // ...
     ];
 
     protected $casts = [
@@ -39,24 +21,23 @@ class Appointment extends Model
     ];
 
     /**
-     * O usuário genérico que presta o serviço.
+     * Quem presta o serviço (sempre um User)
      */
     public function provider(): BelongsTo
     {
-        return $this->belongsTo(User::class, 'provider_id');
+        return $this->belongsTo(\App\Models\User::class, 'provider_id');
     }
 
     /**
-     * Se for barbeiro, o perfil dele.
-     * (no seu User model já existe hasOne(Barber::class))
+     * Perfil de barbeiro (se existir) — o slug vive aqui
      */
-    public function barberProfile()
+    public function barber(): BelongsTo
     {
-        return $this->provider->barber();
+        return $this->belongsTo(\App\Models\Barber::class, 'provider_id', 'user_id');
     }
 
     /**
-     * Entidade polimórfica (Barbershop, futuramente Hospital etc).
+     * Polimórfico para Barbershop, Hospital, etc.
      */
     public function entity(): MorphTo
     {
@@ -64,15 +45,15 @@ class Appointment extends Model
     }
 
     /**
-     * Extrai nomes dos serviços.
+     * Pega os nomes dos serviços
      */
     public function getServiceNamesAttribute()
     {
         if (! is_array($this->service_ids)) {
             return collect();
         }
-        return Item::whereIn('id', $this->service_ids)
-                   ->where('category', 'Serviços')
-                   ->pluck('name');
+        return \App\Models\Item::whereIn('id', $this->service_ids)
+            ->where('category', 'Serviços')
+            ->pluck('name');
     }
 }
