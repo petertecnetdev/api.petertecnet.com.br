@@ -10,7 +10,7 @@ class Appointment extends Model
 {
     use HasFactory;
 
-      protected $fillable = [
+    protected $fillable = [
         'app_id',
         'entity_name',
         'entity_id',
@@ -30,15 +30,16 @@ class Appointment extends Model
         'client_confirmation',
     ];
 
-     protected $casts = [
+    protected $casts = [
         // força o cast para datetime, assim scheduled_at é Carbon
-        'scheduled_at'      => 'datetime:Y-m-d H:i:s',
+        'scheduled_at' => 'datetime:Y-m-d H:i:s',
         'expected_end_time' => 'datetime:Y-m-d H:i:s',
-        'service_ids'       => 'array',
+        'service_ids' => 'array',
     ];
     /**
      * Quem presta o serviço: usuário genérico
-     */ public function provider(): BelongsTo
+     */
+    public function provider(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'provider_id');
     }
@@ -59,18 +60,23 @@ class Appointment extends Model
         // 1º arg: nome do método, 2º: coluna de tipo, 3º: coluna de id
         return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
     }
+    public function client(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\User::class, 'client_id');
+    }
+
 
     /**
      * Accessor para nomes legíveis de serviço
      */
-   public function getServiceNamesAttribute(): array
+    public function getServiceNamesAttribute(): array
     {
         $ids = $this->service_ids;
         // Se veio string, decodifica
         if (is_string($ids)) {
             $ids = json_decode($ids, true);
         }
-        if (! is_array($ids) || empty($ids)) {
+        if (!is_array($ids) || empty($ids)) {
             return [];
         }
         return \App\Models\Item::whereIn('id', $ids)

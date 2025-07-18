@@ -385,86 +385,82 @@ class AppointmentController extends Controller
 public function listByProvider(Request $request)
 {
     $user = auth()->user();
-    if (! $user) {
+    if (!$user) {
         return response()->json(['error' => 'Não autenticado'], 401);
     }
 
-    // Opcional: você pode receber app_id se quiser filtrar por aplicação
     $validated = $request->validate([
-        'app_id' => 'nullable|integer|exists:applications,id',
+        'app_id'       => 'nullable|integer|exists:applications,id',
+        'entity_name'  => 'nullable|string',
+        'entity_id'    => 'nullable|integer',
     ], $this->getValidationMessages());
 
-    $query = Appointment::with(['provider', 'barber', 'client', 'entity'])
-        ->where('provider_id', $user->id);
+    $query = Appointment::with(['provider','barber','client','entity'])
+                        ->where('provider_id', $user->id);
 
-    // se vier app_id, filtra
     if (! empty($validated['app_id'])) {
         $query->where('app_id', $validated['app_id']);
     }
-
-    $appointments = $query
-        ->orderBy('scheduled_at', 'asc')
-        ->get();
-
-    if ($appointments->isEmpty()) {
-        return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+    if (! empty($validated['entity_name'])) {
+        $query->where('entity_name', $validated['entity_name']);
+    }
+    if (! empty($validated['entity_id'])) {
+        $query->where('entity_id', $validated['entity_id']);
     }
 
-    $payload = $appointments->map(function (Appointment $appt) {
-        return [
-            // campos do agendamento
-            'id'                => $appt->id,
-            'app_id'            => $appt->app_id,
-            'entity_name'       => $appt->entity_name,
-            'entity_id'         => $appt->entity_id,
-            'scheduled_at'      => $appt->scheduled_at->format('Y-m-d H:i:s'),
-            'expected_end_time' => $appt->expected_end_time?->format('Y-m-d H:i:s'),
-            'service_ids'       => $appt->service_ids,
-            'service_names'     => $appt->service_names,
-            'provider_id'       => $appt->provider_id,
-            'client_id'         => $appt->client_id,
-            'registered_by'     => $appt->registered_by,
-            'status'            => $appt->status,
-            'location'          => $appt->location,
-            'duration'          => $appt->duration,
-            'notes'             => $appt->notes,
-            'payment_status'    => $appt->payment_status,
-            'appointment_type'  => $appt->appointment_type,
-            'attendance_status' => $appt->attendance_status,
-            'client_confirmation'=> $appt->client_confirmation,
-            'created_at'        => $appt->created_at->format('Y-m-d H:i:s'),
-            'updated_at'        => $appt->updated_at->format('Y-m-d H:i:s'),
+    $appointments = $query->orderBy('scheduled_at','asc')->get();
 
-            // quem presta (usuário genérico)
-            'provider' => $appt->provider ? [
-                'id'         => $appt->provider->id,
-                'first_name' => $appt->provider->first_name,
-                'slug'       => $appt->provider->user_name,
-            ] : null,
+    if ($appointments->isEmpty()) {
+        return response()->json(['message'=>'Nenhum agendamento encontrado.'], 404);
+    }
 
-            // perfil barber específico
-            'barber_profile' => $appt->barber ? [
-                'id'   => $appt->barber->id,
-                'slug' => $appt->barber->slug,
-            ] : null,
+    $payload = $appointments->map(fn($a) => [
+        'id'                  => $a->id,
+        'app_id'              => $a->app_id,
+        'entity_name'         => $a->entity_name,
+        'entity_id'           => $a->entity_id,
+        'scheduled_at'        => $a->scheduled_at->format('Y-m-d H:i:s'),
+        'expected_end_time'   => $a->expected_end_time?->format('Y-m-d H:i:s'),
+        'service_ids'         => $a->service_ids,
+        'service_names'       => $a->service_names,
+        'provider_id'         => $a->provider_id,
+        'client_id'           => $a->client_id,
+        'registered_by'       => $a->registered_by,
+        'status'              => $a->status,
+        'location'            => $a->location,
+        'duration'            => $a->duration,
+        'notes'               => $a->notes,
+        'payment_status'      => $a->payment_status,
+        'appointment_type'    => $a->appointment_type,
+        'attendance_status'   => $a->attendance_status,
+        'client_confirmation' => $a->client_confirmation,
+        'created_at'          => $a->created_at->format('Y-m-d H:i:s'),
+        'updated_at'          => $a->updated_at->format('Y-m-d H:i:s'),
 
-            // dados da entidade associada
-            'entity' => $appt->entity ? [
-                'id'   => $appt->entity->id,
-                'name' => $appt->entity->name,
-                'slug' => $appt->entity->slug,
-            ] : null,
+        'provider' => $a->provider ? [
+            'id'         => $a->provider->id,
+            'first_name' => $a->provider->first_name,
+            'slug'       => $a->provider->user_name,
+        ] : null,
 
-            // dados do cliente (opcional)
-            'client' => $appt->client ? [
-                'id'         => $appt->client->id,
-                'first_name' => $appt->client->first_name,
-                'slug'       => $appt->client->user_name,
-            ] : null,
-        ];
-    });
+        'barber_profile' => $a->barber ? [
+            'id'   => $a->barber->id,
+            'slug' => $a->barber->slug,
+        ] : null,
 
-    return response()->json(['appointments' => $payload], 200);
+        'client' => $a->client ? [
+            'id'         => $a->client->id,
+            'first_name' => $a->client->first_name,
+        ] : null,
+
+        'entity' => $a->entity ? [
+            'id'   => $a->entity->id,
+            'name' => $a->entity->name,
+            'slug' => $a->entity->slug,
+        ] : null,
+    ]);
+
+    return response()->json(['appointments'=>$payload], 200);
 }
 
     // Cancelamento de um agendamento
