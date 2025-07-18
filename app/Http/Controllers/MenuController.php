@@ -53,7 +53,7 @@ class MenuController extends Controller
             $user = Auth::user();
             Log::info('Iniciando criação de menu.', ['user_id' => $user->id]);
 
-            if (!$user->hasPermission('menu_create')) {
+            if (!$user->hasPermission('menu_store')) {
                 Log::warning('Usuário sem permissão tentou criar menu.', ['user_id' => $user->id]);
                 return response()->json(['error' => 'Você não tem permissão para criar menus.'], 403);
             }
