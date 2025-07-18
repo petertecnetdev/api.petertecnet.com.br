@@ -16,7 +16,8 @@ use App\Http\Controllers\{
     ReportController,
     ServiceRecordController,
     EstablishmentController,
-    OrderController
+    OrderController,
+    MenuController
 };
 
 Route::group([
@@ -152,17 +153,17 @@ Route::group([
     'middleware' => 'api',
     'prefix' => 'appointment'
 ], function ($router) {
-    Route::post('/',              [AppointmentController::class, 'store'])           ->name('appointment.store');
-    Route::get('/listmy',         [AppointmentController::class, 'listMy'])          ->name('appointment.listMy');
-    Route::get('/listbyentity',   [AppointmentController::class, 'listByEntity'])    ->name('appointment.listByEntity');
-    Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])  ->name('appointment.listByProvider');
-    Route::get('/listbyclient',   [AppointmentController::class, 'listByClient'])    ->name('appointment.listByClient');
+    Route::post('/', [AppointmentController::class, 'store'])->name('appointment.store');
+    Route::get('/listmy', [AppointmentController::class, 'listMy'])->name('appointment.listMy');
+    Route::get('/listbyentity', [AppointmentController::class, 'listByEntity'])->name('appointment.listByEntity');
+    Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
+    Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
 
     // disponibilidade de horários para um barbeiro em uma data
-    Route::get('/availability',   [AppointmentController::class, 'availability'])    ->name('appointment.availability');
+    Route::get('/availability', [AppointmentController::class, 'availability'])->name('appointment.availability');
 
-    Route::delete('/{id}',        [AppointmentController::class, 'destroy'])         ->name('appointment.destroy');
-    Route::patch('/{id}/status',  [AppointmentController::class, 'updateStatus'])    ->name('appointment.updateStatus');
+    Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
+    Route::patch('/{id}/status', [AppointmentController::class, 'updateStatus'])->name('appointment.updateStatus');
 });
 
 
@@ -241,4 +242,24 @@ Route::group([
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
+});
+
+
+
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'establishment/{establishment}/menu'
+], function () {
+    Route::get('/', [MenuController::class, 'listByEstablishment'])->name('menu.listByEstablishment');
+    Route::get('/{id}', [MenuController::class, 'show'])->name('menu.show');
+    Route::get('/view/{slug}', [MenuController::class, 'view'])->name('menu.view');
+});
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix' => 'establishment/{establishment}/menu'
+], function () {
+    Route::post('/', [MenuController::class, 'store'])->name('menu.store');
+    Route::post('/{id}', [MenuController::class, 'update'])->name('menu.update');
+    Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
