@@ -382,85 +382,91 @@ class AppointmentController extends Controller
             return response()->json(['error' => 'Erro ao listar agendamentos.'], 500);
         }
     }
-
-    public function listByProvider(Request $request)
-    {
-        $user = auth()->user();
-        if (!$user) {
-            return response()->json(['error' => 'Não autenticado'], 401);
-        }
-
-        // validação dos parâmetros obrigatórios
-        $validated = $request->validate([
-            'entity_name' => 'required|string|max:255',
-            'entity_id' => 'required|integer',
-            'app_id' => 'required|integer|exists:applications,id',
-        ], $this->getValidationMessages());
-
-        // Eager‑load de provider (User), barber (perfil), cliente e entidade
-        $appointments = Appointment::with(['provider', 'barber', 'entity'])
-            ->where('provider_id', $user->id)
-            ->where('entity_name', $validated['entity_name'])
-            ->where('entity_id', $validated['entity_id'])
-            ->where('app_id', $validated['app_id'])
-            ->orderBy('scheduled_at', 'asc')
-            ->get();
-
-        if ($appointments->isEmpty()) {
-            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
-        }
-
-        $payload = $appointments->map(function (Appointment $appt) {
-            return [
-                // todos os campos do agendamento
-                'id' => $appt->id,
-                'app_id' => $appt->app_id,
-                'entity_name' => $appt->entity_name,
-                'entity_id' => $appt->entity_id,
-                'scheduled_at' => $appt->scheduled_at->format('Y-m-d H:i:s'),
-                'expected_end_time' => $appt->expected_end_time?->format('Y-m-d H:i:s'),
-                'service_ids' => $appt->service_ids,
-                'service_names' => $appt->service_names,
-                'provider_id' => $appt->provider_id,
-                'client_id' => $appt->client_id,
-                'registered_by' => $appt->registered_by,
-                'status' => $appt->status,
-                'location' => $appt->location,
-                'duration' => $appt->duration,
-                'notes' => $appt->notes,
-                'payment_status' => $appt->payment_status,
-                'appointment_type' => $appt->appointment_type,
-                'attendance_status' => $appt->attendance_status,
-                'client_confirmation' => $appt->client_confirmation,
-                'created_at' => $appt->created_at->format('Y-m-d H:i:s'),
-                'updated_at' => $appt->updated_at->format('Y-m-d H:i:s'),
-
-                // relacionamento com o usuário que presta o serviço
-                'provider' => $appt->provider ? [
-                    'id' => $appt->provider->id,
-                    'first_name' => $appt->provider->first_name,
-                    'slug' => $appt->provider->user_name,
-                ] : null,
-
-                // perfil específico do provedor, se existir
-                'barber_profile' => $appt->barber ? [
-                    'id' => $appt->barber->id,
-                    'slug' => $appt->barber->slug,
-                    // ... outros campos de Barber, se precisar
-                ] : null,
-
-                // dados da entidade (barbearia, hospital etc)
-                'entity' => $appt->entity ? [
-                    'id' => $appt->entity->id,
-                    'name' => $appt->entity->name,
-                    'slug' => $appt->entity->slug,
-                    // ... outros campos de Barbershop
-                ] : null,
-            ];
-        });
-
-        return response()->json(['appointments' => $payload], 200);
+public function listByProvider(Request $request)
+{
+    $user = auth()->user();
+    if (! $user) {
+        return response()->json(['error' => 'Não autenticado'], 401);
     }
+
+    // Opcional: você pode receber app_id se quiser filtrar por aplicação
+    $validated = $request->validate([
+        'app_id' => 'nullable|integer|exists:applications,id',
+    ], $this->getValidationMessages());
+
+    $query = Appointment::with(['provider', 'barber', 'client', 'entity'])
+        ->where('provider_id', $user->id);
+
+    // se vier app_id, filtra
+    if (! empty($validated['app_id'])) {
+        $query->where('app_id', $validated['app_id']);
+    }
+
+    $appointments = $query
+        ->orderBy('scheduled_at', 'asc')
+        ->get();
+
+    if ($appointments->isEmpty()) {
+        return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+    }
+
+    $payload = $appointments->map(function (Appointment $appt) {
+        return [
+            // campos do agendamento
+            'id'                => $appt->id,
+            'app_id'            => $appt->app_id,
+            'entity_name'       => $appt->entity_name,
+            'entity_id'         => $appt->entity_id,
+            'scheduled_at'      => $appt->scheduled_at->format('Y-m-d H:i:s'),
+            'expected_end_time' => $appt->expected_end_time?->format('Y-m-d H:i:s'),
+            'service_ids'       => $appt->service_ids,
+            'service_names'     => $appt->service_names,
+            'provider_id'       => $appt->provider_id,
+            'client_id'         => $appt->client_id,
+            'registered_by'     => $appt->registered_by,
+            'status'            => $appt->status,
+            'location'          => $appt->location,
+            'duration'          => $appt->duration,
+            'notes'             => $appt->notes,
+            'payment_status'    => $appt->payment_status,
+            'appointment_type'  => $appt->appointment_type,
+            'attendance_status' => $appt->attendance_status,
+            'client_confirmation'=> $appt->client_confirmation,
+            'created_at'        => $appt->created_at->format('Y-m-d H:i:s'),
+            'updated_at'        => $appt->updated_at->format('Y-m-d H:i:s'),
+
+            // quem presta (usuário genérico)
+            'provider' => $appt->provider ? [
+                'id'         => $appt->provider->id,
+                'first_name' => $appt->provider->first_name,
+                'slug'       => $appt->provider->user_name,
+            ] : null,
+
+            // perfil barber específico
+            'barber_profile' => $appt->barber ? [
+                'id'   => $appt->barber->id,
+                'slug' => $appt->barber->slug,
+            ] : null,
+
+            // dados da entidade associada
+            'entity' => $appt->entity ? [
+                'id'   => $appt->entity->id,
+                'name' => $appt->entity->name,
+                'slug' => $appt->entity->slug,
+            ] : null,
+
+            // dados do cliente (opcional)
+            'client' => $appt->client ? [
+                'id'         => $appt->client->id,
+                'first_name' => $appt->client->first_name,
+                'slug'       => $appt->client->user_name,
+            ] : null,
+        ];
+    });
+
+    return response()->json(['appointments' => $payload], 200);
+}
+
     // Cancelamento de um agendamento
     public function destroy($id)
     {
