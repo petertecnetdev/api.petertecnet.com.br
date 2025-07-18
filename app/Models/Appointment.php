@@ -18,12 +18,10 @@ class Appointment extends Model
 
     /**
      * Quem presta o serviço: usuário genérico
-     */
-    public function provider(): BelongsTo
+     */ public function provider(): BelongsTo
     {
         return $this->belongsTo(\App\Models\User::class, 'provider_id');
     }
-
     /**
      * Se esse usuário for barbeiro, puxa o perfil Barber
      */

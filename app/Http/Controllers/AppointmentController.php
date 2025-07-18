@@ -167,53 +167,56 @@ class AppointmentController extends Controller
             ], 500);
         }
     }
-public function listMy(Request $request)
-{
-    Log::info('Iniciando listagem dos meus agendamentos.');
 
-    if (! Auth::check()) {
-        Log::warning('Usuário não autenticado tentou acessar listMy.');
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+
+     public function listMy(Request $request)
+    {
+        Log::info('Iniciando listagem dos meus agendamentos.');
+
+        if (! Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar listMy.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $appointments = Appointment::with(['provider', 'entity'])
+            ->where('client_id', $user->id)
+            ->orderBy('scheduled_at', 'asc')
+            ->get();
+
+        if ($appointments->isEmpty()) {
+            return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+        }
+
+        $payload = $appointments->map(function (Appointment $appt) {
+            $u    = $appt->provider;  // instância de User
+            $shop = $appt->entity;    // Barbershop
+
+            return [
+                'id'            => $appt->id,
+                'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
+                'status'        => $appt->status,
+                // usa o accessor
+                'service_names' => $appt->service_names,
+
+                'provider' => $u ? [
+                    'id'         => $u->id,
+                    'first_name' => $u->first_name,
+                    // slug vindo diretamente de users.slug
+                    'slug'       => $u->slug,
+                ] : null,
+
+                'entity' => $shop ? [
+                    'id'   => $shop->id,
+                    'name' => $shop->name,
+                    'slug' => $shop->slug,
+                ] : null,
+            ];
+        });
+
+        return response()->json(['appointments' => $payload], 200);
     }
-
-    $user = Auth::user();
-
-    $appointments = Appointment::with(['provider', 'barber', 'entity'])
-        ->where('client_id', $user->id)
-        ->orderBy('scheduled_at', 'asc')
-        ->get();
-
-    if ($appointments->isEmpty()) {
-        return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
-    }
-
-    $payload = $appointments->map(function (Appointment $appt) {
-        $provider = $appt->provider;    // User
-        $barber   = $appt->barber;      // Barber, se existir
-        $shop     = $appt->entity;      // Barbershop
-
-        return [
-            'id'            => $appt->id,
-            'scheduled_at'  => $appt->scheduled_at->toDateTimeString(),
-            'status'        => $appt->status,
-            'service_names' => $appt->service_names->toArray(),
-
-            'provider' => $provider ? [
-                'id'         => $provider->id,
-                'first_name' => $provider->first_name,
-                'slug'       => $barber?->slug,   // slug do perfil Barber
-            ] : null,
-
-            'entity' => $shop ? [
-                'id'   => $shop->id,
-                'name' => $shop->name,
-                'slug' => $shop->slug,
-            ] : null,
-        ];
-    });
-
-    return response()->json(['appointments' => $payload], 200);
-}
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
