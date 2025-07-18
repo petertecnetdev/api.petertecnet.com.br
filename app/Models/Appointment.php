@@ -36,6 +36,7 @@ class Appointment extends Model
         'scheduled_at' => 'datetime:Y-m-d H:i:s',
         'expected_end_time' => 'datetime:Y-m-d H:i:s',
         'service_ids' => 'array',
+        'info'=> 'array',
     ];
     /**
      * Quem presta o serviço: usuário genérico
