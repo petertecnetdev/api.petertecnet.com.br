@@ -223,5 +223,28 @@ class MenuController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o menu.'], 500);
         }
     }
+public function show($id)
+{
+    try {
+        $menu = Menu::with('items')->findOrFail($id);
+
+        if (Auth::check()) {
+            Interaction::create([
+                'user_id'          => Auth::id(),
+                'interaction_type' => 'View',
+                'entity_type'      => 'menu',
+                'entity_id'        => $menu->id,
+                'content'          => "O usuário " . Auth::user()->first_name . " visualizou o menu {$menu->name}.",
+            ]);
+        }
+
+        return response()->json(['menu' => $menu], 200);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json(['error' => 'Menu não encontrado.'], 404);
+    } catch (\Exception $e) {
+        Log::error('Erro ao buscar menu: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao buscar o menu.'], 500);
+    }
+}
 
 }
