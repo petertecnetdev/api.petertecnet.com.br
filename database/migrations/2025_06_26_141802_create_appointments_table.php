@@ -25,6 +25,7 @@ return new class extends Migration {
             $table->string('appointment_type', 50)->nullable();
             $table->string('attendance_status')->nullable();
             $table->boolean('client_confirmation')->default(false);
+            $table->json('info')->nullable();
             $table->timestamps();
 
             $table->foreign('app_id')->references('id')->on('applications')->onDelete('cascade');

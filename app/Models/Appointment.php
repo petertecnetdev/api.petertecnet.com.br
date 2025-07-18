@@ -28,6 +28,7 @@ class Appointment extends Model
         'appointment_type',
         'attendance_status',
         'client_confirmation',
+        'info',
     ];
 
     protected $casts = [

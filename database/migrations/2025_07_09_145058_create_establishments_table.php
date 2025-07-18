@@ -37,6 +37,7 @@ return new class extends Migration {
             $table->string('twitter_url')->nullable();
             $table->string('youtube_url')->nullable();
             $table->json('segments')->nullable();
+            $table->json('info')->nullable();
             $table->timestamps();
         });
     }
