@@ -31,159 +31,120 @@ class AppointmentController extends Controller
             'customer_email.required'   => 'Informe o email do cliente.',
         ];
     }
+public function store(Request $request)
+{
+    try {
+        Log::info('Iniciando a criação de um novo agendamento.');
 
-    public function store(Request $request)
-    {
-        try {
-            Log::info('Iniciando a criação de um novo agendamento.');
+        $validated = $request->validate([
+            'app_id'           => ['required','exists:applications,id'],
+            'entity_name'      => ['required','string','max:255'],
+            'entity_id'        => ['required','integer','exists:barbershops,id'],
+            'scheduled_at'     => ['required','date'],
+            'service_ids'      => ['required','array','min:1'],
+            'service_ids.*'    => ['integer','exists:items,id'],
+            'provider_id'      => ['required','integer','exists:users,id'],
+            'status'           => ['required','string','max:50'],
+            'location'         => ['nullable','string','max:255'],
+            'notes'            => ['nullable','string'],
+            'payment_status'   => ['nullable','string','max:50'],
+            'appointment_type' => ['nullable','string','max:50'],
+            'duration'         => ['required','integer','min:1'],
+            'customer_name'    => ['string','max:255', Rule::requiredIf(fn() => !Auth::check())],
+            'customer_cpf'     => ['string','max:20',  Rule::requiredIf(fn() => !Auth::check())],
+            'customer_phone'   => ['string','max:30',  Rule::requiredIf(fn() => !Auth::check())],
+            'customer_email'   => ['email','max:255',   Rule::requiredIf(fn() => !Auth::check())],
+        ], $this->getValidationMessages());
 
-            // 1) Validação
-            $validated = $request->validate([
-                'app_id'           => ['required','exists:applications,id'],
-                'entity_name'      => ['required','string','max:255'],
-                'entity_id'        => ['required','integer','exists:barbershops,id'],
-                'scheduled_at'     => ['required','date'],
-                'service_ids'      => ['required','array','min:1'],
-                'service_ids.*'    => ['integer','exists:items,id'],
-                'provider_id'      => ['required','integer','exists:users,id'],
-                'status'           => ['required','string','max:50'],
-                'location'         => ['nullable','string','max:255'],
-                'notes'            => ['nullable','string'],
-                'payment_status'   => ['nullable','string','max:50'],
-                'appointment_type' => ['nullable','string','max:50'],
-                'duration'         => ['required','integer','min:1'],
+        $shop = Barbershop::findOrFail($validated['entity_id']);
 
-                // campos para cliente não autenticado
-                'customer_name'  => [
-                    'string','max:255',
-                    Rule::requiredIf(fn() => ! Auth::check()),
-                ],
-                'customer_cpf'   => [
-                    'string','max:20',
-                    Rule::requiredIf(fn() => ! Auth::check()),
-                ],
-                'customer_phone' => [
-                    'string','max:30',
-                    Rule::requiredIf(fn() => ! Auth::check()),
-                ],
-                'customer_email' => [
-                    'email','max:255',
-                    Rule::requiredIf(fn() => ! Auth::check()),
-                ],
-            ], $this->getValidationMessages());
-
-            // 2) Carrega barbearia
-            $shop = Barbershop::findOrFail($validated['entity_id']);
-
-            // 3) Quem é client_id e registered_by
-            if (Auth::check()) {
-                $authUser     = Auth::user();
-                $clientId     = $request->input('client_id', $authUser->id);
-                $registeredBy = $authUser->id;
-            } else {
-                // cliente anônimo: gerente da barbearia
-                $clientId     = $shop->user_id;
-                $registeredBy = $shop->user_id;
-            }
-
-            // 4) Não pode ser agendar consigo mesmo
-            if ($clientId == $validated['provider_id']) {
-                return response()->json([
-                    'error' => 'Cliente e prestador não podem ser a mesma pessoa.'
-                ], 422);
-            }
-
-            // 5) Prestador deve atender nessa entidade
-            if (! $shop->barbers()->where('user_id', $validated['provider_id'])->exists()) {
-                return response()->json([
-                    'error' => 'Este prestador não atende nesta entidade.'
-                ], 422);
-            }
-
-            // 6) Serviços válidos na barbearia
-            $availableIds = $shop->items()
-                                  ->where('category', 'Serviços')
-                                  ->pluck('id')->toArray();
-
-            $invalid = array_diff($validated['service_ids'], $availableIds);
-            if (! empty($invalid)) {
-                return response()->json([
-                    'error' => 'Serviços inválidos para esta entidade: '
-                             . implode(', ', $invalid)
-                ], 422);
-            }
-
-            // 7) Horário no futuro
-            $scheduledAt = Carbon::parse($validated['scheduled_at'])
-                                 ->setTimezone('America/Sao_Paulo');
-            if ($scheduledAt->isPast()) {
-                return response()->json([
-                    'error' => 'A data e horário devem ser no futuro.'
-                ], 422);
-            }
-
-            // 8) Conflitos de horário
-            $conflictClient   = Appointment::where('client_id', $clientId)
-                                           ->where('scheduled_at', $scheduledAt)
-                                           ->exists();
-            $conflictProvider = Appointment::where('provider_id', $validated['provider_id'])
-                                           ->where('scheduled_at', $scheduledAt)
-                                           ->exists();
-
-            if ($conflictClient || $conflictProvider) {
-                return response()->json([
-                    'error' => 'Conflito de horário para cliente ou prestador.'
-                ], 422);
-            }
-
-            // 9) Monta JSON de info para cliente anônimo
-            $info = null;
-            if (! Auth::check()) {
-                $info = [
-                    'name'  => $validated['customer_name'],
-                    'cpf'   => $validated['customer_cpf'],
-                    'phone' => $validated['customer_phone'],
-                    'email' => $validated['customer_email'],
-                ];
-            }
-
-            // 10) Cria o agendamento
-            $appointment = Appointment::create([
-                'app_id'           => $validated['app_id'],
-                'registered_by'    => $registeredBy,
-                'entity_name'      => $validated['entity_name'],
-                'entity_id'        => $validated['entity_id'],
-                'scheduled_at'     => $scheduledAt,
-                'provider_id'      => $validated['provider_id'],
-                'client_id'        => $clientId,
-                'status'           => $validated['status'],
-                'location'         => $validated['location'] ?? null,
-                'notes'            => $validated['notes'] ?? null,
-                'payment_status'   => $validated['payment_status'] ?? null,
-                'appointment_type' => $validated['appointment_type'] ?? null,
-                'duration'         => $validated['duration'],
-                'service_ids'      => $validated['service_ids'],
-                'info'             => $info,
-            ]);
-
-            Log::info('Agendamento criado com sucesso.', [
-                'appointment_id' => $appointment->id
-            ]);
-
-            return response()->json([
-                'message'     => 'Agendamento criado com sucesso!',
-                'appointment' => $appointment,
-            ], 201);
-
-        } catch (ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao criar agendamento: '.$e->getMessage());
-            return response()->json([
-                'error' => 'Ocorreu um erro ao criar o agendamento.'
-            ], 500);
+        if (Auth::check()) {
+            $clientId     = $request->input('client_id', Auth::id());
+            $registeredBy = Auth::id();
+        } else {
+            $clientId     = $shop->user_id;
+            $registeredBy = $shop->user_id;
         }
+
+        if (Auth::check() && $clientId == $validated['provider_id']) {
+            return response()->json(['error' => 'Cliente e prestador não podem ser a mesma pessoa.'], 422);
+        }
+
+        if (! $shop->barbers()->where('user_id', $validated['provider_id'])->exists()) {
+            return response()->json(['error' => 'Este prestador não atende nesta entidade.'], 422);
+        }
+
+        $availableIds = $shop->items()
+                              ->where('category', 'Serviços')
+                              ->pluck('id')
+                              ->toArray();
+
+        $invalid = array_diff($validated['service_ids'], $availableIds);
+        if (!empty($invalid)) {
+            return response()->json([
+                'error' => 'Serviços inválidos para esta entidade: ' . implode(', ', $invalid)
+            ], 422);
+        }
+
+        $scheduledAt = Carbon::parse($validated['scheduled_at'])
+                             ->setTimezone('America/Sao_Paulo');
+        if ($scheduledAt->isPast()) {
+            return response()->json(['error' => 'A data e horário devem ser no futuro.'], 422);
+        }
+
+        $conflictClient   = Appointment::where('client_id', $clientId)
+                                       ->where('scheduled_at', $scheduledAt)
+                                       ->exists();
+        $conflictProvider = Appointment::where('provider_id', $validated['provider_id'])
+                                       ->where('scheduled_at', $scheduledAt)
+                                       ->exists();
+        if ($conflictClient || $conflictProvider) {
+            return response()->json(['error' => 'Conflito de horário para cliente ou prestador.'], 422);
+        }
+
+        $info = null;
+        if (!Auth::check()) {
+            $info = [
+                'name'  => $validated['customer_name'],
+                'cpf'   => $validated['customer_cpf'],
+                'phone' => $validated['customer_phone'],
+                'email' => $validated['customer_email'],
+            ];
+        }
+
+        $appointment = Appointment::create([
+            'app_id'           => $validated['app_id'],
+            'registered_by'    => $registeredBy,
+            'entity_name'      => $validated['entity_name'],
+            'entity_id'        => $validated['entity_id'],
+            'scheduled_at'     => $scheduledAt,
+            'provider_id'      => $validated['provider_id'],
+            'client_id'        => $clientId,
+            'status'           => $validated['status'],
+            'location'         => $validated['location'] ?? null,
+            'notes'            => $validated['notes'] ?? null,
+            'payment_status'   => $validated['payment_status'] ?? null,
+            'appointment_type' => $validated['appointment_type'] ?? null,
+            'duration'         => $validated['duration'],
+            'service_ids'      => $validated['service_ids'],
+            'info'             => $info,
+        ]);
+
+        Log::info('Agendamento criado com sucesso.', ['appointment_id' => $appointment->id]);
+
+        return response()->json([
+            'message'     => 'Agendamento criado com sucesso!',
+            'appointment' => $appointment,
+        ], 201);
+
+    } catch (ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        Log::error('Erro ao criar agendamento: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao criar o agendamento.'], 500);
     }
+}
+
     public function listMy(Request $request)
     {
         $user = auth()->user();
