@@ -204,7 +204,7 @@ class AppointmentController extends Controller
                     'id'         => $u->id,
                     'first_name' => $u->first_name,
                     // slug vindo diretamente de users.slug
-                    'slug'       => $u->slug,
+                    'slug'       => $u->user_name,
                 ] : null,
 
                 'entity' => $shop ? [
