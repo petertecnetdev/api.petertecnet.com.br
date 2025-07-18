@@ -244,20 +244,19 @@ Route::group([
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
 });
 
-
 Route::group([
     'middleware' => 'api',
 ], function () {
-    // Public routes
-    Route::get('menu',          [MenuController::class, 'list']) ->name('menu.list');
-    Route::get('menu/{id}',     [MenuController::class, 'show']) ->name('menu.show');
+    // Public
+    Route::get('menu',        [MenuController::class, 'list'])   ->name('menu.list');
+    Route::get('menu/{id}',   [MenuController::class, 'show'])   ->name('menu.show');
 });
 
 Route::group([
     'middleware' => ['api','auth:api'],
 ], function () {
-    // Protected routes
-    Route::post('menu',         [MenuController::class, 'store'])  ->name('menu.store');
-    Route::put('menu/{id}',     [MenuController::class, 'update']) ->name('menu.update');
-    Route::delete('menu/{id}',  [MenuController::class, 'destroy'])->name('menu.destroy');
+    // Protected
+    Route::post('menu',       [MenuController::class, 'store'])  ->name('menu.store');
+    Route::put('menu/{id}',   [MenuController::class, 'update']) ->name('menu.update');
+    Route::delete('menu/{id}',[MenuController::class, 'destroy'])->name('menu.destroy');
 });
