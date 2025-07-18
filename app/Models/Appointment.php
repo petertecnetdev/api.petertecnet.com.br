@@ -63,13 +63,19 @@ class Appointment extends Model
     /**
      * Accessor para nomes legíveis de serviço
      */
-    public function getServiceNamesAttribute()
+   public function getServiceNamesAttribute(): array
     {
-        if (! is_array($this->service_ids) || empty($this->service_ids)) {
-            return collect();
+        $ids = $this->service_ids;
+        // Se veio string, decodifica
+        if (is_string($ids)) {
+            $ids = json_decode($ids, true);
         }
-        return \App\Models\Item::whereIn('id', $this->service_ids)
-            ->where('category', 'Serviços')  // ajuste aqui se sua categoria for outra
-            ->pluck('name');
+        if (! is_array($ids) || empty($ids)) {
+            return [];
+        }
+        return \App\Models\Item::whereIn('id', $ids)
+            ->where('category', 'Serviços')
+            ->pluck('name')
+            ->toArray();
     }
 }
