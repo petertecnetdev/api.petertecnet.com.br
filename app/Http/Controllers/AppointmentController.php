@@ -89,7 +89,7 @@ class AppointmentController extends Controller
 
         if (! $belongs) {
             return response()->json([
-                'error' => 'Este prestador não atende nesta barbearia.'
+                'error' => 'Este prestador não atende nesta entidade.'
             ], 422);
         }
 
