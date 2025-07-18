@@ -189,7 +189,7 @@ public function listMy(Request $request)
         'provider' => $appt->provider ? [
             'id'         => $appt->provider->id,
             'first_name' => $appt->provider->first_name,
-            'slug'       => $appt->user_name,
+            'slug'       => $appt->provider->user_name,
         ] : null,
 
         'entity' => $appt->entity ? [
