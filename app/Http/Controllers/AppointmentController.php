@@ -180,40 +180,76 @@ class AppointmentController extends Controller
     }
 }
 
-    
-    public function listMy(Request $request)
-    {
-        $user = auth()->user();
-        if (!$user) {
-            return response()->json(['error' => 'Não autenticado'], 401);
-        }
+    // App\Http\Controllers\AppointmentController.php
 
-        $appointments = Appointment::with(['provider', 'barber', 'entity'])
-            ->where('client_id', $user->id)
-            ->orderBy('scheduled_at', 'asc')
-            ->get();
+public function listMy(Request $request)
+{
+    $user = auth()->user();
+    if (! $user) {
+        return response()->json(['error' => 'Não autenticado'], 401);
+    }
 
-        $payload = $appointments->map(fn($appt) => [
-            'id' => $appt->id,
-            'scheduled_at' => $appt->scheduled_at->toDateTimeString(),
-            'status' => $appt->status,
-            'service_names' => $appt->service_names,  // agora traz o array correto
+    // Eager‐load de provider (User), barber (caso exista) e entity (Barbershop, etc)
+    $appointments = Appointment::with(['provider', 'barber', 'entity'])
+        ->where('client_id', $user->id)
+        ->orderBy('scheduled_at', 'asc')
+        ->get();
 
+    if ($appointments->isEmpty()) {
+        return response()->json(['message' => 'Nenhum agendamento encontrado.'], 404);
+    }
+
+    $payload = $appointments->map(function (Appointment $appt) {
+        return [
+            // **Todos** os campos da tabela appointments
+            'id'                 => $appt->id,
+            'app_id'             => $appt->app_id,
+            'entity_name'        => $appt->entity_name,
+            'entity_id'          => $appt->entity_id,
+            'scheduled_at'       => $appt->scheduled_at->format('Y-m-d H:i:s'),
+            'expected_end_time'  => $appt->expected_end_time?->format('Y-m-d H:i:s'),
+            'service_ids'        => $appt->service_ids,
+            'service_names'      => $appt->service_names,  // accessor já retorna array
+            'provider_id'        => $appt->provider_id,
+            'client_id'          => $appt->client_id,
+            'registered_by'      => $appt->registered_by,
+            'status'             => $appt->status,
+            'location'           => $appt->location,
+            'duration'           => $appt->duration,
+            'notes'              => $appt->notes,
+            'payment_status'     => $appt->payment_status,
+            'appointment_type'   => $appt->appointment_type,
+            'attendance_status'  => $appt->attendance_status,
+            'client_confirmation'=> $appt->client_confirmation,
+            'created_at'         => $appt->created_at->format('Y-m-d H:i:s'),
+            'updated_at'         => $appt->updated_at->format('Y-m-d H:i:s'),
+
+            // Relação provider (User)
             'provider' => $appt->provider ? [
-                'id' => $appt->provider->id,
+                'id'         => $appt->provider->id,
                 'first_name' => $appt->provider->first_name,
-                'slug' => $appt->provider->user_name,
+                'slug'       => $appt->provider->user_name,
             ] : null,
 
+            // Relação barber (perfil extra, opcional)
+            'barber_profile' => $appt->barber ? [
+                'id'   => $appt->barber->id,
+                'slug' => $appt->barber->slug,
+                // outros campos de Barber se desejar...
+            ] : null,
+
+            // Relação entity (Barbershop, etc)
             'entity' => $appt->entity ? [
-                'id' => $appt->entity->id,
+                'id'   => $appt->entity->id,
                 'name' => $appt->entity->name,
                 'slug' => $appt->entity->slug,
+                // outros campos de Barbershop se desejar...
             ] : null,
-        ]);
+        ];
+    });
 
-        return response()->json(['appointments' => $payload], 200);
-    }
+    return response()->json(['appointments' => $payload], 200);
+}
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
