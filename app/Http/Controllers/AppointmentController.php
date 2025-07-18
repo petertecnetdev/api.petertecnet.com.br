@@ -6,141 +6,129 @@ use App\Models\{Appointment, Item, Barbershop};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
-use Illuminate\Validation\Rule;   
 
 class AppointmentController extends Controller
 {
     protected function getValidationMessages()
     {
         return [
-            'app_id.required' => 'O ID do aplicativo é obrigatório.',
-            'app_id.exists' => 'O ID do aplicativo deve existir na tabela de aplicações.',
-            'entity_name.required' => 'O nome da entidade é obrigatório.',
-            'entity_name.string' => 'O nome da entidade deve ser uma string válida.',
-            'entity_id.required' => 'O ID da entidade é obrigatório.',
-            'entity_id.integer' => 'O ID da entidade deve ser um número inteiro.',
-            'scheduled_at.required' => 'A data do agendamento é obrigatória.',
-            'scheduled_at.date' => 'A data do agendamento deve ser uma data válida.',
-            'scheduled_at.after' => 'A data do agendamento deve ser posterior à data atual.',
-            'service_ids.required' => 'A lista de serviços é obrigatória.',
-            'service_ids.array' => 'Os serviços devem ser enviados como uma lista.',
-            'service_ids.*.integer' => 'Cada ID de serviço deve ser um número inteiro válido.',
-            'service_ids.*.exists' => 'Um ou mais serviços selecionados não existem na tabela de itens.',
-            'provider_id.required' => 'O prestador de serviço é obrigatório.',
-            'provider_id.integer' => 'O ID do prestador de serviço deve ser um número inteiro.',
-            'client_id.required' => 'O cliente é obrigatório.',
-            'client_id.integer' => 'O ID do cliente deve ser um número inteiro.',
-            'status.required' => 'O status do agendamento é obrigatório.',
-            'status.string' => 'O status deve ser uma string válida.',
-            'location.string' => 'A localização deve ser uma string válida.',
-            'notes.string' => 'As observações devem ser uma string válida.',
-            'payment_status.string' => 'O status do pagamento deve ser uma string válida.',
-            'appointment_type.string' => 'O tipo de agendamento deve ser uma string válida.',
-            'duration.required' => 'A duração do serviço é obrigatória.',
-            'duration.integer' => 'A duração deve ser um número inteiro válido.',
-            'duration.min' => 'A duração deve ser maior que zero.',
+            'app_id.required'           => 'O ID do aplicativo é obrigatório.',
+            'app_id.exists'             => 'O ID do aplicativo deve existir.',
+            'entity_name.required'      => 'O nome da entidade é obrigatório.',
+            'entity_id.required'        => 'O ID da entidade é obrigatório.',
+            'entity_id.exists'          => 'Entidade não encontrada.',
+            'scheduled_at.required'     => 'A data do agendamento é obrigatória.',
+            'service_ids.required'      => 'Selecione ao menos um serviço.',
+            'provider_id.required'      => 'Selecione um prestador.',
+            'status.required'           => 'Defina um status.',
+            'duration.required'         => 'A duração é obrigatória.',
+            'customer_name.required'    => 'Informe o nome do cliente.',
+            'customer_cpf.required'     => 'Informe o CPF do cliente.',
+            'customer_phone.required'   => 'Informe o telefone do cliente.',
+            'customer_email.required'   => 'Informe o email do cliente.',
         ];
     }
-  public function store(Request $request)
+
+    public function store(Request $request)
     {
         try {
             Log::info('Iniciando a criação de um novo agendamento.');
 
-            // 1) Validação básica — campos de cliente anônimo só se não estiver autenticado
+            // 1) Validação
             $validated = $request->validate([
-                'app_id'           => 'required|exists:applications,id',
-                'entity_name'      => 'required|string|max:255',
-                'entity_id'        => 'required|integer|exists:barbershops,id',
-                'scheduled_at'     => 'required|date',
-                'service_ids'      => 'required|array|min:1',
-                'service_ids.*'    => 'integer|exists:items,id',
-                'provider_id'      => 'required|integer|exists:users,id',
-                'status'           => 'required|string|max:50',
-                'location'         => 'nullable|string|max:255',
-                'notes'            => 'nullable|string',
-                'payment_status'   => 'nullable|string|max:50',
-                'appointment_type' => 'nullable|string|max:50',
-                'duration'         => 'required|integer|min:1',
+                'app_id'           => ['required','exists:applications,id'],
+                'entity_name'      => ['required','string','max:255'],
+                'entity_id'        => ['required','integer','exists:barbershops,id'],
+                'scheduled_at'     => ['required','date'],
+                'service_ids'      => ['required','array','min:1'],
+                'service_ids.*'    => ['integer','exists:items,id'],
+                'provider_id'      => ['required','integer','exists:users,id'],
+                'status'           => ['required','string','max:50'],
+                'location'         => ['nullable','string','max:255'],
+                'notes'            => ['nullable','string'],
+                'payment_status'   => ['nullable','string','max:50'],
+                'appointment_type' => ['nullable','string','max:50'],
+                'duration'         => ['required','integer','min:1'],
 
                 // campos para cliente não autenticado
                 'customer_name'  => [
-                    'string', 'max:255',
+                    'string','max:255',
                     Rule::requiredIf(fn() => ! Auth::check()),
                 ],
                 'customer_cpf'   => [
-                    'string', 'max:20',
+                    'string','max:20',
                     Rule::requiredIf(fn() => ! Auth::check()),
                 ],
                 'customer_phone' => [
-                    'string', 'max:30',
+                    'string','max:30',
                     Rule::requiredIf(fn() => ! Auth::check()),
                 ],
                 'customer_email' => [
-                    'email', 'max:255',
+                    'email','max:255',
                     Rule::requiredIf(fn() => ! Auth::check()),
                 ],
             ], $this->getValidationMessages());
 
-            // 2) Busca a barbearia
+            // 2) Carrega barbearia
             $shop = Barbershop::findOrFail($validated['entity_id']);
 
-            // 3) Determina client_id e registered_by
+            // 3) Quem é client_id e registered_by
             if (Auth::check()) {
-                $authUser    = Auth::user();
-                $clientId    = $request->input('client_id', $authUser->id);
+                $authUser     = Auth::user();
+                $clientId     = $request->input('client_id', $authUser->id);
                 $registeredBy = $authUser->id;
             } else {
-                // cliente anônimo: usa gerente da barbearia
-                $clientId    = $shop->user_id;
+                // cliente anônimo: gerente da barbearia
+                $clientId     = $shop->user_id;
                 $registeredBy = $shop->user_id;
             }
 
-            // 4) Não permitir agendar consigo mesmo
+            // 4) Não pode ser agendar consigo mesmo
             if ($clientId == $validated['provider_id']) {
                 return response()->json([
                     'error' => 'Cliente e prestador não podem ser a mesma pessoa.'
                 ], 422);
             }
 
-            // 5) Verifica associação do prestador à barbearia
+            // 5) Prestador deve atender nessa entidade
             if (! $shop->barbers()->where('user_id', $validated['provider_id'])->exists()) {
                 return response()->json([
                     'error' => 'Este prestador não atende nesta entidade.'
                 ], 422);
             }
 
-            // 6) Verifica serviços válidos na barbearia
-            $availableIds = $shop
-                ->items()
-                ->where('category', 'Serviços')
-                ->pluck('id')
-                ->toArray();
+            // 6) Serviços válidos na barbearia
+            $availableIds = $shop->items()
+                                  ->where('category', 'Serviços')
+                                  ->pluck('id')->toArray();
 
             $invalid = array_diff($validated['service_ids'], $availableIds);
             if (! empty($invalid)) {
                 return response()->json([
-                    'error' => 'Serviços inválidos para esta entidade: ' . implode(', ', $invalid)
+                    'error' => 'Serviços inválidos para esta entidade: '
+                             . implode(', ', $invalid)
                 ], 422);
             }
 
-            // 7) Normaliza horário para fuso SP e checa futuro
+            // 7) Horário no futuro
             $scheduledAt = Carbon::parse($validated['scheduled_at'])
-                ->setTimezone('America/Sao_Paulo');
+                                 ->setTimezone('America/Sao_Paulo');
             if ($scheduledAt->isPast()) {
                 return response()->json([
-                    'error' => 'A data e horário do agendamento devem ser no futuro.'
+                    'error' => 'A data e horário devem ser no futuro.'
                 ], 422);
             }
 
             // 8) Conflitos de horário
-            $conflictClient = Appointment::where('client_id', $clientId)
-                ->where('scheduled_at', $scheduledAt)
-                ->exists();
-
+            $conflictClient   = Appointment::where('client_id', $clientId)
+                                           ->where('scheduled_at', $scheduledAt)
+                                           ->exists();
             $conflictProvider = Appointment::where('provider_id', $validated['provider_id'])
-                ->where('scheduled_at', $scheduledAt)
-                ->exists();
+                                           ->where('scheduled_at', $scheduledAt)
+                                           ->exists();
 
             if ($conflictClient || $conflictProvider) {
                 return response()->json([
@@ -148,7 +136,7 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            // 9) Monta JSON de info para cliente anônimo (ou null para auth)
+            // 9) Monta JSON de info para cliente anônimo
             $info = null;
             if (! Auth::check()) {
                 $info = [
@@ -190,14 +178,12 @@ class AppointmentController extends Controller
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('Erro ao criar agendamento: ' . $e->getMessage());
+            Log::error('Erro ao criar agendamento: '.$e->getMessage());
             return response()->json([
                 'error' => 'Ocorreu um erro ao criar o agendamento.'
             ], 500);
         }
     }
-    // App\Http\Controllers\AppointmentController.php
-
     public function listMy(Request $request)
     {
         $user = auth()->user();
