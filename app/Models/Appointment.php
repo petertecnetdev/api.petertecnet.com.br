@@ -10,10 +10,24 @@ class Appointment extends Model
 {
     use HasFactory;
 
-    protected $casts = [
-        'scheduled_at'      => 'datetime',
-        'expected_end_time' => 'datetime',
-        'service_ids'       => 'array',
+      protected $fillable = [
+        'app_id',
+        'entity_name',
+        'entity_id',
+        'scheduled_at',
+        'expected_end_time',
+        'service_ids',
+        'provider_id',
+        'client_id',
+        'registered_by',
+        'status',
+        'location',
+        'duration',
+        'notes',
+        'payment_status',
+        'appointment_type',
+        'attendance_status',
+        'client_confirmation',
     ];
 
     /**
