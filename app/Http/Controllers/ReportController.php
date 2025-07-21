@@ -18,11 +18,11 @@ class ReportController extends Controller
     protected function getValidationMessages(): array
     {
         return [
-            'period_start.required'        => 'O início do período é obrigatório.',
-            'period_start.date'            => 'O início do período deve ser uma data válida.',
-            'period_end.required'          => 'O fim do período é obrigatório.',
-            'period_end.date'              => 'O fim do período deve ser uma data válida.',
-            'period_end.after_or_equal'    => 'O fim do período deve ser igual ou posterior ao início.',
+            'period_start.required'     => 'O início do período é obrigatório.',
+            'period_start.date'         => 'O início do período deve ser uma data válida.',
+            'period_end.required'       => 'O fim do período é obrigatório.',
+            'period_end.date'           => 'O fim do período deve ser uma data válida.',
+            'period_end.after_or_equal' => 'O fim do período deve ser igual ou posterior ao início.',
         ];
     }
 
@@ -44,6 +44,7 @@ class ReportController extends Controller
                 'period_end'   => $request->input('period_end'),
             ]);
 
+            // validação
             $data = $request->validate([
                 'period_start' => 'required|date',
                 'period_end'   => 'required|date|after_or_equal:period_start',
@@ -100,7 +101,7 @@ class ReportController extends Controller
                 ->groupBy('o1.client_id')
                 ->count();
 
-            // Top 5 clientes
+            // --- Top Clientes ---
             $topCustomers = DB::table('orders')
                 ->select('client_id', DB::raw('COUNT(*) as orders_count'))
                 ->whereBetween('order_datetime', [$start, $end])
@@ -114,7 +115,7 @@ class ReportController extends Controller
                 ])
                 ->toArray();
 
-            // --- Cancelamentos e pico ---
+            // --- Cancelamentos e Pico ---
             $cancellationCount = DB::table('orders')
                 ->where('status', 'cancelled')
                 ->whereBetween('order_datetime', [$start, $end])
@@ -142,7 +143,7 @@ class ReportController extends Controller
                 ? round($totalOrders / ($newCustomersCount + $returningCustomersCount), 2)
                 : 0;
 
-            // Salva relatório
+            // --- Persiste ---
             $report = Report::create([
                 'report_type'                   => 'order',
                 'period_start'                  => $start,
