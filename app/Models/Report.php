@@ -71,7 +71,6 @@ class Report extends Model
         'avg_service_time'             => 'decimal:2',
         'cancellation_rate'            => 'decimal:2',
         'peak_hours'                   => 'array',
-        'resource_utilization'         => 'decimal:2',
         'new_customers_count'          => 'integer',
         'returning_customers_count'    => 'integer',
         'avg_ticket_per_customer'      => 'decimal:2',
@@ -83,57 +82,32 @@ class Report extends Model
         'reorder_alerts_count'         => 'integer',
         'raw_material_cost'            => 'decimal:2',
         'individual_performance'       => 'array',
-        'labor_efficiency'             => 'decimal:2',
-        'commissions_and_bonuses'      => 'decimal:2',
-        'campaign_roi'                 => 'decimal:2',
-        'promotion_conversion_rate'    => 'decimal:2',
-        'lead_origin'                  => 'array',
-        'barbershop_completion_rate'   => 'decimal:2',
-        'avg_service_time_barbershop'  => 'decimal:2',
-        'restaurant_prep_time'         => 'decimal:2',
-        'table_turnover_rate'          => 'decimal:2',
-        'legal_cases_opened_count'     => 'integer',
-        'legal_cases_closed_count'     => 'integer',
-        'avg_legal_case_duration'      => 'decimal:2',
-        'hospital_bed_occupancy_rate'  => 'decimal:2',
-        'hospital_readmission_rate'    => 'decimal:2',
-        'avg_hospital_stay_duration'   => 'decimal:2',
         'endpoint_usage'               => 'array',
-        'error_rate'                   => 'decimal:2',
-        'avg_latency'                  => 'decimal:2',
-        'auth_login_attempts_count'    => 'integer',
-        'auth_login_failures_count'    => 'integer',
     ];
 
-    // Campos virtuais adicionados no JSON de saída
     protected $appends = [
         'items_detail',
         'top_customers_detail',
     ];
 
     /**
-     * Polimórfico: entidade relacionada (Establishment, Barbershop etc).
-     */
-    public function entity()
-    {
-        return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
-    }
-
-    /**
      * Accessor: detalha os itens vendidos.
      *
-     * @return array
+     * Retorna um array de:
+     *   [
+     *     'item_id'   => int,
+     *     'item_name' => string,
+     *     'quantity'  => int,
+     *   ]
      */
     public function getItemsDetailAttribute(): array
     {
-        // breakdown_by_item é [ item_id => quantidade, ... ]
         return collect($this->breakdown_by_item)
-            ->map(function (int $qty, $itemId) {
-                $item = Item::find($itemId);
+            ->map(function (array $entry) {
                 return [
-                    'item_id'   => $itemId,
-                    'item_name' => $item?->name ?? "Item #{$itemId}",
-                    'quantity'  => $qty,
+                    'item_id'   => $entry['item_id'],
+                    'item_name' => $entry['item_name'] ?? Item::find($entry['item_id'])?->name ?? '-',
+                    'quantity'  => (int) $entry['quantity'],
                 ];
             })
             ->values()
@@ -143,19 +117,23 @@ class Report extends Model
     /**
      * Accessor: detalha os top clientes.
      *
-     * @return array
+     * Retorna um array de:
+     *   [
+     *     'customer_id'   => int,
+     *     'customer_name' => string,
+     *     'orders_count'  => int,
+     *     'total_spent'   => float,
+     *   ]
      */
     public function getTopCustomersDetailAttribute(): array
     {
-        // top_customers é [ ['client_id'=>x,'orders_count'=>y], ... ]
         return collect($this->top_customers)
             ->map(function (array $entry) {
-                $user = User::find($entry['client_id']);
                 return [
-                    'client_id'    => $entry['client_id'],
-                    'client_name'  => $user?->first_name.' '.$user?->last_name
-                                        ?? "Cliente #{$entry['client_id']}",
-                    'orders_count' => $entry['orders_count'],
+                    'customer_id'   => $entry['customer_id'],
+                    'customer_name' => $entry['customer_name'] ?? (User::find($entry['customer_id'])?->name ?? '-'),
+                    'orders_count'  => (int) $entry['orders_count'],
+                    'total_spent'   => (float) $entry['total_spent'],
                 ];
             })
             ->values()
