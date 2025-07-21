@@ -26,7 +26,12 @@ class ReportController extends BaseController
         $orders = Order::where('entity_name', $entityName)
             ->where('entity_id', $entityId)
             ->whereBetween('order_datetime', [$periodStart, $periodEnd])
-            ->with(['items.modifiers'])
+            ->with([
+                'attendant',
+                'client',
+                'items.modifiers.modifier',
+                'items.item',
+            ])
             ->get();
 
         $totalOrders = $orders->count();
@@ -116,6 +121,7 @@ class ReportController extends BaseController
         return response()->json([
             'message' => 'Relatório de pedidos gerado com sucesso.',
             'report'  => $report->fresh(),
+            'orders'  => $orders,
         ], 201);
     }
 }
