@@ -3,6 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Report;
+use App\Models\Establishment;
+use App\Models\Order;
+use App\Models\Item;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -45,42 +49,44 @@ class ReportController extends Controller
             $start = Carbon::parse($data['period_start'])->startOfDay();
             $end   = Carbon::parse($data['period_end'])->endOfDay();
 
-            // --- cálculos resumidos ---
-            $totalOrders    = DB::table('orders')->whereBetween('order_datetime', [$start, $end])->count();
-            $totalRevenue   = DB::table('orders')->whereBetween('order_datetime', [$start, $end])->sum('total_price');
+            // --- Métricas básicas ---
+            $totalOrders    = DB::table('orders')
+                                ->where('entity_name', $data['entity_name'])
+                                ->where('entity_id', $data['entity_id'])
+                                ->whereBetween('order_datetime', [$start, $end])
+                                ->count();
+
+            $totalRevenue   = DB::table('orders')
+                                ->where('entity_name', $data['entity_name'])
+                                ->where('entity_id', $data['entity_id'])
+                                ->whereBetween('order_datetime', [$start, $end])
+                                ->sum('total_price');
+
             $totalItemsSold = DB::table('order_items')
                                 ->join('orders','order_items.order_id','=','orders.id')
+                                ->where('orders.entity_name', $data['entity_name'])
+                                ->where('orders.entity_id', $data['entity_id'])
                                 ->whereBetween('orders.order_datetime', [$start, $end])
                                 ->sum('order_items.quantity');
 
             $avgTicketValue   = $totalOrders ? round($totalRevenue / $totalOrders, 2) : 0;
             $avgItemsPerOrder = $totalOrders ? round($totalItemsSold / $totalOrders, 2) : 0;
 
-            // --- quebras ---
+            // --- Quebras ---
             $breakdownByItem = DB::table('order_items')
                 ->join('orders','order_items.order_id','=','orders.id')
                 ->select('order_items.item_id', DB::raw('SUM(order_items.quantity) as total'))
+                ->where('orders.entity_name', $data['entity_name'])
+                ->where('orders.entity_id', $data['entity_id'])
                 ->whereBetween('orders.order_datetime', [$start, $end])
                 ->groupBy('order_items.item_id')
                 ->pluck('total','order_items.item_id')
                 ->toArray();
 
-            $breakdownByChannel = DB::table('orders')
-                ->select('origin', DB::raw('COUNT(*) as total'))
-                ->whereBetween('order_datetime', [$start, $end])
-                ->groupBy('origin')
-                ->pluck('total','origin')
-                ->toArray();
-
-            $breakdownByPayment = DB::table('orders')
-                ->select('payment_method', DB::raw('COUNT(*) as total'))
-                ->whereBetween('order_datetime', [$start, $end])
-                ->groupBy('payment_method')
-                ->pluck('total','payment_method')
-                ->toArray();
-
-            // --- clientes ---
+            // --- Clientes ---
             $newCustomersCount = DB::table('orders')
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id', $data['entity_id'])
                 ->select('client_id', DB::raw('MIN(order_datetime) as first_order'))
                 ->groupBy('client_id')
                 ->havingRaw('first_order BETWEEN ? AND ?', [$start, $end])
@@ -88,27 +94,28 @@ class ReportController extends Controller
 
             $returningCustomersCount = DB::table('orders as o1')
                 ->join('orders as o2','o1.client_id','=','o2.client_id')
+                ->where('o1.entity_name', $data['entity_name'])
+                ->where('o1.entity_id',   $data['entity_id'])
                 ->whereBetween('o1.order_datetime', [$start, $end])
                 ->where('o2.order_datetime','<',$start)
                 ->groupBy('o1.client_id')
                 ->count();
 
-            // --- top clientes ---
             $topCustomers = DB::table('orders')
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id',   $data['entity_id'])
                 ->select('client_id', DB::raw('COUNT(*) as orders_count'))
                 ->whereBetween('order_datetime', [$start, $end])
                 ->groupBy('client_id')
                 ->orderByDesc('orders_count')
                 ->limit(5)
                 ->get()
-                ->map(fn($r) => [
-                    'client_id'    => $r->client_id,
-                    'orders_count' => $r->orders_count,
-                ])
                 ->toArray();
 
-            // --- cancelamentos & pico de hora ---
+            // --- Cancelamentos & pico de hora ---
             $cancellationCount = DB::table('orders')
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id',   $data['entity_id'])
                 ->where('status','cancelled')
                 ->whereBetween('order_datetime', [$start, $end])
                 ->count();
@@ -119,13 +126,16 @@ class ReportController extends Controller
 
             $peakHours = DB::table('orders')
                 ->select(DB::raw('HOUR(order_datetime) as hour'), DB::raw('COUNT(*) as total'))
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id',   $data['entity_id'])
                 ->whereBetween('order_datetime', [$start, $end])
                 ->groupBy('hour')
-                ->orderBy('hour')
                 ->pluck('total','hour')
                 ->toArray();
 
             $avgServiceTime = DB::table('orders')
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id',   $data['entity_id'])
                 ->whereBetween('order_datetime', [$start, $end])
                 ->where('payment_status','paid')
                 ->value(DB::raw('AVG(TIMESTAMPDIFF(MINUTE,order_datetime,updated_at))'));
@@ -134,7 +144,7 @@ class ReportController extends Controller
                 ? round($totalOrders / ($newCustomersCount + $returningCustomersCount), 2)
                 : 0;
 
-            // --- persiste TUDO, incluindo campos JSON sem default no banco ---
+            // --- Persiste TUDO (colunas não-nulas) ---
             $report = Report::create([
                 'entity_id'                    => $data['entity_id'],
                 'entity_name'                  => $data['entity_name'],
@@ -145,7 +155,7 @@ class ReportController extends Controller
                 'gross_profit'                 => $totalRevenue,
                 'net_profit'                   => $totalRevenue,
                 'total_expenses'               => 0,
-                'revenue_by_channel'           => $breakdownByChannel,
+                'revenue_by_channel'           => [],   // ajuste se quiser a quebra
                 'avg_service_time'             => $avgServiceTime ?: 0,
                 'cancellation_rate'            => $cancellationRate,
                 'peak_hours'                   => $peakHours,
@@ -155,15 +165,14 @@ class ReportController extends Controller
                 'avg_ticket_per_customer'      => $avgTicketValue,
                 'visit_frequency'              => $visitFrequency,
                 'breakdown_by_item'            => $breakdownByItem,
-                'lead_origin'                  => $breakdownByPayment,
+                'lead_origin'                  => [],   // ajuste se quiser a quebra por pagamento
                 'top_customers'                => $topCustomers,
-
-                // —— abaixo, TODOS os campos não‐nulos restantes —— 
+                // — demais campos fixos/defaults —
                 'satisfaction_index'           => 0,
                 'stock_turnover'               => 0,
                 'reorder_alerts_count'         => 0,
                 'raw_material_cost'            => 0,
-                'individual_performance'       => [], 
+                'individual_performance'       => [],
                 'labor_efficiency'             => 0,
                 'commissions_and_bonuses'      => 0,
                 'campaign_roi'                 => 0,
@@ -185,11 +194,34 @@ class ReportController extends Controller
                 'auth_login_failures_count'    => 0,
             ]);
 
-            $report->load('entity'); // traz Establishment/Barbershop/etc completo
+            // --- Carrega o estabelecimento e os pedidos completos ---
+            $establishment = Establishment::find($data['entity_id']);
+            $orders = Order::with(['items.item', 'items.modifiers'])
+                ->where('entity_name', $data['entity_name'])
+                ->where('entity_id',   $data['entity_id'])
+                ->whereBetween('order_datetime', [$start, $end])
+                ->get();
+
+            // --- Monta detalhe de itens e top clientes com os models completos ---
+            $itemsDetail = collect($breakdownByItem)
+                ->map(fn($qty,$id) => [
+                    'item'     => Item::find($id),
+                    'quantity' => $qty,
+                ])->values();
+
+            $topCustomersDetail = collect($topCustomers)
+                ->map(fn($c) => [
+                    'customer'     => User::find($c->client_id),
+                    'orders_count' => $c->orders_count,
+                ])->values();
 
             return response()->json([
-                'message' => 'Relatório de pedidos gerado com sucesso.',
-                'report'  => $report->toArray(), 
+                'message'     => 'Relatório de pedidos gerado com sucesso.',
+                'report'      => $report,
+                'entity'      => $establishment,
+                'orders'      => $orders,
+                'items_breakdown'     => $itemsDetail,
+                'top_customers_detail'=> $topCustomersDetail,
             ], 201);
 
         } catch (ValidationException $e) {
