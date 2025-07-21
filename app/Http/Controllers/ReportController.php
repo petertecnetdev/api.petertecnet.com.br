@@ -54,8 +54,12 @@ class ReportController extends Controller
             $end   = Carbon::parse($data['period_end'])->endOfDay();
 
             // --- Métricas básicas ---
-            $totalOrders      = DB::table('orders')->whereBetween('order_datetime', [$start, $end])->count();
-            $totalRevenue     = DB::table('orders')->whereBetween('order_datetime', [$start, $end])->sum('total_price');
+            $totalOrders      = DB::table('orders')
+                ->whereBetween('order_datetime', [$start, $end])
+                ->count();
+            $totalRevenue     = DB::table('orders')
+                ->whereBetween('order_datetime', [$start, $end])
+                ->sum('total_price');
             $totalItemsSold   = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->whereBetween('orders.order_datetime', [$start, $end])
@@ -143,7 +147,7 @@ class ReportController extends Controller
                 ? round($totalOrders / ($newCustomersCount + $returningCustomersCount), 2)
                 : 0;
 
-            // --- Persiste ---
+            // --- Persiste no banco ---
             $report = Report::create([
                 'report_type'                   => 'order',
                 'period_start'                  => $start,
@@ -161,6 +165,10 @@ class ReportController extends Controller
                 'returning_customers_count'     => $returningCustomersCount,
                 'avg_ticket_per_customer'       => $avgTicketValue,
                 'visit_frequency'               => $visitFrequency,
+                'breakdown_by_item'             => $breakdownByItem,
+                'lead_origin'                   => $breakdownByPayment,
+                'top_customers'                 => $topCustomers,
+                // demais campos fixos:
                 'satisfaction_index'            => 0,
                 'stock_turnover'                => 0,
                 'reorder_alerts_count'          => 0,
@@ -170,7 +178,6 @@ class ReportController extends Controller
                 'commissions_and_bonuses'       => 0,
                 'campaign_roi'                  => 0,
                 'promotion_conversion_rate'     => 0,
-                'lead_origin'                   => $breakdownByPayment,
                 'barbershop_completion_rate'    => 0,
                 'avg_service_time_barbershop'   => 0,
                 'restaurant_prep_time'          => 0,
@@ -186,7 +193,6 @@ class ReportController extends Controller
                 'avg_latency'                   => 0,
                 'auth_login_attempts_count'     => 0,
                 'auth_login_failures_count'     => 0,
-                'top_customers'                 => $topCustomers,
             ]);
 
             Log::info('Relatório de pedidos gerado com sucesso.', ['report_id' => $report->id]);
