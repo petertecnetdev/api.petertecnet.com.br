@@ -151,7 +151,7 @@ class ReportController extends Controller
 
             $revenueByChannel = $channelRaw->map(fn($r) => ['channel'=>$r->channel,'amount'=>$r->amount])->toArray();
 
-            // Persistência do relatório
+            // Persiste relatório completo
             $report = Report::create([
                 'entity_id'               => $data['entity_id'],
                 'entity_name'             => $data['entity_name'],
@@ -162,26 +162,24 @@ class ReportController extends Controller
                 'gross_profit'            => $totalRevenue,
                 'net_profit'              => $totalRevenue,
                 'total_expenses'          => 0,
-                'total_items_sold'        => $totalItemsSold,
-                'avg_items_per_order'     => $avgItemsPerOrder,
-                'avg_ticket_per_customer' => $avgTicketValue,
-                'visit_frequency'         => $avgItemsPerOrder?
-                                              round($totalOrders/($totalItemsSold/$avgItemsPerOrder),2):0,
-                'revenue_by_channel'      => $revenueByChannel,
-                'avg_service_time'        => DB::table('orders')
-                                               ->where('entity_name', $data['entity_name'])
-                                               ->where('entity_id',   $data['entity_id'])
-                                               ->where('payment_status','paid')
-                                               ->whereBetween('order_datetime', [$start, $end])
-                                               ->value(DB::raw('AVG(TIMESTAMPDIFF(MINUTE, order_datetime, updated_at))'))
+                'avg_ticket_per_customer'=> $avgTicketValue,
+                'visit_frequency'        => $avgItemsPerOrder?
+                                           round($totalOrders/($totalItemsSold/$avgItemsPerOrder),2):0,
+                'revenue_by_channel'     => $revenueByChannel,
+                'avg_service_time'       => DB::table('orders')
+                                              ->where('entity_name',$data['entity_name'])
+                                              ->where('entity_id',$data['entity_id'])
+                                              ->where('payment_status','paid')
+                                              ->whereBetween('order_datetime',[$start,$end])
+                                              ->value(DB::raw('AVG(TIMESTAMPDIFF(MINUTE,order_datetime,updated_at))'))
                                               ?? 0,
-                'cancellation_rate'       => $cancellationRate,
-                'peak_hours'              => $peakHours,
-                'breakdown_by_item'       => $itemsBreakdown,
-                'top_customers'           => $topCustomers,
-                'reorder_alerts_count'    => 0,
-                'individual_performance'  => [],
-                'endpoint_usage'          => [],
+                'cancellation_rate'      => $cancellationRate,
+                'peak_hours'             => $peakHours,
+                'breakdown_by_item'      => $itemsBreakdown,
+                'top_customers'          => $topCustomers,
+                'lead_origin'            => [],
+                'individual_performance' => [],
+                'endpoint_usage'         => [],
             ]);
 
             $establishment = Establishment::find($data['entity_id']);
