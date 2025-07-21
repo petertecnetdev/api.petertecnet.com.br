@@ -188,11 +188,8 @@ Route::group([
     Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'report'
-], function ($router) {
-    Route::post('/generate', [ReportController::class, 'generatePDF'])->name('report.generate');
+Route::group([    'middleware' => 'api',    'prefix' => 'report',], function ($router) {
+    Route::post('/order', [ReportController::class, 'order'])->name('report.order');
 });
 
 Route::group([
@@ -248,15 +245,15 @@ Route::group([
     'middleware' => 'api',
 ], function () {
     // Public
-    Route::get('menu',        [MenuController::class, 'list'])   ->name('menu.list');
-    Route::get('menu/{id}',   [MenuController::class, 'show'])   ->name('menu.show');
+    Route::get('menu', [MenuController::class, 'list'])->name('menu.list');
+    Route::get('menu/{id}', [MenuController::class, 'show'])->name('menu.show');
 });
 
 Route::group([
-    'middleware' => ['api','auth:api'],
+    'middleware' => ['api', 'auth:api'],
 ], function () {
     // Protected
-    Route::post('menu',       [MenuController::class, 'store'])  ->name('menu.store');
-    Route::put('menu/{id}',   [MenuController::class, 'update']) ->name('menu.update');
-    Route::delete('menu/{id}',[MenuController::class, 'destroy'])->name('menu.destroy');
+    Route::post('menu', [MenuController::class, 'store'])->name('menu.store');
+    Route::put('menu/{id}', [MenuController::class, 'update'])->name('menu.update');
+    Route::delete('menu/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });

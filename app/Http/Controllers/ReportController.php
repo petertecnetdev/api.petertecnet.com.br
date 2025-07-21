@@ -2,158 +2,140 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Report;
 use Illuminate\Http\Request;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class ReportController extends Controller
 {
-    /**
-     * Recebe o JSON dentro do campo "json_data", valida e gera o relatório PDF.
-     */
-    public function generatePDF(Request $request)
+    public function order(Request $request)
     {
-        // Validação do JSON recebido
-        $validatedRequest = $request->validate([
-            'json_data' => 'required|array',
-        ], $this->getValidationMessages());
+        $request->validate([
+            'period_start' => 'required|date',
+            'period_end'   => 'required|date|after_or_equal:period_start',
+        ]);
 
-        // Captura os dados dentro do campo "json_data"
-        $data = $validatedRequest['json_data'];
+        $start = Carbon::parse($request->input('period_start'))->startOfDay();
+        $end   = Carbon::parse($request->input('period_end'))->endOfDay();
 
-        // Validação dos dados internos do JSON
-        $validatedData = \Validator::make($data, [
-            'person' => 'required|array',
-            'group' => 'required|array',
-            'qr' => 'required|string',
-            'qrPage' => 'required|string|url',
-            'docs' => 'required|array',
-            'docs.documentFront.photo' => 'required|string|url',
-            'docs.documentBack.photo' => 'required|string|url',
-            'photosBase64' => 'required|array',
-            'photosBase64.documentFront' => 'required|string',
-            'photosBase64.documentBack' => 'required|string',
-            'photosBase64.faceMatchPerson' => 'nullable|string',
-            'photosBase64.faceMatchDocument' => 'nullable|string',
-            'photosBase64.qrCode' => 'required|string',
-            'primaryColor' => 'required|string',
-            'secundaryColor' => 'required|string',
-            'reportType' => 'required|string|in:Resumido,Completo',
-            'verifications' => 'required|array',
-        ], $this->getValidationMessages());
+        $totalOrders = DB::table('orders')
+            ->whereBetween('created_at', [$start, $end])
+            ->count();
 
-        if ($validatedData->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'errors' => $validatedData->errors()
-            ], 422);
-        }
+        $totalRevenue = DB::table('orders')
+            ->whereBetween('created_at', [$start, $end])
+            ->sum('total');
 
-        // Dados validados
-        $person         = $data['person'];
-        $group          = $data['group'];
-        $qr             = $data['qr'];
-        $qrPage         = $data['qrPage'];
-        $docs           = $data['docs'];
-        $photosBase64   = $data['photosBase64'];
-        $primaryColor   = $data['primaryColor'];
-        $secundaryColor = $data['secundaryColor'];
-        $verifications  = $data['verifications'] ?? [];
+        $totalItemsSold = DB::table('order_items')
+            ->join('orders','order_items.order_id','orders.id')
+            ->whereBetween('orders.created_at', [$start, $end])
+            ->sum('order_items.quantity');
 
-        // Converter imagens dos documentos para Base64
-        $docs['documentFront']['photo'] = $this->convertImageToBase64($docs['documentFront']['photo']);
-        $docs['documentBack']['photo'] = $this->convertImageToBase64($docs['documentBack']['photo']);
+        $averageTicketValue    = $totalOrders ? round($totalRevenue / $totalOrders, 2) : 0;
+        $averageItemsPerOrder  = $totalOrders ? round($totalItemsSold / $totalOrders, 2) : 0;
 
-        // Converter as imagens do array photosBase64 (caso não estejam em base64)
-        $keys = ['documentFront', 'documentBack', 'faceMatchPerson', 'faceMatchDocument', 'qrCode'];
-        foreach ($keys as $key) {
-            if (isset($photosBase64[$key]) && !str_starts_with($photosBase64[$key], 'data:')) {
-                $photosBase64[$key] = $this->convertImageToBase64($photosBase64[$key]);
-            }
-        }
+        $newCustomersCount = DB::table('users')
+            ->leftJoin('orders', 'users.id', '=', 'orders.user_id')
+            ->groupBy('users.id')
+            ->havingRaw('MIN(orders.created_at) BETWEEN ? AND ?', [$start, $end])
+            ->get()->count();
 
-        // Converter a logo da Peter Tecnet (localizada em public/images)
-        $logoPeterTecnet = $this->convertImageToBase64(public_path('images/peterlogo.png'));
+        $returningCustomersCount = DB::table('orders as o1')
+            ->join('orders as o2', 'o1.user_id', '=', 'o2.user_id')
+            ->whereBetween('o1.created_at', [$start, $end])
+            ->where('o2.created_at', '<', $start)
+            ->groupBy('o1.user_id')
+            ->get()->count();
 
-        // Gera o PDF utilizando a view "reports.criminal_record"
-        $pdf = Pdf::loadView('reports.criminal_record', compact(
-            'person',
-            'group',
-            'qr',
-            'qrPage',
-            'docs',
-            'photosBase64',
-            'primaryColor',
-            'secundaryColor',
-            'verifications',
-            'logoPeterTecnet'
-        ));
+        $cancellationCount = DB::table('orders')
+            ->where('status', 'cancelled')
+            ->whereBetween('created_at', [$start, $end])
+            ->count();
 
-        // Retorna o PDF como resposta para download
-        return $pdf->stream('relatorio_antecedentes_criminais.pdf');
-    }
+        $cancellationRate = $totalOrders ? round(($cancellationCount / $totalOrders) * 100, 2) : 0;
 
-    /**
-     * Converte uma URL de imagem para uma string Base64.
-     *
-     * @param string $imageUrl
-     * @return string|null
-     */
-    private function convertImageToBase64($imageUrl)
-    {
-        try {
-            $imageData = file_get_contents($imageUrl);
-            if ($imageData === false) {
-                return null;
-            }
-            $imageType = pathinfo($imageUrl, PATHINFO_EXTENSION);
-            return 'data:image/' . $imageType . ';base64,' . base64_encode($imageData);
-        } catch (\Exception $e) {
-            return null;
-        }
-    }
+        $breakdownByItem = DB::table('order_items')
+            ->join('orders','order_items.order_id','orders.id')
+            ->select('order_items.item_name', DB::raw('SUM(order_items.quantity) as total'))
+            ->whereBetween('orders.created_at', [$start, $end])
+            ->groupBy('order_items.item_name')
+            ->pluck('total','order_items.item_name');
 
-    /**
-     * Retorna as mensagens de erro personalizadas para a validação.
-     */
-    protected function getValidationMessages()
-    {
-        return [
-            'json_data.required' => 'O campo "json_data" é obrigatório e deve conter o JSON válido.',
-            'json_data.array' => 'O campo "json_data" deve ser um objeto JSON.',
-            'person.required' => 'O campo "person" é obrigatório.',
-            'person.array' => 'O campo "person" deve ser um objeto JSON.',
-            'group.required' => 'O campo "group" é obrigatório.',
-            'group.array' => 'O campo "group" deve ser um objeto JSON.',
-            'qr.required' => 'O campo "qr" é obrigatório.',
-            'qr.string' => 'O campo "qr" deve ser uma string.',
-            'qrPage.required' => 'O campo "qrPage" é obrigatório.',
-            'qrPage.string' => 'O campo "qrPage" deve ser uma string.',
-            'qrPage.url' => 'O campo "qrPage" deve ser uma URL válida.',
-            'docs.required' => 'O campo "docs" é obrigatório.',
-            'docs.array' => 'O campo "docs" deve ser um objeto JSON.',
-            'docs.documentFront.photo.required' => 'O campo "documentFront.photo" é obrigatório.',
-            'docs.documentFront.photo.string' => 'O campo "documentFront.photo" deve ser uma string.',
-            'docs.documentFront.photo.url' => 'O campo "documentFront.photo" deve ser uma URL válida.',
-            'docs.documentBack.photo.required' => 'O campo "documentBack.photo" é obrigatório.',
-            'docs.documentBack.photo.string' => 'O campo "documentBack.photo" deve ser uma string.',
-            'docs.documentBack.photo.url' => 'O campo "documentBack.photo" deve ser uma URL válida.',
-            'photosBase64.required' => 'O campo "photosBase64" é obrigatório.',
-            'photosBase64.array' => 'O campo "photosBase64" deve ser um objeto JSON.',
-            'photosBase64.documentFront.required' => 'O campo "photosBase64.documentFront" é obrigatório.',
-            'photosBase64.documentFront.string' => 'O campo "photosBase64.documentFront" deve ser uma string.',
-            'photosBase64.documentBack.required' => 'O campo "photosBase64.documentBack" é obrigatório.',
-            'photosBase64.documentBack.string' => 'O campo "photosBase64.documentBack" deve ser uma string.',
-            'photosBase64.qrCode.required' => 'O campo "photosBase64.qrCode" é obrigatório.',
-            'photosBase64.qrCode.string' => 'O campo "photosBase64.qrCode" deve ser uma string.',
-            'primaryColor.required' => 'O campo "primaryColor" é obrigatório.',
-            'primaryColor.string' => 'O campo "primaryColor" deve ser uma string.',
-            'secundaryColor.required' => 'O campo "secundaryColor" é obrigatório.',
-            'secundaryColor.string' => 'O campo "secundaryColor" deve ser uma string.',
-            'reportType.required' => 'O campo "reportType" é obrigatório.',
-            'reportType.string' => 'O campo "reportType" deve ser uma string.',
-            'reportType.in' => 'O campo "reportType" deve ser "Resumido" ou "Completo".',
-            'verifications.required' => 'O campo "verifications" é obrigatório.',
-            'verifications.array' => 'O campo "verifications" deve ser um objeto JSON.',
-        ];
+        $breakdownByPaymentMethod = DB::table('orders')
+            ->select('payment_method', DB::raw('COUNT(*) as count'))
+            ->whereBetween('created_at', [$start, $end])
+            ->groupBy('payment_method')
+            ->pluck('count','payment_method');
+
+        $breakdownByChannel = DB::table('orders')
+            ->select('origin', DB::raw('COUNT(*) as count'))
+            ->whereBetween('created_at', [$start, $end])
+            ->groupBy('origin')
+            ->pluck('count','origin');
+
+        $topCustomers = DB::table('orders')
+            ->select('user_id', DB::raw('COUNT(*) as orders_count'))
+            ->whereBetween('created_at', [$start, $end])
+            ->groupBy('user_id')
+            ->orderByDesc('orders_count')
+            ->limit(5)
+            ->get()
+            ->map(function($row){
+                return ['user_id' => $row->user_id, 'orders_count' => $row->orders_count];
+            });
+
+        $peakHours = DB::table('orders')
+            ->select(DB::raw('HOUR(created_at) as hour'), DB::raw('COUNT(*) as count'))
+            ->whereBetween('created_at', [$start, $end])
+            ->groupBy(DB::raw('HOUR(created_at)'))
+            ->orderBy('hour')
+            ->pluck('count','hour');
+
+        $report = Report::create([
+            'report_type'                   => 'order',
+            'period_start'                  => $start,
+            'period_end'                    => $end,
+            'cash_flow'                     => $totalRevenue,
+            'gross_profit'                  => $totalRevenue,
+            'net_profit'                    => $totalRevenue,
+            'total_expenses'                => 0,
+            'revenue_by_channel'            => $breakdownByChannel,
+            'avg_service_time'              => 0,
+            'cancellation_rate'             => $cancellationRate,
+            'peak_hours'                    => $peakHours,
+            'resource_utilization'          => 0,
+            'new_customers_count'           => $newCustomersCount,
+            'returning_customers_count'     => $returningCustomersCount,
+            'avg_ticket_per_customer'       => $averageTicketValue,
+            'visit_frequency'               => 0,
+            'satisfaction_index'            => 0,
+            'stock_turnover'                => 0,
+            'reorder_alerts_count'          => 0,
+            'raw_material_cost'             => 0,
+            'individual_performance'        => [],
+            'labor_efficiency'              => 0,
+            'commissions_and_bonuses'       => 0,
+            'campaign_roi'                  => 0,
+            'promotion_conversion_rate'     => 0,
+            'lead_origin'                   => [],
+            'barbershop_completion_rate'    => 0,
+            'avg_service_time_barbershop'   => 0,
+            'restaurant_prep_time'          => 0,
+            'table_turnover_rate'           => 0,
+            'legal_cases_opened_count'      => 0,
+            'legal_cases_closed_count'      => 0,
+            'avg_legal_case_duration'       => 0,
+            'hospital_bed_occupancy_rate'   => 0,
+            'hospital_readmission_rate'     => 0,
+            'avg_hospital_stay_duration'    => 0,
+            'endpoint_usage'                => [],
+            'error_rate'                    => 0,
+            'avg_latency'                   => 0,
+            'auth_login_attempts_count'     => 0,
+            'auth_login_failures_count'     => 0,
+        ]);
+
+        return response()->json($report, 201);
     }
 }
