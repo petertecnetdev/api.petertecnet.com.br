@@ -32,6 +32,9 @@ class ReportController extends Controller
         ];
     }
 
+    /**
+     * Gera relatório de pedidos detalhado para uma entidade (sempre "establishment").
+     */
     public function order(Request $request)
     {
         try {
@@ -49,6 +52,7 @@ class ReportController extends Controller
             $start = Carbon::parse($data['period_start'])->startOfDay();
             $end   = Carbon::parse($data['period_end'])->endOfDay();
 
+            // Métricas básicas
             $totalOrders    = DB::table('orders')
                 ->where('entity_name', $data['entity_name'])
                 ->where('entity_id',   $data['entity_id'])
@@ -71,6 +75,7 @@ class ReportController extends Controller
             $avgTicketValue   = $totalOrders ? round($totalRevenue / $totalOrders, 2) : 0;
             $avgItemsPerOrder = $totalOrders ? round($totalItemsSold / $totalOrders, 2) : 0;
 
+            // Breakdown by item
             $breakdownRaw = DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
                 ->select('order_items.item_id', DB::raw('SUM(order_items.quantity) as quantity'))
@@ -89,6 +94,7 @@ class ReportController extends Controller
                 ];
             })->toArray();
 
+            // Top customers by total spent
             $topRaw = DB::table('orders')
                 ->where('entity_name', $data['entity_name'])
                 ->where('entity_id',   $data['entity_id'])
@@ -109,6 +115,7 @@ class ReportController extends Controller
                 ];
             })->toArray();
 
+            // Cancelamento rate
             $cancellationCount = DB::table('orders')
                 ->where('entity_name', $data['entity_name'])
                 ->where('entity_id',   $data['entity_id'])
@@ -118,6 +125,7 @@ class ReportController extends Controller
 
             $cancellationRate = $totalOrders ? round(($cancellationCount / $totalOrders) * 100, 2) : 0;
 
+            // Peak hours intervals
             $peakRaw = DB::table('orders')
                 ->select(DB::raw('HOUR(order_datetime) as hour'), DB::raw('COUNT(*) as count'))
                 ->where('entity_name', $data['entity_name'])
@@ -128,14 +136,15 @@ class ReportController extends Controller
 
             $peakHours = [];
             for ($h = 0; $h < 24; $h++) {
-                $interval = sprintf('%02d:00-%02d:00', $h, ($h + 1) % 24);
-                $peakHours[$interval] = $peakRaw->firstWhere('hour', $h)->count ?? 0;
+                $label = sprintf('%02d:00-%02d:00', $h, ($h + 1) % 24);
+                $peakHours[$label] = $peakRaw->firstWhere('hour', $h)->count ?? 0;
             }
 
+            // Average service time
             $avgServiceTime = DB::table('orders')
-                ->where('entity_name', $data['entity_name'])
-                ->where('entity_id',   $data['entity_id'])
-                ->where('payment_status', 'paid')
+                ->where('entity_name',   $data['entity_name'])
+                ->where('entity_id',     $data['entity_id'])
+                ->where('payment_status','paid')
                 ->whereBetween('order_datetime', [$start, $end])
                 ->value(DB::raw('AVG(TIMESTAMPDIFF(MINUTE, order_datetime, updated_at))')) ?? 0;
 
@@ -143,6 +152,7 @@ class ReportController extends Controller
                 ? round($totalOrders / ($totalItemsSold / $avgItemsPerOrder), 2)
                 : 0;
 
+            // Revenue by channel/origin
             $channelRaw = DB::table('orders')
                 ->select('origin as channel', DB::raw('SUM(total_price) as amount'))
                 ->where('entity_name', $data['entity_name'])
@@ -151,32 +161,59 @@ class ReportController extends Controller
                 ->groupBy('origin')
                 ->get();
 
-            $revenueByChannel = $channelRaw->map(fn($row) => ['channel' => $row->channel, 'amount' => $row->amount])->toArray();
+            $revenueByChannel = $channelRaw->map(fn($r) => ['channel' => $r->channel, 'amount' => $r->amount])->toArray();
 
+            // Persist report with all required fields
             $report = Report::create([
-                'entity_id'               => $data['entity_id'],
-                'entity_name'             => $data['entity_name'],
-                'report_type'             => 'order',
-                'period_start'            => $start,
-                'period_end'              => $end,
-                'cash_flow'               => $totalRevenue,
-                'gross_profit'            => $totalRevenue,
-                'net_profit'              => $totalRevenue,
-                'total_expenses'          => 0,
-                'total_items_sold'        => $totalItemsSold,
-                'avg_items_per_order'     => $avgItemsPerOrder,
-                'avg_ticket_per_customer' => $avgTicketValue,
-                'visit_frequency'         => $visitFrequency,
-                'revenue_by_channel'      => $revenueByChannel,
-                'avg_service_time'        => $avgServiceTime,
-                'cancellation_rate'       => $cancellationRate,
-                'peak_hours'              => $peakHours,
-                'breakdown_by_item'       => $itemsBreakdown,
-                'top_customers'           => $topCustomers,
+                'entity_id'                  => $data['entity_id'],
+                'entity_name'                => $data['entity_name'],
+                'report_type'                => 'order',
+                'period_start'               => $start,
+                'period_end'                 => $end,
+                'cash_flow'                  => $totalRevenue,
+                'gross_profit'               => $totalRevenue,
+                'net_profit'                 => $totalRevenue,
+                'total_expenses'             => 0,
+                'total_items_sold'           => $totalItemsSold,
+                'avg_items_per_order'        => $avgItemsPerOrder,
+                'avg_ticket_per_customer'    => $avgTicketValue,
+                'visit_frequency'            => $visitFrequency,
+                'revenue_by_channel'         => $revenueByChannel,
+                'avg_service_time'           => $avgServiceTime,
+                'cancellation_rate'          => $cancellationRate,
+                'peak_hours'                 => $peakHours,
+                'breakdown_by_item'          => $itemsBreakdown,
+                'top_customers'              => $topCustomers,
+                // Campos adicionais com valores default
+                'lead_origin'                => [],
+                'satisfaction_index'         => 0,
+                'stock_turnover'             => 0,
+                'reorder_alerts_count'       => 0,
+                'raw_material_cost'          => 0,
+                'individual_performance'     => [],
+                'labor_efficiency'           => 0,
+                'commissions_and_bonuses'    => 0,
+                'campaign_roi'               => 0,
+                'promotion_conversion_rate'  => 0,
+                'barbershop_completion_rate' => 0,
+                'avg_service_time_barbershop'=> 0,
+                'restaurant_prep_time'       => 0,
+                'table_turnover_rate'        => 0,
+                'legal_cases_opened_count'   => 0,
+                'legal_cases_closed_count'   => 0,
+                'avg_legal_case_duration'    => 0,
+                'hospital_bed_occupancy_rate'=> 0,
+                'hospital_readmission_rate'  => 0,
+                'avg_hospital_stay_duration' => 0,
+                'endpoint_usage'             => [],
+                'error_rate'                 => 0,
+                'avg_latency'                => 0,
+                'auth_login_attempts_count'  => 0,
+                'auth_login_failures_count'  => 0,
             ]);
 
             $establishment = Establishment::find($data['entity_id']);
-            $orders = Order::with(['items.item', 'items.modifiers'])
+            $orders        = Order::with(['items.item', 'items.modifiers'])
                 ->where('entity_name', $data['entity_name'])
                 ->where('entity_id',   $data['entity_id'])
                 ->whereBetween('order_datetime', [$start, $end])
@@ -194,6 +231,7 @@ class ReportController extends Controller
         } catch (ValidationException $e) {
             Log::warning('Erro de validação no relatório de pedidos.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
+
         } catch (\Exception $e) {
             Log::error('Erro ao gerar relatório de pedidos: '.$e->getMessage());
             return response()->json(['error' => 'Erro ao gerar relatório.'], 500);
