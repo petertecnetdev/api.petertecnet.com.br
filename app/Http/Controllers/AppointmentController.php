@@ -164,7 +164,7 @@ class AppointmentController extends Controller
 
             if (!empty($otherProviders)) {
                 $providerNames = \App\Models\User::whereIn('id', $otherProviders)
-                    ->pluck('name', 'id')
+                    ->pluck('first_name', 'id')
                     ->toArray();
 
                 foreach ($otherProviders as $otherProviderId) {
