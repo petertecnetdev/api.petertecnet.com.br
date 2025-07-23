@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Novo Agendamento - Rasoio</title>
+  <title>Novo Agendamento - {{ $appointment->application->name }}</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -103,31 +103,53 @@
 <body>
   <div class="email-wrapper">
     <div class="email-container">
+      <!-- Header com logo e nome da entidade -->
       <div class="header">
         <img src="{{ asset($appointment->entity->logo) }}" alt="Logo {{ $appointment->entity->name }}">
         <h1>{{ $appointment->entity->name }}</h1>
       </div>
+      <!-- Conteúdo -->
       <div class="content">
         <h2>Olá {{ $appointment->provider->first_name }},</h2>
-        <p>Você recebeu um novo pedido de agendamento em <strong>{{ $appointment->entity->name }}</strong>.</p>
+        <p>
+          Você recebeu um novo pedido de agendamento em <strong>{{ $appointment->entity->name }}</strong>
+          pelo aplicativo <strong>{{ $appointment->application->name }}</strong>.
+        </p>
         <p>Por favor, confirme ou cancele este agendamento o mais rápido possível:</p>
         <ul>
-          <li><strong>Data e horário:</strong> {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</li>
-          <li><strong>Serviços:</strong>
+          <li>
+            <strong>Data e horário:</strong>
+            {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
+          </li>
+          <li>
+            <strong>Serviços:</strong>
             <ul>
               @foreach($appointment->service_names as $service)
                 <li>&ndash; {{ $service }}</li>
               @endforeach
             </ul>
           </li>
-          <li><strong>Cliente:</strong> {{ $appointment->info['name'] ?? $appointment->client->first_name }}</li>
-          <li><strong>Contato:</strong> {{ $appointment->info['phone'] ?? $appointment->client->phone }}</li>
-          <li><strong>Email:</strong> {{ $appointment->info['email'] ?? $appointment->client->email }}</li>
+          <li>
+            <strong>Cliente:</strong>
+            {{ $appointment->info['name'] ?? $appointment->client->first_name }}
+          </li>
+          <li>
+            <strong>Contato:</strong>
+            {{ $appointment->info['phone'] ?? $appointment->client->phone }}
+          </li>
+          <li>
+            <strong>Email:</strong>
+            {{ $appointment->info['email'] ?? $appointment->client->email }}
+          </li>
         </ul>
-        <a href="{{ url('/rasoio/appointments') }}" class="btn-acessar">Ver e Gerenciar</a>
+        <a href="{{ rtrim($appointment->application->url, '/') }}" class="btn-acessar">
+          Ver e Gerenciar Agendamentos
+        </a>
       </div>
+      <!-- Footer com marca do aplicativo -->
       <div class="footer">
-        Rasoio &nbsp;<img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo Rasoio">
+        {{ $appointment->application->name }} &nbsp;
+        <img src="{{ asset($appointment->application->logo) }}" alt="{{ $appointment->application->name }}">
       </div>
     </div>
   </div>

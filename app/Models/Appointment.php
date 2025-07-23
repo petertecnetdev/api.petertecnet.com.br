@@ -66,7 +66,10 @@ class Appointment extends Model
     {
         return $this->belongsTo(\App\Models\User::class, 'client_id');
     }
-
+   public function application()
+    {
+        return $this->belongsTo(Application::class, 'app_id');
+    }
 
     /**
      * Accessor para nomes legíveis de serviço

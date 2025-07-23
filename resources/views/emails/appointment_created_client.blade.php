@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Agendamento Solicitado - Rasoio</title>
+  <title>Agendamento Solicitado - {{ $appointment->application->name }}</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -103,30 +103,43 @@
 <body>
   <div class="email-wrapper">
     <div class="email-container">
+      <!-- Header com logo e nome da entidade -->
       <div class="header">
         <img src="{{ asset($appointment->entity->logo) }}" alt="Logo {{ $appointment->entity->name }}">
         <h1>{{ $appointment->entity->name }}</h1>
       </div>
+      <!-- Conteúdo -->
       <div class="content">
         <h2>Olá {{ $appointment->info['name'] ?? $appointment->client->first_name }},</h2>
-        <p>Seu agendamento em <strong>{{ $appointment->entity->name }}</strong> foi solicitado!</p>
-        <p>Ainda falta o(a) barbeiro(a) confirmar o seu horário. Assim que ele(a) aprovar, você receberá uma nova notificação.</p>
+        <p>
+          Seu agendamento em <strong>{{ $appointment->entity->name }}</strong>
+          pelo aplicativo <strong>{{ $appointment->application->name }}</strong> foi solicitado!
+        </p>
+        <p>
+          Agora é só aguardar a confirmação do(a) {{ $appointment->provider->first_name }}.
+        </p>
         <ul>
-          <li><strong>Data e horário:</strong> {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</li>
-          <li><strong>Serviços:</strong>
+          <li>
+            <strong>Data e horário:</strong>
+            {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
+          </li>
+          <li>
+            <strong>Serviços:</strong>
             <ul>
               @foreach($appointment->service_names as $service)
                 <li>&ndash; {{ $service }}</li>
               @endforeach
             </ul>
           </li>
-          <li><strong>Prestador:</strong> {{ $appointment->provider->first_name }}</li>
-          <li><strong>Local:</strong> {{ $appointment->location ?? '—' }}</li>
         </ul>
-        <a href="{{ url('https://rasoio.petertecnet.com.br/appointment/my') }}" class="btn-acessar">Ver Meus Agendamentos</a>
+        <a href="{{ rtrim($appointment->application->url, '/') }}" class="btn-acessar">
+          Ver  Agendamentos
+        </a>
       </div>
+      <!-- Footer com marca do aplicativo -->
       <div class="footer">
-        Rasoio &nbsp;<img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo Rasoio">
+        {{ $appointment->application->name }} &nbsp;
+        <img src="{{ asset($appointment->application->logo) }}" alt="{{ $appointment->application->name }}">
       </div>
     </div>
   </div>
