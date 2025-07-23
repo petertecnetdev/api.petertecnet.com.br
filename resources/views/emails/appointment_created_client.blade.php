@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Seu Agendamento Foi Confirmado - Rasoio</title>
+  <title>Agendamento Solicitado - Rasoio</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -109,7 +109,8 @@
       </div>
       <div class="content">
         <h2>Olá {{ $appointment->info['name'] ?? $appointment->client->first_name }},</h2>
-        <p>Seu agendamento na barbearia <strong>{{ $appointment->entity->name }}</strong> foi confirmado:</p>
+        <p>Seu agendamento em <strong>{{ $appointment->entity->name }}</strong> foi solicitado!</p>
+        <p>Ainda falta o(a) barbeiro(a) confirmar o seu horário. Assim que ele(a) aprovar, você receberá uma nova notificação.</p>
         <ul>
           <li><strong>Data e horário:</strong> {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</li>
           <li><strong>Serviços:</strong>
@@ -122,7 +123,7 @@
           <li><strong>Prestador:</strong> {{ $appointment->provider->first_name }}</li>
           <li><strong>Local:</strong> {{ $appointment->location ?? '—' }}</li>
         </ul>
-        <a href="{{ url('/rasoio/appointments') }}" class="btn-acessar">Ver Meus Agendamentos</a>
+        <a href="{{ url('https://rasoio.petertecnet.com.br/appointment/my') }}" class="btn-acessar">Ver Meus Agendamentos</a>
       </div>
       <div class="footer">
         Rasoio &nbsp;<img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo Rasoio">

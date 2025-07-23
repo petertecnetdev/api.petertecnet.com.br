@@ -109,7 +109,8 @@
       </div>
       <div class="content">
         <h2>Olá {{ $appointment->provider->first_name }},</h2>
-        <p>Você tem um novo agendamento na barbearia <strong>{{ $appointment->entity->name }}</strong>:</p>
+        <p>Você recebeu um novo pedido de agendamento em <strong>{{ $appointment->entity->name }}</strong>.</p>
+        <p>Por favor, confirme ou cancele este agendamento o mais rápido possível:</p>
         <ul>
           <li><strong>Data e horário:</strong> {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</li>
           <li><strong>Serviços:</strong>
@@ -123,7 +124,7 @@
           <li><strong>Contato:</strong> {{ $appointment->info['phone'] ?? $appointment->client->phone }}</li>
           <li><strong>Email:</strong> {{ $appointment->info['email'] ?? $appointment->client->email }}</li>
         </ul>
-        <a href="{{ url('/rasoio/appointments') }}" class="btn-acessar">Ver Agendamentos</a>
+        <a href="{{ url('/rasoio/appointments') }}" class="btn-acessar">Ver e Gerenciar</a>
       </div>
       <div class="footer">
         Rasoio &nbsp;<img src="https://rasoio.petertecnet.com.br/images/logo.png" alt="Logo Rasoio">
