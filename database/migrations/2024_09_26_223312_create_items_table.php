@@ -23,7 +23,7 @@ return new class extends Migration
             $table->string('sku')->unique()->nullable(); // Código do item
             $table->text('description')->nullable();
             $table->decimal('price', 8, 2);
-            $table->integer('stock')->default(0);
+            $table->integer('stock')->nullable(0);
             $table->integer('duration')->nullable();
             $table->boolean('status')->default(true); // Ativo/Inativo
             $table->integer('limited_by_user')->default(0); // Limite por usuário

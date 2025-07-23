@@ -73,7 +73,7 @@ class ItemController extends Controller
                 'name' => 'required|string|max:255',
                 'type' => 'required|string|max:100',
                 'price' => 'required|numeric|min:0',
-                'stock' => 'required|integer|min:0',
+                'stock' => 'nullable|integer|min:0',
                 'status' => 'required|boolean',
                 'entity_id' => 'required|integer',
                 'entity_name' => 'required|string|max:100',
