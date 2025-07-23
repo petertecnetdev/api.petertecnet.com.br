@@ -66,7 +66,9 @@ class ItemController extends Controller
                 \Log::warning('Usuário sem permissão tentou cadastrar item.', ['user_id' => $user->id]);
                 return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
             }
-
+            if ($request->has('stock') && $request->input('stock') === '') {
+                $request->merge(['stock' => null]);
+            }
             // Validação dos dados da requisição
             \Log::info('Validando dados da requisição.');
             $validatedData = $request->validate([
@@ -264,6 +266,9 @@ class ItemController extends Controller
             if (!$item) {
                 \Log::warning('Item não encontrado.', ['item_id' => $id]);
                 return response()->json(['error' => 'Item não encontrado.'], 404);
+            }
+            if ($request->has('stock') && $request->input('stock') === '') {
+                $request->merge(['stock' => null]);
             }
 
             // Validar os dados da requisição
