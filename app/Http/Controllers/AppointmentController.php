@@ -249,6 +249,43 @@ class AppointmentController extends Controller
         return response()->json(['reason' => 'Ocorreu um erro ao criar o agendamento.'], 500);
     }
 }
+public function listMy()
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $appointments = Appointment::with(['provider', 'entity'])
+            ->where('client_id', $user->id)
+            ->orderBy('scheduled_at', 'desc')
+            ->get();
+
+        $appointments->each(function ($appointment) {
+            if (!empty($appointment->service_ids)) {
+                $serviceIds = is_string($appointment->service_ids)
+                    ? json_decode($appointment->service_ids, true)
+                    : $appointment->service_ids;
+
+                $appointment->service_names = is_array($serviceIds)
+                    ? Item::whereIn('id', $serviceIds)
+                        ->where('category', 'Serviços')
+                        ->pluck('name')
+                        ->toArray()
+                    : [];
+            } else {
+                $appointment->service_names = [];
+            }
+        });
+
+        return response()->json(['appointments' => $appointments], 200);
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar agendamentos do usuário: ' . $e->getMessage());
+        return response()->json(['error' => 'Erro ao listar agendamentos.'], 500);
+    }
+}
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
