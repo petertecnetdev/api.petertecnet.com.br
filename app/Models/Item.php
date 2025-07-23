@@ -18,6 +18,7 @@ class Item extends Model
         'type',
         'sku',
         'description',
+        'duration',
         'price',
         'stock',
         'status',

@@ -40,6 +40,9 @@ class ItemController extends Controller
             'availability_end.after' => 'A data de término de disponibilidade deve ser após a data de início.',
             'app_id.required' => 'O campo app_id é obrigatório.',
             'app_id.exists' => 'O aplicativo especificado não existe.',
+            'duration.integer' => 'A duração deve ser um número inteiro.',
+            'duration.min' => 'A duração mínima é de 1 minuto.',
+            'duration.max' => 'A duração máxima é de 480 minutos (8 horas).',
         ];
     }
 
@@ -80,6 +83,7 @@ class ItemController extends Controller
                 'discount' => 'nullable|numeric|min:0|max:100',
                 'expiration_date' => 'nullable|date',
                 'app_id' => 'required|exists:applications,id',
+                'duration' => 'nullable|integer|min:1|max:480',
             ], $this->getValidationMessages());
 
             \Log::info('Dados validados com sucesso:', $validatedData);
@@ -107,35 +111,37 @@ class ItemController extends Controller
                 'limited_by_user' => $request->input('limited_by_user', 0),
                 'notes' => $request->input('notes'),
                 'app_id' => $validatedData['app_id'],
+                'duration' => $request->input('duration'),
+
             ]);
 
             \Log::info('Item criado no banco de dados.', ['item_id' => $item->id]);
 
             if ($request->hasFile('image')) {
                 \Log::info('Imagem do item fornecida, processando...');
-            
+
                 $destinationPath = '/home/petert03/api.petertecnet.com.br/public/images';
                 $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
-            
+
                 try {
                     // Salvar imagem temporariamente
                     $request->file('image')->move($destinationPath, $imageName);
-            
+
                     // Redimensionar para 250x250
                     $imagePath = $destinationPath . '/' . $imageName;
                     $image = Image::make($imagePath)->fit(250, 250);
                     $image->save($imagePath);
-            
+
                     // Atualizar o caminho no banco
                     $item->image = 'images/' . $imageName;
                     $item->save();
-            
+
                     \Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
                 } catch (\Exception $e) {
                     \Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
                 }
             }
-            
+
             // Gerar slug para o item
             \Log::info('Gerando slug para o item.');
             $slug = Str::slug($validatedData['name']);
@@ -274,6 +280,7 @@ class ItemController extends Controller
                 'discount' => 'nullable|numeric|min:0|max:100',
                 'expiration_date' => 'nullable|date',
                 'app_id' => 'nullable|exists:applications,id',
+                'duration' => 'nullable|integer|min:1|max:480',
             ], $this->getValidationMessages());
 
             \Log::info('Dados validados com sucesso:', $validatedData);
@@ -296,12 +303,13 @@ class ItemController extends Controller
                 'expiration_date' => $request->input('expiration_date', $item->expiration_date),
                 'limited_by_user' => $request->input('limited_by_user', $item->limited_by_user),
                 'notes' => $request->input('notes', $item->notes),
+                'duration' => $request->input('duration', $item->duration),
             ]));
 
             \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
 
-             // Processar e salvar a logo se fornecida
-             if ($request->hasFile('image')) {
+            // Processar e salvar a logo se fornecida
+            if ($request->hasFile('image')) {
                 Log::info('Imagem do item  fornecida, processando...');
 
                 // Definir o caminho do diretório público para imagens
@@ -337,45 +345,45 @@ class ItemController extends Controller
     }
 
     public function destroy($id)
-{
-    try {
-        \Log::info('Iniciando a exclusão do item com ID: ' . $id);
+    {
+        try {
+            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $user = Auth::user();
-        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-        $item = Item::with('orderItems')->find($id);
-        if (!$item) {
-            return response()->json(['error' => 'Item não encontrado.'], 404);
-        }
-
-        if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-            return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
-        }
-
-        if ($item->orderItems()->exists()) {
-            $item->orderItems()->delete();
-        }
-
-        if ($item->image) {
-            $imagePath = storage_path('app/public/items/' . $item->image);
-            if (File::exists($imagePath)) {
-                File::delete($imagePath);
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
+
+            $user = Auth::user();
+            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+            $item = Item::with('orderItems')->find($id);
+            if (!$item) {
+                return response()->json(['error' => 'Item não encontrado.'], 404);
+            }
+
+            if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
+                return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
+            }
+
+            if ($item->orderItems()->exists()) {
+                $item->orderItems()->delete();
+            }
+
+            if ($item->image) {
+                $imagePath = storage_path('app/public/items/' . $item->image);
+                if (File::exists($imagePath)) {
+                    File::delete($imagePath);
+                }
+            }
+
+            $item->delete();
+            return response()->json(['message' => 'Item deletado com sucesso.'], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
         }
-
-        $item->delete();
-        return response()->json(['message' => 'Item deletado com sucesso.'], 200);
-
-    } catch (\Exception $e) {
-        \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-        return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
     }
-}
 
     public function listByApp(Request $request)
     {
