@@ -34,7 +34,6 @@ class AppointmentController extends Controller
             'customer_email.required' => 'Informe o email do cliente.',
         ];
     }
-
     public function store(Request $request)
     {
         try {
@@ -89,7 +88,7 @@ class AppointmentController extends Controller
                 ], 422);
             }
 
-            $scheduledAt = Carbon::parse($validated['scheduled_at'])
+            $scheduledAt = \Carbon\Carbon::parse($validated['scheduled_at'])
                 ->setTimezone('America/Sao_Paulo');
             if ($scheduledAt->isPast()) {
                 return response()->json(['reason' => 'A data e horário devem ser no futuro.'], 422);
@@ -105,13 +104,13 @@ class AppointmentController extends Controller
 
             $conflict = false;
             foreach ($slots as $slot) {
-                $providerConflict = Appointment::where('provider_id', $validated['provider_id'])
+                $providerConflict = \App\Models\Appointment::where('provider_id', $validated['provider_id'])
                     ->whereBetween('scheduled_at', [
                         $slot->copy()->subSeconds(1),
                         $slot->copy()->addMinutes($serviceDuration - 1)
                     ])->exists();
 
-                $clientConflict = Appointment::where('client_id', $clientId)
+                $clientConflict = \App\Models\Appointment::where('client_id', $clientId)
                     ->whereBetween('scheduled_at', [
                         $slot->copy()->subSeconds(1),
                         $slot->copy()->addMinutes($serviceDuration - 1)
@@ -124,10 +123,76 @@ class AppointmentController extends Controller
             }
 
             if ($conflict) {
-                // Sugestões de horário/provedor omitidas para brevidade...
+                $reason = 'Não foi possível agendar neste horário porque a quantidade de serviços selecionados exige um tempo maior de atendimento consecutivo. Como um ou mais desses horários já estão reservados para outros clientes, seu agendamento não pode ser realizado como solicitado. Quanto mais serviços você seleciona, maior o tempo necessário na agenda, aumentando as chances de conflito com agendamentos já existentes.';
+
+                // Busca próximo horário disponível
+                $nextAvailable = null;
+                $searchStart = $scheduledAt->copy();
+                $searchEnd = $searchStart->copy()->addDays(7);
+
+                while ($searchStart->lessThan($searchEnd)) {
+                    $slotFree = true;
+                    for ($i = 0; $i < $servicesCount; $i++) {
+                        $slotCheck = $searchStart->copy()->addMinutes($i * $serviceDuration);
+                        $slotConflict = \App\Models\Appointment::where('provider_id', $validated['provider_id'])
+                            ->whereBetween('scheduled_at', [
+                                $slotCheck->copy()->subSeconds(1),
+                                $slotCheck->copy()->addMinutes($serviceDuration - 1)
+                            ])->exists();
+                        if ($slotConflict) {
+                            $slotFree = false;
+                            break;
+                        }
+                    }
+                    if ($slotFree) {
+                        $nextAvailable = $searchStart->copy();
+                        break;
+                    }
+                    $searchStart->addMinutes(5);
+                }
+
+                // Busca outros prestadores disponíveis
+                $otherProvidersIds = $shop->barbers()->pluck('user_id')->toArray();
+                $otherProviders = array_diff($otherProvidersIds, [$validated['provider_id']]);
+                $availableProviders = [];
+
+                if (!empty($otherProviders)) {
+                    $providerNames = \App\Models\User::whereIn('id', $otherProviders)
+                        ->pluck('first_name', 'id')
+                        ->toArray();
+
+                    foreach ($otherProviders as $otherProviderId) {
+                        $free = true;
+                        for ($i = 0; $i < $servicesCount; $i++) {
+                            $slotCheck = $scheduledAt->copy()->addMinutes($i * $serviceDuration);
+                            $slotConflict = \App\Models\Appointment::where('provider_id', $otherProviderId)
+                                ->whereBetween('scheduled_at', [
+                                    $slotCheck->copy()->subSeconds(1),
+                                    $slotCheck->copy()->addMinutes($serviceDuration - 1)
+                                ])->exists();
+                            if ($slotConflict) {
+                                $free = false;
+                                break;
+                            }
+                        }
+                        if ($free && isset($providerNames[$otherProviderId])) {
+                            $availableProviders[] = $providerNames[$otherProviderId];
+                        }
+                    }
+                }
+
+                $suggestion = '';
+                if ($nextAvailable) {
+                    $suggestion .= 'Próximo horário disponível para este prestador: ' . $nextAvailable->format('d/m/Y H:i') . '. ';
+                }
+                if (!empty($availableProviders)) {
+                    $suggestion .= 'Outros prestadores disponíveis neste horário: ' . implode(', ', $availableProviders) . '. ';
+                }
+                $suggestion .= 'Você também pode tentar: escolher um horário diferente, selecionar um número menor de serviços para agendar juntos ou optar por outro prestador.';
+
                 return response()->json([
-                    'reason' => 'Horário indisponível para esta quantidade de serviços.',
-                    'suggestion' => 'Tente outro horário ou prestador.'
+                    'reason' => $reason,
+                    'suggestion' => $suggestion
                 ], 422);
             }
 
@@ -141,7 +206,7 @@ class AppointmentController extends Controller
                 ];
             }
 
-            $appointment = Appointment::create([
+            $appointment = \App\Models\Appointment::create([
                 'app_id' => $validated['app_id'],
                 'registered_by' => $registeredBy,
                 'entity_name' => $validated['entity_name'],
@@ -161,33 +226,33 @@ class AppointmentController extends Controller
 
             Log::info('Agendamento criado com sucesso.', ['appointment_id' => $appointment->id]);
 
-            // Recarrega com relações para e-mails
-            $appointment = Appointment::with(['application', 'entity', 'provider', 'client'])
+            $appointment = \App\Models\Appointment::with(['application', 'entity', 'provider', 'client'])
                 ->find($appointment->id);
 
-            // Envio de e-mails
-            Mail::to($appointment->provider->email)
-                ->send(new AppointmentCreatedProvider($appointment));
+            // Envio de e-mails (ajuste conforme necessário)
+            \Mail::to($appointment->provider->email)
+                ->send(new \App\Mail\AppointmentCreatedProvider($appointment));
 
             $clientEmail = Auth::check()
                 ? $appointment->client->email
                 : $appointment->info['email'];
 
-            Mail::to($clientEmail)
-                ->send(new AppointmentCreatedClient($appointment));
+            \Mail::to($clientEmail)
+                ->send(new \App\Mail\AppointmentCreatedClient($appointment));
 
             return response()->json([
                 'message' => 'Agendamento criado com sucesso!',
                 'appointment' => $appointment,
             ], 201);
 
-        } catch (ValidationException $e) {
+        } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao criar agendamento: ' . $e->getMessage());
             return response()->json(['reason' => 'Ocorreu um erro ao criar o agendamento.'], 500);
         }
     }
+
 
     // Lista os agendamentos de um cliente específico (listByClient)
     public function listByClient(Request $request)
