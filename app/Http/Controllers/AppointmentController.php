@@ -2,9 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Appointment, Application, Item, Barbershop, User};
-use App\Mail\AppointmentCreatedProvider;
-use App\Mail\AppointmentCreatedClient;
+use App\Models\{Appointment, Item, Barbershop, User};
+use App\Mail\{AppointmentCreatedClient, AppointmentCreatedProvider, AppointmentUpdateClient};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -591,7 +590,7 @@ class AppointmentController extends Controller
                     ? $appointment->client->email
                     : ($appointment->info['email'] ?? null);
                 if ($clientEmail) {
-                    Mail::to($clientEmail)->send(new AppointmentCreatedClient($appointment));
+                    Mail::to($clientEmail)->send(new AppointmentUpdateClient($appointment));
                 }
             }
 
