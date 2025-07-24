@@ -50,8 +50,7 @@
       margin-bottom: 15px;
       color: #fff;
     }
-    .content p,
-    .content ul {
+    .content p {
       font-size: 16px;
       line-height: 1.6;
       margin-bottom: 15px;
@@ -109,10 +108,12 @@
           <p>
             Boas notícias! Seu agendamento foi <strong>confirmado</strong> com 
             <strong>{{ $appointment->provider->first_name }}</strong> em 
-            <strong>{{ $appointment->entity->name }}</strong> às 
-            <strong>{{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</strong>.
+            <strong>{{ $appointment->entity->name }}</strong> dia 
+            <strong>{{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y') }}</strong> às 
+            <strong>{{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('H:i') }}</strong>.
           </p>
           <p>Por favor, chegue 5 minutos antes.</p>
+          <p>Chegue no horário para não impactar outros agendamentos.</p>
         @elseif($status === 'cancelled')
           <p>
             Seu agendamento em <strong>{{ $appointment->entity->name }}</strong> foi <strong>cancelado</strong>.  
