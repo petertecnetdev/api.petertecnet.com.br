@@ -25,6 +25,7 @@ class User extends Authenticatable implements JWTSubject
         'remember_token',
         'profile_id',
         'cpf',
+        'google_id',  
         'address',
         'phone',
         'city',
