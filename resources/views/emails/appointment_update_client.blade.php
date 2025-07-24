@@ -120,10 +120,7 @@
             Não fique triste: você pode marcar outro horário ou escolher outro prestador.
           </p>
           <p>
-            Acesse 
-            <a href="{{ rtrim($appointment->application->url, '/') }}" class="btn-acessar">
-              {{ rtrim($appointment->application->url, '/') }}
-            </a> 
+            Acesse  {{ rtrim($appointment->application->url, '/') }}
             para solicitar outro agendamento.
           </p>
         @endif
