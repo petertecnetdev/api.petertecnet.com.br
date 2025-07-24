@@ -52,7 +52,7 @@ class AuthController extends Controller
      */
     public function __construct()
     {
-        $this->middleware('auth:api', ['except' => ['login', 'register', 'sendResetCodeEmail', 'resetPassword']]);
+        $this->middleware('auth:api', ['except' => ['login', 'googleAuth', 'register', 'sendResetCodeEmail', 'resetPassword']]);
     }
 
     /**
