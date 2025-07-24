@@ -494,6 +494,7 @@ class AppointmentController extends Controller
                     'id' => $a->entity->id,
                     'name' => $a->entity->name,
                     'slug' => $a->entity->slug,
+                    'logo' => $a->entity->logo,
                 ] : null,
 
                 // Passa o campo info como objeto decodificado para frontend acessar dados do cliente anonimo
