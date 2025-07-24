@@ -58,13 +58,6 @@
       color: #fff;
       text-align: left;
     }
-    .content ul {
-      list-style: none;
-      padding: 0;
-    }
-    .content ul li {
-      margin-bottom: 8px;
-    }
     .btn-acessar {
       display: inline-block;
       text-decoration: none;
@@ -113,32 +106,27 @@
         <h2>Olá {{ $appointment->info['name'] ?? $appointment->client->first_name }},</h2>
 
         @if($status === 'confirmed')
-          <p>Seu agendamento em <strong>{{ $appointment->entity->name }}</strong>  
-          pelo aplicativo <strong>{{ $appointment->application->name }}</strong>  
-          foi <strong>CONFIRMADO</strong> com sucesso!</p>
+          <p>
+            Boas notícias! Seu agendamento foi <strong>confirmado</strong> com 
+            <strong>{{ $appointment->provider->first_name }}</strong> em 
+            <strong>{{ $appointment->entity->name }}</strong> às 
+            <strong>{{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}</strong>.
+          </p>
+          <p>Por favor, chegue 5 minutos antes.</p>
         @elseif($status === 'cancelled')
-          <p>Sentimos muito, mas seu agendamento em <strong>{{ $appointment->entity->name }}</strong>  
-          pelo aplicativo <strong>{{ $appointment->application->name }}</strong>  
-          foi <strong>CANCELADO</strong>.</p>
+          <p>
+            Seu agendamento em <strong>{{ $appointment->entity->name }}</strong> foi <strong>cancelado</strong>.  
+            Não fique triste: você pode marcar outro horário ou escolher outro prestador.
+          </p>
+          <p>
+            Acesse 
+            <a href="{{ rtrim($appointment->application->url, '/') }}" class="btn-acessar">
+              {{ rtrim($appointment->application->url, '/') }}
+            </a> 
+            para solicitar outro agendamento.
+          </p>
         @endif
 
-        <ul>
-          <li>
-            <strong>Data e horário:</strong>
-            {{ $appointment->scheduled_at->setTimezone('America/Sao_Paulo')->format('d/m/Y H:i') }}
-          </li>
-          <li>
-            <strong>Serviços:</strong>
-            <ul>
-              @foreach($appointment->service_names as $service)
-                <li>&ndash; {{ $service }}</li>
-              @endforeach
-            </ul>
-          </li>
-        </ul>
-        <a href="{{ rtrim($appointment->application->url, '/') }}" class="btn-acessar">
-          Ver Agendamentos
-        </a>
       </div>
       <!-- Footer com marca do aplicativo -->
       <div class="footer">
