@@ -41,10 +41,10 @@ class Item extends Model
     ];
 
     protected $casts = [
-        'tags' => 'array',
+        'tags'               => 'array',
         'availability_start' => 'datetime',
-        'availability_end' => 'datetime',
-        'expiration_date' => 'datetime',
+        'availability_end'   => 'datetime',
+        'expiration_date'    => 'datetime',
     ];
 
     /**
@@ -81,22 +81,20 @@ class Item extends Model
 
     /**
      * Relacionamento com Establishment.
+     * OBS: filtrar por entity_name='establishment' no controller, não aqui.
      */
     public function establishment(): BelongsTo
     {
-        return $this
-            ->belongsTo(Establishment::class, foreignKey: 'entity_id')
-            ->where('entity_name', 'establishment');
+        return $this->belongsTo(Establishment::class, 'entity_id');
     }
 
     /**
      * Relacionamento com Barbershop.
+     * OBS: filtrar por entity_name='barbershop' no controller, não aqui.
      */
     public function barbershop(): BelongsTo
     {
-        return $this
-            ->belongsTo(Barbershop::class, 'entity_id')
-            ->where('entity_name', 'barbershop');
+        return $this->belongsTo(Barbershop::class, 'entity_id');
     }
 
     /**
@@ -104,14 +102,17 @@ class Item extends Model
      */
     public function isAvailable(): bool
     {
-        return $this->status
+        return (bool) $this->status
             && ($this->stock > 0)
-            && (is_null($this->availability_start) || $this->availability_start <= now())
-            && (is_null($this->availability_end) || $this->availability_end >= now());
+            && (is_null($this->availability_start) || $this->availability_start->lte(now()))
+            && (is_null($this->availability_end)   || $this->availability_end->gte(now()));
     }
 
+    /**
+     * Itens de pedido relacionados.
+     */
     public function orderItems()
-{
-    return $this->hasMany(OrderItem::class, 'item_id');
-}
+    {
+        return $this->hasMany(OrderItem::class, 'item_id');
+    }
 }

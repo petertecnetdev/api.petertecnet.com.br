@@ -199,42 +199,52 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
     }
+    public function view($slug)
+    {
+        try {
+            \Log::info('[' . __METHOD__ . '] Iniciando exibição pelo slug', ['slug' => $slug]);
 
-  public function view($slug)
-{
-    try {
-        \Log::info('[' . __METHOD__ . '] Iniciando exibição pelo slug', ['slug' => $slug]);
+            // Autenticação
+            if (!Auth::check()) {
+                \Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            // Permissão
+            $user = Auth::user();
+            if (!$user->hasPermission('item_view')) {
+                \Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
+            }
+
+            // Busca o item com slug e garantindo entity_name
+            $item = Item::where('slug', $slug)
+                ->where('entity_name', 'barbershop')
+                ->with(['barbershop'])
+                ->first();
+
+            if (!$item) {
+                \Log::warning('[' . __METHOD__ . '] Item não encontrado ou não é de barbershop', ['slug' => $slug]);
+                return response()->json(['error' => 'Item não encontrado.'], 404);
+            }
+
+            \Log::info('[' . __METHOD__ . '] Item encontrado', ['item_id' => $item->id]);
+
+            return response()->json([
+                'item' => $item,
+                'barbershop' => $item->barbershop,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('[' . __METHOD__ . '] Erro ao buscar item', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+                'stack' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
         }
-
-        $user = Auth::user();
-        if (!$user->hasPermission('item_view')) {
-            return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
-        }
-
-        // Busca o item + barbershop
-        $item = Item::with('barbershop')->where('slug', $slug)->first();
-        if (!$item) {
-            return response()->json(['error' => 'Item não encontrado.'], 404);
-        }
-
-        \Log::info('[' . __METHOD__ . '] Item encontrado', ['item_id' => $item->id]);
-
-        return response()->json([
-            'item'         => $item,
-            'barbershop'   => $item->barbershop
-        ], 200);
-
-    } catch (\Exception $e) {
-        \Log::error('[' . __METHOD__ . '] Erro ao buscar item', [
-            'slug'   => $slug,
-            'error'  => $e->getMessage(),
-        ]);
-        return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
     }
-}
+
 
     public function show($id)
     {
