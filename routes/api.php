@@ -179,6 +179,7 @@ Route::group([
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
     Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
     Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
+    Route::get('/{slug}', [ItemController::class, 'view'])->name('item.view');
 });
 
 Route::group([

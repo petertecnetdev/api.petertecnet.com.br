@@ -200,6 +200,39 @@ class ItemController extends Controller
         }
     }
 
+public function view($slug)
+{
+    try {
+        \Log::info('Iniciando a exibição do item com slug: ' . $slug);
+
+        if (!Auth::check()) {
+            \Log::warning('Usuário não autenticado tentou acessar o recurso de exibição de item.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+        if (!$user->hasPermission('item_view')) {
+            \Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
+            return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
+        }
+
+        $item = Item::where('slug', $slug)->first();
+        if (!$item) {
+            \Log::warning('Item não encontrado.', ['slug' => $slug]);
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        \Log::info('Item encontrado.', ['item_id' => $item->id, 'slug' => $slug]);
+
+        return response()->json($item, 200);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao buscar o item com slug: ' . $slug, ['exception' => $e->getMessage()]);
+        return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
+    }
+}
 
     public function show($id)
     {
