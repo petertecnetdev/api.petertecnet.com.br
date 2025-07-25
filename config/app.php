@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Facade;
 $providers = [
     Tymon\JWTAuth\Providers\LaravelServiceProvider::class,
     Intervention\Image\ImageServiceProvider::class,
-    
+
     Illuminate\Auth\AuthServiceProvider::class,
     Illuminate\Broadcasting\BroadcastServiceProvider::class,
     Illuminate\Bus\BusServiceProvider::class,
@@ -80,9 +80,9 @@ return [
     ],
 
     'providers' => $providers,
-
     'aliases' => Facade::defaultAliases()->merge([
         'Image' => Intervention\Image\Facades\Image::class,
+        'Google_Client' => \Google_Client::class,
     ])->toArray(),
 
     'JWTAuth' => Tymon\JWTAuth\Facades\JWTAuth::class,
