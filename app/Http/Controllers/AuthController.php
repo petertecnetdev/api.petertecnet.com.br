@@ -115,11 +115,8 @@ class AuthController extends Controller
             $interaction->entity_type = 'user';
             $interaction->save();
 
-            return response()->json([
-                'message' => 'Login realizado com sucesso!',
-                'token' => $this->createNewToken($token),
-                'user' => auth()->user(),
-            ], 200);
+            return $this->createNewToken($token);
+
 
         } catch (ValidationException $exception) {
             Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
@@ -170,7 +167,8 @@ class AuthController extends Controller
 
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'resgister';
+            $interaction->interaction_type = 'register';
+
             $interaction->entity_id = $user->id;
             $interaction->entity_type = 'user';
             $interaction->save();
