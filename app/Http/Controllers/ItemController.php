@@ -205,44 +205,32 @@ class ItemController extends Controller
     try {
         \Log::info('[' . __METHOD__ . '] Iniciando exibição pelo slug', ['slug' => $slug]);
 
-        // Autenticação
         if (!Auth::check()) {
-            \Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
-        \Log::info('[' . __METHOD__ . '] Usuário autenticado', ['user_id' => $user->id]);
-
-        // Permissão
         if (!$user->hasPermission('item_view')) {
-            \Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
             return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
         }
 
-        // Busca com eager loading da barbershop relacionada
-        $item = Item::with('barbershop')
-            ->where('slug', $slug)
-            ->first();
-
+        // Busca o item + barbershop
+        $item = Item::with('barbershop')->where('slug', $slug)->first();
         if (!$item) {
-            \Log::warning('[' . __METHOD__ . '] Item não encontrado', ['slug' => $slug]);
             return response()->json(['error' => 'Item não encontrado.'], 404);
         }
 
         \Log::info('[' . __METHOD__ . '] Item encontrado', ['item_id' => $item->id]);
 
-        // Retorna item + barbershop numa estrutura JSON clara
         return response()->json([
-            'item'        => $item,
-            'barbershop'  => $item->barbershop,
+            'item'         => $item,
+            'barbershop'   => $item->barbershop
         ], 200);
 
     } catch (\Exception $e) {
         \Log::error('[' . __METHOD__ . '] Erro ao buscar item', [
-            'slug'    => $slug,
-            'message' => $e->getMessage(),
-            'stack'   => $e->getTraceAsString(),
+            'slug'   => $slug,
+            'error'  => $e->getMessage(),
         ]);
         return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
     }
