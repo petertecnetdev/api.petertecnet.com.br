@@ -551,7 +551,7 @@ class AuthController extends Controller
     }
      public function googleAuth(GoogleAuthRequest $request)
     {
-        // 1) verifica token no Google
+        // 1) Verifica ID token junto ao Google
         $client  = new GoogleClient(['client_id' => env('GOOGLE_CLIENT_ID')]);
         $payload = $client->verifyIdToken($request->input('token_id'));
 
@@ -559,16 +559,17 @@ class AuthController extends Controller
             return response()->json(['error' => 'Token do Google inválido.'], 401);
         }
 
+        // 2) Extrai dados do payload
         $googleId  = $payload['sub'];
         $email     = $payload['email'];
-        $firstName = explode(' ', $payload['name'])[0] ?? '';
+        $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
 
-        // 2) busca usuário existente
+        // 3) Busca usuário existente
         $user = User::where('google_id', $googleId)
                     ->orWhere('email', $email)
                     ->first();
 
-        // 3) se não existir, cria novo
+        // 4) Se não existe, cria novo user
         if (! $user) {
             $username = Str::slug($firstName) . '-' . Str::random(4);
             while (User::where('user_name', $username)->exists()) {
@@ -578,16 +579,17 @@ class AuthController extends Controller
             $user = User::create([
                 'first_name'        => $firstName,
                 'email'             => $email,
-                'password'          => bcrypt(Str::random(16)),
+                'password'          => bcrypt(Str::random(16)), 
                 'user_name'         => $username,
                 'google_id'         => $googleId,
                 'email_verified_at' => now(),
             ]);
         }
 
-        // 4) gera JWT e registra interação
+        // 5) Gera JWT
         $token = auth()->login($user);
 
+        // 6) Registra interação
         Interaction::create([
             'user_id'          => $user->id,
             'interaction_type' => 'login_google',
@@ -595,7 +597,7 @@ class AuthController extends Controller
             'entity_type'      => 'user',
         ]);
 
-        // 5) retorna token + user
+        // 7) Retorna resposta JSON
         return response()->json([
             'access_token' => $token,
             'token_type'   => 'bearer',
