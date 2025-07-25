@@ -13,7 +13,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Mail\{ResendVerificationCodeMail, ResetPasswordMail};
-use Validator;
+use Illuminate\Support\Facades\Validator;
 use Exception;
 use Google_Client;
 
@@ -554,7 +554,7 @@ class AuthController extends Controller
      public function googleAuth(GoogleAuthRequest $request)
     {
         // 1) Verifica ID token junto ao Google
-        $client  = new GoogleClient(['client_id' => env('GOOGLE_CLIENT_ID')]);
+        $client = new Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
         $payload = $client->verifyIdToken($request->input('token_id'));
 
         if (! $payload) {
