@@ -203,33 +203,39 @@ class ItemController extends Controller
 public function view($slug)
 {
     try {
-        \Log::info('Iniciando a exibição do item com slug: ' . $slug);
+        \Log::info('[' . __METHOD__ . '] Iniciando exibição pelo slug', ['slug' => $slug]);
 
+        // Autenticação
         if (!Auth::check()) {
-            \Log::warning('Usuário não autenticado tentou acessar o recurso de exibição de item.');
+            \Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
-        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+        \Log::info('[' . __METHOD__ . '] Usuário autenticado', ['user_id' => $user->id]);
 
+        // Permissão
         if (!$user->hasPermission('item_view')) {
-            \Log::warning('Usuário sem permissão tentou visualizar o item.', ['user_id' => $user->id]);
+            \Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
             return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
         }
 
+        // Busca
         $item = Item::where('slug', $slug)->first();
         if (!$item) {
-            \Log::warning('Item não encontrado.', ['slug' => $slug]);
+            \Log::warning('[' . __METHOD__ . '] Item não encontrado', ['slug' => $slug]);
             return response()->json(['error' => 'Item não encontrado.'], 404);
         }
 
-        \Log::info('Item encontrado.', ['item_id' => $item->id, 'slug' => $slug]);
-
+        \Log::info('[' . __METHOD__ . '] Item encontrado', ['item_id' => $item->id]);
         return response()->json($item, 200);
 
     } catch (\Exception $e) {
-        \Log::error('Erro ao buscar o item com slug: ' . $slug, ['exception' => $e->getMessage()]);
+        \Log::error('[' . __METHOD__ . '] Erro ao buscar item', [
+            'slug'       => $slug,
+            'message'    => $e->getMessage(),
+            'stack'      => $e->getTraceAsString(),
+        ]);
         return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
     }
 }
