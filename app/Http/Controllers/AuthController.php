@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use App\Http\Requests\GoogleAuthRequest;
 use Illuminate\Support\Facades\Hash;
 use App\Models\{User, Interaction};
 use App\Mail\VerificationCodeMail;
@@ -14,6 +15,7 @@ use Illuminate\Validation\ValidationException;
 use App\Mail\{ResendVerificationCodeMail, ResetPasswordMail};
 use Validator;
 use Exception;
+use Google_Client;
 
 class AuthController extends Controller
 {
