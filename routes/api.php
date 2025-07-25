@@ -38,6 +38,7 @@ Route::group([
         ->middleware('auth:api')
         ->name('resendVerificationCode');
 });
+
 Route::post('auth/google', [AuthController::class, 'googleAuth']);
 
 Route::group([
