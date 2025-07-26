@@ -13,6 +13,13 @@ use Illuminate\Support\Str;
 
 class EstablishmentController extends Controller
 {
+
+     public function __construct()
+    {
+        // remove auth apenas da view()
+        $this->middleware('auth:api')
+             ->except(['view']);
+    }
     protected function getValidationMessages()
     {
         return [
@@ -118,7 +125,7 @@ class EstablishmentController extends Controller
         }
     }
 
-   public function update(Request $request, $id)
+    public function update(Request $request, $id)
     {
         try {
             if (!Auth::check()) {
@@ -202,159 +209,153 @@ class EstablishmentController extends Controller
     }
 
     public function destroy($id)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $user = Auth::user();
+            $user = Auth::user();
 
-        if (!$user->hasPermission('establishment_destroy')) {
-            return response()->json(['error' => 'Você não tem permissão para deletar estabelecimentos.'], 403);
-        }
+            if (!$user->hasPermission('establishment_destroy')) {
+                return response()->json(['error' => 'Você não tem permissão para deletar estabelecimentos.'], 403);
+            }
 
-        $establishment = Establishment::findOrFail($id);
+            $establishment = Establishment::findOrFail($id);
 
-        $interaction = new Interaction();
-        $interaction->user_id = $user->id;
-        $interaction->interaction_type = 'Destroy';
-        $interaction->entity_id = $establishment->id;
-        $interaction->content = "O usuário " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
-        $interaction->entity_type = 'establishment';
-        $interaction->save();
-
-        $establishment->delete();
-
-        return response()->json(['message' => 'Estabelecimento excluído com sucesso.'], 200);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao excluir estabelecimento: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao excluir o estabelecimento.'], 500);
-    }
-}
-
-public function listByUser(Request $request) 
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $user = Auth::user();
-
-        if (!$user->hasPermission('establishment_list')) {
-            return response()->json(['error' => 'Você não tem permissão para listar seus estabelecimentos.'], 403);
-        }
-
-        $establishments = Establishment::where('user_id', $user->id)->paginate(10);
-
-        return response()->json([
-            'message' => 'Estabelecimentos listados com sucesso.',
-            'establishments' => $establishments,
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
-    }
-}public function view($slug)
-{
-    try {
-        $user = Auth::user();
-
-        $establishment = Establishment::where('slug', $slug)->first();
-
-        if (! $establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        $items = $establishment->items()->get();
-
-        $otherEstablishments = Establishment::where('slug', '!=', $slug)
-            ->inRandomOrder()
-            ->limit(3)
-            ->get()
-            ->map(function ($other) {
-                return [
-                    'name' => $other->name,
-                    'slug' => $other->slug,
-                    'logo' => $other->logo,
-                ];
-            });
-
-        if ($user) {
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'View';
+            $interaction->interaction_type = 'Destroy';
             $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuário {$user->first_name} acessou o estabelecimento {$establishment->name}.";
+            $interaction->content = "O usuário " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
             $interaction->entity_type = 'establishment';
             $interaction->save();
-        }
 
-        return response()->json([
-            'message'             => 'Estabelecimento encontrado com sucesso.',
-            'establishment'       => $establishment,
-            'items'               => $items,
-            'owner'               => $establishment->user,
-            'otherEstablishments' => $otherEstablishments,
-        ], 200);
+            $establishment->delete();
 
-    } catch (\Exception $e) {
-        Log::error('Erro ao buscar o estabelecimento: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
-    }
-}
+            return response()->json(['message' => 'Estabelecimento excluído com sucesso.'], 200);
 
-public function show($id)
-{
-    try {
-        $user = Auth::user();
-
-        $establishment = Establishment::find($id);
-
-        if (!$establishment) {
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao excluir estabelecimento: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao excluir o estabelecimento.'], 500);
         }
-
-        $interaction = new Interaction();
-        $interaction->user_id = $user ? $user->id : null;
-        $interaction->interaction_type = 'View';
-        $interaction->entity_id = $establishment->id;
-        $interaction->content = "O usuário " . ($user ? $user->first_name : 'anônimo') . " acessou o estabelecimento.";
-        $interaction->entity_type = 'establishment';
-        $interaction->save();
-
-        return response()->json([
-            'message' => 'Estabelecimento encontrado com sucesso.',
-            'establishment' => $establishment,
-            'owner' => $establishment->user,
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao buscar o estabelecimento: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
     }
-}
-public function list(Request $request)
-{
-    try {
-        $establishments = Establishment::paginate(10);
 
-        return response()->json([
-            'message' => 'Estabelecimentos listados com sucesso.',
-            'establishments' => $establishments,
-        ], 200);
+    public function listByUser(Request $request)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar estabelecimentos: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar os estabelecimentos.'], 500);
+            $user = Auth::user();
+
+            if (!$user->hasPermission('establishment_list')) {
+                return response()->json(['error' => 'Você não tem permissão para listar seus estabelecimentos.'], 403);
+            }
+
+            $establishments = Establishment::where('user_id', $user->id)->paginate(10);
+
+            return response()->json([
+                'message' => 'Estabelecimentos listados com sucesso.',
+                'establishments' => $establishments,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
+        }
     }
-}
+    public function view($slug)
+    {
+        try {
+            // Auth::user() agora será null quando não houver token,
+            // mas não aborta mais a requisição.
+            $user = Auth::user();
+
+            $establishment = Establishment::where('slug', $slug)->first();
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            $items = $establishment->items()->get();
+            $otherEstablishments = Establishment::where('slug', '!=', $slug)
+                ->inRandomOrder()
+                ->limit(3)
+                ->get(['name', 'slug', 'logo']);
+
+            if ($user) {
+                Interaction::create([
+                    'user_id' => $user->id,
+                    'interaction_type' => 'View',
+                    'entity_id' => $establishment->id,
+                    'entity_type' => 'establishment',
+                    'content' => "Usuário {$user->first_name} acessou {$establishment->name}"
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Estabelecimento encontrado com sucesso.',
+                'establishment' => $establishment,
+                'items' => $items,
+                'owner' => $establishment->user,
+                'otherEstablishments' => $otherEstablishments,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar estabelecimento: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
+        }
+    }
+
+    public function show($id)
+    {
+        try {
+            $user = Auth::user();
+
+            $establishment = Establishment::find($id);
+
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            $interaction = new Interaction();
+            $interaction->user_id = $user ? $user->id : null;
+            $interaction->interaction_type = 'View';
+            $interaction->entity_id = $establishment->id;
+            $interaction->content = "O usuário " . ($user ? $user->first_name : 'anônimo') . " acessou o estabelecimento.";
+            $interaction->entity_type = 'establishment';
+            $interaction->save();
+
+            return response()->json([
+                'message' => 'Estabelecimento encontrado com sucesso.',
+                'establishment' => $establishment,
+                'owner' => $establishment->user,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar o estabelecimento: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
+        }
+    }
+    public function list(Request $request)
+    {
+        try {
+            $establishments = Establishment::paginate(10);
+
+            return response()->json([
+                'message' => 'Estabelecimentos listados com sucesso.',
+                'establishments' => $establishments,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar estabelecimentos: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao listar os estabelecimentos.'], 500);
+        }
+    }
 
 
 
