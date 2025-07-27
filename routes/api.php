@@ -17,7 +17,8 @@ use App\Http\Controllers\{
     ServiceRecordController,
     EstablishmentController,
     OrderController,
-    MenuController
+    MenuController,
+    EmployerController
 };
 
 Route::group([
@@ -261,4 +262,19 @@ Route::group([
     Route::post('menu', [MenuController::class, 'store'])->name('menu.store');
     Route::put('menu/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('menu/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
+});
+
+
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix'     => 'employer'
+], function () {
+    Route::get('/',                         [EmployerController::class, 'index'])              ->name('employer.list');
+    Route::get('/show/{id}',                [EmployerController::class, 'show'])               ->whereNumber('id')->name('employer.show');
+    Route::post('/',                        [EmployerController::class, 'store'])              ->name('employer.store');
+    Route::post('/{id}',                    [EmployerController::class, 'update'])             ->whereNumber('id')->name('employer.update');
+    Route::delete('/{id}',                  [EmployerController::class, 'destroy'])            ->whereNumber('id')->name('employer.destroy');
+    Route::get('/listbyestablishment',      [EmployerController::class, 'listByEstablishment'] )->name('employer.listByEstablishment');
+    Route::get('/listbyuser',               [EmployerController::class, 'listByUser']          )->name('employer.listByUser');
 });

@@ -1,3 +1,5 @@
+<?php
+
 // app/Http/Controllers/EmployerController.php
 namespace App\Http\Controllers;
 
