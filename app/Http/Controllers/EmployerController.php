@@ -30,50 +30,35 @@ class EmployerController extends Controller
 
     public function index(): \Illuminate\Http\JsonResponse
     {
-        $this->authorize('viewAny', Employer::class);
-
-        $employers = Employer::with(['user', 'establishment'])
-                            ->paginate(10);
-
+        $employers = Employer::with(['user', 'establishment'])->paginate(10);
         return response()->json(['employers' => $employers], 200);
     }
 
     public function listByEstablishment(int $establishmentId): \Illuminate\Http\JsonResponse
     {
-        $this->authorize('viewAny', Employer::class);
-
         $list = Employer::with('user')
                         ->where('establishment_id', $establishmentId)
                         ->get();
-
         return response()->json(['employers' => $list], 200);
     }
 
     public function listByUser(): \Illuminate\Http\JsonResponse
     {
         $user = Auth::user();
-
         $list = Employer::with('establishment')
                         ->where('user_id', $user->id)
                         ->get();
-
         return response()->json(['employers' => $list], 200);
     }
 
     public function show(int $id): \Illuminate\Http\JsonResponse
     {
-        $emp = Employer::with(['user', 'establishment'])
-                       ->findOrFail($id);
-
-        $this->authorize('view', $emp);
-
+        $emp = Employer::with(['user', 'establishment'])->findOrFail($id);
         return response()->json(['employer' => $emp], 200);
     }
 
     public function store(Request $request): \Illuminate\Http\JsonResponse
     {
-        $this->authorize('create', Employer::class);
-
         $data = $request->validate([
             'user_id'          => 'required|exists:users,id',
             'establishment_id' => 'required|exists:establishments,id',
@@ -94,12 +79,10 @@ class EmployerController extends Controller
     {
         $emp = Employer::findOrFail($id);
 
-        $this->authorize('update', $emp);
-
         $data = $request->validate([
-            'role'             => 'nullable|string|max:255',
-            'permissions'      => 'nullable|array',
-            'permissions.*'    => 'string',
+            'role'          => 'nullable|string|max:255',
+            'permissions'   => 'nullable|array',
+            'permissions.*' => 'string',
         ], $this->messages());
 
         $emp->fill($data);
@@ -113,11 +96,7 @@ class EmployerController extends Controller
     public function destroy(int $id): \Illuminate\Http\JsonResponse
     {
         $emp = Employer::findOrFail($id);
-
-        $this->authorize('delete', $emp);
-
         $emp->delete();
-
         return response()->json(['message' => 'Funcionário removido com sucesso.'], 200);
     }
 }

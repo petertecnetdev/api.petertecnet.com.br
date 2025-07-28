@@ -6,12 +6,7 @@ use Illuminate\Support\Facades\Schema;
 
 class CreateUsersTable extends Migration
 {
-    /**
-     * Run the migrations.
-     *
-     * @return void
-     */
-    public function up()
+    public function up(): void
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
@@ -28,7 +23,7 @@ class CreateUsersTable extends Migration
             $table->rememberToken();
             $table->timestamps();
 
-            // Other attributes
+            // Additional attributes
             $table->string('cpf')->nullable();
             $table->string('address')->nullable();
             $table->string('phone')->nullable();
@@ -54,17 +49,24 @@ class CreateUsersTable extends Migration
             $table->boolean('is_barbershoper')->nullable();
             $table->boolean('is_ticket_seller')->nullable();
             $table->json('extra_info')->nullable();
-            $table->unsignedBigInteger('profile_id')->nullable();
+
+            // Foreign key to profiles table
+            $table->foreignId('profile_id')
+                  ->nullable()
+                  ->constrained('profiles')
+                  ->onDelete('set null');
         });
     }
 
-    /**
-     * Reverse the migrations.
-     *
-     * @return void
-     */
-    public function down()
+    public function down(): void
     {
+        // Desativa temporariamente as checagens de chaves estrangeiras
+        Schema::disableForeignKeyConstraints();
+
+        // Remove a tabela sem erros de constraint
         Schema::dropIfExists('users');
+
+        // Reativa as checagens de chaves estrangeiras
+        Schema::enableForeignKeyConstraints();
     }
 }

@@ -8,8 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // Remove tabela se existir para evitar conflitos
+        // Desativa temporariamente as checagens de FKs para dropar tabela sem erro
+        Schema::disableForeignKeyConstraints();
         Schema::dropIfExists('barbershops');
+        Schema::enableForeignKeyConstraints();
 
         Schema::create('barbershops', function (Blueprint $table) {
             $table->id();
