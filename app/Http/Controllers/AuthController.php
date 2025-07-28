@@ -170,8 +170,7 @@ class AuthController extends Controller
 
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'register';
-
+            $interaction->interaction_type = 'resgister';
             $interaction->entity_id = $user->id;
             $interaction->entity_type = 'user';
             $interaction->save();
@@ -456,47 +455,47 @@ class AuthController extends Controller
      */
     // App\Http\Controllers\AuthController.php
 
-    public function me()
-    {
-        try {
-            $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
-                ->where('user_name', Auth::user()->user_name)
-                ->first();
+   public function me()
+{
+    try {
+        $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
+            ->where('user_name', Auth::user()->user_name)
+            ->first();
 
-            if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 404);
-            }
-
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'me',
-                'entity_id' => $user->id,
-                'entity_type' => 'user'
-            ]);
-
-            $barberData = $user->barber;
-            $establishments = $user->establishments;
-            $barbershops = $user->barbershops;
-
-            $user->setRelation('barber', null);
-            $user->setRelation('establishments', null);
-            $user->setRelation('barbershops', null);
-
-            return response()->json([
-                'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
-                'is_barber' => (bool) $barberData,
-                'barber' => $barberData,
-                'establishments' => $establishments,
-                'barbershops' => $barbershops
-            ], 200);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Ocorreu um erro: ' . $e->getMessage()
-            ], 500);
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
+
+        Interaction::create([
+            'user_id' => $user->id,
+            'interaction_type' => 'me',
+            'entity_id' => $user->id,
+            'entity_type' => 'user'
+        ]);
+
+        $barberData    = $user->barber;
+        $establishments = $user->establishments;
+        $barbershops    = $user->barbershops;
+
+        $user->setRelation('barber', null);
+        $user->setRelation('establishments', null);
+        $user->setRelation('barbershops', null);
+
+        return response()->json([
+            'message'         => 'Usuário encontrado com sucesso.',
+            'user'            => $user,
+            'is_barber'       => (bool) $barberData,
+            'barber'          => $barberData,
+            'establishments'  => $establishments,
+            'barbershops'     => $barbershops
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Ocorreu um erro: ' . $e->getMessage()
+        ], 500);
     }
+}
 
     /**
      * Get the token array structure.
@@ -552,63 +551,61 @@ class AuthController extends Controller
             return response()->json(['message' => 'Erro ao reenviar o código de verificação. Por favor, tente novamente.'], 500);
         }
     }
-    public function googleAuth(GoogleAuthRequest $request)
+     public function googleAuth(GoogleAuthRequest $request)
     {
-        try {
-            // 1) Verifica ID token junto ao Google
-            $client = new Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
-            $payload = $client->verifyIdToken($request->input('token_id'));
+        // 1) Verifica ID token junto ao Google
+        $client = new Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
+        $payload = $client->verifyIdToken($request->input('token_id'));
 
-            if (!$payload) {
-                return response()->json(['error' => 'Token do Google inválido.'], 401);
-            }
-
-            // 2) Extrai dados do payload
-            $googleId = $payload['sub'];
-            $email = $payload['email'];
-            $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
-
-            // 3) Busca usuário existente por google_id ou e-mail
-            $user = User::where('google_id', $googleId)
-                ->orWhere('email', $email)
-                ->first();
-
-            // 4) Se não existe, cria novo usuário
-            if (!$user) {
-                // Gera um user_name único
-                $username = Str::slug($firstName) . '-' . Str::random(4);
-                while (User::where('user_name', $username)->exists()) {
-                    $username = Str::slug($firstName) . '-' . Str::random(4);
-                }
-
-                $user = User::create([
-                    'first_name' => $firstName,
-                    'email' => $email,
-                    'password' => bcrypt(Str::random(16)), // senha aleatória
-                    'user_name' => $username,
-                    'google_id' => $googleId,
-                    'email_verified_at' => now(),
-                ]);
-            }
-
-            // 5) Gera JWT para o usuário
-            $token = auth()->login($user);
-
-            // 6) Registra interação
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'login_google',
-                'entity_id' => $user->id,
-                'entity_type' => 'user',
-            ]);
-
-            // 7) Retorna o mesmo formato de resposta do login normal
-            return $this->createNewToken($token);
-
-        } catch (\Exception $e) {
-            Log::error('Erro no login via Google', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Erro ao autenticar via Google.'], 500);
+        if (! $payload) {
+            return response()->json(['error' => 'Token do Google inválido.'], 401);
         }
+
+        // 2) Extrai dados do payload
+        $googleId  = $payload['sub'];
+        $email     = $payload['email'];
+        $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
+
+        // 3) Busca usuário existente
+        $user = User::where('google_id', $googleId)
+                    ->orWhere('email', $email)
+                    ->first();
+
+        // 4) Se não existe, cria novo user
+        if (! $user) {
+            $username = Str::slug($firstName) . '-' . Str::random(4);
+            while (User::where('user_name', $username)->exists()) {
+                $username = Str::slug($firstName) . '-' . Str::random(4);
+            }
+
+            $user = User::create([
+                'first_name'        => $firstName,
+                'email'             => $email,
+                'password'          => bcrypt(Str::random(16)), 
+                'user_name'         => $username,
+                'google_id'         => $googleId,
+                'email_verified_at' => now(),
+            ]);
+        }
+
+        // 5) Gera JWT
+        $token = auth()->login($user);
+
+        // 6) Registra interação
+        Interaction::create([
+            'user_id'          => $user->id,
+            'interaction_type' => 'login_google',
+            'entity_id'        => $user->id,
+            'entity_type'      => 'user',
+        ]);
+
+        // 7) Retorna resposta JSON
+        return response()->json([
+            'access_token' => $token,
+            'token_type'   => 'bearer',
+            'expires_in'   => auth()->factory()->getTTL() * 60,
+            'user'         => $user,
+        ], 200);
     }
 
 
