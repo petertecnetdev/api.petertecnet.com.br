@@ -23,7 +23,7 @@ return new class extends Migration {
             $table->text('additional_info')->nullable();
 
             $table->string('city')->nullable();
-            $table->string('location')->nullable();
+            $table->text('location')->nullable();
             $table->string('cep')->nullable();
             $table->string('address')->nullable();
 
