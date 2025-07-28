@@ -83,7 +83,7 @@ class EstablishmentController extends Controller
                 'address' => 'nullable|string|max:255',
                 'city' => 'nullable|string|max:100',
                 'cep' => 'nullable|string|max:10',
-                'location' => 'nullable|string|max:255',
+                'location' => 'nullable|string',
                 'website_url' => 'nullable|url|max:255',
                 'facebook_url' => 'nullable|url|max:255',
                 'instagram_url' => 'nullable|url|max:255',
