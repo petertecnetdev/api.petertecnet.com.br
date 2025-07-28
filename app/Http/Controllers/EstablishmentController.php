@@ -13,13 +13,11 @@ use Illuminate\Support\Str;
 
 class EstablishmentController extends Controller
 {
-
     public function __construct()
     {
-        // remove auth apenas da view()
-        $this->middleware('auth:api')
-            ->except(['view']);
+        $this->middleware('auth:api')->except(['view']);
     }
+
     protected function getValidationMessages()
     {
         return [
@@ -41,10 +39,14 @@ class EstablishmentController extends Controller
             'website_url.url' => 'O website deve ser um URL válido.',
             'location.string' => 'A localização deve ser uma string válida.',
             'instagram_url.url' => 'O link do instagram deve ser um URL válido.',
+            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
+            'segments.array' => 'Os segmentos devem ser enviados como array.',
+            'segments.*.string' => 'Cada segmento deve ser uma string.',
             'logo.required' => 'A logo é obrigatória.',
             'logo.image' => 'A logo deve ser uma imagem válida.',
-            'logo.max' => 'O nome do arquivo da logo deve ter no máximo 1255 caracteres.',
-            'background.required' => 'A imagem de fundo é obrigatória.',
+            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
             'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
         ];
     }
@@ -65,27 +67,41 @@ class EstablishmentController extends Controller
                     'error' => 'Você já possui um estabelecimento cadastrado. Para cadastrar mais, solicite permissão.'
                 ], 403);
             }
+
             Log::info('Usuário autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
 
             $validatedData = $request->validate([
                 'name' => 'required|string|max:255',
-                'email' => 'nullable|email|max:255',
+                'fantasy' => 'nullable|string|max:255',
+                'cnpj' => 'nullable|string|max:18',
+                'type' => 'nullable|string|max:50',
+                'category' => 'nullable|string|max:50',
                 'phone' => 'nullable|string|max:20',
+                'email' => 'nullable|email|max:255',
                 'description' => 'nullable|string|max:2500',
+                'additional_info' => 'nullable|string|max:1000',
                 'address' => 'nullable|string|max:255',
                 'city' => 'nullable|string|max:100',
                 'cep' => 'nullable|string|max:10',
-                'website_url' => 'nullable|string',
-                'location' => 'nullable|string',
-                'instagram_url' => 'nullable|string',
-                'logo' => 'required|image',
+                'location' => 'nullable|string|max:255',
+                'website_url' => 'nullable|url|max:255',
+                'facebook_url' => 'nullable|url|max:255',
+                'instagram_url' => 'nullable|url|max:255',
+                'twitter_url' => 'nullable|url|max:255',
+                'youtube_url' => 'nullable|url|max:255',
+                'segments' => 'nullable|array',
+                'segments.*' => 'string',
+                'logo' => 'required|image|max:2048',
+                'background' => 'nullable|image|max:4096',
             ], $this->getValidationMessages());
-
-            Log::info('Dados validados para a criação do estabelecimento.', $validatedData);
 
             $establishment = new Establishment();
             $establishment->fill($validatedData);
             $establishment->user_id = $user->id;
+            $establishment->slug = Str::slug($establishment->fantasy ?? $establishment->name);
+            if (is_array($request->segments)) {
+                $establishment->segments = json_encode($request->segments);
+            }
             $establishment->save();
 
             if ($request->hasFile('logo')) {
@@ -93,9 +109,7 @@ class EstablishmentController extends Controller
                 $destinationPath = public_path('images');
                 $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
                 $request->file('logo')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(150, 150);
-                $image->save();
+                $image = Image::make($destinationPath . '/' . $imageName)->fit(150, 150)->save();
                 $establishment->logo = 'images/' . $imageName;
                 $establishment->save();
             }
@@ -105,22 +119,23 @@ class EstablishmentController extends Controller
                 $destinationPath = public_path('images');
                 $imageName = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
                 $request->file('background')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(1920, 600);
-                $image->save();
+                $image = Image::make($destinationPath . '/' . $imageName)->fit(1920, 600)->save();
                 $establishment->background = 'images/' . $imageName;
                 $establishment->save();
             }
 
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'Create';
-            $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuário " . $user->first_name . " criou o estabelecimento " . $establishment->name . ".";
-            $interaction->entity_type = 'establishment';
-            $interaction->save();
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'Create',
+                'entity_id' => $establishment->id,
+                'entity_type' => 'establishment',
+                'content' => "O usuário {$user->first_name} criou o estabelecimento {$establishment->name}.",
+            ]);
 
-            return response()->json(['message' => 'Estabelecimento cadastrado com sucesso.', 'establishment' => $establishment], 201);
+            return response()->json([
+                'message' => 'Estabelecimento cadastrado com sucesso.',
+                'establishment' => $establishment
+            ], 201);
 
         } catch (ValidationException $e) {
             Log::error('Erro de validação ao cadastrar o estabelecimento.', ['errors' => $e->errors()]);
