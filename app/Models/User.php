@@ -119,9 +119,10 @@ class User extends Authenticatable implements JWTSubject
         return in_array($permissionName, $this->profile->permissions);
     }
 
-   public function barbershops()
-    {
-        return $this->hasMany(Barbershop::class, 'user_id');
-    }
+  public function barbershops()
+{
+    // linha ~124
+    return $this->hasMany('App\Models\Barbershop');
+}
     
 }
