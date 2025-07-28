@@ -517,47 +517,45 @@ public function googleAuth(GoogleAuthRequest $request)
      */
     // App\Http\Controllers\AuthController.php
 
-    public function me()
-    {
-        try {
-            $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
-                ->where('user_name', Auth::user()->user_name)
-                ->first();
+   public function me()
+{
+    try {
+        $user = User::with(['profile', 'employer', 'establishments'])
+            ->where('user_name', Auth::user()->user_name)
+            ->first();
 
-            if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 404);
-            }
-
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'me',
-                'entity_id' => $user->id,
-                'entity_type' => 'user'
-            ]);
-
-            $barberData = $user->barber;
-            $establishments = $user->establishments;
-            $barbershops = $user->barbershops;
-
-            $user->setRelation('barber', null);
-            $user->setRelation('establishments', null);
-            $user->setRelation('barbershops', null);
-
-            return response()->json([
-                'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
-                'is_barber' => (bool) $barberData,
-                'barber' => $barberData,
-                'establishments' => $establishments,
-                'barbershops' => $barbershops
-            ], 200);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Ocorreu um erro: ' . $e->getMessage()
-            ], 500);
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
+
+        Interaction::create([
+            'user_id' => $user->id,
+            'interaction_type' => 'me',
+            'entity_id' => $user->id,
+            'entity_type' => 'user',
+        ]);
+
+        $employerData = $user->employer;
+        $establishments = $user->establishments;
+
+        $user->setRelation('employer', null);
+        $user->setRelation('establishments', null);
+
+        return response()->json([
+            'message' => 'Usuário encontrado com sucesso.',
+            'user' => $user,
+            'is_employer' => (bool) $employerData,
+            'employer' => $employerData,
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Ocorreu um erro: ' . $e->getMessage()
+        ], 500);
     }
+}
+
 
     /**
      * Get the token array structure.

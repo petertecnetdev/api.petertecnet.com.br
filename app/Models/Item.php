@@ -60,7 +60,7 @@ class Item extends Model
      */
     public function app(): BelongsTo
     {
-        return $this->belongsTo(App::class);
+        return $this->belongsTo(Application::class, 'app_id');
     }
 
     /**

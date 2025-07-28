@@ -4,11 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Database\Eloquent\Relations\Relation; // ← import
-use App\Models\Barber;
 use App\Models\User;
-use App\Observers\BarberObserver;
-use App\Observers\UserObserver;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,15 +23,6 @@ class AppServiceProvider extends ServiceProvider
         File::chmod($storagePath, 0775);
         $this->setPermissionsRecursively($storagePath);
 
-        // 2) Mapear nomes polimórficos das entidades
-        Relation::morphMap([
-            'barbershop' => \App\Models\Barbershop::class,
-            // adicione aqui novas entidades...
-        ]);
-
-        // 3) Observers
-        Barber::observe(BarberObserver::class);
-        User::observe(UserObserver::class);
     }
 
     protected function setPermissionsRecursively($path)
