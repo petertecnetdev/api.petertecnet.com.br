@@ -265,7 +265,6 @@ Route::group([
 });
 
 
-
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix'     => 'employer'

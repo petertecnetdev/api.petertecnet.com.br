@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use App\Http\Requests\GoogleAuthRequest;
 use Illuminate\Support\Facades\Hash;
 use App\Models\{User, Interaction};
 use App\Mail\VerificationCodeMail;
@@ -13,8 +12,9 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Mail\{ResendVerificationCodeMail, ResetPasswordMail};
-use Illuminate\Support\Facades\Validator;
+use Validator;
 use Exception;
+use App\Http\Requests\GoogleAuthRequest;
 use Google_Client;
 
 class AuthController extends Controller
@@ -52,16 +52,74 @@ class AuthController extends Controller
      *
      * @return void
      */
-    public function __construct()
-    {
-        $this->middleware('auth:api', ['except' => ['login', 'googleAuth', 'register', 'sendResetCodeEmail', 'resetPassword']]);
-    }
+   public function __construct()
+{
+    $this->middleware('auth:api', ['except' => ['login', 'register', 'sendResetCodeEmail', 'resetPassword', 'googleAuth']]);
+}
+
 
     /**
      * Get a JWT via given credentials.
      *
      * @return \Illuminate\Http\JsonResponse
      */
+
+
+public function googleAuth(GoogleAuthRequest $request)
+{
+    try {
+        $client  = new \Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
+        $payload = $client->verifyIdToken($request->input('token_id'));
+
+        if (! $payload) {
+            return response()->json(['error' => 'Token do Google inválido.'], 401);
+        }
+
+        $googleId  = $payload['sub'];
+        $email     = $payload['email'];
+        $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
+
+        $user = User::where('google_id', $googleId)
+                    ->orWhere('email', $email)
+                    ->first();
+
+        if (! $user) {
+            $username = Str::slug($firstName) . '-' . Str::random(4);
+            while (User::where('user_name', $username)->exists()) {
+                $username = Str::slug($firstName) . '-' . Str::random(4);
+            }
+
+            $user = User::create([
+                'first_name'        => $firstName,
+                'email'             => $email,
+                'password'          => bcrypt(Str::random(16)),
+                'user_name'         => $username,
+                'google_id'         => $googleId,
+                'email_verified_at' => now(),
+            ]);
+        }
+
+        $token = auth()->login($user);
+
+        Interaction::create([
+            'user_id'          => $user->id,
+            'interaction_type' => 'login_google',
+            'entity_id'        => $user->id,
+            'entity_type'      => 'user',
+        ]);
+
+        return response()->json([
+            'message' => 'Login com Google realizado com sucesso!',
+            'token'   => $this->createNewToken($token),
+        ], 200);
+
+    } catch (\Exception $e) {
+        Log::error('Erro durante o login com Google', ['message' => $e->getMessage()]);
+        return response()->json(['error' => 'Erro durante o login com Google'], 500);
+    }
+}
+
+
     public function login(Request $request)
     {
         try {
@@ -80,11 +138,9 @@ class AuthController extends Controller
             $username = $request->username;
             $password = $request->password;
 
-            // Detectar se é CPF (só números com 11 dígitos) ou e-mail
             if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
                 $credentials = ['email' => $username, 'password' => $password];
             } else {
-                // Remove pontuação do CPF
                 $cpf = preg_replace('/[^0-9]/', '', $username);
                 $credentials = ['cpf' => $cpf, 'password' => $password];
             }
@@ -92,43 +148,46 @@ class AuthController extends Controller
             if (!$token = auth()->attempt($credentials)) {
                 Log::warning('Falha na autenticação', ['username' => $username]);
 
-                // Tenta encontrar o usuário para mostrar erro mais claro
                 $user = filter_var($username, FILTER_VALIDATE_EMAIL)
                     ? User::where('email', $username)->first()
                     : User::where('cpf', $cpf)->first();
 
                 if (!$user) {
-                    Log::error('Tentativa de login com usuário não cadastrado', ['username' => $username]);
+                    Log::error('Usuário não cadastrado', ['username' => $username]);
                     return response()->json(['error' => 'Usuário não cadastrado.'], 404);
                 }
 
-                Log::error('Senha incorreta para o usuário', ['username' => $username]);
+                Log::error('Senha incorreta', ['username' => $username]);
                 return response()->json(['error' => 'Senha incorreta.'], 401);
             }
 
             Log::info('Login realizado com sucesso', ['user_id' => auth()->user()->id]);
 
-            $interaction = new Interaction();
-            $interaction->user_id = auth()->user()->id;
-            $interaction->interaction_type = 'login';
-            $interaction->entity_id = auth()->user()->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
+            Interaction::create([
+                'user_id' => auth()->user()->id,
+                'interaction_type' => 'login',
+                'entity_id' => auth()->user()->id,
+                'entity_type' => 'user',
+            ]);
 
             return response()->json([
                 'message' => 'Login realizado com sucesso!',
                 'token' => $this->createNewToken($token),
-                'user' => auth()->user(),
             ], 200);
 
         } catch (ValidationException $exception) {
             Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
             return response()->json($exception->errors(), 422);
+
         } catch (\Exception $exception) {
-            Log::error('Erro inesperado durante o login', ['message' => $exception->getMessage(), 'trace' => $exception->getTraceAsString()]);
+            Log::error('Erro inesperado durante o login', [
+                'message' => $exception->getMessage(),
+                'trace' => $exception->getTraceAsString()
+            ]);
             return response()->json(['error' => 'Erro durante o login'], 500);
         }
     }
+
 
     /**
      * Register a User.
@@ -441,9 +500,12 @@ class AuthController extends Controller
     }
 
     public function refresh()
-    {
-        return $this->createNewToken(auth()->refresh());
-    }
+{
+    return response()->json(
+        $this->createNewToken(auth()->refresh())
+    );
+}
+
     public function unauthorized()
     {
         return response()->json(['error' => 'Unauthorized'], 401);
@@ -455,47 +517,47 @@ class AuthController extends Controller
      */
     // App\Http\Controllers\AuthController.php
 
-   public function me()
-{
-    try {
-        $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
-            ->where('user_name', Auth::user()->user_name)
-            ->first();
+    public function me()
+    {
+        try {
+            $user = User::with(['profile', 'barber', 'barbershops', 'establishments'])
+                ->where('user_name', Auth::user()->user_name)
+                ->first();
 
-        if (!$user) {
-            return response()->json(['error' => 'Usuário não autenticado'], 404);
+            if (!$user) {
+                return response()->json(['error' => 'Usuário não autenticado'], 404);
+            }
+
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'me',
+                'entity_id' => $user->id,
+                'entity_type' => 'user'
+            ]);
+
+            $barberData = $user->barber;
+            $establishments = $user->establishments;
+            $barbershops = $user->barbershops;
+
+            $user->setRelation('barber', null);
+            $user->setRelation('establishments', null);
+            $user->setRelation('barbershops', null);
+
+            return response()->json([
+                'message' => 'Usuário encontrado com sucesso.',
+                'user' => $user,
+                'is_barber' => (bool) $barberData,
+                'barber' => $barberData,
+                'establishments' => $establishments,
+                'barbershops' => $barbershops
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Ocorreu um erro: ' . $e->getMessage()
+            ], 500);
         }
-
-        Interaction::create([
-            'user_id' => $user->id,
-            'interaction_type' => 'me',
-            'entity_id' => $user->id,
-            'entity_type' => 'user'
-        ]);
-
-        $barberData    = $user->barber;
-        $establishments = $user->establishments;
-        $barbershops    = $user->barbershops;
-
-        $user->setRelation('barber', null);
-        $user->setRelation('establishments', null);
-        $user->setRelation('barbershops', null);
-
-        return response()->json([
-            'message'         => 'Usuário encontrado com sucesso.',
-            'user'            => $user,
-            'is_barber'       => (bool) $barberData,
-            'barber'          => $barberData,
-            'establishments'  => $establishments,
-            'barbershops'     => $barbershops
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'Ocorreu um erro: ' . $e->getMessage()
-        ], 500);
     }
-}
 
     /**
      * Get the token array structure.
@@ -506,12 +568,12 @@ class AuthController extends Controller
      */
     protected function createNewToken($token)
     {
-        return response()->json([
+        return [
             'access_token' => $token,
             'token_type' => 'bearer',
             'expires_in' => auth()->factory()->getTTL() * 60,
-            'user' => auth()->user()
-        ]);
+            'user' => auth()->user(),
+        ];
     }
     public function resendCodeEmailVerification()
     {
@@ -551,62 +613,5 @@ class AuthController extends Controller
             return response()->json(['message' => 'Erro ao reenviar o código de verificação. Por favor, tente novamente.'], 500);
         }
     }
-     public function googleAuth(GoogleAuthRequest $request)
-    {
-        // 1) Verifica ID token junto ao Google
-        $client = new Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
-        $payload = $client->verifyIdToken($request->input('token_id'));
-
-        if (! $payload) {
-            return response()->json(['error' => 'Token do Google inválido.'], 401);
-        }
-
-        // 2) Extrai dados do payload
-        $googleId  = $payload['sub'];
-        $email     = $payload['email'];
-        $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
-
-        // 3) Busca usuário existente
-        $user = User::where('google_id', $googleId)
-                    ->orWhere('email', $email)
-                    ->first();
-
-        // 4) Se não existe, cria novo user
-        if (! $user) {
-            $username = Str::slug($firstName) . '-' . Str::random(4);
-            while (User::where('user_name', $username)->exists()) {
-                $username = Str::slug($firstName) . '-' . Str::random(4);
-            }
-
-            $user = User::create([
-                'first_name'        => $firstName,
-                'email'             => $email,
-                'password'          => bcrypt(Str::random(16)), 
-                'user_name'         => $username,
-                'google_id'         => $googleId,
-                'email_verified_at' => now(),
-            ]);
-        }
-
-        // 5) Gera JWT
-        $token = auth()->login($user);
-
-        // 6) Registra interação
-        Interaction::create([
-            'user_id'          => $user->id,
-            'interaction_type' => 'login_google',
-            'entity_id'        => $user->id,
-            'entity_type'      => 'user',
-        ]);
-
-        // 7) Retorna resposta JSON
-        return response()->json([
-            'access_token' => $token,
-            'token_type'   => 'bearer',
-            'expires_in'   => auth()->factory()->getTTL() * 60,
-            'user'         => $user,
-        ], 200);
-    }
-
 
 }
