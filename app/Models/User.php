@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -25,7 +24,7 @@ class User extends Authenticatable implements JWTSubject
         'remember_token',
         'profile_id',
         'cpf',
-        'google_id',  
+        'google_id',
         'address',
         'phone',
         'city',
@@ -45,8 +44,6 @@ class User extends Authenticatable implements JWTSubject
         'is_producer',
         'is_participant',
         'is_promoter',
-        'is_barber',
-        'is_barbershoper',
         'is_partner',
         'is_ticket_seller',
         'extra_info',
@@ -63,8 +60,6 @@ class User extends Authenticatable implements JWTSubject
         'is_producer' => 'boolean',
         'is_participant' => 'boolean',
         'is_promoter' => 'boolean',
-        'is_barber' => 'boolean',
-        'is_barbershoper' => 'boolean',
         'is_partner' => 'boolean',
         'is_ticket_seller' => 'boolean',
         'account_balance' => 'decimal:2',
@@ -96,9 +91,9 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasManyThrough(Event::class, Production::class);
     }
 
-    public function barber()
+    public function employer()
     {
-        return $this->hasOne(Barber::class);
+        return $this->hasOne(Employer::class, 'user_id');
     }
 
     public function establishments()
@@ -118,11 +113,4 @@ class User extends Authenticatable implements JWTSubject
         }
         return in_array($permissionName, $this->profile->permissions);
     }
-
-  public function barbershops()
-{
-    // linha ~124
-    return $this->hasMany('App\Models\Barbershop');
-}
-    
 }
