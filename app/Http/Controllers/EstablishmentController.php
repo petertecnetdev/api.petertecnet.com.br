@@ -14,11 +14,11 @@ use Illuminate\Support\Str;
 class EstablishmentController extends Controller
 {
 
-     public function __construct()
+    public function __construct()
     {
         // remove auth apenas da view()
         $this->middleware('auth:api')
-             ->except(['view']);
+            ->except(['view']);
     }
     protected function getValidationMessages()
     {
@@ -58,6 +58,13 @@ class EstablishmentController extends Controller
             }
 
             $user = Auth::user();
+            $establishmentCount = Establishment::where('user_id', $user->id)->count();
+
+            if ($establishmentCount >= 1 && !$user->hasPermission('establishment_create')) {
+                return response()->json([
+                    'error' => 'Você já possui um estabelecimento cadastrado. Para cadastrar mais, solicite permissão.'
+                ], 403);
+            }
             Log::info('Usuário autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
 
             $validatedData = $request->validate([
