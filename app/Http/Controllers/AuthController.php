@@ -52,10 +52,10 @@ class AuthController extends Controller
      *
      * @return void
      */
-   public function __construct()
-{
-    $this->middleware('auth:api', ['except' => ['login', 'register', 'sendResetCodeEmail', 'resetPassword', 'googleAuth']]);
-}
+    public function __construct()
+    {
+        $this->middleware('auth:api', ['except' => ['login', 'register', 'sendResetCodeEmail', 'resetPassword', 'googleAuth']]);
+    }
 
 
     /**
@@ -65,59 +65,67 @@ class AuthController extends Controller
      */
 
 
-public function googleAuth(GoogleAuthRequest $request)
-{
-    try {
-        $client  = new \Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
-        $payload = $client->verifyIdToken($request->input('token_id'));
+    public function googleAuth(GoogleAuthRequest $request)
+    {
+        try {
+            $client = new \Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
+            $payload = $client->verifyIdToken($request->input('token_id'));
 
-        if (! $payload) {
-            return response()->json(['error' => 'Token do Google inválido.'], 401);
-        }
-
-        $googleId  = $payload['sub'];
-        $email     = $payload['email'];
-        $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
-
-        $user = User::where('google_id', $googleId)
-                    ->orWhere('email', $email)
-                    ->first();
-
-        if (! $user) {
-            $username = Str::slug($firstName) . '-' . Str::random(4);
-            while (User::where('user_name', $username)->exists()) {
-                $username = Str::slug($firstName) . '-' . Str::random(4);
+            if (!$payload) {
+                return response()->json(['error' => 'Token do Google inválido.'], 401);
             }
 
-            $user = User::create([
-                'first_name'        => $firstName,
-                'email'             => $email,
-                'password'          => bcrypt(Str::random(16)),
-                'user_name'         => $username,
-                'google_id'         => $googleId,
-                'email_verified_at' => now(),
+            $googleId = $payload['sub'];
+            $email = $payload['email'];
+            $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
+
+            $user = User::where('google_id', $googleId)
+                ->orWhere('email', $email)
+                ->first();
+
+            if (!$user) {
+                // Criação do novo usuário com e-mail já verificado
+                $username = Str::slug($firstName) . '-' . Str::random(4);
+                while (User::where('user_name', $username)->exists()) {
+                    $username = Str::slug($firstName) . '-' . Str::random(4);
+                }
+
+                $user = User::create([
+                    'first_name' => $firstName,
+                    'email' => $email,
+                    'password' => bcrypt(Str::random(16)),
+                    'user_name' => $username,
+                    'google_id' => $googleId,
+                    'email_verified_at' => now(),
+                ]);
+            } else {
+                // ⚠️ Atualiza se ainda não tiver verificado o e-mail
+                if (is_null($user->email_verified_at)) {
+                    $user->email_verified_at = now();
+                    $user->save();
+                }
+            }
+
+
+            $token = auth()->login($user);
+
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'login_google',
+                'entity_id' => $user->id,
+                'entity_type' => 'user',
             ]);
+
+            return response()->json([
+                'message' => 'Login com Google realizado com sucesso!',
+                'token' => $this->createNewToken($token),
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro durante o login com Google', ['message' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro durante o login com Google'], 500);
         }
-
-        $token = auth()->login($user);
-
-        Interaction::create([
-            'user_id'          => $user->id,
-            'interaction_type' => 'login_google',
-            'entity_id'        => $user->id,
-            'entity_type'      => 'user',
-        ]);
-
-        return response()->json([
-            'message' => 'Login com Google realizado com sucesso!',
-            'token'   => $this->createNewToken($token),
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro durante o login com Google', ['message' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro durante o login com Google'], 500);
     }
-}
 
 
     public function login(Request $request)
@@ -500,11 +508,11 @@ public function googleAuth(GoogleAuthRequest $request)
     }
 
     public function refresh()
-{
-    return response()->json(
-        $this->createNewToken(auth()->refresh())
-    );
-}
+    {
+        return response()->json(
+            $this->createNewToken(auth()->refresh())
+        );
+    }
 
     public function unauthorized()
     {
@@ -517,44 +525,44 @@ public function googleAuth(GoogleAuthRequest $request)
      */
     // App\Http\Controllers\AuthController.php
 
-   public function me()
-{
-    try {
-        $user = User::with(['profile', 'employer', 'establishments'])
-            ->where('user_name', Auth::user()->user_name)
-            ->first();
+    public function me()
+    {
+        try {
+            $user = User::with(['profile', 'employer', 'establishments'])
+                ->where('user_name', Auth::user()->user_name)
+                ->first();
 
-        if (!$user) {
-            return response()->json(['error' => 'Usuário não autenticado'], 404);
+            if (!$user) {
+                return response()->json(['error' => 'Usuário não autenticado'], 404);
+            }
+
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'me',
+                'entity_id' => $user->id,
+                'entity_type' => 'user',
+            ]);
+
+            $employerData = $user->employer;
+            $establishments = $user->establishments;
+
+            $user->setRelation('employer', null);
+            $user->setRelation('establishments', null);
+
+            return response()->json([
+                'message' => 'Usuário encontrado com sucesso.',
+                'user' => $user,
+                'is_employer' => (bool) $employerData,
+                'employer' => $employerData,
+                'establishments' => $establishments,
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Ocorreu um erro: ' . $e->getMessage()
+            ], 500);
         }
-
-        Interaction::create([
-            'user_id' => $user->id,
-            'interaction_type' => 'me',
-            'entity_id' => $user->id,
-            'entity_type' => 'user',
-        ]);
-
-        $employerData = $user->employer;
-        $establishments = $user->establishments;
-
-        $user->setRelation('employer', null);
-        $user->setRelation('establishments', null);
-
-        return response()->json([
-            'message' => 'Usuário encontrado com sucesso.',
-            'user' => $user,
-            'is_employer' => (bool) $employerData,
-            'employer' => $employerData,
-            'establishments' => $establishments,
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'Ocorreu um erro: ' . $e->getMessage()
-        ], 500);
     }
-}
 
 
     /**
