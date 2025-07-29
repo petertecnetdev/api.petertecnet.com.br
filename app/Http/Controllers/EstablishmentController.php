@@ -379,6 +379,18 @@ class EstablishmentController extends Controller
         }
     }
 
-
+  public function listByCategory(Request $request)
+    {
+        $category = $request->query('category');
+        $query = Establishment::query();
+        if ($category) {
+            $query->where('category', $category);
+        }
+        $establishments = $query->paginate(10);
+        return response()->json([
+            'message' => 'Estabelecimentos listados por categoria com sucesso.',
+            'establishments' => $establishments
+        ], 200);
+    }
 
 }
