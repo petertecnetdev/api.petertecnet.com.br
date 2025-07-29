@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class OrderForecastController extends Controller
@@ -26,6 +27,8 @@ class OrderForecastController extends Controller
 
     public function index(Request $request)
     {
+        Log::info('Listando previsões order forecast - início', ['input' => $request->all()]);
+
         $validated = $request->validate([
             'entity_id' => 'required|integer',
             'start_date' => 'required|date',
@@ -39,6 +42,13 @@ class OrderForecastController extends Controller
             ->orderByDesc('probability_of_approval')
             ->get();
 
+        Log::info('Previsões order forecast listadas com sucesso', [
+            'entity_id' => $validated['entity_id'],
+            'start_date' => $validated['start_date'],
+            'end_date' => $validated['end_date'],
+            'count' => $forecasts->count(),
+        ]);
+
         return response()->json([
             'message' => 'Previsões listadas com sucesso.',
             'data' => $forecasts,
@@ -47,6 +57,8 @@ class OrderForecastController extends Controller
 
     public function generate(Request $request)
     {
+        Log::info('Iniciando geração de previsões order forecast', ['input' => $request->all()]);
+
         $validated = $request->validate([
             'entity_id' => 'required|integer',
             'start_date' => 'required|date',
@@ -57,34 +69,39 @@ class OrderForecastController extends Controller
         $startDate = Carbon::parse($validated['start_date'])->startOfDay();
         $endDate = Carbon::parse($validated['end_date'])->endOfDay();
 
-        $products = Item::where('entity_id', $entityId)->get();
-        if ($products->isEmpty()) {
-            return response()->json(['error' => 'Nenhum produto encontrado para gerar previsão.'], 422);
-        }
-
-        // Coleta histórico de pedidos (últimos 90 dias antes da data inicial do forecast)
-        $historyOrders = Order::where('entity_id', $entityId)
-            ->whereDate('order_datetime', '<', $startDate->toDateString())
-            ->orderBy('order_datetime', 'desc')
-            ->take(90)
-            ->with(['items', 'items.item'])
-            ->get();
-
-        DB::beginTransaction();
-
         try {
+            $products = Item::where('entity_id', $entityId)->get();
+            if ($products->isEmpty()) {
+                Log::warning('Nenhum produto encontrado para gerar previsão', ['entity_id' => $entityId]);
+                return response()->json(['error' => 'Nenhum produto encontrado para gerar previsão.'], 422);
+            }
+
+            // Histórico dos últimos 90 dias antes do período inicial
+            $historyOrders = Order::where('entity_id', $entityId)
+                ->whereDate('order_datetime', '<', $startDate->toDateString())
+                ->orderBy('order_datetime', 'desc')
+                ->take(90)
+                ->with(['items', 'items.item'])
+                ->get();
+
+            Log::info('Pedidos históricos carregados para geração', [
+                'entity_id' => $entityId,
+                'count' => $historyOrders->count(),
+                'period_start' => $startDate->toDateString(),
+            ]);
+
+            DB::beginTransaction();
+
             $allForecasts = [];
             $period = \Carbon\CarbonPeriod::create($startDate, $endDate);
 
             foreach ($period as $date) {
                 $forecastDate = $date->toDateString();
+                Log::info("Gerando previsões para o dia $forecastDate", ['entity_id' => $entityId]);
 
-                // Não deleta previsões antigas (mantém histórico)
-                // Gera e salva previsões para cada dia do período
                 $forecasts = $this->generateForecastList($historyOrders, $products, $forecastDate, $entityId);
 
                 foreach ($forecasts as $f) {
-                    // Atualiza ou cria, garantindo unicidade por data, hora e estabelecimento
                     OrderForecast::updateOrCreate([
                         'entity_id' => $entityId,
                         'forecast_date' => $f['forecast_date'],
@@ -96,7 +113,13 @@ class OrderForecastController extends Controller
 
             DB::commit();
 
-            // Carrega previsões recém-geradas para o período solicitado
+            Log::info('Previsões geradas e salvas com sucesso', [
+                'entity_id' => $entityId,
+                'start_date' => $startDate->toDateString(),
+                'end_date' => $endDate->toDateString(),
+                'total_forecasts' => count($allForecasts),
+            ]);
+
             $outputForecasts = OrderForecast::where('entity_id', $entityId)
                 ->whereBetween('forecast_date', [$startDate->toDateString(), $endDate->toDateString()])
                 ->orderBy('forecast_date')
@@ -111,13 +134,22 @@ class OrderForecastController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            Log::error('Erro ao gerar previsões order forecast: ' . $e->getMessage(), [
+                'input' => $request->all(),
+                'trace' => $e->getTraceAsString()
+            ]);
             return response()->json(['error' => 'Erro ao gerar previsões: ' . $e->getMessage()], 500);
         }
     }
 
     private function generateForecastList($orders, $products, $date, $entityId)
     {
-        if ($products->isEmpty()) return [];
+        Log::info("Gerando lista de previsões para data $date e entidade $entityId");
+
+        if ($products->isEmpty()) {
+            Log::warning('Nenhum produto disponível para geração de previsões', ['entity_id' => $entityId]);
+            return [];
+        }
 
         $days = $orders->groupBy(function ($o) {
             return Carbon::parse($o->order_datetime)->format('Y-m-d');
@@ -288,6 +320,9 @@ class OrderForecastController extends Controller
                 'operational_feedback' => null,
             ];
         }
+
+        Log::info("Lista de previsões gerada com " . count($list) . " registros", ['entity_id' => $entityId, 'date' => $date]);
+
         return $list;
     }
 }
