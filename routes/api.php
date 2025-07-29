@@ -278,28 +278,13 @@ Route::group([
     Route::get('/listbyestablishment',      [EmployerController::class, 'listByEstablishment'] )->name('employer.listByEstablishment');
     Route::get('/listbyuser',               [EmployerController::class, 'listByUser']          )->name('employer.listByUser');
 });
-
-// Rotas de previsão de pedidos (OrderForecast)
-
-Route::group([
-    'middleware' => 'api',
-    'prefix'     => 'order-forecast'
-], function () {
-    // Lista previsões do dia para o estabelecimento
-    Route::get('/', [OrderForecastController::class, 'index'])->name('order_forecast.index');
-    // (opcional) Visualiza uma previsão específica (se implementar show)
-    // Route::get('/{id}', [OrderForecastController::class, 'show'])->whereNumber('id')->name('order_forecast.show');
-});
-
-// Rotas protegidas para gerar e gerenciar previsões (ajuste as permissões se precisar)
+// Rotas para OrderForecastController
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'order-forecast'
+    'prefix' => 'order-forecast',
 ], function () {
-    // Gera previsão para uma data/estabelecimento (POST)
-    Route::post('/generate', [OrderForecastController::class, 'generate'])->name('order_forecast.generate');
-    // (opcional) Atualiza uma previsão específica
-    // Route::put('/{id}', [OrderForecastController::class, 'update'])->whereNumber('id')->name('order_forecast.update');
-    // (opcional) Deleta uma previsão específica
-    // Route::delete('/{id}', [OrderForecastController::class, 'destroy'])->whereNumber('id')->name('order_forecast.destroy');
+    // Listar previsões por intervalo de datas e entidade
+    Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
+    // Gerar previsões para intervalo de datas e entidade (sem deletar registros antigos)
+    Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
