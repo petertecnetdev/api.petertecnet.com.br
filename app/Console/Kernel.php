@@ -13,10 +13,12 @@ class Kernel extends ConsoleKernel
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
      */
-    protected function schedule(Schedule $schedule)
-    {
-        // $schedule->command('inspire')->hourly();
-    }
+ protected function schedule(Schedule $schedule)
+{
+    // Avalia previsões a cada 5 minutos
+    $schedule->command('forecasts:evaluate')->everyFiveMinutes();
+}
+
 
     /**
      * Register the commands for the application.
