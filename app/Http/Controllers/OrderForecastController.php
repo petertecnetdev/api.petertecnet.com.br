@@ -4,15 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\OrderForecast;
 use App\Models\Order;
+use App\Models\Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 class OrderForecastController extends Controller
 {
-    protected function getValidationMessages()
+    protected function getValidationMessages(): array
     {
         return [
             'entity_id.required'    => 'O ID da entidade é obrigatório.',
@@ -28,7 +28,7 @@ class OrderForecastController extends Controller
 
     public function generate(Request $request)
     {
-        if (!Auth::check()) {
+        if (! Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
@@ -52,7 +52,6 @@ class OrderForecastController extends Controller
             return response()->json(['error' => 'Intervalo inválido.'], 422);
         }
 
-        // Exemplo simples: busca pedidos há 7 dias atrás e redistribui
         $pastStart = $start->copy()->subDays(7);
         $pastEnd   = $end->copy()->subDays(7);
 
@@ -62,30 +61,67 @@ class OrderForecastController extends Controller
             ->with('items')
             ->get();
 
-        $count = $past->count();
-        $forecasts = [];
+        $count      = $past->count();
+        $forecasts  = [];
+        $totalSec   = $start->diffInSeconds($end);
 
-        if ($count) {
-            $intervalSec = $start->diffInSeconds($end) / $count;
-            foreach ($past as $i => $o) {
+        if ($count > 0) {
+            $intervalSec = $totalSec / $count;
+
+            foreach ($past as $i => $order) {
                 $t = $start->copy()->addSeconds($intervalSec * ($i + 1));
+
                 $forecasts[] = [
-                    'forecast_date'         => $t->toDateString(),
-                    'forecast_time'         => $t->toTimeString(),
-                    'entity_id'             => $data['entity_id'],
-                    'entity_name'           => $data['entity_name'],
-                    'customer_name_forecast'=> $o->customer_name,
-                    'origin_forecast'       => $o->origin,
-                    'fulfillment_forecast'  => $o->fulfillment,
-                    'items_forecast'        => $o->items->map(fn($it)=>['item_id'=>$it->item_id,'quantity'=>$it->quantity])->toArray(),
-                    'total_forecast'        => $o->total_price,
-                    'payment_method_forecast'=> $o->payment_method,
-                    'notes_forecast'        => $o->notes,
-                    'input_data'            => $data,
-                    'status'                => 'forecasted',
-                    'user_id'               => Auth::id(),
+                    'forecast_date'          => $t->toDateString(),
+                    'forecast_time'          => $t->toTimeString(),
+                    'entity_id'              => $data['entity_id'],
+                    'entity_name'            => $data['entity_name'],
+                    'customer_name_forecast' => $order->customer_name,
+                    'origin_forecast'        => $order->origin,
+                    'fulfillment_forecast'   => $order->fulfillment,
+                    'items_forecast'         => $order->items->map(fn($it) => [
+                        'item_id'  => $it->item_id,
+                        'quantity' => $it->quantity,
+                    ])->toArray(),
+                    'total_forecast'         => $order->total_price,
+                    'payment_method_forecast'=> $order->payment_method,
+                    'notes_forecast'         => $order->notes,
+                    'input_data'             => $data,
+                    'status'                 => 'forecasted',
+                    'user_id'                => Auth::id(),
                 ];
             }
+        } else {
+            // Fallback: garante ao menos 1 previsão
+            $mid = $start->copy()->addSeconds($totalSec / 2);
+            $item = Item::where('entity_name', $data['entity_name'])
+                        ->where('entity_id', $data['entity_id'])
+                        ->first();
+
+            if ($item) {
+                $forecasts[] = [
+                    'forecast_date'          => $mid->toDateString(),
+                    'forecast_time'          => $mid->toTimeString(),
+                    'entity_id'              => $data['entity_id'],
+                    'entity_name'            => $data['entity_name'],
+                    'customer_name_forecast' => null,
+                    'origin_forecast'        => 'Balcão',
+                    'fulfillment_forecast'   => 'dine-in',
+                    'items_forecast'         => [[
+                        'item_id'  => $item->id,
+                        'quantity' => 1,
+                    ]],
+                    'total_forecast'         => $item->price,
+                    'payment_method_forecast'=> 'Dinheiro',
+                    'notes_forecast'         => null,
+                    'input_data'             => $data,
+                    'status'                 => 'forecasted',
+                    'user_id'                => Auth::id(),
+                ];
+            }
+        }
+
+        if (! empty($forecasts)) {
             OrderForecast::insert($forecasts);
         }
 
