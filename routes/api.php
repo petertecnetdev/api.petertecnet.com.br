@@ -214,24 +214,23 @@ Route::group([
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
 
 });
-
 Route::prefix('establishment')
     ->middleware('api')
     ->group(function () {
-        Route::get('/',            [EstablishmentController::class, 'list']) ->name('establishment.list');
-        Route::get('/show/{id}',   [EstablishmentController::class, 'show']) ->name('establishment.show');
-        Route::get('/view/{slug}', [EstablishmentController::class, 'view']) ->name('establishment.view');
+        Route::get('/',                          [EstablishmentController::class, 'list'])               ->name('establishment.list');
+        Route::get('/category/{category}',       [EstablishmentController::class, 'listByCategory'])     ->name('establishment.listByCategory');
+        Route::get('/show/{id}',                 [EstablishmentController::class, 'show'])               ->name('establishment.show');
+        Route::get('/view/{slug}',               [EstablishmentController::class, 'view'])               ->name('establishment.view');
     });
-
 
 Route::prefix('establishment')
     ->middleware(['api', 'auth:api'])
     ->group(function () {
-        Route::post('/',          [EstablishmentController::class, 'store'])           ->name('establishment.store');
-        Route::post('/{id}',      [EstablishmentController::class, 'update'])          ->name('establishment.update');
-        Route::delete('/{id}',    [EstablishmentController::class, 'destroy'])         ->name('establishment.destroy');
-        Route::get('/my',         [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
-        Route::get('/user',       [EstablishmentController::class, 'listByUser'])      ->name('establishment.listByUser');
+        Route::post('/',                        [EstablishmentController::class, 'store'])              ->name('establishment.store');
+        Route::post('/{id}',                    [EstablishmentController::class, 'update'])             ->name('establishment.update');
+        Route::delete('/{id}',                  [EstablishmentController::class, 'destroy'])            ->name('establishment.destroy');
+        Route::get('/my',                       [EstablishmentController::class, 'myEstablishments'])   ->name('establishment.my');
+        Route::get('/user',                     [EstablishmentController::class, 'listByUser'])         ->name('establishment.listByUser');
     });
 
 
