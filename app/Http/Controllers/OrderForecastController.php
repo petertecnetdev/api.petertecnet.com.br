@@ -6,8 +6,6 @@ use App\Models\OrderForecast;
 use App\Models\Order;
 use App\Models\Item;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 class OrderForecastController extends Controller
@@ -21,9 +19,6 @@ class OrderForecastController extends Controller
         ];
     }
 
-    /**
-     * Lista previsões de pedidos para uma data e entidade.
-     */
     public function index(Request $request)
     {
         $validated = $request->validate([
@@ -42,10 +37,6 @@ class OrderForecastController extends Controller
         ], 200);
     }
 
-    /**
-     * Gera e armazena previsões para uma data e entidade.
-     * Idempotente: sobrescreve previsões do mesmo dia/entidade.
-     */
     public function generate(Request $request)
     {
         $validated = $request->validate([
@@ -56,12 +47,10 @@ class OrderForecastController extends Controller
         $entityId = $validated['entity_id'];
         $date = $validated['forecast_date'];
 
-        // Limpa previsões antigas do mesmo dia/entidade (idempotente)
         OrderForecast::where('entity_id', $entityId)
             ->where('forecast_date', $date)
             ->delete();
 
-        // Coleta histórico real do estabelecimento (últimos 30 dias)
         $orders = Order::where('entity_id', $entityId)
             ->whereDate('order_datetime', '<', $date)
             ->orderBy('order_datetime', 'desc')
@@ -86,20 +75,15 @@ class OrderForecastController extends Controller
         ]);
     }
 
-    /**
-     * Gera lista de previsões baseadas no histórico da entidade.
-     */
     private function generateForecastList($orders, $products, $date, $entityId)
     {
         if ($products->isEmpty()) return [];
 
-        // Quantidade de previsões = média dos dias de semana correspondentes (ou pelo menos 8)
         $days = $orders->groupBy(function ($o) {
             return Carbon::parse($o->order_datetime)->format('Y-m-d');
         });
         $mediaPedidos = max(round($days->map->count()->avg()), 8);
 
-        // Distribuições (mapas para randomização ponderada)
         $horarios = [];
         $origens = [];
         $fulfillments = [];
@@ -107,7 +91,6 @@ class OrderForecastController extends Controller
         $clientes = [];
         $statusPagamentos = [];
 
-        // Itens mais vendidos (top 10)
         $itemCount = [];
         foreach ($orders as $o) {
             $dt = Carbon::parse($o->order_datetime);
@@ -117,7 +100,6 @@ class OrderForecastController extends Controller
             $pagamentos[] = $o->payment_method;
             $statusPagamentos[] = $o->payment_status;
             if ($o->customer_name) $clientes[] = $o->customer_name;
-
             foreach ($o->items as $it) {
                 $itemId = $it->item_id;
                 if (!isset($itemCount[$itemId])) $itemCount[$itemId] = 0;
@@ -127,7 +109,6 @@ class OrderForecastController extends Controller
         $clientes = array_unique($clientes);
         if (empty($clientes)) $clientes = ['Cliente A', 'Cliente B', 'Cliente C', 'Cliente D'];
 
-        // Função helper para randomizar ponderado
         $randomWeighted = function($arr) {
             if (empty($arr)) return null;
             $counts = array_count_values($arr);
@@ -141,7 +122,6 @@ class OrderForecastController extends Controller
             return array_key_first($counts);
         };
 
-        // Gera lista dos 10 itens mais vendidos
         arsort($itemCount);
         $topProducts = collect($products)->filter(function($p) use ($itemCount) {
             return isset($itemCount[$p->id]);
@@ -149,7 +129,6 @@ class OrderForecastController extends Controller
             return $itemCount[$p->id];
         })->take(10);
 
-        // Gera horários baseados nos horários mais comuns, espalhados pelo range
         $horariosDia = [];
         foreach ($days as $dia => $pedidosDia) {
             foreach ($pedidosDia as $o) {
@@ -159,26 +138,49 @@ class OrderForecastController extends Controller
         }
         $horariosDia = array_unique($horariosDia);
 
-        $startHour = 18; $endHour = 23;
+        // Garantir geração de horários únicos e válidos SEMPRE
+        $startHour = 18;
+        $endHour = 23;
+        $slots = [];
+        for ($h = $startHour; $h <= $endHour; $h++) {
+            $slots[] = sprintf("%02d:00", $h);
+            $slots[] = sprintf("%02d:30", $h);
+        }
+
+        // Embaralhar para sortear slots livres se faltar histórico
+        shuffle($slots);
+
         $usedTimes = [];
         $list = [];
         for ($i = 0; $i < $mediaPedidos; $i++) {
-            // Horário: pega dos mais comuns ou gera slot novo não usado
-            $horario = $randomWeighted($horariosDia) ?: sprintf("%02d:%02d", rand($startHour, $endHour), (rand(0, 1) ? "00" : "30"));
-            while (in_array($horario, $usedTimes)) {
-                $horario = sprintf("%02d:%02d", rand($startHour, $endHour), (rand(0, 1) ? "00" : "30"));
+            // Tenta pegar horário do histórico ponderado e único, senão pega slot livre
+            $horario = null;
+            $tentativas = 0;
+            do {
+                $horario = $randomWeighted($horariosDia);
+                $tentativas++;
+            } while ($horario && in_array($horario, $usedTimes) && $tentativas < 8);
+
+            if (!$horario || in_array($horario, $usedTimes)) {
+                // Gera slot fixo não utilizado
+                foreach ($slots as $slot) {
+                    if (!in_array($slot, $usedTimes)) {
+                        $horario = $slot;
+                        break;
+                    }
+                }
+                if (!$horario) $horario = sprintf("%02d:00", rand($startHour, $endHour));
             }
+            // Garante formato sempre HH:MM
+            $horario = strlen($horario) === 5 ? $horario : substr($horario, 0, 5);
             $usedTimes[] = $horario;
 
-            // Cliente: pega dos reais ou gera fictício
             $cliente = $clientes[array_rand($clientes)];
-            // Origem, Fulfillment, Pagamento, Status
             $origem = $randomWeighted($origens) ?: "Balcão";
             $fulfillment = $randomWeighted($fulfillments) ?: "dine-in";
             $pagamento = $randomWeighted($pagamentos) ?: "Dinheiro";
             $status = $randomWeighted($statusPagamentos) ?: "previsto";
 
-            // Itens: 1 ou 2 dos mais vendidos, ou qualquer um se faltar histórico
             $produtosPick = $topProducts->count() ? $topProducts->random(rand(1, 2)) : $products->random(rand(1, 2));
             $itemsForecast = [];
             $total = 0;
@@ -196,7 +198,7 @@ class OrderForecastController extends Controller
             $list[] = [
                 'entity_id' => $entityId,
                 'forecast_date' => $date,
-                'forecast_time' => $horario,
+                'forecast_time' => $horario, // Nunca será null ou vazio
                 'customer_name_forecast' => $cliente,
                 'origin_forecast' => $origem,
                 'fulfillment_forecast' => $fulfillment,
