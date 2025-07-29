@@ -187,13 +187,17 @@ Route::group([
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'item'
-], function ($router) {
-    Route::post('/', [ItemController::class, 'store'])->name('item.store');
-    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
-    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
+], function () {
+    Route::post('/',        [ItemController::class, 'store'])->name('item.store');
+    Route::post('/bulk',    [ItemController::class, 'storeBulk'])->name('item.storeBulk');
+    Route::post('/{id}',    [ItemController::class, 'update'])->name('item.update');
+    Route::delete('/{id}',  [ItemController::class, 'destroy'])->name('item.destroy');
 });
 
-Route::group([    'middleware' => 'api',    'prefix' => 'report',], function ($router) {
+Route::group([
+    'middleware' => 'api',
+    'prefix'     => 'report',
+], function () {
     Route::post('/order', [ReportController::class, 'order'])->name('report.order');
 });
 
@@ -219,13 +223,7 @@ Route::prefix('establishment')
         Route::get('/view/{slug}', [EstablishmentController::class, 'view']) ->name('establishment.view');
     });
 
-/*
-|--------------------------------------------------------------------------
-| Protected Establishment Routes
-|--------------------------------------------------------------------------
-| Estas rotas exigem autenticação via bearer token (auth:api).
-|--------------------------------------------------------------------------
-*/
+
 Route::prefix('establishment')
     ->middleware(['api', 'auth:api'])
     ->group(function () {

@@ -37,10 +37,22 @@ return new class extends Migration {
 
             $table->timestamps();
 
-            $table->foreign('app_id')->references('id')->on('applications')->cascadeOnDelete();
-            $table->foreign('provider_id')->references('user_id')->on('employers')->nullOnDelete();
-            $table->foreign('client_id')->references('id')->on('users')->nullOnDelete();
-            $table->foreign('registered_by')->references('id')->on('users')->nullOnDelete();
+            $table->foreign('app_id')
+                  ->references('id')->on('applications')
+                  ->cascadeOnDelete();
+
+            // <<< CORREÇÃO AQUI: agora referencia `id` em employers >>>
+            $table->foreign('provider_id')
+                  ->references('id')->on('employers')
+                  ->nullOnDelete();
+
+            $table->foreign('client_id')
+                  ->references('id')->on('users')
+                  ->nullOnDelete();
+
+            $table->foreign('registered_by')
+                  ->references('id')->on('users')
+                  ->nullOnDelete();
         });
     }
 
