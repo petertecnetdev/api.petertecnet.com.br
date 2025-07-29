@@ -48,6 +48,7 @@ class OrderForecast extends Model
     protected $casts = [
         'forecast_date'         => 'date',
         'forecast_time'         => 'string',
+        'entity_name'             => 'string',
         'order_datetime_real'   => 'datetime',
         'items_forecast'        => 'array',
         'items_real'            => 'array',
