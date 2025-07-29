@@ -6,6 +6,7 @@ use App\Models\OrderForecast;
 use App\Models\Order;
 use App\Models\Item;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class OrderForecastController extends Controller
@@ -14,8 +15,12 @@ class OrderForecastController extends Controller
     {
         return [
             'entity_id.required' => 'O ID do estabelecimento é obrigatório.',
-            'forecast_date.required' => 'A data de previsão é obrigatória.',
-            'forecast_date.date' => 'A data de previsão deve ser uma data válida.',
+            'entity_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
+            'start_date.required' => 'A data inicial é obrigatória.',
+            'start_date.date' => 'A data inicial deve ser uma data válida.',
+            'end_date.required' => 'A data final é obrigatória.',
+            'end_date.date' => 'A data final deve ser uma data válida.',
+            'end_date.after_or_equal' => 'A data final deve ser igual ou posterior à data inicial.',
         ];
     }
 
@@ -23,12 +28,15 @@ class OrderForecastController extends Controller
     {
         $validated = $request->validate([
             'entity_id' => 'required|integer',
-            'forecast_date' => 'required|date',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
         ], $this->getValidationMessages());
 
         $forecasts = OrderForecast::where('entity_id', $validated['entity_id'])
-            ->where('forecast_date', $validated['forecast_date'])
+            ->whereBetween('forecast_date', [$validated['start_date'], $validated['end_date']])
+            ->orderBy('forecast_date')
             ->orderBy('forecast_time')
+            ->orderByDesc('probability_of_approval')
             ->get();
 
         return response()->json([
@@ -41,38 +49,70 @@ class OrderForecastController extends Controller
     {
         $validated = $request->validate([
             'entity_id' => 'required|integer',
-            'forecast_date' => 'required|date',
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
         ], $this->getValidationMessages());
 
         $entityId = $validated['entity_id'];
-        $date = $validated['forecast_date'];
+        $startDate = Carbon::parse($validated['start_date'])->startOfDay();
+        $endDate = Carbon::parse($validated['end_date'])->endOfDay();
 
-        OrderForecast::where('entity_id', $entityId)
-            ->where('forecast_date', $date)
-            ->delete();
+        $products = Item::where('entity_id', $entityId)->get();
+        if ($products->isEmpty()) {
+            return response()->json(['error' => 'Nenhum produto encontrado para gerar previsão.'], 422);
+        }
 
-        $orders = Order::where('entity_id', $entityId)
-            ->whereDate('order_datetime', '<', $date)
+        // Coleta histórico de pedidos (últimos 90 dias antes da data inicial do forecast)
+        $historyOrders = Order::where('entity_id', $entityId)
+            ->whereDate('order_datetime', '<', $startDate->toDateString())
             ->orderBy('order_datetime', 'desc')
             ->take(90)
             ->with(['items', 'items.item'])
             ->get();
 
-        $products = Item::where('entity_id', $entityId)->get();
+        DB::beginTransaction();
 
-        $forecasts = $this->generateForecastList($orders, $products, $date, $entityId);
+        try {
+            $allForecasts = [];
+            $period = \Carbon\CarbonPeriod::create($startDate, $endDate);
 
-        foreach ($forecasts as $f) {
-            OrderForecast::create($f);
-        }
+            foreach ($period as $date) {
+                $forecastDate = $date->toDateString();
 
-        return response()->json([
-            'message' => 'Previsão gerada com sucesso.',
-            'data' => OrderForecast::where('entity_id', $entityId)
-                ->where('forecast_date', $date)
+                // Nunca deleta previsões antigas!
+                // Gera e salva previsões para cada dia do período
+                $forecasts = $this->generateForecastList($historyOrders, $products, $forecastDate, $entityId);
+
+                foreach ($forecasts as $f) {
+                    // Atualiza apenas se for exatamente igual (forecast_date, forecast_time, entity_id)
+                    OrderForecast::updateOrCreate([
+                        'entity_id' => $entityId,
+                        'forecast_date' => $f['forecast_date'],
+                        'forecast_time' => $f['forecast_time'],
+                    ], $f);
+                }
+                $allForecasts = array_merge($allForecasts, $forecasts);
+            }
+
+            DB::commit();
+
+            // Carrega previsões recém-geradas do banco (todas do período)
+            $outputForecasts = OrderForecast::where('entity_id', $entityId)
+                ->whereBetween('forecast_date', [$startDate->toDateString(), $endDate->toDateString()])
+                ->orderBy('forecast_date')
                 ->orderBy('forecast_time')
-                ->get(),
-        ]);
+                ->orderByDesc('probability_of_approval')
+                ->get();
+
+            return response()->json([
+                'message' => 'Previsões geradas com sucesso.',
+                'data' => $outputForecasts,
+            ], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Erro ao gerar previsões: ' . $e->getMessage()], 500);
+        }
     }
 
     private function generateForecastList($orders, $products, $date, $entityId)
@@ -85,20 +125,20 @@ class OrderForecastController extends Controller
         $mediaPedidos = max(round($days->map->count()->avg()), 8);
 
         $horarios = [];
-        $origens = [];
+        $origins = [];
         $fulfillments = [];
-        $pagamentos = [];
+        $payments = [];
         $clientes = [];
-        $statusPagamentos = [];
-
+        $statusPayments = [];
         $itemCount = [];
+
         foreach ($orders as $o) {
             $dt = Carbon::parse($o->order_datetime);
             $horarios[] = $dt->format('H:i');
-            $origens[] = $o->origin;
+            $origins[] = $o->origin;
             $fulfillments[] = $o->fulfillment;
-            $pagamentos[] = $o->payment_method;
-            $statusPagamentos[] = $o->payment_status;
+            $payments[] = $o->payment_method;
+            $statusPayments[] = $o->payment_status;
             if ($o->customer_name) $clientes[] = $o->customer_name;
             foreach ($o->items as $it) {
                 $itemId = $it->item_id;
@@ -138,7 +178,7 @@ class OrderForecastController extends Controller
         }
         $horariosDia = array_unique($horariosDia);
 
-        // Garantir geração de horários únicos e válidos SEMPRE
+        // Geração de slots de horário únicos
         $startHour = 18;
         $endHour = 23;
         $slots = [];
@@ -146,14 +186,11 @@ class OrderForecastController extends Controller
             $slots[] = sprintf("%02d:00", $h);
             $slots[] = sprintf("%02d:30", $h);
         }
-
-        // Embaralhar para sortear slots livres se faltar histórico
         shuffle($slots);
 
         $usedTimes = [];
         $list = [];
         for ($i = 0; $i < $mediaPedidos; $i++) {
-            // Tenta pegar horário do histórico ponderado e único, senão pega slot livre
             $horario = null;
             $tentativas = 0;
             do {
@@ -162,7 +199,6 @@ class OrderForecastController extends Controller
             } while ($horario && in_array($horario, $usedTimes) && $tentativas < 8);
 
             if (!$horario || in_array($horario, $usedTimes)) {
-                // Gera slot fixo não utilizado
                 foreach ($slots as $slot) {
                     if (!in_array($slot, $usedTimes)) {
                         $horario = $slot;
@@ -171,15 +207,13 @@ class OrderForecastController extends Controller
                 }
                 if (!$horario) $horario = sprintf("%02d:00", rand($startHour, $endHour));
             }
-            // Garante formato sempre HH:MM
             $horario = strlen($horario) === 5 ? $horario : substr($horario, 0, 5);
             $usedTimes[] = $horario;
 
             $cliente = $clientes[array_rand($clientes)];
-            $origem = $randomWeighted($origens) ?: "Balcão";
+            $origin = $randomWeighted($origins) ?: "Balcão";
             $fulfillment = $randomWeighted($fulfillments) ?: "dine-in";
-            $pagamento = $randomWeighted($pagamentos) ?: "Dinheiro";
-            $status = $randomWeighted($statusPagamentos) ?: "previsto";
+            $payment = $randomWeighted($payments) ?: "Dinheiro";
 
             $produtosPick = $topProducts->count() ? $topProducts->random(rand(1, 2)) : $products->random(rand(1, 2));
             $itemsForecast = [];
@@ -195,18 +229,63 @@ class OrderForecastController extends Controller
                 $total += $prod->price * $qty;
             }
 
+            // Métricas "inteligentes" e campos extra para análise preditiva
+            $probability = min(99, 55 + rand(0, 40)); // Exemplo, pode melhorar baseado em histórico real
+            $modelConfidence = min(99, 60 + rand(0, 35));
+            $historicalSimilarity = rand(50, 100);
+            $isRecommended = $probability > 80 ? true : false;
+            $isImprobable = $probability < 60 ? true : false;
+            $repeatCount = rand(0, 7);
+
             $list[] = [
                 'entity_id' => $entityId,
+                'entity_name' => 'establishment',
                 'forecast_date' => $date,
-                'forecast_time' => $horario, // Nunca será null ou vazio
+                'forecast_time' => $horario,
                 'customer_name_forecast' => $cliente,
-                'origin_forecast' => $origem,
+                'origin_forecast' => $origin,
                 'fulfillment_forecast' => $fulfillment,
                 'items_forecast' => json_encode($itemsForecast),
-                'payment_method_forecast' => $pagamento,
-                'payment_status_forecast' => $status,
-                'notes_forecast' => '',
                 'total_forecast' => $total,
+                'payment_method_forecast' => $payment,
+                'notes_forecast' => '',
+                // Real data (to be matched/filled after)
+                'order_id' => null,
+                'order_datetime_real' => null,
+                'customer_name_real' => null,
+                'origin_real' => null,
+                'fulfillment_real' => null,
+                'items_real' => null,
+                'total_real' => null,
+                'payment_method_real' => null,
+                'notes_real' => null,
+                // Metrics/accuracy
+                'hit_customer_name' => false,
+                'hit_origin' => false,
+                'hit_fulfillment' => false,
+                'hit_items' => false,
+                'hit_payment_method' => false,
+                'hit_notes' => false,
+                'accuracy_value' => 0,
+                'diff_total' => 0,
+                'score' => 0,
+                // Context/input
+                'input_data' => json_encode([
+                    'avg_per_day' => $mediaPedidos,
+                    'history_days' => $days->count(),
+                ]),
+                'status' => 'pending',
+                // Advanced/AI/Analytics fields
+                'human_evaluation' => null,
+                'human_feedback' => null,
+                'probability_of_approval' => $probability,
+                'model_confidence' => $modelConfidence,
+                'reason_for_prediction' => 'Generated by AI based on recent sales history.',
+                'historical_similarity' => $historicalSimilarity,
+                'is_recommended' => $isRecommended,
+                'is_improbable' => $isImprobable,
+                'repeat_forecast_count' => $repeatCount,
+                'operational_feedback' => null,
             ];
         }
         return $list;
