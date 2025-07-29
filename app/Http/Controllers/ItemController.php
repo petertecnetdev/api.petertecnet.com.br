@@ -523,6 +523,90 @@ class ItemController extends Controller
         }
     }
 
+public function storeBulk(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    }
+
+    $user = Auth::user();
+    if (!$user->hasPermission('item_create')) {
+        return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
+    }
+
+    $validated = $request->validate([
+        'items'                     => 'required|array',
+        'items.*.name'              => 'required|string|max:255',
+        'items.*.type'              => 'required|string|max:100',
+        'items.*.price'             => 'required|numeric|min:0',
+        'items.*.stock'             => 'nullable|integer|min:0',
+        'items.*.status'            => 'required|boolean',
+        'items.*.limited_by_user'   => 'nullable|boolean',
+        'items.*.category'          => 'nullable|string|max:100',
+        'items.*.subcategory'       => 'nullable|string|max:100',
+        'items.*.brand'             => 'nullable|string|max:100',
+        'items.*.description'       => 'nullable|string',
+        'items.*.availability_start'=> 'nullable|date',
+        'items.*.availability_end'  => 'nullable|date|after:items.*.availability_start',
+        'items.*.expiration_date'   => 'nullable|date',
+        'items.*.discount'          => 'nullable|numeric|min:0|max:100',
+        'items.*.notes'             => 'nullable|string',
+        'items.*.is_featured'       => 'nullable|boolean',
+        'items.*.slug'              => 'nullable|string|max:255',
+        'items.*.entity_id'         => 'required|integer',
+        'items.*.entity_name'       => 'required|string|max:100',
+        'items.*.app_id'            => 'required|exists:applications,id',
+        'items.*.duration'          => 'nullable|integer|min:1|max:480',
+    ], $this->getValidationMessages());
+
+    DB::beginTransaction();
+    try {
+        $created = [];
+        foreach ($validated['items'] as $data) {
+            $data['user_id'] = $user->id;
+            $data['stock'] = $data['stock'] ?? null;
+            $item = Item::create([
+                'name'               => $data['name'],
+                'type'               => $data['type'],
+                'sku'                => $data['sku'] ?? null,
+                'description'        => $data['description'] ?? null,
+                'price'              => $data['price'],
+                'stock'              => $data['stock'],
+                'status'             => (int) $data['status'],
+                'limited_by_user'    => (int) ($data['limited_by_user'] ?? 0),
+                'category'           => $data['category'] ?? null,
+                'subcategory'        => $data['subcategory'] ?? null,
+                'brand'              => $data['brand'] ?? null,
+                'availability_start' => $data['availability_start'] ?? null,
+                'availability_end'   => $data['availability_end'] ?? null,
+                'expiration_date'    => $data['expiration_date'] ?? null,
+                'discount'           => $data['discount'] ?? null,
+                'notes'              => $data['notes'] ?? null,
+                'is_featured'        => (bool) ($data['is_featured'] ?? false),
+                'entity_id'          => $data['entity_id'],
+                'entity_name'        => $data['entity_name'],
+                'app_id'             => $data['app_id'],
+                'duration'           => $data['duration'] ?? null,
+            ]);
+
+            $slug = Str::slug($data['name']);
+            $count = Item::where('slug', $slug)->count();
+            if ($count > 0) {
+                $slug .= '-' . ($count + 1);
+            }
+            $item->slug = $slug;
+            $item->save();
+
+            $created[] = $item;
+        }
+        DB::commit();
+        return response()->json(['message' => 'Itens cadastrados com sucesso.', 'items' => $created], 201);
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Erro no cadastro em massa de itens: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
+    }
+}
 
 
 
