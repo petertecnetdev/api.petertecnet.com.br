@@ -52,6 +52,7 @@ class OrderForecastController extends Controller
             return response()->json(['error' => 'Intervalo inválido.'], 422);
         }
 
+        // intervalo histórico deslocado em -7 dias
         $pastStart = $start->copy()->subDays(7);
         $pastEnd   = $end->copy()->subDays(7);
 
@@ -61,9 +62,9 @@ class OrderForecastController extends Controller
             ->with('items')
             ->get();
 
-        $count      = $past->count();
-        $forecasts  = [];
-        $totalSec   = $start->diffInSeconds($end);
+        $count     = $past->count();
+        $forecasts = [];
+        $totalSec  = $start->diffInSeconds($end);
 
         if ($count > 0) {
             $intervalSec = $totalSec / $count;
@@ -72,51 +73,53 @@ class OrderForecastController extends Controller
                 $t = $start->copy()->addSeconds($intervalSec * ($i + 1));
 
                 $forecasts[] = [
-                    'forecast_date'          => $t->toDateString(),
-                    'forecast_time'          => $t->toTimeString(),
-                    'entity_id'              => $data['entity_id'],
-                    'entity_name'            => $data['entity_name'],
-                    'customer_name_forecast' => $order->customer_name,
-                    'origin_forecast'        => $order->origin,
-                    'fulfillment_forecast'   => $order->fulfillment,
-                    'items_forecast'         => $order->items->map(fn($it) => [
-                        'item_id'  => $it->item_id,
-                        'quantity' => $it->quantity,
-                    ])->toArray(),
-                    'total_forecast'         => $order->total_price,
-                    'payment_method_forecast'=> $order->payment_method,
-                    'notes_forecast'         => $order->notes,
-                    'input_data'             => $data,
-                    'status'                 => 'forecasted',
-                    'user_id'                => Auth::id(),
+                    'forecast_date'           => $t->toDateString(),
+                    'forecast_time'           => $t->toTimeString(),
+                    'entity_id'               => $data['entity_id'],
+                    'entity_name'             => $data['entity_name'],
+                    'customer_name_forecast'  => $order->customer_name,
+                    'origin_forecast'         => $order->origin,
+                    'fulfillment_forecast'    => $order->fulfillment,
+                    'items_forecast'          => json_encode(
+                        $order->items->map(fn($it) => [
+                            'item_id'  => $it->item_id,
+                            'quantity' => $it->quantity,
+                        ])->toArray()
+                    ),
+                    'total_forecast'          => $order->total_price,
+                    'payment_method_forecast' => $order->payment_method,
+                    'notes_forecast'          => $order->notes,
+                    'input_data'              => json_encode($data),
+                    'status'                  => 'forecasted',
+                    'user_id'                 => Auth::id(),
                 ];
             }
         } else {
-            // Fallback: garante ao menos 1 previsão
-            $mid = $start->copy()->addSeconds($totalSec / 2);
+            // fallback: garante ao menos uma previsão
+            $mid  = $start->copy()->addSeconds($totalSec / 2);
             $item = Item::where('entity_name', $data['entity_name'])
-                        ->where('entity_id', $data['entity_id'])
+                        ->where('entity_id',   $data['entity_id'])
                         ->first();
 
             if ($item) {
                 $forecasts[] = [
-                    'forecast_date'          => $mid->toDateString(),
-                    'forecast_time'          => $mid->toTimeString(),
-                    'entity_id'              => $data['entity_id'],
-                    'entity_name'            => $data['entity_name'],
-                    'customer_name_forecast' => null,
-                    'origin_forecast'        => 'Balcão',
-                    'fulfillment_forecast'   => 'dine-in',
-                    'items_forecast'         => [[
+                    'forecast_date'           => $mid->toDateString(),
+                    'forecast_time'           => $mid->toTimeString(),
+                    'entity_id'               => $data['entity_id'],
+                    'entity_name'             => $data['entity_name'],
+                    'customer_name_forecast'  => null,
+                    'origin_forecast'         => 'Balcão',
+                    'fulfillment_forecast'    => 'dine-in',
+                    'items_forecast'          => json_encode([[
                         'item_id'  => $item->id,
                         'quantity' => 1,
-                    ]],
-                    'total_forecast'         => $item->price,
-                    'payment_method_forecast'=> 'Dinheiro',
-                    'notes_forecast'         => null,
-                    'input_data'             => $data,
-                    'status'                 => 'forecasted',
-                    'user_id'                => Auth::id(),
+                    ]]),
+                    'total_forecast'          => $item->price,
+                    'payment_method_forecast' => 'Dinheiro',
+                    'notes_forecast'          => null,
+                    'input_data'              => json_encode($data),
+                    'status'                  => 'forecasted',
+                    'user_id'                 => Auth::id(),
                 ];
             }
         }
@@ -126,7 +129,7 @@ class OrderForecastController extends Controller
         }
 
         $result = OrderForecast::where('entity_name', $data['entity_name'])
-            ->where('entity_id', $data['entity_id'])
+            ->where('entity_id',   $data['entity_id'])
             ->whereBetween('forecast_date', [$start->toDateString(), $end->toDateString()])
             ->orderBy('forecast_date')
             ->orderBy('forecast_time')
