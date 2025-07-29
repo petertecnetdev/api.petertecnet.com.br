@@ -79,12 +79,12 @@ class OrderForecastController extends Controller
             foreach ($period as $date) {
                 $forecastDate = $date->toDateString();
 
-                // Nunca deleta previsões antigas!
+                // Não deleta previsões antigas (mantém histórico)
                 // Gera e salva previsões para cada dia do período
                 $forecasts = $this->generateForecastList($historyOrders, $products, $forecastDate, $entityId);
 
                 foreach ($forecasts as $f) {
-                    // Atualiza apenas se for exatamente igual (forecast_date, forecast_time, entity_id)
+                    // Atualiza ou cria, garantindo unicidade por data, hora e estabelecimento
                     OrderForecast::updateOrCreate([
                         'entity_id' => $entityId,
                         'forecast_date' => $f['forecast_date'],
@@ -96,7 +96,7 @@ class OrderForecastController extends Controller
 
             DB::commit();
 
-            // Carrega previsões recém-geradas do banco (todas do período)
+            // Carrega previsões recém-geradas para o período solicitado
             $outputForecasts = OrderForecast::where('entity_id', $entityId)
                 ->whereBetween('forecast_date', [$startDate->toDateString(), $endDate->toDateString()])
                 ->orderBy('forecast_date')
