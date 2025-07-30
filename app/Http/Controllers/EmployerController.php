@@ -8,6 +8,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use App\Mail\EmployerAddedMail;
+use Illuminate\Support\Facades\Mail;
 
 class EmployerController extends Controller
 {
@@ -28,6 +30,7 @@ class EmployerController extends Controller
         ];
     }
 
+
     public function store(Request $request)
     {
         try {
@@ -42,6 +45,23 @@ class EmployerController extends Controller
                 'permissions' => 'nullable|array',
             ], $this->getValidationMessages());
 
+            $establishment = \App\Models\Establishment::find($validated['establishment_id']);
+
+            if (!$establishment || $establishment->user_id !== Auth::id()) {
+                return response()->json([
+                    'error' => 'Apenas o proprietário do estabelecimento pode associar funcionários.'
+                ], 403);
+            }
+
+            $exists = Employer::where('user_id', $validated['user_id'])
+                ->where('establishment_id', $validated['establishment_id'])
+                ->exists();
+            if ($exists) {
+                return response()->json([
+                    'error' => 'Este funcionário já está associado a este estabelecimento.'
+                ], 422);
+            }
+
             $employer = new Employer();
             $employer->user_id = $validated['user_id'];
             $employer->establishment_id = $validated['establishment_id'];
@@ -50,6 +70,13 @@ class EmployerController extends Controller
             $employer->created_by = Auth::id();
             $employer->save();
 
+            $employer->load(['user', 'establishment']);
+
+            // Envia email para o novo colaborador
+            if ($employer->user && $employer->user->email) {
+                Mail::to($employer->user->email)
+                    ->send(new EmployerAddedMail($employer->establishment, $employer->user, $employer->role));
+            }
             return response()->json([
                 'message' => 'Funcionário associado com sucesso ao estabelecimento.',
                 'employer' => $employer,
@@ -64,4 +91,5 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao associar o funcionário.'], 500);
         }
     }
+
 }
