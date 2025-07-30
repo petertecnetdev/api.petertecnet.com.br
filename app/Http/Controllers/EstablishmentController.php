@@ -378,19 +378,17 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar os estabelecimentos.'], 500);
         }
     }
-
-    public function listByCategory(Request $request)
-    {
-        $category = $request->query('category');
-        $query = Establishment::query();
-        if ($category) {
-            $query->where('category', $category);
-        }
-        $establishments = $query->paginate(10);
-        return response()->json([
-            'message' => 'Estabelecimentos listados por categoria com sucesso.',
-            'establishments' => $establishments
-        ], 200);
+public function listByCategory($category)
+{
+    $query = Establishment::query();
+    if ($category) {
+        $query->where('category', $category);
     }
+    $establishments = $query->paginate(10);
+    return response()->json([
+        'message' => 'Estabelecimentos listados por categoria com sucesso.',
+        'establishments' => $establishments
+    ], 200);
+}
 
 }
