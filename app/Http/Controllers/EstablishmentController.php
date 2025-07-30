@@ -266,31 +266,34 @@ class EstablishmentController extends Controller
         }
     }
 
-    public function listByUser(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-
-            if (!$user->hasPermission('establishment_list')) {
-                return response()->json(['error' => 'Você não tem permissão para listar seus estabelecimentos.'], 403);
-            }
-
-            $establishments = Establishment::where('user_id', $user->id)->paginate(10);
-
-            return response()->json([
-                'message' => 'Estabelecimentos listados com sucesso.',
-                'establishments' => $establishments,
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
+   public function listByUser(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        $query = Establishment::where('user_id', $user->id);
+
+        // Filtra por categoria se informada
+        if ($request->has('category')) {
+            $query->where('category', $request->category);
+        }
+
+        $establishments = $query->paginate(10);
+
+        return response()->json([
+            'message' => 'Estabelecimentos listados com sucesso.',
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
     }
+}
+
     public function view($slug)
     {
         try {
