@@ -394,4 +394,32 @@ public function listByCategory($category)
     ], 200);
 }
 
+public function listMyByCategory(Request $request, $category)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        // Só do usuário autenticado e filtrando a categoria
+        $query = Establishment::where('user_id', $user->id)
+            ->where('category', $category);
+
+        // Se quiser paginação, pode ajustar o número de itens por página aqui
+        $establishments = $query->paginate(10);
+
+        return response()->json([
+            'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
+    }
+}
+
+
 }
