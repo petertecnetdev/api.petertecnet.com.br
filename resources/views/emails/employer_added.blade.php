@@ -7,14 +7,14 @@
   <style>
     body {
       font-family: Arial, sans-serif;
-      background-color: rgb(0, 0, 0);
+      background-color: #000;
       margin: 0;
       padding: 0;
       color: #fff;
     }
     .email-wrapper {
       width: 100%;
-      background-color: rgb(0, 0, 0);
+      background-color: #000;
       color: #fff;
       padding: 30px 0;
       border: 1px solid #07f7ff;
@@ -61,7 +61,7 @@
     .btn-acessar {
       display: inline-block;
       text-decoration: none;
-      background-color: rgb(0, 0, 0);
+      background-color: #000;
       color: #fff;
       padding: 12px 30px;
       border-radius: 30px;
@@ -109,7 +109,7 @@
       </div>
       <!-- Conteúdo -->
       <div class="content">
-        <h2>Olá {{ $barber->first_name }},</h2>
+        <h2>Olá {{ $employer->first_name }},</h2>
         <p>
           Você foi associado ao estabelecimento <strong>{{ $establishment->name }}</strong> e agora poderá acessar diversas funcionalidades,
           como cadastrar serviços, gerenciar comissões, acompanhar agendamentos e visualizar avaliações.
@@ -117,6 +117,13 @@
         <p>
           Estamos muito felizes em tê-lo(a) conosco. Faça parte da nossa equipe e otimize sua rotina com as nossas ferramentas.
         </p>
+        <a href="{{ env('FRONTEND_URL', 'https://plat.petertecnet.com.br') }}/login" class="btn-acessar">
+          Acessar Plataforma
+        </a>
+      </div>
+      <div class="footer">
+        Equipe Buddy’s Royale • Todos os direitos reservados
+      </div>
     </div>
   </div>
 </body>
