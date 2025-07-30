@@ -15,7 +15,7 @@ class EstablishmentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:api')->except(['view']);
+        $this->middleware('auth:api')->except(['view', 'listByCategory', 'show', 'list']);
     }
 
     protected function getValidationMessages()
@@ -379,7 +379,7 @@ class EstablishmentController extends Controller
         }
     }
 
-  public function listByCategory(Request $request)
+    public function listByCategory(Request $request)
     {
         $category = $request->query('category');
         $query = Establishment::query();
