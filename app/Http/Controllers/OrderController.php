@@ -204,52 +204,57 @@ class OrderController extends Controller
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
      */
-    public function listByEntity(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-            // opcional: checar permissão, ex:
-            // if (! $user->hasPermission('order_list')) {
-            //     return response()->json(['error' => 'Você não tem permissão para listar pedidos.'], 403);
-            // }
-
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-            ], $this->getValidationMessages());
-
-            $orders = Order::where('app_id', $data['app_id'])
-                ->where('entity_name', $data['entity_name'])
-                ->where('entity_id', $data['entity_id'])
-                ->orderBy('order_datetime', 'desc')
-                ->with([
-                    'items.item',
-                    'items.modifiers.modifier'
-                ])
-                ->get();
-
-            if ($orders->isEmpty()) {
-                return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-            }
-
-            return response()->json([
-                'message' => 'Pedidos listados com sucesso.',
-                'orders' => $orders
-            ], 200);
-        } catch (ValidationException $e) {
-            Log::warning('Erro de validação ao listar pedidos por entidade.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao listar pedidos por entidade: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
+   public function listByEntity(Request $request)
+{
+    try {
+        if (! Auth::check()) {
+            Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        // opcional: checar permissão...
+
+        $data = $request->validate([
+            'app_id'       => 'required|integer|exists:applications,id',
+            'entity_name'  => 'required|string|max:255',
+            'entity_id'    => 'required|integer',
+        ], $this->getValidationMessages());
+
+        $orders = Order::with([
+                'items.item',
+                'items.modifiers.modifier',
+                // carrega quem criou o registro
+                'creator:id,name,email,cpf',
+                // carrega o atendente/provider
+                'attendant:id,name,email,cpf',
+                // carrega o cliente vinculado, se houver
+                'client:id,name,email,cpf',
+            ])
+            ->where('app_id', $data['app_id'])
+            ->where('entity_name', $data['entity_name'])
+            ->where('entity_id', $data['entity_id'])
+            ->orderBy('order_datetime', 'desc')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'orders'  => $orders,
+        ], 200);
+
+    } catch (ValidationException $e) {
+        Log::warning('Erro de validação ao listar pedidos por entidade.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar pedidos por entidade: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
     }
+}
 
     /**
      * Exibe um único pedido para impressão.

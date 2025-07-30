@@ -88,14 +88,6 @@ class Item extends Model
         return $this->belongsTo(Establishment::class, 'entity_id');
     }
 
-    /**
-     * Relacionamento com Barbershop.
-     * OBS: filtrar por entity_name='barbershop' no controller, não aqui.
-     */
-    public function barbershop(): BelongsTo
-    {
-        return $this->belongsTo(Barbershop::class, 'entity_id');
-    }
 
     /**
      * Verifica disponibilidade.
