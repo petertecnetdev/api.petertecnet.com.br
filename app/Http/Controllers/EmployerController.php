@@ -30,7 +30,34 @@ class EmployerController extends Controller
         ];
     }
 
+    // Lista todos os colaboradores de um estabelecimento do proprietário autenticado
+    public function index(Request $request, $establishment_id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            $establishment = Establishment::find($establishment_id);
 
+            if (!$establishment || $establishment->user_id !== Auth::id()) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
+            $employers = Employer::with('user')
+                ->where('establishment_id', $establishment_id)
+                ->get();
+
+            return response()->json([
+                'message' => 'Funcionários listados com sucesso.',
+                'employers' => $employers,
+            ], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar funcionários: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao listar funcionários.'], 500);
+        }
+    }
+
+    // Adiciona um colaborador (já tratado e-mail)
     public function store(Request $request)
     {
         try {
@@ -45,7 +72,7 @@ class EmployerController extends Controller
                 'permissions' => 'nullable|array',
             ], $this->getValidationMessages());
 
-            $establishment = \App\Models\Establishment::find($validated['establishment_id']);
+            $establishment = Establishment::find($validated['establishment_id']);
 
             if (!$establishment || $establishment->user_id !== Auth::id()) {
                 return response()->json([
@@ -92,4 +119,80 @@ class EmployerController extends Controller
         }
     }
 
+    // Mostra um colaborador específico
+    public function show($id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            $employer = Employer::with(['user', 'establishment'])->find($id);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+            if ($employer->establishment->user_id !== Auth::id()) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+            return response()->json(['employer' => $employer], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao consultar colaborador: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao consultar colaborador.'], 500);
+        }
+    }
+
+    // Atualiza colaborador (ex: papel ou permissões)
+    public function update(Request $request, $id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            $employer = Employer::with('establishment')->find($id);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+            if ($employer->establishment->user_id !== Auth::id()) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+            $validated = $request->validate([
+                'role' => 'nullable|string|max:100',
+                'permissions' => 'nullable|array',
+            ]);
+            $employer->role = $validated['role'] ?? $employer->role;
+            $employer->permissions = $validated['permissions'] ?? $employer->permissions;
+            $employer->save();
+
+            $employer->load(['user', 'establishment']);
+
+            return response()->json(['message' => 'Colaborador atualizado com sucesso.', 'employer' => $employer], 200);
+        } catch (ValidationException $e) {
+            Log::error('Erro de validação ao atualizar funcionário.', ['errors' => $e->errors()]);
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro ao atualizar colaborador: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao atualizar colaborador.'], 500);
+        }
+    }
+
+    // Remove colaborador
+    public function destroy($id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+            $employer = Employer::with('establishment')->find($id);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+            if ($employer->establishment->user_id !== Auth::id()) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+            $employer->delete();
+            return response()->json(['message' => 'Colaborador removido com sucesso.'], 200);
+        } catch (\Exception $e) {
+            Log::error('Erro ao remover colaborador: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao remover colaborador.'], 500);
+        }
+    }
 }

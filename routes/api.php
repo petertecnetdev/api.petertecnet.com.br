@@ -263,18 +263,7 @@ Route::group([
 });
 
 
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'employer'
-], function () {
-    Route::get('/',                         [EmployerController::class, 'index'])              ->name('employer.list');
-    Route::get('/show/{id}',                [EmployerController::class, 'show'])               ->whereNumber('id')->name('employer.show');
-    Route::post('/',                        [EmployerController::class, 'store'])              ->name('employer.store');
-    Route::post('/{id}',                    [EmployerController::class, 'update'])             ->whereNumber('id')->name('employer.update');
-    Route::delete('/{id}',                  [EmployerController::class, 'destroy'])            ->whereNumber('id')->name('employer.destroy');
-    Route::get('/listbyestablishment',      [EmployerController::class, 'listByEstablishment'] )->name('employer.listByEstablishment');
-    Route::get('/listbyuser',               [EmployerController::class, 'listByUser']          )->name('employer.listByUser');
-});
+
 // Rotas para OrderForecastController
 Route::group([
     'middleware' => ['api', 'auth:api'],
@@ -284,4 +273,21 @@ Route::group([
     Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
     // Gerar previsões para intervalo de datas e entidade (sem deletar registros antigos)
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
+});
+
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix' => 'employer'
+], function () {
+    // Listar todos os colaboradores de um estabelecimento (do dono)
+    Route::get('/list/{establishment_id}', [EmployerController::class, 'index'])->name('employer.index');
+    // Adicionar colaborador (só dono pode adicionar)
+    Route::post('/add', [EmployerController::class, 'store'])->name('employer.store');
+    // Ver colaborador específico
+    Route::get('/{id}', [EmployerController::class, 'show'])->name('employer.show');
+    // Atualizar colaborador (função/permissões)
+    Route::put('/{id}', [EmployerController::class, 'update'])->name('employer.update');
+    // Remover colaborador
+    Route::delete('/{id}', [EmployerController::class, 'destroy'])->name('employer.destroy');
 });
