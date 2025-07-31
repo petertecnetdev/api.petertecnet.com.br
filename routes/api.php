@@ -163,7 +163,7 @@ Route::group([
     Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
     Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
 
-    // disponibilidade de horÃ¡rios para um barbeiro em uma data
+    // disponibilidade de horários para um barbeiro em uma data
     Route::get('/availability', [AppointmentController::class, 'availability'])->name('appointment.availability');
 
     Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
@@ -213,12 +213,7 @@ Route::group([
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
 
-<<<<<<< HEAD
-});
-Route::prefix('establishment')
-=======
 });Route::prefix('establishment')
->>>>>>> develop
     ->middleware('api')
     ->group(function () {
         Route::get('/',                          [EstablishmentController::class, 'list'])               ->name('establishment.list');
@@ -230,20 +225,12 @@ Route::prefix('establishment')
 Route::prefix('establishment')
     ->middleware(['api', 'auth:api'])
     ->group(function () {
-<<<<<<< HEAD
-        Route::post('/',                        [EstablishmentController::class, 'store'])              ->name('establishment.store');
-        Route::post('/{id}',                    [EstablishmentController::class, 'update'])             ->name('establishment.update');
-        Route::delete('/{id}',                  [EstablishmentController::class, 'destroy'])            ->name('establishment.destroy');
-        Route::get('/my',                       [EstablishmentController::class, 'myEstablishments'])   ->name('establishment.my');
-        Route::get('/user',                     [EstablishmentController::class, 'listByUser'])         ->name('establishment.listByUser');
-=======
         Route::post('/',                        [EstablishmentController::class, 'store'])                 ->name('establishment.store');
         Route::post('/{id}',                    [EstablishmentController::class, 'update'])                ->name('establishment.update');
         Route::delete('/{id}',                  [EstablishmentController::class, 'destroy'])               ->name('establishment.destroy');
         Route::get('/my',                       [EstablishmentController::class, 'myEstablishments'])      ->name('establishment.my');
         Route::get('/user',                     [EstablishmentController::class, 'listByUser'])            ->name('establishment.listByUser');
         Route::get('/my/category/{category}',   [EstablishmentController::class, 'listMyByCategory'])      ->name('establishment.listMyByCategory');
->>>>>>> develop
     });
 
 
@@ -283,28 +270,16 @@ Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'order-forecast',
 ], function () {
-    // Listar previsÃµes por intervalo de datas e entidade
+    // Listar previsões por intervalo de datas e entidade
     Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
-    // Gerar previsÃµes para intervalo de datas e entidade (sem deletar registros antigos)
+    // Gerar previsões para intervalo de datas e entidade (sem deletar registros antigos)
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
-<<<<<<< HEAD
-// Rotas para OrderForecastController
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'order-forecast',
-], function () {
-    // Listar previsÃµes por intervalo de datas e entidade
-    Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
-    // Gerar previsÃµes para intervalo de datas e entidade (sem deletar registros antigos)
-    Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
-=======
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'employer'
 ], function () {
     Route::get('/list/{establishment_id}', [EmployerController::class, 'list'])->name('employer.list');
->>>>>>> develop
 });
 
