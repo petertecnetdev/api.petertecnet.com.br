@@ -225,11 +225,11 @@ class OrderController extends Controller
                 'items.item',
                 'items.modifiers.modifier',
                 // carrega quem criou o registro
-                'creator:id,name,email,cpf',
+                'creator:id,first_name,email,cpf',
                 // carrega o atendente/provider
-                'attendant:id,name,email,cpf',
+                'attendant:id,first_name,email,cpf',
                 // carrega o cliente vinculado, se houver
-                'client:id,name,email,cpf',
+                'client:id,first_name,email,cpf',
             ])
             ->where('app_id', $data['app_id'])
             ->where('entity_name', $data['entity_name'])
