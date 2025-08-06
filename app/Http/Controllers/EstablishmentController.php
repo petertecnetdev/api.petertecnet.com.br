@@ -162,51 +162,52 @@ class EstablishmentController extends Controller
                 return response()->json(['error' => 'Estabelecimento não encontrado com o ID fornecido.'], 404);
             }
 
+            if ($establishment->user_id !== $user->id) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
             $validatedData = $request->validate([
-                'name' => 'sometimes|required|string|max:255',
-                'email' => 'nullable|email|max:255',
-                'phone' => 'nullable|string|max:20',
-                'description' => 'nullable|string|max:2500',
-                'address' => 'nullable|string|max:255',
-                'city' => 'nullable|string|max:100',
-                'cep' => 'nullable|string|max:10',
-                'website_url' => 'nullable|string',
-                'location' => 'nullable|string',
-                'instagram_url' => 'nullable|string',
-                'logo' => 'nullable|image|max:1255',
-                'background' => 'nullable|image|max:1255',
+                'name'           => 'sometimes|required|string|max:255',
+                'email'          => 'nullable|email|max:255',
+                'phone'          => 'nullable|string|max:20',
+                'description'    => 'nullable|string|max:2500',
+                'address'        => 'nullable|string|max:255',
+                'city'           => 'nullable|string|max:100',
+                'cep'            => 'nullable|string|max:10',
+                'website_url'    => 'nullable|string',
+                'location'       => 'nullable|string',
+                'instagram_url'  => 'nullable|string',
+                'logo'           => 'nullable|image|max:1255',
+                'background'     => 'nullable|image|max:1255',
             ], $this->getValidationMessages());
 
             $establishment->fill($validatedData);
-            $establishment->updated_by = $user->id ?? null;
+            $establishment->updated_by = $user->id;
 
             if ($request->hasFile('logo')) {
-                $destinationPath = public_path('images');
-                $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-                $request->file('logo')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(150, 150);
-                $image->save();
-                $establishment->logo = 'images/' . $imageName;
+                $dest = public_path('images');
+                $name = uniqid('logo_').'.'.$request->file('logo')->getClientOriginalExtension();
+                $request->file('logo')->move($dest, $name);
+                Image::make("$dest/$name")->fit(150, 150)->save();
+                $establishment->logo = "images/$name";
             }
 
             if ($request->hasFile('background')) {
-                $destinationPath = public_path('images');
-                $imageName = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
-                $request->file('background')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(1920, 600);
-                $image->save();
-                $establishment->background = 'images/' . $imageName;
+                $dest = public_path('images');
+                $name = uniqid('background_').'.'.$request->file('background')->getClientOriginalExtension();
+                $request->file('background')->move($dest, $name);
+                Image::make("$dest/$name")->fit(1920, 600)->save();
+                $establishment->background = "images/$name";
             }
 
-            if ($request->has('name')) {
-                $slug = Str::slug($request->input('name'));
-                $count = Establishment::where('slug', $slug)->where('id', '!=', $establishment->id)->count();
-                if ($count > 0) {
-                    $slug = $slug . '-' . ($count + 1);
-                }
-                $establishment->slug = $slug;
+            if ($request->filled('name')) {
+                $slugBase = Str::slug($request->input('name'));
+                $count = Establishment::where('slug', $slugBase)
+                    ->where('id', '!=', $establishment->id)
+                    ->count();
+                $establishment->slug = $count
+                    ? "{$slugBase}-".($count + 1)
+                    : $slugBase;
             }
 
             $establishment->save();
@@ -214,18 +215,20 @@ class EstablishmentController extends Controller
             $interaction = new Interaction();
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'Update';
-            $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuário " . $user->first_name . " atualizou o estabelecimento " . $establishment->name . ".";
             $interaction->entity_type = 'establishment';
+            $interaction->entity_id = $establishment->id;
+            $interaction->content = "O usuário {$user->first_name} atualizou o estabelecimento {$establishment->name}.";
             $interaction->save();
 
-            return response()->json(['message' => 'Estabelecimento atualizado com sucesso.', 'establishment' => $establishment], 200);
-
+            return response()->json([
+                'message' => 'Estabelecimento atualizado com sucesso.',
+                'establishment' => $establishment,
+            ], 200);
         } catch (ValidationException $e) {
             Log::error('Erro de validação ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('Erro ao atualizar estabelecimento: ' . $e->getMessage());
+            Log::error('Erro ao atualizar estabelecimento: '.$e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
         }
     }
