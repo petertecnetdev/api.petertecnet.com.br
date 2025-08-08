@@ -42,9 +42,10 @@ class EmployerController extends Controller
      */
     public function list(Request $request)
     {
+        Log::info('Employer.list called', ['user_id' => Auth::id(), 'payload' => $request->all()]);
         try {
             if (!Auth::check()) {
-                Log::warning('Tentativa de listagem sem autenticação.');
+                Log::warning('Tentativa de listagem sem autenticação.', ['payload' => $request->all()]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
@@ -56,6 +57,7 @@ class EmployerController extends Controller
             $est = Establishment::find($data['establishment_id']);
 
             if ($est->user_id !== $user->id) {
+                Log::warning('Acesso negado na listagem de colaboradores', ['establishment_id' => $est->id, 'user_id' => $user->id]);
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
@@ -63,6 +65,7 @@ class EmployerController extends Controller
                 ->where('establishment_id', $est->id)
                 ->get();
 
+            Log::info('Colaboradores listados com sucesso', ['establishment_id' => $est->id, 'count' => $employers->count()]);
             return response()->json([
                 'message'       => 'Colaboradores listados com sucesso.',
                 'employers'     => $employers,
@@ -70,10 +73,11 @@ class EmployerController extends Controller
             ], 200);
 
         } catch (ValidationException $ve) {
+            Log::error('ValidationException em Employer.list', ['errors' => $ve->errors(), 'payload' => $request->all()]);
             return response()->json(['errors' => $ve->errors()], 422);
 
         } catch (\Exception $e) {
-            Log::error('Erro ao listar colaboradores: ' . $e->getMessage());
+            Log::error('Exception em Employer.list', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
         }
     }
@@ -84,9 +88,10 @@ class EmployerController extends Controller
      */
     public function store(Request $request)
     {
+        Log::info('Employer.store called', ['user_id' => Auth::id(), 'payload' => $request->all()]);
         try {
             if (!Auth::check()) {
-                Log::warning('Tentativa de cadastro sem autenticação.');
+                Log::warning('Tentativa de cadastro sem autenticação.', ['payload' => $request->all()]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
@@ -101,12 +106,14 @@ class EmployerController extends Controller
             $user = Auth::user();
             $est = Establishment::find($data['establishment_id']);
             if ($est->user_id !== $user->id) {
+                Log::warning('Acesso negado no cadastro de colaborador', ['establishment_id' => $est->id, 'user_id' => $user->id]);
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
             // busca usuário por email
             $targetUser = User::where('email', $data['email'])->first();
             if (!$targetUser) {
+                Log::warning('Usuário não encontrado para adicionar', ['email' => $data['email']]);
                 return response()->json(['error' => 'Usuário com este email não encontrado.'], 404);
             }
 
@@ -115,6 +122,7 @@ class EmployerController extends Controller
                     ->where('user_id', $targetUser->id)
                     ->exists()
             ) {
+                Log::warning('Tentativa de duplicar colaborador', ['establishment_id' => $est->id, 'user_id' => $targetUser->id]);
                 return response()->json([
                     'error' => 'Este usuário já é colaborador deste estabelecimento.'
                 ], 409);
@@ -136,6 +144,7 @@ class EmployerController extends Controller
                 ->send(new NewEmployerCollaborator($est, $emp));
             Mail::to($user->email)
                 ->send(new OwnerNotifiedNewCollaborator($est, $emp));
+            Log::info('Emails enviados para novo colaborador e proprietário', ['collaborator_email' => $targetUser->email, 'owner_email' => $user->email]);
 
             return response()->json([
                 'message'       => 'Colaborador adicionado com sucesso.',
@@ -144,10 +153,11 @@ class EmployerController extends Controller
             ], 201);
 
         } catch (ValidationException $ve) {
+            Log::error('ValidationException em Employer.store', ['errors' => $ve->errors(), 'payload' => $request->all()]);
             return response()->json(['errors' => $ve->errors()], 422);
 
         } catch (\Exception $e) {
-            Log::error('Erro ao cadastrar colaborador: ' . $e->getMessage());
+            Log::error('Exception em Employer.store', ['message' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Erro ao cadastrar colaborador.'], 500);
         }
     }
