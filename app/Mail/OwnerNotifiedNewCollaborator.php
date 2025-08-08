@@ -2,8 +2,6 @@
 
 namespace App\Mail;
 
-use App\Models\Establishment;
-use App\Models\Employer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -14,10 +12,10 @@ class OwnerNotifiedNewCollaborator extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public Establishment $establishment;
-    public Employer      $employer;
+    public $establishment;
+    public $employer;
 
-    public function __construct(Establishment $establishment, Employer $employer)
+    public function __construct($establishment, $employer)
     {
         $this->establishment = $establishment;
         $this->employer      = $employer;
@@ -25,24 +23,37 @@ class OwnerNotifiedNewCollaborator extends Mailable
 
     public function build(): self
     {
-        // Codifica tudo em UTF-8
-        $establishmentName  = mb_convert_encoding($this->establishment->name,      'UTF-8', 'auto');
-        $collaboratorName   = mb_convert_encoding($this->employer->user->first_name,'UTF-8', 'auto');
-        $collaboratorEmail  = mb_convert_encoding($this->employer->user->email,     'UTF-8', 'auto');
-        $role               = mb_convert_encoding($this->employer->role,            'UTF-8', 'auto');
-        $subject            = mb_convert_encoding("Novo colaborador em {$establishmentName}", 'UTF-8', 'auto');
+        $viewData = [
+            'establishmentName'  => $this->establishment->name,
+            'collaboratorName'   => $this->employer->user->first_name,
+            'collaboratorEmail'  => $this->employer->user->email,
+            'role'               => $this->employer->role,
+        ];
+
+        $html = view('emails.owner_notified_new_collaborator', $viewData)
+                ->render();
+        $html = mb_convert_encoding($html, 'UTF-8', 'auto');
+
+        $subject = mb_convert_encoding(
+            "Novo colaborador em {$viewData['establishmentName']}",
+            'UTF-8',
+            'auto'
+        );
+
+        \Log::info('Mail HTML OwnerNotifiedNewCollaborator:', ['html' => substr($html,0,500)]);
 
         return $this
             ->from(config('mail.from.address'), config('mail.from.name'))
             ->subject($subject)
-            ->view('emails.owner_notified_new_collaborator')
-            ->with(compact('establishmentName','collaboratorName','collaboratorEmail','role'))
+            ->html($html)
             ->withSwiftMessage(function (Swift_Mime_SimpleMessage $message) {
                 $message->setCharset('UTF-8');
                 $message->getHeaders()
                         ->removeAll('Content-Type')
                         ->addTextHeader('Content-Type', 'text/html; charset=UTF-8');
-                $message->setEncoder(new Swift_Mime_ContentEncoder_PlainContentEncoder('8bit','UTF-8'));
+                $message->setEncoder(
+                    new Swift_Mime_ContentEncoder_PlainContentEncoder('8bit','UTF-8')
+                );
             });
     }
 }
