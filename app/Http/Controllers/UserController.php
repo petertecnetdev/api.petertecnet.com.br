@@ -337,4 +337,76 @@ class UserController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao deletar o usuário.'], 500);
         }
     }
+
+    
+public function search(Request $request)
+{
+    Log::info('User.search start', [
+        'user_id' => Auth::id(),
+        'query'   => $request->all(),
+    ]);
+
+    try {
+        // Autenticação
+        $this->getAuthenticatedUser();
+
+        // validação — parâmetro único "q"
+        $request->validate([
+            'q' => 'required|string|max:255',
+        ], [
+            'q.required' => 'Você precisa informar algo para buscar.',
+            'q.string'   => 'O termo de busca deve ser uma string.',
+            'q.max'      => 'O termo de busca pode ter no máximo 255 caracteres.',
+        ]);
+
+        $q = $request->input('q');
+        Log::debug('User.search: termo de busca', ['q' => $q]);
+
+        // Monta a query dinâmica
+        $users = User::query()
+            ->where(function ($builder) use ($q) {
+                // busca exata por ID
+                if (ctype_digit($q)) {
+                    $builder->orWhere('id', (int) $q);
+                }
+                // busca parcial por email, cpf, nome
+                $builder->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('cpf',   'like', "%{$q}%")
+                        ->orWhere('first_name', 'like', "%{$q}%")
+                        ->orWhere('last_name',  'like', "%{$q}%");
+            })
+            ->with('profile') // se quiser trazer relacionamento
+            ->orderBy('first_name')
+            ->paginate(15);
+
+        Log::info('User.search success', [
+            'q'      => $q,
+            'count'  => $users->total(),
+            'pages'  => $users->lastPage(),
+        ]);
+
+        return response()->json([
+            'message' => 'Busca concluída com sucesso.',
+            'query'   => $q,
+            'results' => $users,
+        ], 200);
+
+    } catch (ValidationException $ve) {
+        Log::warning('ValidationException em User.search', [
+            'errors' => $ve->errors(),
+            'query'  => $request->all(),
+        ]);
+        return response()->json(['errors' => $ve->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Exception em User.search', [
+            'message' => $e->getMessage(),
+            'trace'   => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Ocorreu um erro ao buscar usuários.',
+            'details' => $e->getMessage(),
+        ], 500);
+    }
+}
 }

@@ -39,14 +39,19 @@ Route::group([
     Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])
         ->middleware('auth:api')
         ->name('resendVerificationCode');
-});
-
+});// Autenticação via Google
 Route::post('auth/google', [AuthController::class, 'googleAuth']);
 
+// Rotas de usuário
 Route::group([
     'middleware' => 'api',
     'prefix' => 'user'
 ], function ($router) {
+    // Busca por vários campos (id, email, cpf, nome, etc.)
+    Route::get('search', [UserController::class, 'search'])
+         ->middleware('auth:api')
+         ->name('user.search');
+
     Route::get('/', [UserController::class, 'list'])->name('user.list');
     Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
     Route::get('/{userName}', [UserController::class, 'view'])->name('user.view');
