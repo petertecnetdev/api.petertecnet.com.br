@@ -296,31 +296,27 @@ class EstablishmentController extends Controller
         }
     }
 
-  public function view($slug)
+ public function view($slug)
 {
     try {
         $user = Auth::user();
 
-        $establishment = Establishment::where('slug', $slug)->first();
+        $establishment = Establishment::with([
+            'items', // traz os itens do cardápio automaticamente
+            'employers.user:id,first_name,last_name,user_name,avatar,email' // colaboradores com dados do user
+        ])->where('slug', $slug)->first();
+
         if (!$establishment) {
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        // Itens do cardápio
-        $items = $establishment->items()->get();
-
-        // Outros estabelecimentos para sugestão
+        // Estabelecimentos para sugestão
         $otherEstablishments = Establishment::where('slug', '!=', $slug)
             ->inRandomOrder()
             ->limit(3)
             ->get(['name', 'slug', 'logo']);
 
-        // Colaboradores (employers) com dados do usuário
-        $collaborators = Employer::where('establishment_id', $establishment->id)
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->get();
-
-        // Registrar visualização (se autenticado)
+        // Registro de visualização (se autenticado)
         if ($user) {
             Interaction::create([
                 'user_id' => $user->id,
@@ -334,9 +330,9 @@ class EstablishmentController extends Controller
         return response()->json([
             'message' => 'Estabelecimento encontrado com sucesso.',
             'establishment' => $establishment,
-            'items' => $items,
+            'items' => $establishment->items,
+            'collaborators' => $establishment->employers,
             'owner' => $establishment->user,
-            'collaborators' => $collaborators,
             'otherEstablishments' => $otherEstablishments,
         ], 200);
 
