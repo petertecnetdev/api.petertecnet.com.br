@@ -163,7 +163,7 @@ Route::group([
     Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
     Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
 
-    // disponibilidade de horÃ¡rios para um barbeiro em uma data
+    // disponibilidade de horários para um barbeiro em uma data
     Route::get('/availability', [AppointmentController::class, 'availability'])->name('appointment.availability');
 
     Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
@@ -271,9 +271,9 @@ Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'order-forecast',
 ], function () {
-    // Listar previsÃµes por intervalo de datas e entidade
+    // Listar previsões por intervalo de datas e entidade
     Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
-    // Gerar previsÃµes para intervalo de datas e entidade (sem deletar registros antigos)
+    // Gerar previsões para intervalo de datas e entidade (sem deletar registros antigos)
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
 

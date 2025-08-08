@@ -21,33 +21,33 @@ class EstablishmentController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'name.required' => 'O nome do estabelecimento Ã© obrigatÃ³rio.',
-            'name.string' => 'O nome deve ser uma string vÃ¡lida.',
-            'name.max' => 'O nome deve ter no mÃ¡ximo 255 caracteres.',
-            'email.email' => 'O email fornecido nÃ£o Ã© vÃ¡lido.',
-            'email.max' => 'O email deve ter no mÃ¡ximo 255 caracteres.',
-            'phone.string' => 'O telefone deve ser uma string vÃ¡lida.',
-            'phone.max' => 'O telefone deve ter no mÃ¡ximo 20 caracteres.',
-            'description.string' => 'A descriÃ§Ã£o deve ser uma string vÃ¡lida.',
-            'description.max' => 'A descriÃ§Ã£o deve ter no mÃ¡ximo 2500 caracteres.',
-            'address.string' => 'O endereÃ§o deve ser uma string vÃ¡lida.',
-            'address.max' => 'O endereÃ§o deve ter no mÃ¡ximo 255 caracteres.',
-            'city.string' => 'A cidade deve ser uma string vÃ¡lida.',
-            'city.max' => 'A cidade deve ter no mÃ¡ximo 100 caracteres.',
-            'cep.string' => 'O CEP deve ser uma string vÃ¡lida.',
-            'cep.max' => 'O CEP deve ter no mÃ¡ximo 10 caracteres.',
-            'website_url.url' => 'O website deve ser um URL vÃ¡lido.',
-            'location.string' => 'A localizaÃ§Ã£o deve ser uma string vÃ¡lida.',
-            'instagram_url.url' => 'O link do instagram deve ser um URL vÃ¡lido.',
-            'facebook_url.url' => 'O link do Facebook deve ser um URL vÃ¡lido.',
-            'twitter_url.url' => 'O link do Twitter deve ser um URL vÃ¡lido.',
-            'youtube_url.url' => 'O link do YouTube deve ser um URL vÃ¡lido.',
+            'name.required' => 'O nome do estabelecimento é obrigatório.',
+            'name.string' => 'O nome deve ser uma string válida.',
+            'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+            'email.email' => 'O email fornecido não é válido.',
+            'email.max' => 'O email deve ter no máximo 255 caracteres.',
+            'phone.string' => 'O telefone deve ser uma string válida.',
+            'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+            'description.string' => 'A descrição deve ser uma string válida.',
+            'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+            'address.string' => 'O endereço deve ser uma string válida.',
+            'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+            'city.string' => 'A cidade deve ser uma string válida.',
+            'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+            'cep.string' => 'O CEP deve ser uma string válida.',
+            'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+            'website_url.url' => 'O website deve ser um URL válido.',
+            'location.string' => 'A localização deve ser uma string válida.',
+            'instagram_url.url' => 'O link do instagram deve ser um URL válido.',
+            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
             'segments.array' => 'Os segmentos devem ser enviados como array.',
             'segments.*.string' => 'Cada segmento deve ser uma string.',
-            'logo.required' => 'A logo Ã© obrigatÃ³ria.',
-            'logo.image' => 'A logo deve ser uma imagem vÃ¡lida.',
-            'logo.max' => 'A logo deve ter no mÃ¡ximo 2048 KB.',
-            'background.image' => 'A imagem de fundo deve ser uma imagem vÃ¡lida.',
+            'logo.required' => 'A logo é obrigatória.',
+            'logo.image' => 'A logo deve ser uma imagem válida.',
+            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+            'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
         ];
     }
 
@@ -55,8 +55,8 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                Log::warning('Tentativa de cadastro sem autenticaÃ§Ã£o.');
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                Log::warning('Tentativa de cadastro sem autenticação.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -64,11 +64,11 @@ class EstablishmentController extends Controller
 
             if ($establishmentCount >= 1 && !$user->hasPermission('establishment_create')) {
                 return response()->json([
-                    'error' => 'VocÃª jÃ¡ possui um estabelecimento cadastrado. Para cadastrar mais, solicite permissÃ£o.'
+                    'error' => 'Você já possui um estabelecimento cadastrado. Para cadastrar mais, solicite permissão.'
                 ], 403);
             }
 
-            Log::info('UsuÃ¡rio autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
+            Log::info('Usuário autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
 
             $validatedData = $request->validate([
                 'name' => 'required|string|max:255',
@@ -129,7 +129,7 @@ class EstablishmentController extends Controller
                 'interaction_type' => 'Create',
                 'entity_id' => $establishment->id,
                 'entity_type' => 'establishment',
-                'content' => "O usuÃ¡rio {$user->first_name} criou o estabelecimento {$establishment->name}.",
+                'content' => "O usuário {$user->first_name} criou o estabelecimento {$establishment->name}.",
             ]);
 
             return response()->json([
@@ -138,7 +138,7 @@ class EstablishmentController extends Controller
             ], 201);
 
         } catch (ValidationException $e) {
-            Log::error('Erro de validaÃ§Ã£o ao cadastrar o estabelecimento.', ['errors' => $e->errors()]);
+            Log::error('Erro de validação ao cadastrar o estabelecimento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
@@ -151,7 +151,7 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -159,7 +159,7 @@ class EstablishmentController extends Controller
             try {
                 $establishment = Establishment::findOrFail($id);
             } catch (ModelNotFoundException $e) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado com o ID fornecido.'], 404);
+                return response()->json(['error' => 'Estabelecimento não encontrado com o ID fornecido.'], 404);
             }
 
             if ($establishment->user_id !== $user->id) {
@@ -225,7 +225,7 @@ class EstablishmentController extends Controller
                 'establishment' => $establishment,
             ], 200);
         } catch (ValidationException $e) {
-            Log::error('Erro de validaÃ§Ã£o ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
+            Log::error('Erro de validação ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
             Log::error('Erro ao atualizar estabelecimento: '.$e->getMessage());
@@ -237,13 +237,13 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
 
             if (!$user->hasPermission('establishment_destroy')) {
-                return response()->json(['error' => 'VocÃª nÃ£o tem permissÃ£o para deletar estabelecimentos.'], 403);
+                return response()->json(['error' => 'Você não tem permissão para deletar estabelecimentos.'], 403);
             }
 
             $establishment = Establishment::findOrFail($id);
@@ -252,16 +252,16 @@ class EstablishmentController extends Controller
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'Destroy';
             $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuÃ¡rio " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
+            $interaction->content = "O usuário " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
             $interaction->entity_type = 'establishment';
             $interaction->save();
 
             $establishment->delete();
 
-            return response()->json(['message' => 'Estabelecimento excluÃ­do com sucesso.'], 200);
+            return response()->json(['message' => 'Estabelecimento excluído com sucesso.'], 200);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
 
         } catch (\Exception $e) {
             Log::error('Erro ao excluir estabelecimento: ' . $e->getMessage());
@@ -273,7 +273,7 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -292,7 +292,7 @@ class EstablishmentController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            Log::error('Erro ao listar estabelecimentos do usuÃ¡rio: ' . $e->getMessage());
+            Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
@@ -300,13 +300,13 @@ class EstablishmentController extends Controller
     public function view($slug)
     {
         try {
-            // Auth::user() agora serÃ¡ null quando nÃ£o houver token,
-            // mas nÃ£o aborta mais a requisiÃ§Ã£o.
+            // Auth::user() agora será null quando não houver token,
+            // mas não aborta mais a requisição.
             $user = Auth::user();
 
             $establishment = Establishment::where('slug', $slug)->first();
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
 
             $items = $establishment->items()->get();
@@ -321,7 +321,7 @@ class EstablishmentController extends Controller
                     'interaction_type' => 'View',
                     'entity_id' => $establishment->id,
                     'entity_type' => 'establishment',
-                    'content' => "UsuÃ¡rio {$user->first_name} acessou {$establishment->name}"
+                    'content' => "Usuário {$user->first_name} acessou {$establishment->name}"
                 ]);
             }
 
@@ -347,7 +347,7 @@ class EstablishmentController extends Controller
             $establishment = Establishment::find($id);
 
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
 
             Interaction::create([
@@ -355,7 +355,7 @@ class EstablishmentController extends Controller
                 'entity_id' => $establishment->id,
                 'entity_type' => 'establishment',
                 'interaction_type' => 'View',
-                'content' => 'O usuÃ¡rio ' . ($user?->first_name ?? 'anÃ´nimo') . ' acessou o estabelecimento.',
+                'content' => 'O usuário ' . ($user?->first_name ?? 'anônimo') . ' acessou o estabelecimento.',
             ]);
 
             return response()->json([
@@ -401,25 +401,25 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
 
-            // SÃ³ do usuÃ¡rio autenticado e filtrando a categoria
+            // Só do usuário autenticado e filtrando a categoria
             $query = Establishment::where('user_id', $user->id)
                 ->where('category', $category);
 
-            // Se quiser paginaÃ§Ã£o, pode ajustar o nÃºmero de itens por pÃ¡gina aqui
+            // Se quiser paginação, pode ajustar o número de itens por página aqui
             $establishments = $query->paginate(10);
 
             return response()->json([
-                'message' => 'Estabelecimentos do usuÃ¡rio listados por categoria com sucesso.',
+                'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
                 'establishments' => $establishments,
             ], 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao listar estabelecimentos do usuÃ¡rio por categoria: ' . $e->getMessage());
+            \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
         }
     }

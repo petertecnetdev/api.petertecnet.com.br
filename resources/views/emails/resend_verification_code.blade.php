@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Email de Verificação - Peter Tecnet</title>
+    <title>Email de Verificação</title>
     <style>
         /* Reset básico */
         body,
@@ -98,15 +98,14 @@
 
         <p>Olá {{ $user->first_name }},</p>
         <p>
-            Obrigado por se registrar em um de nossos aplicativos! A Peter Tecnet é uma fábrica de soluções
+            Obrigado por se registrar em um de nossos aplicativos! Somos  uma fábrica de soluções
             tecnológicas,
             desenvolvendo aplicativos móveis e web que têm como foco agregar valor à sociedade, resolver problemas reais
             e gerar resultados positivos.
         </p>
         <p>
             O código de verificação abaixo é fundamental para ativar sua conta. Esse cadastro é válido para todos os
-            aplicativos
-            da Peter Tecnet, permitindo que você tenha acesso completo a nossas plataformas e recursos.
+            aplicativos, permitindo que você tenha acesso completo a nossas plataformas e recursos.
         </p>
         <div class="verification-code">{{ $verificationCode }}</div>
         <p>
@@ -118,7 +117,7 @@
         </p>
     </div>
     <div class="footer">
-        <p>© {{ date('Y') }} Peter Tecnet. Todos os direitos reservados.</p>
+        <p>© {{ date('Y') }}  Todos os direitos reservados.</p>
     </div>
 </body>
 
