@@ -67,7 +67,7 @@ class Establishment extends Model
     }
 public function employers()
 {
-    return $this->hasMany(Employer::class);
+    return $this->hasMany(Employer::class)->with('user');
 }
 
     public function getSegmentsnNamesAttribute()
