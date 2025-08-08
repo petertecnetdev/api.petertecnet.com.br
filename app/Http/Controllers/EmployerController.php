@@ -48,9 +48,7 @@ class EmployerController extends Controller
 
         try {
             if (!Auth::check()) {
-                Log::warning('Listagem não autenticada', [
-                    'payload' => $request->all(),
-                ]);
+                Log::warning('Listagem não autenticada', ['payload' => $request->all()]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
@@ -68,7 +66,7 @@ class EmployerController extends Controller
             ]);
 
             if ($est->user_id !== $user->id) {
-                Log::warning('Listagem negada - proprietário diferente', [
+                Log::warning('Listagem negada – proprietário diferente', [
                     'est_user_id' => $est->user_id,
                     'auth_user_id'=> $user->id,
                 ]);
@@ -107,7 +105,8 @@ class EmployerController extends Controller
     }
 
     /**
-     * Cadastra um colaborador em um estabelecimento via email (establishment_id no body).
+     * Cadastra um colaborador em um estabelecimento via email.
+     * Recebe establishment_id no body.
      */
     public function store(Request $request)
     {
@@ -118,9 +117,7 @@ class EmployerController extends Controller
 
         try {
             if (!Auth::check()) {
-                Log::warning('Cadastro não autenticado', [
-                    'payload' => $request->all(),
-                ]);
+                Log::warning('Cadastro não autenticado', ['payload' => $request->all()]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
@@ -142,7 +139,7 @@ class EmployerController extends Controller
             ]);
 
             if ($est->user_id !== $user->id) {
-                Log::warning('Cadastro negado - proprietário diferente', [
+                Log::warning('Cadastro negado – proprietário diferente', [
                     'est_user_id' => $est->user_id,
                     'auth_user_id'=> $user->id,
                 ]);
@@ -154,7 +151,10 @@ class EmployerController extends Controller
                 Log::warning('Usuário não encontrado para cadastro', [
                     'email' => $data['email'],
                 ]);
-                return response()->json(['error' => 'Usuário não encontrado.'], 404);
+                return response()->json([
+                    'error'   => 'Usuário não encontrado.',
+                    'details' => 'O email informado não pertence a nenhum usuário cadastrado. Peça ao colaborador para se registrar primeiro.'
+                ], 404);
             }
 
             Log::info('Usuário alvo encontrado', [
@@ -193,13 +193,13 @@ class EmployerController extends Controller
                 Mail::to($emp->user->email)
                     ->send(new NewEmployerCollaborator($est, $emp));
                 Log::info('Email NewEmployerCollaborator enviado', [
-                    'to'               => $emp->user->email,
-                    'subject'          => "Você foi adicionado(a) em {$est->name}",
+                    'to'      => $emp->user->email,
+                    'subject' => "Você foi adicionado(a) em {$est->name}",
                 ]);
             } catch (\Exception $mailEx) {
                 Log::error('Falha ao enviar NewEmployerCollaborator', [
-                    'to'      => $emp->user->email,
-                    'error'   => $mailEx->getMessage(),
+                    'to'    => $emp->user->email,
+                    'error' => $mailEx->getMessage(),
                 ]);
             }
 
@@ -207,8 +207,8 @@ class EmployerController extends Controller
                 Mail::to($user->email)
                     ->send(new OwnerNotifiedNewCollaborator($est, $emp));
                 Log::info('Email OwnerNotifiedNewCollaborator enviado', [
-                    'to'               => $user->email,
-                    'subject'          => "Novo colaborador adicionado em {$est->name}",
+                    'to'      => $user->email,
+                    'subject' => "Novo colaborador adicionado em {$est->name}",
                 ]);
             } catch (\Exception $mailEx) {
                 Log::error('Falha ao enviar OwnerNotifiedNewCollaborator', [
@@ -217,7 +217,6 @@ class EmployerController extends Controller
                 ]);
             }
 
-            // sucesso final
             Log::info('Employer.store end — sucesso', [
                 'employer_id'      => $emp->id,
                 'establishment_id' => $est->id,
