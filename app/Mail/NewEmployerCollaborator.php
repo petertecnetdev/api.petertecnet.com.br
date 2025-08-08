@@ -1,35 +1,41 @@
 <?php
-
 namespace App\Mail;
 
-use App\Models\Establishment;
-use App\Models\Employer;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
+use Swift_Mime_SimpleMessage;
 
 class NewEmployerCollaborator extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public Establishment $establishment;
-    public Employer $employer;
+    public $establishment;
+    public $employer;
 
-    public function __construct(Establishment $establishment, Employer $employer)
+    public function __construct($establishment, $employer)
     {
         $this->establishment = $establishment;
-        $this->employer = $employer;
+        $this->employer      = $employer;
     }
 
-    public function build(): self
+    public function build()
     {
         return $this
-            ->subject("Você foi adicionado como colaborador em {$this->establishment->name}")
+            ->from('no-reply@seusite.com.br', 'Sua Aplicação')
+            ->subject("Você foi adicionado(a) em ".$this->establishment->name)
             ->view('emails.new_employer_collaborator')
             ->with([
-                'establishmentName' => $this->establishment->name,
-                'role'              => $this->employer->role,
-                'userName'          => $this->employer->user->first_name,
-            ]);
+                'userName'           => $this->employer->user->first_name,
+                'establishmentName'  => $this->establishment->name,
+                'role'               => $this->employer->role,
+            ])
+            ->withSwiftMessage(function (Swift_Mime_SimpleMessage $message) {
+                // força UTF-8 no cabeçalho e corpo
+                $message->setCharset('UTF-8');
+                $message->setEncoder(
+                  new \Swift_Mime_ContentEncoder_PlainContentEncoder('8bit', 'UTF-8')
+                );
+            });
     }
 }
