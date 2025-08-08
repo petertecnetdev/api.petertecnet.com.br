@@ -23,20 +23,24 @@ class EmployerController extends Controller
     protected function getValidationMessages(): array
     {
         return [
-            'email.required'       => 'O email do usuário é obrigatório.',
-            'email.email'          => 'O email fornecido não é válido.',
-            'role.required'        => 'O cargo (role) é obrigatório.',
-            'role.string'          => 'O cargo deve ser uma string.',
-            'role.max'             => 'O cargo deve ter no máximo 50 caracteres.',
-            'permissions.array'    => 'As permissões devem ser um array.',
-            'permissions.*.string' => 'Cada permissão deve ser uma string.',
+            'establishment_id.required' => 'O ID do estabelecimento Ã© obrigatÃ³rio.',
+            'establishment_id.integer'  => 'O ID do estabelecimento deve ser um nÃºmero inteiro.',
+            'establishment_id.exists'   => 'Estabelecimento nÃ£o encontrado.',
+            'email.required'            => 'O email do usuÃ¡rio Ã© obrigatÃ³rio.',
+            'email.email'               => 'O email fornecido nÃ£o Ã© vÃ¡lido.',
+            'role.required'             => 'O cargo (role) Ã© obrigatÃ³rio.',
+            'role.string'               => 'O cargo deve ser uma string.',
+            'role.max'                  => 'O cargo deve ter no mÃ¡ximo 50 caracteres.',
+            'permissions.array'         => 'As permissÃµes devem ser um array.',
+            'permissions.*.string'      => 'Cada permissÃ£o deve ser uma string.',
         ];
     }
 
     /**
-     * Lista todos os colaboradores de um estabelecimento do proprietário autenticado.
+     * Lista todos os colaboradores de um estabelecimento,
+     * recebendo establishment_id no body.
      */
-    public function list(Request $request, $establishment_id)
+    public function list(Request $request)
     {
         try {
             if (!Auth::check()) {
@@ -44,14 +48,19 @@ class EmployerController extends Controller
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
+            $data = $request->validate([
+                'establishment_id' => 'required|integer|exists:establishments,id'
+            ], $this->getValidationMessages());
+
             $user = Auth::user();
-            $est = Establishment::find($establishment_id);
-            if (!$est || $est->user_id !== $user->id) {
+            $est = Establishment::find($data['establishment_id']);
+
+            if ($est->user_id !== $user->id) {
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
             $employers = Employer::with('user')
-                ->where('establishment_id', $establishment_id)
+                ->where('establishment_id', $est->id)
                 ->get();
 
             return response()->json([
@@ -59,6 +68,9 @@ class EmployerController extends Controller
                 'employers'     => $employers,
                 'establishment' => $est,
             ], 200);
+
+        } catch (ValidationException $ve) {
+            return response()->json(['errors' => $ve->errors()], 422);
 
         } catch (\Exception $e) {
             Log::error('Erro ao listar colaboradores: ' . $e->getMessage());
@@ -68,9 +80,9 @@ class EmployerController extends Controller
 
     /**
      * Cadastra um colaborador em um estabelecimento via email.
-     * Envia email para o colaborador e para o proprietário.
+     * Recebe establishment_id no body.
      */
-    public function store(Request $request, $establishment_id)
+    public function store(Request $request)
     {
         try {
             if (!Auth::check()) {
@@ -78,27 +90,28 @@ class EmployerController extends Controller
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
+            $data = $request->validate([
+                'establishment_id' => 'required|integer|exists:establishments,id',
+                'email'            => 'required|email',
+                'role'             => 'required|string|max:50',
+                'permissions'      => 'nullable|array',
+                'permissions.*'    => 'string',
+            ], $this->getValidationMessages());
+
             $user = Auth::user();
-            $est = Establishment::find($establishment_id);
-            if (!$est || $est->user_id !== $user->id) {
+            $est = Establishment::find($data['establishment_id']);
+            if ($est->user_id !== $user->id) {
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            $data = $request->validate([
-                'email'       => 'required|email',
-                'role'        => 'required|string|max:50',
-                'permissions' => 'nullable|array',
-                'permissions.*'=> 'string',
-            ], $this->getValidationMessages());
-
-            // busca usuário por email
+            // busca usuÃ¡rio por email
             $targetUser = User::where('email', $data['email'])->first();
             if (!$targetUser) {
                 return response()->json(['error' => 'Usuário com este email não encontrado.'], 404);
             }
 
-            // evita duplicação
-            if (Employer::where('establishment_id', $establishment_id)
+            // evita duplicaÃ§Ã£o
+            if (Employer::where('establishment_id', $est->id)
                     ->where('user_id', $targetUser->id)
                     ->exists()
             ) {
@@ -110,7 +123,7 @@ class EmployerController extends Controller
             // cria vínculo
             $emp = Employer::create([
                 'user_id'          => $targetUser->id,
-                'establishment_id' => $establishment_id,
+                'establishment_id' => $est->id,
                 'role'             => $data['role'],
                 'permissions'      => $data['permissions'] ?? [],
                 'created_by'       => $user->id,
@@ -131,7 +144,6 @@ class EmployerController extends Controller
             ], 201);
 
         } catch (ValidationException $ve) {
-            Log::error('Erro de validação ao cadastrar colaborador.', ['errors' => $ve->errors()]);
             return response()->json(['errors' => $ve->errors()], 422);
 
         } catch (\Exception $e) {
