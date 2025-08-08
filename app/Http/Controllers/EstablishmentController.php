@@ -2,8 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Establishment;
-use App\Models\Interaction;
+use App\Models\{Establishment,Interaction, Employer};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
