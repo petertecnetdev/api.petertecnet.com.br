@@ -156,7 +156,7 @@ class EmployerController extends Controller
                 'email_informado' => $data['email'],
             ]);
             return response()->json([
-                'error'   => 'Não foi possível adicionar o colaborador.',
+                'error'   =>  'Não existe usuário cadastrado com este email. Peça que o colaborador se registre antes ou verifique o email correto.',
                 'details' => 'Não existe usuário cadastrado com este email. Peça que o colaborador se registre antes ou verifique o email correto.'
             ], 404);
         }
