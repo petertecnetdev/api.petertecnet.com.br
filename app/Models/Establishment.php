@@ -65,6 +65,10 @@ class Establishment extends Model
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
+public function employers()
+{
+    return $this->hasMany(Employer::class);
+}
 
     public function getSegmentsnNamesAttribute()
     {
