@@ -146,14 +146,14 @@ class EmployerController extends Controller
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            $targetUser = User::where('email', $data['email'])->first();
+             $targetUser = User::where('email', $data['email'])->first();
             if (!$targetUser) {
                 Log::warning('Usuário não encontrado para cadastro', [
-                    'email' => $data['email'],
+                    'email_informado' => $data['email'],
                 ]);
                 return response()->json([
-                    'error'   => 'Usuário não encontrado.',
-                    'details' => 'O email informado não pertence a nenhum usuário cadastrado. Peça ao colaborador para se registrar primeiro.'
+                    'error'   => 'Não foi possível adicionar o colaborador.',
+                    'details' => 'Não existe usuário cadastrado com este email. Peça que o colaborador se registre antes ou verifique o email correto.'
                 ], 404);
             }
 
