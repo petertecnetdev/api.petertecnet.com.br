@@ -303,7 +303,7 @@ class EstablishmentController extends Controller
 
         $establishment = Establishment::with([
             'items', // traz os itens do cardápio automaticamente
-            'employers.user:id,first_name,last_name,user_name,avatar,email' // colaboradores com dados do user
+            'employers.user' // colaboradores com dados do user
         ])->where('slug', $slug)->first();
 
         if (!$establishment) {
