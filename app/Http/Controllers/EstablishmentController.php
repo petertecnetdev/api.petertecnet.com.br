@@ -411,7 +411,7 @@ public function listMyByCategory(Request $request, $category)
 
         $user = Auth::user();
 
-        // Normaliza categorias (suporta múltiplas via "barbershop,beauty")
+        // Normaliza e aceita múltiplas categorias via "barbershop,beauty"
         $cats = collect(explode(',', (string) $category))
             ->map(fn ($c) => trim($c))
             ->filter()
@@ -425,9 +425,7 @@ public function listMyByCategory(Request $request, $category)
         $sort      = (string) $request->query('sort', 'name'); // name|city|created_at
         $direction = strtolower((string) $request->query('dir', 'asc')) === 'desc' ? 'desc' : 'asc';
         $allowedSorts = ['name', 'city', 'created_at'];
-        if (!in_array($sort, $allowedSorts, true)) {
-            $sort = 'name';
-        }
+        if (!in_array($sort, $allowedSorts, true)) $sort = 'name';
 
         Log::info('listMyByCategory: iniciando consulta', [
             'user_id'        => $user->id,
@@ -449,7 +447,7 @@ public function listMyByCategory(Request $request, $category)
         }
 
         $q = Establishment::query()
-            ->select(['id', 'name', 'fantasy', 'slug', 'category', 'city', 'logo', 'created_at'])
+            ->select(['id','name','fantasy','slug','category','city','logo','created_at'])
             ->where('user_id', $user->id)
             ->where(function ($qq) use ($cats) {
                 foreach ($cats as $c) {
@@ -468,25 +466,44 @@ public function listMyByCategory(Request $request, $category)
 
         $establishments = $q->orderBy($sort, $direction)->paginate($perPage);
 
+        // Sanitiza strings com bytes inválidos para evitar "Malformed UTF-8"
+        $invalidFields = [];
+        $establishments->getCollection()->transform(function ($model) use (&$invalidFields) {
+            foreach ($model->getAttributes() as $k => $v) {
+                if (is_string($v) && !mb_check_encoding($v, 'UTF-8')) {
+                    $invalidFields[] = ['id' => $model->id, 'field' => $k];
+                    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $v);
+                    $model->setAttribute($k, $clean !== false ? $clean : $v);
+                }
+            }
+            return $model;
+        });
+        if (!empty($invalidFields)) {
+            Log::warning('listMyByCategory: atributos com UTF-8 inválido sanitizados', [
+                'user_id' => $user->id,
+                'fields'  => $invalidFields,
+            ]);
+        }
+
         Log::info('listMyByCategory: consulta concluída', [
-            'user_id'       => $user->id,
-            'cats'          => $cats,
-            'total'         => $establishments->total(),
-            'current_page'  => $establishments->currentPage(),
-            'last_page'     => $establishments->lastPage(),
+            'user_id'      => $user->id,
+            'cats'         => $cats,
+            'total'        => $establishments->total(),
+            'current_page' => $establishments->currentPage(),
+            'last_page'    => $establishments->lastPage(),
         ]);
 
         return response()->json([
-            'message'         => 'Estabelecimentos do usuário listados por categoria com sucesso.',
-            'establishments'  => $establishments,
-        ], 200);
+            'message'        => 'Estabelecimentos do usuário listados por categoria com sucesso.',
+            'establishments' => $establishments,
+        ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     } catch (\Exception $e) {
         Log::error('listMyByCategory: erro ao listar estabelecimentos por categoria', [
-            'error'   => $e->getMessage(),
-            'trace'   => $e->getTraceAsString(),
-            'user_id' => Auth::id(),
+            'error'          => $e->getMessage(),
+            'trace'          => $e->getTraceAsString(),
+            'user_id'        => Auth::id(),
             'category_param' => $category,
-            'query'   => $request->all(),
+            'query'          => $request->all(),
         ]);
         return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
     }
