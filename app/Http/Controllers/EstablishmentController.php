@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Establishment,Interaction, Employer};
+use App\Models\{Establishment, Interaction, Employer};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -20,33 +20,33 @@ class EstablishmentController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'name.required' => 'O nome do estabelecimento � obrigat�rio.',
-            'name.string' => 'O nome deve ser uma string v�lida.',
-            'name.max' => 'O nome deve ter no m�ximo 255 caracteres.',
-            'email.email' => 'O email fornecido n�o � v�lido.',
-            'email.max' => 'O email deve ter no m�ximo 255 caracteres.',
-            'phone.string' => 'O telefone deve ser uma string v�lida.',
-            'phone.max' => 'O telefone deve ter no m�ximo 20 caracteres.',
-            'description.string' => 'A descri��o deve ser uma string v�lida.',
-            'description.max' => 'A descri��o deve ter no m�ximo 2500 caracteres.',
-            'address.string' => 'O endere�o deve ser uma string v�lida.',
-            'address.max' => 'O endere�o deve ter no m�ximo 255 caracteres.',
-            'city.string' => 'A cidade deve ser uma string v�lida.',
-            'city.max' => 'A cidade deve ter no m�ximo 100 caracteres.',
-            'cep.string' => 'O CEP deve ser uma string v�lida.',
-            'cep.max' => 'O CEP deve ter no m�ximo 10 caracteres.',
-            'website_url.url' => 'O website deve ser um URL v�lido.',
-            'location.string' => 'A localiza��o deve ser uma string v�lida.',
-            'instagram_url.url' => 'O link do instagram deve ser um URL v�lido.',
-            'facebook_url.url' => 'O link do Facebook deve ser um URL v�lido.',
-            'twitter_url.url' => 'O link do Twitter deve ser um URL v�lido.',
-            'youtube_url.url' => 'O link do YouTube deve ser um URL v�lido.',
+            'name.required' => 'O nome do estabelecimento é obrigatório.',
+            'name.string' => 'O nome deve ser uma string válida.',
+            'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+            'email.email' => 'O email fornecido não é válido.',
+            'email.max' => 'O email deve ter no máximo 255 caracteres.',
+            'phone.string' => 'O telefone deve ser uma string válida.',
+            'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+            'description.string' => 'A descrição deve ser uma string válida.',
+            'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+            'address.string' => 'O endereço deve ser uma string válida.',
+            'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+            'city.string' => 'A cidade deve ser uma string válida.',
+            'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+            'cep.string' => 'O CEP deve ser uma string válida.',
+            'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+            'website_url.url' => 'O website deve ser um URL válido.',
+            'location.string' => 'A localização deve ser uma string válida.',
+            'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
+            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
             'segments.array' => 'Os segmentos devem ser enviados como array.',
             'segments.*.string' => 'Cada segmento deve ser uma string.',
-            'logo.required' => 'A logo � obrigat�ria.',
-            'logo.image' => 'A logo deve ser uma imagem v�lida.',
-            'logo.max' => 'A logo deve ter no m�ximo 2048 KB.',
-            'background.image' => 'A imagem de fundo deve ser uma imagem v�lida.',
+            'logo.required' => 'A logo é obrigatória.',
+            'logo.image' => 'A logo deve ser uma imagem válida.',
+            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+            'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
         ];
     }
 
@@ -166,18 +166,18 @@ class EstablishmentController extends Controller
             }
 
             $validatedData = $request->validate([
-                'name'           => 'sometimes|required|string|max:255',
-                'email'          => 'nullable|email|max:255',
-                'phone'          => 'nullable|string|max:20',
-                'description'    => 'nullable|string|max:2500',
-                'address'        => 'nullable|string|max:255',
-                'city'           => 'nullable|string|max:100',
-                'cep'            => 'nullable|string|max:10',
-                'website_url'    => 'nullable|string',
-                'location'       => 'nullable|string',
-                'instagram_url'  => 'nullable|string',
-                'logo'           => 'nullable|image|max:1255',
-                'background'     => 'nullable|image|max:1255',
+                'name' => 'sometimes|required|string|max:255',
+                'email' => 'nullable|email|max:255',
+                'phone' => 'nullable|string|max:20',
+                'description' => 'nullable|string|max:2500',
+                'address' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:100',
+                'cep' => 'nullable|string|max:10',
+                'website_url' => 'nullable|string',
+                'location' => 'nullable|string',
+                'instagram_url' => 'nullable|string',
+                'logo' => 'nullable|image|max:1255',
+                'background' => 'nullable|image|max:1255',
             ], $this->getValidationMessages());
 
             $establishment->fill($validatedData);
@@ -185,7 +185,7 @@ class EstablishmentController extends Controller
 
             if ($request->hasFile('logo')) {
                 $dest = public_path('images');
-                $name = uniqid('logo_').'.'.$request->file('logo')->getClientOriginalExtension();
+                $name = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
                 $request->file('logo')->move($dest, $name);
                 Image::make("$dest/$name")->fit(150, 150)->save();
                 $establishment->logo = "images/$name";
@@ -193,7 +193,7 @@ class EstablishmentController extends Controller
 
             if ($request->hasFile('background')) {
                 $dest = public_path('images');
-                $name = uniqid('background_').'.'.$request->file('background')->getClientOriginalExtension();
+                $name = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
                 $request->file('background')->move($dest, $name);
                 Image::make("$dest/$name")->fit(1920, 600)->save();
                 $establishment->background = "images/$name";
@@ -205,7 +205,7 @@ class EstablishmentController extends Controller
                     ->where('id', '!=', $establishment->id)
                     ->count();
                 $establishment->slug = $count
-                    ? "{$slugBase}-".($count + 1)
+                    ? "{$slugBase}-" . ($count + 1)
                     : $slugBase;
             }
 
@@ -227,7 +227,7 @@ class EstablishmentController extends Controller
             Log::error('Erro de valida��o ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('Erro ao atualizar estabelecimento: '.$e->getMessage());
+            Log::error('Erro ao atualizar estabelecimento: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
         }
     }
@@ -296,51 +296,51 @@ class EstablishmentController extends Controller
         }
     }
 
- public function view($slug)
-{
-    try {
-        $user = Auth::user();
+    public function view($slug)
+    {
+        try {
+            $user = Auth::user();
 
-        $establishment = Establishment::with([
-            'items', // traz os itens do cardápio automaticamente
-            'employers.user' // colaboradores com dados do user
-        ])->where('slug', $slug)->first();
+            $establishment = Establishment::with([
+                'items', // traz os itens do cardápio automaticamente
+                'employers.user' // colaboradores com dados do user
+            ])->where('slug', $slug)->first();
 
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            // Estabelecimentos para sugestão
+            $otherEstablishments = Establishment::where('slug', '!=', $slug)
+                ->inRandomOrder()
+                ->limit(3)
+                ->get(['name', 'slug', 'logo']);
+
+            // Registro de visualização (se autenticado)
+            if ($user) {
+                Interaction::create([
+                    'user_id' => $user->id,
+                    'interaction_type' => 'View',
+                    'entity_id' => $establishment->id,
+                    'entity_type' => 'establishment',
+                    'content' => "Usuário {$user->first_name} acessou {$establishment->name}"
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Estabelecimento encontrado com sucesso.',
+                'establishment' => $establishment,
+                'items' => $establishment->items,
+                'collaborators' => $establishment->employers,
+                'owner' => $establishment->user,
+                'otherEstablishments' => $otherEstablishments,
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('Erro ao buscar estabelecimento: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
         }
-
-        // Estabelecimentos para sugestão
-        $otherEstablishments = Establishment::where('slug', '!=', $slug)
-            ->inRandomOrder()
-            ->limit(3)
-            ->get(['name', 'slug', 'logo']);
-
-        // Registro de visualização (se autenticado)
-        if ($user) {
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'View',
-                'entity_id' => $establishment->id,
-                'entity_type' => 'establishment',
-                'content' => "Usuário {$user->first_name} acessou {$establishment->name}"
-            ]);
-        }
-
-        return response()->json([
-            'message' => 'Estabelecimento encontrado com sucesso.',
-            'establishment' => $establishment,
-            'items' => $establishment->items,
-            'collaborators' => $establishment->employers,
-            'owner' => $establishment->user,
-            'otherEstablishments' => $otherEstablishments,
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Erro ao buscar estabelecimento: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
     }
-}
     public function show($id)
     {
         try {
@@ -403,25 +403,43 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usu�rio n�o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            $user = Auth::user();
+            $userId = Auth::id();
+            $queryTerm = $request->query('q');               // opcional: busca
+            $sort = $request->query('sort', 'name');    // name|city|created_at
+            $direction = $request->query('dir', 'asc');      // asc|desc
+            $perPage = (int) $request->query('per_page', 10);
 
-            // S� do usu�rio autenticado e filtrando a categoria
-            $query = Establishment::where('user_id', $user->id)
-                ->where('category', $category);
+            // aceita múltiplas categorias via "barbershop,bar" e normaliza
+            $cats = collect(explode(',', (string) $category))
+                ->filter()->map(fn($c) => trim(strtolower($c)))->unique()->values()->all();
 
-            // Se quiser pagina��o, pode ajustar o n�mero de itens por p�gina aqui
-            $establishments = $query->paginate(10);
+            if (empty($cats)) {
+                return response()->json(['error' => 'Categoria inválida.'], 422);
+            }
+
+            $allowedSorts = ['name', 'city', 'created_at'];
+            if (!in_array($sort, $allowedSorts, true))
+                $sort = 'name';
+            $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
+
+            $establishments = \App\Models\Establishment::query()
+                ->select(['id', 'name', 'fantasy', 'slug', 'category', 'city', 'logo', 'created_at'])
+                ->ownedBy($userId)
+                ->categoryIn($cats)
+                ->search($queryTerm)
+                ->orderBy($sort, $direction)
+                ->paginate($perPage);
 
             return response()->json([
-                'message' => 'Estabelecimentos do usu�rio listados por categoria com sucesso.',
+                'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
                 'establishments' => $establishments,
             ], 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao listar estabelecimentos do usu�rio por categoria: ' . $e->getMessage());
+            \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
         }
     }
