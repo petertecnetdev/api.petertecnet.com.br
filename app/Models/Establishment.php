@@ -77,7 +77,7 @@ public function employers()
                        : [];
 
         if (empty($segmentsArray)) {
-            return '<i>Nenhum seguimento atribuÃ­do</i>';
+            return '<i>Nenhum seguimento atribuído</i>';
         }
 
         $names = [];
