@@ -399,49 +399,32 @@ class EstablishmentController extends Controller
         ], 200);
     }
 
-    public function listMyByCategory(Request $request, $category)
+public function listMyByCategory(Request $request, $category)
 {
     try {
         if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        $userId     = Auth::id();
-        $queryTerm  = $request->query('q');               // opcional: busca
-        $sort       = $request->query('sort', 'name');    // name|city|created_at
-        $direction  = $request->query('dir', 'asc');      // asc|desc
-        $perPage    = (int) $request->query('per_page', 10);
+        $user = Auth::user();
 
-        // aceita múltiplas categorias via "barbershop,bar" e normaliza
-        $cats = collect(explode(',', (string)$category))
-            ->filter()->map(fn($c)=>trim(strtolower($c)))->unique()->values()->all();
-
-        if (empty($cats)) {
-            return response()->json(['error' => 'Categoria inválida.'], 422);
+        $query = Establishment::where('user_id', $user->id);
+        if (!empty($category)) {
+            $query->where('category', $category);
         }
 
-        $allowedSorts = ['name','city','created_at'];
-        if (!in_array($sort, $allowedSorts, true)) $sort = 'name';
-        $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
-
-        $establishments = \App\Models\Establishment::query()
-            ->select(['id','name','fantasy','slug','category','city','logo','created_at'])
-            ->ownedBy($userId)
-            ->categoryIn($cats)
-            ->search($queryTerm)
-            ->orderBy($sort, $direction)
-            ->paginate($perPage);
+        $establishments = $query->paginate(10);
 
         return response()->json([
             'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
             'establishments' => $establishments,
         ], 200);
-
     } catch (\Exception $e) {
-        \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
+        Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
         return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
     }
 }
+
 
 
 }
