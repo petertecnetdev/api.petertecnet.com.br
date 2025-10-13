@@ -277,18 +277,14 @@ Route::group([
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
 
-// routes/api.php
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'employer'
-], function () {
-    // Lista colaboradores (establishment_id no body)
-    Route::get('/', [EmployerController::class, 'list'])
-         ->name('employer.list');
-
-    // Adiciona colaborador (establishment_id, email, role, permissions no body)
-    Route::post('/', [EmployerController::class, 'store'])
-         ->name('employer.store');
+    'prefix' => 'employer'
+], function ($router) {
+    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
+    Route::get('/', [EmployerController::class, 'list'])->name('employer.list');
+    Route::get('/show/{id}', [EmployerController::class, 'show'])->name('employer.show');
+    Route::post('/{id}', [EmployerController::class, 'update'])->name('employer.update');
+    Route::delete('/{id}', [EmployerController::class, 'destroy'])->name('employer.destroy');
 });
-
