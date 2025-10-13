@@ -38,7 +38,9 @@ class EmployerController extends Controller
 
     /**
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
-     */public function list(Request $request)
+     */
+    
+    public function list(Request $request)
 {
     Log::info('Employer.list iniciado', [
         'user_id' => Auth::id(),
@@ -127,6 +129,7 @@ class EmployerController extends Controller
         return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
     }
 }
+
 
 
 
