@@ -42,7 +42,18 @@ class EmployerController extends Controller
 
     public function list($establishment_id)
 {
-    $est = Establishment::findOrFail($establishment_id);
+    if (!is_numeric($establishment_id)) {
+        return response()->json([
+            'errors' => ['establishment_id' => ['O ID do estabelecimento deve ser numérico.']]
+        ], 422);
+    }
+
+    $est = Establishment::find($establishment_id);
+    if (!$est) {
+        return response()->json([
+            'errors' => ['establishment_id' => ['Estabelecimento não encontrado.']]
+        ], 404);
+    }
 
     $employers = Employer::with('user')
         ->where('establishment_id', $est->id)
@@ -51,8 +62,12 @@ class EmployerController extends Controller
             return [
                 'id' => $emp->id,
                 'user_id' => $emp->user_id,
-                'user_name' => optional($emp->user)->first_name ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
+                'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
+                'user_email' => isset($emp->user->email) ? mb_convert_encoding($emp->user->email, 'UTF-8', 'UTF-8') : null,
                 'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
+                'permissions' => $emp->permissions ?? [],
+                'created_at' => $emp->created_at ? $emp->created_at->toDateTimeString() : null,
+                'updated_at' => $emp->updated_at ? $emp->updated_at->toDateTimeString() : null,
             ];
         });
 
