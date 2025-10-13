@@ -278,9 +278,9 @@ Route::group([
 });
 
 
-Route::prefix('employer')
-    ->middleware(['api', 'auth:api'])
-    ->group(function () {
-        Route::post('/', [EmployerController::class, 'store'])->name(name: 'employer.store');
-         Route::get('/list/{id}', [EmployerController::class, 'list'])->name('employer.list');
-    });
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'employer'
+], function ($router) {
+    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
+});
