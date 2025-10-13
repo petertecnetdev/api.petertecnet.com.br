@@ -5,12 +5,12 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use App\Models\{Employer, User, Establishment};
 use Illuminate\Validation\ValidationException;
 use App\Mail\NewEmployerCollaborator;
 use App\Mail\InviteNewUserToEmployer;
+use Illuminate\Support\Facades\Mail;
 
 class EmployerController extends Controller
 {
@@ -25,10 +25,20 @@ class EmployerController extends Controller
         ];
     }
 
+    private function utf8ize($data)
+    {
+        if (is_array($data)) {
+            foreach ($data as $k => $v) $data[$k] = $this->utf8ize($v);
+        } elseif (is_string($data)) {
+            return mb_convert_encoding($data, 'UTF-8', 'UTF-8');
+        }
+        return $data;
+    }
+
     public function store(Request $request)
     {
         try {
-            Log::info('Iniciando a criação de um novo colaborador.');
+            Log::info('Iniciando a criação de um novo colaborador.', $this->utf8ize($request->all()));
 
             if (!Auth::check()) {
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
@@ -55,7 +65,6 @@ class EmployerController extends Controller
             $existingUser = User::where('email', $validatedData['email'])->first();
 
             if ($existingUser) {
-                // Vincula o usuário existente como colaborador
                 $employer = Employer::create([
                     'user_id' => $existingUser->id,
                     'establishment_id' => $establishment->id,
@@ -67,16 +76,23 @@ class EmployerController extends Controller
 
                 Mail::to($existingUser->email)->send(new NewEmployerCollaborator($employer));
 
-                Log::info('Colaborador existente vinculado ao estabelecimento.', ['user_id' => $existingUser->id, 'establishment_id' => $establishment->id]);
-                return response()->json(['message' => 'Colaborador vinculado com sucesso.', 'employer' => $employer], 201);
+                Log::info('Colaborador existente vinculado ao estabelecimento.', $this->utf8ize([
+                    'user_id' => $existingUser->id,
+                    'establishment_id' => $establishment->id,
+                    'employer_id' => $employer->id
+                ]));
+
+                return response()->json([
+                    'message' => 'Colaborador vinculado com sucesso.',
+                    'employer' => $employer->toArray()
+                ], 201);
 
             } else {
-                // Cria novo usuário temporário com código de verificação
                 $verificationCode = Str::random(40);
                 $newUser = User::create([
                     'email' => $validatedData['email'],
                     'verification_code' => $verificationCode,
-                    'password' => '', // senha será criada pelo usuário
+                    'password' => '',
                 ]);
 
                 $employer = Employer::create([
@@ -90,17 +106,33 @@ class EmployerController extends Controller
 
                 Mail::to($newUser->email)->send(new InviteNewUserToEmployer($employer, $verificationCode));
 
-                Log::info('Novo colaborador criado e email enviado para completar cadastro.', ['email' => $newUser->email, 'establishment_id' => $establishment->id]);
-                return response()->json(['message' => 'Convite enviado para completar o cadastro do colaborador.', 'employer' => $employer], 201);
+                Log::info('Novo colaborador criado e email enviado para completar cadastro.', $this->utf8ize([
+                    'email' => $newUser->email,
+                    'establishment_id' => $establishment->id,
+                    'employer_id' => $employer->id
+                ]));
+
+                return response()->json([
+                    'message' => 'Convite enviado para completar o cadastro do colaborador.',
+                    'employer' => $employer->toArray()
+                ], 201);
             }
 
-        } catch (ValidationException $e) {
-            Log::warning('Erros de validação ao cadastrar colaborador.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+        } catch (ValidationException $ve) {
+            Log::error('ValidationException em Employer.store', [
+                'errors'  => $this->utf8ize($ve->errors()),
+                'payload' => $this->utf8ize($request->all()),
+            ]);
+            return response()->json(['errors' => $ve->errors()], 422);
 
         } catch (\Exception $e) {
-            Log::error('Erro ao cadastrar colaborador: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao cadastrar o colaborador.'], 500);
+            Log::error('Erro ao cadastrar colaborador: ' . $e->getMessage(), [
+                'stack' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Erro ao cadastrar colaborador.',
+                'details' => $e->getMessage(),
+            ], 500);
         }
     }
 }
