@@ -36,31 +36,26 @@ class EmployerController extends Controller
         ];
     }
 
-    /**
-     * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
-     */
-
-    public function list(Request $request)
+    public function list($id)
     {
         Log::info('Employer.list start', [
             'user_id' => Auth::id(),
-            'payload' => $request->all(),
+            'establishment_id' => $id,
         ]);
 
         try {
             if (!Auth::check()) {
-                Log::warning('Listagem não autenticada', ['payload' => $request->all()]);
+                Log::warning('Listagem não autenticada', ['establishment_id' => $id]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            $data = $request->validate([
-                'establishment_id' => 'required|integer|exists:establishments,id',
-            ], $this->getValidationMessages());
-
-            Log::info('List: dados válidos', ['data' => $data]);
-
             $user = Auth::user();
-            $est = Establishment::find($data['establishment_id']);
+            $est = Establishment::find($id);
+
+            if (!$est) {
+                Log::warning('Estabelecimento não encontrado', ['establishment_id' => $id]);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
 
             if ($est->user_id !== $user->id) {
                 Log::warning('Acesso negado - proprietário diferente', [
@@ -95,28 +90,20 @@ class EmployerController extends Controller
                 'total' => $employers->count(),
             ]);
 
-            $response = [
+            return response()->json([
                 'message' => 'Colaboradores listados com sucesso.',
                 'employers' => $result,
                 'establishment' => [
                     'id' => $est->id,
                     'name' => mb_convert_encoding($est->name ?? '', 'UTF-8', 'UTF-8'),
                 ],
-            ];
-
-            return response()->json($response, 200);
-
-        } catch (\Illuminate\Validation\ValidationException $ve) {
-            Log::error('ValidationException em Employer.list', [
-                'errors' => $ve->errors(),
-                'payload' => $request->all(),
-            ]);
-            return response()->json(['errors' => $ve->errors()], 422);
+            ], 200);
 
         } catch (\Exception $e) {
             Log::error('Employer.list end — falha', [
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'establishment_id' => $id,
             ]);
             return response()->json([
                 'error' => 'Erro ao listar colaboradores.',
