@@ -40,95 +40,43 @@ class EmployerController extends Controller
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
      */
     
-    public function list(Request $request)
-{
-    Log::info('Employer.list iniciado', [
-        'user_id' => Auth::id(),
-        'payload' => $request->all(),
-    ]);
+   public function list(Request $request)
+    {
+        try {
+            Log::info('Iniciando a listagem de colaboradores.');
 
-    try {
-        $data = $request->validate([
-            'establishment_id' => 'required|integer|exists:establishments,id',
-        ], $this->getValidationMessages());
+            // Verificar se o usuário está autenticado
+            if (!Auth::check()) {
+                Log::warning('Usuário não autenticado tentou acessar a listagem de colaboradores.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        Log::info('Validação concluída com sucesso', [
-            'validated_data' => $data,
-        ]);
+            // Obter o usuário autenticado
+            $user = Auth::user();
+            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
-        $user = Auth::user();
-        Log::info('Usuário autenticado', [
-            'user_id' => $user->id,
-            'user_email' => $user->email,
-        ]);
+            // Validação dos parâmetros
+            $validatedData = $request->validate([
+                'establishment_id' => 'required|integer',
+            ], $this->getValidationMessages());
 
-        $establishment = Establishment::findOrFail($data['establishment_id']);
-        Log::info('Estabelecimento encontrado', [
-            'establishment_id' => $establishment->id,
-            'establishment_owner_id' => $establishment->user_id,
-        ]);
+            Log::info('Parâmetros validados com sucesso:', $validatedData);
 
-        if ($establishment->user_id !== $user->id) {
-            Log::warning('Acesso negado ao estabelecimento', [
-                'user_id' => $user->id,
-                'establishment_id' => $establishment->id,
-            ]);
-            return response()->json(['error' => 'Acesso negado.'], 403);
+            // Buscar os colaboradores do estabelecimento
+            $employers = Employer::where('establishment_id', $validatedData['establishment_id'])->get();
+
+            Log::info('Colaboradores encontrados.', ['total' => $employers->count()]);
+
+            return response()->json($employers, 200);
+
+        } catch (ValidationException $e) {
+            Log::warning('Erro de validação ao listar colaboradores.', ['errors' => $e->errors()]);
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Erro inesperado ao listar colaboradores.', ['message' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+            return response()->json(['error' => 'Ocorreu um erro ao listar os colaboradores.'], 500);
         }
-
-        Log::info('Iniciando busca por colaboradores', [
-            'establishment_id' => $establishment->id,
-        ]);
-
-        $employers = Employer::with('user')
-            ->where('establishment_id', $establishment->id)
-            ->get();
-
-        Log::info('Colaboradores encontrados', [
-            'total' => $employers->count(),
-        ]);
-
-        $mappedEmployers = $employers->map(function ($emp) {
-            return [
-                'id' => $emp->id,
-                'user_id' => $emp->user_id,
-                'user_name' => $emp->user->first_name ?? null,
-                'user_email' => $emp->user->email ?? null,
-                'role' => $emp->role,
-                'permissions' => $emp->permissions,
-                'created_at' => $emp->created_at,
-                'updated_at' => $emp->updated_at,
-            ];
-        });
-
-        Log::info('Mapeamento dos colaboradores concluído', [
-            'sample' => $mappedEmployers->take(3),
-        ]);
-
-        return response()->json([
-            'message' => 'Colaboradores listados com sucesso.',
-            'employers' => $mappedEmployers,
-            'establishment' => [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-            ],
-        ], 200);
-
-    } catch (ValidationException $ve) {
-        Log::error('Erro de validação em Employer.list', [
-            'errors' => $ve->errors(),
-            'payload' => $request->all(),
-        ]);
-        return response()->json(['errors' => $ve->errors()], 422);
-
-    } catch (\Exception $e) {
-        Log::error('Exceção geral em Employer.list', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
     }
-}
 
 
 
