@@ -71,13 +71,18 @@ class EmployerController extends Controller
             ];
         });
 
-    return response()->json([
-        'establishment' => [
-            'id' => $est->id,
-            'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
-        ],
-        'employers' => $employers,
-    ]);
+   return response()->json([
+    'message' => 'Colaboradores listados com sucesso.',
+    'employers' => $employers,
+    'establishment' => [
+        'id' => $est->id,
+        'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
+        'address' => mb_convert_encoding($est->address ?? '', 'UTF-8', 'UTF-8'),
+        'city' => mb_convert_encoding($est->city ?? '', 'UTF-8', 'UTF-8'),
+        'uf' => mb_convert_encoding($est->uf ?? '', 'UTF-8', 'UTF-8'),
+    ],
+], 200);
+
 }
 
     /**
