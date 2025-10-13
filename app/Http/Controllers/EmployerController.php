@@ -60,29 +60,32 @@ class EmployerController extends Controller
             ->where('establishment_id', $est->id)
             ->get()
             ->map(function ($emp) {
+                $user = $emp->user;
                 return [
                     'id' => $emp->id,
                     'user_id' => $emp->user_id,
-                    'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
-                    'user_email' => isset($emp->user->email) ? mb_convert_encoding($emp->user->email, 'UTF-8', 'UTF-8') : null,
-                    'role' => mb_convert_encoding($emp->role ?? '', 'UTF-8', 'UTF-8'),
+                    'user_name' => $user && isset($user->first_name) ? mb_convert_encoding($user->first_name, 'UTF-8', 'UTF-8') : null,
+                    'user_email' => $user && isset($user->email) ? mb_convert_encoding($user->email, 'UTF-8', 'UTF-8') : null,
+                    'role' => isset($emp->role) ? mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8') : null,
                     'permissions' => $emp->permissions ?? [],
                     'created_at' => $emp->created_at ? $emp->created_at->toDateTimeString() : null,
                     'updated_at' => $emp->updated_at ? $emp->updated_at->toDateTimeString() : null,
                 ];
             });
 
+        $establishmentData = [
+            'id' => $est->id,
+            'name' => isset($est->name) ? mb_convert_encoding($est->name, 'UTF-8', 'UTF-8') : null,
+            'address' => isset($est->address) ? mb_convert_encoding($est->address, 'UTF-8', 'UTF-8') : null,
+            'city' => isset($est->city) ? mb_convert_encoding($est->city, 'UTF-8', 'UTF-8') : null,
+            'uf' => isset($est->uf) ? mb_convert_encoding($est->uf, 'UTF-8', 'UTF-8') : null,
+        ];
+
         return response()->json([
             'message' => 'Colaboradores listados com sucesso.',
             'count' => $employers->count(),
             'employers' => $employers,
-            'establishment' => [
-                'id' => $est->id,
-                'name' => mb_convert_encoding($est->name ?? '', 'UTF-8', 'UTF-8'),
-                'address' => mb_convert_encoding($est->address ?? '', 'UTF-8', 'UTF-8'),
-                'city' => mb_convert_encoding($est->city ?? '', 'UTF-8', 'UTF-8'),
-                'uf' => mb_convert_encoding($est->uf ?? '', 'UTF-8', 'UTF-8'),
-            ],
+            'establishment' => $establishmentData,
         ], 200);
 
     } catch (\Exception $e) {
@@ -97,6 +100,7 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
 
 
 
