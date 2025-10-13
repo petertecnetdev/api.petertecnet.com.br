@@ -40,8 +40,9 @@ class EmployerController extends Controller
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
      */
 
-    public function list($establishment_id)
-    {
+   public function list($establishment_id)
+{
+    try {
         if (!is_numeric($establishment_id)) {
             return response()->json([
                 'errors' => ['establishment_id' => ['O ID do estabelecimento deve ser numérico.']]
@@ -64,7 +65,7 @@ class EmployerController extends Controller
                     'user_id' => $emp->user_id,
                     'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
                     'user_email' => isset($emp->user->email) ? mb_convert_encoding($emp->user->email, 'UTF-8', 'UTF-8') : null,
-                    'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
+                    'role' => mb_convert_encoding($emp->role ?? '', 'UTF-8', 'UTF-8'),
                     'permissions' => $emp->permissions ?? [],
                     'created_at' => $emp->created_at ? $emp->created_at->toDateTimeString() : null,
                     'updated_at' => $emp->updated_at ? $emp->updated_at->toDateTimeString() : null,
@@ -73,6 +74,7 @@ class EmployerController extends Controller
 
         return response()->json([
             'message' => 'Colaboradores listados com sucesso.',
+            'count' => $employers->count(),
             'employers' => $employers,
             'establishment' => [
                 'id' => $est->id,
@@ -83,13 +85,19 @@ class EmployerController extends Controller
             ],
         ], 200);
 
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar colaboradores', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro ao listar colaboradores.',
+            'details' => $e->getMessage()
+        ], 500);
     }
+}
 
-
-    /**
-     * Cadastra um colaborador em um estabelecimento via email.
-     * Recebe establishment_id no body.
-     */
 
 
     public function store(Request $request)
