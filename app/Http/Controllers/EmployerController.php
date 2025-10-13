@@ -40,87 +40,90 @@ class EmployerController extends Controller
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
      */
 
-public function list(Request $request)
-{
-    Log::info('Employer.list start', [
-        'user_id' => Auth::id(),
-        'payload' => $request->all(),
-    ]);
-
-    try {
-        if (!Auth::check()) {
-            Log::warning('Listagem não autenticada', ['payload' => $request->all()]);
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $data = $request->validate([
-            'establishment_id' => 'required|integer|exists:establishments,id',
-        ], $this->getValidationMessages());
-
-        Log::info('List: dados válidos', ['data' => $data]);
-
-        $user = Auth::user();
-        $est = Establishment::find($data['establishment_id']);
-
-        if ($est->user_id !== $user->id) {
-            Log::warning('Acesso negado - proprietário diferente', [
-                'est_user_id' => $est->user_id,
-                'auth_user_id' => $user->id,
-            ]);
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        $employers = Employer::with('user')
-            ->where('establishment_id', $est->id)
-            ->get();
-
-        Log::info('Colaboradores carregados', [
-            'establishment_id' => $est->id,
-            'total' => $employers->count(),
-        ]);
-
-        $result = $employers->map(function ($emp) {
-            return [
-                'id' => $emp->id,
-                'user_id' => $emp->user_id,
-                'user_name' => mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8'),
-                'email' => $emp->user->email,
-                'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
-                'permissions' => $emp->permissions,
-            ];
-        });
-
-        Log::info('Employer.list end — sucesso', [
-            'establishment_id' => $est->id,
-            'total' => $employers->count(),
-        ]);
-
-        return response()->json([
-            'establishment' => [
-                'id' => $est->id,
-                'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
-            ],
-            'employers' => $result,
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $ve) {
-        Log::error('ValidationException em Employer.list', [
-            'errors' => $ve->errors(),
+    public function list(Request $request)
+    {
+        Log::info('Employer.list start', [
+            'user_id' => Auth::id(),
             'payload' => $request->all(),
         ]);
-        return response()->json(['errors' => $ve->errors()], 422);
 
-    } catch (\Exception $e) {
-        Log::error('Employer.list end — falha', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        return response()->json([
-            'error' => 'Erro ao listar colaboradores.',
-            'details' => $e->getMessage(),
-        ], 500);
+        try {
+            if (!Auth::check()) {
+                Log::warning('Listagem não autenticada', ['payload' => $request->all()]);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $data = $request->validate([
+                'establishment_id' => 'required|integer|exists:establishments,id',
+            ], $this->getValidationMessages());
+
+            Log::info('List: dados válidos', ['data' => $data]);
+
+            $user = Auth::user();
+            $est = Establishment::find($data['establishment_id']);
+
+            if ($est->user_id !== $user->id) {
+                Log::warning('Acesso negado - proprietário diferente', [
+                    'est_user_id' => $est->user_id,
+                    'auth_user_id' => $user->id,
+                ]);
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
+            $employers = Employer::with('user')
+                ->where('establishment_id', $est->id)
+                ->get();
+
+            Log::info('Colaboradores carregados', [
+                'establishment_id' => $est->id,
+                'total' => $employers->count(),
+            ]);
+
+            $result = $employers->map(function ($emp) {
+                return [
+                    'id' => $emp->id,
+                    'user_id' => $emp->user_id,
+                    'user_name' => mb_convert_encoding($emp->user->first_name ?? '', 'UTF-8', 'UTF-8'),
+                    'email' => $emp->user->email ?? '',
+                    'role' => mb_convert_encoding($emp->role ?? '', 'UTF-8', 'UTF-8'),
+                    'permissions' => $emp->permissions ?? [],
+                ];
+            });
+
+            Log::info('Employer.list end — sucesso', [
+                'establishment_id' => $est->id,
+                'total' => $employers->count(),
+            ]);
+
+            $response = [
+                'message' => 'Colaboradores listados com sucesso.',
+                'employers' => $result,
+                'establishment' => [
+                    'id' => $est->id,
+                    'name' => mb_convert_encoding($est->name ?? '', 'UTF-8', 'UTF-8'),
+                ],
+            ];
+
+            return response()->json($response, 200);
+
+        } catch (\Illuminate\Validation\ValidationException $ve) {
+            Log::error('ValidationException em Employer.list', [
+                'errors' => $ve->errors(),
+                'payload' => $request->all(),
+            ]);
+            return response()->json(['errors' => $ve->errors()], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Employer.list end — falha', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'error' => 'Erro ao listar colaboradores.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
     }
-}
 
 
     public function store(Request $request)
