@@ -277,13 +277,10 @@ Route::group([
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
 
+
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'employer'
 ], function () {
-    Route::get('/', [EmployerController::class, 'list'])->name('employer.list');
-    Route::get('/show/{id}', [EmployerController::class, 'show'])->name('employer.show');
-    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
-    Route::post('/{id}', [EmployerController::class, 'update'])->name('employer.update');
-    Route::delete('/{id}', [EmployerController::class, 'destroy'])->name('employer.destroy');
+    Route::get('/list/{establishment_id}', [EmployerController::class, 'list'])->name('employer.list');
 });

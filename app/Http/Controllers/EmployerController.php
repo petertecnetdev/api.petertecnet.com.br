@@ -40,46 +40,38 @@ class EmployerController extends Controller
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
      */
     
-   public function list(Request $request)
-    {
-        try {
-            Log::info('Iniciando a listagem de colaboradores.');
+  public function list($establishment_id)
+{
+    try {
+        Log::info('Iniciando a listagem de colaboradores para estabelecimento:', ['establishment_id' => $establishment_id]);
 
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou acessar a listagem de colaboradores.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            // Validação dos parâmetros
-            $validatedData = $request->validate([
-                'establishment_id' => 'required|integer',
-            ], $this->getValidationMessages());
-
-            Log::info('Parâmetros validados com sucesso:', $validatedData);
-
-            // Buscar os colaboradores do estabelecimento
-            $employers = Employer::where('establishment_id', $validatedData['establishment_id'])->get();
-
-            Log::info('Colaboradores encontrados.', ['total' => $employers->count()]);
-
-            return response()->json($employers, 200);
-
-        } catch (ValidationException $e) {
-            Log::warning('Erro de validação ao listar colaboradores.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro inesperado ao listar colaboradores.', ['message' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao listar os colaboradores.'], 500);
+        // Verificar se o usuário está autenticado
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou acessar a listagem de colaboradores.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+        // Verifica se o estabelecimento existe
+        $est = Establishment::find($establishment_id);
+        if (!$est) {
+            Log::warning('Estabelecimento não encontrado.', ['establishment_id' => $establishment_id]);
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        // Buscar os colaboradores do estabelecimento
+        $employers = Employer::where('establishment_id', $establishment_id)->get();
+        Log::info('Colaboradores encontrados.', ['total' => $employers->count()]);
+
+        return response()->json($employers, 200);
+
+    } catch (\Exception $e) {
+        Log::error('Erro inesperado ao listar colaboradores.', ['message' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+        return response()->json(['error' => 'Ocorreu um erro ao listar os colaboradores.'], 500);
     }
-
-
-
+}
 
     /**
      * Cadastra um colaborador em um estabelecimento via email.
