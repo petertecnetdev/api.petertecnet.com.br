@@ -40,24 +40,68 @@ class EmployerController extends Controller
      * Lista todos os colaboradores de um estabelecimento (establishment_id no body).
      */
 
-    public function list($establishment_id)
-{
-    Log::info('Chamou EmployerController@list', ['establishment_id' => $establishment_id]);
+     public function list(Request $request, $establishment_id)
+    {
+        try {
+            Log::info('Iniciando listagem de colaboradores.', ['establishment_id' => $establishment_id]);
 
-    if (!Auth::check()) {
-        Log::warning('Usuário não autenticado');
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            if (!Auth::check()) {
+                Log::warning('Usuário não autenticado tentou acessar a listagem de colaboradores.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $validatedData = $request->validate([
+                'establishment_id' => 'sometimes|integer|exists:establishments,id',
+            ], $this->getValidationMessages());
+
+            // Se vier pelo route param, sobrescreve
+            $establishment_id = $establishment_id ?? $validatedData['establishment_id'];
+
+            $est = Establishment::findOrFail($establishment_id);
+
+            $employers = Employer::with('user')
+                ->where('establishment_id', $est->id)
+                ->get()
+                ->map(function ($emp) {
+                    return [
+                        'id' => $emp->id,
+                        'user_id' => $emp->user_id,
+                        'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
+                        'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
+                        'permissions' => $emp->permissions ?? [],
+                    ];
+                });
+
+            $establishment = [
+                'id' => $est->id,
+                'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
+            ];
+
+            Log::info('Colaboradores listados com sucesso.', [
+                'establishment_id' => $est->id,
+                'count' => $employers->count(),
+            ]);
+
+            return response()->json([
+                'message' => 'Colaboradores listados com sucesso.',
+                'employers' => $employers,
+                'establishment' => $establishment,
+            ], 200);
+
+        } catch (ValidationException $ve) {
+            Log::error('ValidationException em Employer.list', [
+                'errors' => $ve->errors(),
+                'payload' => $request->all(),
+            ]);
+            return response()->json(['errors' => $ve->errors()], 422);
+        } catch (\Exception $e) {
+            Log::error('Exception em Employer.list', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
+        }
     }
-
-    $est = Establishment::find($establishment_id);
-    if (!$est) {
-        return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-    }
-
-    $employers = Employer::where('establishment_id', $establishment_id)->get();
-    return response()->json($employers, 200);
-}
-
     /**
      * Cadastra um colaborador em um estabelecimento via email.
      * Recebe establishment_id no body.
