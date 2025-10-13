@@ -41,49 +41,49 @@ class EmployerController extends Controller
      */
 
     public function list($establishment_id)
-{
-    if (!is_numeric($establishment_id)) {
+    {
+        if (!is_numeric($establishment_id)) {
+            return response()->json([
+                'errors' => ['establishment_id' => ['O ID do estabelecimento deve ser numérico.']]
+            ], 422);
+        }
+
+        $est = Establishment::find($establishment_id);
+        if (!$est) {
+            return response()->json([
+                'errors' => ['establishment_id' => ['Estabelecimento não encontrado.']]
+            ], 404);
+        }
+
+        $employers = Employer::with('user')
+            ->where('establishment_id', $est->id)
+            ->get()
+            ->map(function ($emp) {
+                return [
+                    'id' => $emp->id,
+                    'user_id' => $emp->user_id,
+                    'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
+                    'user_email' => isset($emp->user->email) ? mb_convert_encoding($emp->user->email, 'UTF-8', 'UTF-8') : null,
+                    'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
+                    'permissions' => $emp->permissions ?? [],
+                    'created_at' => $emp->created_at ? $emp->created_at->toDateTimeString() : null,
+                    'updated_at' => $emp->updated_at ? $emp->updated_at->toDateTimeString() : null,
+                ];
+            });
+
         return response()->json([
-            'errors' => ['establishment_id' => ['O ID do estabelecimento deve ser numérico.']]
-        ], 422);
+            'message' => 'Colaboradores listados com sucesso.',
+            'employers' => $employers,
+            'establishment' => [
+                'id' => $est->id,
+                'name' => mb_convert_encoding($est->name ?? '', 'UTF-8', 'UTF-8'),
+                'address' => mb_convert_encoding($est->address ?? '', 'UTF-8', 'UTF-8'),
+                'city' => mb_convert_encoding($est->city ?? '', 'UTF-8', 'UTF-8'),
+                'uf' => mb_convert_encoding($est->uf ?? '', 'UTF-8', 'UTF-8'),
+            ],
+        ], 200);
     }
 
-    $est = Establishment::find($establishment_id);
-    if (!$est) {
-        return response()->json([
-            'errors' => ['establishment_id' => ['Estabelecimento não encontrado.']]
-        ], 404);
-    }
-
-    $employers = Employer::with('user')
-        ->where('establishment_id', $est->id)
-        ->get()
-        ->map(function($emp) {
-            return [
-                'id' => $emp->id,
-                'user_id' => $emp->user_id,
-                'user_name' => isset($emp->user->first_name) ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
-                'user_email' => isset($emp->user->email) ? mb_convert_encoding($emp->user->email, 'UTF-8', 'UTF-8') : null,
-                'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
-                'permissions' => $emp->permissions ?? [],
-                'created_at' => $emp->created_at ? $emp->created_at->toDateTimeString() : null,
-                'updated_at' => $emp->updated_at ? $emp->updated_at->toDateTimeString() : null,
-            ];
-        });
-
-   return response()->json([
-    'message' => 'Colaboradores listados com sucesso.',
-    'employers' => $employers,
-    'establishment' => [
-        'id' => $est->id,
-        'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
-        'address' => mb_convert_encoding($est->address ?? '', 'UTF-8', 'UTF-8'),
-        'city' => mb_convert_encoding($est->city ?? '', 'UTF-8', 'UTF-8'),
-        'uf' => mb_convert_encoding($est->uf ?? '', 'UTF-8', 'UTF-8'),
-    ],
-], 200);
-
-}
 
     /**
      * Cadastra um colaborador em um estabelecimento via email.
