@@ -82,6 +82,7 @@ class EmployerController extends Controller
                 'uf' => mb_convert_encoding($est->uf ?? '', 'UTF-8', 'UTF-8'),
             ],
         ], 200);
+
     }
 
 
