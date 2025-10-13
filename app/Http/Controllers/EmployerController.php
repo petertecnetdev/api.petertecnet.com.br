@@ -43,11 +43,7 @@ class EmployerController extends Controller
     public function list($establishment_id)
 {
     try {
-        Log::info('Employer.list start', ['user_id' => Auth::id(), 'establishment_id' => $establishment_id]);
-
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+        Log::info('Employer.list start', ['user_id' => Auth::id(), 'payload' => ['establishment_id' => $establishment_id]]);
 
         $est = \App\Models\Establishment::findOrFail($establishment_id);
 
