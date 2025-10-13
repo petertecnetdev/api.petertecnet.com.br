@@ -42,41 +42,27 @@ class EmployerController extends Controller
 
     public function list($establishment_id)
 {
-    try {
-        Log::info('Employer.list start', ['user_id' => Auth::id(), 'payload' => ['establishment_id' => $establishment_id]]);
+    $est = Establishment::findOrFail($establishment_id);
 
-        $est = \App\Models\Establishment::findOrFail($establishment_id);
+    $employers = Employer::with('user')
+        ->where('establishment_id', $est->id)
+        ->get()
+        ->map(function($emp) {
+            return [
+                'id' => $emp->id,
+                'user_id' => $emp->user_id,
+                'user_name' => optional($emp->user)->first_name ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
+                'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
+            ];
+        });
 
-        $employers = Employer::with('user')
-            ->where('establishment_id', $est->id)
-            ->get()
-            ->map(function ($emp) {
-                return [
-                    'id' => $emp->id,
-                    'user_id' => $emp->user_id,
-                    'user_name' => optional($emp->user)->first_name ? mb_convert_encoding($emp->user->first_name, 'UTF-8', 'UTF-8') : null,
-                    'role' => mb_convert_encoding($emp->role, 'UTF-8', 'UTF-8'),
-                    'permissions' => $emp->permissions ?? [],
-                ];
-            });
-
-        return response()->json([
-            'message' => 'Colaboradores listados com sucesso.',
-            'establishment' => [
-                'id' => $est->id,
-                'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
-            ],
-            'employers' => $employers,
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('Exception em Employer.list', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
-    }
+    return response()->json([
+        'establishment' => [
+            'id' => $est->id,
+            'name' => mb_convert_encoding($est->name, 'UTF-8', 'UTF-8'),
+        ],
+        'employers' => $employers,
+    ]);
 }
 
     /**
