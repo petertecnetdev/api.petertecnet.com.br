@@ -93,10 +93,10 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasManyThrough(Event::class, Production::class);
     }
 
-    public function employer()
-    {
-        return $this->hasOne(Employer::class, 'user_id');
-    }
+   public function employers()
+{
+    return $this->hasMany(Employer::class, 'user_id');
+}
 
     public function establishments()
     {
