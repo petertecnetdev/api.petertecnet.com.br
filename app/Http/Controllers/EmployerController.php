@@ -36,81 +36,59 @@ class EmployerController extends Controller
         ];
     }
 
-    public function list($id)
-    {
-        Log::info('Employer.list start', [
-            'user_id' => Auth::id(),
+   public function list($id)
+{
+    Log::info('Employer.list start', [
+        'user_id' => Auth::id(),
+        'establishment_id' => $id,
+    ]);
+
+    try {
+        $user = Auth::user();
+        $est = Establishment::find($id);
+
+        if (!$est) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        if ($est->user_id !== $user->id) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $employers = Employer::with('user')
+            ->where('establishment_id', $id)
+            ->get();
+
+        $result = $employers->map(function ($emp) {
+            return [
+                'id' => $emp->id,
+                'user_id' => $emp->user_id,
+                'user_name' => $emp->user->first_name ?? '',
+                'email' => $emp->user->email ?? '',
+                'role' => $emp->role ?? '',
+            ];
+        });
+
+        return response()->json([
+            'message' => 'Colaboradores listados com sucesso.',
+            'employers' => $result,
+            'establishment' => [
+                'id' => $est->id,
+                'name' => $est->name ?? '',
+            ],
+        ], 200);
+
+    } catch (\Exception $e) {
+        Log::error('Employer.list exception', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
             'establishment_id' => $id,
         ]);
 
-        try {
-            if (!Auth::check()) {
-                Log::warning('Listagem não autenticada', ['establishment_id' => $id]);
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-            $est = Establishment::find($id);
-
-            if (!$est) {
-                Log::warning('Estabelecimento não encontrado', ['establishment_id' => $id]);
-                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-            }
-
-            if ($est->user_id !== $user->id) {
-                Log::warning('Acesso negado - proprietário diferente', [
-                    'est_user_id' => $est->user_id,
-                    'auth_user_id' => $user->id,
-                ]);
-                return response()->json(['error' => 'Acesso negado.'], 403);
-            }
-
-            $employers = Employer::with('user')
-                ->where('establishment_id', $est->id)
-                ->get();
-
-            Log::info('Colaboradores carregados', [
-                'establishment_id' => $est->id,
-                'total' => $employers->count(),
-            ]);
-
-            $result = $employers->map(function ($emp) {
-                return [
-                    'id' => $emp->id,
-                    'user_id' => $emp->user_id,
-                    'user_name' => mb_convert_encoding($emp->user->first_name ?? '', 'UTF-8', 'UTF-8'),
-                    'email' => $emp->user->email ?? '',
-                    'role' => mb_convert_encoding($emp->role ?? '', 'UTF-8', 'UTF-8'),
-                    'permissions' => $emp->permissions ?? [],
-                ];
-            });
-
-            Log::info('Employer.list end — sucesso', [
-                'establishment_id' => $est->id,
-                'total' => $employers->count(),
-            ]);
-
-            return response()->json([
-                'message' => 'Colaboradores listados com sucesso.',
-                'employers' => $result,
-                'establishment' => [
-                    'id' => $est->id,
-                    'name' => mb_convert_encoding($est->name ?? '', 'UTF-8', 'UTF-8'),
-                ],
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Employer.list end — falha', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-                'establishment_id' => $id,
-            ]);
-            return response()->json([
-                'error' => 'Erro ao listar colaboradores.',
-                'details' => $e->getMessage(),
-            ], 500);
-        }
+        return response()->json(['error' => 'Erro ao listar colaboradores.'], 500);
     }
+}
+
 
 
     public function store(Request $request)
