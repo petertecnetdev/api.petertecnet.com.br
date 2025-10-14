@@ -239,7 +239,10 @@ class EmployerController extends Controller
                 'details' => $e->getMessage(),
             ], 500);
         }
-    }public function detach(Request $request)
+    }
+
+
+    public function detach(Request $request)
 {
     try {
         Log::info('Employer.detach start', [
@@ -251,27 +254,10 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
         }
 
-        try {
-            $validatedData = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-                'establishment_id' => 'required|integer|exists:establishments,id',
-            ], [
-                'employer_id.required' => utf8_encode('O ID do colaborador é obrigatório.'),
-                'employer_id.integer' => utf8_encode('O ID do colaborador deve ser um número inteiro.'),
-                'employer_id.exists' => utf8_encode('O colaborador informado não existe.'),
-                'establishment_id.required' => utf8_encode('O ID do estabelecimento é obrigatório.'),
-                'establishment_id.integer' => utf8_encode('O ID do estabelecimento deve ser um número inteiro.'),
-                'establishment_id.exists' => utf8_encode('O estabelecimento informado não existe.'),
-            ]);
-        } catch (ValidationException $e) {
-            Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
-            return response()->json([
-                'message' => 'Erro de validação nos dados enviados.',
-                'errors' => array_map(function ($err) {
-                    return array_map('utf8_encode', $err);
-                }, $e->errors())
-            ], 422, [], JSON_UNESCAPED_UNICODE);
-        }
+        $validatedData = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'establishment_id' => 'required|integer|exists:establishments,id',
+        ], $this->getValidationMessages());
 
         $user = Auth::user();
         $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
@@ -307,7 +293,7 @@ class EmployerController extends Controller
         if ($collaboratorUser && !empty($collaboratorUser->email)) {
             try {
                 Mail::to($collaboratorUser->email)
-                    ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
+                    ->send(new EmployerRemoved($establishment, $collaboratorUser));
             } catch (\Exception $e) {
                 Log::warning('Failed to send EmployerRemoved email', [
                     'error' => $e->getMessage(),
@@ -319,7 +305,7 @@ class EmployerController extends Controller
         if ($ownerUser && !empty($ownerUser->email)) {
             try {
                 Mail::to($ownerUser->email)
-                    ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
+                    ->send(new OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
             } catch (\Exception $e) {
                 Log::warning('Failed to send OwnerNotifiedEmployerDetached email', [
                     'error' => $e->getMessage(),
@@ -337,6 +323,13 @@ class EmployerController extends Controller
             'message' => 'Colaborador desvinculado com sucesso e notificações enviadas.'
         ], 200, [], JSON_UNESCAPED_UNICODE);
 
+    } catch (ValidationException $e) {
+        Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
+        return response()->json([
+            'message' => 'Erro de validação nos dados enviados.',
+            'errors' => $e->errors()
+        ], 422, [], JSON_UNESCAPED_UNICODE);
+
     } catch (\Exception $e) {
         Log::error('Employer.detach failed', [
             'error' => $e->getMessage(),
@@ -345,9 +338,10 @@ class EmployerController extends Controller
 
         return response()->json([
             'error' => 'Ocorreu um erro inesperado ao desvincular o colaborador.',
-            'details' => mb_convert_encoding($e->getMessage(), 'UTF-8', 'auto')
+            'details' => $e->getMessage()
         ], 500, [], JSON_UNESCAPED_UNICODE);
     }
 }
+
 
 }
