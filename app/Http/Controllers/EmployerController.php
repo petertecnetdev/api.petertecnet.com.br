@@ -239,113 +239,115 @@ class EmployerController extends Controller
                 'details' => $e->getMessage(),
             ], 500);
         }
-    }
-    public function detach(Request $request)
-    {
-        try {
-            Log::info('Employer.detach start', [
-                'user_id' => Auth::id(),
-                'payload' => $request->all()
-            ]);
+    }public function detach(Request $request)
+{
+    try {
+        Log::info('Employer.detach start', [
+            'user_id' => Auth::id(),
+            'payload' => $request->all()
+        ]);
 
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            try {
-                $validatedData = $request->validate([
-                    'employer_id' => 'required|integer|exists:employers,id',
-                    'establishment_id' => 'required|integer|exists:establishments,id',
-                ], [
-                    'employer_id.required' => 'O ID do colaborador é obrigatório.',
-                    'employer_id.integer' => 'O ID do colaborador deve ser um número inteiro.',
-                    'employer_id.exists' => 'O colaborador informado não existe.',
-                    'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
-                    'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
-                    'establishment_id.exists' => 'O estabelecimento informado não existe.',
-                ]);
-            } catch (ValidationException $e) {
-                Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
-                return response()->json([
-                    'message' => 'Erro de validação nos dados enviados.',
-                    'errors' => $e->errors()
-                ], 422, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            $user = Auth::user();
-            $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
-
-            if (!$establishment) {
-                return response()->json([
-                    'error' => 'O estabelecimento informado não existe.'
-                ], 404, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            if ($establishment->user_id !== $user->id) {
-                return response()->json([
-                    'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.'
-                ], 403, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            $employer = Employer::with('user')
-                ->where('id', $validatedData['employer_id'])
-                ->where('establishment_id', $establishment->id)
-                ->first();
-
-            if (!$employer) {
-                return response()->json([
-                    'error' => 'O colaborador não está vinculado a este estabelecimento.'
-                ], 404, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            $collaboratorUser = $employer->user;
-            $ownerUser = $establishment->user;
-
-            $employer->delete();
-
-            if ($collaboratorUser && !empty($collaboratorUser->email)) {
-                try {
-                    Mail::to($collaboratorUser->email)
-                        ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
-                } catch (\Exception $e) {
-                    Log::warning('Failed to send EmployerRemoved email', [
-                        'error' => $e->getMessage(),
-                        'employer_id' => $validatedData['employer_id']
-                    ]);
-                }
-            }
-
-            if ($ownerUser && !empty($ownerUser->email)) {
-                try {
-                    Mail::to($ownerUser->email)
-                        ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
-                } catch (\Exception $e) {
-                    Log::warning('Failed to send OwnerNotifiedEmployerDetached email', [
-                        'error' => $e->getMessage(),
-                        'employer_id' => $validatedData['employer_id']
-                    ]);
-                }
-            }
-
-            Log::info('Employer.detach success', [
-                'employer_id' => $validatedData['employer_id'],
-                'establishment_id' => $establishment->id
-            ]);
-
-            return response()->json([
-                'message' => 'Colaborador desvinculado com sucesso e notificações enviadas.'
-            ], 200, [], JSON_UNESCAPED_UNICODE);
-
-        } catch (\Exception $e) {
-            Log::error('Employer.detach failed', [
-                'error' => $e->getMessage(),
-                'stack' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'error' => 'Ocorreu um erro inesperado ao desvincular o colaborador.',
-                'details' => mb_convert_encoding($e->getMessage(), 'UTF-8', 'auto')
-            ], 500, [], JSON_UNESCAPED_UNICODE);
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
         }
+
+        try {
+            $validatedData = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'establishment_id' => 'required|integer|exists:establishments,id',
+            ], [
+                'employer_id.required' => utf8_encode('O ID do colaborador é obrigatório.'),
+                'employer_id.integer' => utf8_encode('O ID do colaborador deve ser um número inteiro.'),
+                'employer_id.exists' => utf8_encode('O colaborador informado não existe.'),
+                'establishment_id.required' => utf8_encode('O ID do estabelecimento é obrigatório.'),
+                'establishment_id.integer' => utf8_encode('O ID do estabelecimento deve ser um número inteiro.'),
+                'establishment_id.exists' => utf8_encode('O estabelecimento informado não existe.'),
+            ]);
+        } catch (ValidationException $e) {
+            Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
+            return response()->json([
+                'message' => 'Erro de validação nos dados enviados.',
+                'errors' => array_map(function ($err) {
+                    return array_map('utf8_encode', $err);
+                }, $e->errors())
+            ], 422, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $user = Auth::user();
+        $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
+
+        if (!$establishment) {
+            return response()->json([
+                'error' => 'O estabelecimento informado não existe.'
+            ], 404, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        if ($establishment->user_id !== $user->id) {
+            return response()->json([
+                'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.'
+            ], 403, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $employer = Employer::with('user')
+            ->where('id', $validatedData['employer_id'])
+            ->where('establishment_id', $establishment->id)
+            ->first();
+
+        if (!$employer) {
+            return response()->json([
+                'error' => 'O colaborador não está vinculado a este estabelecimento.'
+            ], 404, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $collaboratorUser = $employer->user;
+        $ownerUser = $establishment->user;
+
+        $employer->delete();
+
+        if ($collaboratorUser && !empty($collaboratorUser->email)) {
+            try {
+                Mail::to($collaboratorUser->email)
+                    ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send EmployerRemoved email', [
+                    'error' => $e->getMessage(),
+                    'employer_id' => $validatedData['employer_id']
+                ]);
+            }
+        }
+
+        if ($ownerUser && !empty($ownerUser->email)) {
+            try {
+                Mail::to($ownerUser->email)
+                    ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
+            } catch (\Exception $e) {
+                Log::warning('Failed to send OwnerNotifiedEmployerDetached email', [
+                    'error' => $e->getMessage(),
+                    'employer_id' => $validatedData['employer_id']
+                ]);
+            }
+        }
+
+        Log::info('Employer.detach success', [
+            'employer_id' => $validatedData['employer_id'],
+            'establishment_id' => $establishment->id
+        ]);
+
+        return response()->json([
+            'message' => 'Colaborador desvinculado com sucesso e notificações enviadas.'
+        ], 200, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Exception $e) {
+        Log::error('Employer.detach failed', [
+            'error' => $e->getMessage(),
+            'stack' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro inesperado ao desvincular o colaborador.',
+            'details' => mb_convert_encoding($e->getMessage(), 'UTF-8', 'auto')
+        ], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
+
 }
