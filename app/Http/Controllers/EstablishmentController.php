@@ -86,14 +86,18 @@ class EstablishmentController extends Controller
         'logo.max' => 'A logo deve ter no máximo 2048 KB.',
         'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
     ];
+<<<<<<< HEAD
 }
 <<<<<<< HEAD
 >>>>>>> develop
 =======
 public function store(Request $request)
+=======
+}public function store(Request $request)
+>>>>>>> develop
 {
     try {
-        $user = Auth::user(); // pode ser null se não estiver logado
+        $user = Auth::user();
         Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
 >>>>>>> develop
 
@@ -127,25 +131,35 @@ public function store(Request $request)
             return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
         }
 
-        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        $attendantId = $data['attendant_id'] ?? $user->id ?? null;
 
-        // Verifica conflitos de horário se for agendamento
-        if ($orderDate->gt($now)) {
+        // Verifica conflitos de horário apenas se for agendamento e houver atendente definido
+        if ($orderDate->gt($now) && $attendantId) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
+
                 $conflict = Order::where('entity_id', $data['entity_id'])
+                    ->where('attendant_id', $attendantId)
                     ->where('status', 'scheduled')
                     ->where(function($q) use ($orderDate, $duration) {
-                        $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)]);
-                    })->exists();
+                        $start = $orderDate->copy()->subMinute();
+                        $end = $orderDate->copy()->addMinutes($duration)->addMinute();
+                        $q->whereBetween('order_datetime', [$start, $end]);
+                    })
+                    ->exists();
+
                 if ($conflict) {
-                    return response()->json(['error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."], 422);
+                    return response()->json([
+                        'error' => "Conflito de horário para o serviço {$item->name} com o atendente selecionado. Escolha outro horário ou outro atendente."
+                    ], 422);
                 }
             }
         }
+
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
         $order = Order::create([
             'app_id' => $data['app_id'],
@@ -153,7 +167,7 @@ public function store(Request $request)
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
             'order_datetime' => $orderDate,
-            'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
+            'attendant_id' => $attendantId,
             'client_id' => null,
             'customer_name' => $data['customer_name'],
             'access_code' => $accessCode,
