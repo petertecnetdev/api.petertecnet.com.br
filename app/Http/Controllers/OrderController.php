@@ -208,8 +208,18 @@ class OrderController extends Controller
             'app_id' => 'required|integer|exists:applications,id',
             'entity_name' => 'required|string|max:255',
             'entity_id' => 'required|integer',
-            'include_scheduled' => 'sometimes|boolean', // novo campo opcional
+            'include_scheduled' => 'sometimes|boolean',
         ], $this->getValidationMessages());
+
+        // Verifica se o usuário é dono ou colaborador da establishment
+        $isOwnerOrStaff = \DB::table('employers')
+            ->where('establishment_id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$isOwnerOrStaff) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
 
         $query = Order::with([
             'items.item',
@@ -224,7 +234,7 @@ class OrderController extends Controller
 
         // Filtrar pedidos agendados, se solicitado
         if (!empty($data['include_scheduled'])) {
-            $query->whereNotNull('scheduled_at'); // ou 'order_datetime' se agendado estiver neste campo
+            $query->whereNotNull('scheduled_at');
         }
 
         $orders = $query->orderBy('order_datetime', 'desc')->get();
