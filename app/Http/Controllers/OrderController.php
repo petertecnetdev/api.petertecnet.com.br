@@ -204,14 +204,26 @@ class OrderController extends Controller
         $user = Auth::user();
 
         $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
+            'app_id' => 'required|integer',
             'entity_name' => 'required|string|max:255',
             'entity_id' => 'required|integer',
             'include_scheduled' => 'sometimes|boolean',
         ], $this->getValidationMessages());
 
+        // Verifica se o aplicativo existe
+        $appExists = \DB::table('applications')->where('id', $data['app_id'])->exists();
+        if (!$appExists) {
+            return response()->json(['error' => 'Aplicativo não encontrado.'], 404);
+        }
+
+        // Verifica se a entity existe
+        $entityExists = \DB::table($data['entity_name'] . 's')->where('id', $data['entity_id'])->exists();
+        if (!$entityExists) {
+            return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
+        }
+
         // Verifica se o usuário é dono da entity
-        $isOwner = \DB::table($data['entity_name'] . 's') // ex: 'establishments'
+        $isOwner = \DB::table($data['entity_name'] . 's')
             ->where('id', $data['entity_id'])
             ->where('user_id', $user->id)
             ->exists();
@@ -224,7 +236,8 @@ class OrderController extends Controller
             ->exists();
 
         if (!$isOwner && !$isStaff) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
+            $reason = $isOwner ? '' : 'Você não é dono da ' . $data['entity_name'] . ' nem colaborador autorizado.';
+            return response()->json(['error' => 'Acesso negado. ' . $reason], 403);
         }
 
         $query = Order::with([
