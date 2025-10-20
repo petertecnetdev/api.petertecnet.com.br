@@ -48,7 +48,9 @@ class EstablishmentController extends Controller
         'logo.max' => 'A logo deve ter no máximo 2048 KB.',
         'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
     ];
-}public function store(Request $request)
+}
+
+public function store(Request $request)
 {
     try {
         $user = Auth::user();
@@ -86,19 +88,21 @@ class EstablishmentController extends Controller
 
         $attendantId = $data['attendant_id'] ?? $user->id ?? null;
 
-        // Verifica conflitos de horário apenas se for agendamento e houver atendente definido
+        // Conflito de horário por atendente
         if ($orderDate->gt($now) && $attendantId) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
+                $newStart = $orderDate;
+                $newEnd = $orderDate->copy()->addMinutes($duration);
 
                 $conflict = Order::where('entity_id', $data['entity_id'])
                     ->where('attendant_id', $attendantId)
                     ->where('status', 'scheduled')
-                    ->where(function($q) use ($orderDate, $duration) {
-                        $start = $orderDate->copy()->subMinute();
-                        $end = $orderDate->copy()->addMinutes($duration)->addMinute();
-                        $q->whereBetween('order_datetime', [$start, $end]);
+                    ->where(function($q) use ($newStart, $newEnd) {
+                        $q->whereBetween('order_datetime', [$newStart, $newEnd])
+                          ->orWhereRaw('? BETWEEN order_datetime AND DATE_ADD(order_datetime, INTERVAL (SELECT SUM(duration) FROM order_items WHERE order_items.order_id = orders.id) MINUTE)', [$newStart])
+                          ->orWhereRaw('? BETWEEN order_datetime AND DATE_ADD(order_datetime, INTERVAL (SELECT SUM(duration) FROM order_items WHERE order_items.order_id = orders.id) MINUTE)', [$newEnd]);
                     })
                     ->exists();
 
