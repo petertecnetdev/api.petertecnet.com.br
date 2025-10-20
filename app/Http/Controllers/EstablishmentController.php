@@ -485,6 +485,7 @@ class EstablishmentController extends Controller
             'establishments' => $establishments
         ], 200);
     }
+<<<<<<< HEAD
 
     public function listMyByCategory(Request $request, $category)
 <<<<<<< HEAD
@@ -530,46 +531,116 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
 =======
+=======
+public function listMyByCategory(Request $request, $category)
+>>>>>>> develop
 {
     try {
         if (!Auth::check()) {
+            Log::warning('listMyByCategory: usuário não autenticado', [
+                'route_category' => $category,
+                'query' => $request->all(),
+            ]);
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
 >>>>>>> develop
         }
 
-        $userId     = Auth::id();
-        $queryTerm  = $request->query('q');               // opcional: busca
-        $sort       = $request->query('sort', 'name');    // name|city|created_at
-        $direction  = $request->query('dir', 'asc');      // asc|desc
-        $perPage    = (int) $request->query('per_page', 10);
+        $user = Auth::user();
 
-        // aceita múltiplas categorias via "barbershop,bar" e normaliza
-        $cats = collect(explode(',', (string)$category))
-            ->filter()->map(fn($c)=>trim(strtolower($c)))->unique()->values()->all();
+        // Normaliza e aceita múltiplas categorias via "barbershop,beauty"
+        $cats = collect(explode(',', (string) $category))
+            ->map(fn ($c) => trim($c))
+            ->filter()
+            ->map(fn ($c) => mb_strtolower($c, 'UTF-8'))
+            ->unique()
+            ->values()
+            ->all();
+
+        $perPage   = (int) $request->query('per_page', 10);
+        $search    = (string) $request->query('q', '');
+        $sort      = (string) $request->query('sort', 'name'); // name|city|created_at
+        $direction = strtolower((string) $request->query('dir', 'asc')) === 'desc' ? 'desc' : 'asc';
+        $allowedSorts = ['name', 'city', 'created_at'];
+        if (!in_array($sort, $allowedSorts, true)) $sort = 'name';
+
+        Log::info('listMyByCategory: iniciando consulta', [
+            'user_id'        => $user->id,
+            'cats'           => $cats,
+            'per_page'       => $perPage,
+            'search'         => $search,
+            'sort'           => $sort,
+            'direction'      => $direction,
+            'route_category' => $category,
+            'query'          => $request->all(),
+        ]);
 
         if (empty($cats)) {
+            Log::warning('listMyByCategory: categoria inválida', [
+                'user_id'        => $user->id,
+                'route_category' => $category,
+            ]);
             return response()->json(['error' => 'Categoria inválida.'], 422);
         }
 
-        $allowedSorts = ['name','city','created_at'];
-        if (!in_array($sort, $allowedSorts, true)) $sort = 'name';
-        $direction = strtolower($direction) === 'desc' ? 'desc' : 'asc';
-
-        $establishments = \App\Models\Establishment::query()
+        $q = Establishment::query()
             ->select(['id','name','fantasy','slug','category','city','logo','created_at'])
-            ->ownedBy($userId)
-            ->categoryIn($cats)
-            ->search($queryTerm)
-            ->orderBy($sort, $direction)
-            ->paginate($perPage);
+            ->where('user_id', $user->id)
+            ->where(function ($qq) use ($cats) {
+                foreach ($cats as $c) {
+                    $qq->orWhereRaw('LOWER(category) = ?', [$c]);
+                }
+            });
+
+        if ($search !== '') {
+            $like = "%{$search}%";
+            $q->where(function ($qq) use ($like) {
+                $qq->where('name', 'like', $like)
+                   ->orWhere('fantasy', 'like', $like)
+                   ->orWhere('city', 'like', $like);
+            });
+        }
+
+        $establishments = $q->orderBy($sort, $direction)->paginate($perPage);
+
+        // Sanitiza strings com bytes inválidos para evitar "Malformed UTF-8"
+        $invalidFields = [];
+        $establishments->getCollection()->transform(function ($model) use (&$invalidFields) {
+            foreach ($model->getAttributes() as $k => $v) {
+                if (is_string($v) && !mb_check_encoding($v, 'UTF-8')) {
+                    $invalidFields[] = ['id' => $model->id, 'field' => $k];
+                    $clean = @iconv('UTF-8', 'UTF-8//IGNORE', $v);
+                    $model->setAttribute($k, $clean !== false ? $clean : $v);
+                }
+            }
+            return $model;
+        });
+        if (!empty($invalidFields)) {
+            Log::warning('listMyByCategory: atributos com UTF-8 inválido sanitizados', [
+                'user_id' => $user->id,
+                'fields'  => $invalidFields,
+            ]);
+        }
+
+        Log::info('listMyByCategory: consulta concluída', [
+            'user_id'      => $user->id,
+            'cats'         => $cats,
+            'total'        => $establishments->total(),
+            'current_page' => $establishments->currentPage(),
+            'last_page'    => $establishments->lastPage(),
+        ]);
 
         return response()->json([
-            'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
+            'message'        => 'Estabelecimentos do usuário listados por categoria com sucesso.',
             'establishments' => $establishments,
-        ], 200);
-
+        ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     } catch (\Exception $e) {
-        \Log::error('Erro ao listar estabelecimentos do usuário por categoria: ' . $e->getMessage());
+        Log::error('listMyByCategory: erro ao listar estabelecimentos por categoria', [
+            'error'          => $e->getMessage(),
+            'trace'          => $e->getTraceAsString(),
+            'user_id'        => Auth::id(),
+            'category_param' => $category,
+            'query'          => $request->all(),
+        ]);
         return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
     }
 }

@@ -59,206 +59,222 @@ class OrderController extends Controller
         ];
     }
 
-    public function store(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou criar pedido.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+   public function store(Request $request)
+{
+    try {
+        $user = Auth::user(); // pode ser null se não estiver logado
+        Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
 
-            $user = Auth::user();
-            Log::info('Iniciando criação de pedido.', ['user_id' => $user->id]);
+        $data = $request->validate([
+            'app_id' => 'required|exists:applications,id',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.additions' => 'nullable|array',
+            'items.*.additions.*' => 'integer|exists:items,id',
+            'items.*.removals' => 'nullable|array',
+            'items.*.removals.*' => 'integer|exists:items,id',
+            'customer_name' => 'required|string|max:255',
+            'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+            'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+            'payment_status' => 'required|string|in:pending,paid,failed',
+            'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+            'notes' => 'nullable|string|max:500',
+            'customer_phone' => 'nullable|string|max:20',
+            'customer_cpf' => 'nullable|string|max:20',
+            'order_datetime' => 'nullable|date',
+            'attendant_id' => 'nullable|integer|exists:users,id',
+        ], $this->getValidationMessages());
 
-            $data = $request->validate([
-                'app_id' => 'required|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'nullable|array',
-                'items.*.additions.*' => 'integer|exists:items,id',
-                'items.*.removals' => 'nullable|array',
-                'items.*.removals.*' => 'integer|exists:items,id',
-                'customer_name' => 'required|string|max:255',
-                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-                'payment_status' => 'required|string|in:pending,paid,failed',
-                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'notes' => 'nullable|string|max:500',
-                'customer_phone' => 'nullable|string|max:20',
-                'customer_cpf' => 'nullable|string|max:20',
-            ], $this->getValidationMessages());
+        $now = Carbon::now('America/Sao_Paulo');
+        $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
 
-            $now = Carbon::now('America/Sao_Paulo');
-            $last = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-            $number = str_pad($last + 1, 3, '0', STR_PAD_LEFT);
-            $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-            $order = Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => $number,
-                'order_datetime' => $now,
-                'attendant_id' => $user->id,
-                'client_id' => null,
-                'customer_name' => $data['customer_name'],
-                'access_code' => $accessCode,
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'total_price' => 0,
-                'status' => 'pending',
-                'notes' => $data['notes'] ?? null,
-                'customer_phone' => $data['customer_phone'] ?? null,
-                'customer_cpf' => $data['customer_cpf'] ?? null,
-            ]);
+        if ($orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
+        }
 
-            $total = 0;
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        // Verifica conflitos de horário se for agendamento
+        if ($orderDate->gt($now)) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
-                $qty = $entry['quantity'];
-                $unitPrice = $item->price;
-                $subtotal = $unitPrice * $qty;
-
-                $orderItem = $order->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'subtotal' => $subtotal,
-                ]);
-
-                // tratar adicionais e remoções
-                if (!empty($entry['additions'])) {
-                    foreach ($entry['additions'] as $addId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $addId,
-                            'type' => 'addition',
-                        ]);
-                    }
-                }
-                if (!empty($entry['removals'])) {
-                    foreach ($entry['removals'] as $remId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $remId,
-                            'type' => 'removal',
-                        ]);
-                    }
-                }
-
-                $total += $subtotal;
-            }
-
-            $order->update(['total_price' => $total, 'status' => 'approved']);
-            Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
-
-            // Monta nota com origem, consumo e itens com modifiers
-            $est = Establishment::find($order->entity_id);
-            $ename = $est ? $est->name : strtoupper($order->entity_name);
-            $lines = [];
-            $lines[] = str_repeat('█', 32);
-            $lines[] = "        {$ename}";
-            $lines[] = str_repeat('█', 32);
-            $lines[] = '';
-            $lines[] = "Pedido Nº: {$order->order_number}";
-            $lines[] = '';
-            $lines[] = "Origem: {$order->origin} | Consumo: {$order->fulfillment}";
-            $lines[] = $order->order_datetime->format('d/m/Y H:i:s') . ' BRT';
-            $lines[] = '';
-            $lines[] = "Cliente: {$order->customer_name}";
-            $lines[] = '';
-            $lines[] = str_repeat('-', 32);
-            $lines[] = '        ITENS DO PEDIDO';
-            $lines[] = str_repeat('-', 32);
-            foreach ($order->items as $oi) {
-                $qty = $oi->quantity . 'x';
-                $name = $oi->item->name;
-                $sub = number_format($oi->subtotal, 2, ',', '.');
-                $lines[] = "{$qty} {$name} - R$sub";
-                foreach ($oi->modifiers as $mod) {
-                    $modName = Item::find($mod->modifier_id)->name;
-                    $prefix = $mod->type === 'addition' ? ' + ' : ' - ';
-                    $lines[] = "   {$prefix}{$modName}";
+                $duration = $item->duration ?? 0;
+                $conflict = Order::where('entity_id', $data['entity_id'])
+                    ->where('status', 'scheduled')
+                    ->where(function($q) use ($orderDate, $duration) {
+                        $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)]);
+                    })->exists();
+                if ($conflict) {
+                    return response()->json(['error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."], 422);
                 }
             }
-            $lines[] = str_repeat('-', 44);
-            $tot = number_format($order->total_price, 2, ',', '.');
-            $lines[] = str_pad('TOTAL', 32, '.') . "R\${$tot}";
-            $receipt = implode("\n", $lines);
-
-            return response()->json([
-                'message' => 'Pedido registrado com sucesso!',
-                'order' => $order->load('items.item', 'items.modifiers'),
-                'receipt' => $receipt,
-            ], 201);
-
-        } catch (ValidationException $e) {
-            Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao processar pedido: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
         }
-    }
 
+        $order = Order::create([
+            'app_id' => $data['app_id'],
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+            'order_number' => $orderNumber,
+            'order_datetime' => $orderDate,
+            'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
+            'client_id' => null,
+            'customer_name' => $data['customer_name'],
+            'access_code' => $accessCode,
+            'origin' => $data['origin'],
+            'fulfillment' => $data['fulfillment'],
+            'payment_status' => $data['payment_status'],
+            'payment_method' => $data['payment_method'],
+            'total_price' => 0,
+            'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
+            'notes' => $data['notes'] ?? null,
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_cpf' => $data['customer_cpf'] ?? null,
+        ]);
+
+        $total = 0;
+        foreach ($data['items'] as $entry) {
+            $item = Item::findOrFail($entry['item_id']);
+            $qty = $entry['quantity'];
+            $unitPrice = $item->price;
+            $subtotal = $unitPrice * $qty;
+
+            $orderItem = $order->items()->create([
+                'item_id' => $item->id,
+                'quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'subtotal' => $subtotal,
+            ]);
+
+            if (!empty($entry['additions'])) {
+                foreach ($entry['additions'] as $addId) {
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $addId,
+                        'type' => 'addition',
+                    ]);
+                    $addItem = Item::find($addId);
+                    $total += $addItem->price * $qty;
+                }
+            }
+
+            if (!empty($entry['removals'])) {
+                foreach ($entry['removals'] as $remId) {
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $remId,
+                        'type' => 'removal',
+                    ]);
+                }
+            }
+
+            $total += $subtotal;
+        }
+
+        $order->update(['total_price' => $total]);
+        Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
+
+        return response()->json([
+            'message' => 'Pedido registrado com sucesso!',
+            'order' => $order->load('items.item', 'items.modifiers'),
+        ], 201);
+
+    } catch (ValidationException $e) {
+        Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao processar pedido: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
+    }
+}
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
-     */
-    public function listByEntity(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-            // opcional: checar permissão...
-
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-            ], $this->getValidationMessages());
-
-            $orders = Order::with([
-                'items.item',
-                'items.modifiers.modifier',
-                // carrega quem criou o registro
-                'creator:id,first_name,email,cpf',
-                // carrega o atendente/provider
-                'attendant:id,first_name,email,cpf',
-                // carrega o cliente vinculado, se houver
-                'client:id,first_name,email,cpf',
-            ])
-                ->where('app_id', $data['app_id'])
-                ->where('entity_name', $data['entity_name'])
-                ->where('entity_id', $data['entity_id'])
-                ->orderBy('order_datetime', 'desc')
-                ->get();
-
-            if ($orders->isEmpty()) {
-                return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-            }
-
-            return response()->json([
-                'message' => 'Pedidos listados com sucesso.',
-                'orders' => $orders,
-            ], 200);
-
-        } catch (ValidationException $e) {
-            Log::warning('Erro de validação ao listar pedidos por entidade.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao listar pedidos por entidade: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
+     */public function listByEntity(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+
+        $data = $request->validate([
+            'app_id' => 'required|integer',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'include_scheduled' => 'sometimes|boolean',
+        ], $this->getValidationMessages());
+
+        // Verifica se o aplicativo existe
+        $appExists = \DB::table('applications')->where('id', $data['app_id'])->exists();
+        if (!$appExists) {
+            return response()->json(['error' => 'Aplicativo não encontrado.'], 404);
+        }
+
+        // Verifica se a entity existe
+        $entityExists = \DB::table($data['entity_name'] . 's')->where('id', $data['entity_id'])->exists();
+        if (!$entityExists) {
+            return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
+        }
+
+        // Verifica se o usuário é dono da entity
+        $isOwner = \DB::table($data['entity_name'] . 's')
+            ->where('id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->exists();
+
+        // Verifica se o usuário é colaborador
+        $isStaff = \DB::table('employers')
+            ->where('establishment_id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
+            ->exists();
+
+        if (!$isOwner && !$isStaff) {
+            $reason = $isOwner ? '' : 'Você não é dono da ' . $data['entity_name'] . ' nem colaborador autorizado.';
+            return response()->json(['error' => 'Acesso negado. ' . $reason], 403);
+        }
+
+        $query = Order::with([
+            'items.item',
+            'items.modifiers.modifier',
+            'creator:id,first_name,email,cpf',
+            'attendant:id,first_name,email,cpf',
+            'client:id,first_name,email,cpf',
+        ])
+        ->where('app_id', $data['app_id'])
+        ->where('entity_name', $data['entity_name'])
+        ->where('entity_id', $data['entity_id']);
+
+        if (!empty($data['include_scheduled'])) {
+            $query->whereNotNull('scheduled_at');
+        }
+
+        $orders = $query->orderBy('order_datetime', 'desc')->get();
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'orders' => $orders,
+        ], 200);
+
+    } catch (ValidationException $e) {
+        Log::warning('Erro de validação ao listar pedidos por entidade.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar pedidos por entidade: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
     }
+}
 
     /**
      * Exibe um único pedido para impressão.

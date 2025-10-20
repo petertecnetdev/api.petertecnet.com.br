@@ -40,18 +40,19 @@ Route::group([
         ->middleware('auth:api')
         ->name('resendVerificationCode');
 });// Autenticação via Google
+
 Route::post('auth/google', [AuthController::class, 'googleAuth']);
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'user'
+    'prefix' => 'user'
 ], function () {
-    Route::get('/',            [UserController::class, 'list'])->name('user.list');
-    Route::get('/search',      [UserController::class, 'search'])->name('user.search');
-    Route::get('/show/{id}',   [UserController::class, 'show'])->name('user.show');
-    Route::get('/{userName}',  [UserController::class, 'view'])->name('user.view');
-    Route::post('/new',        [UserController::class, 'store'])->name('user.store');
-    Route::post('/{user}',     [UserController::class, 'update'])->name('user.update');
-    Route::delete('/{id}',     [UserController::class, 'destroy'])->name('user.destroy');
+    Route::get('/', [UserController::class, 'list'])->name('user.list');
+    Route::get('/search', [UserController::class, 'search'])->name('user.search');
+    Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
+    Route::get('/{userName}', [UserController::class, 'view'])->name('user.view');
+    Route::post('/new', [UserController::class, 'store'])->name('user.store');
+    Route::post('/{user}', [UserController::class, 'update'])->name('user.update');
+    Route::delete('/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 });
 
 
@@ -277,18 +278,11 @@ Route::group([
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
 
-// routes/api.php
-
 Route::group([
     'middleware' => ['api', 'auth:api'],
-    'prefix'     => 'employer'
+    'prefix' => 'employer'
 ], function () {
-    // Lista colaboradores (establishment_id no body)
-    Route::get('/', [EmployerController::class, 'list'])
-         ->name('employer.list');
-
-    // Adiciona colaborador (establishment_id, email, role, permissions no body)
-    Route::post('/', [EmployerController::class, 'store'])
-         ->name('employer.store');
+    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
+    Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
+    Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
 });
-
