@@ -49,11 +49,10 @@ class EstablishmentController extends Controller
         'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
     ];
 }
-
 public function store(Request $request)
 {
     try {
-        $user = Auth::user();
+        $user = Auth::user(); // pode ser null se não estiver logado
         Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
 
         $data = $request->validate([
@@ -86,37 +85,31 @@ public function store(Request $request)
             return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
         }
 
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
         $attendantId = $data['attendant_id'] ?? $user->id ?? null;
 
-        // Conflito de horário por atendente
-        if ($orderDate->gt($now) && $attendantId) {
+        // Verifica conflitos de horário por atendente
+        if ($orderDate->gt($now)) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
-                $newStart = $orderDate;
-                $newEnd = $orderDate->copy()->addMinutes($duration);
 
                 $conflict = Order::where('entity_id', $data['entity_id'])
                     ->where('attendant_id', $attendantId)
                     ->where('status', 'scheduled')
-                    ->where(function($q) use ($newStart, $newEnd) {
-                        $q->whereBetween('order_datetime', [$newStart, $newEnd])
-                          ->orWhereRaw('? BETWEEN order_datetime AND DATE_ADD(order_datetime, INTERVAL (SELECT SUM(duration) FROM order_items WHERE order_items.order_id = orders.id) MINUTE)', [$newStart])
-                          ->orWhereRaw('? BETWEEN order_datetime AND DATE_ADD(order_datetime, INTERVAL (SELECT SUM(duration) FROM order_items WHERE order_items.order_id = orders.id) MINUTE)', [$newEnd]);
-                    })
-                    ->exists();
+                    ->where(function($q) use ($orderDate, $duration) {
+                        $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)])
+                          ->orWhereBetween(DB::raw('DATE_ADD(order_datetime, INTERVAL duration MINUTE)'), [$orderDate, $orderDate->copy()->addMinutes($duration)]);
+                    })->exists();
 
                 if ($conflict) {
-                    return response()->json([
-                        'error' => "Conflito de horário para o serviço {$item->name} com o atendente selecionado. Escolha outro horário ou outro atendente."
-                    ], 422);
+                    return response()->json(['error' => "Conflito de horário para o serviço {$item->name} com o atendente selecionado. Escolha outro horário ou outro atendente."], 422);
                 }
             }
         }
-
-        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
         $order = Order::create([
             'app_id' => $data['app_id'],
@@ -193,6 +186,7 @@ public function store(Request $request)
         return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
     }
 }
+
 
 
     public function update(Request $request, $id)
