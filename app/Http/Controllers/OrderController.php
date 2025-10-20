@@ -193,8 +193,7 @@ class OrderController extends Controller
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
-     */
-    public function listByEntity(Request $request)
+     */public function listByEntity(Request $request)
 {
     try {
         if (!Auth::check()) {
@@ -211,13 +210,20 @@ class OrderController extends Controller
             'include_scheduled' => 'sometimes|boolean',
         ], $this->getValidationMessages());
 
-        // Verifica se o usuário é dono ou colaborador da establishment
-        $isOwnerOrStaff = \DB::table('employers')
-            ->where('establishment_id', $data['entity_id'])
+        // Verifica se o usuário é dono da entity
+        $isOwner = \DB::table($data['entity_name'] . 's') // ex: 'establishments'
+            ->where('id', $data['entity_id'])
             ->where('user_id', $user->id)
             ->exists();
 
-        if (!$isOwnerOrStaff) {
+        // Verifica se o usuário é colaborador
+        $isStaff = \DB::table('employers')
+            ->where('establishment_id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
+            ->exists();
+
+        if (!$isOwner && !$isStaff) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
@@ -232,7 +238,6 @@ class OrderController extends Controller
         ->where('entity_name', $data['entity_name'])
         ->where('entity_id', $data['entity_id']);
 
-        // Filtrar pedidos agendados, se solicitado
         if (!empty($data['include_scheduled'])) {
             $query->whereNotNull('scheduled_at');
         }
