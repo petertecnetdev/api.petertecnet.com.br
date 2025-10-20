@@ -49,102 +49,138 @@ class EstablishmentController extends Controller
         'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
     ];
 }
+public function store(Request $request)
+{
+    try {
+        $user = Auth::user(); // pode ser null se não estiver logado
+        Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
 
-    public function store(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Tentativa de cadastro sem autentica��o.');
-                return response()->json(['error' => 'Usu�rio n�o autenticado.'], 401);
+        $data = $request->validate([
+            'app_id' => 'required|exists:applications,id',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.additions' => 'nullable|array',
+            'items.*.additions.*' => 'integer|exists:items,id',
+            'items.*.removals' => 'nullable|array',
+            'items.*.removals.*' => 'integer|exists:items,id',
+            'customer_name' => 'required|string|max:255',
+            'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+            'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+            'payment_status' => 'required|string|in:pending,paid,failed',
+            'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+            'notes' => 'nullable|string|max:500',
+            'customer_phone' => 'nullable|string|max:20',
+            'customer_cpf' => 'nullable|string|max:20',
+            'order_datetime' => 'nullable|date',
+            'attendant_id' => 'nullable|integer|exists:users,id',
+        ], $this->getValidationMessages());
+
+        $now = Carbon::now('America/Sao_Paulo');
+        $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
+
+        if ($orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
+        }
+
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        // Verifica conflitos de horário se for agendamento
+        if ($orderDate->gt($now)) {
+            foreach ($data['items'] as $entry) {
+                $item = Item::findOrFail($entry['item_id']);
+                $duration = $item->duration ?? 0;
+                $conflict = Order::where('entity_id', $data['entity_id'])
+                    ->where('status', 'scheduled')
+                    ->where(function($q) use ($orderDate, $duration) {
+                        $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)]);
+                    })->exists();
+                if ($conflict) {
+                    return response()->json(['error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."], 422);
+                }
             }
+        }
 
-            $user = Auth::user();
-            $establishmentCount = Establishment::where('user_id', $user->id)->count();
+        $order = Order::create([
+            'app_id' => $data['app_id'],
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+            'order_number' => $orderNumber,
+            'order_datetime' => $orderDate,
+            'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
+            'client_id' => null,
+            'customer_name' => $data['customer_name'],
+            'access_code' => $accessCode,
+            'origin' => $data['origin'],
+            'fulfillment' => $data['fulfillment'],
+            'payment_status' => $data['payment_status'],
+            'payment_method' => $data['payment_method'],
+            'total_price' => 0,
+            'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
+            'notes' => $data['notes'] ?? null,
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_cpf' => $data['customer_cpf'] ?? null,
+        ]);
 
-            if ($establishmentCount >= 1 && !$user->hasPermission('establishment_create')) {
-                return response()->json([
-                    'error' => 'Voc� j� possui um estabelecimento cadastrado. Para cadastrar mais, solicite permiss�o.'
-                ], 403);
-            }
+        $total = 0;
+        foreach ($data['items'] as $entry) {
+            $item = Item::findOrFail($entry['item_id']);
+            $qty = $entry['quantity'];
+            $unitPrice = $item->price;
+            $subtotal = $unitPrice * $qty;
 
-            Log::info('Usu�rio autenticado:', ['user_id' => $user->id, 'email' => $user->email]);
-
-            $validatedData = $request->validate([
-                'name' => 'required|string|max:255',
-                'fantasy' => 'nullable|string|max:255',
-                'cnpj' => 'nullable|string|max:18',
-                'type' => 'nullable|string|max:50',
-                'category' => 'nullable|string|max:50',
-                'phone' => 'nullable|string|max:20',
-                'email' => 'nullable|email|max:255',
-                'description' => 'nullable|string|max:2500',
-                'additional_info' => 'nullable|string|max:1000',
-                'address' => 'nullable|string|max:255',
-                'city' => 'nullable|string|max:100',
-                'cep' => 'nullable|string|max:10',
-                'location' => 'nullable|string',
-                'website_url' => 'nullable|url|max:255',
-                'facebook_url' => 'nullable|url|max:255',
-                'instagram_url' => 'nullable|url|max:255',
-                'twitter_url' => 'nullable|url|max:255',
-                'youtube_url' => 'nullable|url|max:255',
-                'segments' => 'nullable|array',
-                'segments.*' => 'string',
-                'logo' => 'required|image|max:2048',
-                'background' => 'nullable|image|max:4096',
-            ], $this->getValidationMessages());
-
-            $establishment = new Establishment();
-            $establishment->fill($validatedData);
-            $establishment->user_id = $user->id;
-            $establishment->slug = Str::slug($establishment->fantasy ?? $establishment->name);
-            if (is_array($request->segments)) {
-                $establishment->segments = json_encode($request->segments);
-            }
-            $establishment->save();
-
-            if ($request->hasFile('logo')) {
-                Log::info('Imagem de logo fornecida, processando...');
-                $destinationPath = public_path('images');
-                $imageName = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-                $request->file('logo')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName)->fit(150, 150)->save();
-                $establishment->logo = 'images/' . $imageName;
-                $establishment->save();
-            }
-
-            if ($request->hasFile('background')) {
-                Log::info('Imagem de fundo fornecida, processando...');
-                $destinationPath = public_path('images');
-                $imageName = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
-                $request->file('background')->move($destinationPath, $imageName);
-                $image = Image::make($destinationPath . '/' . $imageName)->fit(1920, 600)->save();
-                $establishment->background = 'images/' . $imageName;
-                $establishment->save();
-            }
-
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'Create',
-                'entity_id' => $establishment->id,
-                'entity_type' => 'establishment',
-                'content' => "O usu�rio {$user->first_name} criou o estabelecimento {$establishment->name}.",
+            $orderItem = $order->items()->create([
+                'item_id' => $item->id,
+                'quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'subtotal' => $subtotal,
             ]);
 
-            return response()->json([
-                'message' => 'Estabelecimento cadastrado com sucesso.',
-                'establishment' => $establishment
-            ], 201);
+            if (!empty($entry['additions'])) {
+                foreach ($entry['additions'] as $addId) {
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $addId,
+                        'type' => 'addition',
+                    ]);
+                    $addItem = Item::find($addId);
+                    $total += $addItem->price * $qty;
+                }
+            }
 
-        } catch (ValidationException $e) {
-            Log::error('Erro de valida��o ao cadastrar o estabelecimento.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            if (!empty($entry['removals'])) {
+                foreach ($entry['removals'] as $remId) {
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $remId,
+                        'type' => 'removal',
+                    ]);
+                }
+            }
 
-        } catch (\Exception $e) {
-            Log::error('Erro ao cadastrar estabelecimento: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao cadastrar o estabelecimento.'], 500);
+            $total += $subtotal;
         }
+
+        $order->update(['total_price' => $total]);
+        Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
+
+        return response()->json([
+            'message' => 'Pedido registrado com sucesso!',
+            'order' => $order->load('items.item', 'items.modifiers'),
+        ], 201);
+
+    } catch (ValidationException $e) {
+        Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao processar pedido: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
     }
+}
+
 
     public function update(Request $request, $id)
     {
