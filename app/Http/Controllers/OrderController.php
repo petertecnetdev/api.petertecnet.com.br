@@ -59,333 +59,278 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }
-    public function store(Request $request)
-    {
-        try {
-            $user = Auth::user();
-            Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id ?? null, 'payload' => $request->all()]);
+    }public function store(Request $request)
+{
+    try {
+        $user = Auth::user();
+        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id ?? null, 'payload' => $request->all()]);
 
-            $data = $request->validate([
-                'app_id' => 'required|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'nullable|array',
-                'items.*.additions.*' => 'integer|exists:items,id',
-                'items.*.removals' => 'nullable|array',
-                'items.*.removals.*' => 'integer|exists:items,id',
-                'customer_name' => 'required|string|max:255',
-                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-                'payment_status' => 'required|string|in:pending,paid,failed',
-                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'notes' => 'nullable|string|max:500',
-                'customer_phone' => 'nullable|string|max:20',
-                'customer_cpf' => 'nullable|string|max:20',
-                'order_datetime' => 'nullable|date',
-                'attendant_id' => 'nullable|integer|exists:employers,id',
-            ]);
+        $data = $request->validate([
+            'app_id' => 'required|exists:applications,id',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.additions' => 'nullable|array',
+            'items.*.additions.*' => 'integer|exists:items,id',
+            'items.*.removals' => 'nullable|array',
+            'items.*.removals.*' => 'integer|exists:items,id',
+            'customer_name' => 'required|string|max:255',
+            'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+            'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+            'payment_status' => 'required|string|in:pending,paid,failed',
+            'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+            'notes' => 'nullable|string|max:500',
+            'customer_phone' => 'nullable|string|max:20',
+            'customer_cpf' => 'nullable|string|max:20',
+            'order_datetime' => 'nullable|date',
+            'attendant_id' => 'nullable|integer|exists:employers,id',
+        ]);
 
-            Log::info('✅ Validação concluída com sucesso.', ['data' => $data]);
+        Log::info('✅ Validação concluída com sucesso.', ['data' => $data]);
 
-            $now = Carbon::now('America/Sao_Paulo');
-            $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
-            $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
-            $type = $isScheduled ? 'appointment' : 'service';
-            $appointmentStatus = $isScheduled ? 'pending' : null;
+        $now = Carbon::now('America/Sao_Paulo');
+        $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
+        $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
+        $type = $isScheduled ? 'appointment' : 'service';
+        $appointmentStatus = $isScheduled ? 'pending' : null;
 
-            Log::info('🕒 Tipo de pedido identificado.', [
-                'is_scheduled' => $isScheduled,
-                'type' => $type,
-                'appointment_status' => $appointmentStatus,
-                'order_datetime' => $orderDate,
-            ]);
+        if ($isScheduled && $orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+        }
 
-            if ($isScheduled && $orderDate->lt($now)) {
-                Log::warning('⚠️ Tentativa de agendamento em data passada.', ['order_datetime' => $orderDate]);
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+        if (!empty($data['attendant_id'])) {
+            $isEmployerOfEntity = \App\Models\Employer::where('id', $data['attendant_id'])
+                ->where('establishment_id', $data['entity_id'])
+                ->exists();
+
+            if (!$isEmployerOfEntity) {
+                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
             }
+        }
 
-            // ✅ Verifica se o colaborador pertence ao estabelecimento
-            if (!empty($data['attendant_id'])) {
-                $isEmployerOfEntity = \App\Models\Employer::where('id', $data['attendant_id'])
-                    ->where('establishment_id', $data['entity_id'])
-                    ->exists();
+        if ($isScheduled && !empty($data['attendant_id'])) {
+            $dayOfWeek = strtolower($orderDate->format('l'));
+            $time = $orderDate->format('H:i');
 
-                if (!$isEmployerOfEntity) {
-                    Log::warning('🚫 Colaborador não pertence ao estabelecimento.', [
-                        'attendant_id' => $data['attendant_id'],
-                        'entity_id' => $data['entity_id']
-                    ]);
-                    return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-                }
+            $isAvailable = EmployerSchedule::where('employer_id', $data['attendant_id'])
+                ->where('day_of_week', $dayOfWeek)
+                ->where('start_time', '<=', $time)
+                ->where('end_time', '>=', $time)
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$isAvailable) {
+                return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
+        }
 
-            // 🔍 Se for agendamento, valida se o horário é atendido
-            if ($isScheduled && !empty($data['attendant_id'])) {
-                $dayOfWeek = strtolower($orderDate->format('l'));
-                $time = $orderDate->format('H:i');
+        $itemIds = collect($data['items'])->pluck('item_id');
+        $invalidItems = Item::whereIn('id', $itemIds)
+            ->where(function ($q) use ($data) {
+                $q->where('entity_name', '!=', $data['entity_name'])
+                    ->orWhere('entity_id', '!=', $data['entity_id']);
+            })
+            ->pluck('name')
+            ->toArray();
 
-                $isAvailable = EmployerSchedule::where('employer_id', $data['attendant_id'])
-                    ->where('day_of_week', $dayOfWeek)
-                    ->where('start_time', '<=', $time)
-                    ->where('end_time', '>=', $time)
-                    ->where('is_active', true)
-                    ->exists();
+        if (!empty($invalidItems)) {
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
 
-                Log::info('📅 Verificando disponibilidade do colaborador.', [
-                    'day' => $dayOfWeek,
-                    'time' => $time,
-                    'available' => $isAvailable
-                ]);
-
-                if (!$isAvailable) {
-                    return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
-                }
-            }
-
-            // 🔁 Verifica se os itens pertencem ao mesmo estabelecimento
-            $itemIds = collect($data['items'])->pluck('item_id');
-            $invalidItems = Item::whereIn('id', $itemIds)
-                ->where(function ($q) use ($data) {
-                    $q->where('entity_name', '!=', $data['entity_name'])
-                        ->orWhere('entity_id', '!=', $data['entity_id']);
-                })
-                ->pluck('name')
-                ->toArray();
-
-            if (!empty($invalidItems)) {
-                Log::warning('🚫 Itens inválidos detectados.', ['invalid_items' => $invalidItems]);
-                return response()->json([
-                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                    'invalid_items' => $invalidItems,
-                ], 422);
-            }
-            // 🔒 Verifica conflito de agendamento considerando duração e disponibilidade real
-            if ($isScheduled && !empty($data['attendant_id'])) {
-                $totalDuration = 0;
-                foreach ($data['items'] as $entry) {
-                    $item = Item::findOrFail($entry['item_id']);
-                    $duration = $item->duration ?? 0;
-                    $totalDuration += $duration;
-                }
-
-                $appointmentStart = $orderDate->copy();
-                $appointmentEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-                Log::info('⏳ Calculando duração total do agendamento.', [
-                    'total_duration' => $totalDuration,
-                    'appointment_start' => $appointmentStart,
-                    'appointment_end' => $appointmentEnd,
-                ]);
-
-                // 🕒 Busca agendamentos existentes no mesmo dia
-                $existingAppointments = Order::where('attendant_id', $data['attendant_id'])
-                    ->where('type', 'appointment')
-                    ->whereIn('appointment_status', ['pending', 'confirmed'])
-                    ->whereDate('order_datetime', $appointmentStart->format('Y-m-d'))
-                    ->orderBy('order_datetime')
-                    ->get();
-
-                // 🔍 Verifica se há conflito direto
-                $hasConflict = $existingAppointments->contains(function ($a) use ($appointmentStart, $appointmentEnd) {
-                    $aStart = Carbon::parse($a->order_datetime);
-                    $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                    return $appointmentStart->lt($aEnd) && $appointmentEnd->gt($aStart);
-                });
-
-                if ($hasConflict) {
-                    Log::warning('⚠️ Conflito detectado, buscando horário alternativo...', [
-                        'attendant_id' => $data['attendant_id'],
-                        'appointment_start' => $appointmentStart,
-                        'appointment_end' => $appointmentEnd,
-                        'total_duration' => $totalDuration,
-                    ]);
-
-                    // 🗓️ Busca horários de atendimento do colaborador
-                    $dayOfWeek = strtolower($appointmentStart->format('l'));
-                    $schedules = EmployerSchedule::where('employer_id', $data['attendant_id'])
-                        ->where('day_of_week', $dayOfWeek)
-                        ->where('is_active', true)
-                        ->orderBy('start_time')
-                        ->get(['start_time', 'end_time']);
-
-                    if ($schedules->isEmpty()) {
-                        return response()->json([
-                            'error' => 'O colaborador não possui horários de atendimento neste dia.',
-                        ], 422);
-                    }
-
-                    $suggestedTime = null;
-                    $dayDate = $appointmentStart->format('Y-m-d');
-
-                    // 🔁 Para cada horário de trabalho do colaborador
-                    foreach ($schedules as $schedule) {
-                        $workStart = Carbon::parse("{$dayDate} {$schedule->start_time}");
-                        $workEnd = Carbon::parse("{$dayDate} {$schedule->end_time}");
-
-                        // 🔄 Gera blocos de 5 minutos a partir do horário solicitado
-                        $candidate = $appointmentStart->copy();
-                        if ($candidate->lt($workStart)) {
-                            $candidate = $workStart->copy();
-                        }
-
-                        while ($candidate->addMinutes(0)->lt($workEnd)) {
-                            $candidateStart = $candidate->copy();
-                            $candidateEnd = $candidateStart->copy()->addMinutes($totalDuration);
-
-                            // se passar do horário de trabalho, sai
-                            if ($candidateEnd->gt($workEnd))
-                                break;
-
-                            // ⚖️ verifica conflito com agendamentos existentes
-                            $conflict = $existingAppointments->contains(function ($a) use ($candidateStart, $candidateEnd) {
-                                $aStart = Carbon::parse($a->order_datetime);
-                                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                                return $candidateStart->lt($aEnd) && $candidateEnd->gt($aStart);
-                            });
-
-                            if (!$conflict) {
-                                $suggestedTime = $candidateStart->format('H:i');
-                                break 2; // ✅ achou o horário compatível
-                            }
-
-                            // Avança para o próximo possível (5 min depois do término do conflito mais próximo)
-                            $nextConflict = $existingAppointments->filter(function ($a) use ($candidateStart, $candidateEnd) {
-                                $aStart = Carbon::parse($a->order_datetime);
-                                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                                return $candidateStart->lt($aEnd);
-                            })->sortBy('order_datetime')->first();
-
-                            $candidate = $nextConflict
-                                ? Carbon::parse($nextConflict->order_datetime)->addMinutes($nextConflict->total_duration + 5)
-                                : $candidate->addMinutes(5);
-                        }
-                    }
-
-                    if ($suggestedTime) {
-                        return response()->json([
-                            'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
-                            'suggestion' => "Horário mais próximo e compatível disponível: {$suggestedTime}.",
-                            'tip' => 'Tente selecionar menos serviços ou aceitar o horário sugerido.',
-                        ], 422);
-                    } else {
-                        return response()->json([
-                            'error' => 'Não há horários disponíveis neste dia compatíveis com a duração total dos serviços.',
-                            'tip' => 'Escolha outro dia ou menos serviços.',
-                        ], 422);
-                    }
-                }
-            }
-
-
-            // 🔢 Número e código de acesso
-            $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-            $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-            $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-            Log::info('🧾 Gerando número e código de pedido.', [
-                'order_number' => $orderNumber,
-                'access_code' => $accessCode
-            ]);
-
-            // 💾 Cria pedido
-            $order = Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => $orderNumber,
-                'order_datetime' => $orderDate,
-                'created_by' => $user->id ?? null,
-                'attendant_id' => $data['attendant_id'] ?? null,
-                'client_id' => null,
-                'customer_name' => $data['customer_name'],
-                'customer_phone' => $data['customer_phone'] ?? null,
-                'customer_cpf' => $data['customer_cpf'] ?? null,
-                'access_code' => $accessCode,
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'total_price' => 0,
-                'status' => $isScheduled ? 'scheduled' : 'completed',
-                'notes' => $data['notes'] ?? null,
-                'type' => $type,
-                'appointment_status' => $appointmentStatus,
-                'total_duration' => $totalDuration ?? 0,
-            ]);
-
-            Log::info('💾 Pedido salvo com sucesso.', ['order_id' => $order->id]);
-
-            // 💰 Calcula valor total
-            $total = 0;
+        if ($isScheduled && !empty($data['attendant_id'])) {
+            $totalDuration = 0;
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
-                $qty = $entry['quantity'];
-                $unitPrice = $item->price;
-                $subtotal = $unitPrice * $qty;
-
-                $orderItem = $order->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'subtotal' => $subtotal,
-                ]);
-
-                $total += $subtotal;
+                $totalDuration += $item->duration ?? 0;
             }
 
-            $order->update(['total_price' => $total]);
-            Log::info('💰 Total atualizado.', ['total_price' => $total]);
+            $appointmentStart = $orderDate->copy();
+            $appointmentEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-            // 🔔 Envio de e-mails
-            if ($isScheduled) {
-                $establishment = \App\Models\Establishment::find($data['entity_id']);
-                $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
-                $owner = $establishment ? $establishment->owner : null;
+            $existingAppointments = Order::where('attendant_id', $data['attendant_id'])
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->whereDate('order_datetime', $appointmentStart->format('Y-m-d'))
+                ->orderBy('order_datetime')
+                ->get();
 
-                if ($data['origin'] === 'App') {
-                    if ($attendant && $attendant->user && $attendant->user->email) {
-                        Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order));
+            $hasConflict = $existingAppointments->contains(function ($a) use ($appointmentStart, $appointmentEnd) {
+                $aStart = Carbon::parse($a->order_datetime);
+                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                return $appointmentStart->lt($aEnd) && $appointmentEnd->gt($aStart);
+            });
+
+            if ($hasConflict) {
+                $dayOfWeek = strtolower($appointmentStart->format('l'));
+                $schedules = EmployerSchedule::where('employer_id', $data['attendant_id'])
+                    ->where('day_of_week', $dayOfWeek)
+                    ->where('is_active', true)
+                    ->orderBy('start_time')
+                    ->get(['start_time', 'end_time']);
+
+                if ($schedules->isEmpty()) {
+                    return response()->json([
+                        'error' => 'O colaborador não possui horários de atendimento neste dia.',
+                    ], 422);
+                }
+
+                $suggestedTime = null;
+                $dayDate = $appointmentStart->format('Y-m-d');
+
+                foreach ($schedules as $schedule) {
+                    $workStart = Carbon::parse("{$dayDate} {$schedule->start_time}");
+                    $workEnd = Carbon::parse("{$dayDate} {$schedule->end_time}");
+
+                    $candidate = $appointmentStart->copy();
+                    if ($candidate->lt($workStart)) {
+                        $candidate = $workStart->copy();
                     }
-                    if ($owner && $owner->email) {
-                        Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order));
+
+                    while ($candidate->lt($workEnd)) {
+                        $candidateStart = $candidate->copy();
+                        $candidateEnd = $candidateStart->copy()->addMinutes($totalDuration);
+
+                        if ($candidateEnd->gt($workEnd)) {
+                            break;
+                        }
+
+                        $conflict = $existingAppointments->contains(function ($a) use ($candidateStart, $candidateEnd) {
+                            $aStart = Carbon::parse($a->order_datetime);
+                            $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                            return $candidateStart->lt($aEnd) && $candidateEnd->gt($aStart);
+                        });
+
+                        if (!$conflict) {
+                            $suggestedTime = $candidateStart->format('H:i');
+                            break 2;
+                        }
+
+                        $nextConflict = $existingAppointments->filter(function ($a) use ($candidateStart, $candidateEnd) {
+                            $aStart = Carbon::parse($a->order_datetime);
+                            $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                            return $candidateStart->lt($aEnd);
+                        })->sortBy('order_datetime')->first();
+
+                        $candidate = $nextConflict
+                            ? Carbon::parse($nextConflict->order_datetime)->addMinutes($nextConflict->total_duration + 5)
+                            : $candidate->addMinutes(5);
+
+                        if ($candidate->gte($workEnd)) {
+                            $candidate = $workEnd->copy();
+                            break;
+                        }
                     }
-                } elseif (!empty($data['customer_email'])) {
-                    Mail::to($data['customer_email'])->queue(new AppointmentAwaitingConfirmation($order));
+                }
+
+                if ($suggestedTime) {
+                    return response()->json([
+                        'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
+                        'suggestion' => "Horário mais próximo e compatível disponível: {$suggestedTime}.",
+                        'tip' => 'Tente selecionar menos serviços ou aceitar o horário sugerido.',
+                    ], 422);
+                } else {
+                    return response()->json([
+                        'error' => 'Não há horários disponíveis neste dia compatíveis com a duração total dos serviços.',
+                        'tip' => 'Escolha outro dia ou menos serviços.',
+                    ], 422);
                 }
             }
-
-            Log::info('✅ Pedido criado com sucesso.', ['order_id' => $order->id]);
-
-            return response()->json([
-                'message' => $isScheduled
-                    ? 'Agendamento registrado com sucesso! As notificações foram enviadas.'
-                    : 'Atendimento registrado com sucesso!',
-                'order' => $order->load('items.item', 'items.modifiers'),
-            ], 201);
-
-        } catch (ValidationException $e) {
-            Log::warning('⚠️ Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Throwable $e) {
-            Log::error('🔥 Erro inesperado ao processar pedido.', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json([
-                'error' => 'Erro interno ao criar o pedido.',
-                'details' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ], 500);
         }
+
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        $order = Order::create([
+            'app_id' => $data['app_id'],
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+            'order_number' => $orderNumber,
+            'order_datetime' => $orderDate,
+            'created_by' => $user->id ?? null,
+            'attendant_id' => $data['attendant_id'] ?? null,
+            'client_id' => null,
+            'customer_name' => $data['customer_name'],
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_cpf' => $data['customer_cpf'] ?? null,
+            'access_code' => $accessCode,
+            'origin' => $data['origin'],
+            'fulfillment' => $data['fulfillment'],
+            'payment_status' => $data['payment_status'],
+            'payment_method' => $data['payment_method'],
+            'total_price' => 0,
+            'status' => $isScheduled ? 'scheduled' : 'completed',
+            'notes' => $data['notes'] ?? null,
+            'type' => $type,
+            'appointment_status' => $appointmentStatus,
+            'total_duration' => $totalDuration ?? 0,
+        ]);
+
+        $total = 0;
+        foreach ($data['items'] as $entry) {
+            $item = Item::findOrFail($entry['item_id']);
+            $qty = $entry['quantity'];
+            $unitPrice = $item->price;
+            $subtotal = $unitPrice * $qty;
+
+            $order->items()->create([
+                'item_id' => $item->id,
+                'quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'subtotal' => $subtotal,
+            ]);
+
+            $total += $subtotal;
+        }
+
+        $order->update(['total_price' => $total]);
+
+        if ($isScheduled) {
+            $establishment = \App\Models\Establishment::find($data['entity_id']);
+            $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
+            $owner = $establishment ? $establishment->owner : null;
+
+            if ($data['origin'] === 'App') {
+                if ($attendant && $attendant->user && $attendant->user->email) {
+                    Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order));
+                }
+                if ($owner && $owner->email) {
+                    Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order));
+                }
+            } elseif (!empty($data['customer_email'])) {
+                Mail::to($data['customer_email'])->queue(new AppointmentAwaitingConfirmation($order));
+            }
+        }
+
+        return response()->json([
+            'message' => $isScheduled
+                ? 'Agendamento registrado com sucesso! As notificações foram enviadas.'
+                : 'Atendimento registrado com sucesso!',
+            'order' => $order->load('items.item', 'items.modifiers'),
+        ], 201);
+
+    } catch (ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Throwable $e) {
+        Log::error('🔥 Erro inesperado ao processar pedido.', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Erro interno ao criar o pedido.',
+            'details' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ], 500);
     }
+}
 
 
     /**
