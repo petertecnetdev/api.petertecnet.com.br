@@ -83,8 +83,7 @@ class OrderController extends Controller
             'customer_phone' => 'nullable|string|max:20',
             'customer_cpf' => 'nullable|string|max:20',
             'order_datetime' => 'nullable|date',
-            'attendant_id' => 'nullable|integer|exists:users,id',
-            'collaborator_id' => 'nullable|integer|exists:employers,id',
+            'attendant_id' => 'nullable|integer|exists:employers,id',
         ]);
 
         $now = Carbon::now('America/Sao_Paulo');
@@ -95,11 +94,11 @@ class OrderController extends Controller
         }
 
         // 🔍 Verifica se colaborador atende nesse horário (se houver agendamento)
-        if (!empty($data['collaborator_id']) && $orderDate->gt($now)) {
+        if (!empty($data['attendant_id']) && $orderDate->gt($now)) {
             $dayOfWeek = strtolower($orderDate->format('l'));
             $time = $orderDate->format('H:i');
 
-            $isAvailable = EmployerSchedule::where('employer_id', $data['collaborator_id'])
+            $isAvailable = EmployerSchedule::where('employer_id', $data['attendant_id'])
                 ->where('day_of_week', $dayOfWeek)
                 ->where('start_time', '<=', $time)
                 ->where('end_time', '>=', $time)
@@ -131,12 +130,12 @@ class OrderController extends Controller
         }
 
         // 🔒 Verifica conflito com outros agendamentos
-        if (!empty($data['collaborator_id']) && $orderDate->gt($now)) {
+        if (!empty($data['attendant_id']) && $orderDate->gt($now)) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
 
-                $conflict = Order::where('collaborator_id', $data['collaborator_id'])
+                $conflict = Order::where('attendant_id', $data['attendant_id'])
                     ->where('status', 'scheduled')
                     ->whereBetween('order_datetime', [
                         $orderDate,
@@ -164,7 +163,6 @@ class OrderController extends Controller
             'order_number' => $orderNumber,
             'order_datetime' => $orderDate,
             'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
-            'collaborator_id' => $data['collaborator_id'] ?? null,
             'client_id' => null,
             'customer_name' => $data['customer_name'],
             'access_code' => $accessCode,
@@ -238,7 +236,9 @@ class OrderController extends Controller
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
-     */public function listByEntity(Request $request)
+     */
+    
+  public function listByEntity(Request $request)
 {
     try {
         if (!Auth::check()) {
@@ -249,31 +249,28 @@ class OrderController extends Controller
         $user = Auth::user();
 
         $data = $request->validate([
-            'app_id' => 'required|integer',
+            'app_id' => 'required|integer|exists:applications,id',
             'entity_name' => 'required|string|max:255',
             'entity_id' => 'required|integer',
             'include_scheduled' => 'sometimes|boolean',
         ], $this->getValidationMessages());
 
-        // Verifica se o aplicativo existe
-        $appExists = \DB::table('applications')->where('id', $data['app_id'])->exists();
-        if (!$appExists) {
-            return response()->json(['error' => 'Aplicativo não encontrado.'], 404);
-        }
+        // Verifica se a entidade realmente existe
+        $entityExists = \DB::table($data['entity_name'] . 's')
+            ->where('id', $data['entity_id'])
+            ->exists();
 
-        // Verifica se a entity existe
-        $entityExists = \DB::table($data['entity_name'] . 's')->where('id', $data['entity_id'])->exists();
         if (!$entityExists) {
             return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
         }
 
-        // Verifica se o usuário é dono da entity
+        // Verifica se o usuário é dono da entidade
         $isOwner = \DB::table($data['entity_name'] . 's')
             ->where('id', $data['entity_id'])
             ->where('user_id', $user->id)
             ->exists();
 
-        // Verifica se o usuário é colaborador
+        // Verifica se o usuário é colaborador do estabelecimento
         $isStaff = \DB::table('employers')
             ->where('establishment_id', $data['entity_id'])
             ->where('user_id', $user->id)
@@ -285,6 +282,7 @@ class OrderController extends Controller
             return response()->json(['error' => 'Acesso negado. ' . $reason], 403);
         }
 
+        // Monta a query dos pedidos
         $query = Order::with([
             'items.item',
             'items.modifiers.modifier',
@@ -296,8 +294,9 @@ class OrderController extends Controller
         ->where('entity_name', $data['entity_name'])
         ->where('entity_id', $data['entity_id']);
 
-        if (!empty($data['include_scheduled'])) {
-            $query->whereNotNull('scheduled_at');
+        // Inclui apenas agendados, se solicitado
+        if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
+            $query->where('status', 'scheduled');
         }
 
         $orders = $query->orderBy('order_datetime', 'desc')->get();
