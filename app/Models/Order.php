@@ -33,10 +33,17 @@ class Order extends Model
         'total_price',
         'status',
         'notes',
+        'type',
+        'appointment_status',
+        'confirmed_by',
+        'cancelled_by',
+        'cancelled_reason',
+        'attended_at',
     ];
 
     protected $casts = [
         'order_datetime' => 'datetime',
+        'attended_at'    => 'datetime',
         'total_price'    => 'decimal:2',
     ];
 
@@ -70,6 +77,22 @@ class Order extends Model
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
+    }
+
+    /**
+     * Usuário que confirmou o agendamento.
+     */
+    public function confirmedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'confirmed_by');
+    }
+
+    /**
+     * Usuário que cancelou o agendamento.
+     */
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
     }
 
     /**

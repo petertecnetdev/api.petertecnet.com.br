@@ -45,8 +45,24 @@ return new class extends Migration
             // Observações
             $table->text('notes')->nullable();
 
+            // Tipo e controle de agendamentos
+            $table->enum('type', ['service', 'appointment'])->default('service');
+            $table->enum('appointment_status', ['pending', 'confirmed', 'rejected', 'cancelled', 'completed'])->nullable();
+            $table->unsignedBigInteger('confirmed_by')->nullable();
+            $table->unsignedBigInteger('cancelled_by')->nullable();
+            $table->string('cancelled_reason')->nullable();
+            $table->timestamp('attended_at')->nullable();
+
             // Criado/atualizado em
             $table->timestamps();
+
+            // Relacionamentos
+            $table->foreign('app_id')->references('id')->on('applications')->onDelete('set null');
+            $table->foreign('created_by')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('attendant_id')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('client_id')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('confirmed_by')->references('id')->on('users')->onDelete('set null');
+            $table->foreign('cancelled_by')->references('id')->on('users')->onDelete('set null');
         });
     }
 

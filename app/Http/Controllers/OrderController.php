@@ -57,7 +57,7 @@ class OrderController extends Controller
         ];
     }
 
- public function store(Request $request)
+public function store(Request $request)
 {
     try {
         $user = Auth::user();
@@ -89,12 +89,17 @@ class OrderController extends Controller
         $now = Carbon::now('America/Sao_Paulo');
         $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
 
-        if ($orderDate->lt($now)) {
-            return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
+        // 🔹 Define se é um pedido agendado ou atendimento direto
+        $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
+        $type = $isScheduled ? 'appointment' : 'service';
+        $appointmentStatus = $isScheduled ? 'pending' : null;
+
+        if ($isScheduled && $orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        // 🔍 Verifica se colaborador atende nesse horário (se houver agendamento)
-        if (!empty($data['attendant_id']) && $orderDate->gt($now)) {
+        // 🔍 Se for agendamento, valida disponibilidade do colaborador
+        if ($isScheduled && !empty($data['attendant_id'])) {
             $dayOfWeek = strtolower($orderDate->format('l'));
             $time = $orderDate->format('H:i');
 
@@ -112,7 +117,7 @@ class OrderController extends Controller
             }
         }
 
-        // 🔁 Verifica se todos os itens pertencem ao mesmo estabelecimento
+        // 🔁 Valida se os itens são do mesmo estabelecimento
         $itemIds = collect($data['items'])->pluck('item_id');
         $invalidItems = Item::whereIn('id', $itemIds)
             ->where(function ($q) use ($data) {
@@ -129,28 +134,30 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // 🔒 Verifica conflito com outros agendamentos
-        if (!empty($data['attendant_id']) && $orderDate->gt($now)) {
+        // 🔒 Evita conflito de agendamento
+        if ($isScheduled && !empty($data['attendant_id'])) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
 
                 $conflict = Order::where('attendant_id', $data['attendant_id'])
-                    ->where('status', 'scheduled')
+                    ->where('type', 'appointment')
+                    ->whereIn('appointment_status', ['pending', 'confirmed'])
                     ->whereBetween('order_datetime', [
                         $orderDate,
                         $orderDate->copy()->addMinutes($duration)
-                    ])->exists();
+                    ])
+                    ->exists();
 
                 if ($conflict) {
                     return response()->json([
-                        'error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."
+                        'error' => "Conflito de horário: o colaborador já possui agendamento neste horário para o serviço {$item->name}."
                     ], 422);
                 }
             }
         }
 
-        // 🔢 Gera número do pedido
+        // 🔢 Número e código de acesso
         $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
@@ -162,22 +169,25 @@ class OrderController extends Controller
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
             'order_datetime' => $orderDate,
-            'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
+            'created_by' => $user->id ?? null,
+            'attendant_id' => $data['attendant_id'] ?? null,
             'client_id' => null,
             'customer_name' => $data['customer_name'],
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_cpf' => $data['customer_cpf'] ?? null,
             'access_code' => $accessCode,
             'origin' => $data['origin'],
             'fulfillment' => $data['fulfillment'],
             'payment_status' => $data['payment_status'],
             'payment_method' => $data['payment_method'],
             'total_price' => 0,
-            'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
+            'status' => $isScheduled ? 'scheduled' : 'completed',
             'notes' => $data['notes'] ?? null,
-            'customer_phone' => $data['customer_phone'] ?? null,
-            'customer_cpf' => $data['customer_cpf'] ?? null,
+            'type' => $type,
+            'appointment_status' => $appointmentStatus,
         ]);
 
-        // 💰 Cálculo dos itens
+        // 💰 Calcula o valor total dos itens
         $total = 0;
         foreach ($data['items'] as $entry) {
             $item = Item::findOrFail($entry['item_id']);
@@ -217,10 +227,12 @@ class OrderController extends Controller
 
         $order->update(['total_price' => $total]);
 
-        Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
+        Log::info('Pedido criado com sucesso.', ['order_id' => $order->id]);
 
         return response()->json([
-            'message' => 'Pedido registrado com sucesso!',
+            'message' => $isScheduled
+                ? 'Agendamento registrado com sucesso! Aguarde a confirmação do colaborador.'
+                : 'Atendimento registrado com sucesso!',
             'order' => $order->load('items.item', 'items.modifiers'),
         ], 201);
 
