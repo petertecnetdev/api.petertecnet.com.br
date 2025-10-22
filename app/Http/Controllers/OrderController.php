@@ -60,11 +60,11 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-   public function store(Request $request)
+public function store(Request $request)
 {
     try {
         $user = Auth::user();
-        Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
+        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id ?? null, 'payload' => $request->all()]);
 
         $data = $request->validate([
             'app_id' => 'required|exists:applications,id',
@@ -89,13 +89,23 @@ class OrderController extends Controller
             'attendant_id' => 'nullable|integer|exists:employers,id',
         ]);
 
+        Log::info('✅ Validação concluída com sucesso.', ['data' => $data]);
+
         $now = Carbon::now('America/Sao_Paulo');
         $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
         $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
         $type = $isScheduled ? 'appointment' : 'service';
         $appointmentStatus = $isScheduled ? 'pending' : null;
 
+        Log::info('🕒 Tipo de pedido identificado.', [
+            'is_scheduled' => $isScheduled,
+            'type' => $type,
+            'appointment_status' => $appointmentStatus,
+            'order_datetime' => $orderDate,
+        ]);
+
         if ($isScheduled && $orderDate->lt($now)) {
+            Log::warning('⚠️ Tentativa de agendamento em data passada.', ['order_datetime' => $orderDate]);
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
@@ -106,9 +116,11 @@ class OrderController extends Controller
                 ->exists();
 
             if (!$isEmployerOfEntity) {
-                return response()->json([
-                    'error' => 'O colaborador selecionado não pertence a este estabelecimento.'
-                ], 422);
+                Log::warning('🚫 Colaborador não pertence ao estabelecimento.', [
+                    'attendant_id' => $data['attendant_id'],
+                    'entity_id' => $data['entity_id']
+                ]);
+                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
             }
         }
 
@@ -124,12 +136,18 @@ class OrderController extends Controller
                 ->where('is_active', true)
                 ->exists();
 
+            Log::info('📅 Verificando disponibilidade do colaborador.', [
+                'day' => $dayOfWeek,
+                'time' => $time,
+                'available' => $isAvailable
+            ]);
+
             if (!$isAvailable) {
                 return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
         }
 
-        // 🔁 Verifica se os itens pertencem ao estabelecimento
+        // 🔁 Verifica se os itens pertencem ao mesmo estabelecimento
         $itemIds = collect($data['items'])->pluck('item_id');
         $invalidItems = Item::whereIn('id', $itemIds)
             ->where(function ($q) use ($data) {
@@ -140,28 +158,31 @@ class OrderController extends Controller
             ->toArray();
 
         if (!empty($invalidItems)) {
+            Log::warning('🚫 Itens inválidos detectados.', ['invalid_items' => $invalidItems]);
             return response()->json([
                 'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
                 'invalid_items' => $invalidItems,
             ], 422);
         }
 
-        // 🔒 Verifica conflito de agendamento considerando a duração dos serviços
+        // 🔒 Verifica conflito de agendamento considerando duração
         if ($isScheduled && !empty($data['attendant_id'])) {
             $totalDuration = 0;
-            $services = [];
-
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
                 $totalDuration += $duration;
-                $services[] = $item->name;
             }
 
             $appointmentStart = $orderDate->copy();
             $appointmentEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-            // 🔍 Busca agendamentos existentes do colaborador
+            Log::info('⏳ Calculando duração total do agendamento.', [
+                'total_duration' => $totalDuration,
+                'appointment_start' => $appointmentStart,
+                'appointment_end' => $appointmentEnd,
+            ]);
+
             $conflicts = Order::where('attendant_id', $data['attendant_id'])
                 ->where('type', 'appointment')
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -171,13 +192,20 @@ class OrderController extends Controller
                 })
                 ->get();
 
+            Log::info('🔍 Verificando conflitos de horário.', ['conflicts_count' => $conflicts->count()]);
+
             if ($conflicts->count() > 0) {
-                // 🔧 Calcula o próximo horário livre possível
                 $lastConflictEnd = Carbon::parse($conflicts->max(function ($c) {
                     return $c->order_datetime->copy()->addMinutes($c->total_duration ?? 0);
                 }));
 
                 $suggested = $lastConflictEnd->copy()->format('H:i');
+                Log::warning('⚠️ Conflito de agendamento detectado.', [
+                    'attendant_id' => $data['attendant_id'],
+                    'conflicts' => $conflicts->pluck('id'),
+                    'suggested_time' => $suggested
+                ]);
+
                 return response()->json([
                     'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
                     'suggestion' => "Horário mais próximo disponível: {$suggested}.",
@@ -191,7 +219,12 @@ class OrderController extends Controller
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // 💾 Cria o pedido
+        Log::info('🧾 Gerando número e código de pedido.', [
+            'order_number' => $orderNumber,
+            'access_code' => $accessCode
+        ]);
+
+        // 💾 Cria pedido
         $order = Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
@@ -217,6 +250,8 @@ class OrderController extends Controller
             'total_duration' => $totalDuration ?? 0,
         ]);
 
+        Log::info('💾 Pedido salvo com sucesso.', ['order_id' => $order->id]);
+
         // 💰 Calcula valor total
         $total = 0;
         foreach ($data['items'] as $entry) {
@@ -232,32 +267,13 @@ class OrderController extends Controller
                 'subtotal' => $subtotal,
             ]);
 
-            if (!empty($entry['additions'])) {
-                foreach ($entry['additions'] as $addId) {
-                    $orderItem->modifiers()->create([
-                        'modifier_id' => $addId,
-                        'type' => 'addition',
-                    ]);
-                    $addItem = Item::find($addId);
-                    $total += $addItem->price * $qty;
-                }
-            }
-
-            if (!empty($entry['removals'])) {
-                foreach ($entry['removals'] as $remId) {
-                    $orderItem->modifiers()->create([
-                        'modifier_id' => $remId,
-                        'type' => 'removal',
-                    ]);
-                }
-            }
-
             $total += $subtotal;
         }
 
         $order->update(['total_price' => $total]);
+        Log::info('💰 Total atualizado.', ['total_price' => $total]);
 
-        // 🔔 Notificações de e-mail
+        // 🔔 Envio de e-mails
         if ($isScheduled) {
             $establishment = \App\Models\Establishment::find($data['entity_id']);
             $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
@@ -270,14 +286,12 @@ class OrderController extends Controller
                 if ($owner && $owner->email) {
                     Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order));
                 }
-            } else {
-                if (!empty($data['customer_email'])) {
-                    Mail::to($data['customer_email'])->queue(new AppointmentAwaitingConfirmation($order));
-                }
+            } elseif (!empty($data['customer_email'])) {
+                Mail::to($data['customer_email'])->queue(new AppointmentAwaitingConfirmation($order));
             }
         }
 
-        Log::info('Pedido criado com sucesso.', ['order_id' => $order->id]);
+        Log::info('✅ Pedido criado com sucesso.', ['order_id' => $order->id]);
 
         return response()->json([
             'message' => $isScheduled
@@ -287,11 +301,21 @@ class OrderController extends Controller
         ], 201);
 
     } catch (ValidationException $e) {
-        Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
+        Log::warning('⚠️ Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
         return response()->json(['errors' => $e->errors()], 422);
-    } catch (\Exception $e) {
-        Log::error('Erro ao processar pedido: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
+    } catch (\Throwable $e) {
+        Log::error('🔥 Erro inesperado ao processar pedido.', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Erro interno ao criar o pedido.',
+            'details' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ], 500);
     }
 }
 
