@@ -19,7 +19,9 @@ use App\Http\Controllers\{
     OrderController,
     MenuController,
     EmployerController,
-    OrderForecastController
+    OrderForecastController,
+    EmployerScheduleController
+    
 };
 
 Route::group([
@@ -285,4 +287,15 @@ Route::group([
     Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
     Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
     Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
+});
+
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix' => 'employer-schedule'
+], function () {
+    Route::get('/', [EmployerScheduleController::class, 'index'])->name('employerSchedule.index');
+    Route::post('/', [EmployerScheduleController::class, 'store'])->name('employerSchedule.store');
+    Route::delete('/{id}', [EmployerScheduleController::class, 'destroy'])->name('employerSchedule.destroy');
+    Route::get('/available', [EmployerScheduleController::class, 'availableTimes'])->name('employerSchedule.availableTimes');
 });
