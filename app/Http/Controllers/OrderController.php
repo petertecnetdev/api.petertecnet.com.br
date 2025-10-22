@@ -11,6 +11,8 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use App\Mail\{NewAppointmentNotification, OwnerAppointmentNotification, AppointmentAwaitingConfirmation};
+use Illuminate\Support\Facades\Mail;
+
 
 class OrderController extends Controller
 {
