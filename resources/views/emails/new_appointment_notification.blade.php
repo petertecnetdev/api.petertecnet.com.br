@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Novo Agendamento Recebido</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f4f6f8; margin: 0; padding: 0; color: #333; }
+        .container { background: #fff; border-radius: 10px; padding: 30px; margin: 40px auto; max-width: 600px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        h1 { color: #0baff5; font-size: 22px; margin-bottom: 20px; }
+        p { font-size: 15px; line-height: 1.6; margin: 8px 0; }
+        .highlight { font-weight: bold; color: #000; }
+        .footer { margin-top: 30px; text-align: center; font-size: 13px; color: #777; border-top: 1px solid #eee; padding-top: 15px; }
+        .btn { display: inline-block; background: #0baff5; color: #fff !important; text-decoration: none; padding: 10px 18px; border-radius: 6px; margin-top: 15px; }
+        .btn:hover { background: #0098e0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📅 Novo Agendamento Recebido</h1>
+        <p>Olá, <span class="highlight">colaborador</span>!</p>
+        <p>Um novo agendamento foi criado por <span class="highlight">{{ $customerName }}</span> no estabelecimento <span class="highlight">{{ $establishmentName }}</span>.</p>
+
+        <p><span class="highlight">🕓 Data e hora:</span> {{ $appointmentDate }}</p>
+        <p><span class="highlight">💈 Serviços:</span> {{ $services }}</p>
+
+        <p>Por favor, acesse o painel do Rasoio para <strong>confirmar</strong> ou <strong>recusar</strong> este agendamento.</p>
+
+        <a href="{{ config('app.url') }}" class="btn">Acessar Rasoio</a>
+
+        <div class="footer">
+            <p>Este é um e-mail automático. Não responda diretamente.</p>
+            <p><strong>Rasoio • Gestão de Barbearias</strong></p>
+        </div>
+    </div>
+</body>
+</html>

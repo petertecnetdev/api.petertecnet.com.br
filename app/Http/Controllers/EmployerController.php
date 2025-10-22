@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Mail\CreatePasswordMail;
-use App\Mail\{NewEmployerCollaborator, EmployerRemoved, OwnerNotifiedEmployerDetached, OwnerNotifiedNewCollaborator};
+use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
 
 class EmployerController extends Controller
 {

@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
+use App\Mail\{NewAppointmentNotification, OwnerAppointmentNotification, AppointmentAwaitingConfirmation};
 
 class OrderController extends Controller
 {
@@ -89,7 +90,6 @@ public function store(Request $request)
         $now = Carbon::now('America/Sao_Paulo');
         $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
 
-        // 🔹 Define se é um pedido agendado ou atendimento direto
         $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
         $type = $isScheduled ? 'appointment' : 'service';
         $appointmentStatus = $isScheduled ? 'pending' : null;
@@ -98,7 +98,7 @@ public function store(Request $request)
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        // 🔍 Se for agendamento, valida disponibilidade do colaborador
+        // 🔍 Se for agendamento, valida disponibilidade
         if ($isScheduled && !empty($data['attendant_id'])) {
             $dayOfWeek = strtolower($orderDate->format('l'));
             $time = $orderDate->format('H:i');
@@ -111,9 +111,7 @@ public function store(Request $request)
                 ->exists();
 
             if (!$isAvailable) {
-                return response()->json([
-                    'error' => 'O colaborador não atende neste horário.'
-                ], 422);
+                return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
         }
 
@@ -187,7 +185,7 @@ public function store(Request $request)
             'appointment_status' => $appointmentStatus,
         ]);
 
-        // 💰 Calcula o valor total dos itens
+        // 💰 Calcula o valor total
         $total = 0;
         foreach ($data['items'] as $entry) {
             $item = Item::findOrFail($entry['item_id']);
@@ -227,11 +225,36 @@ public function store(Request $request)
 
         $order->update(['total_price' => $total]);
 
+ // 🔔 Notificações por e-mail
+if ($isScheduled) {
+    $establishment = \App\Models\Establishment::find($data['entity_id']);
+    $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
+    $owner = $establishment ? $establishment->owner : null;
+
+    // Cliente criou agendamento → notifica colaborador e dono
+    if ($data['origin'] === 'App') {
+        if ($attendant && $attendant->user && $attendant->user->email) {
+            Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order));
+        }
+        if ($owner && $owner->email) {
+            Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order));
+        }
+    }
+
+    // Colaborador criou o agendamento → notifica cliente
+    else {
+        if (!empty($data['customer_email'])) {
+            Mail::to($data['customer_email'])->queue(new AppointmentAwaitingConfirmation($order));
+        }
+    }
+}
+
+
         Log::info('Pedido criado com sucesso.', ['order_id' => $order->id]);
 
         return response()->json([
             'message' => $isScheduled
-                ? 'Agendamento registrado com sucesso! Aguarde a confirmação do colaborador.'
+                ? 'Agendamento registrado com sucesso! As notificações foram enviadas.'
                 : 'Atendimento registrado com sucesso!',
             'order' => $order->load('items.item', 'items.modifiers'),
         ], 201);
@@ -244,6 +267,7 @@ public function store(Request $request)
         return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
     }
 }
+
 
 
     /**
