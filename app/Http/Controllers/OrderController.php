@@ -138,7 +138,7 @@ class OrderController extends Controller
 
                 $conflict = Order::where('collaborator_id', $data['collaborator_id'])
                     ->where('status', 'scheduled')
-                    ->whereBetween('scheduled_datetime', [
+                    ->whereBetween('order_datetime', [
                         $orderDate,
                         $orderDate->copy()->addMinutes($duration)
                     ])->exists();
@@ -162,7 +162,7 @@ class OrderController extends Controller
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'scheduled_datetime' => $orderDate,
+            'order_datetime' => $orderDate,
             'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
             'collaborator_id' => $data['collaborator_id'] ?? null,
             'client_id' => null,
