@@ -31,6 +31,7 @@ class Order extends Model
         'payment_status',
         'payment_method',
         'total_price',
+        'total_duration',
         'status',
         'notes',
         'type',
@@ -45,6 +46,7 @@ class Order extends Model
         'order_datetime' => 'datetime',
         'attended_at'    => 'datetime',
         'total_price'    => 'decimal:2',
+        'total_duration' => 'integer',
     ];
 
     /**

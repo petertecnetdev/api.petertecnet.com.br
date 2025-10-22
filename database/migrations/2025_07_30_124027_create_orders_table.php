@@ -40,6 +40,11 @@ return new class extends Migration
             $table->string('payment_status')->nullable();
             $table->string('payment_method')->nullable();
             $table->decimal('total_price', 10, 2)->default(0);
+
+            // Tempo total do agendamento
+            $table->integer('total_duration')->default(0)->comment('Duração total do serviço/agendamento em minutos');
+
+            // Status geral
             $table->string('status')->nullable();
 
             // Observações
