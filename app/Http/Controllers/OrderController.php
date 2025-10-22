@@ -2,9 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
-use App\Models\OrderItem;
-use App\Models\Item;
+use App\Models\{Order, Item, EmployerSchedule};
 use App\Models\Establishment;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -86,9 +84,36 @@ class OrderController extends Controller
             'customer_cpf' => 'nullable|string|max:20',
             'order_datetime' => 'nullable|date',
             'attendant_id' => 'nullable|integer|exists:users,id',
-        ], $this->getValidationMessages());
+            'collaborator_id' => 'nullable|integer|exists:employers,id',
+        ]);
 
-        // Verifica se todos os itens pertencem ao mesmo estabelecimento
+        $now = Carbon::now('America/Sao_Paulo');
+        $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
+
+        if ($orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
+        }
+
+        // 🔍 Verifica se colaborador atende nesse horário (se houver agendamento)
+        if (!empty($data['collaborator_id']) && $orderDate->gt($now)) {
+            $dayOfWeek = strtolower($orderDate->format('l'));
+            $time = $orderDate->format('H:i');
+
+            $isAvailable = EmployerSchedule::where('employer_id', $data['collaborator_id'])
+                ->where('day_of_week', $dayOfWeek)
+                ->where('start_time', '<=', $time)
+                ->where('end_time', '>=', $time)
+                ->where('is_active', true)
+                ->exists();
+
+            if (!$isAvailable) {
+                return response()->json([
+                    'error' => 'O colaborador não atende neste horário.'
+                ], 422);
+            }
+        }
+
+        // 🔁 Verifica se todos os itens pertencem ao mesmo estabelecimento
         $itemIds = collect($data['items'])->pluck('item_id');
         $invalidItems = Item::whereIn('id', $itemIds)
             ->where(function ($q) use ($data) {
@@ -105,39 +130,41 @@ class OrderController extends Controller
             ], 422);
         }
 
-        $now = Carbon::now('America/Sao_Paulo');
-        $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
-
-        if ($orderDate->lt($now)) {
-            return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
-        }
-
-        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-        if ($orderDate->gt($now)) {
+        // 🔒 Verifica conflito com outros agendamentos
+        if (!empty($data['collaborator_id']) && $orderDate->gt($now)) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
-                $conflict = Order::where('entity_id', $data['entity_id'])
+
+                $conflict = Order::where('collaborator_id', $data['collaborator_id'])
                     ->where('status', 'scheduled')
-                    ->where(function ($q) use ($orderDate, $duration) {
-                        $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)]);
-                    })->exists();
+                    ->whereBetween('scheduled_datetime', [
+                        $orderDate,
+                        $orderDate->copy()->addMinutes($duration)
+                    ])->exists();
+
                 if ($conflict) {
-                    return response()->json(['error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."], 422);
+                    return response()->json([
+                        'error' => "Conflito de horário para o serviço {$item->name}. Escolha outro horário."
+                    ], 422);
                 }
             }
         }
 
+        // 🔢 Gera número do pedido
+        $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
+        $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
+        $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        // 💾 Cria pedido
         $order = Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDate,
+            'scheduled_datetime' => $orderDate,
             'attendant_id' => $data['attendant_id'] ?? $user->id ?? null,
+            'collaborator_id' => $data['collaborator_id'] ?? null,
             'client_id' => null,
             'customer_name' => $data['customer_name'],
             'access_code' => $accessCode,
@@ -152,6 +179,7 @@ class OrderController extends Controller
             'customer_cpf' => $data['customer_cpf'] ?? null,
         ]);
 
+        // 💰 Cálculo dos itens
         $total = 0;
         foreach ($data['items'] as $entry) {
             $item = Item::findOrFail($entry['item_id']);
@@ -190,6 +218,7 @@ class OrderController extends Controller
         }
 
         $order->update(['total_price' => $total]);
+
         Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
 
         return response()->json([
