@@ -59,10 +59,10 @@ class OrderController extends Controller
         ];
     }
 
-   public function store(Request $request)
+ public function store(Request $request)
 {
     try {
-        $user = Auth::user(); // pode ser null se não estiver logado
+        $user = Auth::user();
         Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
 
         $data = $request->validate([
@@ -88,6 +88,23 @@ class OrderController extends Controller
             'attendant_id' => 'nullable|integer|exists:users,id',
         ], $this->getValidationMessages());
 
+        // Verifica se todos os itens pertencem ao mesmo estabelecimento
+        $itemIds = collect($data['items'])->pluck('item_id');
+        $invalidItems = Item::whereIn('id', $itemIds)
+            ->where(function ($q) use ($data) {
+                $q->where('entity_name', '!=', $data['entity_name'])
+                  ->orWhere('entity_id', '!=', $data['entity_id']);
+            })
+            ->pluck('name')
+            ->toArray();
+
+        if (!empty($invalidItems)) {
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
         $now = Carbon::now('America/Sao_Paulo');
         $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
 
@@ -99,14 +116,13 @@ class OrderController extends Controller
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // Verifica conflitos de horário se for agendamento
         if ($orderDate->gt($now)) {
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $duration = $item->duration ?? 0;
                 $conflict = Order::where('entity_id', $data['entity_id'])
                     ->where('status', 'scheduled')
-                    ->where(function($q) use ($orderDate, $duration) {
+                    ->where(function ($q) use ($orderDate, $duration) {
                         $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)]);
                     })->exists();
                 if ($conflict) {
@@ -184,12 +200,12 @@ class OrderController extends Controller
     } catch (ValidationException $e) {
         Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
         return response()->json(['errors' => $e->errors()], 422);
-
     } catch (\Exception $e) {
         Log::error('Erro ao processar pedido: ' . $e->getMessage());
         return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
     }
 }
+
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
