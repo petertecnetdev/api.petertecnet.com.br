@@ -164,8 +164,7 @@ class OrderController extends Controller
                     'invalid_items' => $invalidItems,
                 ], 422);
             }
-
-            // 🔒 Verifica conflito de agendamento considerando duração
+            // 🔒 Verifica conflito de agendamento considerando duração e disponibilidade real
             if ($isScheduled && !empty($data['attendant_id'])) {
                 $totalDuration = 0;
                 foreach ($data['items'] as $entry) {
@@ -183,38 +182,102 @@ class OrderController extends Controller
                     'appointment_end' => $appointmentEnd,
                 ]);
 
-                $conflicts = Order::where('attendant_id', $data['attendant_id'])
+                // 🕒 Busca agendamentos existentes no mesmo dia
+                $existingAppointments = Order::where('attendant_id', $data['attendant_id'])
                     ->where('type', 'appointment')
                     ->whereIn('appointment_status', ['pending', 'confirmed'])
-                    ->where(function ($q) use ($appointmentStart, $appointmentEnd) {
-                        $q->whereBetween('order_datetime', [$appointmentStart, $appointmentEnd])
-                            ->orWhereRaw('? BETWEEN order_datetime AND DATE_ADD(order_datetime, INTERVAL total_duration MINUTE)', [$appointmentStart]);
-                    })
+                    ->whereDate('order_datetime', $appointmentStart->format('Y-m-d'))
+                    ->orderBy('order_datetime')
                     ->get();
 
-                Log::info('🔍 Verificando conflitos de horário.', ['conflicts_count' => $conflicts->count()]);
+                // 🔍 Verifica se há conflito direto
+                $hasConflict = $existingAppointments->contains(function ($a) use ($appointmentStart, $appointmentEnd) {
+                    $aStart = Carbon::parse($a->order_datetime);
+                    $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                    return $appointmentStart->lt($aEnd) && $appointmentEnd->gt($aStart);
+                });
 
-                if ($conflicts->count() > 0) {
-                    // Encontra o último término entre todos os conflitos
-                    $lastConflictEnd = $conflicts->map(function ($c) {
-                        return Carbon::parse($c->order_datetime)->addMinutes($c->total_duration ?? 0);
-                    })->max();
-
-                    // Sugere o próximo horário livre, arredondando para o próximo intervalo de 5 minutos
-                    $suggested = Carbon::parse($lastConflictEnd)->addMinutes(5)->format('H:i');
-
-                    Log::warning('⚠️ Conflito de agendamento detectado.', [
+                if ($hasConflict) {
+                    Log::warning('⚠️ Conflito detectado, buscando horário alternativo...', [
                         'attendant_id' => $data['attendant_id'],
-                        'conflicts' => $conflicts->pluck('id'),
-                        'last_conflict_end' => $lastConflictEnd,
-                        'suggested_time' => $suggested
+                        'appointment_start' => $appointmentStart,
+                        'appointment_end' => $appointmentEnd,
+                        'total_duration' => $totalDuration,
                     ]);
 
-                    return response()->json([
-                        'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
-                        'suggestion' => "Próximo horário livre disponível: {$suggested}.",
-                        'tip' => 'Tente selecionar menos serviços ou escolher outro horário.',
-                    ], 422);
+                    // 🗓️ Busca horários de atendimento do colaborador
+                    $dayOfWeek = strtolower($appointmentStart->format('l'));
+                    $schedules = EmployerSchedule::where('employer_id', $data['attendant_id'])
+                        ->where('day_of_week', $dayOfWeek)
+                        ->where('is_active', true)
+                        ->orderBy('start_time')
+                        ->get(['start_time', 'end_time']);
+
+                    if ($schedules->isEmpty()) {
+                        return response()->json([
+                            'error' => 'O colaborador não possui horários de atendimento neste dia.',
+                        ], 422);
+                    }
+
+                    $suggestedTime = null;
+                    $dayDate = $appointmentStart->format('Y-m-d');
+
+                    // 🔁 Para cada horário de trabalho do colaborador
+                    foreach ($schedules as $schedule) {
+                        $workStart = Carbon::parse("{$dayDate} {$schedule->start_time}");
+                        $workEnd = Carbon::parse("{$dayDate} {$schedule->end_time}");
+
+                        // 🔄 Gera blocos de 5 minutos a partir do horário solicitado
+                        $candidate = $appointmentStart->copy();
+                        if ($candidate->lt($workStart)) {
+                            $candidate = $workStart->copy();
+                        }
+
+                        while ($candidate->addMinutes(0)->lt($workEnd)) {
+                            $candidateStart = $candidate->copy();
+                            $candidateEnd = $candidateStart->copy()->addMinutes($totalDuration);
+
+                            // se passar do horário de trabalho, sai
+                            if ($candidateEnd->gt($workEnd))
+                                break;
+
+                            // ⚖️ verifica conflito com agendamentos existentes
+                            $conflict = $existingAppointments->contains(function ($a) use ($candidateStart, $candidateEnd) {
+                                $aStart = Carbon::parse($a->order_datetime);
+                                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                                return $candidateStart->lt($aEnd) && $candidateEnd->gt($aStart);
+                            });
+
+                            if (!$conflict) {
+                                $suggestedTime = $candidateStart->format('H:i');
+                                break 2; // ✅ achou o horário compatível
+                            }
+
+                            // Avança para o próximo possível (5 min depois do término do conflito mais próximo)
+                            $nextConflict = $existingAppointments->filter(function ($a) use ($candidateStart, $candidateEnd) {
+                                $aStart = Carbon::parse($a->order_datetime);
+                                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+                                return $candidateStart->lt($aEnd);
+                            })->sortBy('order_datetime')->first();
+
+                            $candidate = $nextConflict
+                                ? Carbon::parse($nextConflict->order_datetime)->addMinutes($nextConflict->total_duration + 5)
+                                : $candidate->addMinutes(5);
+                        }
+                    }
+
+                    if ($suggestedTime) {
+                        return response()->json([
+                            'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
+                            'suggestion' => "Horário mais próximo e compatível disponível: {$suggestedTime}.",
+                            'tip' => 'Tente selecionar menos serviços ou aceitar o horário sugerido.',
+                        ], 422);
+                    } else {
+                        return response()->json([
+                            'error' => 'Não há horários disponíveis neste dia compatíveis com a duração total dos serviços.',
+                            'tip' => 'Escolha outro dia ou menos serviços.',
+                        ], 422);
+                    }
                 }
             }
 
