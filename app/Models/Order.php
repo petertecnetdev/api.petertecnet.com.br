@@ -49,60 +49,51 @@ class Order extends Model
         'total_duration' => 'integer',
     ];
 
-    /**
-     * Itens deste pedido.
-     */
+    /** Itens deste pedido */
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
-    /**
-     * Usuário que criou o registro (quem entrou com o pedido).
-     */
+    /** Usuário que criou o registro */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Usuário que prestou o serviço (atendente).
-     */
+    /** Colaborador que atendeu o pedido */
     public function attendant(): BelongsTo
-{
-    return $this->belongsTo(Employer::class, 'attendant_id');
-}
+    {
+        return $this->belongsTo(Employer::class, 'attendant_id');
+    }
 
-
-    /**
-     * Cliente vinculado (se houver login).
-     */
+    /** Cliente vinculado (se estiver logado) */
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
     }
 
-    /**
-     * Usuário que confirmou o agendamento.
-     */
+    /** Usuário que confirmou o agendamento */
     public function confirmedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by');
     }
 
-    /**
-     * Usuário que cancelou o agendamento.
-     */
+    /** Usuário que cancelou o agendamento */
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
     }
 
-    /**
-     * Estabelecimento (morph).
-     */
-    public function establishment(): MorphTo
+    /** Entidade (Estabelecimento, Evento etc.) */
+    public function entity(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /** Alias de compatibilidade para $order->establishment */
+    public function getEstablishmentAttribute()
+    {
+        return $this->entity;
     }
 }
