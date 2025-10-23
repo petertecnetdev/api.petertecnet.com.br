@@ -1,130 +1,156 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agendamento Aguardando Confirmação</title>
-    <style>
-        body,
-        html {
-            margin: 0;
-            padding: 0;
-        }
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agendamento Aguardando Confirmação</title>
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      background-color: #0B1F30;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #fff;
+      -webkit-text-size-adjust: none;
+    }
 
-        body {
-            background-color: #0B1F30;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            color: #ffffff;
-            line-height: 1.6;
-        }
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #0B1F30;
+      padding: 20px 0;
+    }
 
-        .container {
-            background-color: #132A3A;
-            max-width: 600px;
-            margin: 40px auto;
-            padding: 30px;
-            border: 1px solid #00BFFF;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
-        }
+    .container {
+      background-color: #132A3A;
+      max-width: 600px;
+      margin: 0 auto;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid #00BFFF;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    }
 
-        .logo {
-            display: block;
-            margin: 0 auto 20px auto;
-            max-width: 150px;
-            height: auto;
-        }
+    .header {
+      background: linear-gradient(135deg, #0B1F30, #00BFFF);
+      text-align: center;
+      padding: 30px 20px;
+    }
 
-        h1 {
-            font-size: 1.8rem;
-            text-align: center;
-            color: #00BFFF;
-            margin-bottom: 20px;
-        }
+    .logo {
+      max-width: 140px;
+      height: auto;
+      margin-bottom: 10px;
+    }
 
-        p {
-            font-size: 1rem;
-            margin: 15px 0;
-            text-align: justify;
-            color: #ffffff;
-        }
+    h1 {
+      color: #ffffff;
+      font-size: 1.8rem;
+      margin: 10px 0 0;
+    }
 
-        .appointment-info {
-            background-color: #00BFFF;
-            color: #0B1F30;
-            font-size: 1rem;
-            padding: 15px;
-            border-radius: 8px;
-            margin: 20px 0;
-        }
+    .content {
+      padding: 30px 25px;
+    }
 
-        .appointment-info strong {
-            display: inline-block;
-            width: 140px;
-            color: #0B1F30;
-        }
+    .content p {
+      margin: 16px 0;
+      font-size: 1rem;
+      line-height: 1.7;
+      color: #e9e9e9;
+    }
 
-        .button {
-            display: block;
-            width: fit-content;
-            background-color: #00BFFF;
-            color: #0B1F30;
-            text-decoration: none;
-            font-weight: bold;
-            padding: 10px 18px;
-            border-radius: 8px;
-            margin: 20px auto;
-            text-align: center;
-        }
+    .appointment-info {
+      background-color: rgba(0, 191, 255, 0.1);
+      border-left: 4px solid #00BFFF;
+      padding: 15px 20px;
+      border-radius: 8px;
+      margin: 25px 0;
+    }
 
-        .footer {
-            text-align: center;
-            padding: 20px 0;
-            font-size: 0.9rem;
-            color: #ffffff;
-        }
+    .appointment-info p {
+      margin: 8px 0;
+      color: #cce7ff;
+      font-size: 0.95rem;
+    }
 
-        @media (max-width: 600px) {
-            .container {
-                margin: 20px;
-                padding: 20px;
-            }
+    .appointment-info strong {
+      color: #00BFFF;
+      font-weight: 600;
+    }
 
-            h1 {
-                font-size: 1.5rem;
-            }
+    .button {
+      display: block;
+      width: fit-content;
+      background-color: #00BFFF;
+      color: #0B1F30;
+      text-decoration: none;
+      font-weight: bold;
+      padding: 12px 24px;
+      border-radius: 6px;
+      margin: 30px auto 10px;
+      text-align: center;
+      transition: all 0.3s ease;
+    }
 
-            p {
-                font-size: 0.9rem;
-            }
+    .button:hover {
+      background-color: #03A9F4;
+    }
 
-            .appointment-info {
-                font-size: 0.9rem;
-                padding: 10px;
-            }
+    .footer {
+      background-color: #0B1F30;
+      text-align: center;
+      padding: 20px;
+      font-size: 0.9rem;
+      color: #b0c7d6;
+    }
 
-            .button {
-                font-size: 0.9rem;
-                padding: 8px 14px;
-            }
-        }
-    </style>
+    @media (max-width: 600px) {
+      .content {
+        padding: 20px 15px;
+      }
+
+      h1 {
+        font-size: 1.5rem;
+      }
+
+      .content p {
+        font-size: 0.95rem;
+      }
+
+      .appointment-info {
+        padding: 12px 15px;
+      }
+
+      .button {
+        width: 100%;
+        padding: 14px 0;
+      }
+    }
+  </style>
 </head>
 
 <body>
+  <div class="wrapper">
     <div class="container">
+      <div class="header">
         <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
         <h1>⏳ Seu Agendamento Está Aguardando Confirmação</h1>
+      </div>
 
-        <p>Olá {{ $customerName }},</p>
-        <p>Recebemos sua solicitação de agendamento! Seu pedido foi encaminhado para o estabelecimento e está aguardando confirmação. Confira os detalhes abaixo:</p>
+      <div class="content">
+        <p>Olá <strong>{{ $customerName }}</strong>,</p>
+        <p>
+          Recebemos sua solicitação de agendamento! Seu pedido foi encaminhado para o estabelecimento
+          e está aguardando confirmação. Confira os detalhes abaixo:
+        </p>
 
         <div class="appointment-info">
-            <p><strong>Colaborador:</strong> {{ $attendantName }}</p>
-            <p><strong>Serviços:</strong> {{ $services }}</p>
-            <p><strong>Data e Hora:</strong> {{ $date }}</p>
-            <p><strong>Estabelecimento:</strong> {{ $establishment }}</p>
+          <p><strong>Colaborador:</strong> {{ $attendantName }}</p>
+          <p><strong>Serviços:</strong> {{ $services }}</p>
+          <p><strong>Data e Hora:</strong> {{ $date }}</p>
+          <p><strong>Estabelecimento:</strong> {{ $establishment }}</p>
         </div>
 
         @if($appUrl)
@@ -132,14 +158,15 @@
         @endif
 
         <p>
-            Assim que o estabelecimento confirmar o agendamento, você receberá uma notificação.
-            Fique atento ao seu e-mail ou aplicativo para mais atualizações.
+          Assim que o estabelecimento confirmar o agendamento, você receberá uma notificação.
+          Fique atento ao seu e-mail ou aplicativo para mais atualizações.
         </p>
-    </div>
+      </div>
 
-    <div class="footer">
+      <div class="footer">
         <p>© {{ date('Y') }} Peter Tecnet. Todos os direitos reservados.</p>
+      </div>
     </div>
+  </div>
 </body>
-
 </html>
