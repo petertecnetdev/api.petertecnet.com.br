@@ -22,15 +22,30 @@ class AppointmentAwaitingConfirmation extends Mailable
 
     public function build()
     {
+        // Nome do cliente
+        $customerName =
+            $this->order->customer_name
+            ?? optional($this->order->client)->first_name
+            ?? 'Cliente';
+
+        // Nome do colaborador
+        $attendantName =
+            optional(optional($this->order->attendant)->user)->first_name
+            ?? 'Colaborador';
+
+        // Nome do estabelecimento
+        $establishmentName =
+            optional($this->order->entity)->name
+            ?? optional($this->order->establishment)->name
+            ?? 'Estabelecimento';
+
         return $this->subject('⏳ Seu agendamento está aguardando confirmação')
             ->view('emails.appointments.awaiting_confirmation')
             ->with([
                 'order' => $this->order,
                 'appUrl' => $this->appUrl,
-                'customerName' => $this->order->client->first_name
-                    ?? $this->order->customer_name
-                    ?? '',
-                'attendantName' => optional($this->order->attendant)->user->first_name ?? 'Colaborador',
+                'customerName' => $customerName,
+                'attendantName' => $attendantName,
                 'date' => $this->order->order_datetime
                     ? $this->order->order_datetime->format('d/m/Y H:i')
                     : 'Data não informada',
@@ -39,8 +54,7 @@ class AppointmentAwaitingConfirmation extends Mailable
                     ->get()
                     ->map(fn($i) => $i->item->name)
                     ->implode(', '),
-                'establishment' => optional($this->order->entity)->name ?? 'Estabelecimento',
+                'establishment' => $establishmentName,
             ]);
-
     }
 }

@@ -22,36 +22,39 @@ class NewAppointmentNotification extends Mailable
 
     public function build()
     {
+        // Nome do cliente — com fallback seguro
+        $customerName =
+            optional($this->order->client)->first_name
+            ?? $this->order->customer_name
+            ?? 'Cliente';
+
+        // Nome do colaborador (Employer -> User)
+        $attendantName =
+            optional(optional($this->order->attendant)->user)->first_name
+            ?? 'Colaborador';
+
+        // Nome do estabelecimento (compatível com entity() e establishment)
+        $establishmentName =
+            optional($this->order->entity)->name
+            ?? optional($this->order->establishment)->name
+            ?? 'Estabelecimento';
+
         return $this->subject('📅 Novo agendamento recebido')
             ->view('emails.appointments.new_appointment')
             ->with([
                 'order' => $this->order,
                 'appUrl' => $this->appUrl,
-
-                // Nome do cliente (preferência: usuário logado > nome informado > fallback)
-                'customerName' => $this->order->client->first_name
-                    ?? $this->order->customer_name
-                    ?? 'Cliente',
-
-                // Nome do colaborador (Employer → User)
-                'attendantName' => optional($this->order->attendant)->user->first_name
-                    ?? 'Colaborador',
-
-                // Data formatada
+                'customerName' => $customerName,
+                'attendantName' => $attendantName,
                 'date' => $this->order->order_datetime
                     ? $this->order->order_datetime->format('d/m/Y H:i')
                     : 'Data não informada',
-
-                // Lista de serviços do pedido
                 'services' => $this->order->items()
                     ->with('item')
                     ->get()
                     ->map(fn($i) => $i->item->name)
                     ->implode(', '),
-
-                // Nome do estabelecimento (morph compatível com entity() ou establishment())
-                'establishment' => optional($this->order->entity ?? $this->order->establishment)->name
-                    ?? 'Estabelecimento',
+                'establishment' => $establishmentName,
             ]);
     }
 }
