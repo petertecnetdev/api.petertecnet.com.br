@@ -632,16 +632,21 @@ class OrderController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o pedido.'], 500);
         }
     }
-
-    public function listByEmployer(Request $request)
+public function listByEmployer(Request $request)
 {
     try {
+        Log::info('🔍 Iniciando listagem de pedidos por colaborador', [
+            'request_data' => $request->all(),
+            'user_id' => Auth::id(),
+        ]);
+
         if (!Auth::check()) {
-            Log::warning('Usuário não autenticado tentou listar pedidos do colaborador.');
+            Log::warning('🚫 Usuário não autenticado tentou listar pedidos do colaborador.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
+        Log::info('👤 Usuário autenticado', ['user' => $user->only(['id', 'first_name', 'email'])]);
 
         $data = $request->validate([
             'employer_id' => 'required|integer|exists:employers,id',
@@ -654,9 +659,13 @@ class OrderController extends Controller
             'app_id.exists' => 'O aplicativo informado não existe.',
         ]);
 
+        Log::info('✅ Dados validados com sucesso', ['data' => $data]);
+
         $employer = \App\Models\Employer::with('user')->find($data['employer_id']);
+        Log::info('💈 Colaborador encontrado', ['employer' => $employer]);
 
         if (!$employer) {
+            Log::warning('❌ Colaborador não encontrado', ['employer_id' => $data['employer_id']]);
             return response()->json(['error' => 'Colaborador não encontrado.'], 404);
         }
 
@@ -666,15 +675,31 @@ class OrderController extends Controller
 
         $isSelf = $user->id === $employer->user_id;
 
+        Log::info('🔒 Verificação de acesso', [
+            'is_owner' => $isOwner,
+            'is_self' => $isSelf,
+            'establishment_id' => $employer->establishment_id,
+        ]);
+
         if (!$isOwner && !$isSelf) {
+            Log::warning('🚫 Acesso negado ao listar pedidos do colaborador.', [
+                'auth_user_id' => $user->id,
+                'employer_user_id' => $employer->user_id,
+                'establishment_id' => $employer->establishment_id,
+            ]);
             return response()->json(['error' => 'Acesso negado. Você não tem permissão para visualizar os pedidos deste colaborador.'], 403);
         }
+
+        Log::info('🧾 Consultando pedidos do colaborador', [
+            'app_id' => $data['app_id'],
+            'employer_id' => $data['employer_id'],
+        ]);
 
         $query = Order::with([
             'items.item',
             'items.modifiers.modifier',
             'creator:id,first_name,email,cpf',
-            'attendant:id,first_name,email,cpf',
+            'attendant.user:id,first_name,email,cpf',
             'client:id,first_name,email,cpf',
         ])
             ->where('app_id', $data['app_id'])
@@ -686,11 +711,14 @@ class OrderController extends Controller
 
         $orders = $query->orderBy('order_datetime', 'desc')->get();
 
+        Log::info('📦 Total de pedidos encontrados', ['count' => $orders->count()]);
+
         if ($orders->isEmpty()) {
+            Log::info('ℹ️ Nenhum pedido encontrado para este colaborador.', ['employer_id' => $data['employer_id']]);
             return response()->json(['message' => 'Nenhum pedido encontrado para este colaborador.'], 404);
         }
 
-        return response()->json([
+        $response = [
             'message' => 'Pedidos listados com sucesso.',
             'employer' => [
                 'id' => $employer->id,
@@ -700,14 +728,34 @@ class OrderController extends Controller
                 'establishment_id' => $employer->establishment_id,
             ],
             'orders' => $orders,
-        ], 200);
+        ];
+
+        Log::info('✅ Resposta pronta para envio', ['response_summary' => [
+            'employer_id' => $employer->id,
+            'orders_count' => count($orders),
+        ]]);
+
+        return response()->json($response, 200);
+
     } catch (ValidationException $e) {
-        Log::warning('Erro de validação ao listar pedidos do colaborador.', ['errors' => $e->errors()]);
+        Log::warning('⚠️ Erro de validação ao listar pedidos do colaborador.', ['errors' => $e->errors()]);
         return response()->json(['errors' => $e->errors()], 422);
     } catch (\Exception $e) {
-        Log::error('Erro ao listar pedidos do colaborador: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos do colaborador.'], 500);
+        Log::error('🔥 Erro ao listar pedidos do colaborador', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao listar os pedidos do colaborador.',
+            'details' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ], 500);
     }
 }
+
 
 }
