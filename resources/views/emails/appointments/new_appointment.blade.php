@@ -118,7 +118,7 @@
         <h1>📅 Novo Agendamento Recebido!</h1>
 
         <p>Olá,</p>
-        <p>Um novo agendamento foi realizado com sucesso no sistema. Confira os detalhes abaixo:</p>
+        <p>Um novo agendamento foi realizado com sucesso em uma de nossas plataformas. Confira os detalhes abaixo:</p>
 
         <div class="appointment-info">
             <p><strong>Cliente:</strong> {{ $customerName }}</p>

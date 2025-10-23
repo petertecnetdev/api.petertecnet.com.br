@@ -59,8 +59,7 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }
-   public function store(Request $request)
+    }public function store(Request $request)
 {
     try {
         $user = Auth::user();
@@ -337,13 +336,16 @@ class OrderController extends Controller
             $application = \App\Models\Application::find($data['app_id']);
             $appUrl = $application ? $application->url : null;
 
-            $emails = [];
-            if ($owner && $owner->email) $emails[] = $owner->email;
-            if ($attendant && $attendant->user && $attendant->user->email) $emails[] = $attendant->user->email;
-            if ($user && $user->email) $emails[] = $user->email;
+            if ($owner && $owner->email) {
+                Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order, $appUrl));
+            }
 
-            foreach (array_unique($emails) as $email) {
-                Mail::to($email)->queue(new \App\Mail\NewAppointmentNotification($order, $appUrl));
+            if ($attendant && $attendant->user && $attendant->user->email) {
+                Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order, $appUrl));
+            }
+
+            if ($user && $user->email) {
+                Mail::to($user->email)->queue(new AppointmentAwaitingConfirmation($order, $appUrl));
             }
         }
 
@@ -371,6 +373,7 @@ class OrderController extends Controller
         ], 500);
     }
 }
+
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)

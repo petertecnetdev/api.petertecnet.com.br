@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Novo Agendamento Recebido</title>
+    <title>Agendamento Aguardando Confirmação</title>
     <style>
         body,
         html {
@@ -115,13 +115,12 @@
 <body>
     <div class="container">
         <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
-        <h1>📅 Novo Agendamento Recebido!</h1>
+        <h1>⏳ Seu Agendamento Está Aguardando Confirmação</h1>
 
-        <p>Olá,</p>
-        <p>Um novo agendamento foi realizado com sucesso no sistema. Confira os detalhes abaixo:</p>
+        <p>Olá {{ $customerName }},</p>
+        <p>Recebemos sua solicitação de agendamento! Seu pedido foi encaminhado para o estabelecimento e está aguardando confirmação. Confira os detalhes abaixo:</p>
 
         <div class="appointment-info">
-            <p><strong>Cliente:</strong> {{ $customerName }}</p>
             <p><strong>Colaborador:</strong> {{ $attendantName }}</p>
             <p><strong>Serviços:</strong> {{ $services }}</p>
             <p><strong>Data e Hora:</strong> {{ $date }}</p>
@@ -129,12 +128,12 @@
         </div>
 
         @if($appUrl)
-        <a href="{{ $appUrl }}" class="button">Ver no Sistema</a>
+        <a href="{{ $appUrl }}" class="button">Acompanhar no Sistema</a>
         @endif
 
         <p>
-            Este é um aviso automático de confirmação de agendamento.
-            Fique atento à sua agenda e prepare-se para o atendimento no horário indicado.
+            Assim que o estabelecimento confirmar o agendamento, você receberá uma notificação.
+            Fique atento ao seu e-mail ou aplicativo para mais atualizações.
         </p>
     </div>
 

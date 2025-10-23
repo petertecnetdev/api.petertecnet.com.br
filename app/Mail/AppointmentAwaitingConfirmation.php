@@ -12,29 +12,26 @@ class AppointmentAwaitingConfirmation extends Mailable
     use Queueable, SerializesModels;
 
     public $order;
-    public $establishmentName;
-    public $attendantName;
-    public $appointmentDate;
-    public $services;
+    public $appUrl;
 
-    public function __construct(Order $order)
+    public function __construct(Order $order, $appUrl = null)
     {
         $this->order = $order;
-        $this->establishmentName = $order->entity_name;
-        $this->attendantName = optional($order->attendant)->first_name ?? 'Colaborador';
-        $this->appointmentDate = $order->order_datetime ? $order->order_datetime->format('d/m/Y H:i') : null;
-        $this->services = $order->items->map(fn($i) => $i->item->name)->implode(', ');
+        $this->appUrl = $appUrl;
     }
 
     public function build()
     {
         return $this->subject('⏳ Seu agendamento está aguardando confirmação')
-            ->view('emails.appointment_awaiting_confirmation')
+            ->view('emails.appointments.awaiting_confirmation')
             ->with([
-                'establishmentName' => $this->establishmentName,
-                'attendantName' => $this->attendantName,
-                'appointmentDate' => $this->appointmentDate,
-                'services' => $this->services,
+                'order' => $this->order,
+                'appUrl' => $this->appUrl,
+                'customerName' => $this->order->customer_name,
+                'attendantName' => optional($this->order->attendant)->user->first_name ?? 'Colaborador',
+                'date' => $this->order->order_datetime ? $this->order->order_datetime->format('d/m/Y H:i') : 'Data não informada',
+                'services' => $this->order->items()->with('item')->get()->map(fn($i) => $i->item->name)->implode(', '),
+                'establishment' => optional($this->order->entity)->name ?? 'Estabelecimento',
             ]);
     }
 }

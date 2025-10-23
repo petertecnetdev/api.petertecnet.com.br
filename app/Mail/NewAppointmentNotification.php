@@ -12,29 +12,26 @@ class NewAppointmentNotification extends Mailable
     use Queueable, SerializesModels;
 
     public $order;
-    public $establishmentName;
-    public $customerName;
-    public $appointmentDate;
-    public $services;
+    public $appUrl;
 
-    public function __construct(Order $order)
+    public function __construct(Order $order, $appUrl = null)
     {
         $this->order = $order;
-        $this->establishmentName = $order->entity_name;
-        $this->customerName = $order->customer_name;
-        $this->appointmentDate = $order->order_datetime ? $order->order_datetime->format('d/m/Y H:i') : null;
-        $this->services = $order->items->map(fn($i) => $i->item->name)->implode(', ');
+        $this->appUrl = $appUrl;
     }
 
     public function build()
     {
-        return $this->subject('📅 Novo agendamento recebido no Rasoio')
-            ->view('emails.new_appointment_notification')
+        return $this->subject('📅 Novo agendamento recebido')
+            ->view('emails.appointments.new_appointment')
             ->with([
-                'establishmentName' => $this->establishmentName,
-                'customerName' => $this->customerName,
-                'appointmentDate' => $this->appointmentDate,
-                'services' => $this->services,
+                'order' => $this->order,
+                'appUrl' => $this->appUrl,
+                'customerName' => $this->order->customer_name,
+                'attendantName' => optional($this->order->attendant)->user->first_name ?? 'Colaborador',
+                'date' => $this->order->order_datetime ? $this->order->order_datetime->format('d/m/Y H:i') : 'Data não informada',
+                'services' => $this->order->items()->with('item')->get()->map(fn($i) => $i->item->name)->implode(', '),
+                'establishment' => optional($this->order->entity)->name ?? 'Estabelecimento',
             ]);
     }
 }

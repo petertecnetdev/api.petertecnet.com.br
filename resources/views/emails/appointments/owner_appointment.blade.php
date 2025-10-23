@@ -115,10 +115,10 @@
 <body>
     <div class="container">
         <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
-        <h1>📅 Novo Agendamento Recebido!</h1>
+        <h1>📅 Novo Agendamento em Seu Estabelecimento</h1>
 
         <p>Olá,</p>
-        <p>Um novo agendamento foi realizado com sucesso no sistema. Confira os detalhes abaixo:</p>
+        <p>Um novo agendamento foi realizado para o seu estabelecimento em uma de nossas plataformas. Confira as informações do agendamento abaixo:</p>
 
         <div class="appointment-info">
             <p><strong>Cliente:</strong> {{ $customerName }}</p>
@@ -133,8 +133,8 @@
         @endif
 
         <p>
-            Este é um aviso automático de confirmação de agendamento.
-            Fique atento à sua agenda e prepare-se para o atendimento no horário indicado.
+            Este é um aviso automático informando que um cliente realizou um novo agendamento em seu estabelecimento.
+            Certifique-se de que sua equipe esteja preparada para o atendimento no horário indicado.
         </p>
     </div>
 
