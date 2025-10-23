@@ -88,131 +88,129 @@ class EmployerScheduleController extends Controller
             Log::error('EmployerSchedule.destroy error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
-    public function availableTimes(Request $request)
-    {
-        try {
-            $data = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-                'date' => 'required|date',
-                'duration' => 'required|integer|min:5',
-            ], [
-                'employer_id.required' => 'O campo employer_id é obrigatório.',
-                'date.required' => 'O campo data é obrigatório.',
-                'date.date' => 'O campo data deve ser uma data válida.',
-                'duration.required' => 'O campo duração é obrigatório.',
-                'duration.integer' => 'A duração deve ser um número inteiro.',
-                'duration.min' => 'A duração mínima é de 5 minutos.',
-            ]);
+    }public function availableTimes(Request $request)
+{
+    try {
+        $data = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'date' => 'required|date',
+            'duration' => 'required|integer|min:5',
+        ], [
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'date.required' => 'O campo data é obrigatório.',
+            'date.date' => 'O campo data deve ser uma data válida.',
+            'duration.required' => 'O campo duração é obrigatório.',
+            'duration.integer' => 'A duração deve ser um número inteiro.',
+            'duration.min' => 'A duração mínima é de 5 minutos.',
+        ]);
 
-            $employerId = $data['employer_id'];
-            $date = Carbon::parse($data['date'])->format('Y-m-d');
-            $duration = (int) $data['duration'];
-            $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
+        $employerId = $data['employer_id'];
+        $date = Carbon::parse($data['date'])->format('Y-m-d');
+        $duration = (int) $data['duration'];
+        $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
 
-            // 🔹 Carrega expediente ativo do colaborador
-            $schedules = EmployerSchedule::where('employer_id', $employerId)
-                ->where('day_of_week', $dayOfWeek)
-                ->where('is_active', true)
-                ->get();
+        $schedules = EmployerSchedule::where('employer_id', $employerId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('is_active', true)
+            ->get();
 
-            if ($schedules->isEmpty()) {
-                return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
-            }
+        if ($schedules->isEmpty()) {
+            return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
+        }
 
-            // 🔹 Busca agendamentos existentes (pendentes ou confirmados)
-            $appointments = Order::where('attendant_id', $employerId)
-                ->whereDate('order_datetime', $date)
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->get(['order_datetime', 'total_duration']);
+        // 🔹 Busca agendamentos existentes no dia
+        $appointments = Order::where('attendant_id', $employerId)
+            ->whereDate('order_datetime', $date)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->get(['order_datetime', 'total_duration']);
 
-            $occupied = [];
-            foreach ($appointments as $a) {
-                $start = Carbon::parse($a->order_datetime);
-                $end = $start->copy()->addMinutes($a->total_duration ?? 0);
-                $occupied[] = [$start, $end];
-            }
+        $occupied = [];
+        foreach ($appointments as $a) {
+            $start = Carbon::parse($a->order_datetime);
+            $end = $start->copy()->addMinutes($a->total_duration ?? 0);
+            $occupied[] = [$start, $end];
+        }
 
-            // Ordena cronologicamente
-            usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
+        // Ordena pela hora inicial
+        usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
-            $availableTimes = [];
+        $availableTimes = [];
 
-            foreach ($schedules as $schedule) {
-                $workStart = Carbon::parse("{$date} {$schedule->start_time}");
-                $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
-                $step = 15;
-                $pointer = $workStart->copy();
+        foreach ($schedules as $schedule) {
+            $workStart = Carbon::parse("{$date} {$schedule->start_time}");
+            $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
+            $step = 15;
+            $pointer = $workStart->copy();
 
-                while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
-                    $slotStart = $pointer->copy();
-                    $slotEnd = $slotStart->copy()->addMinutes($duration);
-
-                    // 🔸 1. O horário precisa caber dentro do expediente
-                    if ($slotStart->lt($workStart) || $slotEnd->gt($workEnd)) {
-                        $pointer->addMinutes($step);
-                        continue;
-                    }
-
-                    // 🔸 2. Não pode sobrepor nenhum agendamento
-                    $hasConflict = false;
-                    foreach ($occupied as [$occStart, $occEnd]) {
-                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
-                            $hasConflict = true;
-                            break;
-                        }
-                    }
-                    if ($hasConflict) {
-                        $pointer->addMinutes($step);
-                        continue;
-                    }
-
-                    // 🔸 3. Se houver um próximo agendamento, o serviço deve TERMINAR antes dele
-                    $nextAppointment = collect($occupied)
-                        ->filter(fn($occ) => $occ[0]->greaterThan($slotStart))
-                        ->sortBy(fn($occ) => $occ[0])
-                        ->first();
-
-                    if ($nextAppointment) {
-                        $nextStart = $nextAppointment[0];
-                        if ($slotEnd->gt($nextStart)) {
-                            // O serviço terminaria depois do próximo agendamento → bloqueia
-                            $pointer->addMinutes($step);
-                            continue;
-                        }
-                    }
-
-                    // 🔸 4. Tudo certo — adiciona horário disponível
-                    $availableTimes[] = $slotStart->format('H:i');
-                    $pointer->addMinutes($step);
-                }
-            }
-
-            // 🔸 Remove duplicados e ordena
-            $availableTimes = array_values(array_unique($availableTimes));
-            sort($availableTimes);
-
-            // 🔸 Garante que nenhum horário termine dentro de outro agendamento
-            $availableTimes = array_filter($availableTimes, function ($time) use ($date, $duration, $occupied) {
-                $slotStart = Carbon::parse("{$date} {$time}");
+            while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
+                $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
+
+                // 🔸1. Verifica se o horário cabe dentro do expediente
+                if ($slotStart->lt($workStart) || $slotEnd->gt($workEnd)) {
+                    $pointer->addMinutes($step);
+                    continue;
+                }
+
+                // 🔸2. Verifica conflito direto com agendamentos existentes
+                $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
-                        return false;
+                        $hasConflict = true;
+                        break;
                     }
                 }
-                return true;
-            });
+                if ($hasConflict) {
+                    $pointer->addMinutes($step);
+                    continue;
+                }
 
-            return response()->json(['available_times' => array_values($availableTimes)], 200, [], JSON_UNESCAPED_UNICODE);
-        } catch (ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            Log::error('EmployerSchedule.availableTimes error', [
-                'exception' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
+                // 🔸3. Verifica se o serviço termina antes do próximo agendamento
+                $nextAppointment = collect($occupied)
+                    ->filter(fn($occ) => $occ[0]->greaterThan($slotStart))
+                    ->sortBy(fn($occ) => $occ[0])
+                    ->first();
+
+                if ($nextAppointment) {
+                    $nextStart = $nextAppointment[0];
+                    if ($slotEnd->gt($nextStart)) {
+                        $pointer->addMinutes($step);
+                        continue;
+                    }
+                }
+
+                // 🔸4. Verifica se o horário termina exatamente quando outro começa (borda)
+                $edgeConflict = collect($occupied)->contains(function ($occ) use ($slotEnd) {
+                    [$occStart, $occEnd] = $occ;
+                    return $slotEnd->eq($occStart);
+                });
+
+                if ($edgeConflict) {
+                    $pointer->addMinutes($step);
+                    continue;
+                }
+
+                // 🔸5. Tudo certo — adiciona horário válido
+                $availableTimes[] = $slotStart->format('H:i');
+                $pointer->addMinutes($step);
+            }
         }
+
+        // 🔸 Remove duplicados e ordena
+        $availableTimes = array_values(array_unique($availableTimes));
+        sort($availableTimes);
+
+        return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Exception $e) {
+        Log::error('EmployerSchedule.availableTimes error', [
+            'exception' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
+
 }
