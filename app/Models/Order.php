@@ -49,37 +49,31 @@ class Order extends Model
         'total_duration' => 'integer',
     ];
 
-    /** Itens deste pedido */
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
     }
 
-    /** Usuário que criou o registro */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /** Colaborador que atendeu o pedido */
     public function attendant(): BelongsTo
     {
         return $this->belongsTo(Employer::class, 'attendant_id');
     }
 
-    /** Cliente vinculado (se estiver logado) */
     public function client(): BelongsTo
     {
         return $this->belongsTo(User::class, 'client_id');
     }
 
-    /** Usuário que confirmou o agendamento */
     public function confirmedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'confirmed_by');
     }
 
-    /** Usuário que cancelou o agendamento */
     public function cancelledBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'cancelled_by');
@@ -88,10 +82,10 @@ class Order extends Model
     /** Entidade (Estabelecimento, Evento etc.) */
     public function entity(): MorphTo
     {
-        return $this->morphTo();
+        return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
     }
 
-    /** Alias de compatibilidade para $order->establishment */
+    /** Alias compatível para $order->establishment */
     public function getEstablishmentAttribute()
     {
         return $this->entity;
