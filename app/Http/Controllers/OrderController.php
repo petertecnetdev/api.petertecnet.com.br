@@ -59,7 +59,9 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }public function store(Request $request)
+    }
+
+    public function store(Request $request)
 {
     try {
         $user = Auth::user();
@@ -328,26 +330,26 @@ class OrderController extends Controller
         }
 
         $order->update(['total_price' => $total]);
+if ($isScheduled) {
+    $establishment = \App\Models\Establishment::find($data['entity_id']);
+    $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
+    $owner = $establishment ? $establishment->owner : null;
+    $application = \App\Models\Application::find($data['app_id']);
+    $appUrl = $application ? $application->url : null;
 
-        if ($isScheduled) {
-            $establishment = \App\Models\Establishment::find($data['entity_id']);
-            $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
-            $owner = $establishment ? $establishment->owner : null;
-            $application = \App\Models\Application::find($data['app_id']);
-            $appUrl = $application ? $application->url : null;
+    if ($owner && $owner->email) {
+        Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order, $appUrl));
+    }
 
-            if ($owner && $owner->email) {
-                Mail::to($owner->email)->queue(new OwnerAppointmentNotification($order, $appUrl));
-            }
+    if ($attendant && $attendant->user && $attendant->user->email) {
+        Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order, $appUrl));
+    }
 
-            if ($attendant && $attendant->user && $attendant->user->email) {
-                Mail::to($attendant->user->email)->queue(new NewAppointmentNotification($order, $appUrl));
-            }
+    if ($user && $user->email) {
+        Mail::to($user->email)->queue(new AppointmentAwaitingConfirmation($order, $appUrl));
+    }
+}
 
-            if ($user && $user->email) {
-                Mail::to($user->email)->queue(new AppointmentAwaitingConfirmation($order, $appUrl));
-            }
-        }
 
         return response()->json([
             'message' => $isScheduled
