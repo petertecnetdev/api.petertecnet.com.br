@@ -110,7 +110,7 @@ class EmployerScheduleController extends Controller
             $duration = (int) $data['duration'];
             $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
 
-            // 🔹 Horários de expediente
+            // 🔹 Carrega expediente ativo do colaborador
             $schedules = EmployerSchedule::where('employer_id', $employerId)
                 ->where('day_of_week', $dayOfWeek)
                 ->where('is_active', true)
@@ -120,7 +120,7 @@ class EmployerScheduleController extends Controller
                 return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
             }
 
-            // 🔹 Agendamentos já existentes
+            // 🔹 Busca agendamentos existentes (pendentes ou confirmados)
             $appointments = Order::where('attendant_id', $employerId)
                 ->whereDate('order_datetime', $date)
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -133,7 +133,7 @@ class EmployerScheduleController extends Controller
                 $occupied[] = [$start, $end];
             }
 
-            // 🔹 Ordena cronologicamente
+            // Ordena cronologicamente
             usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
             $availableTimes = [];
@@ -148,13 +148,13 @@ class EmployerScheduleController extends Controller
                     $slotStart = $pointer->copy();
                     $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                    // 🔸 1. Deve estar dentro do expediente
+                    // 🔸 1. O horário precisa caber dentro do expediente
                     if ($slotStart->lt($workStart) || $slotEnd->gt($workEnd)) {
                         $pointer->addMinutes($step);
                         continue;
                     }
 
-                    // 🔸 2. Não pode sobrepor nenhum agendamento existente
+                    // 🔸 2. Não pode sobrepor nenhum agendamento
                     $hasConflict = false;
                     foreach ($occupied as [$occStart, $occEnd]) {
                         if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -167,7 +167,7 @@ class EmployerScheduleController extends Controller
                         continue;
                     }
 
-                    // 🔸 3. Se existe um próximo agendamento, o serviço deve terminar antes dele
+                    // 🔸 3. Se houver um próximo agendamento, o serviço deve TERMINAR antes dele
                     $nextAppointment = collect($occupied)
                         ->filter(fn($occ) => $occ[0]->greaterThan($slotStart))
                         ->sortBy(fn($occ) => $occ[0])
@@ -176,13 +176,13 @@ class EmployerScheduleController extends Controller
                     if ($nextAppointment) {
                         $nextStart = $nextAppointment[0];
                         if ($slotEnd->gt($nextStart)) {
-                            // o serviço terminaria depois do próximo agendamento → bloqueia
+                            // O serviço terminaria depois do próximo agendamento → bloqueia
                             $pointer->addMinutes($step);
                             continue;
                         }
                     }
 
-                    // 🔸 4. Ok — horário realmente disponível
+                    // 🔸 4. Tudo certo — adiciona horário disponível
                     $availableTimes[] = $slotStart->format('H:i');
                     $pointer->addMinutes($step);
                 }
@@ -192,7 +192,19 @@ class EmployerScheduleController extends Controller
             $availableTimes = array_values(array_unique($availableTimes));
             sort($availableTimes);
 
-            return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
+            // 🔸 Garante que nenhum horário termine dentro de outro agendamento
+            $availableTimes = array_filter($availableTimes, function ($time) use ($date, $duration, $occupied) {
+                $slotStart = Carbon::parse("{$date} {$time}");
+                $slotEnd = $slotStart->copy()->addMinutes($duration);
+                foreach ($occupied as [$occStart, $occEnd]) {
+                    if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                        return false;
+                    }
+                }
+                return true;
+            });
+
+            return response()->json(['available_times' => array_values($availableTimes)], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
