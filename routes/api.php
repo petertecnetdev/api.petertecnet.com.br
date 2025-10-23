@@ -239,7 +239,7 @@ Route::prefix('establishment')
 
 
 Route::group([
-    'middleware' => 'api',
+    'middleware' => ['api', 'auth:api'],
     'prefix' => 'order'
 ], function () {
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
