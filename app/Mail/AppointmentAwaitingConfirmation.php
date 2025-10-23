@@ -27,11 +27,20 @@ class AppointmentAwaitingConfirmation extends Mailable
             ->with([
                 'order' => $this->order,
                 'appUrl' => $this->appUrl,
-                'customerName' => $this->order->customer_name,
+                'customerName' => $this->order->client->first_name
+                    ?? $this->order->customer_name
+                    ?? '',
                 'attendantName' => optional($this->order->attendant)->user->first_name ?? 'Colaborador',
-                'date' => $this->order->order_datetime ? $this->order->order_datetime->format('d/m/Y H:i') : 'Data não informada',
-                'services' => $this->order->items()->with('item')->get()->map(fn($i) => $i->item->name)->implode(', '),
+                'date' => $this->order->order_datetime
+                    ? $this->order->order_datetime->format('d/m/Y H:i')
+                    : 'Data não informada',
+                'services' => $this->order->items()
+                    ->with('item')
+                    ->get()
+                    ->map(fn($i) => $i->item->name)
+                    ->implode(', '),
                 'establishment' => optional($this->order->entity)->name ?? 'Estabelecimento',
             ]);
+
     }
 }
