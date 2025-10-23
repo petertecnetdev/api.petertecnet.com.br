@@ -633,4 +633,81 @@ class OrderController extends Controller
         }
     }
 
+    public function listByEmployer(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou listar pedidos do colaborador.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $data = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'app_id' => 'required|integer|exists:applications,id',
+            'include_scheduled' => 'sometimes|boolean',
+        ], [
+            'employer_id.required' => 'O ID do colaborador é obrigatório.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
+            'app_id.required' => 'O ID do aplicativo é obrigatório.',
+            'app_id.exists' => 'O aplicativo informado não existe.',
+        ]);
+
+        $employer = \App\Models\Employer::with('user')->find($data['employer_id']);
+
+        if (!$employer) {
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+        }
+
+        $isOwner = Establishment::where('user_id', $user->id)
+            ->where('id', $employer->establishment_id)
+            ->exists();
+
+        $isSelf = $user->id === $employer->user_id;
+
+        if (!$isOwner && !$isSelf) {
+            return response()->json(['error' => 'Acesso negado. Você não tem permissão para visualizar os pedidos deste colaborador.'], 403);
+        }
+
+        $query = Order::with([
+            'items.item',
+            'items.modifiers.modifier',
+            'creator:id,first_name,email,cpf',
+            'attendant:id,first_name,email,cpf',
+            'client:id,first_name,email,cpf',
+        ])
+            ->where('app_id', $data['app_id'])
+            ->where('attendant_id', $data['employer_id']);
+
+        if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
+            $query->where('status', 'scheduled');
+        }
+
+        $orders = $query->orderBy('order_datetime', 'desc')->get();
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado para este colaborador.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'employer' => [
+                'id' => $employer->id,
+                'name' => $employer->user ? $employer->user->first_name . ' ' . $employer->user->last_name : null,
+                'email' => $employer->user->email ?? null,
+                'role' => $employer->role ?? 'Barbeiro',
+                'establishment_id' => $employer->establishment_id,
+            ],
+            'orders' => $orders,
+        ], 200);
+    } catch (ValidationException $e) {
+        Log::warning('Erro de validação ao listar pedidos do colaborador.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar pedidos do colaborador: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos do colaborador.'], 500);
+    }
+}
+
 }

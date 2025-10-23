@@ -238,17 +238,17 @@ Route::prefix('establishment')
     });
 
 
-
-
 Route::group([
     'middleware' => 'api',
     'prefix' => 'order'
 ], function () {
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
+    Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
 });
+
 
 Route::group([
     'middleware' => 'api',
