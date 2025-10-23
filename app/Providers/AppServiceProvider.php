@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use App\Models\User;
 
 class AppServiceProvider extends ServiceProvider
@@ -15,14 +16,19 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        // 1) Ajuste de permissões em storage (seu código já existente)
+        // 🔹 Corrige o erro do morphTo (mapeia nomes simples para classes)
+        Relation::morphMap([
+            'establishment' => 'App\Models\Establishment',
+            'event' => 'App\Models\Event', // opcional, caso use eventos
+        ]);
+
+        // 🔹 Ajuste de permissões em storage (mantido do seu código atual)
         $storagePath = storage_path('app/public');
         if (!File::exists($storagePath)) {
             File::makeDirectory($storagePath, 0775, true);
         }
         File::chmod($storagePath, 0775);
         $this->setPermissionsRecursively($storagePath);
-
     }
 
     protected function setPermissionsRecursively($path)
