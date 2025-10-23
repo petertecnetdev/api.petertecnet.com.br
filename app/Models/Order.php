@@ -69,9 +69,10 @@ class Order extends Model
      * Usuário que prestou o serviço (atendente).
      */
     public function attendant(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'attendant_id');
-    }
+{
+    return $this->belongsTo(Employer::class, 'attendant_id');
+}
+
 
     /**
      * Cliente vinculado (se houver login).
