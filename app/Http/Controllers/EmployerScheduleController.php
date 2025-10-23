@@ -89,14 +89,13 @@ class EmployerScheduleController extends Controller
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-
-   public function availableTimes(Request $request)
+public function availableTimes(Request $request)
 {
     try {
         $data = $request->validate([
             'employer_id' => 'required|integer|exists:employers,id',
             'date' => 'required|date',
-            'duration' => 'required|integer|min:5', // duração total em minutos
+            'duration' => 'required|integer|min:5',
         ], [
             'employer_id.required' => 'O campo employer_id é obrigatório.',
             'date.required' => 'O campo data é obrigatório.',
@@ -109,10 +108,8 @@ class EmployerScheduleController extends Controller
         $employerId = $data['employer_id'];
         $date = Carbon::parse($data['date'])->format('Y-m-d');
         $duration = (int) $data['duration'];
-
         $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
 
-        // 🔹 Horários cadastrados do colaborador
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -122,7 +119,6 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
         }
 
-        // 🔹 Busca agendamentos já existentes
         $appointments = Order::where('attendant_id', $employerId)
             ->whereDate('order_datetime', $date)
             ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -137,19 +133,16 @@ class EmployerScheduleController extends Controller
 
         $availableTimes = [];
 
-        // 🔹 Gera blocos de horários disponíveis
         foreach ($schedules as $schedule) {
             $workStart = Carbon::parse("{$date} {$schedule->start_time}");
             $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
-
-            $step = 15; // intervalo entre horários gerados
+            $step = 15;
             $pointer = $workStart->copy();
 
             while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // verifica se esse bloco conflita com algum agendamento existente
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -159,12 +152,21 @@ class EmployerScheduleController extends Controller
                 }
 
                 if (!$hasConflict) {
-                    $availableTimes[] = $slotStart->format('H:i');
+                    $edgeConflict = collect($occupied)->contains(function ($occ) use ($slotEnd) {
+                        [$occStart, $occEnd] = $occ;
+                        return $slotEnd->eq($occStart) || $slotEnd->between($occStart, $occEnd);
+                    });
+
+                    if (!$edgeConflict) {
+                        $availableTimes[] = $slotStart->format('H:i');
+                    }
                 }
 
                 $pointer->addMinutes($step);
             }
         }
+
+        sort($availableTimes);
 
         return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
     } catch (ValidationException $e) {
