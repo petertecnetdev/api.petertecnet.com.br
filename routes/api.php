@@ -21,7 +21,7 @@ use App\Http\Controllers\{
     EmployerController,
     OrderForecastController,
     EmployerScheduleController
-    
+
 };
 
 Route::group([
