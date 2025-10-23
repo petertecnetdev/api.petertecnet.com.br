@@ -89,6 +89,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
+
     public function availableTimes(Request $request)
     {
         try {
@@ -110,7 +111,7 @@ class EmployerScheduleController extends Controller
             $duration = (int) $data['duration'];
             $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
 
-            // 🔹 Busca os horários de expediente do colaborador
+            // 🔹 Busca os horários de expediente
             $schedules = EmployerSchedule::where('employer_id', $employerId)
                 ->where('day_of_week', $dayOfWeek)
                 ->where('is_active', true)
@@ -120,7 +121,7 @@ class EmployerScheduleController extends Controller
                 return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
             }
 
-            // 🔹 Busca todos os agendamentos existentes no dia
+            // 🔹 Busca os agendamentos do colaborador
             $appointments = Order::where('attendant_id', $employerId)
                 ->whereDate('order_datetime', $date)
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -133,6 +134,7 @@ class EmployerScheduleController extends Controller
                 $occupied[] = [$start, $end];
             }
 
+            // Ordena cronologicamente
             usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
             $availableTimes = [];
@@ -147,50 +149,46 @@ class EmployerScheduleController extends Controller
                     $slotStart = $pointer->copy();
                     $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                    // 🔹 Verifica se o horário está dentro do expediente
-                    $insideWorkHours = $slotStart->gte($workStart) && $slotEnd->lte($workEnd);
-                    if (!$insideWorkHours) {
+                    // 🔸 Garante que está dentro do expediente
+                    if ($slotStart->lt($workStart) || $slotEnd->gt($workEnd)) {
                         $pointer->addMinutes($step);
                         continue;
                     }
 
-                    // 🔹 Verifica se há sobreposição com algum agendamento
-                    $hasConflict = collect($occupied)->contains(function ($occ) use ($slotStart, $slotEnd) {
-                        [$occStart, $occEnd] = $occ;
-                        return $slotStart->lt($occEnd) && $slotEnd->gt($occStart);
-                    });
-
-                    // 🔹 Se houver conflito, pula para depois do fim do agendamento conflitante
-                    if ($hasConflict) {
-                        $conflict = collect($occupied)->first(function ($occ) use ($slotStart, $slotEnd) {
-                            [$occStart, $occEnd] = $occ;
-                            return $slotStart->lt($occEnd) && $slotEnd->gt($occStart);
-                        });
-
-                        if ($conflict) {
-                            $pointer = $conflict[1]->copy();
-                            continue;
+                    // 🔸 Verifica se o horário conflita com algum agendamento existente
+                    $hasConflict = false;
+                    foreach ($occupied as [$occStart, $occEnd]) {
+                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                            $hasConflict = true;
+                            break;
                         }
                     }
 
-                    // 🔹 Verifica se o serviço termina antes do próximo atendimento
+                    if ($hasConflict) {
+                        $pointer->addMinutes($step);
+                        continue;
+                    }
+
+                    // 🔸 Busca o próximo agendamento após o horário atual
                     $nextAppointment = collect($occupied)
                         ->filter(fn($occ) => $occ[0]->greaterThan($slotStart))
                         ->sortBy(fn($occ) => $occ[0])
                         ->first();
 
+                    // 🔸 Se existe um próximo agendamento e o serviço não cabe antes dele → pula
                     if ($nextAppointment && $slotEnd->gt($nextAppointment[0])) {
-                        // Se o serviço ultrapassa o próximo agendamento, pula pro próximo slot
                         $pointer->addMinutes($step);
                         continue;
                     }
 
-                    // 🔹 Se chegou até aqui, o horário é realmente livre
+                    // 🔸 Se passou por tudo, é um horário realmente livre
                     $availableTimes[] = $slotStart->format('H:i');
                     $pointer->addMinutes($step);
                 }
             }
 
+            // 🔸 Remove horários duplicados e ordena
+            $availableTimes = array_unique($availableTimes);
             sort($availableTimes);
 
             return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
