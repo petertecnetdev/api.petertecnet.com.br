@@ -14,9 +14,11 @@ return new class extends Migration
             $table->enum('day_of_week', [
                 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'
             ]);
+            $table->date('reserved_date')->nullable(); // data específica (feriado ou pausa)
             $table->time('start_time');
             $table->time('end_time');
             $table->boolean('is_active')->default(true);
+            $table->enum('type', ['work', 'break', 'holiday'])->default('work'); // tipo do horário
             $table->timestamps();
 
             $table->foreign('employer_id')

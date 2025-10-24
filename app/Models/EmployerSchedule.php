@@ -14,9 +14,16 @@ class EmployerSchedule extends Model
     protected $fillable = [
         'employer_id',
         'day_of_week',
+        'reserved_date',
         'start_time',
         'end_time',
         'is_active',
+        'type',
+    ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'reserved_date' => 'date',
     ];
 
     public function employer()

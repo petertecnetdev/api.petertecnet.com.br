@@ -298,4 +298,5 @@ Route::group([
     Route::post('/', [EmployerScheduleController::class, 'store'])->name('employerSchedule.store');
     Route::delete('/{id}', [EmployerScheduleController::class, 'destroy'])->name('employerSchedule.destroy');
     Route::get('/available', [EmployerScheduleController::class, 'availableTimes'])->name('employerSchedule.availableTimes');
+    Route::post('/reserve', [EmployerScheduleController::class, 'reserve'])->name('employerSchedule.reserve');
 });
