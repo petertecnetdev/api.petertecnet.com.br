@@ -247,7 +247,6 @@ Route::group([
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
-    Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
 
 
@@ -280,16 +279,15 @@ Route::group([
     // Gerar previs�es para intervalo de datas e entidade (sem deletar registros antigos)
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
-
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'employer'
 ], function () {
-    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
-    Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
-    Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
+    Route::post('/', [App\Http\Controllers\EmployerController::class, 'store'])->name('employer.store');
+    Route::get('/list', [App\Http\Controllers\EmployerController::class, 'listByEstablishment'])->name('employer.list');
+    Route::post('/detach', [App\Http\Controllers\EmployerController::class, 'detach'])->name('employer.detach');
+    Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
-
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
