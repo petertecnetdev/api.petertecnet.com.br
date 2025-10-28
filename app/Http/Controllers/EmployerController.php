@@ -368,4 +368,76 @@ class EmployerController extends Controller
             ], 500);
         }
     }
+    public function checkUpdates(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $data = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'last_check' => 'nullable|date',
+        ], [
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
+            'last_check.date' => 'O campo last_check deve ser uma data válida.',
+        ]);
+
+        $employer = \App\Models\Employer::find($data['employer_id']);
+        if (!$employer) {
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+        }
+
+        $isOwner = \App\Models\Establishment::where('user_id', $user->id)
+            ->where('id', $employer->establishment_id)
+            ->exists();
+
+        $isSelf = $user->id === $employer->user_id;
+
+        if (!$isOwner && !$isSelf) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $lastCheck = isset($data['last_check'])
+            ? \Carbon\Carbon::parse($data['last_check'])
+            : now()->subMinutes(10);
+
+        $newAppointments = \App\Models\Order::where('attendant_id', $employer->id)
+            ->where('type', 'appointment')
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->where('created_at', '>', $lastCheck)
+            ->orderBy('created_at', 'desc')
+            ->take(3)
+            ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status']);
+
+        $nextAppointment = \App\Models\Order::where('attendant_id', $employer->id)
+            ->where('type', 'appointment')
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->where('order_datetime', '>=', now())
+            ->orderBy('order_datetime', 'asc')
+            ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status']);
+
+        $hasNew = $newAppointments->isNotEmpty();
+
+        return response()->json([
+            'has_new' => $hasNew,
+            'new_appointments' => $newAppointments,
+            'next_appointment' => $nextAppointment,
+            'checked_at' => now()->toDateTimeString(),
+        ]);
+    } catch (\Exception $e) {
+        \Log::error('Erro ao verificar atualizações do colaborador.', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Falha ao verificar atualizações.',
+            'details' => $e->getMessage(),
+        ], 500);
+    }
+}
+
 }

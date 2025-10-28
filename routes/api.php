@@ -247,6 +247,7 @@ Route::group([
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
+    Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
 
 
