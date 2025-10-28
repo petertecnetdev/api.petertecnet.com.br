@@ -763,14 +763,27 @@ class OrderController extends Controller
             ], 500);
         }
     }
+
+
     public function updateAppointmentStatus(Request $request, $id)
     {
         try {
             if (!Auth::check()) {
+                Log::warning('🚫 Tentativa de atualizar agendamento sem autenticação.', ['order_id' => $id]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
+            $ip = $request->ip();
+            $userAgent = $request->header('User-Agent');
+
+            Log::info('🔧 Iniciando atualização de status de agendamento.', [
+                'order_id' => $id,
+                'user_id' => $user->id,
+                'ip' => $ip,
+                'user_agent' => $userAgent,
+                'payload' => $request->all(),
+            ]);
 
             $data = $request->validate([
                 'action' => 'required|string|in:confirm,cancel,attended,not_attended',
@@ -780,48 +793,77 @@ class OrderController extends Controller
                 'action.in' => 'A ação deve ser confirm, cancel, attended ou not_attended.',
             ]);
 
-            $order = Order::with('attendant')->findOrFail($id);
+            $order = Order::with(['attendant', 'creator'])->findOrFail($id);
 
-            // Permissão: só o colaborador designado ou o dono pode alterar
+            Log::info('📋 Pedido localizado.', [
+                'order_id' => $order->id,
+                'appointment_status' => $order->appointment_status,
+                'status' => $order->status,
+                'type' => $order->type,
+            ]);
+
             $isOwner = Establishment::where('id', $order->entity_id)
                 ->where('user_id', $user->id)
                 ->exists();
 
             $isAttendant = $order->attendant && $order->attendant->user_id === $user->id;
+            $isClient = $order->created_by === $user->id;
 
-            if (!$isOwner && !$isAttendant) {
+            Log::info('🔐 Verificando permissões.', [
+                'isOwner' => $isOwner,
+                'isAttendant' => $isAttendant,
+                'isClient' => $isClient,
+            ]);
+
+            if (!$isOwner && !$isAttendant && !$isClient) {
+                Log::warning('🚫 Acesso negado ao atualizar status de agendamento.', [
+                    'user_id' => $user->id,
+                    'order_id' => $id,
+                    'ip' => $ip,
+                ]);
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            // Verifica tipo
             if ($order->type !== 'appointment') {
+                Log::warning('⚠️ Tentativa de atualizar um pedido que não é agendamento.', ['order_id' => $id]);
                 return response()->json(['error' => 'Somente agendamentos podem ser alterados por este método.'], 422);
             }
 
-            $now = now('America/Sao_Paulo');
-            $orderDate = $order->order_datetime;
+            $now = Carbon::now('America/Sao_Paulo');
+            $orderDate = Carbon::parse($order->order_datetime);
 
-            // Impedir finalização futura
             if (in_array($data['action'], ['attended', 'not_attended']) && $orderDate->gt($now)) {
+                Log::warning('🚫 Tentativa de finalizar agendamento futuro.', [
+                    'order_id' => $id,
+                    'order_datetime' => $order->order_datetime,
+                    'now' => $now,
+                ]);
                 return response()->json(['error' => 'Não é possível finalizar um atendimento futuro.'], 422);
             }
 
-            // Atualiza status conforme ação
             switch ($data['action']) {
                 case 'confirm':
+                    if (!$isOwner && !$isAttendant) {
+                        Log::warning('🚫 Cliente tentou confirmar agendamento.', ['order_id' => $id]);
+                        return response()->json(['error' => 'Somente o colaborador ou o dono podem confirmar agendamentos.'], 403);
+                    }
                     if ($order->appointment_status === 'cancelled') {
                         return response()->json(['error' => 'Não é possível confirmar um agendamento cancelado.'], 422);
                     }
                     $order->appointment_status = 'confirmed';
-                    $order->confirmed_by = $user->id;
                     $order->status = 'scheduled';
+                    $order->confirmed_by = $user->id;
+                    $interactionType = 'ConfirmAppointment';
+                    $interactionComment = 'Agendamento confirmado.';
                     break;
 
                 case 'cancel':
                     $order->appointment_status = 'cancelled';
+                    $order->status = 'cancelled';
                     $order->cancelled_by = $user->id;
                     $order->cancelled_reason = $data['reason'] ?? null;
-                    $order->status = 'cancelled';
+                    $interactionType = 'CancelAppointment';
+                    $interactionComment = 'Agendamento cancelado. Motivo: ' . ($data['reason'] ?? 'Não informado.');
                     break;
 
                 case 'attended':
@@ -830,37 +872,87 @@ class OrderController extends Controller
                     }
                     $order->appointment_status = 'attended';
                     $order->status = 'completed';
+                    $order->attended_by = $user->id;
                     $order->attended_at = $now;
+                    $interactionType = 'FinishAppointment';
+                    $interactionComment = 'Atendimento concluído com sucesso.';
                     break;
 
                 case 'not_attended':
                     if ($order->appointment_status !== 'confirmed') {
-                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser finalizados.'], 422);
+                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser marcados como não atendidos.'], 422);
                     }
                     $order->appointment_status = 'not_attended';
                     $order->status = 'completed';
+                    $order->attended_by = $user->id;
                     $order->attended_at = $now;
+                    $interactionType = 'NotAttendedAppointment';
+                    $interactionComment = 'Agendamento marcado como não atendido.';
                     break;
             }
 
             $order->save();
 
+            // 🔍 Registrar histórico detalhado na tabela interactions
+            try {
+                $interaction = new \App\Models\Interaction();
+                $interaction->user_id = $user->id;
+                $interaction->entity_id = $order->id;
+                $interaction->entity_type = 'order';
+                $interaction->interaction_type = $interactionType ?? 'AppointmentAction';
+                $interaction->comment = $interactionComment ?? null;
+                $interaction->name = $user->first_name ?? 'Usuário';
+                $interaction->content = json_encode([
+                    'action' => $data['action'],
+                    'reason' => $data['reason'] ?? null,
+                    'previous_status' => $order->getOriginal('appointment_status'),
+                    'new_status' => $order->appointment_status,
+                    'ip' => $ip,
+                    'user_agent' => $userAgent,
+                    'timestamp' => now()->toDateTimeString(),
+                ], JSON_UNESCAPED_UNICODE);
+                $interaction->save();
+
+                Log::info('🗂️ Interação registrada com sucesso.', [
+                    'interaction_id' => $interaction->id,
+                    'interaction_type' => $interactionType,
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'ip' => $ip,
+                ]);
+            } catch (\Throwable $ex) {
+                Log::error('⚠️ Falha ao registrar interação.', [
+                    'message' => $ex->getMessage(),
+                    'file' => $ex->getFile(),
+                    'line' => $ex->getLine(),
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Status do agendamento atualizado com sucesso.',
-                'order' => $order->fresh(),
+                'order' => $order->fresh(['attendant.user', 'creator', 'items.item']),
             ], 200);
+
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::warning('❌ Agendamento não encontrado para atualização.', ['order_id' => $id]);
             return response()->json(['error' => 'Agendamento não encontrado.'], 404);
+
         } catch (ValidationException $e) {
+            Log::warning('⚠️ Erro de validação ao atualizar status de agendamento.', ['errors' => $e->errors()]);
             return response()->json(['errors' => $e->errors()], 422);
+
         } catch (\Throwable $e) {
-            \Log::error('Erro ao atualizar status de agendamento: ' . $e->getMessage(), [
+            Log::error('🔥 Erro inesperado ao atualizar status de agendamento.', [
+                'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Erro interno ao atualizar o agendamento.'], 500);
+            return response()->json([
+                'error' => 'Erro interno ao atualizar o agendamento.',
+                'details' => $e->getMessage(),
+            ], 500);
         }
     }
-
 
 }
