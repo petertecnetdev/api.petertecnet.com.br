@@ -440,4 +440,52 @@ class EmployerController extends Controller
     }
 }
 
+public function listAppointments(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+        $employer = Employer::with('user')->where('user_id', $user->id)->first();
+
+        if (!$employer) {
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+        }
+
+        $appointments = $employer->orders()
+            ->with(['client:id,first_name,email', 'items.item:id,name,price'])
+            ->where('type', 'appointment')
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->orderBy('order_datetime', 'asc')
+            ->get([
+                'id',
+                'order_number',
+                'customer_name',
+                'order_datetime',
+                'appointment_status',
+                'total_price',
+            ]);
+
+        return response()->json([
+            'message' => 'Lista de agendamentos do colaborador carregada com sucesso.',
+            'employer' => [
+                'id' => $employer->id,
+                'name' => $employer->user->first_name ?? 'Sem nome',
+            ],
+            'appointments' => $appointments,
+        ], 200);
+    } catch (\Exception $e) {
+        \Log::error('Erro ao listar agendamentos do colaborador.', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Falha ao listar agendamentos.',
+            'details' => $e->getMessage(),
+        ], 500);
+    }
+}
+
 }

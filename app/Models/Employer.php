@@ -1,8 +1,10 @@
 <?php
+
 // app/Models/Employer.php
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Employer extends Model
 {
@@ -37,5 +39,11 @@ class Employer extends Model
     public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    /** ✅ Relacionamento direto com pedidos (atendimentos) do colaborador */
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class, 'attendant_id');
     }
 }

@@ -287,7 +287,9 @@ Route::group([
     Route::get('/list', [App\Http\Controllers\EmployerController::class, 'listByEstablishment'])->name('employer.list');
     Route::post('/detach', [App\Http\Controllers\EmployerController::class, 'detach'])->name('employer.detach');
     Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
+    Route::get('/appointments', [App\Http\Controllers\EmployerController::class, 'listAppointments'])->name('employer.appointments'); // ✅ nova rota
 });
+
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
