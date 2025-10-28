@@ -23,16 +23,82 @@ class UserController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'first_name.required' => 'O campo :attribute é obrigatório.',
+            'first_name.required' => 'O campo primeiro nome é obrigatório.',
+            'first_name.string' => 'O campo primeiro nome deve conter texto válido.',
+            'first_name.max' => 'O campo primeiro nome pode ter no máximo 255 caracteres.',
+
+            'last_name.string' => 'O campo sobrenome deve conter texto válido.',
+            'last_name.max' => 'O campo sobrenome pode ter no máximo 255 caracteres.',
+
+            'user_name.required' => 'O campo nome de usuário é obrigatório.',
+            'user_name.string' => 'O campo nome de usuário deve conter texto válido.',
+            'user_name.max' => 'O nome de usuário pode ter no máximo 255 caracteres.',
+            'user_name.unique' => 'Este nome de usuário já está sendo utilizado por outro usuário.',
+
             'email.required' => 'O campo e-mail é obrigatório.',
             'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
             'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário.',
-            'avatar.image' => 'O arquivo deve ser uma imagem.',
-            'avatar.mimes' => 'O arquivo deve ter um formato de imagem válido (jpeg, png, jpg, gif).',
-            'avatar.max' => 'O tamanho máximo do arquivo é de 2MB.',
-            // Outras mensagens de validação conforme necessário
+
+            'avatar.image' => 'O arquivo enviado deve ser uma imagem.',
+            'avatar.mimes' => 'O avatar deve ter um formato de imagem válido (jpeg, png, jpg ou gif).',
+            'avatar.max' => 'O tamanho máximo do arquivo de avatar é de 2MB.',
+
+            'cpf.string' => 'O campo CPF deve conter texto válido.',
+            'cpf.max' => 'O CPF pode ter no máximo 20 caracteres.',
+
+            'address.string' => 'O campo endereço deve conter texto válido.',
+            'address.max' => 'O campo endereço pode ter no máximo 255 caracteres.',
+
+            'phone.string' => 'O campo telefone deve conter texto válido.',
+            'phone.max' => 'O telefone pode ter no máximo 20 caracteres.',
+
+            'city.string' => 'O campo cidade deve conter texto válido.',
+            'city.max' => 'O campo cidade pode ter no máximo 255 caracteres.',
+
+            'uf.string' => 'O campo UF deve conter texto válido.',
+            'uf.max' => 'O campo UF deve ter no máximo 2 caracteres.',
+
+            'postal_code.string' => 'O campo CEP deve conter texto válido.',
+            'postal_code.max' => 'O campo CEP pode ter no máximo 20 caracteres.',
+
+            'birthdate.date' => 'O campo data de nascimento deve ser uma data válida.',
+
+            'gender.string' => 'O campo gênero deve conter texto válido.',
+            'gender.max' => 'O campo gênero pode ter no máximo 20 caracteres.',
+
+            'occupation.string' => 'O campo ocupação deve conter texto válido.',
+            'occupation.max' => 'O campo ocupação pode ter no máximo 255 caracteres.',
+
+            'about.string' => 'O campo sobre deve conter texto válido.',
+            'about.max' => 'O campo sobre pode ter no máximo 500 caracteres.',
+
+            'is_barber.boolean' => 'O campo barbeiro deve ser verdadeiro ou falso.',
+
+            'password.required' => 'O campo senha é obrigatório.',
+            'password.min' => 'A senha deve ter no mínimo 6 caracteres.',
+            'password.confirmed' => 'A confirmação da senha não coincide.',
+
+            'reset_password_code.string' => 'O código de redefinição deve conter texto válido.',
+            'reset_password_expires_at.date' => 'A data de expiração do código deve ser uma data válida.',
+
+            'profile_id.numeric' => 'O campo perfil deve ser um número válido.',
+
+            'newsletter_subscription.boolean' => 'O campo de inscrição na newsletter deve ser verdadeiro ou falso.',
+
+            'ticket_purchases.numeric' => 'O campo de compras de ingressos deve ser um número.',
+            'account_balance.numeric' => 'O campo saldo da conta deve ser um número.',
+
+            'is_producer.boolean' => 'O campo produtor deve ser verdadeiro ou falso.',
+            'is_participant.boolean' => 'O campo participante deve ser verdadeiro ou falso.',
+            'is_promoter.boolean' => 'O campo promotor deve ser verdadeiro ou falso.',
+            'is_barbershoper.boolean' => 'O campo barbearia deve ser verdadeiro ou falso.',
+            'is_partner.boolean' => 'O campo parceiro deve ser verdadeiro ou falso.',
+            'is_ticket_seller.boolean' => 'O campo vendedor de ingressos deve ser verdadeiro ou falso.',
+
+            'extra_info.string' => 'O campo informações extras deve conter texto válido.',
         ];
     }
+
 
     /**
      * Obtém o usuário autenticado ou retorna erro.
@@ -63,9 +129,7 @@ class UserController extends Controller
 
             $currentUser = $this->getAuthenticatedUser();
 
-            // 🔹 Permite atualizar se for o próprio usuário OU se tiver permissão
             if ((int) $currentUser->id !== (int) $userId) {
-                // Caso não seja o próprio, precisa ter permissão explícita
                 if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
                     Log::warning('Usuário sem permissão tentou atualizar outro usuário.', [
                         'authenticated_id' => $currentUser->id,
@@ -80,6 +144,7 @@ class UserController extends Controller
             $validator = Validator::make($request->all(), [
                 'first_name' => 'nullable|string|max:255',
                 'last_name' => 'nullable|string|max:255',
+                'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
                 'email' => 'nullable|email',
                 'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
                 'cpf' => 'nullable|string|max:20',
@@ -104,6 +169,7 @@ class UserController extends Controller
             $updatableFields = [
                 'first_name',
                 'last_name',
+                'user_name',
                 'email',
                 'cpf',
                 'address',
@@ -138,6 +204,16 @@ class UserController extends Controller
             Log::error('Usuário não encontrado.', ['userId' => $userId]);
             return response()->json(['error' => 'Usuário não encontrado.'], 404);
 
+        } catch (\Illuminate\Database\QueryException $e) {
+            if (str_contains($e->getMessage(), 'Duplicate entry')) {
+                return response()->json(['error' => 'O nome de usuário já está em uso.'], 409);
+            }
+            Log::error('Erro de banco ao atualizar usuário.', [
+                'userId' => $userId,
+                'exception' => $e->getMessage(),
+            ]);
+            return response()->json(['error' => 'Erro de banco de dados ao atualizar usuário.'], 500);
+
         } catch (\Exception $e) {
             Log::error('Erro inesperado ao atualizar usuário.', [
                 'userId' => $userId,
@@ -146,6 +222,7 @@ class UserController extends Controller
             return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
         }
     }
+
 
     /**
      * Processa e armazena o avatar do usuário.
