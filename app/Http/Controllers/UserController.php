@@ -24,12 +24,12 @@ class UserController extends Controller
     {
         return [
             'first_name.required' => 'O campo :attribute é obrigatório.',
-            'email.required'      => 'O campo e-mail é obrigatório.',
-            'email.email'         => 'O e-mail deve ser um endereço de e-mail válido.',
-            'email.unique'        => 'Este e-mail já está sendo utilizado por outro usuário.',
-            'avatar.image'        => 'O arquivo deve ser uma imagem.',
-            'avatar.mimes'        => 'O arquivo deve ter um formato de imagem válido (jpeg, png, jpg, gif).',
-            'avatar.max'          => 'O tamanho máximo do arquivo é de 2MB.',
+            'email.required' => 'O campo e-mail é obrigatório.',
+            'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
+            'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário.',
+            'avatar.image' => 'O arquivo deve ser uma imagem.',
+            'avatar.mimes' => 'O arquivo deve ter um formato de imagem válido (jpeg, png, jpg, gif).',
+            'avatar.max' => 'O tamanho máximo do arquivo é de 2MB.',
             // Outras mensagens de validação conforme necessário
         ];
     }
@@ -62,64 +62,60 @@ class UserController extends Controller
             Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
 
             $currentUser = $this->getAuthenticatedUser();
-            if ($currentUser->id != $userId && !$currentUser->hasPermission('user_edit')) {
-                Log::error('Usuário não tem permissão para atualizar este usuário.');
-                return response()->json(['error' => 'Você não tem permissão para atualizar este usuário.'], 403);
+
+            // 🔹 Permite atualizar se for o próprio usuário OU se tiver permissão
+            if ((int) $currentUser->id !== (int) $userId) {
+                // Caso não seja o próprio, precisa ter permissão explícita
+                if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
+                    Log::warning('Usuário sem permissão tentou atualizar outro usuário.', [
+                        'authenticated_id' => $currentUser->id,
+                        'target_id' => $userId,
+                    ]);
+                    return response()->json([
+                        'error' => 'Você não tem permissão para atualizar este usuário.'
+                    ], 403);
+                }
             }
 
             $validator = Validator::make($request->all(), [
-                'first_name'               => 'nullable',
-                'last_name'                => 'nullable',
-                'email'                    => 'nullable|email',
-                'verification_code'        => 'nullable',
-                'avatar'                   => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-                'password'                 => 'nullable|min:6',
-                'reset_password_code'      => 'nullable',
-                'reset_password_expires_at'=> 'nullable|date',
-                'remember_token'           => 'nullable',
-                'profile_id'               => 'nullable|numeric',
-                'cpf'                      => 'nullable',
-                'address'                  => 'nullable',
-                'phone'                    => 'nullable',
-                'city'                     => 'nullable',
-                'uf'                       => 'nullable',
-                'postal_code'              => 'nullable',
-                'birthdate'                => 'nullable|date',
-                'gender'                   => 'nullable',
-                'marital_status'           => 'nullable',
-                'occupation'               => 'nullable',
-                'about'                    => 'nullable',
-                'favorite_artist'          => 'nullable',
-                'favorite_genre'           => 'nullable',
-                'payment_method'           => 'nullable',
-                'newsletter_subscription'  => 'nullable|boolean',
-                'ticket_purchases'         => 'nullable|numeric',
-                'account_balance'          => 'nullable|numeric',
-                'is_producer'              => 'nullable|boolean',
-                'is_participant'           => 'nullable|boolean',
-                'is_promoter'              => 'nullable|boolean',
-                'is_barber'                => 'nullable|boolean',
-                'is_barbershoper'          => 'nullable|boolean',
-                'is_partner'               => 'nullable|boolean',
-                'is_ticket_seller'         => 'nullable|boolean',
-                'extra_info'               => 'nullable',
+                'first_name' => 'nullable|string|max:255',
+                'last_name' => 'nullable|string|max:255',
+                'email' => 'nullable|email',
+                'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+                'cpf' => 'nullable|string|max:20',
+                'address' => 'nullable|string|max:255',
+                'phone' => 'nullable|string|max:20',
+                'city' => 'nullable|string|max:255',
+                'uf' => 'nullable|string|max:2',
+                'postal_code' => 'nullable|string|max:20',
+                'birthdate' => 'nullable|date',
+                'gender' => 'nullable|string|max:20',
+                'occupation' => 'nullable|string|max:255',
+                'about' => 'nullable|string|max:500',
+                'is_barber' => 'nullable|boolean',
             ], $this->getValidationMessages());
 
             if ($validator->fails()) {
-                return response()->json(['error' => $validator->errors()->first()], 400);
+                return response()->json(['errors' => $validator->errors()], 422);
             }
 
             $userToUpdate = User::findOrFail($userId);
 
-            // Campos simples que podem ser atualizados diretamente
             $updatableFields = [
-                'first_name', 'last_name', 'email', 'verification_code', 'reset_password_code',
-                'reset_password_expires_at', 'remember_token', 'profile_id', 'cpf', 'address',
-                'phone', 'city', 'uf', 'postal_code', 'birthdate', 'gender', 'marital_status',
-                'occupation', 'about', 'favorite_artist', 'favorite_genre', 'payment_method',
-                'newsletter_subscription', 'ticket_purchases', 'account_balance', 'is_producer',
-                'is_participant', 'is_promoter', 'is_barber', 'is_barbershoper', 'is_partner',
-                'is_ticket_seller', 'extra_info'
+                'first_name',
+                'last_name',
+                'email',
+                'cpf',
+                'address',
+                'phone',
+                'city',
+                'uf',
+                'postal_code',
+                'birthdate',
+                'gender',
+                'occupation',
+                'about',
+                'is_barber',
             ];
 
             foreach ($updatableFields as $field) {
@@ -128,30 +124,26 @@ class UserController extends Controller
                 }
             }
 
-            // Atualiza a senha se fornecida
-            if ($request->has('password')) {
-                $userToUpdate->password = bcrypt($request->input('password'));
-            }
-
-            // Processa avatar se fornecido
             if ($request->hasFile('avatar')) {
                 Log::info('Avatar fornecido, processando...');
                 $this->processAvatar($request->file('avatar'), $userToUpdate);
             }
 
             $userToUpdate->save();
-            Log::info('Usuário atualizado com sucesso: ' . $userToUpdate->id);
+
+            Log::info('Usuário atualizado com sucesso.', ['id' => $userToUpdate->id]);
             return response()->json(['message' => 'Usuário atualizado com sucesso.'], 200);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::error('Usuário não encontrado para atualização.', ['userId' => $userId]);
+            Log::error('Usuário não encontrado.', ['userId' => $userId]);
             return response()->json(['error' => 'Usuário não encontrado.'], 404);
+
         } catch (\Exception $e) {
             Log::error('Erro inesperado ao atualizar usuário.', [
                 'userId' => $userId,
-                'exception' => $e->getMessage()
+                'exception' => $e->getMessage(),
             ]);
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar o usuário.'], 500);
+            return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
         }
     }
 
@@ -199,7 +191,7 @@ class UserController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'first_name' => 'required',
-                'email'      => 'required|email|unique:users',
+                'email' => 'required|email|unique:users',
             ], $this->getValidationMessages());
 
             if ($validator->fails()) {
@@ -215,10 +207,10 @@ class UserController extends Controller
             }
 
             $newUser = User::create([
-                'first_name'        => $request->input('first_name'),
-                'email'             => $request->input('email'),
-                'password'          => bcrypt($password),
-                'user_name'         => $username,
+                'first_name' => $request->input('first_name'),
+                'email' => $request->input('email'),
+                'password' => bcrypt($password),
+                'user_name' => $username,
                 'verification_code' => $verificationCode,
             ]);
 
@@ -338,75 +330,75 @@ class UserController extends Controller
         }
     }
 
-    
-public function search(Request $request)
-{
-    Log::info('User.search start', [
-        'user_id' => Auth::id(),
-        'query'   => $request->all(),
-    ]);
 
-    try {
-        // Autenticação
-        $this->getAuthenticatedUser();
-
-        // validação — parâmetro único "q"
-        $request->validate([
-            'q' => 'required|string|max:255',
-        ], [
-            'q.required' => 'Você precisa informar algo para buscar.',
-            'q.string'   => 'O termo de busca deve ser uma string.',
-            'q.max'      => 'O termo de busca pode ter no máximo 255 caracteres.',
+    public function search(Request $request)
+    {
+        Log::info('User.search start', [
+            'user_id' => Auth::id(),
+            'query' => $request->all(),
         ]);
 
-        $q = $request->input('q');
-        Log::debug('User.search: termo de busca', ['q' => $q]);
+        try {
+            // Autenticação
+            $this->getAuthenticatedUser();
 
-        // Monta a query dinâmica
-        $users = User::query()
-            ->where(function ($builder) use ($q) {
-                // busca exata por ID
-                if (ctype_digit($q)) {
-                    $builder->orWhere('id', (int) $q);
-                }
-                // busca parcial por email, cpf, nome
-                $builder->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('cpf',   'like', "%{$q}%")
+            // validação — parâmetro único "q"
+            $request->validate([
+                'q' => 'required|string|max:255',
+            ], [
+                'q.required' => 'Você precisa informar algo para buscar.',
+                'q.string' => 'O termo de busca deve ser uma string.',
+                'q.max' => 'O termo de busca pode ter no máximo 255 caracteres.',
+            ]);
+
+            $q = $request->input('q');
+            Log::debug('User.search: termo de busca', ['q' => $q]);
+
+            // Monta a query dinâmica
+            $users = User::query()
+                ->where(function ($builder) use ($q) {
+                    // busca exata por ID
+                    if (ctype_digit($q)) {
+                        $builder->orWhere('id', (int) $q);
+                    }
+                    // busca parcial por email, cpf, nome
+                    $builder->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('cpf', 'like', "%{$q}%")
                         ->orWhere('first_name', 'like', "%{$q}%")
-                        ->orWhere('last_name',  'like', "%{$q}%");
-            })
-            ->with('profile') // se quiser trazer relacionamento
-            ->orderBy('first_name')
-            ->paginate(15);
+                        ->orWhere('last_name', 'like', "%{$q}%");
+                })
+                ->with('profile') // se quiser trazer relacionamento
+                ->orderBy('first_name')
+                ->paginate(15);
 
-        Log::info('User.search success', [
-            'q'      => $q,
-            'count'  => $users->total(),
-            'pages'  => $users->lastPage(),
-        ]);
+            Log::info('User.search success', [
+                'q' => $q,
+                'count' => $users->total(),
+                'pages' => $users->lastPage(),
+            ]);
 
-        return response()->json([
-            'message' => 'Busca concluída com sucesso.',
-            'query'   => $q,
-            'results' => $users,
-        ], 200);
+            return response()->json([
+                'message' => 'Busca concluída com sucesso.',
+                'query' => $q,
+                'results' => $users,
+            ], 200);
 
-    } catch (ValidationException $ve) {
-        Log::warning('ValidationException em User.search', [
-            'errors' => $ve->errors(),
-            'query'  => $request->all(),
-        ]);
-        return response()->json(['errors' => $ve->errors()], 422);
+        } catch (ValidationException $ve) {
+            Log::warning('ValidationException em User.search', [
+                'errors' => $ve->errors(),
+                'query' => $request->all(),
+            ]);
+            return response()->json(['errors' => $ve->errors()], 422);
 
-    } catch (\Exception $e) {
-        Log::error('Exception em User.search', [
-            'message' => $e->getMessage(),
-            'trace'   => $e->getTraceAsString(),
-        ]);
-        return response()->json([
-            'error' => 'Ocorreu um erro ao buscar usuários.',
-            'details' => $e->getMessage(),
-        ], 500);
+        } catch (\Exception $e) {
+            Log::error('Exception em User.search', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'error' => 'Ocorreu um erro ao buscar usuários.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
     }
-}
 }
