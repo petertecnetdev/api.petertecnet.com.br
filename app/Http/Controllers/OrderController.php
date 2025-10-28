@@ -763,6 +763,104 @@ class OrderController extends Controller
             ], 500);
         }
     }
+    public function updateAppointmentStatus(Request $request, $id)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $user = Auth::user();
+
+            $data = $request->validate([
+                'action' => 'required|string|in:confirm,cancel,attended,not_attended',
+                'reason' => 'nullable|string|max:255',
+            ], [
+                'action.required' => 'A ação é obrigatória.',
+                'action.in' => 'A ação deve ser confirm, cancel, attended ou not_attended.',
+            ]);
+
+            $order = Order::with('attendant')->findOrFail($id);
+
+            // Permissão: só o colaborador designado ou o dono pode alterar
+            $isOwner = Establishment::where('id', $order->entity_id)
+                ->where('user_id', $user->id)
+                ->exists();
+
+            $isAttendant = $order->attendant && $order->attendant->user_id === $user->id;
+
+            if (!$isOwner && !$isAttendant) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
+            // Verifica tipo
+            if ($order->type !== 'appointment') {
+                return response()->json(['error' => 'Somente agendamentos podem ser alterados por este método.'], 422);
+            }
+
+            $now = now('America/Sao_Paulo');
+            $orderDate = $order->order_datetime;
+
+            // Impedir finalização futura
+            if (in_array($data['action'], ['attended', 'not_attended']) && $orderDate->gt($now)) {
+                return response()->json(['error' => 'Não é possível finalizar um atendimento futuro.'], 422);
+            }
+
+            // Atualiza status conforme ação
+            switch ($data['action']) {
+                case 'confirm':
+                    if ($order->appointment_status === 'cancelled') {
+                        return response()->json(['error' => 'Não é possível confirmar um agendamento cancelado.'], 422);
+                    }
+                    $order->appointment_status = 'confirmed';
+                    $order->confirmed_by = $user->id;
+                    $order->status = 'scheduled';
+                    break;
+
+                case 'cancel':
+                    $order->appointment_status = 'cancelled';
+                    $order->cancelled_by = $user->id;
+                    $order->cancelled_reason = $data['reason'] ?? null;
+                    $order->status = 'cancelled';
+                    break;
+
+                case 'attended':
+                    if ($order->appointment_status !== 'confirmed') {
+                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser finalizados.'], 422);
+                    }
+                    $order->appointment_status = 'attended';
+                    $order->status = 'completed';
+                    $order->attended_at = $now;
+                    break;
+
+                case 'not_attended':
+                    if ($order->appointment_status !== 'confirmed') {
+                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser finalizados.'], 422);
+                    }
+                    $order->appointment_status = 'not_attended';
+                    $order->status = 'completed';
+                    $order->attended_at = $now;
+                    break;
+            }
+
+            $order->save();
+
+            return response()->json([
+                'message' => 'Status do agendamento atualizado com sucesso.',
+                'order' => $order->fresh(),
+            ], 200);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Agendamento não encontrado.'], 404);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            \Log::error('Erro ao atualizar status de agendamento: ' . $e->getMessage(), [
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro interno ao atualizar o agendamento.'], 500);
+        }
+    }
 
 
 }

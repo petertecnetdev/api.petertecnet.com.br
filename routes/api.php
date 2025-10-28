@@ -236,8 +236,6 @@ Route::prefix('establishment')
         Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
         Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
     });
-
-
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'order'
@@ -247,7 +245,9 @@ Route::group([
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
+    Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])->whereNumber('id')->name('order.updateAppointmentStatus');
 });
+
 
 
 Route::group([
