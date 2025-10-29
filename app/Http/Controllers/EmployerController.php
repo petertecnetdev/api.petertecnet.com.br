@@ -549,7 +549,6 @@ class EmployerController extends Controller
         }
     }
 
-
     public function listAppointments(Request $request)
     {
         try {
@@ -558,33 +557,45 @@ class EmployerController extends Controller
             }
 
             $user = Auth::user();
-            $employer = Employer::with('user')->where('user_id', $user->id)->first();
+
+            $data = $request->validate([
+                'employer_id' => 'nullable|integer|exists:employers,id',
+            ], [
+                'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
+            ]);
+
+            $employer = isset($data['employer_id'])
+                ? \App\Models\Employer::find($data['employer_id'])
+                : \App\Models\Employer::where('user_id', $user->id)->first();
 
             if (!$employer) {
                 return response()->json(['error' => 'Colaborador não encontrado.'], 404);
             }
 
-            $appointments = $employer->orders()
-                ->with(['client:id,first_name,email', 'items.item:id,name,price'])
+            $appointments = \App\Models\Order::with([
+                'items.item:id,name,price,duration',
+                'client:id,first_name,email,phone',
+                'attendant:id,name'
+            ])
                 ->where('type', 'appointment')
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->orderBy('order_datetime', 'asc')
-                ->get([
-                    'id',
-                    'order_number',
-                    'customer_name',
-                    'order_datetime',
-                    'appointment_status',
-                    'total_price',
-                ]);
+                ->where('attendant_id', $employer->id)
+                ->whereIn('appointment_status', ['pending', 'confirmed', 'attended', 'not_attended', 'cancelled'])
+                ->orderBy('order_datetime', 'desc')
+                ->get();
+
+            // Calcula o total se não estiver na tabela
+            foreach ($appointments as $order) {
+                if (!$order->total_price || $order->total_price == 0) {
+                    $order->total_price = $order->items->sum(function ($item) {
+                        return $item->item->price * ($item->quantity ?? 1);
+                    });
+                }
+            }
 
             return response()->json([
-                'message' => 'Lista de agendamentos do colaborador carregada com sucesso.',
-                'employer' => [
-                    'id' => $employer->id,
-                    'name' => $employer->user->first_name ?? 'Sem nome',
-                ],
                 'appointments' => $appointments,
+                'count' => $appointments->count(),
             ], 200);
         } catch (\Exception $e) {
             \Log::error('Erro ao listar agendamentos do colaborador.', [
@@ -597,5 +608,4 @@ class EmployerController extends Controller
             ], 500);
         }
     }
-
 }
