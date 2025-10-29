@@ -228,7 +228,6 @@ Route::group([
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
     Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])->whereNumber('id')->name('order.updateAppointmentStatus');
 });
-
 // Rotas públicas (listar e visualizar itens)
 Route::group([
     'middleware' => 'api',
@@ -242,12 +241,16 @@ Route::group([
     Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
 });
 
-// Rotas autenticadas (criação, atualização, exclusão e aumento de preços)
+// Rotas autenticadas (criação, atualização, exclusão, aumento e redução de preços)
 Route::group([
     'middleware' => ['api', 'auth:api'],
     'prefix' => 'item'
 ], function () {
+    // Ações administrativas de preço
     Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
+    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
+
+    // CRUD
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
     Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
