@@ -629,6 +629,29 @@ public function generatePdf($slug)
         return response()->json(['error' => 'Erro ao gerar o PDF.'], 500);
     }
 }
+public function myEstablishments()
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $establishments = Establishment::where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        return response()->json([
+            'message' => 'Estabelecimentos do usuário listados com sucesso.',
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
+    }
+}
 
 
 

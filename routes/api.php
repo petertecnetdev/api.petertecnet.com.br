@@ -203,6 +203,9 @@ Route::prefix('establishment')
         Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
         Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
         Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
+
+        // ✅ Rota pública para gerar o PDF (Cardápio / Tabela de preços)
+        Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
     });
 
 Route::prefix('establishment')
@@ -215,7 +218,6 @@ Route::prefix('establishment')
         Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
         Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
     });
-
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
