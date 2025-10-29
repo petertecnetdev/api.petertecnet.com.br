@@ -552,5 +552,84 @@ public function listMyByCategory(Request $request, $category)
     }
 }
 
+public function generatePdf($slug)
+{
+    try {
+        $establishment = Establishment::with('items')->where('slug', $slug)->first();
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        $appId = $establishment->app_id;
+        $tipo = $appId == 3 ? 'Cardápio' : 'Tabela de Preços';
+
+        $items = $establishment->items()->where('status', 1)->orderBy('category')->get();
+        $grouped = $items->groupBy(fn($i) => $i->category ?: 'Outros');
+
+        $logoPath = public_path($establishment->logo ? $establishment->logo : 'images/default-logo.png');
+
+        $html = '
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body { font-family: DejaVu Sans, sans-serif; color: #222; }
+                .cover { text-align: center; margin-top: 100px; }
+                .cover img { width: 150px; height: 150px; object-fit: contain; }
+                .title { font-size: 28px; font-weight: bold; margin-top: 15px; }
+                .info { font-size: 14px; margin-top: 10px; }
+                .category { background: #f2f2f2; padding: 8px; font-size: 18px; font-weight: bold; margin-top: 25px; }
+                .item { margin-top: 10px; display: flex; align-items: center; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+                .item img { width: 70px; height: 70px; object-fit: cover; margin-right: 10px; border-radius: 6px; }
+                .item-info { flex: 1; }
+                .item-name { font-weight: bold; font-size: 15px; }
+                .item-desc { font-size: 13px; color: #555; }
+                .item-price { font-weight: bold; color: #111; text-align: right; font-size: 14px; }
+                footer { position: fixed; bottom: 10px; left: 0; right: 0; text-align: center; font-size: 11px; color: #888; }
+            </style>
+        </head>
+        <body>';
+
+        $html .= '<div class="cover">';
+        if (file_exists($logoPath)) {
+            $html .= '<img src="' . $logoPath . '" alt="Logo">';
+        }
+        $html .= '<div class="title">' . e($establishment->name) . '</div>';
+        $html .= '<div class="info">' . e($tipo) . '</div>';
+        if ($establishment->address) $html .= '<div class="info">' . e($establishment->address) . '</div>';
+        if ($establishment->phone) $html .= '<div class="info">WhatsApp: ' . e($establishment->phone) . '</div>';
+        if ($establishment->instagram_url) $html .= '<div class="info">Instagram: ' . e($establishment->instagram_url) . '</div>';
+        $html .= '</div><div style="page-break-after: always;"></div>';
+
+        foreach ($grouped as $category => $prods) {
+            $html .= '<div class="category">' . e($category) . '</div>';
+            foreach ($prods as $item) {
+                $imagePath = $item->image ? public_path($item->image) : null;
+                $html .= '<div class="item">';
+                if ($imagePath && file_exists($imagePath)) {
+                    $html .= '<img src="' . $imagePath . '" alt="Item">';
+                }
+                $html .= '<div class="item-info">
+                            <div class="item-name">' . e($item->name) . '</div>
+                            <div class="item-desc">' . e($item->description ?? '') . '</div>
+                          </div>
+                          <div class="item-price">' . number_format($item->price, 2, ',', '.') . '</div>
+                          </div>';
+            }
+        }
+
+        $html .= '<footer>' . e($establishment->name) . ' - ' . e($tipo) . '</footer></body></html>';
+
+        $pdf = \PDF::loadHTML($html)->setPaper('a4');
+        $fileName = Str::slug($establishment->name . '-' . $tipo) . '.pdf';
+        return $pdf->download($fileName);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao gerar PDF: ' . $e->getMessage());
+        return response()->json(['error' => 'Erro ao gerar o PDF.'], 500);
+    }
+}
+
+
 
 }
