@@ -242,7 +242,7 @@ class EmployerController extends Controller
     }
 
 
-   public function detach(Request $request)
+    public function detach(Request $request)
     {
         try {
             Log::info('Employer.detach start', [
@@ -348,7 +348,7 @@ class EmployerController extends Controller
                 return array_map(function ($message) {
                     // Garante que o string é UTF-8 válido (útil contra o erro que você viu)
                     return mb_convert_encoding($message, 'UTF-8', 'UTF-8');
-                }, (array)$messages); // Garante que $messages é um array para o loop
+                }, (array) $messages); // Garante que $messages é um array para o loop
             }, $e->errors());
 
             return response()->json([
@@ -369,123 +369,198 @@ class EmployerController extends Controller
         }
     }
     public function checkUpdates(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $user = Auth::user();
+            $user = Auth::user();
 
-        $data = $request->validate([
-            'employer_id' => 'required|integer|exists:employers,id',
-            'last_check' => 'nullable|date',
-        ], [
-            'employer_id.required' => 'O campo employer_id é obrigatório.',
-            'employer_id.exists' => 'O colaborador informado não existe.',
-            'last_check.date' => 'O campo last_check deve ser uma data válida.',
-        ]);
-
-        $employer = \App\Models\Employer::find($data['employer_id']);
-        if (!$employer) {
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-        }
-
-        $isOwner = \App\Models\Establishment::where('user_id', $user->id)
-            ->where('id', $employer->establishment_id)
-            ->exists();
-
-        $isSelf = $user->id === $employer->user_id;
-
-        if (!$isOwner && !$isSelf) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        $lastCheck = isset($data['last_check'])
-            ? \Carbon\Carbon::parse($data['last_check'])
-            : now()->subMinutes(10);
-
-        $newAppointments = \App\Models\Order::where('attendant_id', $employer->id)
-            ->where('type', 'appointment')
-            ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->where('created_at', '>', $lastCheck)
-            ->orderBy('created_at', 'desc')
-            ->take(3)
-            ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status']);
-
-        $nextAppointment = \App\Models\Order::where('attendant_id', $employer->id)
-            ->where('type', 'appointment')
-            ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->where('order_datetime', '>=', now())
-            ->orderBy('order_datetime', 'asc')
-            ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status']);
-
-        $hasNew = $newAppointments->isNotEmpty();
-
-        return response()->json([
-            'has_new' => $hasNew,
-            'new_appointments' => $newAppointments,
-            'next_appointment' => $nextAppointment,
-            'checked_at' => now()->toDateTimeString(),
-        ]);
-    } catch (\Exception $e) {
-        \Log::error('Erro ao verificar atualizações do colaborador.', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        return response()->json([
-            'error' => 'Falha ao verificar atualizações.',
-            'details' => $e->getMessage(),
-        ], 500);
-    }
-}
-
-public function listAppointments(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $user = Auth::user();
-        $employer = Employer::with('user')->where('user_id', $user->id)->first();
-
-        if (!$employer) {
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-        }
-
-        $appointments = $employer->orders()
-            ->with(['client:id,first_name,email', 'items.item:id,name,price'])
-            ->where('type', 'appointment')
-            ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->orderBy('order_datetime', 'asc')
-            ->get([
-                'id',
-                'order_number',
-                'customer_name',
-                'order_datetime',
-                'appointment_status',
-                'total_price',
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'last_check' => 'nullable|date',
+            ], [
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
+                'last_check.date' => 'O campo last_check deve ser uma data válida.',
             ]);
 
-        return response()->json([
-            'message' => 'Lista de agendamentos do colaborador carregada com sucesso.',
-            'employer' => [
-                'id' => $employer->id,
-                'name' => $employer->user->first_name ?? 'Sem nome',
-            ],
-            'appointments' => $appointments,
-        ], 200);
-    } catch (\Exception $e) {
-        \Log::error('Erro ao listar agendamentos do colaborador.', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        return response()->json([
-            'error' => 'Falha ao listar agendamentos.',
-            'details' => $e->getMessage(),
-        ], 500);
+            $employer = \App\Models\Employer::with('establishment')->find($data['employer_id']);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+
+            $isOwner = \App\Models\Establishment::where('user_id', $user->id)
+                ->where('id', $employer->establishment_id)
+                ->exists();
+
+            $isSelf = $user->id === $employer->user_id;
+
+            if (!$isOwner && !$isSelf) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
+            $lastCheck = isset($data['last_check'])
+                ? \Carbon\Carbon::parse($data['last_check'])
+                : now()->subMinutes(10);
+
+            // --- KPIs Atualizados ---
+            $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed', 'cancelled', 'attended', 'not_attended']);
+
+            $totalAppointments = (clone $appointmentsQuery)->count();
+            $todayAppointments = (clone $appointmentsQuery)
+                ->whereDate('order_datetime', now()->toDateString())
+                ->count();
+            $tomorrowAppointments = (clone $appointmentsQuery)
+                ->whereDate('order_datetime', now()->addDay()->toDateString())
+                ->count();
+            $totalValue = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['confirmed', 'attended'])
+                ->sum('total_price');
+
+            // --- Alterações desde o último check ---
+            $newAppointments = (clone $appointmentsQuery)
+                ->where('created_at', '>', $lastCheck)
+                ->orderBy('created_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $updatedAppointments = (clone $appointmentsQuery)
+                ->where('updated_at', '>', $lastCheck)
+                ->where('created_at', '<', $lastCheck)
+                ->orderBy('updated_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $cancelledAppointments = (clone $appointmentsQuery)
+                ->where('appointment_status', 'cancelled')
+                ->where('updated_at', '>', $lastCheck)
+                ->orderBy('updated_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $nextAppointment = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->where('order_datetime', '>=', now())
+                ->orderBy('order_datetime', 'asc')
+                ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $lastAppointment = (clone $appointmentsQuery)
+                ->where('order_datetime', '<', now())
+                ->orderBy('order_datetime', 'desc')
+                ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            // --- Notificações automáticas ---
+            $notifications = [];
+
+            if ($newAppointments->isNotEmpty()) {
+                foreach ($newAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'new',
+                        'message' => "Novo agendamento de {$appt->customer_name} para " .
+                            \Carbon\Carbon::parse($appt->order_datetime)->format('d/m H:i'),
+                    ];
+                }
+            }
+
+            if ($updatedAppointments->isNotEmpty()) {
+                foreach ($updatedAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'update',
+                        'message' => "Agendamento de {$appt->customer_name} foi atualizado. Status: {$appt->appointment_status}.",
+                    ];
+                }
+            }
+
+            if ($cancelledAppointments->isNotEmpty()) {
+                foreach ($cancelledAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'cancel',
+                        'message' => "Agendamento de {$appt->customer_name} foi cancelado.",
+                    ];
+                }
+            }
+
+            // --- Montagem do retorno ---
+            return response()->json([
+                'checked_at' => now()->toDateTimeString(),
+                'kpis' => [
+                    'total' => $totalAppointments,
+                    'today' => $todayAppointments,
+                    'tomorrow' => $tomorrowAppointments,
+                    'value' => $totalValue,
+                ],
+                'new_appointments' => $newAppointments,
+                'updated_appointments' => $updatedAppointments,
+                'cancelled_appointments' => $cancelledAppointments,
+                'next_appointment' => $nextAppointment,
+                'last_appointment' => $lastAppointment,
+                'notifications' => $notifications,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao verificar atualizações do colaborador.', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Falha ao verificar atualizações.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
     }
-}
+
+
+    public function listAppointments(Request $request)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $user = Auth::user();
+            $employer = Employer::with('user')->where('user_id', $user->id)->first();
+
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+
+            $appointments = $employer->orders()
+                ->with(['client:id,first_name,email', 'items.item:id,name,price'])
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->orderBy('order_datetime', 'asc')
+                ->get([
+                    'id',
+                    'order_number',
+                    'customer_name',
+                    'order_datetime',
+                    'appointment_status',
+                    'total_price',
+                ]);
+
+            return response()->json([
+                'message' => 'Lista de agendamentos do colaborador carregada com sucesso.',
+                'employer' => [
+                    'id' => $employer->id,
+                    'name' => $employer->user->first_name ?? 'Sem nome',
+                ],
+                'appointments' => $appointments,
+            ], 200);
+        } catch (\Exception $e) {
+            \Log::error('Erro ao listar agendamentos do colaborador.', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'error' => 'Falha ao listar agendamentos.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
+    }
 
 }
