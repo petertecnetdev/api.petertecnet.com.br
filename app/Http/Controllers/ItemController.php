@@ -606,85 +606,97 @@ class ItemController extends Controller
             Log::error('Erro no cadastro em massa de itens: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
         }
-    }
+    } 
+
     public function increasePricesByPercentage(Request $request)
-    {
-        try {
-            \Log::info('Iniciando aumento de preços dos itens de um estabelecimento.');
+{
+    try {
+        \Log::info('Iniciando aumento de preços dos itens de um estabelecimento.');
 
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou aumentar preços.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-            if (!$user->hasPermission('item_update')) {
-                \Log::warning('Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
-            }
-
-            $validated = $request->validate([
-                'entity_id' => 'required|integer|exists:establishments,id',
-                'entity_name' => 'required|string|max:100',
-                'percentage' => 'required|numeric|min:0',
-            ], [
-                'entity_id.required' => 'O campo entity_id é obrigatório.',
-                'entity_id.integer' => 'O campo entity_id deve ser um número inteiro.',
-                'entity_id.exists' => 'O estabelecimento informado não existe.',
-                'entity_name.required' => 'O campo entity_name é obrigatório.',
-                'entity_name.string' => 'O campo entity_name deve ser uma string.',
-                'percentage.required' => 'O campo porcentagem é obrigatório.',
-                'percentage.numeric' => 'O campo porcentagem deve ser um número.',
-                'percentage.min' => 'O campo porcentagem deve ser maior ou igual a 0.',
-            ]);
-
-            $entityId = $validated['entity_id'];
-            $entityName = $validated['entity_name'];
-            $percentage = $validated['percentage'];
-
-            // 🔹 Corrigido: verificação de propriedade com model
-            $isOwner = \App\Models\Establishment::where('id', $entityId)
-                ->where('user_id', $user->id)
-                ->exists();
-
-            if (!$isOwner) {
-                \Log::warning('Usuário não é o dono do estabelecimento.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não é o proprietário deste estabelecimento.'], 403);
-            }
-
-            $items = Item::where('entity_id', $entityId)
-                ->where('entity_name', $entityName)
-                ->get();
-
-            if ($items->isEmpty()) {
-                \Log::info('Nenhum item encontrado para o estabelecimento.', ['entity_id' => $entityId]);
-                return response()->json(['message' => 'Nenhum item encontrado para o estabelecimento.'], 404);
-            }
-
-            foreach ($items as $item) {
-                $oldPrice = $item->price;
-                $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
-                $item->update(['price' => $newPrice]);
-
-                \Log::info('Preço atualizado.', [
-                    'item_id' => $item->id,
-                    'old_price' => $oldPrice,
-                    'new_price' => $newPrice
-                ]);
-            }
-
-            return response()->json([
-                'message' => 'Preços atualizados com sucesso.',
-                'total_updated' => $items->count(),
-                'percentage_applied' => $percentage
-            ], 200);
-
-        } catch (ValidationException $e) {
-            \Log::warning('Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
+        if (!Auth::check()) {
+            \Log::warning('Usuário não autenticado tentou aumentar preços.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        if (!$user->hasPermission('item_update')) {
+            \Log::warning('Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
+            return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
+        }
+
+        $validated = $request->validate([
+            'entity_id' => 'required|integer',
+            'entity_name' => 'required|string|max:100',
+            'percentage' => 'required|numeric|min:0',
+        ], [
+            'entity_id.required' => 'O campo entity_id é obrigatório.',
+            'entity_id.integer' => 'O campo entity_id deve ser um número inteiro.',
+            'entity_name.required' => 'O campo entity_name é obrigatório.',
+            'entity_name.string' => 'O campo entity_name deve ser uma string.',
+            'percentage.required' => 'O campo porcentagem é obrigatório.',
+            'percentage.numeric' => 'O campo porcentagem deve ser um número.',
+            'percentage.min' => 'O campo porcentagem deve ser maior ou igual a 0.',
+        ]);
+
+        $entityId = $validated['entity_id'];
+        $entityName = $validated['entity_name'];
+        $percentage = $validated['percentage'];
+
+        // 🔹 Obter o nome real da tabela (pluralizando automaticamente)
+        $tableName = \Str::plural($entityName);
+
+        if (!\Schema::hasTable($tableName)) {
+            \Log::error('Tabela não encontrada para a entidade.', ['table' => $tableName]);
+            return response()->json(['error' => "A entidade '{$entityName}' é inválida."], 400);
+        }
+
+        // 🔹 Verificar se o usuário é o proprietário da entidade
+        $isOwner = \DB::table($tableName)
+            ->where('id', $entityId)
+            ->where('user_id', $user->id)
+            ->exists();
+
+        if (!$isOwner) {
+            \Log::warning('Usuário não é o dono da entidade.', ['user_id' => $user->id, 'entity' => $entityName]);
+            return response()->json(['error' => 'Você não é o proprietário desta entidade.'], 403);
+        }
+
+        // 🔹 Buscar todos os itens vinculados à entidade
+        $items = Item::where('entity_id', $entityId)
+            ->where('entity_name', $entityName)
+            ->get();
+
+        if ($items->isEmpty()) {
+            \Log::info('Nenhum item encontrado para a entidade.', ['entity_id' => $entityId, 'entity_name' => $entityName]);
+            return response()->json(['message' => 'Nenhum item encontrado para a entidade.'], 404);
+        }
+
+        // 🔹 Atualizar os preços de todos os itens
+        foreach ($items as $item) {
+            $oldPrice = $item->price;
+            $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
+            $item->update(['price' => $newPrice]);
+
+            \Log::info('Preço atualizado.', [
+                'item_id' => $item->id,
+                'old_price' => $oldPrice,
+                'new_price' => $newPrice
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Preços atualizados com sucesso.',
+            'total_updated' => $items->count(),
+            'percentage_applied' => $percentage
+        ], 200);
+
+    } catch (ValidationException $e) {
+        \Log::warning('Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+        return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
     }
+}
+
 }
