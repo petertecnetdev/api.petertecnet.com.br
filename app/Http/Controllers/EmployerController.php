@@ -405,7 +405,6 @@ class EmployerController extends Controller
                 ? \Carbon\Carbon::parse($data['last_check'])
                 : now()->subMinutes(10);
 
-            // --- KPIs Atualizados ---
             $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
                 ->where('type', 'appointment')
                 ->whereIn('appointment_status', ['pending', 'confirmed', 'cancelled', 'attended', 'not_attended']);
@@ -421,7 +420,6 @@ class EmployerController extends Controller
                 ->whereIn('appointment_status', ['confirmed', 'attended'])
                 ->sum('total_price');
 
-            // --- Alterações desde o último check ---
             $newAppointments = (clone $appointmentsQuery)
                 ->where('created_at', '>', $lastCheck)
                 ->orderBy('created_at', 'desc')
@@ -453,7 +451,35 @@ class EmployerController extends Controller
                 ->orderBy('order_datetime', 'desc')
                 ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
 
-            // --- Notificações automáticas ---
+            // --- Identifica atendimentos finalizados que precisam ser marcados como atendidos ou não ---
+            $finalizableAppointments = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['confirmed'])
+                ->get()
+                ->filter(function ($appt) {
+                    $duration = 0;
+                    if ($appt->items && count($appt->items) > 0) {
+                        foreach ($appt->items as $item) {
+                            $duration += $item->duration ?? 0;
+                        }
+                    }
+                    $duration = $duration > 0 ? $duration : 15;
+                    $endTime = \Carbon\Carbon::parse($appt->order_datetime)->addMinutes($duration);
+                    return now()->greaterThanOrEqualTo($endTime);
+                })
+                ->sortBy('order_datetime')
+                ->values()
+                ->map(function ($appt) {
+                    return [
+                        'id' => $appt->id,
+                        'order_number' => $appt->order_number,
+                        'customer_name' => $appt->customer_name,
+                        'order_datetime' => $appt->order_datetime,
+                        'appointment_status' => $appt->appointment_status,
+                        'total_price' => $appt->total_price,
+                    ];
+                })
+                ->take(1);
+
             $notifications = [];
 
             if ($newAppointments->isNotEmpty()) {
@@ -484,7 +510,15 @@ class EmployerController extends Controller
                 }
             }
 
-            // --- Montagem do retorno ---
+            if ($finalizableAppointments->isNotEmpty()) {
+                foreach ($finalizableAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'finalize',
+                        'message' => "O atendimento de {$appt['customer_name']} está finalizado. Marque como atendido ou não atendido.",
+                    ];
+                }
+            }
+
             return response()->json([
                 'checked_at' => now()->toDateTimeString(),
                 'kpis' => [
@@ -498,6 +532,7 @@ class EmployerController extends Controller
                 'cancelled_appointments' => $cancelledAppointments,
                 'next_appointment' => $nextAppointment,
                 'last_appointment' => $lastAppointment,
+                'finalizable_appointment' => $finalizableAppointments->first(),
                 'notifications' => $notifications,
             ], 200);
 
