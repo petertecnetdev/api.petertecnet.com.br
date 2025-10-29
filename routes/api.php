@@ -238,6 +238,13 @@ Route::prefix('establishment')
     });
 Route::group([
     'middleware' => ['api', 'auth:api'],
+    'prefix' => 'item'
+], function () {
+    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
+});
+
+Route::group([
+    'middleware' => ['api', 'auth:api'],
     'prefix' => 'order'
 ], function () {
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
