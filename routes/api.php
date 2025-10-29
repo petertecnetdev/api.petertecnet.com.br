@@ -175,27 +175,6 @@ Route::group([
 
 
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'item'
-], function ($router) {
-    Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
-    Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
-    Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
-    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
-    Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
-    Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
-});
-
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'item'
-], function () {
-    Route::post('/', [ItemController::class, 'store'])->name('item.store');
-    Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
-    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
-    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
-});
 
 Route::group([
     'middleware' => 'api',
@@ -236,12 +215,7 @@ Route::prefix('establishment')
         Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
         Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
     });
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'item'
-], function () {
-    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
-});
+
 
 Route::group([
     'middleware' => ['api', 'auth:api'],
@@ -255,6 +229,30 @@ Route::group([
     Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])->whereNumber('id')->name('order.updateAppointmentStatus');
 });
 
+// Rotas públicas (listar e visualizar itens)
+Route::group([
+    'middleware' => 'api',
+    'prefix' => 'item'
+], function ($router) {
+    Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
+    Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
+    Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
+    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
+    Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
+    Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
+});
+
+// Rotas autenticadas (criação, atualização, exclusão e aumento de preços)
+Route::group([
+    'middleware' => ['api', 'auth:api'],
+    'prefix' => 'item'
+], function () {
+    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
+    Route::post('/', [ItemController::class, 'store'])->name('item.store');
+    Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
+    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
+    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
+});
 
 
 Route::group([
