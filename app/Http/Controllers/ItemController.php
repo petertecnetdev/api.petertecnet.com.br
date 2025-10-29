@@ -607,23 +607,26 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
         }
     } 
-
-    public function increasePricesByPercentage(Request $request)
+public function increasePricesByPercentage(Request $request)
 {
     try {
-        \Log::info('Iniciando aumento de preços dos itens de um estabelecimento.');
+        \Log::info('Iniciando aumento de preços dos itens de uma entidade.');
 
+        // 🔐 Verifica autenticação
         if (!Auth::check()) {
             \Log::warning('Usuário não autenticado tentou aumentar preços.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
+
+        // 🔒 Verifica permissão
         if (!$user->hasPermission('item_update')) {
             \Log::warning('Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
             return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
         }
 
+        // 📋 Validação dos parâmetros
         $validated = $request->validate([
             'entity_id' => 'required|integer',
             'entity_name' => 'required|string|max:100',
@@ -639,39 +642,46 @@ class ItemController extends Controller
         ]);
 
         $entityId = $validated['entity_id'];
-        $entityName = $validated['entity_name'];
+        $entityName = strtolower(trim($validated['entity_name']));
         $percentage = $validated['percentage'];
 
-        // 🔹 Obter o nome real da tabela (pluralizando automaticamente)
+        // 🧩 Garante que o nome da tabela é válido
         $tableName = \Str::plural($entityName);
 
         if (!\Schema::hasTable($tableName)) {
             \Log::error('Tabela não encontrada para a entidade.', ['table' => $tableName]);
-            return response()->json(['error' => "A entidade '{$entityName}' é inválida."], 400);
+            return response()->json(['error' => "A entidade '{$entityName}' é inválida ou não existe."], 400);
         }
 
-        // 🔹 Verificar se o usuário é o proprietário da entidade
+        // 🧠 Verifica se o usuário é dono da entidade
         $isOwner = \DB::table($tableName)
             ->where('id', $entityId)
             ->where('user_id', $user->id)
             ->exists();
 
         if (!$isOwner) {
-            \Log::warning('Usuário não é o dono da entidade.', ['user_id' => $user->id, 'entity' => $entityName]);
+            \Log::warning('Usuário não é o proprietário da entidade.', [
+                'user_id' => $user->id,
+                'entity_id' => $entityId,
+                'entity_name' => $entityName,
+            ]);
             return response()->json(['error' => 'Você não é o proprietário desta entidade.'], 403);
         }
 
-        // 🔹 Buscar todos os itens vinculados à entidade
+        // 🔍 Busca todos os itens da entidade
         $items = Item::where('entity_id', $entityId)
             ->where('entity_name', $entityName)
             ->get();
 
         if ($items->isEmpty()) {
-            \Log::info('Nenhum item encontrado para a entidade.', ['entity_id' => $entityId, 'entity_name' => $entityName]);
-            return response()->json(['message' => 'Nenhum item encontrado para a entidade.'], 404);
+            \Log::info('Nenhum item encontrado para a entidade.', [
+                'entity_id' => $entityId,
+                'entity_name' => $entityName,
+            ]);
+            return response()->json(['message' => 'Nenhum item encontrado para esta entidade.'], 404);
         }
 
-        // 🔹 Atualizar os preços de todos os itens
+        // 💰 Atualiza preços de todos os itens
         foreach ($items as $item) {
             $oldPrice = $item->price;
             $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
@@ -680,21 +690,31 @@ class ItemController extends Controller
             \Log::info('Preço atualizado.', [
                 'item_id' => $item->id,
                 'old_price' => $oldPrice,
-                'new_price' => $newPrice
+                'new_price' => $newPrice,
             ]);
         }
+
+        \Log::info('Aumento de preços concluído com sucesso.', [
+            'entity_id' => $entityId,
+            'entity_name' => $entityName,
+            'percentage' => $percentage,
+            'total_updated' => $items->count(),
+        ]);
 
         return response()->json([
             'message' => 'Preços atualizados com sucesso.',
             'total_updated' => $items->count(),
-            'percentage_applied' => $percentage
+            'percentage_applied' => $percentage,
         ], 200);
 
     } catch (ValidationException $e) {
         \Log::warning('Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
         return response()->json(['errors' => $e->errors()], 422);
+
     } catch (\Exception $e) {
-        \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+        \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), [
+            'stack' => $e->getTraceAsString(),
+        ]);
         return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
     }
 }
