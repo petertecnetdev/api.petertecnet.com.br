@@ -607,121 +607,122 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
         }
     }
-public function increasePricesByPercentage(Request $request)
-{
-    try {
-        Log::info('🟡 Iniciando aumento de preços dos itens de um estabelecimento...');
 
-        if (!Auth::check()) {
-            Log::warning('🔴 Usuário não autenticado tentou aumentar preços.');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    public function increasePricesByPercentage(Request $request)
+    {
+        try {
+            Log::info('🟡 Iniciando aumento de preços dos itens de um estabelecimento...');
 
-        $user = Auth::user();
-        Log::info('👤 Usuário autenticado.', ['user_id' => $user->id, 'email' => $user->email]);
+            if (!Auth::check()) {
+                Log::warning('🔴 Usuário não autenticado tentou aumentar preços.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        if (!$user->hasPermission('item_update')) {
-            Log::warning('🚫 Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
-            return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
-        }
+            $user = Auth::user();
+            Log::info('👤 Usuário autenticado.', ['user_id' => $user->id, 'email' => $user->email]);
 
-        $validated = $request->validate([
-            'entity_id'   => 'required|integer|exists:establishments,id',
-            'percentage'  => 'required|numeric|min:0',
-        ], [
-            'entity_id.required'  => 'O campo entity_id é obrigatório.',
-            'entity_id.integer'   => 'O campo entity_id deve ser um número inteiro.',
-            'entity_id.exists'    => 'O estabelecimento informado não existe.',
-            'percentage.required' => 'O campo porcentagem é obrigatório.',
-            'percentage.numeric'  => 'O campo porcentagem deve ser um número.',
-            'percentage.min'      => 'O campo porcentagem deve ser maior ou igual a 0.',
-        ]);
+            if (!$user->hasPermission('item_update')) {
+                Log::warning('🚫 Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
+            }
 
-        $entityId   = (int) $validated['entity_id'];
-        $percentage = (float) $validated['percentage'];
-        $entityName = 'establishment';
+            $validated = $request->validate([
+                'entity_id' => 'required|integer|exists:establishments,id',
+                'percentage' => 'required|numeric|min:0',
+            ], [
+                'entity_id.required' => 'O campo entity_id é obrigatório.',
+                'entity_id.integer' => 'O campo entity_id deve ser um número inteiro.',
+                'entity_id.exists' => 'O estabelecimento informado não existe.',
+                'percentage.required' => 'O campo porcentagem é obrigatório.',
+                'percentage.numeric' => 'O campo porcentagem deve ser um número.',
+                'percentage.min' => 'O campo porcentagem deve ser maior ou igual a 0.',
+            ]);
 
-        Log::info('📋 Dados recebidos para aumento de preço.', [
-            'entity_id'  => $entityId,
-            'percentage' => $percentage,
-            'user_id'    => $user->id,
-        ]);
+            $entityId = (int) $validated['entity_id'];
+            $percentage = (float) $validated['percentage'];
 
-        $establishment = Establishment::find($entityId);
-        if (!$establishment) {
-            Log::error('❌ Estabelecimento não encontrado.', ['entity_id' => $entityId]);
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        if ($establishment->user_id !== $user->id) {
-            Log::warning('⚠️ Usuário não é o dono do estabelecimento.', [
+            Log::info('📋 Dados recebidos para aumento de preço.', [
+                'entity_id' => $entityId,
+                'percentage' => $percentage,
                 'user_id' => $user->id,
-                'establishment_user_id' => $establishment->user_id,
-                'entity_id' => $entityId
-            ]);
-            return response()->json(['error' => 'Você não é o proprietário deste estabelecimento.'], 403);
-        }
-
-        Log::info('✅ Usuário é o proprietário. Buscando itens...');
-
-        $items = Item::where('entity_id', $entityId)
-            ->where('entity_name', $entityName)
-            ->get();
-
-        Log::info('📦 Itens encontrados.', [
-            'total_items' => $items->count(),
-            'entity_id'   => $entityId,
-        ]);
-
-        if ($items->isEmpty()) {
-            Log::info('⚠️ Nenhum item encontrado para este estabelecimento.', ['entity_id' => $entityId]);
-            return response()->json(['message' => 'Nenhum item encontrado para o estabelecimento.'], 404);
-        }
-
-        $totalUpdated = 0;
-
-        foreach ($items as $item) {
-            $oldPrice = (float) $item->price;
-            $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
-
-            Log::debug('💲 Atualizando preço do item...', [
-                'item_id'   => $item->id,
-                'item_name' => $item->name,
-                'old_price' => $oldPrice,
-                'new_price' => $newPrice,
             ]);
 
-            $item->price = $newPrice;
-            $item->updated_by = $user->id;
-            $item->save();
+            $establishment = \App\Models\Establishment::find($entityId);
+            if (!$establishment) {
+                Log::error('❌ Estabelecimento não encontrado.', ['entity_id' => $entityId]);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
 
-            $totalUpdated++;
+            if ($establishment->user_id !== $user->id) {
+                Log::warning('⚠️ Usuário não é o dono do estabelecimento.', [
+                    'user_id' => $user->id,
+                    'establishment_user_id' => $establishment->user_id,
+                    'entity_id' => $entityId
+                ]);
+                return response()->json(['error' => 'Você não é o proprietário deste estabelecimento.'], 403);
+            }
+
+            Log::info('✅ Usuário é o proprietário. Buscando itens...');
+
+            $items = Item::where('entity_id', $entityId)
+                ->whereRaw('LOWER(entity_name) = ?', ['establishment'])
+                ->get();
+
+            Log::info('📦 Resultado da busca de itens:', [
+                'entity_id' => $entityId,
+                'total_items' => $items->count(),
+                'entity_names_encontrados' => $items->pluck('entity_name')->unique()->values(),
+            ]);
+
+            if ($items->isEmpty()) {
+                Log::warning('⚠️ Nenhum item encontrado para este estabelecimento.', [
+                    'entity_id' => $entityId
+                ]);
+                return response()->json(['message' => 'Nenhum item encontrado para o estabelecimento.'], 404);
+            }
+
+            $totalUpdated = 0;
+            foreach ($items as $item) {
+                $oldPrice = (float) $item->price;
+                $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
+
+                Log::debug('💲 Atualizando preço do item...', [
+                    'item_id' => $item->id,
+                    'item_name' => $item->name,
+                    'old_price' => $oldPrice,
+                    'new_price' => $newPrice,
+                ]);
+
+                $item->price = $newPrice;
+                $item->updated_by = $user->id;
+                $item->save();
+                $totalUpdated++;
+            }
+
+            Log::info('✅ Aumento de preços concluído.', [
+                'entity_id' => $entityId,
+                'percentage' => $percentage,
+                'total_updated' => $totalUpdated,
+            ]);
+
+            return response()->json([
+                'message' => "Preços aumentados em {$percentage}% com sucesso.",
+                'total_updated' => $totalUpdated,
+                'percentage_applied' => $percentage,
+            ], 200);
+
+        } catch (ValidationException $e) {
+            Log::warning('⚠️ Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            Log::error('💥 Erro inesperado ao aumentar preços dos itens.', [
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+                'file' => $e->getFile(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
         }
-
-        Log::info('✅ Aumento de preços concluído com sucesso.', [
-            'entity_id' => $entityId,
-            'percentage_applied' => $percentage,
-            'total_updated' => $totalUpdated,
-        ]);
-
-        return response()->json([
-            'message' => "Preços aumentados em {$percentage}% com sucesso.",
-            'total_updated' => $totalUpdated,
-            'percentage_applied' => $percentage,
-        ], 200);
-
-    } catch (ValidationException $e) {
-        Log::warning('⚠️ Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Exception $e) {
-        Log::error('💥 Erro inesperado ao aumentar preços dos itens.', [
-            'message' => $e->getMessage(),
-            'line'    => $e->getLine(),
-            'file'    => $e->getFile(),
-            'trace'   => $e->getTraceAsString(),
-        ]);
-        return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
     }
-}
 }
