@@ -523,177 +523,168 @@ class ItemController extends Controller
         }
     }
 
-public function storeBulk(Request $request)
-{
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
-
-    $user = Auth::user();
-    if (!$user->hasPermission('item_create')) {
-        return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
-    }
-
-    $validated = $request->validate([
-        'items'                     => 'required|array',
-        'items.*.name'              => 'required|string|max:255',
-        'items.*.type'              => 'required|string|max:100',
-        'items.*.price'             => 'required|numeric|min:0',
-        'items.*.stock'             => 'nullable|integer|min:0',
-        'items.*.status'            => 'required|boolean',
-        'items.*.limited_by_user'   => 'nullable|boolean',
-        'items.*.category'          => 'nullable|string|max:100',
-        'items.*.subcategory'       => 'nullable|string|max:100',
-        'items.*.brand'             => 'nullable|string|max:100',
-        'items.*.description'       => 'nullable|string',
-        'items.*.availability_start'=> 'nullable|date',
-        'items.*.availability_end'  => 'nullable|date|after:items.*.availability_start',
-        'items.*.expiration_date'   => 'nullable|date',
-        'items.*.discount'          => 'nullable|numeric|min:0|max:100',
-        'items.*.notes'             => 'nullable|string',
-        'items.*.is_featured'       => 'nullable|boolean',
-        'items.*.slug'              => 'nullable|string|max:255',
-        'items.*.entity_id'         => 'required|integer',
-        'items.*.entity_name'       => 'required|string|max:100',
-        'items.*.app_id'            => 'required|exists:applications,id',
-        'items.*.duration'          => 'nullable|integer|min:1|max:480',
-    ], $this->getValidationMessages());
-
-    DB::beginTransaction();
-    try {
-        $created = [];
-        foreach ($validated['items'] as $data) {
-            $data['user_id'] = $user->id;
-            $data['stock'] = $data['stock'] ?? null;
-            $item = Item::create([
-                'name'               => $data['name'],
-                'type'               => $data['type'],
-                'sku'                => $data['sku'] ?? null,
-                'description'        => $data['description'] ?? null,
-                'price'              => $data['price'],
-                'stock'              => $data['stock'],
-                'status'             => (int) $data['status'],
-                'limited_by_user'    => (int) ($data['limited_by_user'] ?? 0),
-                'category'           => $data['category'] ?? null,
-                'subcategory'        => $data['subcategory'] ?? null,
-                'brand'              => $data['brand'] ?? null,
-                'availability_start' => $data['availability_start'] ?? null,
-                'availability_end'   => $data['availability_end'] ?? null,
-                'expiration_date'    => $data['expiration_date'] ?? null,
-                'discount'           => $data['discount'] ?? null,
-                'notes'              => $data['notes'] ?? null,
-                'is_featured'        => (bool) ($data['is_featured'] ?? false),
-                'entity_id'          => $data['entity_id'],
-                'entity_name'        => $data['entity_name'],
-                'app_id'             => $data['app_id'],
-                'duration'           => $data['duration'] ?? null,
-            ]);
-
-            $slug = Str::slug($data['name']);
-            $count = Item::where('slug', $slug)->count();
-            if ($count > 0) {
-                $slug .= '-' . ($count + 1);
-            }
-            $item->slug = $slug;
-            $item->save();
-
-            $created[] = $item;
-        }
-        DB::commit();
-        return response()->json(['message' => 'Itens cadastrados com sucesso.', 'items' => $created], 201);
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error('Erro no cadastro em massa de itens: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
-    }
-}
-
-public function increasePricesByPercentage(Request $request)
-{
-    try {
-        \Log::info('Iniciando aumento de preços dos itens de um estabelecimento.');
-
+    public function storeBulk(Request $request)
+    {
         if (!Auth::check()) {
-            \Log::warning('Usuário não autenticado tentou aumentar preços.');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $user = Auth::user();
-        if (!$user->hasPermission('item_update')) {
-            \Log::warning('Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
-            return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
+        if (!$user->hasPermission('item_create')) {
+            return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
         }
 
         $validated = $request->validate([
-            'entity_id' => 'required|integer|exists:establishments,id',
-            'entity_name' => 'required|string|max:100',
-            'percentage' => 'required|numeric|min:0',
-        ], [
-            'entity_id.required' => 'O campo entity_id é obrigatório.',
-            'entity_id.integer' => 'O campo entity_id deve ser um número inteiro.',
-            'entity_id.exists' => 'O estabelecimento informado não existe.',
-            'entity_name.required' => 'O campo entity_name é obrigatório.',
-            'entity_name.string' => 'O campo entity_name deve ser uma string.',
-            'percentage.required' => 'O campo porcentagem é obrigatório.',
-            'percentage.numeric' => 'O campo porcentagem deve ser um número.',
-            'percentage.min' => 'O campo porcentagem deve ser maior ou igual a 0.',
-        ]);
+            'items' => 'required|array',
+            'items.*.name' => 'required|string|max:255',
+            'items.*.type' => 'required|string|max:100',
+            'items.*.price' => 'required|numeric|min:0',
+            'items.*.stock' => 'nullable|integer|min:0',
+            'items.*.status' => 'required|boolean',
+            'items.*.limited_by_user' => 'nullable|boolean',
+            'items.*.category' => 'nullable|string|max:100',
+            'items.*.subcategory' => 'nullable|string|max:100',
+            'items.*.brand' => 'nullable|string|max:100',
+            'items.*.description' => 'nullable|string',
+            'items.*.availability_start' => 'nullable|date',
+            'items.*.availability_end' => 'nullable|date|after:items.*.availability_start',
+            'items.*.expiration_date' => 'nullable|date',
+            'items.*.discount' => 'nullable|numeric|min:0|max:100',
+            'items.*.notes' => 'nullable|string',
+            'items.*.is_featured' => 'nullable|boolean',
+            'items.*.slug' => 'nullable|string|max:255',
+            'items.*.entity_id' => 'required|integer',
+            'items.*.entity_name' => 'required|string|max:100',
+            'items.*.app_id' => 'required|exists:applications,id',
+            'items.*.duration' => 'nullable|integer|min:1|max:480',
+        ], $this->getValidationMessages());
 
-        $entityId = $validated['entity_id'];
-        $entityName = $validated['entity_name'];
-        $percentage = $validated['percentage'];
+        DB::beginTransaction();
+        try {
+            $created = [];
+            foreach ($validated['items'] as $data) {
+                $data['user_id'] = $user->id;
+                $data['stock'] = $data['stock'] ?? null;
+                $item = Item::create([
+                    'name' => $data['name'],
+                    'type' => $data['type'],
+                    'sku' => $data['sku'] ?? null,
+                    'description' => $data['description'] ?? null,
+                    'price' => $data['price'],
+                    'stock' => $data['stock'],
+                    'status' => (int) $data['status'],
+                    'limited_by_user' => (int) ($data['limited_by_user'] ?? 0),
+                    'category' => $data['category'] ?? null,
+                    'subcategory' => $data['subcategory'] ?? null,
+                    'brand' => $data['brand'] ?? null,
+                    'availability_start' => $data['availability_start'] ?? null,
+                    'availability_end' => $data['availability_end'] ?? null,
+                    'expiration_date' => $data['expiration_date'] ?? null,
+                    'discount' => $data['discount'] ?? null,
+                    'notes' => $data['notes'] ?? null,
+                    'is_featured' => (bool) ($data['is_featured'] ?? false),
+                    'entity_id' => $data['entity_id'],
+                    'entity_name' => $data['entity_name'],
+                    'app_id' => $data['app_id'],
+                    'duration' => $data['duration'] ?? null,
+                ]);
 
-        \Log::info('Validando se o usuário é o dono do estabelecimento.', [
-            'user_id' => $user->id,
-            'entity_id' => $entityId,
-            'entity_name' => $entityName,
-        ]);
+                $slug = Str::slug($data['name']);
+                $count = Item::where('slug', $slug)->count();
+                if ($count > 0) {
+                    $slug .= '-' . ($count + 1);
+                }
+                $item->slug = $slug;
+                $item->save();
 
-        $isOwner = \DB::table($entityName . 's')
-            ->where('id', $entityId)
-            ->where('user_id', $user->id)
-            ->exists();
-
-        if (!$isOwner) {
-            \Log::warning('Usuário não é o dono do estabelecimento.', ['user_id' => $user->id]);
-            return response()->json(['error' => 'Você não é o proprietário deste estabelecimento.'], 403);
+                $created[] = $item;
+            }
+            DB::commit();
+            return response()->json(['message' => 'Itens cadastrados com sucesso.', 'items' => $created], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Erro no cadastro em massa de itens: ' . $e->getMessage());
+            return response()->json(['error' => 'Ocorreu um erro ao cadastrar os itens.'], 500);
         }
-
-        $items = Item::where('entity_id', $entityId)
-            ->where('entity_name', $entityName)
-            ->get();
-
-        if ($items->isEmpty()) {
-            \Log::info('Nenhum item encontrado para o estabelecimento.', ['entity_id' => $entityId]);
-            return response()->json(['message' => 'Nenhum item encontrado para o estabelecimento.'], 404);
-        }
-
-        foreach ($items as $item) {
-            $oldPrice = $item->price;
-            $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
-            $item->update(['price' => $newPrice]);
-
-            \Log::info('Preço atualizado.', [
-                'item_id' => $item->id,
-                'old_price' => $oldPrice,
-                'new_price' => $newPrice
-            ]);
-        }
-
-        return response()->json([
-            'message' => 'Preços atualizados com sucesso.',
-            'total_updated' => $items->count(),
-            'percentage_applied' => $percentage
-        ], 200);
-
-    } catch (ValidationException $e) {
-        \Log::warning('Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
-        return response()->json(['errors' => $e->errors()], 422);
-    } catch (\Exception $e) {
-        \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-        return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
     }
-}
+    public function increasePricesByPercentage(Request $request)
+    {
+        try {
+            \Log::info('Iniciando aumento de preços dos itens de um estabelecimento.');
 
+            if (!Auth::check()) {
+                \Log::warning('Usuário não autenticado tentou aumentar preços.');
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
+            $user = Auth::user();
+            if (!$user->hasPermission('item_update')) {
+                \Log::warning('Usuário sem permissão tentou aumentar preços.', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não tem permissão para alterar preços.'], 403);
+            }
+
+            $validated = $request->validate([
+                'entity_id' => 'required|integer|exists:establishments,id',
+                'entity_name' => 'required|string|max:100',
+                'percentage' => 'required|numeric|min:0',
+            ], [
+                'entity_id.required' => 'O campo entity_id é obrigatório.',
+                'entity_id.integer' => 'O campo entity_id deve ser um número inteiro.',
+                'entity_id.exists' => 'O estabelecimento informado não existe.',
+                'entity_name.required' => 'O campo entity_name é obrigatório.',
+                'entity_name.string' => 'O campo entity_name deve ser uma string.',
+                'percentage.required' => 'O campo porcentagem é obrigatório.',
+                'percentage.numeric' => 'O campo porcentagem deve ser um número.',
+                'percentage.min' => 'O campo porcentagem deve ser maior ou igual a 0.',
+            ]);
+
+            $entityId = $validated['entity_id'];
+            $entityName = $validated['entity_name'];
+            $percentage = $validated['percentage'];
+
+            // 🔹 Corrigido: verificação de propriedade com model
+            $isOwner = \App\Models\Establishment::where('id', $entityId)
+                ->where('user_id', $user->id)
+                ->exists();
+
+            if (!$isOwner) {
+                \Log::warning('Usuário não é o dono do estabelecimento.', ['user_id' => $user->id]);
+                return response()->json(['error' => 'Você não é o proprietário deste estabelecimento.'], 403);
+            }
+
+            $items = Item::where('entity_id', $entityId)
+                ->where('entity_name', $entityName)
+                ->get();
+
+            if ($items->isEmpty()) {
+                \Log::info('Nenhum item encontrado para o estabelecimento.', ['entity_id' => $entityId]);
+                return response()->json(['message' => 'Nenhum item encontrado para o estabelecimento.'], 404);
+            }
+
+            foreach ($items as $item) {
+                $oldPrice = $item->price;
+                $newPrice = round($oldPrice * (1 + ($percentage / 100)), 2);
+                $item->update(['price' => $newPrice]);
+
+                \Log::info('Preço atualizado.', [
+                    'item_id' => $item->id,
+                    'old_price' => $oldPrice,
+                    'new_price' => $newPrice
+                ]);
+            }
+
+            return response()->json([
+                'message' => 'Preços atualizados com sucesso.',
+                'total_updated' => $items->count(),
+                'percentage_applied' => $percentage
+            ], 200);
+
+        } catch (ValidationException $e) {
+            \Log::warning('Erro de validação ao aumentar preços.', ['errors' => $e->errors()]);
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Exception $e) {
+            \Log::error('Erro ao aumentar preços dos itens: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
+            return response()->json(['error' => 'Ocorreu um erro ao aumentar os preços.'], 500);
+        }
+    }
 }
