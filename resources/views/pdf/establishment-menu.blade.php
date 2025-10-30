@@ -17,7 +17,7 @@
     .cover {
       height: 100vh;
       width: 100%;
-      background: linear-gradient(180deg, #000 20%, #111 100%);
+      background: linear-gradient(180deg, #000 10%, #111 90%);
       display: flex;
       flex-direction: column;
       justify-content: center;
@@ -28,17 +28,17 @@
     }
 
     .cover-logo {
-      width: 180px;
-      height: 180px;
+      width: 200px;
+      height: 200px;
       border-radius: 50%;
       object-fit: cover;
-      border: 5px solid #ff6a00;
+      border: 6px solid #ff6a00;
+      box-shadow: 0 0 30px rgba(255,106,0,0.4);
       margin-bottom: 25px;
-      box-shadow: 0 0 25px rgba(255,106,0,0.4);
     }
 
     .cover-title {
-      font-size: 42px;
+      font-size: 46px;
       font-weight: 900;
       color: #fff;
       text-transform: uppercase;
@@ -56,110 +56,88 @@
     .cover-info {
       color: #ccc;
       font-size: 14px;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
-    /* ===== PÁGINAS DE CARDÁPIO ===== */
-    .page {
+    /* ===== CONTEÚDO ===== */
+    .category-page {
       width: 100%;
       min-height: 100vh;
-      padding: 60px;
-      box-sizing: border-box;
       background: #000;
-      display: flex;
-      flex-direction: row;
-      justify-content: space-between;
+      box-sizing: border-box;
+      padding: 70px 50px 80px 50px;
       position: relative;
       page-break-before: always;
     }
 
-    .left-column {
-      width: 55%;
+    .category-header {
+      background: #ff6a00;
+      color: #fff;
+      text-align: center;
+      font-size: 28px;
+      font-weight: 900;
+      text-transform: uppercase;
+      padding: 15px 0;
+      letter-spacing: 1.5px;
+      border-radius: 0;
+      margin-bottom: 40px;
     }
 
-    .right-column {
-      width: 40%;
+    .menu-grid {
       display: flex;
-      flex-direction: column;
-      justify-content: flex-start;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+
+    .menu-item {
+      width: 48%;
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 25px;
+      display: flex;
+      flex-direction: row;
       align-items: center;
     }
 
-    .menu-subtitle {
-      color: #ff6a00;
-      font-size: 36px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 1.5px;
-      border-bottom: 3px solid #ff6a00;
-      padding-bottom: 6px;
-      margin-bottom: 20px;
+    .item-image {
+      width: 85px;
+      height: 85px;
+      border-radius: 10px;
+      object-fit: cover;
+      margin-right: 15px;
+      border: 2px solid #ff6a00;
+      background: #111;
     }
 
-    .category {
-      font-size: 22px;
-      font-weight: bold;
-      color: #fff;
-      text-transform: uppercase;
-      margin-top: 30px;
-      margin-bottom: 12px;
-      border-left: 5px solid #ff6a00;
-      padding-left: 10px;
-    }
-
-    .item {
-      margin-bottom: 14px;
+    .item-details {
+      flex: 1;
     }
 
     .item-name {
-      font-size: 16px;
+      font-size: 15px;
       font-weight: bold;
       color: #ff6a00;
       text-transform: uppercase;
+      margin-bottom: 4px;
     }
 
     .item-desc {
       font-size: 12px;
-      color: #ccc;
-      margin-top: 2px;
-      line-height: 1.3;
+      color: #ddd;
+      line-height: 1.4;
+      margin-bottom: 6px;
     }
 
     .item-price {
-      float: right;
-      background: #ff6a00;
-      color: #fff;
       font-weight: bold;
+      color: #fff;
+      background: #ff6a00;
+      border-radius: 20px;
+      padding: 4px 10px;
       font-size: 13px;
-      padding: 3px 8px;
-      border-radius: 20px;
-      margin-top: -20px;
-    }
-
-    .image-card {
-      width: 280px;
-      height: 280px;
-      border-radius: 50%;
-      border: 5px solid #ff6a00;
-      overflow: hidden;
-      margin-bottom: 20px;
-      box-shadow: 0 0 25px rgba(255,106,0,0.3);
-    }
-
-    .image-card img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-
-    .image-label {
-      background: #ff6a00;
-      color: #fff;
-      font-weight: bold;
-      text-transform: uppercase;
-      padding: 6px 15px;
-      border-radius: 20px;
-      margin-top: -10px;
+      display: inline-block;
     }
 
     footer {
@@ -173,7 +151,6 @@
       font-size: 11px;
       padding: 10px 0;
     }
-
   </style>
 </head>
 <body>
@@ -185,6 +162,7 @@
   @endif
   <div class="cover-title">{{ strtoupper($establishment->name) }}</div>
   <div class="cover-subtitle">{{ strtoupper($tipo) }}</div>
+
   @if($establishment->address)
     <div class="cover-info">📍 {{ $establishment->address }}</div>
   @endif
@@ -198,36 +176,33 @@
 
 <!-- PÁGINAS DE CATEGORIAS -->
 @foreach($grouped as $category => $items)
-<div class="page">
-  <div class="left-column">
-    <div class="menu-subtitle">{{ strtoupper($category) }}</div>
+  <div class="category-page">
+    <div class="category-header">{{ strtoupper($category) }}</div>
 
-    @foreach($items as $item)
-      <div class="item">
-        <span class="item-name">{{ $item->name }}</span>
-        <span class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</span>
-        @if($item->description)
-          <div class="item-desc">{{ $item->description }}</div>
-        @endif
-      </div>
-    @endforeach
-  </div>
+    <div class="menu-grid">
+      @foreach($items as $item)
+        <div class="menu-item">
+          @if($item->image && file_exists(public_path($item->image)))
+            <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}" class="item-image">
+          @else
+            <img src="{{ public_path('images/default-item.jpg') }}" alt="Item" class="item-image">
+          @endif
 
-  <div class="right-column">
-    @foreach($items->take(2) as $item)
-      @if($item->image && file_exists(public_path($item->image)))
-        <div class="image-card">
-          <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}">
+          <div class="item-details">
+            <div class="item-name">{{ $item->name }}</div>
+            @if($item->description)
+              <div class="item-desc">{{ $item->description }}</div>
+            @endif
+            <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
+          </div>
         </div>
-        <div class="image-label">{{ strtoupper($item->name) }}</div>
-      @endif
-    @endforeach
+      @endforeach
+    </div>
   </div>
-</div>
 @endforeach
 
 <footer>
-  {{ $establishment->name }} — {{ $tipo }} • Gerado automaticamente por Rasoio
+  {{ $establishment->name }} — {{ $tipo }} 
 </footer>
 
 </body>
