@@ -1,3 +1,4 @@
+<!-- resources/views/pdf/establishment-menu.blade.php -->
 <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
@@ -5,242 +6,233 @@
     <title>{{ $establishment->name }} - {{ $tipo }}</title>
     <style>
         @page { margin: 0; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            margin: 0;
             font-family: 'DejaVu Sans', sans-serif;
-            background: #0a0a0a;
             color: #fff;
+            background: #000;
+            line-height: 1.4;
         }
-        * { box-sizing: border-box; }
 
         /* ===== CAPA ===== */
         .cover {
-            position: relative;
             width: 100%;
-            height: 100vh;
-            page-break-after: always;
-            overflow: hidden;
-            background: linear-gradient(160deg, #000 20%, #111 90%);
-        }
-        .cover-bg {
-            position: absolute;
-            inset: 0;
+            height: 100%;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            background-color: #000;
             background-size: cover;
             background-position: center;
-            filter: brightness(0.25) blur(10px);
+            background-repeat: no-repeat;
+            overflow: hidden;
+        }
+        .cover::before {
+            content: "";
+            position: absolute;
+            inset: 0;
+            background: inherit;
+            background-size: cover;
+            background-position: center;
+            filter: blur(60px) brightness(0.6);
+            transform: scale(1.1);
             z-index: 0;
         }
         .cover-overlay {
             position: absolute;
             inset: 0;
-            background: radial-gradient(circle at center, rgba(255,255,255,0.05), rgba(0,0,0,0.85) 90%);
+            background: rgba(0,0,0,0.55);
             z-index: 1;
         }
         .cover-content {
             position: relative;
             z-index: 2;
-            height: 100%;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
-            padding: 80px 70px 50px 70px;
-        }
-        .cover-header {
-            display: flex;
+            justify-content: center;
             align-items: center;
-            gap: 28px;
+            height: 100vh;
+            text-align: center;
         }
         .cover-logo {
-            width: 140px;
-            height: 140px;
+            width: 240px;
+            height: 240px;
             border-radius: 999px;
-            border: 3px solid rgba(255,255,255,0.25);
             object-fit: cover;
-            background: rgba(255,255,255,0.08);
+            border: 4px solid rgba(255,255,255,0.25);
+            margin-bottom: 28px;
+            box-shadow: 0 0 35px rgba(255,255,255,0.2);
+        }
+        .cover-title {
+            font-size: 42px;
+            font-weight: 800;
+            background: rgba(0,0,0,0.85);
+            padding: 14px 30px;
+            border-radius: 10px;
+            margin-bottom: 12px;
         }
         .cover-info {
-            flex: 1;
-        }
-        .cover-info .app {
-            text-transform: uppercase;
-            letter-spacing: 3px;
-            font-size: 12px;
-            opacity: 0.8;
-        }
-        .cover-info .title {
-            font-size: 34px;
-            font-weight: 800;
-            margin-top: 8px;
-            line-height: 1.1;
-        }
-        .cover-info .desc {
-            margin-top: 6px;
-            font-size: 15px;
-            opacity: 0.9;
-        }
-        .cover-footer {
-            border-top: 1px solid rgba(255,255,255,0.1);
-            padding-top: 22px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-        }
-        .pill {
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 99px;
-            padding: 7px 16px;
-            font-size: 11px;
-            background: rgba(255,255,255,0.05);
+            font-size: 16px;
+            background: rgba(0,0,0,0.85);
+            padding: 10px 22px;
+            border-radius: 10px;
+            margin-top: 10px;
         }
 
-        /* ===== PÁGINAS DE ITENS ===== */
+        /* ===== ITENS ===== */
         .page {
-            padding: 60px 55px 55px 55px;
-            background: #0a0a0a;
-            min-height: 100vh;
+            padding: 60px 60px 80px 60px;
+            background: #0b0b0b;
+        }
+        .category {
+            page-break-after: always;
+            margin-bottom: 40px;
+        }
+        .category:last-child {
+            page-break-after: auto;
         }
         .category-title {
             text-transform: uppercase;
             text-align: center;
             font-weight: 700;
-            letter-spacing: 2.5px;
-            font-size: 14px;
-            background: linear-gradient(90deg, #191919, #111);
-            padding: 12px;
+            letter-spacing: 2px;
+            font-size: 16px;
+            background: linear-gradient(90deg, #1b1b1b, #111);
+            padding: 10px;
             border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+            margin-bottom: 20px;
+        }
+
+        /* ===== ITEM ===== */
+        .item-wrapper {
+            display: block;
+            page-break-inside: avoid;
             margin-bottom: 18px;
-            border: 1px solid rgba(255,255,255,0.05);
+        }
+        .category .item-wrapper:first-child {
+            margin-top: 40px;
         }
         .item {
             display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: rgba(255,255,255,0.02);
-            border: 1px solid rgba(255,255,255,0.05);
+            width: 100%;
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 10px;
-            padding: 10px 14px;
-            margin-bottom: 10px;
-            min-height: 72px;
-        }
-        .item-left {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            flex: 1;
+            background: rgba(255,255,255,0.03);
+            overflow: hidden;
         }
         .thumb {
-            width: 65px;
-            height: 65px;
-            border-radius: 8px;
+            width: 120px;
+            height: 110px;
             object-fit: cover;
-            background: rgba(255,255,255,0.05);
+            border-right: 2px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
+            flex-shrink: 0;
         }
-        .thumb.empty {
+        .item-body {
+            flex: 1;
             display: flex;
+            flex-direction: row;
             align-items: center;
-            justify-content: center;
-            font-size: 10px;
-            color: rgba(255,255,255,0.3);
+            justify-content: space-between;
+            padding: 14px 20px;
         }
-        .item-info {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
+        .item-info { flex: 1; }
         .item-title {
+            font-size: 18px;
             font-weight: 700;
-            font-size: 13px;
-            margin-bottom: 2px;
+            margin-bottom: 4px;
         }
         .item-desc {
-            font-size: 10.5px;
-            opacity: 0.8;
-            max-width: 400px;
+            font-size: 13px;
+            color: #ccc;
         }
         .item-price {
-            font-size: 13px;
+            font-size: 18px;
             font-weight: 700;
-            white-space: nowrap;
-            background: linear-gradient(90deg, #FFD700, #CDA434);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            color: #ffd700;
+            text-align: right;
+            min-width: 100px;
         }
 
-        .avoid-break { page-break-inside: avoid; }
+        /* ===== GRID ===== */
+        .row { display: block; }
+        .col-md-12 { width: 100%; }
     </style>
 </head>
 <body>
 @php
-    $bg = $establishment->background && file_exists(public_path($establishment->background))
-        ? public_path($establishment->background)
-        : $logoPath;
     $hasLogo = file_exists($logoPath);
+    $bg = $hasLogo
+        ? $logoPath
+        : ($establishment->background && file_exists(public_path($establishment->background))
+            ? public_path($establishment->background)
+            : $logoPath);
 @endphp
 
 <!-- CAPA -->
-<div class="cover">
-    <div class="cover-bg" style="background-image: url('{{ $bg }}');"></div>
+<div class="cover" style="background-image: url('{{ $bg }}');">
     <div class="cover-overlay"></div>
     <div class="cover-content">
-        <div class="cover-header">
-            @if($hasLogo)
-                <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
-            @endif
-            <div class="cover-info">
-                <div class="app">{{ strtoupper($tipo) }}</div>
-                <div class="title">{{ $establishment->name }}</div>
-                @if($establishment->description)
-                    <div class="desc">{{ $establishment->description }}</div>
-                @endif
-            </div>
-        </div>
-
-        <div class="cover-footer">
+        @if($hasLogo)
+            <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
+        @endif
+        <div class="cover-title">{{ $establishment->name }}</div>
+        <div class="cover-info">
             @if($establishment->address)
-                <div class="pill">📍 {{ $establishment->address }}{{ $establishment->city ? ' - '.$establishment->city : '' }}</div>
+                <div>{{ $establishment->address }}{{ $establishment->city ? ' - '.$establishment->city : '' }}</div>
             @endif
             @if($establishment->phone)
-                <div class="pill">📱 {{ $establishment->phone }}</div>
+                <div>Whats: {{ $establishment->phone }}</div>
             @endif
-            @if($establishment->instagram_url)
-                <div class="pill">📸 {{ $establishment->instagram_url }}</div>
-            @endif
-            @php
-                $segments = [];
-                if (is_array($establishment->segments)) $segments = $establishment->segments;
-                elseif ($establishment->segments) $segments = json_decode($establishment->segments, true) ?: [];
-            @endphp
-            @foreach($segments as $seg)
-                <div class="pill">{{ $seg }}</div>
-            @endforeach
         </div>
     </div>
 </div>
 
-<!-- CATEGORIAS E ITENS -->
+<!-- ITENS -->
 @foreach($grouped as $categoryName => $items)
-    <div class="page">
-        <div class="category-title">{{ strtoupper($categoryName) }}</div>
-        @foreach($items as $item)
-            <div class="item avoid-break">
-                <div class="item-left">
-                    @if($item->image && file_exists(public_path($item->image)))
-                        <img src="{{ public_path($item->image) }}" alt="img" class="thumb">
-                    @else
-                        <div class="thumb empty">SEM IMAGEM</div>
-                    @endif
-                    <div class="item-info">
-                        <div class="item-title">{{ $item->name }}</div>
-                        @if($item->description)
-                            <div class="item-desc">{{ $item->description }}</div>
-                        @endif
-                    </div>
-                </div>
-                <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
-            </div>
-        @endforeach
-    </div>
-@endforeach
+    @if($items->count() > 0)
+        <div class="page">
+            <div class="category">
+                <div class="category-title">{{ strtoupper($categoryName) }}</div>
 
+                @foreach($items as $item)
+                    @php
+                        $thumb = null;
+                        if (!empty($item->image)) {
+                            $abs = public_path($item->image);
+                            if (file_exists($abs)) {
+                                $mime = mime_content_type($abs);
+                                $thumb = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($abs));
+                            }
+                        }
+                    @endphp
+
+                    <div class="item-wrapper">
+                        <div class="item">
+                            @if($thumb)
+                                <img src="{{ $thumb }}" class="thumb" alt="{{ $item->name }}">
+                            @endif
+                            <div class="item-body">
+                                <div class="item-info">
+                                    <div class="item-title">{{ $item->name }}</div>
+                                    @if($item->description)
+                                        <div class="item-desc">{{ $item->description }}</div>
+                                    @endif
+                                </div>
+                                <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
+                            </div>
+                        </div>
+                    </div>
+                @endforeach
+
+            </div>
+        </div>
+    @endif
+@endforeach
 </body>
 </html>

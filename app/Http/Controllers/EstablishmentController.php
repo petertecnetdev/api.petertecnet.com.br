@@ -551,7 +551,11 @@ class EstablishmentController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
         }
-    }public function generatePdf($slug)
+    }
+
+
+    
+public function generatePdf($slug)
 {
     try {
         $establishment = Establishment::with('items')->where('slug', $slug)->first();
@@ -560,39 +564,44 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        // Define tipo conforme categoria
         $category = strtolower($establishment->category ?? '');
         $tipo = in_array($category, ['barbershop', 'beauty', 'salon'])
             ? 'Tabela de Preços'
             : 'Cardápio';
 
-        // Carrega todos os itens ativos
         $items = $establishment->items()
             ->where('status', 1)
             ->get()
             ->groupBy(fn($i) => $i->category ?: 'Outros');
 
-        // Ordena categorias conforme o item mais caro de cada uma
-        $grouped = $items->sortByDesc(function ($group) {
-            return $group->max('price');
-        });
+        $grouped = $items->sortByDesc(fn($group) => $group->max('price'))
+            ->map(fn($group) => $group->sortByDesc('price'));
 
-        // Ordena itens dentro de cada categoria (maior preço primeiro)
-        $grouped = $grouped->map(function ($group) {
-            return $group->sortByDesc('price');
-        });
-
-        // Caminho da logo
         $logoPath = $establishment->logo
             ? public_path($establishment->logo)
             : public_path('images/default-logo.png');
 
-        // Gera PDF via Blade
+        // Converte imagens dos itens em Base64
+        $itemsBase64 = [];
+        foreach ($grouped as $catName => $catItems) {
+            $itemsBase64[$catName] = [];
+            foreach ($catItems as $item) {
+                $imgBase64 = null;
+                if ($item->image && file_exists(public_path($item->image))) {
+                    $path = public_path($item->image);
+                    $mime = mime_content_type($path);
+                    $imgBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                }
+                $itemsBase64[$catName][$item->id] = $imgBase64;
+            }
+        }
+
         $pdf = \PDF::loadView('pdf.establishment-menu', [
             'establishment' => $establishment,
             'grouped' => $grouped,
             'tipo' => $tipo,
             'logoPath' => $logoPath,
+            'itemsBase64' => $itemsBase64,
         ])->setPaper('a4');
 
         $fileName = Str::slug($establishment->name . '-' . $tipo) . '.pdf';
@@ -602,7 +611,6 @@ class EstablishmentController extends Controller
         return response()->json(['error' => 'Erro ao gerar o PDF.'], 500);
     }
 }
-
     public function myEstablishments()
     {
         try {
