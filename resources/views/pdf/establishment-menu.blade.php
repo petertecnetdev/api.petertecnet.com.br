@@ -258,11 +258,7 @@
             </div>
         @endforeach
     </div>
-@endforeach
-
-<div class="footer">
-    {{ $establishment->name }} — {{ $tipo }}
-</div>
+@endforeac
 
 </body>
 </html>
