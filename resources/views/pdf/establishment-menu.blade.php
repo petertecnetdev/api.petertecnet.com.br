@@ -5,7 +5,7 @@
     <title>{{ $establishment->name }} - {{ $tipo }}</title>
     <style>
         @page { margin: 0; }
-        body { font-family: 'DejaVu Sans', sans-serif; color: #222; font-size: 13px; margin: 0; padding: 0; }
+        body { font-family: 'DejaVu Sans', sans-serif; color: #fff; font-size: 13px; margin: 0; padding: 0; }
 
         .page {
             position: relative;
@@ -21,7 +21,7 @@
             top: 0; left: 0; right: 0; bottom: 0;
             background-size: cover;
             background-position: center;
-            filter: blur(14px) brightness(0.5);
+            filter: blur(20px) brightness(0.5);
             z-index: 0;
         }
 
@@ -79,36 +79,30 @@
             display: inline-block;
         }
 
-        .items-grid {
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: space-between;
-        }
-
         .item {
-            width: 48%;
             display: flex;
-            margin-top: 15px;
-            border-bottom: 1px solid rgba(255,255,255,0.2);
-            padding-bottom: 8px;
-            align-items: center;
+            flex-direction: row;
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px 15px;
+            align-items: flex-start;
             background: rgba(255,255,255,0.08);
             border-radius: 8px;
-            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
         }
 
         .item img {
-            width: 70px;
-            height: 70px;
+            width: 75px;
+            height: 75px;
             border-radius: 8px;
             object-fit: cover;
-            margin-right: 10px;
+            margin-right: 12px;
         }
 
         .item-info { flex: 1; color: #fff; }
-        .item-name { font-size: 15px; font-weight: bold; color: #fff; }
-        .item-desc { font-size: 12px; color: #ddd; margin-top: 2px; }
-        .item-price { font-weight: bold; font-size: 14px; color: #fff; text-align: right; }
+        .item-name { font-size: 16px; font-weight: bold; color: #fff; }
+        .item-desc { font-size: 13px; color: #ddd; margin-top: 3px; }
+        .item-price { font-weight: bold; font-size: 15px; color: #fff; text-align: right; white-space: nowrap; }
 
         footer {
             position: fixed;
@@ -156,22 +150,20 @@
     <div class="blur-bg" style="background-image: url('{{ $background }}'); filter: blur(25px) brightness(0.3);"></div>
     <div class="content">
         <div class="category">{{ $category }}</div>
-        <div class="items-grid">
-            @foreach($items as $item)
-                <div class="item">
-                    @if($item->image && file_exists(public_path($item->image)))
-                        <img src="{{ public_path($item->image) }}" alt="Item">
+        @foreach($items as $item)
+            <div class="item">
+                @if($item->image && file_exists(public_path($item->image)))
+                    <img src="{{ public_path($item->image) }}" alt="Item">
+                @endif
+                <div class="item-info">
+                    <div class="item-name">{{ $item->name }}</div>
+                    @if($item->description)
+                        <div class="item-desc">{{ $item->description }}</div>
                     @endif
-                    <div class="item-info">
-                        <div class="item-name">{{ $item->name }}</div>
-                        @if($item->description)
-                            <div class="item-desc">{{ $item->description }}</div>
-                        @endif
-                    </div>
-                    <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
                 </div>
-            @endforeach
-        </div>
+                <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
+            </div>
+        @endforeach
     </div>
 </div>
 @endforeach
