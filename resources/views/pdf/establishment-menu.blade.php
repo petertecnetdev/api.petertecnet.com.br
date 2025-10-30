@@ -18,7 +18,7 @@ body {
 /* ===== CAPA ===== */
 .cover {
     width: 100%;
-    height: 100%;
+    height: 100vh;
     position: relative;
     display: flex;
     flex-direction: column;
@@ -85,7 +85,7 @@ body {
 
 /* ===== ITENS ===== */
 .page {
-    padding: 60px;
+    padding: 60px 60px 80px 60px;
     background: #0b0b0b;
 }
 .category {
@@ -111,29 +111,40 @@ body {
 /* ===== ITEM ===== */
 .item-wrapper {
     display: block;
-    margin-bottom: 20px;
     page-break-inside: avoid;
+    margin-bottom: 22px;
+    padding: 5px;
 }
 .item {
     width: 100%;
     border: 1px solid rgba(255,255,255,0.1);
-    border-radius: 10px;
+    border-radius: 12px;
     background: rgba(255,255,255,0.03);
     overflow: hidden;
+    box-shadow: 0 0 10px rgba(255,255,255,0.05);
 }
 .item-table {
     width: 100%;
     border-collapse: collapse;
 }
 .item-table td {
-    vertical-align: top;
+    vertical-align: middle;
+    padding: 0;
+}
+.thumb-container {
+    padding: 6px;
+    background: rgba(255,255,255,0.05);
+    border-right: 1px solid rgba(255,255,255,0.1);
 }
 .thumb {
-    width: 120px;
-    height: 110px;
+    width: 100px;
+    height: 100px;
+    border-radius: 10px;
     object-fit: cover;
-    background: rgba(255,255,255,0.05);
-    border-right: 2px solid rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.2);
+    box-shadow: 0 0 8px rgba(255,255,255,0.15);
+    display: block;
+    margin: auto;
 }
 .item-body {
     padding: 14px 20px;
@@ -141,22 +152,23 @@ body {
 .item-title {
     font-size: 18px;
     font-weight: 700;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     color: #fff;
 }
 .item-desc {
     font-size: 13px;
     color: #ccc;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
 }
 .item-price {
     font-size: 18px;
     font-weight: 700;
     color: #ffd700;
     text-align: right;
+    margin-top: 5px;
 }
 
-/* ===== AJUSTE ANTI-GRUDADO ===== */
+/* ===== ANTI-GRUDADO ===== */
 .item-wrapper:first-child {
     margin-top: 40px;
 }
@@ -212,7 +224,7 @@ body {
                 <table class="item-table">
                     <tr>
                         @if($thumb)
-                        <td width="120">
+                        <td width="130" class="thumb-container">
                             <img src="{{ $thumb }}" class="thumb" alt="{{ $item->name }}">
                         </td>
                         @endif
@@ -228,6 +240,7 @@ body {
             </div>
         </div>
         @endforeach
+
     </div>
 </div>
 @endif
