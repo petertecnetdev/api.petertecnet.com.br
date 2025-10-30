@@ -13,15 +13,64 @@
       color: #fff;
     }
 
+    /* ===== CAPA ===== */
+    .cover {
+      height: 100vh;
+      width: 100%;
+      background: linear-gradient(180deg, #000 20%, #111 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      position: relative;
+      page-break-after: always;
+    }
+
+    .cover-logo {
+      width: 180px;
+      height: 180px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 5px solid #ff6a00;
+      margin-bottom: 25px;
+      box-shadow: 0 0 25px rgba(255,106,0,0.4);
+    }
+
+    .cover-title {
+      font-size: 42px;
+      font-weight: 900;
+      color: #fff;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .cover-subtitle {
+      font-size: 22px;
+      color: #ff6a00;
+      font-weight: bold;
+      margin-top: 10px;
+      text-transform: uppercase;
+    }
+
+    .cover-info {
+      color: #ccc;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
+    /* ===== PÁGINAS DE CARDÁPIO ===== */
     .page {
       width: 100%;
-      height: 100vh;
+      min-height: 100vh;
       padding: 60px;
       box-sizing: border-box;
       background: #000;
       display: flex;
       flex-direction: row;
       justify-content: space-between;
+      position: relative;
+      page-break-before: always;
     }
 
     .left-column {
@@ -36,30 +85,26 @@
       align-items: center;
     }
 
-    .menu-title {
-      font-size: 70px;
-      font-weight: 900;
-      color: #fff;
-      text-transform: uppercase;
-      line-height: 0.9;
-    }
-
     .menu-subtitle {
       color: #ff6a00;
-      font-size: 40px;
-      font-weight: bold;
+      font-size: 36px;
+      font-weight: 800;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      letter-spacing: 1.5px;
+      border-bottom: 3px solid #ff6a00;
+      padding-bottom: 6px;
       margin-bottom: 20px;
     }
 
     .category {
-      font-size: 24px;
+      font-size: 22px;
       font-weight: bold;
       color: #fff;
       text-transform: uppercase;
       margin-top: 30px;
-      margin-bottom: 10px;
+      margin-bottom: 12px;
+      border-left: 5px solid #ff6a00;
+      padding-left: 10px;
     }
 
     .item {
@@ -98,6 +143,7 @@
       border: 5px solid #ff6a00;
       overflow: hidden;
       margin-bottom: 20px;
+      box-shadow: 0 0 25px rgba(255,106,0,0.3);
     }
 
     .image-card img {
@@ -116,66 +162,73 @@
       margin-top: -10px;
     }
 
-    .footer {
-      width: 100%;
-      position: absolute;
-      bottom: 20px;
+    footer {
+      position: fixed;
+      bottom: 0;
       left: 0;
-      text-align: center;
-      font-size: 12px;
+      right: 0;
+      background: #111;
       color: #ff6a00;
+      text-align: center;
+      font-size: 11px;
+      padding: 10px 0;
     }
 
-    .contact {
-      margin-top: 40px;
-      font-size: 13px;
-      color: #fff;
-    }
   </style>
 </head>
 <body>
 
+<!-- CAPA -->
+<div class="cover">
+  @if(file_exists($logoPath))
+    <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
+  @endif
+  <div class="cover-title">{{ strtoupper($establishment->name) }}</div>
+  <div class="cover-subtitle">{{ strtoupper($tipo) }}</div>
+  @if($establishment->address)
+    <div class="cover-info">📍 {{ $establishment->address }}</div>
+  @endif
+  @if($establishment->phone)
+    <div class="cover-info">📞 WhatsApp: {{ $establishment->phone }}</div>
+  @endif
+  @if($establishment->instagram_url)
+    <div class="cover-info">📸 Instagram: {{ $establishment->instagram_url }}</div>
+  @endif
+</div>
+
+<!-- PÁGINAS DE CATEGORIAS -->
+@foreach($grouped as $category => $items)
 <div class="page">
   <div class="left-column">
-    <div class="menu-title">MENU</div>
-    <div class="menu-subtitle">{{ strtoupper($establishment->category ?? 'Cardápio') }}</div>
+    <div class="menu-subtitle">{{ strtoupper($category) }}</div>
 
-    @foreach($grouped as $category => $items)
-      <div class="category">{{ strtoupper($category) }}</div>
-      @foreach($items as $item)
-        <div class="item">
-          <span class="item-name">{{ $item->name }}</span>
-          <span class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</span>
-          @if($item->description)
-            <div class="item-desc">{{ $item->description }}</div>
-          @endif
-        </div>
-      @endforeach
+    @foreach($items as $item)
+      <div class="item">
+        <span class="item-name">{{ $item->name }}</span>
+        <span class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</span>
+        @if($item->description)
+          <div class="item-desc">{{ $item->description }}</div>
+        @endif
+      </div>
     @endforeach
-
-    <div class="contact">
-      📍 {{ $establishment->address }}  
-      @if($establishment->phone)<br>📞 {{ $establishment->phone }}@endif
-    </div>
   </div>
 
   <div class="right-column">
-    @foreach($grouped->take(3) as $category => $items)
-      @foreach($items->take(2) as $item)
-        @if($item->image && file_exists(public_path($item->image)))
-          <div class="image-card">
-            <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}">
-          </div>
-          <div class="image-label">{{ strtoupper($item->name) }}</div>
-        @endif
-      @endforeach
+    @foreach($items->take(2) as $item)
+      @if($item->image && file_exists(public_path($item->image)))
+        <div class="image-card">
+          <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}">
+        </div>
+        <div class="image-label">{{ strtoupper($item->name) }}</div>
+      @endif
     @endforeach
   </div>
 </div>
+@endforeach
 
-<div class="footer">
+<footer>
   {{ $establishment->name }} — {{ $tipo }} • Gerado automaticamente por Rasoio
-</div>
+</footer>
 
 </body>
 </html>
