@@ -13,18 +13,15 @@
       background: #000;
     }
 
-    /* ==== CAPA ==== */
+    /* ===== CAPA ===== */
     .cover {
       height: 100vh;
-      width: 100%;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
-      background: linear-gradient(180deg, #000 10%, #111 90%);
       position: relative;
-      page-break-after: always;
     }
 
     .cover::before {
@@ -34,123 +31,121 @@
       background-image: url('{{ $establishment->background && file_exists(public_path($establishment->background)) ? public_path($establishment->background) : $logoPath }}');
       background-size: cover;
       background-position: center;
-      filter: blur(14px) brightness(0.4);
+      filter: blur(15px) brightness(0.35);
       z-index: 0;
     }
 
     .cover-content {
       z-index: 1;
+      padding: 20px;
     }
 
     .cover-logo {
-      width: 190px;
-      height: 190px;
+      width: 180px;
+      height: 180px;
       border-radius: 50%;
-      border: 5px solid #ffb703;
+      border: 6px solid #ffb703;
       object-fit: cover;
-      box-shadow: 0 0 25px rgba(255,183,3,0.4);
+      box-shadow: 0 0 25px rgba(255,183,3,0.5);
       margin-bottom: 25px;
     }
 
     .cover-title {
       font-size: 44px;
       font-weight: 900;
-      letter-spacing: 1.5px;
       text-transform: uppercase;
       color: #fff;
+      letter-spacing: 1.2px;
     }
 
     .cover-subtitle {
       color: #ffb703;
       font-size: 20px;
-      margin-top: 8px;
       font-weight: 600;
+      margin-top: 10px;
       text-transform: uppercase;
     }
 
     .cover-info {
-      margin-top: 6px;
+      margin-top: 8px;
       color: #ddd;
-      font-size: 13px;
+      font-size: 14px;
     }
 
-    /* ==== CONTEÚDO ==== */
-    .category-page {
+    /* ===== PÁGINAS DE CATEGORIAS ===== */
+    .page {
       background: #000;
+      color: #fff;
       min-height: 100vh;
-      padding: 50px 60px 80px 60px;
+      padding: 50px 60px 90px 60px;
       box-sizing: border-box;
       page-break-before: always;
     }
 
     .category-header {
+      background: linear-gradient(90deg, #ffb703, #ff9500);
+      color: #000;
       text-align: center;
-      background: #111;
-      color: #ffb703;
-      font-size: 28px;
-      font-weight: bold;
-      padding: 14px 0;
+      font-weight: 900;
+      font-size: 26px;
+      padding: 12px 0;
       text-transform: uppercase;
       letter-spacing: 1px;
-      border-top: 3px solid #ffb703;
-      border-bottom: 3px solid #ffb703;
+      border-radius: 4px;
       margin-bottom: 40px;
     }
 
-    .menu-table {
+    table {
       width: 100%;
       border-collapse: separate;
       border-spacing: 0 14px;
     }
 
-    .menu-row {
+    tr {
       background: #111;
-      border: 1px solid rgba(255,255,255,0.1);
       border-radius: 10px;
+      overflow: hidden;
     }
 
-    .menu-img-cell {
-      width: 95px;
-      padding: 10px;
+    td {
+      vertical-align: top;
+      padding: 10px 14px;
     }
 
-    .menu-img {
-      width: 85px;
-      height: 85px;
+    .img-col {
+      width: 90px;
+    }
+
+    .item-img {
+      width: 80px;
+      height: 80px;
       border-radius: 8px;
       object-fit: cover;
       border: 2px solid #ffb703;
-      background: #222;
       display: block;
+      background: #222;
     }
 
-    .menu-info-cell {
-      padding: 10px 15px;
-      vertical-align: top;
-      width: 70%;
-    }
-
-    .menu-name {
+    .item-name {
       font-size: 15px;
       font-weight: bold;
       color: #ffb703;
       text-transform: uppercase;
     }
 
-    .menu-desc {
+    .item-desc {
       font-size: 12px;
-      color: #ddd;
-      margin-top: 4px;
+      color: #ccc;
       line-height: 1.4;
+      margin-top: 4px;
     }
 
-    .menu-price-cell {
+    .item-price {
       text-align: right;
-      vertical-align: middle;
-      padding-right: 15px;
       font-weight: bold;
-      font-size: 14px;
       color: #fff;
+      font-size: 14px;
+      white-space: nowrap;
     }
 
     footer {
@@ -162,7 +157,7 @@
       color: #ffb703;
       font-size: 11px;
       text-align: center;
-      padding: 10px 0;
+      padding: 8px 0;
       border-top: 1px solid rgba(255,255,255,0.1);
     }
   </style>
@@ -191,27 +186,26 @@
 
 <!-- CONTEÚDO -->
 @foreach($grouped as $category => $items)
-  <div class="category-page">
+  <div class="page">
     <div class="category-header">{{ strtoupper($category) }}</div>
-
-    <table class="menu-table">
+    <table>
       @foreach($items as $item)
-        <tr class="menu-row">
-          <td class="menu-img-cell">
+        <tr>
+          <td class="img-col">
             @php
-              $imgPath = $item->image && file_exists(public_path($item->image))
+              $img = $item->image && file_exists(public_path($item->image))
                   ? public_path($item->image)
                   : public_path('images/default-item.jpg');
             @endphp
-            <img src="{{ $imgPath }}" alt="{{ $item->name }}" class="menu-img">
+            <img src="{{ $img }}" alt="{{ $item->name }}" class="item-img">
           </td>
-          <td class="menu-info-cell">
-            <div class="menu-name">{{ $item->name }}</div>
+          <td>
+            <div class="item-name">{{ $item->name }}</div>
             @if($item->description)
-              <div class="menu-desc">{{ $item->description }}</div>
+              <div class="item-desc">{{ $item->description }}</div>
             @endif
           </td>
-          <td class="menu-price-cell">
+          <td class="item-price">
             R$ {{ number_format($item->price, 2, ',', '.') }}
           </td>
         </tr>
