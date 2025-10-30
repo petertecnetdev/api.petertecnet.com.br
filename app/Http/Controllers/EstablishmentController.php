@@ -551,8 +551,7 @@ class EstablishmentController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos por categoria.'], 500);
         }
-    }
-public function generatePdf($slug)
+    }public function generatePdf($slug)
 {
     try {
         $establishment = Establishment::with('items')->where('slug', $slug)->first();
@@ -567,28 +566,36 @@ public function generatePdf($slug)
             ? 'Tabela de Preços'
             : 'Cardápio';
 
-        // Agrupa itens
+        // Carrega todos os itens ativos
         $items = $establishment->items()
             ->where('status', 1)
-            ->orderBy('category')
             ->get()
             ->groupBy(fn($i) => $i->category ?: 'Outros');
+
+        // Ordena categorias conforme o item mais caro de cada uma
+        $grouped = $items->sortByDesc(function ($group) {
+            return $group->max('price');
+        });
+
+        // Ordena itens dentro de cada categoria (maior preço primeiro)
+        $grouped = $grouped->map(function ($group) {
+            return $group->sortByDesc('price');
+        });
 
         // Caminho da logo
         $logoPath = $establishment->logo
             ? public_path($establishment->logo)
             : public_path('images/default-logo.png');
 
-        // Gera PDF usando o HTML Blade
+        // Gera PDF via Blade
         $pdf = \PDF::loadView('pdf.establishment-menu', [
             'establishment' => $establishment,
-            'grouped' => $items,
+            'grouped' => $grouped,
             'tipo' => $tipo,
-            'logoPath' => $logoPath
+            'logoPath' => $logoPath,
         ])->setPaper('a4');
 
         $fileName = Str::slug($establishment->name . '-' . $tipo) . '.pdf';
-
         return $pdf->download($fileName);
     } catch (\Exception $e) {
         \Log::error('Erro ao gerar PDF: ' . $e->getMessage());

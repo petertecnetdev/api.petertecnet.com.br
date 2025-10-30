@@ -33,76 +33,74 @@
         .cover-content {
             text-align: center;
             color: #fff;
-            padding-top: 140px;
+            padding-top: 160px;
         }
 
         .cover-logo {
-            width: 180px;
-            height: 180px;
-            border-radius: 15px;
+            width: 200px;
+            height: 200px;
+            border-radius: 20px;
             background: rgba(255,255,255,0.15);
             backdrop-filter: blur(10px);
             object-fit: contain;
-            padding: 10px;
+            padding: 12px;
         }
 
         .title {
-            font-size: 38px;
+            font-size: 42px;
             font-weight: bold;
-            margin-top: 25px;
+            margin-top: 30px;
             letter-spacing: 1px;
+            text-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
 
         .subtitle {
-            font-size: 20px;
+            font-size: 22px;
             opacity: 0.9;
-            margin-top: 10px;
+            margin-top: 12px;
             text-transform: uppercase;
         }
 
-        .info { font-size: 13px; margin-top: 8px; opacity: 0.9; }
+        .info { font-size: 14px; margin-top: 8px; opacity: 0.9; }
 
-        .section {
-            page-break-before: always;
-            position: relative;
-            min-height: 100vh;
-        }
-
-        .category {
-            font-size: 20px;
+        .category-title {
+            text-align: center;
+            font-size: 26px;
             font-weight: bold;
-            margin-bottom: 10px;
-            background: rgba(0,0,0,0.8);
             color: #fff;
-            padding: 8px 12px;
-            border-radius: 4px;
+            margin-top: 40px;
+            margin-bottom: 25px;
+            padding: 10px 20px;
+            border-radius: 6px;
             display: inline-block;
+            background: rgba(0,0,0,0.85);
+            text-shadow: 0 2px 6px rgba(0,0,0,0.6);
         }
 
         .item {
             display: flex;
             flex-direction: row;
             width: 100%;
-            margin-top: 12px;
-            padding: 12px 15px;
+            margin-top: 14px;
+            padding: 14px 16px;
             align-items: flex-start;
-            background: rgba(255,255,255,0.08);
+            background: rgba(255,255,255,0.07);
             border-radius: 8px;
-            border-bottom: 1px solid rgba(255,255,255,0.15);
+            border-bottom: 1px solid rgba(255,255,255,0.1);
         }
 
         .item img {
-            width: 75px;
-            height: 75px;
+            width: 80px;
+            height: 80px;
             border-radius: 8px;
             object-fit: cover;
-            margin-right: 12px;
+            margin-right: 14px;
         }
 
         .item-info { flex: 1; color: #fff; }
-        .item-name { font-size: 16px; font-weight: bold; color: #fff; }
+        .item-name { font-size: 17px; font-weight: bold; color: #fff; }
         .item-desc { font-size: 13px; color: #ddd; margin-top: 3px; }
-        .item-price { font-weight: bold; font-size: 15px; color: #fff; text-align: right; white-space: nowrap; }
+        .item-price { font-weight: bold; font-size: 16px; color: #fff; text-align: right; white-space: nowrap; }
 
         footer {
             position: fixed;
@@ -125,7 +123,7 @@
 
 <!-- CAPA -->
 <div class="page" style="background-image: url('{{ $background }}');">
-    <div class="blur-bg" style="background-image: url('{{ $background }}'); filter: blur(20px) brightness(0.4);"></div>
+    <div class="blur-bg" style="background-image: url('{{ $background }}'); filter: blur(22px) brightness(0.4);"></div>
     <div class="cover-content">
         @if(file_exists($logoPath))
             <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
@@ -148,8 +146,8 @@
 @foreach($grouped as $category => $items)
 <div class="page" style="background-image: url('{{ $background }}');">
     <div class="blur-bg" style="background-image: url('{{ $background }}'); filter: blur(25px) brightness(0.3);"></div>
-    <div class="content">
-        <div class="category">{{ $category }}</div>
+    <div class="content" style="padding-top: 40px;">
+        <div class="category-title">{{ $category }}</div>
         @foreach($items as $item)
             <div class="item">
                 @if($item->image && file_exists(public_path($item->image)))
