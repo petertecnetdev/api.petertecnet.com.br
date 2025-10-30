@@ -219,7 +219,7 @@ class EstablishmentController extends Controller
                 'website_url' => 'nullable|string',
                 'location' => 'nullable|string',
                 'instagram_url' => 'nullable|string',
-                'logo' => 'nullable|image|max:1255',
+                'logo' => 'nullable|image',
                 'background' => 'nullable|image',
             ], $this->getValidationMessages());
 
