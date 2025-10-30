@@ -9,135 +9,148 @@
       font-family: 'DejaVu Sans', sans-serif;
       margin: 0;
       padding: 0;
-      background: #000;
       color: #fff;
+      background: #000;
     }
 
-    /* ===== CAPA ===== */
+    /* ==== CAPA ==== */
     .cover {
       height: 100vh;
       width: 100%;
-      background: linear-gradient(180deg, #000 10%, #111 90%);
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
+      background: linear-gradient(180deg, #000 10%, #111 90%);
       position: relative;
       page-break-after: always;
     }
 
+    .cover::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: url('{{ $establishment->background && file_exists(public_path($establishment->background)) ? public_path($establishment->background) : $logoPath }}');
+      background-size: cover;
+      background-position: center;
+      filter: blur(14px) brightness(0.4);
+      z-index: 0;
+    }
+
+    .cover-content {
+      z-index: 1;
+    }
+
     .cover-logo {
-      width: 200px;
-      height: 200px;
+      width: 190px;
+      height: 190px;
       border-radius: 50%;
+      border: 5px solid #ffb703;
       object-fit: cover;
-      border: 6px solid #ff6a00;
-      box-shadow: 0 0 30px rgba(255,106,0,0.4);
+      box-shadow: 0 0 25px rgba(255,183,3,0.4);
       margin-bottom: 25px;
     }
 
     .cover-title {
-      font-size: 46px;
+      font-size: 44px;
       font-weight: 900;
-      color: #fff;
+      letter-spacing: 1.5px;
       text-transform: uppercase;
-      letter-spacing: 2px;
+      color: #fff;
     }
 
     .cover-subtitle {
-      font-size: 22px;
-      color: #ff6a00;
-      font-weight: bold;
-      margin-top: 10px;
+      color: #ffb703;
+      font-size: 20px;
+      margin-top: 8px;
+      font-weight: 600;
       text-transform: uppercase;
     }
 
     .cover-info {
-      color: #ccc;
-      font-size: 14px;
       margin-top: 6px;
+      color: #ddd;
+      font-size: 13px;
     }
 
-    /* ===== CONTEÚDO ===== */
+    /* ==== CONTEÚDO ==== */
     .category-page {
-      width: 100%;
-      min-height: 100vh;
       background: #000;
+      min-height: 100vh;
+      padding: 50px 60px 80px 60px;
       box-sizing: border-box;
-      padding: 70px 50px 80px 50px;
-      position: relative;
       page-break-before: always;
     }
 
     .category-header {
-      background: #ff6a00;
-      color: #fff;
       text-align: center;
+      background: #111;
+      color: #ffb703;
       font-size: 28px;
-      font-weight: 900;
+      font-weight: bold;
+      padding: 14px 0;
       text-transform: uppercase;
-      padding: 15px 0;
-      letter-spacing: 1.5px;
-      border-radius: 0;
+      letter-spacing: 1px;
+      border-top: 3px solid #ffb703;
+      border-bottom: 3px solid #ffb703;
       margin-bottom: 40px;
     }
 
-    .menu-grid {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-between;
+    .menu-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0 14px;
     }
 
-    .menu-item {
-      width: 48%;
-      background: rgba(255,255,255,0.05);
+    .menu-row {
+      background: #111;
       border: 1px solid rgba(255,255,255,0.1);
       border-radius: 10px;
-      padding: 15px;
-      margin-bottom: 25px;
-      display: flex;
-      flex-direction: row;
-      align-items: center;
     }
 
-    .item-image {
+    .menu-img-cell {
+      width: 95px;
+      padding: 10px;
+    }
+
+    .menu-img {
       width: 85px;
       height: 85px;
-      border-radius: 10px;
+      border-radius: 8px;
       object-fit: cover;
-      margin-right: 15px;
-      border: 2px solid #ff6a00;
-      background: #111;
+      border: 2px solid #ffb703;
+      background: #222;
+      display: block;
     }
 
-    .item-details {
-      flex: 1;
+    .menu-info-cell {
+      padding: 10px 15px;
+      vertical-align: top;
+      width: 70%;
     }
 
-    .item-name {
+    .menu-name {
       font-size: 15px;
       font-weight: bold;
-      color: #ff6a00;
+      color: #ffb703;
       text-transform: uppercase;
-      margin-bottom: 4px;
     }
 
-    .item-desc {
+    .menu-desc {
       font-size: 12px;
       color: #ddd;
+      margin-top: 4px;
       line-height: 1.4;
-      margin-bottom: 6px;
     }
 
-    .item-price {
+    .menu-price-cell {
+      text-align: right;
+      vertical-align: middle;
+      padding-right: 15px;
       font-weight: bold;
+      font-size: 14px;
       color: #fff;
-      background: #ff6a00;
-      border-radius: 20px;
-      padding: 4px 10px;
-      font-size: 13px;
-      display: inline-block;
     }
 
     footer {
@@ -146,10 +159,11 @@
       left: 0;
       right: 0;
       background: #111;
-      color: #ff6a00;
-      text-align: center;
+      color: #ffb703;
       font-size: 11px;
+      text-align: center;
       padding: 10px 0;
+      border-top: 1px solid rgba(255,255,255,0.1);
     }
   </style>
 </head>
@@ -157,52 +171,57 @@
 
 <!-- CAPA -->
 <div class="cover">
-  @if(file_exists($logoPath))
-    <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
-  @endif
-  <div class="cover-title">{{ strtoupper($establishment->name) }}</div>
-  <div class="cover-subtitle">{{ strtoupper($tipo) }}</div>
-
-  @if($establishment->address)
-    <div class="cover-info">📍 {{ $establishment->address }}</div>
-  @endif
-  @if($establishment->phone)
-    <div class="cover-info">📞 WhatsApp: {{ $establishment->phone }}</div>
-  @endif
-  @if($establishment->instagram_url)
-    <div class="cover-info">📸 Instagram: {{ $establishment->instagram_url }}</div>
-  @endif
+  <div class="cover-content">
+    @if(file_exists($logoPath))
+      <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
+    @endif
+    <div class="cover-title">{{ strtoupper($establishment->name) }}</div>
+    <div class="cover-subtitle">{{ strtoupper($tipo) }}</div>
+    @if($establishment->address)
+      <div class="cover-info">📍 {{ $establishment->address }}</div>
+    @endif
+    @if($establishment->phone)
+      <div class="cover-info">📞 WhatsApp: {{ $establishment->phone }}</div>
+    @endif
+    @if($establishment->instagram_url)
+      <div class="cover-info">📸 Instagram: {{ $establishment->instagram_url }}</div>
+    @endif
+  </div>
 </div>
 
-<!-- PÁGINAS DE CATEGORIAS -->
+<!-- CONTEÚDO -->
 @foreach($grouped as $category => $items)
   <div class="category-page">
     <div class="category-header">{{ strtoupper($category) }}</div>
 
-    <div class="menu-grid">
+    <table class="menu-table">
       @foreach($items as $item)
-        <div class="menu-item">
-          @if($item->image && file_exists(public_path($item->image)))
-            <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}" class="item-image">
-          @else
-            <img src="{{ public_path('images/default-item.jpg') }}" alt="Item" class="item-image">
-          @endif
-
-          <div class="item-details">
-            <div class="item-name">{{ $item->name }}</div>
+        <tr class="menu-row">
+          <td class="menu-img-cell">
+            @php
+              $imgPath = $item->image && file_exists(public_path($item->image))
+                  ? public_path($item->image)
+                  : public_path('images/default-item.jpg');
+            @endphp
+            <img src="{{ $imgPath }}" alt="{{ $item->name }}" class="menu-img">
+          </td>
+          <td class="menu-info-cell">
+            <div class="menu-name">{{ $item->name }}</div>
             @if($item->description)
-              <div class="item-desc">{{ $item->description }}</div>
+              <div class="menu-desc">{{ $item->description }}</div>
             @endif
-            <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
-          </div>
-        </div>
+          </td>
+          <td class="menu-price-cell">
+            R$ {{ number_format($item->price, 2, ',', '.') }}
+          </td>
+        </tr>
       @endforeach
-    </div>
+    </table>
   </div>
 @endforeach
 
 <footer>
-  {{ $establishment->name }} — {{ $tipo }} 
+  {{ $establishment->name }} — {{ $tipo }} • Gerado automaticamente por Rasoio
 </footer>
 
 </body>
