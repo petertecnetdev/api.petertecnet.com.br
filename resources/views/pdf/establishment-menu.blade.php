@@ -9,19 +9,21 @@
       font-family: 'DejaVu Sans', sans-serif;
       margin: 0;
       padding: 0;
-      color: #fff;
       background: #000;
+      color: #fff;
     }
 
     /* ===== CAPA ===== */
     .cover {
       height: 100vh;
+      width: 100%;
       display: flex;
       flex-direction: column;
       justify-content: center;
       align-items: center;
       text-align: center;
       position: relative;
+      overflow: hidden;
     }
 
     .cover::before {
@@ -31,18 +33,19 @@
       background-image: url('{{ $establishment->background && file_exists(public_path($establishment->background)) ? public_path($establishment->background) : $logoPath }}');
       background-size: cover;
       background-position: center;
-      filter: blur(15px) brightness(0.35);
+      filter: blur(16px) brightness(0.35);
       z-index: 0;
     }
 
     .cover-content {
+      position: relative;
       z-index: 1;
       padding: 20px;
     }
 
     .cover-logo {
-      width: 180px;
-      height: 180px;
+      width: 190px;
+      height: 190px;
       border-radius: 50%;
       border: 6px solid #ffb703;
       object-fit: cover;
@@ -54,51 +57,56 @@
       font-size: 44px;
       font-weight: 900;
       text-transform: uppercase;
+      letter-spacing: 1.5px;
       color: #fff;
-      letter-spacing: 1.2px;
     }
 
     .cover-subtitle {
-      color: #ffb703;
       font-size: 20px;
+      color: #ffb703;
       font-weight: 600;
-      margin-top: 10px;
       text-transform: uppercase;
+      margin-top: 8px;
     }
 
     .cover-info {
-      margin-top: 8px;
+      font-size: 13px;
       color: #ddd;
-      font-size: 14px;
+      margin-top: 6px;
     }
 
-    /* ===== PÁGINAS DE CATEGORIAS ===== */
+    /* ===== CONTEÚDO ===== */
     .page {
       background: #000;
       color: #fff;
       min-height: 100vh;
-      padding: 50px 60px 90px 60px;
+      padding: 40px 60px 60px 60px;
       box-sizing: border-box;
-      page-break-before: always;
     }
 
     .category-header {
+      width: 100%;
+      text-align: center;
       background: linear-gradient(90deg, #ffb703, #ff9500);
       color: #000;
-      text-align: center;
       font-weight: 900;
       font-size: 26px;
       padding: 12px 0;
       text-transform: uppercase;
       letter-spacing: 1px;
-      border-radius: 4px;
-      margin-bottom: 40px;
+      border-radius: 3px;
+      margin: 0 auto 30px auto;
+    }
+
+    .category-block {
+      page-break-inside: avoid;
+      margin-top: 40px;
     }
 
     table {
       width: 100%;
       border-collapse: separate;
-      border-spacing: 0 14px;
+      border-spacing: 0 12px;
     }
 
     tr {
@@ -146,6 +154,7 @@
       color: #fff;
       font-size: 14px;
       white-space: nowrap;
+      vertical-align: middle;
     }
 
     footer {
@@ -184,38 +193,42 @@
   </div>
 </div>
 
-<!-- CONTEÚDO -->
+<!-- CATEGORIAS -->
+@php $first = true; @endphp
 @foreach($grouped as $category => $items)
-  <div class="page">
+  <div class="page" style="{{ $first ? 'page-break-before: always;' : '' }}">
     <div class="category-header">{{ strtoupper($category) }}</div>
-    <table>
-      @foreach($items as $item)
-        <tr>
-          <td class="img-col">
-            @php
-              $img = $item->image && file_exists(public_path($item->image))
-                  ? public_path($item->image)
-                  : public_path('images/default-item.jpg');
-            @endphp
-            <img src="{{ $img }}" alt="{{ $item->name }}" class="item-img">
-          </td>
-          <td>
-            <div class="item-name">{{ $item->name }}</div>
-            @if($item->description)
-              <div class="item-desc">{{ $item->description }}</div>
-            @endif
-          </td>
-          <td class="item-price">
-            R$ {{ number_format($item->price, 2, ',', '.') }}
-          </td>
-        </tr>
-      @endforeach
-    </table>
+    <div class="category-block">
+      <table>
+        @foreach($items as $item)
+          <tr>
+            <td class="img-col">
+              @php
+                $img = $item->image && file_exists(public_path($item->image))
+                    ? public_path($item->image)
+                    : public_path('images/default-item.jpg');
+              @endphp
+              <img src="{{ $img }}" alt="{{ $item->name }}" class="item-img">
+            </td>
+            <td>
+              <div class="item-name">{{ $item->name }}</div>
+              @if($item->description)
+                <div class="item-desc">{{ $item->description }}</div>
+              @endif
+            </td>
+            <td class="item-price">
+              R$ {{ number_format($item->price, 2, ',', '.') }}
+            </td>
+          </tr>
+        @endforeach
+      </table>
+    </div>
   </div>
+  @php $first = false; @endphp
 @endforeach
 
 <footer>
-  {{ $establishment->name }} — {{ $tipo }} • Gerado automaticamente por Rasoio
+  {{ $establishment->name }} — {{ $tipo }}
 </footer>
 
 </body>
