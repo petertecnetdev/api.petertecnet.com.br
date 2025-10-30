@@ -196,17 +196,22 @@ Route::group([
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
 
 });
+
 Route::prefix('establishment')
     ->middleware('api')
     ->group(function () {
+
+        // ✅ Coloque essa rota primeiro
+        Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])
+            ->name('establishment.generatePdf');
+
+        // Outras rotas
         Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
         Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
         Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
         Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
-
-        // ✅ Rota pública para gerar o PDF (Cardápio / Tabela de preços)
-        Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
     });
+
 
 Route::prefix('establishment')
     ->middleware(['api', 'auth:api'])
