@@ -10,15 +10,17 @@
       margin: 0;
       padding: 0;
       color: #fff;
+      background: #000;
     }
 
-    /* === CAPA === */
+    /* ==== CAPA ==== */
     .cover {
       position: relative;
       height: 100vh;
+      width: 100%;
       overflow: hidden;
-      color: #fff;
       text-align: center;
+      color: #fff;
     }
 
     .cover::before {
@@ -26,77 +28,85 @@
       position: absolute;
       inset: 0;
       background: url('{{ public_path($establishment->background ?? $logoPath) }}') center/cover no-repeat;
-      filter: blur(20px) brightness(0.4);
+      filter: blur(18px) brightness(0.45);
       z-index: 0;
     }
 
     .cover-content {
       position: relative;
       z-index: 1;
-      top: 35%;
-      transform: translateY(-35%);
+      top: 50%;
+      transform: translateY(-50%);
     }
 
     .cover-logo {
-      width: 180px;
-      height: 180px;
+      width: 200px;
+      height: 200px;
       object-fit: contain;
-      border-radius: 15px;
-      background: rgba(255,255,255,0.1);
+      border-radius: 16px;
+      background: rgba(255,255,255,0.08);
       padding: 15px;
       margin-bottom: 20px;
     }
 
     .cover-title {
-      font-size: 40px;
-      font-weight: bold;
-      letter-spacing: 2px;
+      font-size: 42px;
+      font-weight: 900;
       text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #f8f8f8;
     }
 
     .cover-subtitle {
       font-size: 20px;
-      margin-top: 8px;
-      opacity: 0.85;
+      margin-top: 10px;
+      color: #d4af37;
       text-transform: uppercase;
     }
 
     .cover-info {
       font-size: 13px;
-      margin-top: 6px;
-      opacity: 0.85;
+      margin-top: 8px;
+      color: #ddd;
     }
 
-    /* === PÁGINAS DE ITENS === */
+    /* ==== CONTEÚDO ==== */
     .page {
-      background: #000;
-      min-height: 100vh;
-      padding: 60px 60px 80px;
-      box-sizing: border-box;
       page-break-before: always;
+      background: #000;
+      padding: 70px 60px 90px 60px;
+      box-sizing: border-box;
+      min-height: 100vh;
     }
 
-    .category-bar {
+    .category-header {
+      width: 100%;
       background: #111;
-      color: #fff;
-      text-align: center;
+      color: #d4af37;
       text-transform: uppercase;
+      text-align: center;
       font-size: 22px;
       font-weight: bold;
-      letter-spacing: 1.5px;
-      padding: 16px 0;
-      border-bottom: 2px solid #e0b100;
-      margin-bottom: 25px;
-      box-shadow: 0 3px 10px rgba(255,255,255,0.1);
+      padding: 18px 0;
+      border-bottom: 2px solid #d4af37;
+      margin-bottom: 30px;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 15px rgba(212,175,55,0.25);
     }
 
     .item {
       display: flex;
       align-items: flex-start;
+      justify-content: space-between;
       margin-bottom: 22px;
-      page-break-inside: avoid;
-      border-bottom: 1px solid rgba(255,255,255,0.1);
-      padding-bottom: 10px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+    }
+
+    .item-left {
+      display: flex;
+      align-items: flex-start;
+      flex: 1;
     }
 
     .item img {
@@ -105,32 +115,33 @@
       border-radius: 8px;
       object-fit: cover;
       margin-right: 15px;
-      box-shadow: 0 0 10px rgba(255,255,255,0.08);
+      box-shadow: 0 0 10px rgba(212,175,55,0.15);
     }
 
     .item-info {
       flex: 1;
+      color: #fff;
     }
 
     .item-name {
-      font-size: 15px;
+      font-size: 16px;
       font-weight: bold;
       color: #fff;
-      margin-bottom: 3px;
+      margin-bottom: 4px;
     }
 
     .item-desc {
       font-size: 12px;
-      color: #bbb;
+      color: #ccc;
       line-height: 1.4;
     }
 
     .item-price {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: bold;
-      color: #ffcc00;
+      color: #d4af37;
       white-space: nowrap;
-      margin-left: 10px;
+      margin-left: 20px;
     }
 
     footer {
@@ -138,11 +149,12 @@
       bottom: 0;
       left: 0;
       right: 0;
-      background: #111;
       text-align: center;
-      color: #aaa;
+      background: #111;
+      color: #999;
       font-size: 11px;
-      padding: 6px 0;
+      padding: 8px 0;
+      border-top: 1px solid #333;
     }
   </style>
 </head>
@@ -152,10 +164,11 @@
 <div class="cover">
   <div class="cover-content">
     @if(file_exists($logoPath))
-      <img src="{{ $logoPath }}" alt="Logo" class="cover-logo">
+      <img src="{{ $logoPath }}" class="cover-logo" alt="Logo">
     @endif
     <div class="cover-title">{{ strtoupper($establishment->name) }}</div>
     <div class="cover-subtitle">{{ strtoupper($tipo) }}</div>
+
     @if($establishment->address)
       <div class="cover-info">{{ $establishment->address }}</div>
     @endif
@@ -171,24 +184,26 @@
   </div>
 </div>
 
-<!-- CONTEÚDO -->
+<!-- PÁGINAS DE CATEGORIAS -->
 @foreach($grouped as $category => $items)
 <div class="page">
-  <div class="category-bar">{{ strtoupper($category) }}</div>
+  <div class="category-header">{{ strtoupper($category) }}</div>
 
   @foreach($items as $item)
-  <div class="item">
-    @if($item->image && file_exists(public_path($item->image)))
-      <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}">
-    @endif
-    <div class="item-info">
-      <div class="item-name">{{ $item->name }}</div>
-      @if($item->description)
-        <div class="item-desc">{{ $item->description }}</div>
-      @endif
+    <div class="item">
+      <div class="item-left">
+        @if($item->image && file_exists(public_path($item->image)))
+          <img src="{{ public_path($item->image) }}" alt="{{ $item->name }}">
+        @endif
+        <div class="item-info">
+          <div class="item-name">{{ $item->name }}</div>
+          @if($item->description)
+            <div class="item-desc">{{ $item->description }}</div>
+          @endif
+        </div>
+      </div>
+      <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
     </div>
-    <div class="item-price">R$ {{ number_format($item->price, 2, ',', '.') }}</div>
-  </div>
   @endforeach
 </div>
 @endforeach
