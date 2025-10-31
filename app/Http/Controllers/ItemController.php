@@ -258,14 +258,15 @@ class ItemController extends Controller
                 DB::raw('MAX(content) as last_content')
             )
             ->groupBy('user_id')
-            ->with('user:id,name,email,avatar')
+            ->with(['user:id,first_name,last_name,email,avatar'])
             ->orderByDesc('total_views')
             ->get()
             ->map(function ($interaction) {
                 $content = json_decode($interaction->last_content ?? '{}', true);
                 return [
                     'user_id' => $interaction->user_id,
-                    'user_name' => $interaction->user?->name,
+                    'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
+
                     'user_email' => $interaction->user?->email,
                     'user_avatar' => $interaction->user?->avatar,
                     'total_views' => (int) $interaction->total_views,
