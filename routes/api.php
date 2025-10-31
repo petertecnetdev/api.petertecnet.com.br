@@ -304,7 +304,7 @@ Route::group([
     Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
     Route::get('/appointments', [App\Http\Controllers\EmployerController::class, 'listAppointments'])->name('employer.appointments'); // ✅ nova rota
 });
-Route::get('/employer/view/{slug}', [EmployerController::class, 'view'])->name('employer.view');
+Route::get('/employer/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
 
 Route::group([
     'middleware' => ['api', 'auth:api'],

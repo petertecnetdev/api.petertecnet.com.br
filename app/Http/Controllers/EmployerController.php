@@ -633,23 +633,27 @@ class EmployerController extends Controller
     }
 }
 
-
-public function view($id)
+public function view($user_name)
 {
     try {
-        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['employer_id' => $id]);
+        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['user_name' => $user_name]);
 
         $user = Auth::user();
 
+        // Busca o colaborador pelo user_name do usuário vinculado
         $employer = Employer::with([
             'user:id,first_name,last_name,email,phone,avatar,user_name',
             'establishment:id,name,slug,logo,background,whatsapp_url,address,phone',
             'creator:id,first_name,last_name,email',
             'updater:id,first_name,last_name,email'
-        ])->find($id);
+        ])
+        ->whereHas('user', function ($q) use ($user_name) {
+            $q->where('user_name', $user_name);
+        })
+        ->first();
 
         if (!$employer) {
-            Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['employer_id' => $id]);
+            Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['user_name' => $user_name]);
             return response()->json(['error' => 'Colaborador não encontrado.'], 404);
         }
 
@@ -669,7 +673,7 @@ public function view($id)
                 'user_id' => $user?->id,
                 'interaction_type' => 'view',
                 'content' => json_encode([
-                    'employer_id' => $id,
+                    'user_name' => $user_name,
                     'ip' => request()->ip(),
                     'user_agent' => request()->userAgent(),
                 ]),
@@ -737,40 +741,21 @@ public function view($id)
         ];
 
         // =========================
-        // ATENDIMENTOS DO COLABORADOR
+        // ATENDIMENTOS
         // =========================
         $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
-            ->where('type', 'appointment')
-            ->whereIn('appointment_status', [
-                'pending',
-                'confirmed',
-                'attended',
-                'not_attended',
-                'cancelled'
-            ]);
+            ->where('type', 'appointment');
 
         $appointmentsCount = (clone $appointmentsQuery)->count();
-        $attendedCount = (clone $appointmentsQuery)
-            ->where('appointment_status', 'attended')
-            ->count();
-        $cancelledCount = (clone $appointmentsQuery)
-            ->where('appointment_status', 'cancelled')
-            ->count();
-        $totalValue = (clone $appointmentsQuery)
-            ->whereIn('appointment_status', ['confirmed', 'attended'])
-            ->sum('total_price');
+        $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
+        $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
+        $totalValue = (clone $appointmentsQuery)->sum('total_price');
+        $averageRating = (clone $appointmentsQuery)->whereNotNull('rating')->avg('rating');
 
         $lastAppointments = (clone $appointmentsQuery)
             ->latest('order_datetime')
             ->take(5)
             ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
-
-        // =========================
-        // AVALIAÇÕES (caso tenha campo rating)
-        // =========================
-        $averageRating = \App\Models\Order::where('attendant_id', $employer->id)
-            ->whereNotNull('rating')
-            ->avg('rating');
 
         // =========================
         // FORMATAÇÃO FINAL
@@ -784,12 +769,7 @@ public function view($id)
         $employer->average_rating = $averageRating ? round($averageRating, 2) : null;
         $employer->created_since = $employer->created_at?->diffForHumans();
         $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
-        $employer->creator_name = $employer->creator?->first_name ?? null;
-        $employer->updater_name = $employer->updater?->first_name ?? null;
 
-        // =========================
-        // RETORNO FINAL
-        // =========================
         return response()->json([
             'employer' => $employer,
             'establishment' => $establishment,
@@ -817,5 +797,6 @@ public function view($id)
         ], 500);
     }
 }
+
 
 }
