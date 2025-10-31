@@ -13,7 +13,7 @@ class Establishment extends Model
         'name', 'fantasy', 'slug', 'cnpj', 'type', 'category',
         'phone', 'email', 'description', 'additional_info',
         'city', 'location', 'cep', 'address',
-        'user_id', 'updated_by', 'logo', 'background',
+        'user_id', 'updated_by', 'created_by', 'logo', 'background',
         'is_featured', 'is_published', 'is_approved', 'is_cancelled',
         'website_url', 'facebook_url', 'instagram_url',
         'twitter_url', 'youtube_url', 'segments'
@@ -49,7 +49,6 @@ class Establishment extends Model
                     ->where('entity_type', 'establishment');
     }
 
-    // Corrige a foreign key e filtra pelo entity_name adequado
     public function items()
     {
         return $this->hasMany(Item::class, 'entity_id')
@@ -61,15 +60,20 @@ class Establishment extends Model
         return $this->hasMany(Order::class);
     }
 
-    public function updatedBy()
+    public function employers()
     {
-        return $this->belongsTo(User::class, 'updated_by');
+        return $this->hasMany(Employer::class);
     }
-public function employers()
-{
-    return $this->hasMany(Employer::class);
-}
 
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by'); // ✅ adicionado
+    }
+
+    public function updater()
+    {
+        return $this->belongsTo(User::class, 'updated_by'); // ✅ adicionado
+    }
 
     public function getSegmentsnNamesAttribute()
     {
