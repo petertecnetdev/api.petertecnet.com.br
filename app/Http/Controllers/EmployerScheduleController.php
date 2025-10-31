@@ -130,9 +130,13 @@ public function availableTimes(Request $request)
        // 🔹 Agendamentos válidos (do tipo appointment, no mesmo dia e colaborador)
 $appointments = Order::where('attendant_id', $employerId)
     ->where('type', 'appointment')
-    ->whereDate('order_datetime', $date)
+    ->whereBetween('order_datetime', [
+        Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
+        Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
+    ])
     ->whereIn('appointment_status', ['pending', 'confirmed'])
     ->get(['order_datetime', 'total_duration']);
+
 
 
         $occupied = [];
