@@ -89,7 +89,6 @@ class EmployerScheduleController extends Controller
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-
 public function availableTimes(Request $request)
 {
     try {
@@ -105,7 +104,9 @@ public function availableTimes(Request $request)
         $dayOfWeek = strtolower(Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🔒 Feriado / folga
+        $employer = \App\Models\Employer::findOrFail($employerId);
+
+        // 🔒 Verifica feriado ou folga
         $isHoliday = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
@@ -126,26 +127,23 @@ public function availableTimes(Request $request)
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Busca agendamentos válidos deste colaborador no mesmo dia
-       // 🔹 Agendamentos válidos (do tipo appointment, no mesmo dia e colaborador)
-$appointments = Order::where('attendant_id', $employerId)
-    ->where('type', 'appointment')
-    ->whereBetween('order_datetime', [
-        Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
-        Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
-    ])
-    ->whereIn('appointment_status', ['pending', 'confirmed'])
-    ->get(['order_datetime', 'total_duration']);
-
-
+        // 🔹 Busca agendamentos válidos (considerando user_id do colaborador)
+        $appointments = Order::where('attendant_id', $employer->user_id)
+            ->where('type', 'appointment')
+            ->whereBetween('order_datetime', [
+                Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
+                Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
+            ])
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->get(['order_datetime', 'total_duration']);
 
         $occupied = [];
 
         foreach ($appointments as $a) {
-            $start = Carbon::parse($a->order_datetime, 'America/Sao_Paulo');
+            $start = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
             $durationMin = (int) ($a->total_duration ?? 0);
             if ($durationMin <= 0) {
-                $durationMin = 30; // fallback padrão se não houver duração no pedido
+                $durationMin = 30;
             }
             $end = $start->copy()->addMinutes($durationMin);
             $occupied[] = [$start, $end];
@@ -188,7 +186,6 @@ $appointments = Order::where('attendant_id', $employerId)
                 // ❌ Ignora horários que conflitam com agendamentos existentes
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
-                    // Se o horário do slot encosta ou sobrepõe o horário ocupado, bloqueia
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
                         $hasConflict = true;
                         break;
@@ -217,6 +214,7 @@ $appointments = Order::where('attendant_id', $employerId)
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
+
 
     public function reserve(Request $request)
     {
