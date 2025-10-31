@@ -113,25 +113,27 @@ class EstablishmentController extends Controller
             }
 
             $order = Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => $orderNumber,
-                'order_datetime' => $orderDate,
-                'attendant_id' => $attendantId,
-                'client_id' => null,
-                'customer_name' => $data['customer_name'],
-                'access_code' => $accessCode,
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'total_price' => 0,
-                'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
-                'notes' => $data['notes'] ?? null,
-                'customer_phone' => $data['customer_phone'] ?? null,
-                'customer_cpf' => $data['customer_cpf'] ?? null,
-            ]);
+    'app_id' => $data['app_id'],
+    'entity_name' => $data['entity_name'],
+    'entity_id' => $data['entity_id'],
+    'order_number' => $orderNumber,
+    'order_datetime' => $orderDate,
+    'attendant_id' => $attendantId,
+    'client_id' => null,
+    'customer_name' => $data['customer_name'],
+    'access_code' => $accessCode,
+    'origin' => $data['origin'],
+    'fulfillment' => $data['fulfillment'],
+    'payment_status' => $data['payment_status'],
+    'payment_method' => $data['payment_method'],
+    'total_price' => 0,
+    'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
+    'notes' => $data['notes'] ?? null,
+    'customer_phone' => $data['customer_phone'] ?? null,
+    'customer_cpf' => $data['customer_cpf'] ?? null,
+    'type' => 'appointment', // 🟢 ADICIONE ESTA LINHA
+    'appointment_status' => $data['appointment_status'] ?? 'pending', // 🟢 GARANTA QUE EXISTE
+]);
 
             $total = 0;
             foreach ($data['items'] as $entry) {

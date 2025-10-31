@@ -129,7 +129,10 @@ public function availableTimes(Request $request)
 
         // 🔹 Busca agendamentos válidos (considerando user_id do colaborador)
         $appointments = Order::where('attendant_id', $employer->user_id)
-            ->where('type', 'appointment')
+            ->where(function ($q) {
+    $q->whereNull('type')->orWhere('type', 'appointment');
+})
+
             ->whereBetween('order_datetime', [
                 Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
                 Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
