@@ -88,39 +88,36 @@ class EmployerScheduleController extends Controller
             Log::error('EmployerSchedule.destroy error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }public function availableTimes(Request $request)
+    }
+
+
+
+    public function availableTimes(Request $request)
 {
     try {
         $data = $request->validate([
             'employer_id' => 'required|integer|exists:employers,id',
             'date' => 'required|date',
             'duration' => 'required|integer|min:5',
-        ], [
-            'employer_id.required' => 'O campo employer_id é obrigatório.',
-            'date.required' => 'O campo data é obrigatório.',
-            'date.date' => 'O campo data deve ser uma data válida.',
-            'duration.required' => 'O campo duração é obrigatório.',
-            'duration.integer' => 'A duração deve ser um número inteiro.',
-            'duration.min' => 'A duração mínima é de 5 minutos.',
         ]);
 
         $employerId = $data['employer_id'];
-        $date = Carbon::parse($data['date'])->format('Y-m-d');
+        $date = Carbon::parse($data['date'], 'America/Sao_Paulo')->format('Y-m-d');
         $duration = (int) $data['duration'];
-        $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
+        $dayOfWeek = strtolower(Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🔸 Verifica se é feriado ou folga
+        // 🔒 Feriado / folga
         $isHoliday = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
             ->exists();
 
         if ($isHoliday) {
-            return response()->json(['available_times' => []], 200);
+            return response()->json(['available_times' => []]);
         }
 
-        // 🔸 Busca horários de trabalho do colaborador para o dia
+        // 🔹 Horários de expediente
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -128,12 +125,13 @@ class EmployerScheduleController extends Controller
             ->get();
 
         if ($schedules->isEmpty()) {
-            return response()->json(['available_times' => []], 200);
+            return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Agendamentos existentes (pendentes ou confirmados)
+        // 🔹 Agendamentos existentes válidos
         $appointments = Order::where('attendant_id', $employerId)
             ->whereDate('order_datetime', $date)
+            ->where('type', 'appointment') // garante apenas atendimentos agendados
             ->whereIn('appointment_status', ['pending', 'confirmed'])
             ->get(['order_datetime', 'total_duration']);
 
@@ -141,11 +139,11 @@ class EmployerScheduleController extends Controller
 
         foreach ($appointments as $a) {
             $start = Carbon::parse($a->order_datetime, 'America/Sao_Paulo');
-            $end = $start->copy()->addMinutes($a->total_duration ?? 0);
+            $end = $start->copy()->addMinutes(max($a->total_duration, 1)); // evita duração 0
             $occupied[] = [$start, $end];
         }
 
-        // 🔹 Pausas do mesmo dia
+        // 🔹 Pausas (breaks)
         $breaks = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
@@ -157,12 +155,12 @@ class EmployerScheduleController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // 🔹 Ordena blocos ocupados pela hora inicial
+        // 🔹 Ordena períodos ocupados
         usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
         $availableTimes = [];
 
-        // 🔹 Gera slots disponíveis de 15 em 15 min dentro do expediente
+        // 🔹 Gera slots disponíveis
         foreach ($schedules as $schedule) {
             $workStart = Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
@@ -173,22 +171,22 @@ class EmployerScheduleController extends Controller
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ❌ Ignora horários já passados (no dia atual)
+                // ❌ Ignora horários passados (no dia atual)
                 if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ❌ Ignora horários que conflitam com agendamentos existentes
+                // ❌ Ignora horários conflitantes com agendamentos existentes
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
+                    // Se o horário do slot encosta ou sobrepõe o horário ocupado, bloqueia
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
                         $hasConflict = true;
                         break;
                     }
                 }
 
-                // ✅ Se não houver conflito, adiciona horário como disponível
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -197,21 +195,21 @@ class EmployerScheduleController extends Controller
             }
         }
 
-        // 🔹 Remove duplicados e ordena
         $availableTimes = array_values(array_unique($availableTimes));
         sort($availableTimes);
 
-        return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
+        return response()->json(['available_times' => $availableTimes]);
     } catch (ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        return response()->json(['errors' => $e->errors()], 422);
     } catch (\Exception $e) {
         Log::error('EmployerSchedule.availableTimes error', [
-            'exception' => $e->getMessage(),
+            'message' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
         ]);
-        return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
+        return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
+
 
 
     public function reserve(Request $request)
