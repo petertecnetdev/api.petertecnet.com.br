@@ -92,8 +92,6 @@ class OrderController extends Controller
             'attendant_id' => 'nullable|integer|exists:employers,id',
         ]);
 
-        Log::info('✅ Validação concluída com sucesso.', ['data' => $data]);
-
         $now = Carbon::now('America/Sao_Paulo');
         $orderDate = isset($data['order_datetime'])
             ? Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')
@@ -125,9 +123,6 @@ class OrderController extends Controller
 
         $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-        // ===============================
-        // 🔐 BLOQUEIO DE CONCORRÊNCIA
-        // ===============================
         if ($isScheduled && !empty($data['attendant_id'])) {
             $employerId = $data['attendant_id'];
             $date = $orderDate->format('Y-m-d');
@@ -152,7 +147,6 @@ class OrderController extends Controller
                 return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
 
-            // 🔒 trava fisicamente todos os agendamentos desse colaborador no dia
             $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
                 ->whereDate('order_datetime', $date)
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -167,15 +161,27 @@ class OrderController extends Controller
 
             if ($hasConflict) {
                 DB::rollBack();
-                return response()->json([
-                    'error' => 'O colaborador já possui um agendamento neste horário.',
-                ], 422);
+                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+            }
+
+            $clientConflict = \App\Models\Order::where('created_by', $user->id)
+                ->where('attendant_id', $employerId)
+                ->whereDate('order_datetime', $date)
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->where(function ($q) use ($orderDate, $orderDateEnd) {
+                    $q->where(function ($query) use ($orderDate, $orderDateEnd) {
+                        $query->where('order_datetime', '<', $orderDateEnd)
+                              ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$orderDate]);
+                    });
+                })
+                ->exists();
+
+            if ($clientConflict) {
+                DB::rollBack();
+                return response()->json(['error' => 'Você já possui um agendamento com este colaborador neste horário.'], 422);
             }
         }
 
-        // ===============================
-        // ⚙️ ITENS E CONSISTÊNCIA
-        // ===============================
         $itemIds = collect($data['items'])->pluck('item_id');
         $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
             ->where(function ($q) use ($data) {
@@ -193,9 +199,6 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // ===============================
-        // 🧾 CRIAÇÃO DO PEDIDO
-        // ===============================
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
@@ -245,9 +248,6 @@ class OrderController extends Controller
 
         DB::commit();
 
-        // ===============================
-        // 📬 NOTIFICAÇÕES
-        // ===============================
         if ($isScheduled) {
             $establishment = \App\Models\Establishment::find($data['entity_id']);
             $attendant = \App\Models\Employer::with('user')->find($data['attendant_id']);
