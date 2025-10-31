@@ -211,10 +211,6 @@ class ItemController extends Controller
 
             $user = Auth::user();
 
-            if (!$user->hasPermission('item_view')) {
-                Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
-            }
 
             $item = Item::with([
                 'establishment',
