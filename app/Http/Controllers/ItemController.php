@@ -198,93 +198,176 @@ class ItemController extends Controller
             \Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
-    }
-    public function view($slug)
-    {
-        try {
-            Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de item', ['slug' => $slug]);
+    }public function view($slug)
+{
+    try {
+        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de item', ['slug' => $slug]);
 
-            if (!Auth::check()) {
-                Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-
-
-            $item = Item::with([
-                'establishment',
-                'user',
-                'creator',
-                'updater'
-            ])->where('slug', $slug)->first();
-
-            if (!$item) {
-                Log::warning('[' . __METHOD__ . '] Item não encontrado', ['slug' => $slug]);
-                return response()->json(['error' => 'Item não encontrado.'], 404);
-            }
-
-            $establishment = $item->establishment;
-            if (!$establishment) {
-                Log::warning('[' . __METHOD__ . '] Item sem estabelecimento associado', ['item_id' => $item->id]);
-                return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
-            }
-
-            $employers = collect();
-            if (Str::contains(Str::lower($item->type), 'serv') || $item->type === 'serviço') {
-                $employers = $establishment->employers()->with('user')->get();
-            }
-
-            try {
-                Interaction::create([
-                    'entity_type' => 'item',
-                    'entity_id' => $item->id,
-                    'user_id' => $user->id,
-                    'interaction_type' => 'view',
-                    'content' => json_encode([
-                        'slug' => $slug,
-                        'ip' => request()->ip(),
-                        'user_agent' => request()->userAgent(),
-                    ]),
-                    'name' => $item->name,
-                ]);
-            } catch (\Exception $ex) {
-                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
-            }
-
-            $viewsCount = Interaction::where('entity_type', 'item')
-                ->where('entity_id', $item->id)
-                ->count();
-
-            $item->views = $viewsCount;
-            $item->is_available = $item->isAvailable();
-
-            if ($establishment->phone) {
-                $establishment->whatsapp_url =
-                    'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
-                    . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o item \"{$item->name}\".");
-            } else {
-                $establishment->whatsapp_url = null;
-            }
-
-            $response = [
-                'item' => $item,
-                'establishment' => $establishment,
-                'employers' => $employers,
-            ];
-
-            Log::info('[' . __METHOD__ . '] Exibição detalhada concluída com sucesso', ['item_id' => $item->id]);
-            return response()->json($response, 200);
-
-        } catch (\Exception $e) {
-            Log::error('[' . __METHOD__ . '] Erro ao buscar item detalhado', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-                'stack' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do item.'], 500);
+        if (!Auth::check()) {
+            Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+
+        $item = Item::with([
+            'establishment',
+            'user',
+            'creator',
+            'updater'
+        ])->where('slug', $slug)->first();
+
+        if (!$item) {
+            Log::warning('[' . __METHOD__ . '] Item não encontrado', ['slug' => $slug]);
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        $establishment = $item->establishment;
+        if (!$establishment) {
+            Log::warning('[' . __METHOD__ . '] Item sem estabelecimento associado', ['item_id' => $item->id]);
+            return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
+        }
+
+        // =========================
+        // REGISTRAR INTERAÇÃO
+        // =========================
+        try {
+            Interaction::create([
+                'entity_type' => 'item',
+                'entity_id' => $item->id,
+                'user_id' => $user->id,
+                'interaction_type' => 'view',
+                'content' => json_encode([
+                    'slug' => $slug,
+                    'ip' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                ]),
+                'name' => $item->name,
+            ]);
+        } catch (\Exception $ex) {
+            Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
+        }
+
+        // =========================
+        // MÉTRICAS DE INTERAÇÕES
+        // =========================
+        $totalViews = Interaction::where('entity_type', 'item')
+            ->where('entity_id', $item->id)
+            ->count();
+
+        $userInteractions = Interaction::where('entity_type', 'item')
+            ->where('entity_id', $item->id)
+            ->select('user_id', \DB::raw('COUNT(*) as total_views'), \DB::raw('MIN(created_at) as first_view'), \DB::raw('MAX(created_at) as last_view'))
+            ->groupBy('user_id')
+            ->with('user:id,name,email,avatar')
+            ->orderByDesc('total_views')
+            ->get();
+
+        $distinctUsers = $userInteractions->count();
+
+        $item->views_total = $totalViews;
+        $item->views_unique = $distinctUsers;
+        $item->is_available = $item->isAvailable();
+
+        // =========================
+        // OUTRAS MÉTRICAS
+        // =========================
+        $appointmentsCount = \App\Models\Appointment::where('item_id', $item->id)->count();
+        $item->appointments = $appointmentsCount;
+
+        $item->created_since = $item->created_at?->diffForHumans();
+        $item->last_updated_at = $item->updated_at?->format('d/m/Y H:i');
+        $item->creator_name = $item->creator?->name;
+        $item->updater_name = $item->updater?->name;
+
+        // =========================
+        // PROFISSIONAIS ASSOCIADOS
+        // =========================
+        $employers = collect();
+        if (Str::contains(Str::lower($item->type), 'serv') || $item->type === 'serviço') {
+            $employers = $establishment->employers()->with('user')->get();
+        }
+
+        // =========================
+        // ITENS RELACIONADOS
+        // =========================
+        $relatedItems = Item::where('establishment_id', $establishment->id)
+            ->where('id', '!=', $item->id)
+            ->where('status', 1)
+            ->limit(6)
+            ->get(['id', 'name', 'slug', 'price', 'image', 'category', 'type']);
+
+        // =========================
+        // LINK WHATSAPP
+        // =========================
+        $establishment->whatsapp_url = $establishment->phone
+            ? 'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
+                . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o item \"{$item->name}\".")
+            : null;
+
+        // =========================
+        // PRÓXIMOS HORÁRIOS (SERVIÇOS)
+        // =========================
+        $nextSlots = [];
+        if (method_exists($item, 'nextAvailableSlots')) {
+            try {
+                $nextSlots = $item->nextAvailableSlots();
+            } catch (\Exception $ex) {
+                Log::warning('[' . __METHOD__ . '] Erro ao buscar próximos horários disponíveis', [
+                    'item_id' => $item->id,
+                    'erro' => $ex->getMessage(),
+                ]);
+            }
+        }
+
+        // =========================
+        // AGRUPAMENTO DE MÉTRICAS
+        // =========================
+        $metrics = [
+            'total_views' => $totalViews,
+            'unique_users' => $distinctUsers,
+            'appointments' => $appointmentsCount,
+            'availability' => $item->is_available,
+            'price' => $item->price,
+            'discount' => $item->discount,
+            'stock' => $item->stock,
+        ];
+
+        // =========================
+        // MONTAR RESPOSTA
+        // =========================
+        $response = [
+            'item' => $item,
+            'establishment' => $establishment,
+            'employers' => $employers,
+            'related_items' => $relatedItems,
+            'metrics' => $metrics,
+            'next_slots' => $nextSlots,
+            'interactions' => [
+                'total' => $totalViews,
+                'unique_users' => $distinctUsers,
+                'by_user' => $userInteractions,
+            ],
+        ];
+
+        Log::info('[' . __METHOD__ . '] Exibição detalhada concluída com sucesso', [
+            'item_id' => $item->id,
+            'views_total' => $totalViews,
+            'unique_users' => $distinctUsers,
+            'appointments' => $appointmentsCount,
+        ]);
+
+        return response()->json($response, 200);
+
+    } catch (\Exception $e) {
+        Log::error('[' . __METHOD__ . '] Erro ao buscar item detalhado', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+            'stack' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do item.'], 500);
     }
+}
 
     public function show($id)
     {
