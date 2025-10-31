@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use App\Models\{Item};
+use App\Models\{Item, Establishment, Employer, Interaction};
 use Illuminate\Support\Facades\File;
 use Intervention\Image\Facades\Image;
 use Illuminate\Support\Str;
@@ -202,49 +202,93 @@ class ItemController extends Controller
     public function view($slug)
     {
         try {
-            \Log::info('[' . __METHOD__ . '] Iniciando exibição pelo slug', ['slug' => $slug]);
+            Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de item', ['slug' => $slug]);
 
-            // Autenticação
             if (!Auth::check()) {
-                \Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
+                Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            // Permissão
             $user = Auth::user();
+
             if (!$user->hasPermission('item_view')) {
-                \Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
+                Log::warning('[' . __METHOD__ . '] Sem permissão para visualizar item', ['user_id' => $user->id]);
                 return response()->json(['error' => 'Você não tem permissão para visualizar itens.'], 403);
             }
 
-            // Busca o item com slug e garantindo entity_name
-            $item = Item::where('slug', $slug)
-                ->where('entity_name', 'barbershop')
-                ->with(['barbershop'])
-                ->first();
+            $item = Item::with([
+                'establishment',
+                'user',
+                'creator',
+                'updater'
+            ])->where('slug', $slug)->first();
 
             if (!$item) {
-                \Log::warning('[' . __METHOD__ . '] Item não encontrado ou não é de barbershop', ['slug' => $slug]);
+                Log::warning('[' . __METHOD__ . '] Item não encontrado', ['slug' => $slug]);
                 return response()->json(['error' => 'Item não encontrado.'], 404);
             }
 
-            \Log::info('[' . __METHOD__ . '] Item encontrado', ['item_id' => $item->id]);
+            $establishment = $item->establishment;
+            if (!$establishment) {
+                Log::warning('[' . __METHOD__ . '] Item sem estabelecimento associado', ['item_id' => $item->id]);
+                return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
+            }
 
-            return response()->json([
+            $employers = collect();
+            if (Str::contains(Str::lower($item->type), 'serv') || $item->type === 'serviço') {
+                $employers = $establishment->employers()->with('user')->get();
+            }
+
+            try {
+                Interaction::create([
+                    'entity_type' => 'item',
+                    'entity_id' => $item->id,
+                    'user_id' => $user->id,
+                    'interaction_type' => 'view',
+                    'content' => json_encode([
+                        'slug' => $slug,
+                        'ip' => request()->ip(),
+                        'user_agent' => request()->userAgent(),
+                    ]),
+                    'name' => $item->name,
+                ]);
+            } catch (\Exception $ex) {
+                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
+            }
+
+            $viewsCount = Interaction::where('entity_type', 'item')
+                ->where('entity_id', $item->id)
+                ->count();
+
+            $item->views = $viewsCount;
+            $item->is_available = $item->isAvailable();
+
+            if ($establishment->phone) {
+                $establishment->whatsapp_url =
+                    'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
+                    . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o item \"{$item->name}\".");
+            } else {
+                $establishment->whatsapp_url = null;
+            }
+
+            $response = [
                 'item' => $item,
-                'barbershop' => $item->barbershop,
-            ], 200);
+                'establishment' => $establishment,
+                'employers' => $employers,
+            ];
+
+            Log::info('[' . __METHOD__ . '] Exibição detalhada concluída com sucesso', ['item_id' => $item->id]);
+            return response()->json($response, 200);
 
         } catch (\Exception $e) {
-            \Log::error('[' . __METHOD__ . '] Erro ao buscar item', [
+            Log::error('[' . __METHOD__ . '] Erro ao buscar item detalhado', [
                 'slug' => $slug,
                 'message' => $e->getMessage(),
                 'stack' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
+            return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do item.'], 500);
         }
     }
-
 
     public function show($id)
     {

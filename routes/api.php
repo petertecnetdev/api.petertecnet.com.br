@@ -217,8 +217,8 @@ Route::prefix('establishment')
     ->middleware(['api', 'auth:api'])
     ->group(function () {
         Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
-        Route::post('/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
-        Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
+      Route::match(['post', 'put'], '/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
+  Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
         Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
         Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
         Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
