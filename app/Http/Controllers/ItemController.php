@@ -199,8 +199,7 @@ class ItemController extends Controller
             \Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
-    }
-public function view($slug)
+    }public function view($slug)
 {
     try {
         Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de item', ['slug' => $slug]);
@@ -229,7 +228,7 @@ public function view($slug)
             Interaction::create([
                 'entity_type' => 'item',
                 'entity_id' => $item->id,
-                'user_id' => $user->id,
+                'user_id' => $user?->id, // ✅ usa operador nullsafe
                 'interaction_type' => 'view',
                 'content' => json_encode([
                     'slug' => $slug,
@@ -308,7 +307,10 @@ public function view($slug)
             ? $item->isAvailable()
             : true;
 
-        $appointmentsCount = Appointment::where('item_id', $item->id)->count();
+        // ✅ corrigido: appointments devem ser contados na tabela order_items
+        $appointmentsCount = \DB::table('order_items')
+            ->where('item_id', $item->id)
+            ->count();
         $item->appointments = $appointmentsCount;
 
         $item->created_since = $item->created_at?->diffForHumans();
@@ -403,6 +405,7 @@ public function view($slug)
         return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do item.'], 500);
     }
 }
+
     public function show($id)
     {
         try {
