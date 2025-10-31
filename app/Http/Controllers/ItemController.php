@@ -204,11 +204,6 @@ public function view($slug)
     try {
         Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de item', ['slug' => $slug]);
 
-        if (!Auth::check()) {
-            Log::warning('[' . __METHOD__ . '] Usuário não autenticado');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
         $user = Auth::user();
 
         $item = Item::with(['establishment', 'user', 'creator', 'updater'])
