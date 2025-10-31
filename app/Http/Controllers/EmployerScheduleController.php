@@ -90,9 +90,7 @@ class EmployerScheduleController extends Controller
         }
     }
 
-
-
-    public function availableTimes(Request $request)
+public function availableTimes(Request $request)
 {
     try {
         $data = $request->validate([
@@ -117,7 +115,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Horários de expediente
+        // 🔹 Horários de expediente do colaborador
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -128,10 +126,9 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Agendamentos existentes válidos
+        // 🔹 Busca agendamentos válidos deste colaborador no mesmo dia
         $appointments = Order::where('attendant_id', $employerId)
             ->whereDate('order_datetime', $date)
-            ->where('type', 'appointment') // garante apenas atendimentos agendados
             ->whereIn('appointment_status', ['pending', 'confirmed'])
             ->get(['order_datetime', 'total_duration']);
 
@@ -139,7 +136,11 @@ class EmployerScheduleController extends Controller
 
         foreach ($appointments as $a) {
             $start = Carbon::parse($a->order_datetime, 'America/Sao_Paulo');
-            $end = $start->copy()->addMinutes(max($a->total_duration, 1)); // evita duração 0
+            $durationMin = (int) ($a->total_duration ?? 0);
+            if ($durationMin <= 0) {
+                $durationMin = 30; // fallback padrão se não houver duração no pedido
+            }
+            $end = $start->copy()->addMinutes($durationMin);
             $occupied[] = [$start, $end];
         }
 
@@ -160,7 +161,7 @@ class EmployerScheduleController extends Controller
 
         $availableTimes = [];
 
-        // 🔹 Gera slots disponíveis
+        // 🔹 Gera horários disponíveis dentro do expediente
         foreach ($schedules as $schedule) {
             $workStart = Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
@@ -171,13 +172,13 @@ class EmployerScheduleController extends Controller
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ❌ Ignora horários passados (no dia atual)
+                // ❌ Ignora horários já passados (no mesmo dia)
                 if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ❌ Ignora horários conflitantes com agendamentos existentes
+                // ❌ Ignora horários que conflitam com agendamentos existentes
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     // Se o horário do slot encosta ou sobrepõe o horário ocupado, bloqueia
@@ -209,8 +210,6 @@ class EmployerScheduleController extends Controller
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
-
-
 
     public function reserve(Request $request)
     {
