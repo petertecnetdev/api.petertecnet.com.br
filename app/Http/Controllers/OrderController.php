@@ -117,19 +117,21 @@ class OrderController extends Controller
             }
         }
 
+        $totalDuration = 0;
+        foreach ($data['items'] as $entry) {
+            $item = \App\Models\Item::findOrFail($entry['item_id']);
+            $totalDuration += $item->duration ?? 0;
+        }
+
+        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
         // ===============================
-        //   ⚙️ VERIFICAÇÕES DE AGENDAMENTO
+        // 🔐 BLOQUEIO DE CONCORRÊNCIA
         // ===============================
         if ($isScheduled && !empty($data['attendant_id'])) {
             $employerId = $data['attendant_id'];
             $date = $orderDate->format('Y-m-d');
             $dayOfWeek = strtolower($orderDate->format('l'));
-
-            $totalDuration = 0;
-            foreach ($data['items'] as $entry) {
-                $item = \App\Models\Item::findOrFail($entry['item_id']);
-                $totalDuration += $item->duration ?? 0;
-            }
 
             $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('day_of_week', $dayOfWeek)
@@ -140,121 +142,39 @@ class OrderController extends Controller
                 return response()->json(['error' => 'O colaborador não possui expediente neste dia.'], 422);
             }
 
-            $slotStart = $orderDate->copy();
-            $slotEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-            // Verifica se o horário solicitado está dentro do expediente
-            $isInsideSchedule = $schedules->contains(function ($s) use ($date, $slotStart, $slotEnd) {
+            $isInsideSchedule = $schedules->contains(function ($s) use ($date, $orderDate, $orderDateEnd) {
                 $workStart = Carbon::parse("{$date} {$s->start_time}");
                 $workEnd = Carbon::parse("{$date} {$s->end_time}");
-                return $slotStart->gte($workStart) && $slotEnd->lte($workEnd);
+                return $orderDate->gte($workStart) && $orderDateEnd->lte($workEnd);
             });
 
             if (!$isInsideSchedule) {
                 return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
 
-            // 🔒 Bloqueia verificações simultâneas
-           DB::beginTransaction();
+            // 🔒 trava fisicamente todos os agendamentos desse colaborador no dia
+            $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->whereDate('order_datetime', $date)
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->lockForUpdate()
+                ->get();
 
-try {
-    // 🔒 trava registros do colaborador nesse dia para evitar duplicações simultâneas
-    $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
-        ->whereDate('order_datetime', $date)
-        ->whereIn('appointment_status', ['pending', 'confirmed'])
-        ->sharedLock()
-        ->get();
-
-    $conflict = $existingAppointments->contains(function ($a) use ($slotStart, $slotEnd) {
-        $aStart = Carbon::parse($a->order_datetime);
-        $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-        return $slotStart->lt($aEnd) && $slotEnd->gt($aStart);
-    });
-
-    if ($conflict) {
-        DB::rollBack();
-        return response()->json([
-            'error' => 'O colaborador já possui um agendamento neste horário.',
-        ], 422);
-    }
-
-    // cria o pedido apenas se nenhum outro thread travou o mesmo horário
-    $order = \App\Models\Order::create([
-        'app_id' => $data['app_id'],
-        'entity_name' => $data['entity_name'],
-        'entity_id' => $data['entity_id'],
-        'order_number' => str_pad((\App\Models\Order::max('order_number') + 1), 3, '0', STR_PAD_LEFT),
-        'order_datetime' => $orderDate,
-        'created_by' => $user->id ?? null,
-        'attendant_id' => $employerId,
-        'customer_name' => $data['customer_name'],
-        'origin' => $data['origin'],
-        'fulfillment' => $data['fulfillment'],
-        'payment_status' => $data['payment_status'],
-        'payment_method' => $data['payment_method'],
-        'status' => 'scheduled',
-        'type' => 'appointment',
-        'appointment_status' => 'pending',
-        'total_price' => 0,
-        'total_duration' => $totalDuration,
-    ]);
-
-    DB::commit();
-} catch (\Throwable $e) {
-    DB::rollBack();
-    throw $e;
-}
-
-            // Verifica conflito exato e sobreposição
-            $conflict = $existingAppointments->contains(function ($a) use ($slotStart, $slotEnd) {
+            $hasConflict = $existingAppointments->contains(function ($a) use ($orderDate, $orderDateEnd) {
                 $aStart = Carbon::parse($a->order_datetime);
                 $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                return $slotStart->lt($aEnd) && $slotEnd->gt($aStart);
+                return $orderDate->lt($aEnd) && $orderDateEnd->gt($aStart);
             });
 
-            if ($conflict) {
-                // Sugere o próximo horário compatível
-                $dayDate = $orderDate->format('Y-m-d');
-                $suggestedTime = null;
-
-                foreach ($schedules as $schedule) {
-                    $workStart = Carbon::parse("{$dayDate} {$schedule->start_time}");
-                    $workEnd = Carbon::parse("{$dayDate} {$schedule->end_time}");
-                    $candidate = $workStart->copy();
-
-                    while ($candidate->lt($workEnd)) {
-                        $candidateStart = $candidate->copy();
-                        $candidateEnd = $candidateStart->copy()->addMinutes($totalDuration);
-
-                        if ($candidateEnd->gt($workEnd)) break;
-
-                        $isFree = !$existingAppointments->contains(function ($a) use ($candidateStart, $candidateEnd) {
-                            $aStart = Carbon::parse($a->order_datetime);
-                            $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                            return $candidateStart->lt($aEnd) && $candidateEnd->gt($aStart);
-                        });
-
-                        if ($isFree) {
-                            $suggestedTime = $candidateStart->format('H:i');
-                            break 2;
-                        }
-
-                        $candidate->addMinutes(5);
-                    }
-                }
-
+            if ($hasConflict) {
+                DB::rollBack();
                 return response()->json([
-                    'error' => 'Conflito de horário detectado. O colaborador já possui outro agendamento neste intervalo.',
-                    'suggestion' => $suggestedTime
-                        ? "Horário mais próximo disponível: {$suggestedTime}."
-                        : 'Não há horários livres neste dia compatíveis com o tempo do serviço.',
-                    'tip' => 'Escolha outro horário, dia ou reduza os serviços selecionados.',
+                    'error' => 'O colaborador já possui um agendamento neste horário.',
                 ], 422);
             }
         }
 
         // ===============================
-        //   ⚙️ ITENS E CONSISTÊNCIA
+        // ⚙️ ITENS E CONSISTÊNCIA
         // ===============================
         $itemIds = collect($data['items'])->pluck('item_id');
         $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
@@ -266,6 +186,7 @@ try {
             ->toArray();
 
         if (!empty($invalidItems)) {
+            DB::rollBack();
             return response()->json([
                 'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
                 'invalid_items' => $invalidItems,
@@ -273,7 +194,7 @@ try {
         }
 
         // ===============================
-        //   🧾 CRIAÇÃO DO PEDIDO
+        // 🧾 CRIAÇÃO DO PEDIDO
         // ===============================
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
@@ -301,7 +222,7 @@ try {
             'type' => $type,
             'appointment_status' => $appointmentStatus,
             'total_price' => 0,
-            'total_duration' => $totalDuration ?? 0,
+            'total_duration' => $totalDuration,
         ]);
 
         $total = 0;
@@ -321,10 +242,11 @@ try {
         }
 
         $order->update(['total_price' => $total]);
+
         DB::commit();
 
         // ===============================
-        //   📬 NOTIFICAÇÕES
+        // 📬 NOTIFICAÇÕES
         // ===============================
         if ($isScheduled) {
             $establishment = \App\Models\Establishment::find($data['entity_id']);
@@ -369,8 +291,6 @@ try {
         ], 500);
     }
 }
-
-
 
     /**
      * Lista todos os pedidos de uma entidade (ex.: estabelecimento)
