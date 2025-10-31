@@ -89,119 +89,126 @@ class EmployerScheduleController extends Controller
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
+public function availableTimes(Request $request)
+{
+    try {
+        $data = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'date' => 'required|date',
+            'duration' => 'required|integer|min:5',
+        ], [
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'date.required' => 'O campo data é obrigatório.',
+            'date.date' => 'O campo data deve ser uma data válida.',
+            'duration.required' => 'O campo duração é obrigatório.',
+            'duration.integer' => 'A duração deve ser um número inteiro.',
+            'duration.min' => 'A duração mínima é de 5 minutos.',
+        ]);
 
-    public function availableTimes(Request $request)
-    {
-        try {
-            $data = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-                'date' => 'required|date',
-                'duration' => 'required|integer|min:5',
-            ], [
-                'employer_id.required' => 'O campo employer_id é obrigatório.',
-                'date.required' => 'O campo data é obrigatório.',
-                'date.date' => 'O campo data deve ser uma data válida.',
-                'duration.required' => 'O campo duração é obrigatório.',
-                'duration.integer' => 'A duração deve ser um número inteiro.',
-                'duration.min' => 'A duração mínima é de 5 minutos.',
-            ]);
+        $employerId = $data['employer_id'];
+        $date = Carbon::parse($data['date'])->format('Y-m-d');
+        $duration = (int) $data['duration'];
+        $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
+        $now = Carbon::now('America/Sao_Paulo');
 
-            $employerId = $data['employer_id'];
-            $date = Carbon::parse($data['date'])->format('Y-m-d');
-            $duration = (int) $data['duration'];
-            $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
+        // 🔸 Verifica se o dia é feriado
+        $isHoliday = EmployerSchedule::where('employer_id', $employerId)
+            ->where('type', 'holiday')
+            ->whereDate('reserved_date', $date)
+            ->exists();
 
-            // 🔸 Verifica se o dia é feriado
-            $isHoliday = EmployerSchedule::where('employer_id', $employerId)
-                ->where('type', 'holiday')
-                ->whereDate('reserved_date', $date)
-                ->exists();
-
-            if ($isHoliday) {
-                return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            $schedules = EmployerSchedule::where('employer_id', $employerId)
-                ->where('day_of_week', $dayOfWeek)
-                ->where('is_active', true)
-                ->where('type', 'work')
-                ->get();
-
-            if ($schedules->isEmpty()) {
-                return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
-            }
-
-            // 🔹 Busca agendamentos existentes
-            $appointments = Order::where('attendant_id', $employerId)
-                ->whereDate('order_datetime', $date)
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->get(['order_datetime', 'total_duration']);
-
-            $occupied = [];
-
-            foreach ($appointments as $a) {
-                $start = Carbon::parse($a->order_datetime);
-                $end = $start->copy()->addMinutes($a->total_duration ?? 0);
-                $occupied[] = [$start, $end];
-            }
-
-            // 🔸 Inclui pausas (breaks) do mesmo dia
-            $breaks = EmployerSchedule::where('employer_id', $employerId)
-                ->where('type', 'break')
-                ->whereDate('reserved_date', $date)
-                ->get();
-
-            foreach ($breaks as $b) {
-                $start = Carbon::parse("{$date} {$b->start_time}");
-                $end = Carbon::parse("{$date} {$b->end_time}");
-                $occupied[] = [$start, $end];
-            }
-
-            // Ordena pela hora inicial
-            usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
-
-            $availableTimes = [];
-
-            foreach ($schedules as $schedule) {
-                $workStart = Carbon::parse("{$date} {$schedule->start_time}");
-                $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
-                $step = 15;
-                $pointer = $workStart->copy();
-
-                while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
-                    $slotStart = $pointer->copy();
-                    $slotEnd = $slotStart->copy()->addMinutes($duration);
-
-                    $hasConflict = false;
-                    foreach ($occupied as [$occStart, $occEnd]) {
-                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
-                            $hasConflict = true;
-                            break;
-                        }
-                    }
-
-                    if (!$hasConflict) {
-                        $availableTimes[] = $slotStart->format('H:i');
-                    }
-
-                    $pointer->addMinutes($step);
-                }
-            }
-
-            $availableTimes = array_values(array_unique($availableTimes));
-            sort($availableTimes);
-
-            return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
-        } catch (ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            Log::error('EmployerSchedule.availableTimes error', [
-                'exception' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
+        if ($isHoliday) {
+            return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
         }
+
+        $schedules = EmployerSchedule::where('employer_id', $employerId)
+            ->where('day_of_week', $dayOfWeek)
+            ->where('is_active', true)
+            ->where('type', 'work')
+            ->get();
+
+        if ($schedules->isEmpty()) {
+            return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        // 🔹 Busca agendamentos existentes
+        $appointments = Order::where('attendant_id', $employerId)
+            ->whereDate('order_datetime', $date)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->get(['order_datetime', 'total_duration']);
+
+        $occupied = [];
+
+        foreach ($appointments as $a) {
+            $start = Carbon::parse($a->order_datetime);
+            $end = $start->copy()->addMinutes($a->total_duration ?? 0);
+            $occupied[] = [$start, $end];
+        }
+
+        // 🔸 Inclui pausas (breaks) do mesmo dia
+        $breaks = EmployerSchedule::where('employer_id', $employerId)
+            ->where('type', 'break')
+            ->whereDate('reserved_date', $date)
+            ->get();
+
+        foreach ($breaks as $b) {
+            $start = Carbon::parse("{$date} {$b->start_time}");
+            $end = Carbon::parse("{$date} {$b->end_time}");
+            $occupied[] = [$start, $end];
+        }
+
+        // Ordena pela hora inicial
+        usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
+
+        $availableTimes = [];
+
+        foreach ($schedules as $schedule) {
+            $workStart = Carbon::parse("{$date} {$schedule->start_time}");
+            $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
+            $step = 15;
+            $pointer = $workStart->copy();
+
+            while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
+                $slotStart = $pointer->copy();
+                $slotEnd = $slotStart->copy()->addMinutes($duration);
+
+                // ❌ Ignora horários que já passaram se for hoje
+                if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
+                    $pointer->addMinutes($step);
+                    continue;
+                }
+
+                // 🔒 Verifica conflito com outros agendamentos
+                $hasConflict = false;
+                foreach ($occupied as [$occStart, $occEnd]) {
+                    if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                        $hasConflict = true;
+                        break;
+                    }
+                }
+
+                if (!$hasConflict) {
+                    $availableTimes[] = $slotStart->format('H:i');
+                }
+
+                $pointer->addMinutes($step);
+            }
+        }
+
+        $availableTimes = array_values(array_unique($availableTimes));
+        sort($availableTimes);
+
+        return response()->json(['available_times' => $availableTimes], 200, [], JSON_UNESCAPED_UNICODE);
+    } catch (ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Exception $e) {
+        Log::error('EmployerSchedule.availableTimes error', [
+            'exception' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
 
     public function reserve(Request $request)
     {
