@@ -88,8 +88,7 @@ class EmployerScheduleController extends Controller
             Log::error('EmployerSchedule.destroy error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
-public function availableTimes(Request $request)
+    }public function availableTimes(Request $request)
 {
     try {
         $data = $request->validate([
@@ -111,16 +110,17 @@ public function availableTimes(Request $request)
         $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🔸 Verifica se o dia é feriado
+        // 🔸 Verifica se é feriado ou folga
         $isHoliday = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
             ->exists();
 
         if ($isHoliday) {
-            return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['available_times' => []], 200);
         }
 
+        // 🔸 Busca horários de trabalho do colaborador para o dia
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -128,10 +128,10 @@ public function availableTimes(Request $request)
             ->get();
 
         if ($schedules->isEmpty()) {
-            return response()->json(['available_times' => []], 200, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['available_times' => []], 200);
         }
 
-        // 🔹 Busca agendamentos existentes
+        // 🔹 Agendamentos existentes (pendentes ou confirmados)
         $appointments = Order::where('attendant_id', $employerId)
             ->whereDate('order_datetime', $date)
             ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -140,31 +140,32 @@ public function availableTimes(Request $request)
         $occupied = [];
 
         foreach ($appointments as $a) {
-            $start = Carbon::parse($a->order_datetime);
+            $start = Carbon::parse($a->order_datetime, 'America/Sao_Paulo');
             $end = $start->copy()->addMinutes($a->total_duration ?? 0);
             $occupied[] = [$start, $end];
         }
 
-        // 🔸 Inclui pausas (breaks) do mesmo dia
+        // 🔹 Pausas do mesmo dia
         $breaks = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
             ->get();
 
         foreach ($breaks as $b) {
-            $start = Carbon::parse("{$date} {$b->start_time}");
-            $end = Carbon::parse("{$date} {$b->end_time}");
+            $start = Carbon::parse("{$date} {$b->start_time}", 'America/Sao_Paulo');
+            $end = Carbon::parse("{$date} {$b->end_time}", 'America/Sao_Paulo');
             $occupied[] = [$start, $end];
         }
 
-        // Ordena pela hora inicial
+        // 🔹 Ordena blocos ocupados pela hora inicial
         usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
         $availableTimes = [];
 
+        // 🔹 Gera slots disponíveis de 15 em 15 min dentro do expediente
         foreach ($schedules as $schedule) {
-            $workStart = Carbon::parse("{$date} {$schedule->start_time}");
-            $workEnd = Carbon::parse("{$date} {$schedule->end_time}");
+            $workStart = Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
+            $workEnd = Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
             $step = 15;
             $pointer = $workStart->copy();
 
@@ -172,13 +173,13 @@ public function availableTimes(Request $request)
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ❌ Ignora horários que já passaram se for hoje
+                // ❌ Ignora horários já passados (no dia atual)
                 if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // 🔒 Verifica conflito com outros agendamentos
+                // ❌ Ignora horários que conflitam com agendamentos existentes
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -187,6 +188,7 @@ public function availableTimes(Request $request)
                     }
                 }
 
+                // ✅ Se não houver conflito, adiciona horário como disponível
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -195,6 +197,7 @@ public function availableTimes(Request $request)
             }
         }
 
+        // 🔹 Remove duplicados e ordena
         $availableTimes = array_values(array_unique($availableTimes));
         sort($availableTimes);
 
@@ -209,6 +212,7 @@ public function availableTimes(Request $request)
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
 }
+
 
     public function reserve(Request $request)
     {
