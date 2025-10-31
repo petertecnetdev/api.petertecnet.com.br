@@ -631,166 +631,161 @@ class EmployerController extends Controller
                 'details' => $e->getMessage(),
             ], 500);
         }
-    }
-    public function view($user_name)
-    {
-        try {
-            Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['user_name' => $user_name]);
+    }public function view($user_name)
+{
+    try {
+        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['user_name' => $user_name]);
 
-            $user = Auth::user();
+        $user = Auth::user();
 
-            // 🔹 Busca o colaborador pelo user_name vinculado ao usuário
-            $employer = Employer::with([
-                'user:id,first_name,last_name,email,phone,avatar,user_name',
-                'establishment:id,name,slug,logo,background,address,phone', // ✅ removida duplicação de 'phone'
-                'creator:id,first_name,last_name,email',
-                'updater:id,first_name,last_name,email'
-            ])
-                ->whereHas('user', function ($q) use ($user_name) {
-                    $q->where('user_name', $user_name);
-                })
-                ->first();
+        // 🔹 Busca o colaborador pelo user_name vinculado ao usuário
+        $employer = Employer::with([
+            'user:id,first_name,last_name,email,phone,avatar,user_name',
+            'establishment:id,name,slug,logo,background,address,phone',
+            'creator:id,first_name,last_name,email',
+            'updater:id,first_name,last_name,email'
+        ])
+            ->whereHas('user', function ($q) use ($user_name) {
+                $q->where('user_name', $user_name);
+            })
+            ->first();
 
-            if (!$employer) {
-                Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['user_name' => $user_name]);
-                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-            }
-
-            $establishment = $employer->establishment;
-            if (!$establishment) {
-                Log::warning('[' . __METHOD__ . '] Colaborador sem estabelecimento associado', ['employer_id' => $employer->id]);
-                return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
-            }
-
-            // =========================
-            // REGISTRAR INTERAÇÃO
-            // =========================
-            try {
-                \App\Models\Interaction::create([
-                    'entity_type' => 'employer',
-                    'entity_id' => $employer->id,
-                    'user_id' => $user?->id,
-                    'interaction_type' => 'view',
-                    'content' => json_encode([
-                        'user_name' => $user_name,
-                        'ip' => request()->ip(),
-                        'user_agent' => request()->userAgent(),
-                    ]),
-                    'name' => $employer->user?->first_name ?? 'Colaborador',
-                ]);
-            } catch (\Exception $ex) {
-                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
-            }
-
-            // =========================
-            // MÉTRICAS DE INTERAÇÕES
-            // =========================
-            $totalViews = \App\Models\Interaction::where('entity_type', 'employer')
-                ->where('entity_id', $employer->id)
-                ->count();
-
-            $userInteractions = \App\Models\Interaction::where('entity_type', 'employer')
-                ->where('entity_id', $employer->id)
-                ->select(
-                    'user_id',
-                    \DB::raw('COUNT(*) as total_views'),
-                    \DB::raw('MIN(created_at) as first_view'),
-                    \DB::raw('MAX(created_at) as last_view'),
-                    \DB::raw('MAX(content) as last_content')
-                )
-                ->groupBy('user_id')
-                ->with(['user:id,first_name,last_name,email,avatar'])
-                ->orderByDesc('total_views')
-                ->get()
-                ->map(function ($interaction) {
-                    $content = json_decode($interaction->last_content ?? '{}', true);
-                    return [
-                        'user_id' => $interaction->user_id,
-                        'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
-                        'user_email' => $interaction->user?->email,
-                        'user_avatar' => $interaction->user?->avatar,
-                        'total_views' => (int) $interaction->total_views,
-                        'first_view' => $interaction->first_view,
-                        'last_view' => $interaction->last_view,
-                        'ip' => $content['ip'] ?? null,
-                        'user_agent' => $content['user_agent'] ?? null,
-                    ];
-                });
-
-            $distinctUsers = $userInteractions->count();
-            $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
-            $lastUser = $userInteractions->sortByDesc('last_view')->first();
-
-            $interactionSummary = [
-                'total_views' => $totalViews,
-                'unique_users' => $distinctUsers,
-                'most_active_user' => $mostActiveUser
-                    ? [
-                        'name' => $mostActiveUser['user_name'],
-                        'views' => $mostActiveUser['total_views'],
-                        'last_view' => $mostActiveUser['last_view'],
-                    ]
-                    : null,
-                'last_view_user' => $lastUser
-                    ? [
-                        'name' => $lastUser['user_name'],
-                        'last_view' => $lastUser['last_view'],
-                    ]
-                    : null,
-            ];
-
-            // =========================
-            // ATENDIMENTOS
-            // =========================
-            $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
-                ->where('type', 'appointment');
-
-            $appointmentsCount = (clone $appointmentsQuery)->count();
-            $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
-            $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
-            $totalValue = (clone $appointmentsQuery)->sum('total_price');
-
-            $lastAppointments = (clone $appointmentsQuery)
-                ->latest('order_datetime')
-                ->take(5)
-                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
-
-            // =========================
-            // FORMATAÇÃO FINAL
-            // =========================
-            $employer->views_total = $totalViews;
-            $employer->views_unique = $distinctUsers;
-            $employer->appointments_total = $appointmentsCount;
-            $employer->appointments_attended = $attendedCount;
-            $employer->appointments_cancelled = $cancelledCount;
-            $employer->appointments_value = $totalValue;
-            $employer->created_since = $employer->created_at?->diffForHumans();
-            $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
-
-            return response()->json([
-                'employer' => $employer,
-                'establishment' => $establishment,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'appointments_recent' => $lastAppointments,
-                'metrics' => [
-                    'total_appointments' => $appointmentsCount,
-                    'attended' => $attendedCount,
-                    'cancelled' => $cancelledCount,
-                    'total_value' => $totalValue,
-                ],
-                'message' => 'Dados detalhados do colaborador carregados com sucesso.',
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('[' . __METHOD__ . '] Falha ao exibir colaborador', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-            return response()->json([
-                'error' => 'Ocorreu um erro ao carregar os dados do colaborador.',
-                'details' => $e->getMessage(),
-            ], 500);
+        if (!$employer) {
+            Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['user_name' => $user_name]);
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
         }
+
+        $establishment = $employer->establishment;
+        if (!$establishment) {
+            Log::warning('[' . __METHOD__ . '] Colaborador sem estabelecimento associado', ['employer_id' => $employer->id]);
+            return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
+        }
+
+        // =========================
+        // REGISTRAR INTERAÇÃO
+        // =========================
+        try {
+            \App\Models\Interaction::create([
+                'entity_type' => 'employer',
+                'entity_id' => $employer->id,
+                'user_id' => $user?->id,
+                'interaction_type' => 'view',
+                'content' => json_encode([
+                    'user_name' => $user_name,
+                    'ip' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                ]),
+                'name' => $employer->user?->first_name ?? 'Colaborador',
+            ]);
+        } catch (\Exception $ex) {
+            Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
+        }
+
+        // =========================
+        // MÉTRICAS DE INTERAÇÕES
+        // =========================
+        $totalViews = \App\Models\Interaction::where('entity_type', 'employer')
+            ->where('entity_id', $employer->id)
+            ->count();
+
+        $userInteractions = \App\Models\Interaction::where('entity_type', 'employer')
+            ->where('entity_id', $employer->id)
+            ->select(
+                'user_id',
+                \DB::raw('COUNT(*) as total_views'),
+                \DB::raw('MIN(created_at) as first_view'),
+                \DB::raw('MAX(created_at) as last_view'),
+                \DB::raw('MAX(content) as last_content')
+            )
+            ->groupBy('user_id')
+            ->with(['user:id,first_name,last_name,email,avatar,user_name'])
+            ->orderByDesc('total_views')
+            ->get()
+            ->map(function ($interaction) {
+                $content = json_decode($interaction->last_content ?? '{}', true);
+                return [
+                    'user_id' => $interaction->user_id,
+                    'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
+                    'user_email' => $interaction->user?->email,
+                    'user_avatar' => $interaction->user?->avatar,
+                    'total_views' => (int) $interaction->total_views,
+                    'first_view' => $interaction->first_view,
+                    'last_view' => $interaction->last_view,
+                    'ip' => $content['ip'] ?? null,
+                    'user_agent' => $content['user_agent'] ?? null,
+                ];
+            });
+
+        $distinctUsers = $userInteractions->count();
+        $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
+        $lastUser = $userInteractions->sortByDesc('last_view')->first();
+
+        $interactionSummary = [
+            'total_views' => $totalViews,
+            'unique_users' => $distinctUsers,
+            'most_active_user' => $mostActiveUser ? [
+                'name' => $mostActiveUser['user_name'],
+                'views' => $mostActiveUser['total_views'],
+                'last_view' => $mostActiveUser['last_view'],
+            ] : null,
+            'last_view_user' => $lastUser ? [
+                'name' => $lastUser['user_name'],
+                'last_view' => $lastUser['last_view'],
+            ] : null,
+        ];
+
+        // =========================
+        // ATENDIMENTOS
+        // =========================
+        $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
+            ->where('type', 'appointment');
+
+        $appointmentsCount = (clone $appointmentsQuery)->count();
+        $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
+        $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
+        $totalValue = (clone $appointmentsQuery)->sum('total_price');
+
+        $lastAppointments = (clone $appointmentsQuery)
+            ->latest('order_datetime')
+            ->take(5)
+            ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+        // =========================
+        // FORMATAÇÃO FINAL
+        // =========================
+        $employer->views_total = $totalViews;
+        $employer->views_unique = $distinctUsers;
+        $employer->appointments_total = $appointmentsCount;
+        $employer->appointments_attended = $attendedCount;
+        $employer->appointments_cancelled = $cancelledCount;
+        $employer->appointments_value = number_format($totalValue, 2, '.', '');
+        $employer->created_since = $employer->created_at?->diffForHumans();
+        $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
+
+        return response()->json([
+            'employer' => $employer,
+            'establishment' => $establishment,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $userInteractions,
+            'appointments_recent' => $lastAppointments,
+            'metrics' => [
+                'total_appointments' => $appointmentsCount,
+                'attended' => $attendedCount,
+                'cancelled' => $cancelledCount,
+                'total_value' => number_format($totalValue, 2, '.', ''),
+            ],
+            'message' => 'Dados detalhados do colaborador carregados com sucesso.',
+        ], 200);
+
+    } catch (\Exception $e) {
+        Log::error('[' . __METHOD__ . '] Falha ao exibir colaborador', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+        return response()->json([
+            'error' => 'Ocorreu um erro ao carregar os dados do colaborador.',
+            'details' => $e->getMessage(),
+        ], 500);
     }
+}
 }
