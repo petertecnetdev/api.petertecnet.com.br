@@ -338,28 +338,16 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-
     public function view($slug)
     {
         try {
             $user = Auth::user();
 
             $establishment = Establishment::with([
-                'items', // traz os itens do cardápio automaticamente
-                'employers.user' // colaboradores com dados do user
-            ])->where('slug', $slug)->first();
+                'items',           // ✅ agora pega automaticamente todos os itens
+                'employers.user',  // colaboradores
+            ])->where('slug', $slug)->firstOrFail();
 
-            if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-            }
-
-            // Estabelecimentos para sugestão
-            $otherEstablishments = Establishment::where('slug', '!=', $slug)
-                ->inRandomOrder()
-                ->limit(3)
-                ->get(['name', 'slug', 'logo']);
-
-            // Registro de visualização (se autenticado)
             if ($user) {
                 Interaction::create([
                     'user_id' => $user->id,
@@ -370,6 +358,11 @@ class EstablishmentController extends Controller
                 ]);
             }
 
+            $otherEstablishments = Establishment::where('slug', '!=', $slug)
+                ->inRandomOrder()
+                ->limit(3)
+                ->get(['name', 'slug', 'logo']);
+
             return response()->json([
                 'message' => 'Estabelecimento encontrado com sucesso.',
                 'establishment' => $establishment,
@@ -378,12 +371,12 @@ class EstablishmentController extends Controller
                 'owner' => $establishment->user,
                 'otherEstablishments' => $otherEstablishments,
             ], 200);
-
         } catch (\Exception $e) {
-            Log::error('Erro ao buscar estabelecimento: ' . $e->getMessage());
+            \Log::error('Erro ao buscar estabelecimento: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao buscar o estabelecimento.'], 500);
         }
     }
+
     public function show($id)
     {
         try {
@@ -554,63 +547,63 @@ class EstablishmentController extends Controller
     }
 
 
-    
-public function generatePdf($slug)
-{
-    try {
-        $establishment = Establishment::with('items')->where('slug', $slug)->first();
 
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
+    public function generatePdf($slug)
+    {
+        try {
+            $establishment = Establishment::with('items')->where('slug', $slug)->first();
 
-        $category = strtolower($establishment->category ?? '');
-        $tipo = in_array($category, ['barbershop', 'beauty', 'salon'])
-            ? 'Tabela de Preços'
-            : 'Cardápio';
-
-        $items = $establishment->items()
-            ->where('status', 1)
-            ->get()
-            ->groupBy(fn($i) => $i->category ?: 'Outros');
-
-        $grouped = $items->sortByDesc(fn($group) => $group->max('price'))
-            ->map(fn($group) => $group->sortByDesc('price'));
-
-        $logoPath = $establishment->logo
-            ? public_path($establishment->logo)
-            : public_path('images/default-logo.png');
-
-        // Converte imagens dos itens em Base64
-        $itemsBase64 = [];
-        foreach ($grouped as $catName => $catItems) {
-            $itemsBase64[$catName] = [];
-            foreach ($catItems as $item) {
-                $imgBase64 = null;
-                if ($item->image && file_exists(public_path($item->image))) {
-                    $path = public_path($item->image);
-                    $mime = mime_content_type($path);
-                    $imgBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
-                }
-                $itemsBase64[$catName][$item->id] = $imgBase64;
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
+
+            $category = strtolower($establishment->category ?? '');
+            $tipo = in_array($category, ['barbershop', 'beauty', 'salon'])
+                ? 'Tabela de Preços'
+                : 'Cardápio';
+
+            $items = $establishment->items()
+                ->where('status', 1)
+                ->get()
+                ->groupBy(fn($i) => $i->category ?: 'Outros');
+
+            $grouped = $items->sortByDesc(fn($group) => $group->max('price'))
+                ->map(fn($group) => $group->sortByDesc('price'));
+
+            $logoPath = $establishment->logo
+                ? public_path($establishment->logo)
+                : public_path('images/default-logo.png');
+
+            // Converte imagens dos itens em Base64
+            $itemsBase64 = [];
+            foreach ($grouped as $catName => $catItems) {
+                $itemsBase64[$catName] = [];
+                foreach ($catItems as $item) {
+                    $imgBase64 = null;
+                    if ($item->image && file_exists(public_path($item->image))) {
+                        $path = public_path($item->image);
+                        $mime = mime_content_type($path);
+                        $imgBase64 = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($path));
+                    }
+                    $itemsBase64[$catName][$item->id] = $imgBase64;
+                }
+            }
+
+            $pdf = \PDF::loadView('pdf.establishment-menu', [
+                'establishment' => $establishment,
+                'grouped' => $grouped,
+                'tipo' => $tipo,
+                'logoPath' => $logoPath,
+                'itemsBase64' => $itemsBase64,
+            ])->setPaper('a4');
+
+            $fileName = Str::slug($establishment->name . '-' . $tipo) . '.pdf';
+            return $pdf->download($fileName);
+        } catch (\Exception $e) {
+            \Log::error('Erro ao gerar PDF: ' . $e->getMessage());
+            return response()->json(['error' => 'Erro ao gerar o PDF.'], 500);
         }
-
-        $pdf = \PDF::loadView('pdf.establishment-menu', [
-            'establishment' => $establishment,
-            'grouped' => $grouped,
-            'tipo' => $tipo,
-            'logoPath' => $logoPath,
-            'itemsBase64' => $itemsBase64,
-        ])->setPaper('a4');
-
-        $fileName = Str::slug($establishment->name . '-' . $tipo) . '.pdf';
-        return $pdf->download($fileName);
-    } catch (\Exception $e) {
-        \Log::error('Erro ao gerar PDF: ' . $e->getMessage());
-        return response()->json(['error' => 'Erro ao gerar o PDF.'], 500);
     }
-}
     public function myEstablishments()
     {
         try {
