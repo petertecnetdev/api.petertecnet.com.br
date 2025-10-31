@@ -749,7 +749,6 @@ class EmployerController extends Controller
             $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
             $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
             $totalValue = (clone $appointmentsQuery)->sum('total_price');
-            $averageRating = (clone $appointmentsQuery)->whereNotNull('rating')->avg('rating');
 
             $lastAppointments = (clone $appointmentsQuery)
                 ->latest('order_datetime')
@@ -765,7 +764,6 @@ class EmployerController extends Controller
             $employer->appointments_attended = $attendedCount;
             $employer->appointments_cancelled = $cancelledCount;
             $employer->appointments_value = $totalValue;
-            $employer->average_rating = $averageRating ? round($averageRating, 2) : null;
             $employer->created_since = $employer->created_at?->diffForHumans();
             $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
 
@@ -780,7 +778,6 @@ class EmployerController extends Controller
                     'attended' => $attendedCount,
                     'cancelled' => $cancelledCount,
                     'total_value' => $totalValue,
-                    'average_rating' => $averageRating,
                 ],
                 'message' => 'Dados detalhados do colaborador carregados com sucesso.',
             ], 200);
