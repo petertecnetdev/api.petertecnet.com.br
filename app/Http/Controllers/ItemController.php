@@ -319,13 +319,16 @@ class ItemController extends Controller
         $item->creator_name = $item->creator?->name;
         $item->updater_name = $item->updater?->name;
 
-        // =========================
-        // PROFISSIONAIS ASSOCIADOS
-        // =========================
-        $employers = collect();
-        if (Str::contains(Str::lower($item->type), 'serv') || $item->type === 'serviço') {
-            $employers = $establishment->employers()->with('user')->get();
-        }
+       // =========================
+// PROFISSIONAIS ASSOCIADOS
+// =========================
+$employers = collect();
+if (Str::contains(Str::lower($item->type), 'serv') || $item->type === 'serviço') {
+    $employers = $establishment->employers()
+        ->with(['user:id,first_name,last_name,avatar'])
+        ->get();
+}
+
 
         // =========================
         // ITENS RELACIONADOS
