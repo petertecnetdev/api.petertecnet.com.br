@@ -155,11 +155,55 @@ class OrderController extends Controller
             }
 
             // 🔒 Bloqueia verificações simultâneas
-            $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
-                ->whereDate('order_datetime', $date)
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->lockForUpdate()
-                ->get();
+           DB::beginTransaction();
+
+try {
+    // 🔒 trava registros do colaborador nesse dia para evitar duplicações simultâneas
+    $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
+        ->whereDate('order_datetime', $date)
+        ->whereIn('appointment_status', ['pending', 'confirmed'])
+        ->sharedLock()
+        ->get();
+
+    $conflict = $existingAppointments->contains(function ($a) use ($slotStart, $slotEnd) {
+        $aStart = Carbon::parse($a->order_datetime);
+        $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
+        return $slotStart->lt($aEnd) && $slotEnd->gt($aStart);
+    });
+
+    if ($conflict) {
+        DB::rollBack();
+        return response()->json([
+            'error' => 'O colaborador já possui um agendamento neste horário.',
+        ], 422);
+    }
+
+    // cria o pedido apenas se nenhum outro thread travou o mesmo horário
+    $order = \App\Models\Order::create([
+        'app_id' => $data['app_id'],
+        'entity_name' => $data['entity_name'],
+        'entity_id' => $data['entity_id'],
+        'order_number' => str_pad((\App\Models\Order::max('order_number') + 1), 3, '0', STR_PAD_LEFT),
+        'order_datetime' => $orderDate,
+        'created_by' => $user->id ?? null,
+        'attendant_id' => $employerId,
+        'customer_name' => $data['customer_name'],
+        'origin' => $data['origin'],
+        'fulfillment' => $data['fulfillment'],
+        'payment_status' => $data['payment_status'],
+        'payment_method' => $data['payment_method'],
+        'status' => 'scheduled',
+        'type' => 'appointment',
+        'appointment_status' => 'pending',
+        'total_price' => 0,
+        'total_duration' => $totalDuration,
+    ]);
+
+    DB::commit();
+} catch (\Throwable $e) {
+    DB::rollBack();
+    throw $e;
+}
 
             // Verifica conflito exato e sobreposição
             $conflict = $existingAppointments->contains(function ($a) use ($slotStart, $slotEnd) {
