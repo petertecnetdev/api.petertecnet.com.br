@@ -127,10 +127,13 @@ public function availableTimes(Request $request)
         }
 
         // 🔹 Busca agendamentos válidos deste colaborador no mesmo dia
-        $appointments = Order::where('attendant_id', $employerId)
-            ->whereDate('order_datetime', $date)
-            ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->get(['order_datetime', 'total_duration']);
+       // 🔹 Agendamentos válidos (do tipo appointment, no mesmo dia e colaborador)
+$appointments = Order::where('attendant_id', $employerId)
+    ->where('type', 'appointment')
+    ->whereDate('order_datetime', $date)
+    ->whereIn('appointment_status', ['pending', 'confirmed'])
+    ->get(['order_datetime', 'total_duration']);
+
 
         $occupied = [];
 
