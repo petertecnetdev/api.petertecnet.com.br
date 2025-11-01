@@ -111,37 +111,37 @@ class EstablishmentController extends Controller
                     }
                 }
             }
-if (!empty($data['attendant_id'])) {
-    $employer = \App\Models\Employer::where('user_id', $data['attendant_id'])
-        ->orWhere('id', $data['attendant_id'])
-        ->first();
-    if ($employer) {
-        $data['attendant_id'] = $employer->user_id;
-    }
-}
+            if (!empty($data['attendant_id'])) {
+                $employer = \App\Models\Employer::where('user_id', $data['attendant_id'])
+                    ->orWhere('id', $data['attendant_id'])
+                    ->first();
+                if ($employer) {
+                    $data['attendant_id'] = $employer->user_id;
+                }
+            }
 
             $order = Order::create([
-    'app_id' => $data['app_id'],
-    'entity_name' => $data['entity_name'],
-    'entity_id' => $data['entity_id'],
-    'order_number' => $orderNumber,
-    'order_datetime' => $orderDate,
-    'attendant_id' => $attendantId,
-    'client_id' => null,
-    'customer_name' => $data['customer_name'],
-    'access_code' => $accessCode,
-    'origin' => $data['origin'],
-    'fulfillment' => $data['fulfillment'],
-    'payment_status' => $data['payment_status'],
-    'payment_method' => $data['payment_method'],
-    'total_price' => 0,
-    'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
-    'notes' => $data['notes'] ?? null,
-    'customer_phone' => $data['customer_phone'] ?? null,
-    'customer_cpf' => $data['customer_cpf'] ?? null,
-    'type' => 'appointment', // 🟢 ADICIONE ESTA LINHA
-    'appointment_status' => $data['appointment_status'] ?? 'pending', // 🟢 GARANTA QUE EXISTE
-]);
+                'app_id' => $data['app_id'],
+                'entity_name' => $data['entity_name'],
+                'entity_id' => $data['entity_id'],
+                'order_number' => $orderNumber,
+                'order_datetime' => $orderDate,
+                'attendant_id' => $attendantId,
+                'client_id' => null,
+                'customer_name' => $data['customer_name'],
+                'access_code' => $accessCode,
+                'origin' => $data['origin'],
+                'fulfillment' => $data['fulfillment'],
+                'payment_status' => $data['payment_status'],
+                'payment_method' => $data['payment_method'],
+                'total_price' => 0,
+                'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
+                'notes' => $data['notes'] ?? null,
+                'customer_phone' => $data['customer_phone'] ?? null,
+                'customer_cpf' => $data['customer_cpf'] ?? null,
+                'type' => 'appointment', // 🟢 ADICIONE ESTA LINHA
+                'appointment_status' => $data['appointment_status'] ?? 'pending', // 🟢 GARANTA QUE EXISTE
+            ]);
 
             $total = 0;
             $totalDuration = 0;
@@ -150,7 +150,7 @@ if (!empty($data['attendant_id'])) {
                 $qty = $entry['quantity'];
                 $unitPrice = $item->price;
                 $subtotal = $unitPrice * $qty;
-                  $totalDuration += $duration; 
+                $totalDuration += $duration;
 
                 $orderItem = $order->items()->create([
                     'item_id' => $item->id,
@@ -183,9 +183,9 @@ if (!empty($data['attendant_id'])) {
             }
 
             $order->update([
-    'total_price' => $total,
-    'total_duration' => $totalDuration, // 🟢 adiciona o total_duration
-]);
+                'total_price' => $total,
+                'total_duration' => $totalDuration, // 🟢 adiciona o total_duration
+            ]);
             Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
 
             return response()->json([
@@ -353,178 +353,188 @@ if (!empty($data['attendant_id'])) {
             Log::error('Erro ao listar estabelecimentos do usu�rio: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }public function view($slug)
-{
-    try {
-        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de estabelecimento', ['slug' => $slug]);
-
-        $user = Auth::user();
-
-        // =========================
-        // BUSCA DO ESTABELECIMENTO
-        // =========================
-        $establishment = Establishment::with([
-            'user:id,first_name,last_name,email,avatar,user_name',
-            'items:id,name,slug,price,image,category,type,status,entity_id,entity_name',
-            'employers.user:id,first_name,last_name,email,avatar,user_name',
-            'creator:id,first_name,last_name,email',
-            'updater:id,first_name,last_name,email'
-        ])->where('slug', $slug)->first();
-
-        if (!$establishment) {
-            Log::warning('[' . __METHOD__ . '] Estabelecimento não encontrado', ['slug' => $slug]);
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        // =========================
-        // REGISTRAR INTERAÇÃO
-        // =========================
-        try {
-            Interaction::create([
-                'entity_type' => 'establishment',
-                'entity_id' => $establishment->id,
-                'user_id' => $user?->id,
-                'interaction_type' => 'view',
-                'content' => json_encode([
-                    'slug' => $slug,
-                    'ip' => request()->ip(),
-                    'user_agent' => request()->userAgent(),
-                ]),
-                'name' => $establishment->name,
-            ]);
-        } catch (\Exception $ex) {
-            Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
-        }
-
-        // =========================
-        // MÉTRICAS DE INTERAÇÕES
-        // =========================
-        $totalViews = Interaction::where('entity_type', 'establishment')
-            ->where('entity_id', $establishment->id)
-            ->count();
-
-        $userInteractions = Interaction::where('entity_type', 'establishment')
-            ->where('entity_id', $establishment->id)
-            ->select(
-                'user_id',
-                DB::raw('COUNT(*) as total_views'),
-                DB::raw('MIN(created_at) as first_view'),
-                DB::raw('MAX(created_at) as last_view'),
-                DB::raw('MAX(content) as last_content')
-            )
-            ->groupBy('user_id')
-            ->with(['user:id,first_name,last_name,email,avatar,user_name'])
-            ->orderByDesc('total_views')
-            ->get()
-            ->map(function ($interaction) {
-                $content = json_decode($interaction->last_content ?? '{}', true);
-                return [
-                    'user_id' => $interaction->user_id,
-                    'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
-                    'user_email' => $interaction->user?->email,
-                    'user_avatar' => $interaction->user?->avatar,
-                    'total_views' => (int) $interaction->total_views,
-                    'first_view' => $interaction->first_view,
-                    'last_view' => $interaction->last_view,
-                    'ip' => $content['ip'] ?? null,
-                    'user_agent' => $content['user_agent'] ?? null,
-                ];
-            });
-
-        $distinctUsers = $userInteractions->count();
-        $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
-        $lastUser = $userInteractions->sortByDesc('last_view')->first();
-
-        $interactionSummary = [
-            'total_views' => $totalViews,
-            'unique_users' => $distinctUsers,
-            'most_active_user' => $mostActiveUser ? [
-                'name' => $mostActiveUser['user_name'],
-                'views' => $mostActiveUser['total_views'],
-                'last_view' => $mostActiveUser['last_view'],
-            ] : null,
-            'last_view_user' => $lastUser ? [
-                'name' => $lastUser['user_name'],
-                'last_view' => $lastUser['last_view'],
-            ] : null,
-        ];
-
-        // =========================
-        // OUTROS ESTABELECIMENTOS (CORRIGIDO)
-        // =========================
-      // OUTROS ESTABELECIMENTOS (corrigido)
-$otherEstablishments = Establishment::where('slug', '!=', $slug)
-    ->where('is_published', true)
-    ->where('is_approved', true)
-    ->where('is_cancelled', false)
-    ->inRandomOrder()
-    ->limit(6)
-    ->get(['id', 'name', 'slug', 'logo', 'city', 'category']);
-
-
-        // =========================
-        // MÉTRICAS DE ITENS E SERVIÇOS
-        // =========================
-        $items = $establishment->items ?? collect();
-        $services = $items->filter(fn($i) => Str::contains(Str::lower($i->type), 'serv'));
-        $products = $items->filter(fn($i) => !Str::contains(Str::lower($i->type), 'serv'));
-
-        $metrics = [
-            'total_items' => $items->count(),
-            'total_services' => $services->count(),
-            'total_products' => $products->count(),
-            'total_views' => $totalViews,
-            'unique_users' => $distinctUsers,
-        ];
-
-        // =========================
-        // WHATSAPP URL
-        // =========================
-        $establishment->whatsapp_url = $establishment->phone
-            ? 'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
-            . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o estabelecimento \"{$establishment->name}\".")
-            : null;
-
-        // =========================
-        // CAMPOS FORMATADOS
-        // =========================
-        $establishment->created_since = $establishment->created_at?->diffForHumans();
-        $establishment->last_updated_at = $establishment->updated_at?->format('d/m/Y H:i');
-
-        // =========================
-        // RESPOSTA FINAL
-        // =========================
-        $response = [
-            'establishment' => $establishment,
-            'items' => $items,
-            'services' => $services->values(),
-            'products' => $products->values(),
-            'collaborators' => $establishment->employers,
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $userInteractions,
-            'metrics' => $metrics,
-            'other_establishments' => $otherEstablishments,
-            'message' => 'Dados detalhados do estabelecimento carregados com sucesso.',
-        ];
-
-        Log::info('[' . __METHOD__ . '] Exibição detalhada de estabelecimento concluída com sucesso', [
-            'establishment_id' => $establishment->id,
-            'views_total' => $totalViews,
-            'unique_users' => $distinctUsers,
-            'total_items' => $items->count(),
-        ]);
-
-        return response()->json($response, 200);
-
-    } catch (\Exception $e) {
-        Log::error('[' . __METHOD__ . '] Erro ao buscar estabelecimento detalhado', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-            'stack' => $e->getTraceAsString(),
-        ]);
-        return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do estabelecimento.'], 500);
     }
-}
+    public function view($slug)
+    {
+        try {
+            Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de estabelecimento', ['slug' => $slug]);
+
+            $user = Auth::user();
+
+            // =========================
+            // BUSCA DO ESTABELECIMENTO
+            // =========================
+            $establishment = Establishment::with([
+                'user:id,first_name,last_name,email,avatar,user_name',
+                'items:id,name,slug,price,image,category,type,status,entity_id,entity_name',
+                'employers.user:id,first_name,last_name,email,avatar,user_name',
+                'creator:id,first_name,last_name,email',
+                'updater:id,first_name,last_name,email'
+            ])->where('slug', $slug)->first();
+
+            if (!$establishment) {
+                Log::warning('[' . __METHOD__ . '] Estabelecimento não encontrado', ['slug' => $slug]);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            // =========================
+            // REGISTRAR INTERAÇÃO
+            // =========================
+            try {
+                Interaction::create([
+                    'entity_type' => 'establishment',
+                    'entity_id' => $establishment->id,
+                    'user_id' => $user?->id,
+                    'interaction_type' => 'view',
+                    'content' => json_encode([
+                        'slug' => $slug,
+                        'ip' => request()->ip(),
+                        'user_agent' => request()->userAgent(),
+                    ]),
+                    'name' => $establishment->name,
+                ]);
+            } catch (\Exception $ex) {
+                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
+            }
+
+            // =========================
+            // MÉTRICAS DE INTERAÇÕES
+            // =========================
+            $totalViews = Interaction::where('entity_type', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->count();
+
+            $userInteractions = Interaction::where('entity_type', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->select(
+                    'user_id',
+                    DB::raw('COUNT(*) as total_views'),
+                    DB::raw('MIN(created_at) as first_view'),
+                    DB::raw('MAX(created_at) as last_view'),
+                    DB::raw('MAX(content) as last_content')
+                )
+                ->groupBy('user_id')
+                ->with(['user:id,first_name,last_name,email,avatar,user_name'])
+                ->orderByDesc('total_views')
+                ->get()
+                ->map(function ($interaction) {
+                    $content = json_decode($interaction->last_content ?? '{}', true);
+                    return [
+                        'user_id' => $interaction->user_id,
+                        'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
+                        'user_email' => $interaction->user?->email,
+                        'user_avatar' => $interaction->user?->avatar,
+                        'total_views' => (int) $interaction->total_views,
+                        'first_view' => $interaction->first_view,
+                        'last_view' => $interaction->last_view,
+                        'ip' => $content['ip'] ?? null,
+                        'user_agent' => $content['user_agent'] ?? null,
+                    ];
+                });
+
+            $distinctUsers = $userInteractions->count();
+            $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
+            $lastUser = $userInteractions->sortByDesc('last_view')->first();
+
+            $interactionSummary = [
+                'total_views' => $totalViews,
+                'unique_users' => $distinctUsers,
+                'most_active_user' => $mostActiveUser ? [
+                    'name' => $mostActiveUser['user_name'],
+                    'views' => $mostActiveUser['total_views'],
+                    'last_view' => $mostActiveUser['last_view'],
+                ] : null,
+                'last_view_user' => $lastUser ? [
+                    'name' => $lastUser['user_name'],
+                    'last_view' => $lastUser['last_view'],
+                ] : null,
+            ];
+
+            // =========================
+            // OUTROS ESTABELECIMENTOS (CORRIGIDO)
+            // =========================
+            // OUTROS ESTABELECIMENTOS (corrigido)// =========================
+// OUTROS ESTABELECIMENTOS (MESMO APP)
+// =========================
+            $otherEstablishments = Establishment::where('slug', '!=', $slug)
+                ->where('app_id', $establishment->app_id)
+                ->inRandomOrder()
+                ->limit(6)
+                ->get([
+                    'id',
+                    'name',
+                    'slug',
+                    'logo',
+                    'city',
+                    'category',
+                    'app_id'
+                ]);
+
+
+
+            // =========================
+            // MÉTRICAS DE ITENS E SERVIÇOS
+            // =========================
+            $items = $establishment->items ?? collect();
+            $services = $items->filter(fn($i) => Str::contains(Str::lower($i->type), 'serv'));
+            $products = $items->filter(fn($i) => !Str::contains(Str::lower($i->type), 'serv'));
+
+            $metrics = [
+                'total_items' => $items->count(),
+                'total_services' => $services->count(),
+                'total_products' => $products->count(),
+                'total_views' => $totalViews,
+                'unique_users' => $distinctUsers,
+            ];
+
+            // =========================
+            // WHATSAPP URL
+            // =========================
+            $establishment->whatsapp_url = $establishment->phone
+                ? 'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
+                . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o estabelecimento \"{$establishment->name}\".")
+                : null;
+
+            // =========================
+            // CAMPOS FORMATADOS
+            // =========================
+            $establishment->created_since = $establishment->created_at?->diffForHumans();
+            $establishment->last_updated_at = $establishment->updated_at?->format('d/m/Y H:i');
+
+            // =========================
+            // RESPOSTA FINAL
+            // =========================
+            $response = [
+                'establishment' => $establishment,
+                'items' => $items,
+                'services' => $services->values(),
+                'products' => $products->values(),
+                'collaborators' => $establishment->employers,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'metrics' => $metrics,
+                'other_establishments' => $otherEstablishments,
+                'message' => 'Dados detalhados do estabelecimento carregados com sucesso.',
+            ];
+
+            Log::info('[' . __METHOD__ . '] Exibição detalhada de estabelecimento concluída com sucesso', [
+                'establishment_id' => $establishment->id,
+                'views_total' => $totalViews,
+                'unique_users' => $distinctUsers,
+                'total_items' => $items->count(),
+            ]);
+
+            return response()->json($response, 200);
+
+        } catch (\Exception $e) {
+            Log::error('[' . __METHOD__ . '] Erro ao buscar estabelecimento detalhado', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+                'stack' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do estabelecimento.'], 500);
+        }
+    }
 
 
 
@@ -714,9 +724,9 @@ $otherEstablishments = Establishment::where('slug', '!=', $slug)
                 : 'Cardápio';
 
             $items = $establishment->items()
-               ->where('is_published', true)
-->where('is_approved', true)
-->where('is_cancelled', false)
+                ->where('is_published', true)
+                ->where('is_approved', true)
+                ->where('is_cancelled', false)
 
                 ->get()
                 ->groupBy(fn($i) => $i->category ?: 'Outros');
