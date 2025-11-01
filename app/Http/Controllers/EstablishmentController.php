@@ -322,6 +322,7 @@ public function store(Request $request)
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
+    
     public function view($slug)
     {
         try {
@@ -348,60 +349,51 @@ public function store(Request $request)
             // =========================
             // REGISTRAR INTERAÇÃO
             // =========================
-            try {
-                Interaction::create([
-                    'entity_type' => 'establishment',
-                    'entity_id' => $establishment->id,
-                    'user_id' => $user?->id,
-                    'interaction_type' => 'view',
-                    'content' => json_encode([
-                        'slug' => $slug,
-                        'ip' => request()->ip(),
-                        'user_agent' => request()->userAgent(),
-                    ]),
-                    'name' => $establishment->name,
-                ]);
-            } catch (\Exception $ex) {
-                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
-            }
+            $establishment->interactions()->create([
+                'entity_type' => 'establishment',
+                'entity_id' => $establishment->id,
+                'user_id' => $user?->id,
+                'interaction_type' => 'view',
+                'content' => [
+                    'slug' => $slug,
+                    'ip' => request()->ip(),
+                    'user_agent' => request()->userAgent(),
+                ],
+                'name' => $establishment->name,
+            ]);
 
             // =========================
-            // MÉTRICAS DE INTERAÇÕES
+            // INTERAÇÕES DO ESTABELECIMENTO
             // =========================
-            $totalViews = Interaction::where('entity_type', 'establishment')
-                ->where('entity_id', $establishment->id)
-                ->count();
+            $interactions = $establishment->interactions()
+                ->where('interaction_type', 'view')
+                ->with('user:id,first_name,last_name,email,avatar,user_name')
+                ->get();
 
-            $userInteractions = Interaction::where('entity_type', 'establishment')
-                ->where('entity_id', $establishment->id)
-                ->select(
-                    'user_id',
-                    DB::raw('COUNT(*) as total_views'),
-                    DB::raw('MIN(created_at) as first_view'),
-                    DB::raw('MAX(created_at) as last_view'),
-                    DB::raw('MAX(content) as last_content')
-                )
+            $totalViews = $interactions->count();
+            $userInteractions = $interactions
                 ->groupBy('user_id')
-                ->with(['user:id,first_name,last_name,email,avatar,user_name'])
-                ->orderByDesc('total_views')
-                ->get()
-                ->map(function ($interaction) {
-                    $content = json_decode($interaction->last_content ?? '{}', true);
+                ->map(function ($group) {
+                    $first = $group->first();
+                    $last = $group->last();
+                    $user = $first->user;
                     return [
-                        'user_id' => $interaction->user_id,
-                        'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
-                        'user_email' => $interaction->user?->email,
-                        'user_avatar' => $interaction->user?->avatar,
-                        'total_views' => (int) $interaction->total_views,
-                        'first_view' => $interaction->first_view,
-                        'last_view' => $interaction->last_view,
-                        'ip' => $content['ip'] ?? null,
-                        'user_agent' => $content['user_agent'] ?? null,
+                        'user_id' => $user?->id,
+                        'user_name' => trim($user?->first_name . ' ' . $user?->last_name),
+                        'user_email' => $user?->email,
+                        'user_avatar' => $user?->avatar,
+                        'total_views' => $group->count(),
+                        'first_view' => $group->min('created_at'),
+                        'last_view' => $group->max('created_at'),
+                        'ip' => $last->content['ip'] ?? null,
+                        'user_agent' => $last->content['user_agent'] ?? null,
                     ];
-                });
+                })
+                ->sortByDesc('total_views')
+                ->values();
 
             $distinctUsers = $userInteractions->count();
-            $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
+            $mostActiveUser = $userInteractions->first();
             $lastUser = $userInteractions->sortByDesc('last_view')->first();
 
             $interactionSummary = [
@@ -419,40 +411,79 @@ public function store(Request $request)
             ];
 
             // =========================
-            // OUTROS ESTABELECIMENTOS (CORRIGIDO)
+            // OUTROS ESTABELECIMENTOS
             // =========================
-            // OUTROS ESTABELECIMENTOS (corrigido)// =========================
-// OUTROS ESTABELECIMENTOS (MESMO APP)
-// =========================
             $otherEstablishments = Establishment::where('slug', '!=', $slug)
                 ->where('app_id', $establishment->app_id)
                 ->inRandomOrder()
                 ->limit(6)
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'logo',
-                    'city',
-                    'category',
-                    'app_id'
-                ]);
-
-
+                ->withCount(['interactions as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }])
+                ->get(['id', 'name', 'slug', 'logo', 'city', 'category', 'app_id']);
 
             // =========================
-            // MÉTRICAS DE ITENS E SERVIÇOS
+            // ITENS E SERVIÇOS
             // =========================
             $items = $establishment->items ?? collect();
+
+            $items->loadCount(['interactions as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }]);
+
             $services = $items->filter(fn($i) => Str::contains(Str::lower($i->type), 'serv'));
             $products = $items->filter(fn($i) => !Str::contains(Str::lower($i->type), 'serv'));
 
+            $itemsInteractions = $items->map(function ($item) {
+                $interactions = $item->interactions()->where('interaction_type', 'view')->with('user')->get();
+                $grouped = $interactions->groupBy('user_id')->map(function ($g) {
+                    $user = $g->first()->user;
+                    return [
+                        'user_id' => $user?->id,
+                        'user_name' => trim($user?->first_name . ' ' . $user?->last_name),
+                        'views' => $g->count(),
+                    ];
+                });
+                return [
+                    'item_id' => $item->id,
+                    'item_name' => $item->name,
+                    'total_views' => $interactions->count(),
+                    'most_active_user' => $grouped->sortByDesc('views')->first(),
+                ];
+            });
+
+            // =========================
+            // EMPLOYERS (COLABORADORES)
+            // =========================
+            $employers = $establishment->employers ?? collect();
+            $employers->load(['user', 'interactions' => fn($q) => $q->where('interaction_type', 'view')]);
+
+            $employerMetrics = $employers->map(function ($e) {
+                $totalViews = $e->interactions->count();
+                $mostActive = $e->interactions->groupBy('user_id')->map(fn($g) => [
+                    'user_id' => $g->first()->user_id,
+                    'views' => $g->count(),
+                ])->sortByDesc('views')->first();
+
+                return [
+                    'employer_id' => $e->id,
+                    'employer_name' => trim($e->user?->first_name . ' ' . $e->user?->last_name),
+                    'total_views' => $totalViews,
+                    'most_active_user' => $mostActive,
+                ];
+            });
+
+            // =========================
+            // MÉTRICAS GERAIS
+            // =========================
             $metrics = [
                 'total_items' => $items->count(),
                 'total_services' => $services->count(),
                 'total_products' => $products->count(),
                 'total_views' => $totalViews,
                 'unique_users' => $distinctUsers,
+                'total_employers' => $employers->count(),
+                'total_item_views' => $itemsInteractions->sum('total_views'),
             ];
 
             // =========================
@@ -477,7 +508,9 @@ public function store(Request $request)
                 'items' => $items,
                 'services' => $services->values(),
                 'products' => $products->values(),
-                'collaborators' => $establishment->employers,
+                'collaborators' => $employers,
+                'employer_metrics' => $employerMetrics,
+                'items_interactions' => $itemsInteractions,
                 'interaction_summary' => $interactionSummary,
                 'user_interactions' => $userInteractions,
                 'metrics' => $metrics,
@@ -503,7 +536,6 @@ public function store(Request $request)
             return response()->json(['error' => 'Ocorreu um erro ao buscar os detalhes do estabelecimento.'], 500);
         }
     }
-
 
 
     public function show($id)
