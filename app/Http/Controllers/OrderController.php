@@ -78,15 +78,11 @@ class OrderController extends Controller
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|integer|exists:items,id',
             'items.*.quantity' => 'required|integer|min:1',
-            'items.*.additions' => 'nullable|array',
-            'items.*.additions.*' => 'integer|exists:items,id',
-            'items.*.removals' => 'nullable|array',
-            'items.*.removals.*' => 'integer|exists:items,id',
             'customer_name' => 'required|string|max:255',
             'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
             'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
             'payment_status' => 'required|string|in:pending,paid,failed',
-            'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
+            'payment_method' => 'required|string|max:255',
             'notes' => 'nullable|string|max:500',
             'customer_phone' => 'nullable|string|max:20',
             'customer_cpf' => 'nullable|string|max:20',
@@ -96,12 +92,13 @@ class OrderController extends Controller
 
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🕒 Trata timezone corretamente
+        // 🕒 Sempre interpreta o horário recebido como local (BR)
         $orderDate = isset($data['order_datetime'])
-            ? Carbon::parse($data['order_datetime'])->setTimezone('America/Sao_Paulo')
+            ? Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')
             : $now->copy();
 
-        $orderDateUtc = $orderDate->copy()->utc();
+        // Salva em UTC (1 conversão apenas)
+        $orderDateUtc = $orderDate->copy()->setTimezone('UTC');
 
         $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
         $type = $isScheduled ? 'appointment' : 'service';
@@ -122,27 +119,87 @@ class OrderController extends Controller
             }
         }
 
-        // 🚫 BLOQUEIO ABSOLUTO DE HORÁRIO IGUAL
-        if (!empty($data['attendant_id'])) {
-            $existsSame = \App\Models\Order::where('attendant_id', $data['attendant_id'])
-                ->where('order_datetime', $orderDateUtc) // compara UTC
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->exists();
-
-            if ($existsSame) {
-                DB::rollBack();
-                return response()->json(['error' => 'Já existe um pedido com este colaborador neste mesmo horário.'], 422);
-            }
-        }
-
-        // 🧮 Calcula duração total
+        // 🧮 Calcula duração total dos serviços
         $totalDuration = 0;
         foreach ($data['items'] as $entry) {
             $item = \App\Models\Item::findOrFail($entry['item_id']);
             $totalDuration += $item->duration ?? 0;
         }
 
-        // 🔢 Gera número e código do pedido
+        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+        // 🚫 Verifica conflitos de agendamento
+        if ($isScheduled && !empty($data['attendant_id'])) {
+            $employerId = $data['attendant_id'];
+            $date = $orderDate->format('Y-m-d');
+            $dayOfWeek = strtolower($orderDate->format('l'));
+
+            // 🔹 Verifica se está dentro do expediente
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('is_active', true)
+                ->where('type', 'work')
+                ->get();
+
+            if ($schedules->isEmpty()) {
+                return response()->json(['error' => 'O colaborador não possui expediente neste dia.'], 422);
+            }
+
+            $isInsideSchedule = $schedules->contains(function ($s) use ($date, $orderDate, $orderDateEnd) {
+                $workStart = Carbon::parse("{$date} {$s->start_time}", 'America/Sao_Paulo');
+                $workEnd = Carbon::parse("{$date} {$s->end_time}", 'America/Sao_Paulo');
+                return $orderDate->gte($workStart) && $orderDateEnd->lte($workEnd);
+            });
+
+            if (!$isInsideSchedule) {
+                return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
+            }
+
+            // 🚫 Impede horários duplicados ou sobrepostos
+            $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->whereBetween('order_datetime', [
+                    Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->setTimezone('UTC'),
+                    Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->setTimezone('UTC'),
+                ])
+                ->get(['order_datetime', 'total_duration']);
+
+            $hasConflict = false;
+            foreach ($existingAppointments as $a) {
+                $aStart = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 30);
+                if ($orderDate->lt($aEnd) && $orderDateEnd->gt($aStart)) {
+                    $hasConflict = true;
+                    break;
+                }
+            }
+
+            if ($hasConflict) {
+                DB::rollBack();
+                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+            }
+        }
+
+        // 🔍 Verifica se itens pertencem ao estabelecimento
+        $itemIds = collect($data['items'])->pluck('item_id');
+        $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
+            ->where(function ($q) use ($data) {
+                $q->where('entity_name', '!=', $data['entity_name'])
+                    ->orWhere('entity_id', '!=', $data['entity_id']);
+            })
+            ->pluck('name')
+            ->toArray();
+
+        if (!empty($invalidItems)) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
+        // 🔢 Gera número sequencial e código de acesso
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
@@ -153,7 +210,8 @@ class OrderController extends Controller
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDateUtc, // salvo sempre em UTC
+            'order_datetime' => $orderDateUtc, // ✅ UTC correto
+
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'] ?? null,
             'client_id' => null,
@@ -173,9 +231,8 @@ class OrderController extends Controller
             'total_duration' => $totalDuration,
         ]);
 
-        // 💰 Adiciona os itens
+        // 💰 Calcula total e adiciona itens
         $total = 0;
-        $totalDuration = 0;
 
         foreach ($data['items'] as $entry) {
             $item = \App\Models\Item::findOrFail($entry['item_id']);
@@ -189,35 +246,11 @@ class OrderController extends Controller
                 'subtotal' => $subtotal,
             ]);
 
-            // Adições
-            if (!empty($entry['additions'])) {
-                foreach ($entry['additions'] as $addId) {
-                    $orderItem->modifiers()->create([
-                        'modifier_id' => $addId,
-                        'type' => 'addition',
-                    ]);
-                    $addItem = \App\Models\Item::find($addId);
-                    $total += $addItem->price * $qty;
-                }
-            }
-
-            // Remoções
-            if (!empty($entry['removals'])) {
-                foreach ($entry['removals'] as $remId) {
-                    $orderItem->modifiers()->create([
-                        'modifier_id' => $remId,
-                        'type' => 'removal',
-                    ]);
-                }
-            }
-
             $total += $subtotal;
-            $totalDuration += $item->duration ?? 0;
         }
 
         $order->update([
             'total_price' => $total,
-            'total_duration' => $totalDuration,
         ]);
 
         DB::commit();
@@ -226,7 +259,7 @@ class OrderController extends Controller
             'message' => $isScheduled
                 ? 'Agendamento registrado com sucesso!'
                 : 'Atendimento registrado com sucesso!',
-            'order' => $order->load('items.item', 'items.modifiers'),
+            'order' => $order->load('items.item'),
         ], 201);
 
     } catch (ValidationException $e) {
