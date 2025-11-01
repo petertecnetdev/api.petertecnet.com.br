@@ -134,9 +134,10 @@ class EmployerScheduleController extends Controller
                 })
                 ->whereNotIn('status', ['cancelled', 'rejected'])
                 ->whereBetween('order_datetime', [
-                    Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
-                    Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
-                ])
+    Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->setTimezone('UTC'),
+    Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->setTimezone('UTC'),
+])
+
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
                 ->get(['order_datetime', 'total_duration']);
 

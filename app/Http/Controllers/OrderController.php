@@ -211,7 +211,8 @@ class OrderController extends Controller
                 'entity_name' => $data['entity_name'],
                 'entity_id' => $data['entity_id'],
                 'order_number' => $orderNumber,
-                'order_datetime' => $orderDate,
+                'order_datetime' => $orderDate->copy()->setTimezone('UTC'),
+
                 'created_by' => $user->id ?? null,
                 'attendant_id' => $data['attendant_id'] ?? null,
                 'client_id' => null,
