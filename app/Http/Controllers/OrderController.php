@@ -59,8 +59,7 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }
-public function store(Request $request)
+    }public function store(Request $request)
 {
     DB::beginTransaction();
 
@@ -97,7 +96,7 @@ public function store(Request $request)
 
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🕒 Corrige timezone do agendamento vindo do front (que envia -03:00)
+        // 🕒 Trata timezone corretamente
         $orderDate = isset($data['order_datetime'])
             ? Carbon::parse($data['order_datetime'])->setTimezone('America/Sao_Paulo')
             : $now->copy();
@@ -112,7 +111,7 @@ public function store(Request $request)
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        // 🔒 Verifica se o colaborador pertence ao estabelecimento
+        // 🔒 Verifica se colaborador pertence ao estabelecimento
         if (!empty($data['attendant_id'])) {
             $isEmployerOfEntity = \App\Models\Employer::where('id', $data['attendant_id'])
                 ->where('establishment_id', $data['entity_id'])
@@ -123,6 +122,19 @@ public function store(Request $request)
             }
         }
 
+        // 🚫 BLOQUEIO ABSOLUTO DE HORÁRIO IGUAL
+        if (!empty($data['attendant_id'])) {
+            $existsSame = \App\Models\Order::where('attendant_id', $data['attendant_id'])
+                ->where('order_datetime', $orderDateUtc) // compara UTC
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->exists();
+
+            if ($existsSame) {
+                DB::rollBack();
+                return response()->json(['error' => 'Já existe um pedido com este colaborador neste mesmo horário.'], 422);
+            }
+        }
+
         // 🧮 Calcula duração total
         $totalDuration = 0;
         foreach ($data['items'] as $entry) {
@@ -130,84 +142,18 @@ public function store(Request $request)
             $totalDuration += $item->duration ?? 0;
         }
 
-        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-        // 🚫 Verifica conflito de horários
-        if ($isScheduled && !empty($data['attendant_id'])) {
-            $employerId = $data['attendant_id'];
-            $date = $orderDate->format('Y-m-d');
-            $dayOfWeek = strtolower($orderDate->format('l'));
-
-            $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
-                ->where('day_of_week', $dayOfWeek)
-                ->where('is_active', true)
-                ->get();
-
-            if ($schedules->isEmpty()) {
-                return response()->json(['error' => 'O colaborador não possui expediente neste dia.'], 422);
-            }
-
-            $isInsideSchedule = $schedules->contains(function ($s) use ($date, $orderDate, $orderDateEnd) {
-                $workStart = Carbon::parse("{$date} {$s->start_time}", 'America/Sao_Paulo');
-                $workEnd = Carbon::parse("{$date} {$s->end_time}", 'America/Sao_Paulo');
-                return $orderDate->gte($workStart) && $orderDateEnd->lte($workEnd);
-            });
-
-            if (!$isInsideSchedule) {
-                return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
-            }
-
-            // 🔍 Busca agendamentos existentes no mesmo dia
-            $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
-                ->whereBetween('order_datetime', [
-                    Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
-                    Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
-                ])
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->get();
-
-            $hasConflict = $existingAppointments->contains(function ($a) use ($orderDate, $orderDateEnd) {
-                $aStart = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
-                $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 0);
-                return $orderDate->lt($aEnd) && $orderDateEnd->gt($aStart);
-            });
-
-            if ($hasConflict) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-            }
-        }
-
-        // 🔍 Verifica se os itens pertencem ao estabelecimento
-        $itemIds = collect($data['items'])->pluck('item_id');
-        $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
-            ->where(function ($q) use ($data) {
-                $q->where('entity_name', '!=', $data['entity_name'])
-                    ->orWhere('entity_id', '!=', $data['entity_id']);
-            })
-            ->pluck('name')
-            ->toArray();
-
-        if (!empty($invalidItems)) {
-            DB::rollBack();
-            return response()->json([
-                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                'invalid_items' => $invalidItems,
-            ], 422);
-        }
-
         // 🔢 Gera número e código do pedido
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // 💾 Cria o pedido
+        // 💾 Cria o pedido principal
         $order = \App\Models\Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDateUtc, // ✅ salvo em UTC
+            'order_datetime' => $orderDateUtc, // salvo sempre em UTC
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'] ?? null,
             'client_id' => null,
@@ -227,7 +173,7 @@ public function store(Request $request)
             'total_duration' => $totalDuration,
         ]);
 
-        // 💰 Calcula total e adiciona itens
+        // 💰 Adiciona os itens
         $total = 0;
         $totalDuration = 0;
 
@@ -243,6 +189,7 @@ public function store(Request $request)
                 'subtotal' => $subtotal,
             ]);
 
+            // Adições
             if (!empty($entry['additions'])) {
                 foreach ($entry['additions'] as $addId) {
                     $orderItem->modifiers()->create([
@@ -254,6 +201,7 @@ public function store(Request $request)
                 }
             }
 
+            // Remoções
             if (!empty($entry['removals'])) {
                 foreach ($entry['removals'] as $remId) {
                     $orderItem->modifiers()->create([
@@ -297,7 +245,6 @@ public function store(Request $request)
         ], 500);
     }
 }
-
 
     public function listByEntity(Request $request)
     {
