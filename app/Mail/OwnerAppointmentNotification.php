@@ -13,27 +13,26 @@ class OwnerAppointmentNotification extends Mailable
 
     public $order;
     public $appUrl;
+    public $ownerName;
 
-    public function __construct(Order $order, $appUrl = null)
+    public function __construct(Order $order, $ownerName = null, $appUrl = null)
     {
         $this->order = $order;
+        $this->ownerName = $ownerName;
         $this->appUrl = $appUrl;
     }
 
     public function build()
     {
-        // Nome do cliente — com fallback seguro
         $customerName =
             optional($this->order->client)->first_name
             ?? $this->order->customer_name
             ?? 'Cliente';
 
-        // Nome do colaborador (Employer -> User)
         $attendantName =
             optional(optional($this->order->attendant)->user)->first_name
             ?? 'Colaborador';
 
-        // Nome do estabelecimento (compatível com entity() e establishment)
         $establishmentName =
             optional($this->order->entity)->name
             ?? optional($this->order->establishment)->name
@@ -42,8 +41,7 @@ class OwnerAppointmentNotification extends Mailable
         return $this->subject('📢 Novo agendamento em seu estabelecimento')
             ->view('emails.appointments.owner_appointment')
             ->with([
-                'order' => $this->order,
-                'appUrl' => $this->appUrl,
+                'ownerName' => $this->ownerName ?? 'Proprietário',
                 'customerName' => $customerName,
                 'attendantName' => $attendantName,
                 'date' => $this->order->order_datetime
@@ -55,6 +53,7 @@ class OwnerAppointmentNotification extends Mailable
                     ->map(fn($i) => $i->item->name)
                     ->implode(', '),
                 'establishment' => $establishmentName,
+                'appUrl' => $this->appUrl,
             ]);
     }
 }

@@ -236,10 +236,12 @@ public function store(Request $request)
             }
 
             // 🔹 Dono do estabelecimento
-            if ($owner && !empty($owner->email)) {
-                Mail::to($owner->email)
-                    ->queue(new OwnerAppointmentNotification($order, $attendant, $user));
-            }
+if ($owner && !empty($owner->email)) {
+    $ownerName = trim("{$owner->first_name} {$owner->last_name}");
+    Mail::to($owner->email)
+        ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
+}
+
 
             Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
                 'order_id' => $order->id,
