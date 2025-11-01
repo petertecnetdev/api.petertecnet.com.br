@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Cache;
 
 class Establishment extends Model
 {
@@ -26,13 +27,8 @@ class Establishment extends Model
         'is_cancelled' => 'boolean',
     ];
 
-    protected $appends = [
-        'items_interactions',
-        'interaction_summary',
-        'user_interactions',
-        'other_establishments',
-        'metrics',
-    ];
+    // ⚙️ Removido para evitar loop infinito — tudo será chamado manualmente no controller
+    protected $appends = ['metrics'];
 
     protected static function boot()
     {
@@ -95,77 +91,26 @@ class Establishment extends Model
         return $this->interactions()->where('interaction_type', 'view');
     }
 
-    public function latestViews()
-    {
-        return $this->views()->latest()->limit(10);
-    }
-
-    public function uniqueViewers()
-    {
-        return $this->views()
-            ->select('user_id')
-            ->distinct()
-            ->with('user:id,first_name,last_name,user_name,avatar,email');
-    }
-
-    public function mostActiveViewer()
-    {
-        return $this->views()
-            ->selectRaw('user_id, COUNT(*) as total')
-            ->groupBy('user_id')
-            ->orderByDesc('total')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->first();
-    }
-
-    public function totalViewsCount()
-    {
-        return $this->views()->count();
-    }
-
     /* =======================
        MÉTRICAS E INTERAÇÕES
        ======================= */
 
     public function getMetricsAttribute()
     {
-        return [
-            'total_items'     => $this->items()->count(),
-            'total_employers' => $this->employers()->count(),
-            'total_views'     => $this->views()->count(),
-            'unique_users'    => $this->views()->pluck('user_id')->unique()->count(),
-        ];
-    }
-
-    public function getInteractionSummaryAttribute()
-    {
-        $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
-
-        $mostActive = $views->groupBy('user_id')->map(function ($g) {
-            $u = $g->first()->user;
+        return Cache::remember("establishment_{$this->id}_metrics", 120, function () {
             return [
-                'user_id' => $u?->id,
-                'user_name' => $u?->user_name,
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'avatar' => $u?->avatar,
-                'email' => $u?->email,
-                'total' => $g->count(),
-                'last_view' => $g->max('created_at'),
+                'total_items'     => $this->items()->count(),
+                'total_employers' => $this->employers()->count(),
+                'total_views'     => $this->views()->count(),
+                'unique_users'    => $this->views()->pluck('user_id')->unique()->count(),
             ];
-        })->sortByDesc('total')->first();
-
-        return [
-            'total_views' => $views->count(),
-            'unique_users' => $views->pluck('user_id')->unique()->count(),
-            'most_active_user' => $mostActive,
-            'last_view_user' => $views->sortByDesc('created_at')->first()?->user,
-        ];
+        });
     }
 
-    public function getItemsInteractionsAttribute()
+    public function interactionSummary()
     {
-        return $this->items->map(function ($item) {
-            $views = $item->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
+        return Cache::remember("establishment_{$this->id}_summary", 120, function () {
+            $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
 
             $mostActive = $views->groupBy('user_id')->map(function ($g) {
                 $u = $g->first()->user;
@@ -174,50 +119,83 @@ class Establishment extends Model
                     'user_name' => $u?->user_name,
                     'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
                     'avatar' => $u?->avatar,
-                    'total_views' => $g->count(),
+                    'email' => $u?->email,
+                    'total' => $g->count(),
+                    'last_view' => $g->max('created_at'),
                 ];
-            })->sortByDesc('total_views')->first();
+            })->sortByDesc('total')->first();
 
             return [
-                'item_id' => $item->id,
                 'total_views' => $views->count(),
                 'unique_users' => $views->pluck('user_id')->unique()->count(),
                 'most_active_user' => $mostActive,
+                'last_view_user' => $views->sortByDesc('created_at')->first()?->user,
             ];
         });
     }
 
-    public function getUserInteractionsAttribute()
+    public function itemsInteractions()
     {
-        $userIds = collect()
-            ->merge($this->views()->pluck('user_id')->toArray())
-            ->merge($this->items->flatMap(fn($i) => $i->views()->pluck('user_id')->toArray()))
-            ->merge($this->employers->flatMap(fn($e) => $e->views()->pluck('user_id')->toArray()))
-            ->filter()
-            ->unique()
-            ->values();
+        return Cache::remember("establishment_{$this->id}_items_interactions", 120, function () {
+            return $this->items->map(function ($item) {
+                $views = $item->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
 
-        return User::whereIn('id', $userIds)
-            ->get(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'email'])
-            ->map(function ($u) {
+                $mostActive = $views->groupBy('user_id')->map(function ($g) {
+                    $u = $g->first()->user;
+                    return [
+                        'user_id' => $u?->id,
+                        'user_name' => $u?->user_name,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'avatar' => $u?->avatar,
+                        'total_views' => $g->count(),
+                    ];
+                })->sortByDesc('total_views')->first();
+
                 return [
-                    'user_id' => $u->id,
-                    'user_name' => $u->user_name,
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'avatar' => $u->avatar,
-                    'email' => $u->email,
-                    'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                    'item_id' => $item->id,
+                    'total_views' => $views->count(),
+                    'unique_users' => $views->pluck('user_id')->unique()->count(),
+                    'most_active_user' => $mostActive,
                 ];
             });
+        });
     }
 
-    public function getOtherEstablishmentsAttribute()
+    public function userInteractions()
     {
-        return self::where('app_id', $this->app_id)
-            ->where('id', '!=', $this->id)
-            ->withCount(['views as total_views'])
-            ->limit(6)
-            ->get(['id', 'name', 'slug', 'logo', 'city', 'category']);
+        return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
+            $userIds = collect()
+                ->merge($this->views()->pluck('user_id')->toArray())
+                ->merge($this->items->flatMap(fn($i) => $i->views()->pluck('user_id')->toArray()))
+                ->merge($this->employers->flatMap(fn($e) => $e->views()->pluck('user_id')->toArray()))
+                ->filter()
+                ->unique()
+                ->values();
+
+            return User::whereIn('id', $userIds)
+                ->get(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'email'])
+                ->map(function ($u) {
+                    return [
+                        'user_id' => $u->id,
+                        'user_name' => $u->user_name,
+                        'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                        'avatar' => $u->avatar,
+                        'email' => $u->email,
+                        'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                    ];
+                });
+        });
+    }
+
+    public function otherEstablishments()
+    {
+        return Cache::remember("establishment_{$this->id}_related", 120, function () {
+            return self::where('app_id', $this->app_id)
+                ->where('id', '!=', $this->id)
+                ->withCount(['views as total_views'])
+                ->limit(6)
+                ->get(['id', 'name', 'slug', 'logo', 'city', 'category']);
+        });
     }
 
     /* =======================
