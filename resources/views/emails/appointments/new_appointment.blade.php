@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Novo Agendamento Recebido</title>
+  <title>Nova Solicitação de Agendamento</title>
   <style>
     body, html {
       margin: 0;
@@ -136,31 +136,31 @@
     <div class="container">
       <div class="header">
         <img src="https://petertecnet.com.br/logo.png" alt="Logo Peter Tecnet" class="logo" />
-        <h1>📅 Novo Agendamento Recebido!</h1>
+        <h1>📅 Nova Solicitação de Agendamento</h1>
       </div>
 
       <div class="content">
-        <p>Olá,</p>
+        <p>Olá <strong>{{ $attendantName }}</strong>,</p>
+
         <p>
-          Um novo agendamento foi solicitado  em <strong>{{ $establishment }}</strong>.
-          Confira os detalhes abaixo:
+          Você recebeu uma <strong>nova solicitação de agendamento</strong> no estabelecimento <strong>{{ $establishment }}</strong>.
+          Confira os detalhes abaixo e confirme se poderá realizar o atendimento.
         </p>
 
         <div class="appointment-info">
           <p><strong>Cliente:</strong> {{ $customerName }}</p>
-          <p><strong>Colaborador:</strong> {{ $attendantName }}</p>
           <p><strong>Serviços:</strong> {{ $services }}</p>
           <p><strong>Data e Hora:</strong> {{ $date }}</p>
           <p><strong>Estabelecimento:</strong> {{ $establishment }}</p>
         </div>
 
         @if($appUrl)
-        <a href="{{ $appUrl }}" class="button">Ver no Sistema</a>
+        <a href="{{ $appUrl }}" class="button">Ver Solicitação</a>
         @endif
 
         <p>
-          Este é um aviso automático de confirmação de agendamento.<br>
-          Fique atento à sua agenda e prepare-se para o atendimento no horário indicado.
+          Este agendamento está <strong>pendente de confirmação</strong>.<br>
+          Acesse o sistema para <strong>aceitar</strong> ou <strong>recusar</strong> o atendimento.
         </p>
       </div>
 

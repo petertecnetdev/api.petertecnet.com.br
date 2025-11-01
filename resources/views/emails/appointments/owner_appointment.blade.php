@@ -142,7 +142,7 @@
       <div class="content">
         <p>Olá,</p>
         <p>
-          Um novo agendamento foi realizado para o seu estabelecimento <strong>{{ $establishment }}</strong>através de uma de nossas plataformas.
+          Um novo agendamento foi realizado para o seu estabelecimento <strong>{{ $establishment }}</strong> através de uma de nossas plataformas.
           Confira as informações do agendamento abaixo:
         </p>
 
