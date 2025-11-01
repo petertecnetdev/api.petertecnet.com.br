@@ -88,7 +88,7 @@ class EmployerScheduleController extends Controller
             Log::error('EmployerSchedule.destroy error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    } public function availableTimes(Request $request)
+    }public function availableTimes(Request $request)
 {
     try {
         $data = $request->validate([
@@ -103,7 +103,7 @@ class EmployerScheduleController extends Controller
         $dayOfWeek = strtolower(Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🔒 Feriado / folga
+        // 🔒 Bloqueia feriados / folgas
         $isHoliday = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
@@ -113,7 +113,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Horários de expediente do colaborador
+        // 🔹 Carrega os horários de expediente do colaborador
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -124,7 +124,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Agendamentos válidos (do mesmo dia, convertendo UTC → BR)
+        // 🔹 Carrega todos os agendamentos do colaborador nesse dia (UTC no banco)
         $appointments = Order::where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereBetween('order_datetime', [
@@ -134,15 +134,11 @@ class EmployerScheduleController extends Controller
             ->whereIn('appointment_status', ['pending', 'confirmed'])
             ->get(['order_datetime', 'total_duration']);
 
+        // 🔹 Monta lista de períodos ocupados
         $occupied = [];
-
         foreach ($appointments as $a) {
             $start = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
-            $durationMin = (int) ($a->total_duration ?? 0);
-            if ($durationMin <= 0) {
-                $durationMin = 30; // fallback padrão
-            }
-            $end = $start->copy()->addMinutes($durationMin);
+            $end = $start->copy()->addMinutes($a->total_duration ?? 30);
             $occupied[] = [$start, $end];
         }
 
@@ -158,7 +154,7 @@ class EmployerScheduleController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // 🔹 Ordena períodos ocupados
+        // 🔹 Ordena períodos ocupados por início
         usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
         $availableTimes = [];
@@ -167,20 +163,20 @@ class EmployerScheduleController extends Controller
         foreach ($schedules as $schedule) {
             $workStart = Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
-            $step = 15;
+            $step = 15; // intervalo entre horários
             $pointer = $workStart->copy();
 
             while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ❌ Ignora horários já passados (no mesmo dia)
+                // ❌ Ignora horários passados no mesmo dia
                 if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ❌ Ignora horários que conflitam com agendamentos existentes
+                // ❌ Ignora horários que conflitam com ocupados
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -189,6 +185,7 @@ class EmployerScheduleController extends Controller
                     }
                 }
 
+                // ✅ Adiciona horário livre
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -197,6 +194,7 @@ class EmployerScheduleController extends Controller
             }
         }
 
+        // 🔹 Remove duplicados e ordena
         $availableTimes = array_values(array_unique($availableTimes));
         sort($availableTimes);
 
@@ -204,14 +202,17 @@ class EmployerScheduleController extends Controller
 
     } catch (ValidationException $e) {
         return response()->json(['errors' => $e->errors()], 422);
-    } catch (\Exception $e) {
-        Log::error('EmployerSchedule.availableTimes error', [
+    } catch (\Throwable $e) {
+        Log::error('❌ Erro em EmployerSchedule.availableTimes', [
             'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
         ]);
+
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
+
 
     public function reserve(Request $request)
     {

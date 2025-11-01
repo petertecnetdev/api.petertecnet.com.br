@@ -60,10 +60,10 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-
 public function store(Request $request)
 {
     DB::beginTransaction();
+
     try {
         $user = Auth::user();
 
@@ -97,11 +97,12 @@ public function store(Request $request)
 
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🕒 Conversão correta do horário recebido para UTC
+        // 🕒 Corrige timezone do agendamento vindo do front (que envia -03:00)
         $orderDate = isset($data['order_datetime'])
-            ? Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')
+            ? Carbon::parse($data['order_datetime'])->setTimezone('America/Sao_Paulo')
             : $now->copy();
-        $orderDateUtc = $orderDate->copy()->setTimezone('UTC');
+
+        $orderDateUtc = $orderDate->copy()->utc();
 
         $isScheduled = isset($data['order_datetime']) && $orderDate->gt($now);
         $type = $isScheduled ? 'appointment' : 'service';
@@ -131,7 +132,7 @@ public function store(Request $request)
 
         $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-        // 🔒 Verifica conflitos de horário
+        // 🚫 Verifica conflito de horários
         if ($isScheduled && !empty($data['attendant_id'])) {
             $employerId = $data['attendant_id'];
             $date = $orderDate->format('Y-m-d');
@@ -156,8 +157,12 @@ public function store(Request $request)
                 return response()->json(['error' => 'O colaborador não atende neste horário.'], 422);
             }
 
-            // 🚫 Evita conflito com agendamentos existentes
+            // 🔍 Busca agendamentos existentes no mesmo dia
             $existingAppointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->whereBetween('order_datetime', [
+                    Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->utc(),
+                    Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->utc(),
+                ])
                 ->whereIn('appointment_status', ['pending', 'confirmed'])
                 ->get();
 
@@ -196,14 +201,13 @@ public function store(Request $request)
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // 💾 Cria o pedido principal
+        // 💾 Cria o pedido
         $order = \App\Models\Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
             'order_datetime' => $orderDateUtc, // ✅ salvo em UTC
-
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'] ?? null,
             'client_id' => null,
@@ -245,7 +249,7 @@ public function store(Request $request)
                         'modifier_id' => $addId,
                         'type' => 'addition',
                     ]);
-                    $addItem = Item::find($addId);
+                    $addItem = \App\Models\Item::find($addId);
                     $total += $addItem->price * $qty;
                 }
             }
@@ -293,6 +297,7 @@ public function store(Request $request)
         ], 500);
     }
 }
+
 
     public function listByEntity(Request $request)
     {
