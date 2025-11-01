@@ -341,20 +341,21 @@ public function store(Request $request)
             'establishment' => $establishment,
             'items' => $establishment->items,
             'employers' => $establishment->employers,
-            'interaction_summary' => $establishment->fullInteractionsSummary(),
-            'metrics' => $establishment->metrics(),
-            'message' => 'Dados completos do estabelecimento carregados com sucesso.'
+            'items_interactions' => $establishment->items_interactions,
+            'interaction_summary' => $establishment->interaction_summary,
+            'user_interactions' => $establishment->user_interactions,
+            'other_establishments' => $establishment->other_establishments,
+            'metrics' => $establishment->metrics,
+            'message' => 'Dados completos do estabelecimento carregados com sucesso.',
         ], 200);
+
     } catch (\Throwable $e) {
-        Log::error('[EstablishmentController::view] Erro ao carregar', [
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
             'slug' => $slug,
             'message' => $e->getMessage(),
         ]);
 
-        return response()->json([
-            'error' => 'Erro ao carregar estabelecimento.',
-            'details' => $e->getMessage()
-        ], 500);
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
 }
 
