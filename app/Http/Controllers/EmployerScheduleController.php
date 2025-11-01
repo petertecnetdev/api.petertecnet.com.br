@@ -103,7 +103,7 @@ class EmployerScheduleController extends Controller
         $dayOfWeek = strtolower(Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
         $now = Carbon::now('America/Sao_Paulo');
 
-        // 🔒 Feriado ou folga
+        // 🔒 Feriado / folga
         $isHoliday = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
@@ -113,7 +113,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Horários de expediente do colaborador
+        // 🔹 Expediente
         $schedules = EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -124,7 +124,7 @@ class EmployerScheduleController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🔹 Busca os agendamentos existentes do colaborador (UTC no banco)
+        // 🔹 Agendamentos existentes (em UTC no banco)
         $appointments = Order::where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereBetween('order_datetime', [
@@ -134,7 +134,7 @@ class EmployerScheduleController extends Controller
             ->whereIn('appointment_status', ['pending', 'confirmed'])
             ->get(['order_datetime', 'total_duration']);
 
-        // 🔹 Converte horários dos agendamentos para fuso do Brasil
+        // 🔹 Converte todos para fuso de Brasília
         $occupied = [];
         foreach ($appointments as $a) {
             $start = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
@@ -142,7 +142,7 @@ class EmployerScheduleController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // 🔹 Pausas (breaks)
+        // 🔹 Pausas
         $breaks = EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
@@ -154,42 +154,36 @@ class EmployerScheduleController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // 🔹 Ordena períodos ocupados cronologicamente
+        // 🔹 Ordena
         usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
         $availableTimes = [];
 
-        // 🔹 Gera os horários disponíveis dentro do expediente
         foreach ($schedules as $schedule) {
             $workStart = Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
-            $step = 15; // minutos entre os slots
+            $step = 15;
             $pointer = $workStart->copy();
 
             while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // Ignora horários já passados
+                // ⛔ ignora passados
                 if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // Verifica conflito direto com horários ocupados
+                // ⛔ ignora se conflita com agendamento existente
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
-                    // Se o horário começar ou terminar dentro de um agendamento, bloqueia
-                    if ($slotStart->eq($occStart) ||
-                        $slotStart->between($occStart, $occEnd) ||
-                        $slotEnd->between($occStart, $occEnd) ||
-                        ($slotStart->lt($occStart) && $slotEnd->gt($occEnd))) {
+                    if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
                         $hasConflict = true;
                         break;
                     }
                 }
 
-                // Se não tiver conflito, adiciona o horário disponível
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -211,11 +205,9 @@ class EmployerScheduleController extends Controller
             'file' => $e->getFile(),
             'line' => $e->getLine(),
         ]);
-
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
-
 
 
     public function reserve(Request $request)
