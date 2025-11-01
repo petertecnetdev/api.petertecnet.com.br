@@ -42,11 +42,10 @@ class Order extends Model
         'attended_at',
     ];
 
-    protected $casts = [
+      protected $casts = [
         'order_datetime' => 'datetime',
-        'attended_at'    => 'datetime',
-        'total_price'    => 'decimal:2',
-        'total_duration' => 'integer',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     public function items(): HasMany
