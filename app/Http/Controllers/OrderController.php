@@ -61,15 +61,19 @@ class OrderController extends Controller
         ];
     }
 
-    public function store(Request $request)
+public function store(Request $request)
 {
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    }
+
     DB::beginTransaction();
 
     try {
         $user = Auth::user();
 
         Log::info('🟢 Iniciando criação de pedido.', [
-            'user_id' => $user->id ?? null,
+            'user_id' => $user->id,
             'payload' => $request->all(),
         ]);
 
@@ -95,15 +99,17 @@ class OrderController extends Controller
 
         $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
         $now = Carbon::now('America/Sao_Paulo');
-        $isScheduled = $orderDate->gt($now);
-        $type = $isScheduled ? 'appointment' : 'service';
-        $appointmentStatus = $isScheduled ? 'pending' : null;
 
         if ($orderDate->lt($now)) {
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        $employer = \App\Models\Employer::with('user')->where('id', $data['attendant_id'])
+        $isScheduled = $orderDate->gt($now);
+        $type = $isScheduled ? 'appointment' : 'service';
+        $appointmentStatus = $isScheduled ? 'pending' : null;
+
+        $employer = \App\Models\Employer::with('user')
+            ->where('id', $data['attendant_id'])
             ->where('establishment_id', $data['entity_id'])
             ->first();
 
@@ -169,7 +175,7 @@ class OrderController extends Controller
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
             'order_datetime' => $orderDate,
-            'created_by' => $user->id ?? null,
+            'created_by' => $user->id,
             'attendant_id' => $data['attendant_id'],
             'customer_name' => $data['customer_name'],
             'customer_phone' => $data['customer_phone'] ?? null,
@@ -215,10 +221,11 @@ class OrderController extends Controller
             $establishment = Establishment::with('user')->find($data['entity_id']);
             $owner = $establishment?->user;
             $attendant = $employer->user;
+            $clientEmail = $user?->email;
 
             // 🔹 Cliente
-            if (!empty($data['customer_phone']) || !empty($data['customer_cpf'])) {
-                Mail::to($user?->email ?? null)
+            if (!empty($clientEmail)) {
+                Mail::to($clientEmail)
                     ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
             }
 
@@ -238,7 +245,7 @@ class OrderController extends Controller
                 'order_id' => $order->id,
                 'owner_email' => $owner?->email,
                 'attendant_email' => $attendant?->email,
-                'client_email' => $user?->email,
+                'client_email' => $clientEmail,
             ]);
         } catch (\Throwable $ex) {
             Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
@@ -268,6 +275,7 @@ class OrderController extends Controller
         ], 500);
     }
 }
+
 
 
     public function listByEntity(Request $request)
