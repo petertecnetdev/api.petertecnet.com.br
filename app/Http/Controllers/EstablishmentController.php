@@ -111,6 +111,14 @@ class EstablishmentController extends Controller
                     }
                 }
             }
+if (!empty($data['attendant_id'])) {
+    $employer = \App\Models\Employer::where('user_id', $data['attendant_id'])
+        ->orWhere('id', $data['attendant_id'])
+        ->first();
+    if ($employer) {
+        $data['attendant_id'] = $employer->user_id;
+    }
+}
 
             $order = Order::create([
     'app_id' => $data['app_id'],
@@ -136,11 +144,13 @@ class EstablishmentController extends Controller
 ]);
 
             $total = 0;
+            $totalDuration = 0;
             foreach ($data['items'] as $entry) {
                 $item = Item::findOrFail($entry['item_id']);
                 $qty = $entry['quantity'];
                 $unitPrice = $item->price;
                 $subtotal = $unitPrice * $qty;
+                  $totalDuration += $duration; 
 
                 $orderItem = $order->items()->create([
                     'item_id' => $item->id,
@@ -172,7 +182,10 @@ class EstablishmentController extends Controller
                 $total += $subtotal;
             }
 
-            $order->update(['total_price' => $total]);
+            $order->update([
+    'total_price' => $total,
+    'total_duration' => $totalDuration, // 🟢 adiciona o total_duration
+]);
             Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
 
             return response()->json([
