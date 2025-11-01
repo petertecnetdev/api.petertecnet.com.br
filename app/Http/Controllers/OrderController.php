@@ -60,7 +60,6 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-
 public function store(Request $request)
 {
     DB::beginTransaction();
@@ -95,14 +94,14 @@ public function store(Request $request)
         // ============================
         // 🕒 TRATAMENTO DE DATA/HORA
         // ============================
-        // Interpreta a hora enviada como horário local do Brasil (sem UTC)
-        $orderDate = Carbon::createFromFormat(
-            'Y-m-d\TH:i:s',
-            $data['order_datetime'],
-            new \DateTimeZone('America/Sao_Paulo')
-        );
+        $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo');
 
-        // Converte apenas 1x para UTC para salvar corretamente
+        // Garante que está no fuso do Brasil (sem UTC implícito)
+        if ($orderDate->timezoneName !== 'America/Sao_Paulo') {
+            $orderDate->setTimezone('America/Sao_Paulo');
+        }
+
+        // Salva em UTC (apenas uma conversão)
         $orderDateUtc = $orderDate->copy()->setTimezone('UTC');
 
         $now = Carbon::now('America/Sao_Paulo');
@@ -137,7 +136,7 @@ public function store(Request $request)
         $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
 
         // ============================
-        // 🚫 VERIFICA CONFLITOS
+        // 🚫 VERIFICA CONFLITOS DE HORÁRIO
         // ============================
         $existingAppointments = \App\Models\Order::where('attendant_id', $data['attendant_id'])
             ->where('type', 'appointment')
@@ -200,7 +199,7 @@ public function store(Request $request)
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDateUtc, // ✅ UTC real, sem erro de fuso
+            'order_datetime' => $orderDateUtc, // ✅ UTC correto
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'],
             'customer_name' => $data['customer_name'],
@@ -261,6 +260,7 @@ public function store(Request $request)
         ], 500);
     }
 }
+
 
     public function listByEntity(Request $request)
     {
