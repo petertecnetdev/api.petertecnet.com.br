@@ -59,8 +59,7 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }
-public function store(Request $request)
+    }public function store(Request $request)
 {
     DB::beginTransaction();
 
@@ -77,7 +76,8 @@ public function store(Request $request)
             'entity_name' => 'required|string|max:255',
             'entity_id' => 'required|integer',
             'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.item_id' => 'required',
+            'items.*.item_id.*' => 'integer|exists:items,id',
             'items.*.quantity' => 'required|integer|min:1',
             'customer_name' => 'required|string|max:255',
             'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
@@ -91,9 +91,6 @@ public function store(Request $request)
             'attendant_id' => 'required|integer|exists:employers,id',
         ]);
 
-        // =========================================
-        // 🕒 TRATA HORA LOCAL — SEM UTC, SEM DESLOCAR
-        // =========================================
         $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
         $now = Carbon::now('America/Sao_Paulo');
         $isScheduled = $orderDate->gt($now);
@@ -104,9 +101,6 @@ public function store(Request $request)
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        // =========================================
-        // 🔒 VALIDA COLABORADOR
-        // =========================================
         $employer = \App\Models\Employer::where('id', $data['attendant_id'])
             ->where('establishment_id', $data['entity_id'])
             ->first();
@@ -115,20 +109,17 @@ public function store(Request $request)
             return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
         }
 
-        // =========================================
-        // ⏱️ CÁLCULO DE DURAÇÃO TOTAL
-        // =========================================
         $totalDuration = 0;
         foreach ($data['items'] as $entry) {
-            $item = \App\Models\Item::findOrFail($entry['item_id']);
-            $totalDuration += $item->duration ?? 0;
+            $itemIds = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+            foreach ($itemIds as $id) {
+                $item = \App\Models\Item::findOrFail($id);
+                $totalDuration += $item->duration ?? 0;
+            }
         }
 
         $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-        // =========================================
-        // 🚫 BLOQUEIA AGENDAMENTO DUPLICADO
-        // =========================================
         $hasConflict = \App\Models\Order::where('attendant_id', $data['attendant_id'])
             ->where('type', 'appointment')
             ->whereIn('appointment_status', ['pending', 'confirmed'])
@@ -146,10 +137,10 @@ public function store(Request $request)
             return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
         }
 
-        // =========================================
-        // 🧾 ITENS DO ESTABELECIMENTO
-        // =========================================
-        $itemIds = collect($data['items'])->pluck('item_id');
+        $itemIds = collect($data['items'])
+            ->flatMap(fn($entry) => is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']])
+            ->toArray();
+
         $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
             ->where(function ($q) use ($data) {
                 $q->where('entity_name', '!=', $data['entity_name'])
@@ -166,22 +157,16 @@ public function store(Request $request)
             ], 422);
         }
 
-        // =========================================
-        // 🔢 NÚMERO E CÓDIGO
-        // =========================================
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // =========================================
-        // 💾 CRIA O PEDIDO
-        // =========================================
         $order = \App\Models\Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDate, // ✅ SEM UTC, EXATAMENTE COMO ENVIADO
+            'order_datetime' => $orderDate,
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'],
             'customer_name' => $data['customer_name'],
@@ -200,22 +185,22 @@ public function store(Request $request)
             'total_duration' => $totalDuration,
         ]);
 
-        // =========================================
-        // 💰 ITENS
-        // =========================================
         $total = 0;
         foreach ($data['items'] as $entry) {
-            $item = \App\Models\Item::findOrFail($entry['item_id']);
-            $subtotal = $item->price * $entry['quantity'];
+            $itemIds = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+            foreach ($itemIds as $id) {
+                $item = \App\Models\Item::findOrFail($id);
+                $subtotal = $item->price * $entry['quantity'];
 
-            $order->items()->create([
-                'item_id' => $item->id,
-                'quantity' => $entry['quantity'],
-                'unit_price' => $item->price,
-                'subtotal' => $subtotal,
-            ]);
+                $order->items()->create([
+                    'item_id' => $item->id,
+                    'quantity' => $entry['quantity'],
+                    'unit_price' => $item->price,
+                    'subtotal' => $subtotal,
+                ]);
 
-            $total += $subtotal;
+                $total += $subtotal;
+            }
         }
 
         $order->update(['total_price' => $total]);
@@ -226,7 +211,6 @@ public function store(Request $request)
             'message' => 'Agendamento registrado com sucesso!',
             'order' => $order->load('items.item'),
         ], 201);
-
     } catch (\Throwable $e) {
         DB::rollBack();
 
@@ -242,7 +226,6 @@ public function store(Request $request)
         ], 500);
     }
 }
-
 
     public function listByEntity(Request $request)
     {
