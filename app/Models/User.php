@@ -48,7 +48,6 @@ class User extends Authenticatable implements JWTSubject
         'is_ticket_seller',
         'extra_info',
         'email_verified_at',
-
     ];
 
     protected $hidden = [
@@ -68,6 +67,10 @@ class User extends Authenticatable implements JWTSubject
         'ticket_purchases' => 'integer',
     ];
 
+    // ============================================================
+    // AUTENTICAÇÃO JWT
+    // ============================================================
+
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -77,6 +80,10 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
+
+    // ============================================================
+    // RELAÇÕES PADRÃO
+    // ============================================================
 
     public function profile()
     {
@@ -102,6 +109,71 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(Establishment::class);
     }
+
+    // ============================================================
+    // INTERAÇÕES (VIEW SYSTEM)
+    // ============================================================
+
+    public function interactions()
+    {
+        return $this->hasMany(Interaction::class);
+    }
+
+    public function views()
+    {
+        return $this->hasMany(Interaction::class)->where('interaction_type', 'view');
+    }
+
+    public function itemViews()
+    {
+        return $this->views()->where('entity_type', 'Item');
+    }
+
+    public function establishmentViews()
+    {
+        return $this->views()->where('entity_type', 'Establishment');
+    }
+
+    public function employerViews()
+    {
+        return $this->views()->where('entity_type', 'Employer');
+    }
+
+    public function totalViewsCount()
+    {
+        return $this->views()->count();
+    }
+
+    public function lastViewedEntities()
+    {
+        return $this->views()
+            ->latest()
+            ->with('entity')
+            ->limit(10);
+    }
+
+    public function mostViewedEntityType()
+    {
+        return $this->views()
+            ->selectRaw('entity_type, COUNT(*) as total')
+            ->groupBy('entity_type')
+            ->orderByDesc('total')
+            ->first();
+    }
+
+    public function mostViewedEntities()
+    {
+        return $this->views()
+            ->selectRaw('entity_type, entity_id, COUNT(*) as total')
+            ->groupBy('entity_type', 'entity_id')
+            ->orderByDesc('total')
+            ->limit(5)
+            ->get();
+    }
+
+    // ============================================================
+    // PERMISSÕES E PERFIL
+    // ============================================================
 
     public function hasProfile($profileName)
     {

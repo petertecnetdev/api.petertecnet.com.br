@@ -42,11 +42,16 @@ class Order extends Model
         'attended_at',
     ];
 
-      protected $casts = [
+    protected $casts = [
         'order_datetime' => 'datetime',
+        'attended_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
+
+    /* ===============================
+       RELACIONAMENTOS DIRETOS
+    ================================ */
 
     public function items(): HasMany
     {
@@ -78,16 +83,133 @@ class Order extends Model
         return $this->belongsTo(User::class, 'cancelled_by');
     }
 
-    /** Entidade (Estabelecimento, Evento etc.) */
     public function entity(): MorphTo
     {
         return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
     }
 
-    /** Alias compatível para $order->establishment */
     public function getEstablishmentAttribute()
     {
         return $this->entity;
     }
 
+    /* ===============================
+       INTERAÇÕES E MÉTRICAS
+    ================================ */
+
+    public function interactions()
+    {
+        return $this->hasMany(Interaction::class, 'entity_id')
+            ->where('entity_type', 'Order');
+    }
+
+    public function views()
+    {
+        return $this->interactions()->where('interaction_type', 'view');
+    }
+
+    public function latestViews()
+    {
+        return $this->views()->latest()->limit(10);
+    }
+
+    public function uniqueViewers()
+    {
+        return $this->views()
+            ->select('user_id')
+            ->distinct()
+            ->with('user:id,first_name,last_name,user_name,avatar,email');
+    }
+
+    public function mostActiveViewer()
+    {
+        return $this->views()
+            ->selectRaw('user_id, COUNT(*) as total')
+            ->groupBy('user_id')
+            ->orderByDesc('total')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->first();
+    }
+
+    public function totalViewsCount()
+    {
+        return $this->views()->count();
+    }
+
+    public function itemsViews()
+    {
+        return $this->items()
+            ->withCount(['interactions as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
+            ->get()
+            ->sum('total_views');
+    }
+
+    public function metrics()
+    {
+        return [
+            'total_items'        => $this->items()->count(),
+            'total_views'        => $this->totalViewsCount(),
+            'unique_viewers'     => $this->uniqueViewers()->count(),
+            'items_views'        => $this->itemsViews(),
+            'most_active_viewer' => $this->mostActiveViewer(),
+        ];
+    }
+
+    public function fullInteractionsSummary()
+    {
+        $data = [
+            'order' => [
+                'order_number'     => $this->order_number,
+                'total_views'      => $this->totalViewsCount(),
+                'unique_users'     => $this->uniqueViewers()->count(),
+                'most_active_user' => $this->mostActiveViewer()?->user ?? null,
+            ],
+            'items' => $this->items()->withCount(['interactions as views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])->get(['id', 'item_id', 'quantity', 'views']),
+        ];
+
+        return $data;
+    }
+
+    /* ===============================
+       STATUS E UTILITÁRIOS
+    ================================ */
+
+    public function isPaid(): bool
+    {
+        return $this->payment_status === 'paid';
+    }
+
+    public function isPending(): bool
+    {
+        return $this->payment_status === 'pending' || $this->status === 'pending';
+    }
+
+    public function isCancelled(): bool
+    {
+        return $this->status === 'cancelled';
+    }
+
+    public function isConfirmed(): bool
+    {
+        return $this->appointment_status === 'confirmed' || $this->status === 'confirmed';
+    }
+
+    public function isCompleted(): bool
+    {
+        return $this->appointment_status === 'completed' || $this->status === 'completed';
+    }
+
+    public function isAwaitingConfirmation(): bool
+    {
+        return $this->appointment_status === 'awaiting_confirmation';
+    }
+
+    public function isRefunded(): bool
+    {
+        return $this->payment_status === 'refunded';
+    }
 }

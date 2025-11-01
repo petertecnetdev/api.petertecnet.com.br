@@ -4,7 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Relations\BelongsTo;
 
 class Item extends Model
 {
@@ -47,70 +47,131 @@ class Item extends Model
         'expiration_date'    => 'datetime',
     ];
 
-    /**
-     * Usuário que criou o item.
-     */
+    /* ===============================
+       RELACIONAMENTOS DIRETOS
+    ================================ */
+
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Aplicativo associado.
-     */
     public function app(): BelongsTo
     {
         return $this->belongsTo(Application::class, 'app_id');
     }
 
-    /**
-     * Usuário criador.
-     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    /**
-     * Usuário que atualizou.
-     */
     public function updater(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    /**
-     * Relacionamento com Establishment.
-     * OBS: filtrar por entity_name='establishment' no controller, não aqui.
-     */
     public function establishment(): BelongsTo
     {
         return $this->belongsTo(Establishment::class, 'entity_id');
     }
 
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class, 'item_id');
+    }
 
-    /**
-     * Verifica disponibilidade.
-     */
+    /* ===============================
+       INTERAÇÕES E MÉTRICAS
+    ================================ */
+
+    public function interactions()
+    {
+        return $this->hasMany(Interaction::class, 'entity_id')
+            ->where('entity_type', 'Item');
+    }
+
+    public function views()
+    {
+        return $this->interactions()->where('interaction_type', 'view');
+    }
+
+    public function latestViews()
+    {
+        return $this->views()->latest()->limit(10);
+    }
+
+    public function uniqueViewers()
+    {
+        return $this->views()
+            ->select('user_id')
+            ->distinct()
+            ->with('user:id,first_name,last_name,user_name,avatar,email');
+    }
+
+    public function mostActiveViewer()
+    {
+        return $this->views()
+            ->selectRaw('user_id, COUNT(*) as total')
+            ->groupBy('user_id')
+            ->orderByDesc('total')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->first();
+    }
+
+    public function totalViewsCount()
+    {
+        return $this->views()->count();
+    }
+
+    public function orderViews()
+    {
+        return $this->orderItems()
+            ->withCount(['interactions as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
+            ->get()
+            ->sum('total_views');
+    }
+
+    public function metrics()
+    {
+        return [
+            'total_orders'       => $this->orderItems()->count(),
+            'total_views'        => $this->totalViewsCount(),
+            'unique_viewers'     => $this->uniqueViewers()->count(),
+            'order_views'        => $this->orderViews(),
+            'most_active_viewer' => $this->mostActiveViewer(),
+        ];
+    }
+
+    public function fullInteractionsSummary()
+    {
+        $data = [
+            'item' => [
+                'id' => $this->id,
+                'name' => $this->name,
+                'total_views' => $this->totalViewsCount(),
+                'unique_users' => $this->uniqueViewers()->count(),
+                'most_active_user' => $this->mostActiveViewer()?->user ?? null,
+            ],
+            'orders' => $this->orderItems()->withCount(['interactions as views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])->get(['id', 'order_id', 'views']),
+        ];
+
+        return $data;
+    }
+
+    /* ===============================
+       DISPONIBILIDADE
+    ================================ */
+
     public function isAvailable(): bool
     {
         return (bool) $this->status
             && ($this->stock > 0)
             && (is_null($this->availability_start) || $this->availability_start->lte(now()))
             && (is_null($this->availability_end)   || $this->availability_end->gte(now()));
-    }
-
-    /**
-     * Itens de pedido relacionados.
-     */
-    public function orderItems()
-    {
-        return $this->hasMany(OrderItem::class, 'item_id');
-    }
-
-     public function interactions()
-    {
-        return $this->hasMany(Interaction::class, 'entity_id')
-            ->where('entity_type', 'item');
     }
 }
