@@ -18,190 +18,158 @@ class EstablishmentController extends Controller
         $this->middleware('auth:api')->except(['view', 'listByCategory', 'show', 'list', 'generatePdf']);
     }
 
-    protected function getValidationMessages()
-    {
-        return [
-            'name.required' => 'O nome do estabelecimento é obrigatório.',
-            'name.string' => 'O nome deve ser uma string válida.',
-            'name.max' => 'O nome deve ter no máximo 255 caracteres.',
-            'email.email' => 'O email fornecido não é válido.',
-            'email.max' => 'O email deve ter no máximo 255 caracteres.',
-            'phone.string' => 'O telefone deve ser uma string válida.',
-            'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
-            'description.string' => 'A descrição deve ser uma string válida.',
-            'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
-            'address.string' => 'O endereço deve ser uma string válida.',
-            'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
-            'city.string' => 'A cidade deve ser uma string válida.',
-            'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
-            'cep.string' => 'O CEP deve ser uma string válida.',
-            'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
-            'website_url.url' => 'O website deve ser um URL válido.',
-            'location.string' => 'A localização deve ser uma string válida.',
-            'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
-            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
-            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
-            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
-            'segments.array' => 'Os segmentos devem ser enviados como array.',
-            'segments.*.string' => 'Cada segmento deve ser uma string.',
-            'logo.required' => 'A logo é obrigatória.',
-            'logo.image' => 'A logo deve ser uma imagem válida.',
-            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
-            'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
-        ];
-    }
-    public function store(Request $request)
-    {
-        try {
-            $user = Auth::user(); // pode ser null se não estiver logado
-            Log::info('Iniciando criação de pedido.', ['user_id' => $user->id ?? null]);
+   protected function getValidationMessages()
+{
+    return [
+        'app_id.required' => 'O campo app_id é obrigatório.',
+        'app_id.integer' => 'O campo app_id deve ser um número inteiro válido.',
+        'app_id.exists' => 'O aplicativo selecionado não é válido.',
+        'name.required' => 'O nome do estabelecimento é obrigatório.',
+        'name.string' => 'O nome deve ser uma string válida.',
+        'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+        'email.email' => 'O email fornecido não é válido.',
+        'email.max' => 'O email deve ter no máximo 255 caracteres.',
+        'phone.string' => 'O telefone deve ser uma string válida.',
+        'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+        'description.string' => 'A descrição deve ser uma string válida.',
+        'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+        'address.string' => 'O endereço deve ser uma string válida.',
+        'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+        'city.string' => 'A cidade deve ser uma string válida.',
+        'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+        'cep.string' => 'O CEP deve ser uma string válida.',
+        'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+        'website_url.url' => 'O website deve ser um URL válido.',
+        'location.string' => 'A localização deve ser uma string válida.',
+        'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
+        'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+        'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+        'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
+        'segments.array' => 'Os segmentos devem ser enviados como array.',
+        'segments.*.string' => 'Cada segmento deve ser uma string.',
+        'logo.required' => 'A logo é obrigatória.',
+        'logo.image' => 'A logo deve ser uma imagem válida.',
+        'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+        'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
+    ];
+}
+public function store(Request $request)
+{
+    try {
+        $user = Auth::user();
+        Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
+            'user_id' => $user->id ?? null,
+            'payload' => $request->all()
+        ]);
 
-            $data = $request->validate([
-                'app_id' => 'required|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'nullable|array',
-                'items.*.additions.*' => 'integer|exists:items,id',
-                'items.*.removals' => 'nullable|array',
-                'items.*.removals.*' => 'integer|exists:items,id',
-                'customer_name' => 'required|string|max:255',
-                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-                'payment_status' => 'required|string|in:pending,paid,failed',
-                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'notes' => 'nullable|string|max:500',
-                'customer_phone' => 'nullable|string|max:20',
-                'customer_cpf' => 'nullable|string|max:20',
-                'order_datetime' => 'nullable|date',
-                'attendant_id' => 'nullable|integer|exists:users,id',
-            ], $this->getValidationMessages());
+        $data = $request->validate([
+            'app_id'         => 'required|integer|exists:applications,id',
+            'name'           => 'required|string|max:255',
+            'fantasy'        => 'nullable|string|max:255',
+            'cnpj'           => 'nullable|string|max:20',
+            'type'           => 'nullable|string|max:100',
+            'category'       => 'nullable|string|max:100',
+            'phone'          => 'nullable|string|max:20',
+            'email'          => 'nullable|email|max:255',
+            'description'    => 'nullable|string|max:2500',
+            'additional_info'=> 'nullable|string|max:2500',
+            'city'           => 'nullable|string|max:100',
+            'location'       => 'nullable|string',
+            'cep'            => 'nullable|string|max:10',
+            'address'        => 'nullable|string|max:255',
+            'logo'           => 'nullable|image|max:2048',
+            'background'     => 'nullable|image|max:4096',
+            'website_url'    => 'nullable|url|max:255',
+            'facebook_url'   => 'nullable|url|max:255',
+            'instagram_url'  => 'nullable|url|max:255',
+            'twitter_url'    => 'nullable|url|max:255',
+            'youtube_url'    => 'nullable|url|max:255',
+            'segments'       => 'nullable|array',
+            'segments.*'     => 'string',
+            'is_featured'    => 'boolean',
+            'is_published'   => 'boolean',
+            'is_approved'    => 'boolean',
+            'is_cancelled'   => 'boolean',
+        ], $this->getValidationMessages());
 
-            $now = Carbon::now('America/Sao_Paulo');
-            $orderDate = isset($data['order_datetime']) ? Carbon::parse($data['order_datetime']) : $now;
+        DB::beginTransaction();
 
-            if ($orderDate->lt($now)) {
-                return response()->json(['error' => 'A data do pedido deve ser igual ou posterior à data atual.'], 422);
-            }
+        $slug = Str::slug($data['fantasy'] ?? $data['name']);
+        $slugExists = Establishment::where('slug', $slug)->exists();
 
-            $lastNumber = Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-            $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-            $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-            $attendantId = $data['attendant_id'] ?? $user->id ?? null;
-
-            // Verifica conflitos de horário por atendente
-            if ($orderDate->gt($now)) {
-                foreach ($data['items'] as $entry) {
-                    $item = Item::findOrFail($entry['item_id']);
-                    $duration = $item->duration ?? 0;
-
-                    $conflict = Order::where('entity_id', $data['entity_id'])
-                        ->where('attendant_id', $attendantId)
-                        ->where('status', 'scheduled')
-                        ->where(function ($q) use ($orderDate, $duration) {
-                            $q->whereBetween('order_datetime', [$orderDate, $orderDate->copy()->addMinutes($duration)])
-                                ->orWhereBetween(DB::raw('DATE_ADD(order_datetime, INTERVAL duration MINUTE)'), [$orderDate, $orderDate->copy()->addMinutes($duration)]);
-                        })->exists();
-
-                    if ($conflict) {
-                        return response()->json(['error' => "Conflito de horário para o serviço {$item->name} com o atendente selecionado. Escolha outro horário ou outro atendente."], 422);
-                    }
-                }
-            }
-            if (!empty($data['attendant_id'])) {
-                $employer = \App\Models\Employer::where('user_id', $data['attendant_id'])
-                    ->orWhere('id', $data['attendant_id'])
-                    ->first();
-                if ($employer) {
-                    $data['attendant_id'] = $employer->user_id;
-                }
-            }
-
-            $order = Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => $orderNumber,
-                'order_datetime' => $orderDate,
-                'attendant_id' => $attendantId,
-                'client_id' => null,
-                'customer_name' => $data['customer_name'],
-                'access_code' => $accessCode,
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'total_price' => 0,
-                'status' => $orderDate->gt($now) ? 'scheduled' : 'pending',
-                'notes' => $data['notes'] ?? null,
-                'customer_phone' => $data['customer_phone'] ?? null,
-                'customer_cpf' => $data['customer_cpf'] ?? null,
-                'type' => 'appointment', // 🟢 ADICIONE ESTA LINHA
-                'appointment_status' => $data['appointment_status'] ?? 'pending', // 🟢 GARANTA QUE EXISTE
-            ]);
-
-            $total = 0;
-            $totalDuration = 0;
-            foreach ($data['items'] as $entry) {
-                $item = Item::findOrFail($entry['item_id']);
-                $qty = $entry['quantity'];
-                $unitPrice = $item->price;
-                $subtotal = $unitPrice * $qty;
-                $totalDuration += $duration;
-
-                $orderItem = $order->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'subtotal' => $subtotal,
-                ]);
-
-                if (!empty($entry['additions'])) {
-                    foreach ($entry['additions'] as $addId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $addId,
-                            'type' => 'addition',
-                        ]);
-                        $addItem = Item::find($addId);
-                        $total += $addItem->price * $qty;
-                    }
-                }
-
-                if (!empty($entry['removals'])) {
-                    foreach ($entry['removals'] as $remId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $remId,
-                            'type' => 'removal',
-                        ]);
-                    }
-                }
-
-                $total += $subtotal;
-            }
-
-            $order->update([
-                'total_price' => $total,
-                'total_duration' => $totalDuration, // 🟢 adiciona o total_duration
-            ]);
-            Log::info('Pedido registrado com sucesso.', ['order_id' => $order->id]);
-
-            return response()->json([
-                'message' => 'Pedido registrado com sucesso!',
-                'order' => $order->load('items.item', 'items.modifiers'),
-            ], 201);
-
-        } catch (ValidationException $e) {
-            Log::warning('Erro de validação ao criar pedido.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao processar pedido: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao criar o pedido.'], 500);
+        if ($slugExists) {
+            $slug .= '-' . uniqid();
         }
+
+        if (!empty($data['logo'])) {
+            $logoPath = $data['logo']->store('logos', 'public');
+            $data['logo'] = $logoPath;
+        }
+
+        if (!empty($data['background'])) {
+            $backgroundPath = $data['background']->store('backgrounds', 'public');
+            $data['background'] = $backgroundPath;
+        }
+
+        $establishment = Establishment::create([
+            'app_id'         => $data['app_id'],
+            'name'           => $data['name'],
+            'fantasy'        => $data['fantasy'] ?? null,
+            'slug'           => $slug,
+            'cnpj'           => $data['cnpj'] ?? null,
+            'type'           => $data['type'] ?? null,
+            'category'       => $data['category'] ?? null,
+            'phone'          => $data['phone'] ?? null,
+            'email'          => $data['email'] ?? null,
+            'description'    => $data['description'] ?? null,
+            'additional_info'=> $data['additional_info'] ?? null,
+            'city'           => $data['city'] ?? null,
+            'location'       => $data['location'] ?? null,
+            'cep'            => $data['cep'] ?? null,
+            'address'        => $data['address'] ?? null,
+            'logo'           => $data['logo'] ?? null,
+            'background'     => $data['background'] ?? null,
+            'website_url'    => $data['website_url'] ?? null,
+            'facebook_url'   => $data['facebook_url'] ?? null,
+            'instagram_url'  => $data['instagram_url'] ?? null,
+            'twitter_url'    => $data['twitter_url'] ?? null,
+            'youtube_url'    => $data['youtube_url'] ?? null,
+            'segments'       => $data['segments'] ?? [],
+            'is_featured'    => $data['is_featured'] ?? false,
+            'is_published'   => $data['is_published'] ?? false,
+            'is_approved'    => $data['is_approved'] ?? false,
+            'is_cancelled'   => $data['is_cancelled'] ?? false,
+            'user_id'        => $user->id ?? null,
+            'updated_by'     => $user->id ?? null,
+        ]);
+
+        DB::commit();
+
+        Log::info('[EstablishmentController::store] Estabelecimento criado com sucesso.', [
+            'establishment_id' => $establishment->id,
+            'slug' => $establishment->slug
+        ]);
+
+        return response()->json([
+            'message' => 'Estabelecimento criado com sucesso!',
+            'establishment' => $establishment,
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        DB::rollBack();
+        Log::warning('[EstablishmentController::store] Erro de validação.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('[EstablishmentController::store] Erro ao criar estabelecimento.', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Ocorreu um erro ao criar o estabelecimento.'], 500);
     }
+}
+
 
 
 

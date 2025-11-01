@@ -9,8 +9,12 @@ return new class extends Migration {
     {
         Schema::create('establishments', function (Blueprint $table) {
             $table->id();
+           $table->unsignedBigInteger('app_id')->nullable();
+$table->foreign('app_id')->references('id')->on('applications')->nullOnDelete();
+
 
             $table->string('name');
+
             $table->string('fantasy')->nullable();
             $table->string('slug')->unique();
             $table->string('cnpj')->nullable();

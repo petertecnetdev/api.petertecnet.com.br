@@ -16,7 +16,8 @@ class Establishment extends Model
         'user_id', 'updated_by', 'created_by', 'logo', 'background',
         'is_featured', 'is_published', 'is_approved', 'is_cancelled',
         'website_url', 'facebook_url', 'instagram_url',
-        'twitter_url', 'youtube_url', 'segments'
+        'twitter_url', 'youtube_url', 'segments',
+        'app_id' // ✅ novo campo incluído
     ];
 
     protected $casts = [
@@ -43,6 +44,11 @@ class Establishment extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function app()
+    {
+        return $this->belongsTo(Application::class, 'app_id'); // ✅ relação com o app
+    }
+
     public function interactions()
     {
         return $this->hasMany(Interaction::class, 'entity_id')
@@ -67,12 +73,12 @@ class Establishment extends Model
 
     public function creator()
     {
-        return $this->belongsTo(User::class, 'created_by'); // ✅ adicionado
+        return $this->belongsTo(User::class, 'created_by');
     }
 
     public function updater()
     {
-        return $this->belongsTo(User::class, 'updated_by'); // ✅ adicionado
+        return $this->belongsTo(User::class, 'updated_by');
     }
 
     public function getSegmentsnNamesAttribute()
