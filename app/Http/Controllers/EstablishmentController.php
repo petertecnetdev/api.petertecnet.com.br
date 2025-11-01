@@ -339,12 +339,10 @@ public function store(Request $request)
 
         return response()->json([
             'establishment' => $establishment,
-            'items' => $establishment->items,
-            'employers' => $establishment->employers,
-            'items_interactions' => $establishment->items_interactions,
-            'interaction_summary' => $establishment->interaction_summary,
-            'user_interactions' => $establishment->user_interactions,
-            'other_establishments' => $establishment->other_establishments,
+            'items_interactions' => $establishment->itemsInteractions(),
+            'interaction_summary' => $establishment->interactionSummary(),
+            'user_interactions' => $establishment->userInteractions(),
+            'other_establishments' => $establishment->otherEstablishments(),
             'metrics' => $establishment->metrics,
             'message' => 'Dados completos do estabelecimento carregados com sucesso.',
         ], 200);
