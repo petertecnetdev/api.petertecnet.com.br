@@ -142,7 +142,7 @@
       <div class="content">
         <p>Olá <strong>{{ $customerName }}</strong>,</p>
         <p>
-          Recebemos sua solicitação de agendamento! Seu pedido foi encaminhado para o estabelecimento
+          Recebemos sua solicitação de agendamento! Seu pedido foi encaminhado para <strong>{{ $establishment }}</strong>
           e está aguardando confirmação. Confira os detalhes abaixo:
         </p>
 
