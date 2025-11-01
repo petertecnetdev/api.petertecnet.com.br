@@ -140,9 +140,9 @@
       </div>
 
       <div class="content">
-       <p>Olá <strong>{{ $ownerName }}</strong>,</p>
+        <p>Olá <strong>{{ $ownerName }}</strong>,</p>
         <p>
-          Um novo agendamento foi realizado para o seu estabelecimento <strong>{{ $establishment }}</strong> através de uma de nossas plataformas.
+          Um novo agendamento foi solicitado no seu estabelecimento <strong>{{ $establishment }}</strong> através de uma de nossas plataformas.
           Confira as informações do agendamento abaixo:
         </p>
 
@@ -159,8 +159,14 @@
         @endif
 
         <p>
-          Este é um aviso automático informando que um cliente realizou um novo agendamento em seu estabelecimento.
-          Certifique-se de que sua equipe esteja preparada para o atendimento no horário indicado.
+          Este é um aviso automático informando que um cliente realizou um novo agendamento.
+          <br><br>
+          Pedimos que você <strong>avise o colaborador {{ $attendantName }}</strong> para que ele <strong>acesse o sistema e confirme ou recuse o agendamento</strong> o quanto antes.
+          Assim, o cliente será notificado e poderá se organizar melhor.
+        </p>
+
+        <p style="margin-top:25px;color:#9fd0ff;font-size:0.95rem;">
+          Manter a comunicação rápida entre você e sua equipe ajuda a garantir um atendimento eficiente e clientes satisfeitos.
         </p>
       </div>
 
