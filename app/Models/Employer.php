@@ -46,4 +46,11 @@ class Employer extends Model
     {
         return $this->hasMany(Order::class, 'attendant_id');
     }
+
+    public function interactions()
+{
+    return $this->hasMany(Interaction::class, 'entity_id')
+        ->where('entity_type', 'employer');
+}
+
 }
