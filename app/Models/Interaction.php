@@ -19,19 +19,27 @@ class Interaction extends Model
         'content',
     ];
 
+    protected $casts = [
+        'content' => 'array',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    public function blog()
+    public function establishment()
     {
-        return $this->belongsTo(Blog::class);
-    }
-    public function production()
-    {
-        return $this->belongsTo(Production::class);
+        return $this->belongsTo(Establishment::class, 'entity_id');
     }
 
-    // ... adicione outros métodos para verificar outros tipos de interação
+    public function employer()
+    {
+        return $this->belongsTo(Employer::class, 'entity_id');
+    }
+
+    public function item()
+    {
+        return $this->belongsTo(Item::class, 'entity_id');
+    }
 }
