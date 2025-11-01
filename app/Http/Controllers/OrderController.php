@@ -61,13 +61,17 @@ class OrderController extends Controller
         ];
     }
 
-
-    public function store(Request $request)
+public function store(Request $request)
 {
     DB::beginTransaction();
 
     try {
         $user = Auth::user();
+
+        Log::info('🟢 Iniciando criação de pedido.', [
+            'user_id' => $user->id ?? null,
+            'payload' => $request->all(),
+        ]);
 
         $data = $request->validate([
             'app_id' => 'required|exists:applications,id',
@@ -88,22 +92,42 @@ class OrderController extends Controller
             'attendant_id' => 'required|integer|exists:employers,id',
         ]);
 
-        // 🕒 Interpreta o horário como sendo do Brasil, não UTC
+        // ============================
+        // 🕒 TRATAMENTO DE DATA/HORA
+        // ============================
+        // Interpreta a hora enviada como horário local do Brasil (sem UTC)
         $orderDate = Carbon::createFromFormat(
             'Y-m-d\TH:i:s',
             $data['order_datetime'],
-            'America/Sao_Paulo'
+            new \DateTimeZone('America/Sao_Paulo')
         );
 
-        // 🔁 Converte uma única vez para UTC (sem duplo deslocamento)
-        $orderDateUtc = $orderDate->copy()->timezone('UTC');
+        // Converte apenas 1x para UTC para salvar corretamente
+        $orderDateUtc = $orderDate->copy()->setTimezone('UTC');
 
         $now = Carbon::now('America/Sao_Paulo');
         $isScheduled = $orderDate->gt($now);
         $type = $isScheduled ? 'appointment' : 'service';
         $appointmentStatus = $isScheduled ? 'pending' : null;
 
-        // 🧮 Calcula duração dos itens
+        if ($isScheduled && $orderDate->lt($now)) {
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+        }
+
+        // ============================
+        // 🔒 VALIDAÇÃO DE COLABORADOR
+        // ============================
+        $employer = \App\Models\Employer::where('id', $data['attendant_id'])
+            ->where('establishment_id', $data['entity_id'])
+            ->first();
+
+        if (!$employer) {
+            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+        }
+
+        // ============================
+        // ⏱️ CÁLCULO DE DURAÇÃO
+        // ============================
         $totalDuration = 0;
         foreach ($data['items'] as $entry) {
             $item = \App\Models\Item::findOrFail($entry['item_id']);
@@ -112,33 +136,71 @@ class OrderController extends Controller
 
         $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
 
-        // 🚫 Conflitos de agendamento (mesmo colaborador e horário)
-        $conflict = \App\Models\Order::where('attendant_id', $data['attendant_id'])
+        // ============================
+        // 🚫 VERIFICA CONFLITOS
+        // ============================
+        $existingAppointments = \App\Models\Order::where('attendant_id', $data['attendant_id'])
             ->where('type', 'appointment')
             ->whereIn('appointment_status', ['pending', 'confirmed'])
             ->whereBetween('order_datetime', [
-                Carbon::parse($orderDate)->copy()->subMinutes($totalDuration)->timezone('UTC'),
-                Carbon::parse($orderDateEnd)->timezone('UTC'),
+                Carbon::parse("{$orderDate->format('Y-m-d')} 00:00:00", 'America/Sao_Paulo')->setTimezone('UTC'),
+                Carbon::parse("{$orderDate->format('Y-m-d')} 23:59:59", 'America/Sao_Paulo')->setTimezone('UTC'),
             ])
-            ->exists();
+            ->get(['order_datetime', 'total_duration']);
 
-        if ($conflict) {
+        $hasConflict = false;
+        foreach ($existingAppointments as $a) {
+            $aStart = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+            $aEnd = $aStart->copy()->addMinutes($a->total_duration ?? 30);
+
+            // 🔥 Bloqueia se o novo horário tocar ou sobrepor outro
+            if ($orderDate->lt($aEnd) && $orderDateEnd->gt($aStart)) {
+                $hasConflict = true;
+                break;
+            }
+        }
+
+        if ($hasConflict) {
             DB::rollBack();
             return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
         }
 
-        // 🔢 Número e código
+        // ============================
+        // 🧾 ITENS DO ESTABELECIMENTO
+        // ============================
+        $itemIds = collect($data['items'])->pluck('item_id');
+        $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
+            ->where(function ($q) use ($data) {
+                $q->where('entity_name', '!=', $data['entity_name'])
+                    ->orWhere('entity_id', '!=', $data['entity_id']);
+            })
+            ->pluck('name')
+            ->toArray();
+
+        if (!empty($invalidItems)) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
+        // ============================
+        // 🔢 NÚMERO DO PEDIDO
+        // ============================
         $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
         $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
         $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        // 💾 Cria pedido
+        // ============================
+        // 💾 CRIA O PEDIDO
+        // ============================
         $order = \App\Models\Order::create([
             'app_id' => $data['app_id'],
             'entity_name' => $data['entity_name'],
             'entity_id' => $data['entity_id'],
             'order_number' => $orderNumber,
-            'order_datetime' => $orderDateUtc, // ✅ UTC correto (única conversão)
+            'order_datetime' => $orderDateUtc, // ✅ UTC real, sem erro de fuso
             'created_by' => $user->id ?? null,
             'attendant_id' => $data['attendant_id'],
             'customer_name' => $data['customer_name'],
@@ -157,7 +219,9 @@ class OrderController extends Controller
             'total_duration' => $totalDuration,
         ]);
 
-        // 💰 Adiciona itens
+        // ============================
+        // 💰 ADICIONA ITENS AO PEDIDO
+        // ============================
         $total = 0;
         foreach ($data['items'] as $entry) {
             $item = \App\Models\Item::findOrFail($entry['item_id']);
@@ -184,19 +248,19 @@ class OrderController extends Controller
 
     } catch (\Throwable $e) {
         DB::rollBack();
+
         Log::error('🔥 Erro inesperado ao criar pedido.', [
             'message' => $e->getMessage(),
             'line' => $e->getLine(),
             'file' => $e->getFile(),
         ]);
+
         return response()->json([
             'error' => 'Erro interno ao criar o pedido.',
             'details' => $e->getMessage(),
         ], 500);
     }
 }
-
-
 
     public function listByEntity(Request $request)
     {
