@@ -59,7 +59,9 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }public function store(Request $request)
+    }
+
+    public function store(Request $request)
 {
     DB::beginTransaction();
 
@@ -101,7 +103,7 @@ class OrderController extends Controller
             return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
 
-        $employer = \App\Models\Employer::where('id', $data['attendant_id'])
+        $employer = \App\Models\Employer::with('user')->where('id', $data['attendant_id'])
             ->where('establishment_id', $data['entity_id'])
             ->first();
 
@@ -204,13 +206,53 @@ class OrderController extends Controller
         }
 
         $order->update(['total_price' => $total]);
-
         DB::commit();
+
+        // ===============================
+        // ✉️ Envio de e-mails
+        // ===============================
+        try {
+            $establishment = Establishment::with('user')->find($data['entity_id']);
+            $owner = $establishment?->user;
+            $attendant = $employer->user;
+
+            // 🔹 Cliente
+            if (!empty($data['customer_phone']) || !empty($data['customer_cpf'])) {
+                Mail::to($user?->email ?? null)
+                    ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
+            }
+
+            // 🔹 Colaborador
+            if ($attendant && !empty($attendant->email)) {
+                Mail::to($attendant->email)
+                    ->queue(new NewAppointmentNotification($order, $establishment, $user));
+            }
+
+            // 🔹 Dono do estabelecimento
+            if ($owner && !empty($owner->email)) {
+                Mail::to($owner->email)
+                    ->queue(new OwnerAppointmentNotification($order, $attendant, $user));
+            }
+
+            Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
+                'order_id' => $order->id,
+                'owner_email' => $owner?->email,
+                'attendant_email' => $attendant?->email,
+                'client_email' => $user?->email,
+            ]);
+        } catch (\Throwable $ex) {
+            Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
+                'message' => $ex->getMessage(),
+                'file' => $ex->getFile(),
+                'line' => $ex->getLine(),
+            ]);
+        }
 
         return response()->json([
             'message' => 'Agendamento registrado com sucesso!',
             'order' => $order->load('items.item'),
         ], 201);
+
     } catch (\Throwable $e) {
         DB::rollBack();
 
@@ -226,6 +268,7 @@ class OrderController extends Controller
         ], 500);
     }
 }
+
 
     public function listByEntity(Request $request)
     {
