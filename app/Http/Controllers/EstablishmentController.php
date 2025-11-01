@@ -322,225 +322,215 @@ public function store(Request $request)
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-    public function view($slug)
-{
-    try {
-        Log::info('[' . __METHOD__ . '] Iniciando exibição completa de estabelecimento', ['slug' => $slug]);
+public function view($slug)
+    {
+        try {
+            Log::info('[EstablishmentController::view] Exibindo estabelecimento completo', ['slug' => $slug]);
+            $authUser = Auth::user();
 
-        $authUser = Auth::user();
-
-        // =========================
-        // BUSCA DO ESTABELECIMENTO
-        // =========================
-        $establishment = Establishment::with([
-            'user:id,first_name,last_name,user_name,email,avatar',
-            'app:id,name,slug',
-            'items:id,name,slug,price,image,category,type,status,entity_id,entity_name,user_id',
-            'items.user:id,first_name,last_name,user_name,email,avatar',
-            'items.interactions.user:id,first_name,last_name,user_name,email,avatar',
-            'employers.user:id,first_name,last_name,user_name,email,avatar',
-            'employers.interactions.user:id,first_name,last_name,user_name,email,avatar',
-            'creator:id,first_name,last_name,user_name,email',
-            'updater:id,first_name,last_name,user_name,email'
-        ])->where('slug', $slug)->first();
-
-        if (!$establishment) {
-            Log::warning('[' . __METHOD__ . '] Estabelecimento não encontrado', ['slug' => $slug]);
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        // =========================
-        // REGISTRAR VISUALIZAÇÃO NO ESTABELECIMENTO
-        // =========================
-        Interaction::registerView($establishment, $authUser);
-
-        // =========================
-        // INTERAÇÕES DO ESTABELECIMENTO
-        // =========================
-        $estViews = $establishment->views()->with('user:id,first_name,last_name,user_name,email,avatar')->get();
-        $totalEstViews = $estViews->count();
-        $userEstInteractions = $estViews
-            ->groupBy('user_id')
-            ->map(function($group) {
-                $first = $group->first();
-                $last = $group->last();
-                $user = $first->user;
-                return [
-                    'user_id'      => $user?->id,
-                    'user_name'    => $user?->user_name,
-                    'display_name' => trim($user?->first_name . ' ' . $user?->last_name),
-                    'email'        => $user?->email,
-                    'avatar'       => $user?->avatar,
-                    'total_views'  => $group->count(),
-                    'first_view'   => $group->min('created_at'),
-                    'last_view'    => $group->max('created_at'),
-                ];
-            })
-            ->sortByDesc('total_views')
-            ->values();
-
-        $distinctEstUsers = $userEstInteractions->count();
-        $mostActiveEstUser = $userEstInteractions->first();
-        $lastEstUser = $userEstInteractions->sortByDesc('last_view')->first();
-
-        $interactionSummaryEst = [
-            'total_views'        => $totalEstViews,
-            'unique_users'       => $distinctEstUsers,
-            'most_active_user'   => $mostActiveEstUser ? [
-                'user_name'   => $mostActiveEstUser['user_name'],
-                'views'       => $mostActiveEstUser['total_views'],
-                'last_view'   => $mostActiveEstUser['last_view'],
-            ] : null,
-            'last_view_user'     => $lastEstUser ? [
-                'user_name'   => $lastEstUser['user_name'],
-                'last_view'   => $lastEstUser['last_view'],
-            ] : null,
-        ];
-
-        // =========================
-        // ITENS E SUAS INTERAÇÕES
-        // =========================
-        $items      = $establishment->items;
-        $itemsData  = $items->map(function($item) {
-            $views = $item->views()->with('user:id,first_name,last_name,user_name,email,avatar')->get();
-            $total  = $views->count();
-            $group  = $views->groupBy('user_id')->map(function($g) {
-                $user = $g->first()->user;
-                return [
-                    'user_id'      => $user?->id,
-                    'user_name'    => $user?->user_name,
-                    'display_name' => trim($user?->first_name . ' ' . $user?->last_name),
-                    'avatar'       => $user?->avatar,
-                    'views'        => $g->count(),
-                ];
-            });
-            $mostActive = $group->sortByDesc('views')->first();
-
-            return [
-                'item'                => $item,
-                'metrics'             => [
-                    'total_views' => $total,
-                    'unique_users' => $views->pluck('user_id')->unique()->count(),
-                    'most_active_user' => $mostActive,
-                ],
-                'interactions'        => $views->map(fn($v) => $v->summary),
-            ];
-        });
-
-        // =========================
-        // EMPREGADOS (COLABORADORES) E SUAS INTERAÇÕES
-        // =========================
-        $employers     = $establishment->employers;
-        $employersData = $employers->map(function($emp) {
-            $views = $emp->views()->with('user:id,first_name,last_name,user_name,email,avatar')->get();
-            $total = $views->count();
-            $group = $views->groupBy('user_id')->map(function($g) {
-                $user = $g->first()->user;
-                return [
-                    'user_id'      => $user?->id,
-                    'user_name'    => $user?->user_name,
-                    'display_name' => trim($user?->first_name . ' ' . $user?->last_name),
-                    'avatar'       => $user?->avatar,
-                    'views'        => $g->count(),
-                ];
-            });
-            $mostActive = $group->sortByDesc('views')->first();
-            return [
-                'employer'             => [
-                    'id'         => $emp->id,
-                    'user_name'  => $emp->user?->user_name,
-                    'display_name'=> trim($emp->user?->first_name . ' ' . $emp->user?->last_name),
-                    'avatar'     => $emp->user?->avatar,
-                ],
-                'metrics'             => [
-                    'total_views' => $total,
-                    'unique_users'=> $views->pluck('user_id')->unique()->count(),
-                    'most_active_user' => $mostActive,
-                ],
-                'interactions'        => $views->map(fn($v) => $v->summary),
-            ];
-        });
-
-        // =========================
-        // USUÁRIOS ENVOLVIDOS NAS INTERAÇÕES (Est, Items, Employers)
-        // =========================
-        // Coletar IDs únicos de usuários que interagiram
-        $userIds = collect([]);
-        $userIds = $userIds->merge($userEstInteractions->pluck('user_id'));
-        $itemsData->each(fn($it) => $userIds = $userIds->merge($it['interactions']->pluck('user.user_id')));
-        $employersData->each(fn($em) => $userIds = $userIds->merge($em['interactions']->pluck('user.user_id')));
-        $userIds = $userIds->unique()->filter();
-
-        $usersDetailed = User::whereIn('id', $userIds)
-            ->withCount([
-                'establishmentViews as total_est_views' => fn($q) => $q->where('entity_id', $establishment->id),
-                'itemViews as total_item_views',
-                'employerViews as total_employer_views',
+            $establishment = Establishment::with([
+                'user:id,first_name,last_name,user_name,email,avatar',
+                'app:id,name,slug',
+                'items:id,name,slug,price,image,category,type,status,entity_id,entity_name,user_id,created_at,duration,description',
+                'items.user:id,first_name,last_name,user_name,email,avatar',
+                'items.interactions.user:id,first_name,last_name,user_name,email,avatar',
+                'employers.user:id,first_name,last_name,user_name,email,avatar',
+                'employers.interactions.user:id,first_name,last_name,user_name,email,avatar',
+                'creator:id,first_name,last_name,user_name,email',
+                'updater:id,first_name,last_name,user_name,email',
             ])
-            ->get(['id','first_name','last_name','user_name','avatar','email'])
-            ->map(fn($u) => [
-                'user' => $u,
-                'metrics' => [
-                    'total_est_views'      => $u->total_est_views,
-                    'total_item_views'     => $u->total_item_views,
-                    'total_employer_views' => $u->total_employer_views,
-                    'total_views'          => ($u->total_est_views ?? 0) + ($u->total_item_views ?? 0) + ($u->total_employer_views ?? 0),
-                ],
+                ->where('slug', $slug)
+                ->firstOrFail();
+
+            Interaction::registerView($establishment, $authUser);
+
+            $estViews = $establishment->views()
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->get();
+
+            $interactionSummary = [
+                'total_views' => $estViews->count(),
+                'unique_users' => $estViews->pluck('user_id')->unique()->count(),
+                'most_active_user' => $estViews->groupBy('user_id')->map(function ($g) {
+                    $u = $g->first()->user;
+                    return [
+                        'user_id' => $u?->id,
+                        'user_name' => $u?->user_name,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'avatar' => $u?->avatar,
+                        'email' => $u?->email,
+                        'total' => $g->count(),
+                        'last_view' => $g->max('created_at'),
+                    ];
+                })->sortByDesc('total')->first(),
+                'last_view_user' => $estViews->sortByDesc('created_at')->first()?->user,
+            ];
+
+            $items = $establishment->items->map(function ($item) {
+                $views = $item->views()
+                    ->with('user:id,first_name,last_name,user_name,email,avatar')
+                    ->get();
+
+                $groupedUsers = $views->groupBy('user_id')->map(function ($g) {
+                    $u = $g->first()->user;
+                    return [
+                        'user_id' => $u?->id,
+                        'user_name' => $u?->user_name,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'email' => $u?->email,
+                        'avatar' => $u?->avatar,
+                        'total_views' => $g->count(),
+                        'first_view' => $g->min('created_at'),
+                        'last_view' => $g->max('created_at'),
+                        'profile_link' => $u?->user_name ? url("/user/view/{$u->user_name}") : null,
+                    ];
+                })->values();
+
+                $mostActive = $groupedUsers->sortByDesc('total_views')->first();
+
+                return [
+                    'id' => $item->id,
+                    'slug' => $item->slug,
+                    'name' => $item->name,
+                    'type' => $item->type,
+                    'category' => $item->category,
+                    'description' => $item->description,
+                    'price' => $item->price,
+                    'image' => $item->image,
+                    'status' => $item->status,
+                    'duration' => $item->duration,
+                    'created_at' => $item->created_at,
+                    'created_by' => $item->user ? [
+                        'id' => $item->user->id,
+                        'user_name' => $item->user->user_name,
+                        'name' => trim(($item->user->first_name ?? '') . ' ' . ($item->user->last_name ?? '')),
+                        'avatar' => $item->user->avatar,
+                        'profile_link' => $item->user->user_name ? url("/user/view/{$item->user->user_name}") : null,
+                    ] : null,
+                    'metrics' => [
+                        'total_views' => $views->count(),
+                        'unique_users' => $views->pluck('user_id')->unique()->count(),
+                        'most_active_user' => $mostActive,
+                    ],
+                    'viewers' => $groupedUsers,
+                ];
+            });
+
+            $employers = $establishment->employers->map(function ($emp) {
+                $views = $emp->views()
+                    ->with('user:id,first_name,last_name,user_name,email,avatar')
+                    ->get();
+
+                $groupedUsers = $views->groupBy('user_id')->map(function ($g) {
+                    $u = $g->first()->user;
+                    return [
+                        'user_id' => $u?->id,
+                        'user_name' => $u?->user_name,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'email' => $u?->email,
+                        'avatar' => $u?->avatar,
+                        'total_views' => $g->count(),
+                        'first_view' => $g->min('created_at'),
+                        'last_view' => $g->max('created_at'),
+                        'profile_link' => $u?->user_name ? url("/user/view/{$u->user_name}") : null,
+                    ];
+                })->values();
+
+                $mostActive = $groupedUsers->sortByDesc('total_views')->first();
+
+                return [
+                    'id' => $emp->id,
+                    'role' => $emp->role,
+                    'user' => $emp->user ? [
+                        'id' => $emp->user->id,
+                        'user_name' => $emp->user->user_name,
+                        'name' => trim(($emp->user->first_name ?? '') . ' ' . ($emp->user->last_name ?? '')),
+                        'avatar' => $emp->user->avatar,
+                        'email' => $emp->user->email,
+                        'profile_link' => $emp->user->user_name ? url("/user/view/{$emp->user->user_name}") : null,
+                    ] : null,
+                    'metrics' => [
+                        'total_views' => $views->count(),
+                        'unique_users' => $views->pluck('user_id')->unique()->count(),
+                        'most_active_user' => $mostActive,
+                    ],
+                    'viewers' => $groupedUsers,
+                ];
+            });
+
+            $itemsInteractions = $items->map(function ($it) {
+                $metrics = $it['metrics'] ?? [];
+                $top = $metrics['most_active_user'] ?? null;
+                $topUser = $top['user'] ?? null;
+
+                return [
+                    'item_id' => $it['id'],
+                    'total_views' => $metrics['total_views'] ?? 0,
+                    'unique_users' => $metrics['unique_users'] ?? 0,
+                    'most_active_user' => $topUser ? [
+                        'user_id' => $topUser->id,
+                        'user_name' => $topUser->user_name,
+                        'name' => trim(($topUser->first_name ?? '') . ' ' . ($topUser->last_name ?? '')),
+                        'avatar' => $topUser->avatar,
+                        'profile_link' => $topUser->user_name ? url("/user/view/{$topUser->user_name}") : null,
+                    ] : null,
+                ];
+            });
+
+            $userIds = collect()
+                ->merge($estViews->pluck('user_id'))
+                ->merge($items->flatMap(fn($i) => $i['viewers']->pluck('user_id')))
+                ->merge($employers->flatMap(fn($e) => $e['viewers']->pluck('user_id')))
+                ->filter()
+                ->unique()
+                ->values();
+
+            $userInteractions = User::whereIn('id', $userIds)
+                ->get(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'email'])
+                ->map(function ($u) {
+                    return [
+                        'user_id' => $u->id,
+                        'user_name' => $u->user_name,
+                        'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                        'avatar' => $u->avatar,
+                        'email' => $u->email,
+                        'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                    ];
+                });
+
+            $otherEstablishments = Establishment::where('app_id', $establishment->app_id)
+                ->where('id', '!=', $establishment->id)
+                ->withCount(['views as total_views'])
+                ->limit(6)
+                ->get(['id', 'name', 'slug', 'logo', 'city', 'category']);
+
+            $metrics = [
+                'total_items' => $items->count(),
+                'total_employers' => $employers->count(),
+                'total_views' => ($interactionSummary['total_views'] ?? 0) + $itemsInteractions->sum('total_views'),
+                'unique_users' => $userInteractions->count(),
+            ];
+
+            return response()->json([
+                'establishment' => $establishment,
+                'items' => $items,
+                'employers' => $employers,
+                'items_interactions' => $itemsInteractions,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'other_establishments' => $otherEstablishments,
+                'metrics' => $metrics,
+                'message' => 'Dados completos do estabelecimento carregados com sucesso.',
+            ], 200);
+        } catch (\Throwable $e) {
+            Log::error('[EstablishmentController::view] Erro ao carregar', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+                'stack' => $e->getTraceAsString(),
             ]);
-
-        // =========================
-        // OUTROS ESTABELECIMENTOS DO MESMO APP
-        // =========================
-        $relatedEstablishments = Establishment::where('app_id', $establishment->app_id)
-            ->where('id', '!=', $establishment->id)
-            ->withCount(['views as total_views'])
-            ->limit(6)
-            ->get(['id','name','slug','logo','city','category']);
-
-        // =========================
-        // MÉTRICAS AGREGADAS FINAIS
-        // =========================
-        $totals = [
-            'total_views_all' => $totalEstViews
-                + $itemsData->sum(fn($i) => $i['metrics']['total_views'])
-                + $employersData->sum(fn($e) => $e['metrics']['total_views']),
-            'unique_users_all' => $usersDetailed->count(),
-            'total_items'      => $items->count(),
-            'total_employers'  => $employers->count(),
-        ];
-
-        // =========================
-        // MONTAR RESPOSTA
-        // =========================
-        $response = [
-            'establishment'        => $establishment,
-            'interaction_summary'  => $interactionSummaryEst,
-            'items'                => $itemsData,
-            'employers'            => $employersData,
-            'user_interactions'    => $usersDetailed,
-            'related_establishments'=> $relatedEstablishments,
-            'totals'               => $totals,
-            'message'              => 'Dados completos do estabelecimento carregados com sucesso.',
-        ];
-
-        Log::info('[' . __METHOD__ . '] Exibição final de estabelecimento concluída', [
-            'establishment_id' => $establishment->id,
-            'total_views_all'   => $totals['total_views_all'],
-            'unique_users_all'  => $totals['unique_users_all'],
-        ]);
-
-        return response()->json($response, 200);
-
-    } catch (\Throwable $e) {
-        Log::error('[' . __METHOD__ . '] Erro ao carregar estabelecimento completo', [
-            'slug'    => $slug,
-            'message' => $e->getMessage(),
-            'stack'   => $e->getTraceAsString(),
-        ]);
-        return response()->json(['error' => 'Erro interno ao carregar dados do estabelecimento.'], 500);
+            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+        }
     }
-}
-
 
     public function show($id)
     {
