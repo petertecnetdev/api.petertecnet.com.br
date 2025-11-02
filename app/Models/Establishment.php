@@ -85,8 +85,9 @@ class Establishment extends Model
 
     public function orders()
     {
-        return $this->hasMany(Order::class);
+        return $this->morphMany(Order::class, 'entity');
     }
+
 
     public function employers()
     {
