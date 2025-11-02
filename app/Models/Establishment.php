@@ -10,20 +10,43 @@ use Illuminate\Support\Facades\Cache;
 class Establishment extends Model
 {
     protected $fillable = [
-        'name', 'fantasy', 'slug', 'cnpj', 'type', 'category',
-        'phone', 'email', 'description', 'additional_info',
-        'city', 'location', 'cep', 'address',
-        'user_id', 'updated_by', 'created_by', 'logo', 'background',
-        'is_featured', 'is_published', 'is_approved', 'is_cancelled',
-        'website_url', 'facebook_url', 'instagram_url',
-        'twitter_url', 'youtube_url', 'segments', 'app_id'
+        'name',
+        'fantasy',
+        'slug',
+        'cnpj',
+        'type',
+        'category',
+        'phone',
+        'email',
+        'description',
+        'additional_info',
+        'city',
+        'location',
+        'cep',
+        'address',
+        'user_id',
+        'updated_by',
+        'created_by',
+        'logo',
+        'background',
+        'is_featured',
+        'is_published',
+        'is_approved',
+        'is_cancelled',
+        'website_url',
+        'facebook_url',
+        'instagram_url',
+        'twitter_url',
+        'youtube_url',
+        'segments',
+        'app_id'
     ];
 
     protected $casts = [
-        'segments'     => 'json',
-        'is_featured'  => 'boolean',
+        'segments' => 'json',
+        'is_featured' => 'boolean',
         'is_published' => 'boolean',
-        'is_approved'  => 'boolean',
+        'is_approved' => 'boolean',
         'is_cancelled' => 'boolean',
     ];
 
@@ -99,10 +122,10 @@ class Establishment extends Model
     {
         return Cache::remember("establishment_{$this->id}_metrics", 120, function () {
             return [
-                'total_items'     => $this->items()->count(),
+                'total_items' => $this->items()->count(),
                 'total_employers' => $this->employers()->count(),
-                'total_views'     => $this->views()->count(),
-                'unique_users'    => $this->views()->pluck('user_id')->unique()->count(),
+                'total_views' => $this->views()->count(),
+                'unique_users' => $this->views()->pluck('user_id')->unique()->count(),
             ];
         });
     }
@@ -223,4 +246,95 @@ class Establishment extends Model
 
         return implode(' | ', $names);
     }
+
+    public function ordersSummary()
+    {
+        return Cache::remember("establishment_{$this->id}_orders_summary", 120, function () {
+            $orders = $this->orders()
+                ->with(['client:id,first_name,last_name,user_name,avatar,email'])
+                ->get();
+
+            if ($orders->isEmpty()) {
+                return [
+                    'total_orders' => 0,
+                    'completed_orders' => 0,
+                    'cancelled_orders' => 0,
+                    'pending_orders' => 0,
+                    'total_revenue' => 0,
+                    'average_ticket' => 0,
+                    'top_client_by_count' => null,
+                    'top_client_by_value' => null,
+                    'top_client_completed' => null,
+                ];
+            }
+
+            $totalOrders = $orders->count();
+            $completedOrders = $orders->whereIn('status', ['completed', 'attended'])->count();
+            $cancelledOrders = $orders->where('status', 'cancelled')->count();
+            $pendingOrders = $orders->where('status', 'pending')->count();
+
+            $totalRevenue = $orders->sum('total_price');
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            // 🔹 Cliente com mais pedidos
+            $topClientByCount = $orders->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'total_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('total_orders')
+                ->first();
+
+            // 🔹 Cliente que mais gastou
+            $topClientByValue = $orders->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'total_spent' => $group->sum('total_price'),
+                        'total_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('total_spent')
+                ->first();
+
+            // 🔹 Cliente com mais atendimentos concluídos
+            $topClientByCompleted = $orders->whereIn('status', ['completed', 'attended'])
+                ->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'completed_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('completed_orders')
+                ->first();
+
+            return [
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
+                'pending_orders' => $pendingOrders,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'top_client_by_count' => $topClientByCount,
+                'top_client_by_value' => $topClientByValue,
+                'top_client_completed' => $topClientByCompleted,
+            ];
+        });
+    }
+
 }
