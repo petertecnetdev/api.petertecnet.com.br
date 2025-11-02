@@ -321,40 +321,45 @@ class EstablishmentController extends Controller
             Log::error('Erro ao listar estabelecimentos do usu�rio: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }public function view($slug)
-{
-    try {
-        $authUser = Auth::user();
-
-        // 🔹 Carrega apenas o estabelecimento básico (sem relações pesadas)
-        $establishment = Establishment::whereSlug($slug)->firstOrFail();
-
-        // 🔹 Busca apenas os itens essenciais (id, entity_id, name, slug, price)
-        $items = $establishment->items()
-            ->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
-            ->get();
-
-        Interaction::registerView($establishment, $authUser);
-
-        return response()->json([
-            'establishment' => $establishment,
-            'items' => $items,
-            'user_interactions' => $establishment->userInteractions(),
-            'other_establishments' => $establishment->otherEstablishments(),
-            'metrics' => $establishment->metrics,
-            'orders_summary' => $establishment->ordersSummary(),
-            'message' => 'Dados completos do estabelecimento carregados com sucesso.',
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::view] Erro ao carregar', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
-}
+
+
+    public function view($slug)
+    {
+        try {
+            $authUser = Auth::user();
+
+            // 🔹 Carrega apenas o estabelecimento básico (sem relações pesadas)
+            $establishment = Establishment::whereSlug($slug)->firstOrFail();
+
+            // 🔹 Busca apenas os itens essenciais (id, entity_id, name, slug, price)
+            $items = $establishment->items()
+                ->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
+                ->get();
+
+            Interaction::registerView($establishment, $authUser);
+
+            return response()->json([
+                'establishment' => array_merge($establishment->toArray(), [
+                    'items' => $items,
+                ]),
+                'user_interactions' => $establishment->userInteractions(),
+                'other_establishments' => $establishment->otherEstablishments(),
+                'metrics' => $establishment->metrics,
+                'orders_summary' => $establishment->ordersSummary(),
+                'message' => 'Dados completos do estabelecimento carregados com sucesso.',
+            ], 200);
+
+
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::view] Erro ao carregar', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+        }
+    }
 
 
 
