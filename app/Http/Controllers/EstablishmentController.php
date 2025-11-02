@@ -337,8 +337,6 @@ public function view($slug)
 
         return response()->json([
             'establishment' => $establishment,
-            'items_interactions' => $establishment->itemsInteractions(),
-            'interaction_summary' => $establishment->interactionSummary(),
             'user_interactions' => $establishment->userInteractions(),
             'other_establishments' => $establishment->otherEstablishments(),
             'metrics' => $establishment->metrics,
