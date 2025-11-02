@@ -132,33 +132,55 @@ class Establishment extends Model
             ];
         });
     }
+public function interactionSummary()
+{
+    return Cache::remember("establishment_{$this->id}_summary", 120, function () {
+        $views = $this->views()
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->get();
 
-    public function interactionSummary()
-    {
-        return Cache::remember("establishment_{$this->id}_summary", 120, function () {
-            $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
-
-            $mostActive = $views->groupBy('user_id')->map(function ($g) {
-                $u = $g->first()->user;
-                return [
-                    'user_id' => $u?->id,
-                    'user_name' => $u?->user_name,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'avatar' => $u?->avatar,
-                    'email' => $u?->email,
-                    'total' => $g->count(),
-                    'last_view' => $g->max('created_at'),
-                ];
-            })->sortByDesc('total')->first();
-
+        if ($views->isEmpty()) {
             return [
-                'total_views' => $views->count(),
-                'unique_users' => $views->pluck('user_id')->unique()->count(),
-                'most_active_user' => $mostActive,
-                'last_view_user' => $views->sortByDesc('created_at')->first()?->user,
+                'total_views' => 0,
+                'unique_users' => 0,
+                'most_active_user' => null,
+                'last_view_user' => null,
             ];
-        });
-    }
+        }
+
+        // 🔹 Usuário mais ativo
+        $mostActive = $views->groupBy('user_id')->map(function ($g) {
+            $u = $g->first()->user;
+            return [
+                'user_id' => $u?->id,
+                'user_name' => $u?->user_name,
+                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                'avatar' => $u?->avatar,
+                'email' => $u?->email,
+                'total' => $g->count(),
+            ];
+        })->sortByDesc('total')->first();
+
+        // 🔹 Último visitante (com avatar e nome)
+        $lastView = $views->sortByDesc('created_at')->first()?->user;
+
+        $lastViewUser = $lastView ? [
+            'user_id' => $lastView->id,
+            'user_name' => $lastView->user_name,
+            'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+            'avatar' => $lastView->avatar,
+            'email' => $lastView->email,
+        ] : null;
+
+        return [
+            'total_views' => $views->count(),
+            'unique_users' => $views->pluck('user_id')->unique()->count(),
+            'most_active_user' => $mostActive,
+            'last_view_user' => $lastViewUser,
+        ];
+    });
+}
+
 
     public function itemsInteractions()
     {
