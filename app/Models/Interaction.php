@@ -170,20 +170,40 @@ class Interaction extends Model
        MÉTODOS PARA REUTILIZAÇÃO GLOBAL
     ================================ */
 
-    public static function registerView($entity, $user = null, $extra = [])
-    {
-        return static::create([
-            'entity_type' => class_basename($entity),
-            'entity_id' => $entity->id,
-            'user_id' => $user?->id,
-            'interaction_type' => 'view',
-            'name' => $entity->name ?? $entity->title ?? 'Visualização',
-            'content' => array_merge([
-                'ip' => request()->ip(),
-                'user_agent' => request()->userAgent(),
-            ], $extra),
-        ]);
+   public static function registerView($entity, $user = null, $extra = [])
+{
+    $ip = request()->ip();
+    $userId = $user?->id;
+    $entityType = class_basename($entity);
+    $entityId = $entity->id;
+
+    // 🔒 Evita duplicar a mesma view em curto período
+    $exists = static::where('entity_type', $entityType)
+        ->where('entity_id', $entityId)
+        ->where('interaction_type', 'view')
+        ->where(function ($q) use ($userId, $ip) {
+            $q->where('user_id', $userId)
+              ->orWhereJsonContains('content->ip', $ip);
+        })
+        ->where('created_at', '>=', now()->subMinute())
+        ->exists();
+
+    if ($exists) {
+        return null;
     }
+
+    return static::create([
+        'entity_type' => $entityType,
+        'entity_id' => $entityId,
+        'user_id' => $userId,
+        'interaction_type' => 'view',
+        'name' => $entity->name ?? $entity->title ?? 'Visualização',
+        'content' => array_merge([
+            'ip' => $ip,
+            'user_agent' => request()->userAgent(),
+        ], $extra),
+    ]);
+}
 
     public static function registerLike($entity, $user = null)
     {
