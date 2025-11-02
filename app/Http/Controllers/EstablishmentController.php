@@ -324,41 +324,47 @@ class EstablishmentController extends Controller
     }
 
 
-    public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
+   public function view($slug)
+{
+    try {
+        $authUser = Auth::user();
 
-            // 🔹 Carrega apenas o estabelecimento básico (sem relações pesadas)
-            $establishment = Establishment::whereSlug($slug)->firstOrFail();
+        $establishment = Establishment::whereSlug($slug)->firstOrFail();
 
-            // 🔹 Busca apenas os itens essenciais (id, entity_id, name, slug, price)
-            $items = $establishment->items()
-                ->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
-                ->get();
+        $items = $establishment->items()
+            ->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
+            ->get();
 
-            Interaction::registerView($establishment, $authUser);
+        // 🔹 Registra a visualização
+        Interaction::registerView($establishment, $authUser);
 
-            return response()->json([
-    'establishment' => $establishment,
-    'items' => $items,
-    'user_interactions' => $establishment->userInteractions(),
-    'other_establishments' => $establishment->otherEstablishments(),
-    'metrics' => $establishment->metrics,
-    'orders_summary' => $establishment->ordersSummary(),
-], 200);
+        // 🔹 Limpa o cache de métricas e interação antes de recarregar
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
 
+        // 🔹 Recarrega com os dados atualizados
+        $metrics = $establishment->metrics;
+        $interactionSummary = $establishment->interactionSummary();
 
+        return response()->json([
+            'establishment' => $establishment,
+            'items' => $items,
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $establishment->userInteractions(),
+            'other_establishments' => $establishment->otherEstablishments(),
+            'orders_summary' => $establishment->ordersSummary(),
+        ], 200);
 
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::view] Erro ao carregar', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+        ]);
 
-            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
-        }
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
+}
 
 
 
