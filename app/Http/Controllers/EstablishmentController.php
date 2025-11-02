@@ -331,7 +331,7 @@ class EstablishmentController extends Controller
 
         // 🔹 Busca apenas os itens essenciais (id, entity_id, name, slug, price)
         $items = $establishment->items()
-            ->select('id', 'entity_id', 'name', 'slug', 'price')
+            ->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
             ->get();
 
         Interaction::registerView($establishment, $authUser);
