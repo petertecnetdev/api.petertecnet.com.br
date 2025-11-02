@@ -323,51 +323,51 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
+public function view($slug)
+{
+    try {
+        $authUser = Auth::user();
 
-    public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
+        // 🔹 Carrega o estabelecimento com todas as relações relevantes
+        $establishment = Establishment::whereSlug($slug)
+            ->with([
+                'employers.user:id,first_name,last_name,user_name,avatar,email',
+                'items:id,entity_id,name,slug,price,type',
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->firstOrFail();
 
-            // 🔹 Carrega o estabelecimento com os colaboradores e usuários vinculados
-            $establishment = Establishment::whereSlug($slug)
-                ->with([
-                    'employers.user:id,first_name,last_name,user_name,avatar,email',
-                    'items:id,entity_id,name,slug,price,type'
-                ])
-                ->firstOrFail();
+        // 🔹 Registra a visualização
+        Interaction::registerView($establishment, $authUser);
 
-            // 🔹 Registra a visualização
-            Interaction::registerView($establishment, $authUser);
+        // 🔹 Limpa o cache antes de recarregar
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
 
-            // 🔹 Limpa o cache antes de recarregar
-            Cache::forget("establishment_{$establishment->id}_metrics");
-            Cache::forget("establishment_{$establishment->id}_summary");
+        // 🔹 Recarrega métricas e interações com dados atualizados
+        $metrics = $establishment->metrics;
+        $interactionSummary = $establishment->interactionSummary();
 
-            // 🔹 Recarrega métricas e interações
-            $metrics = $establishment->metrics;
-            $interactionSummary = $establishment->interactionSummary();
+        return response()->json([
+            'establishment' => $establishment,
+            'items' => $establishment->items,
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $establishment->userInteractions(),
+            'other_establishments' => $establishment->otherEstablishments(),
+            'orders_summary' => $establishment->ordersSummary(),
+        ], 200);
 
-            return response()->json([
-                'establishment' => $establishment,
-                'items' => $establishment->items,
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $establishment->userInteractions(),
-                'other_establishments' => $establishment->otherEstablishments(),
-                'orders_summary' => $establishment->ordersSummary(),
-            ], 200);
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+        ]);
 
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::view] Erro ao carregar', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
-        }
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
-
+}
 
 
     public function show($id)
