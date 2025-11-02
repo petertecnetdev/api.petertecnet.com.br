@@ -340,15 +340,14 @@ class EstablishmentController extends Controller
             Interaction::registerView($establishment, $authUser);
 
             return response()->json([
-                'establishment' => array_merge($establishment->toArray(), [
-                    'items' => $items,
-                ]),
-                'user_interactions' => $establishment->userInteractions(),
-                'other_establishments' => $establishment->otherEstablishments(),
-                'metrics' => $establishment->metrics,
-                'orders_summary' => $establishment->ordersSummary(),
-                'message' => 'Dados completos do estabelecimento carregados com sucesso.',
-            ], 200);
+    'establishment' => $establishment,
+    'items' => $items,
+    'user_interactions' => $establishment->userInteractions(),
+    'other_establishments' => $establishment->otherEstablishments(),
+    'metrics' => $establishment->metrics,
+    'orders_summary' => $establishment->ordersSummary(),
+], 200);
+
 
 
         } catch (\Throwable $e) {
