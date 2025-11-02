@@ -321,22 +321,24 @@ class EstablishmentController extends Controller
             Log::error('Erro ao listar estabelecimentos do usu�rio: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }
-public function view($slug)
+    }public function view($slug)
 {
     try {
         $authUser = Auth::user();
 
-        $establishment = Establishment::withLightItems($slug);
+        // 🔹 Carrega apenas o estabelecimento básico (sem relações pesadas)
+        $establishment = Establishment::whereSlug($slug)->firstOrFail();
 
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
+        // 🔹 Busca apenas os itens essenciais (id, entity_id, name, slug, price)
+        $items = $establishment->items()
+            ->select('id', 'entity_id', 'name', 'slug', 'price')
+            ->get();
 
         Interaction::registerView($establishment, $authUser);
 
         return response()->json([
             'establishment' => $establishment,
+            'items' => $items,
             'user_interactions' => $establishment->userInteractions(),
             'other_establishments' => $establishment->otherEstablishments(),
             'metrics' => $establishment->metrics,
@@ -353,6 +355,7 @@ public function view($slug)
         return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
 }
+
 
 
     public function show($id)

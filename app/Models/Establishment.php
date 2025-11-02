@@ -401,18 +401,13 @@ class Establishment extends Model
      * @return \App\Models\Establishment|null
      */
     public static function withLightItems($slug)
-    {
-        return self::with([
-            'user:id,first_name,last_name,user_name,email,avatar',
-            'app:id,name,slug',
-            'items' => function ($q) {
-                $q->select('id', 'name', 'slug', 'price', 'description', 'entity_id', 'entity_name', 'user_id')
-                    ->with(['user:id,first_name,last_name,user_name,email,avatar']);
-            },
-            'employers.user:id,first_name,last_name,user_name,email,avatar',
-        ])
-            ->where('slug', $slug)
-            ->first();
-    }
+{
+    return self::where('slug', $slug)
+        ->with(['items' => function ($q) {
+            $q->select('id', 'entity_id', 'name', 'slug', 'price');
+        }])
+        ->firstOrFail();
+}
+
 
 }
