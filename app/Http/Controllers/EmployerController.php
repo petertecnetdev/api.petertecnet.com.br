@@ -15,36 +15,29 @@ use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
 
 class EmployerController extends Controller
 {
-       protected function getValidationMessages()
-    {
-        return [
-            // 🧍‍♂️ Mensagens de validação de colaborador
-            'first_name.required' => 'O campo nome é obrigatório.',
-            'first_name.string' => 'O campo nome deve ser um texto válido.',
-            'first_name.max' => 'O campo nome não pode ter mais que 255 caracteres.',
-            'email.required' => 'O campo e-mail é obrigatório.',
-            'email.email' => 'O e-mail informado não é válido.',
-            'email.max' => 'O e-mail não pode ter mais que 255 caracteres.',
-            'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
-            'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
-            'establishment_id.exists' => 'O estabelecimento informado não existe.',
-            'link.required' => 'O campo link é obrigatório.',
-            'link.url' => 'O link informado não é uma URL válida.',
-            'role.required' => 'O campo função (role) é obrigatório.',
-            'role.string' => 'O campo função deve ser um texto válido.',
-            'permissions.required' => 'O campo permissões é obrigatório.',
-            'permissions.array' => 'O campo permissões deve ser um array de permissões.',
+      protected function getScheduleValidationMessages()
+{
+    return [
+        'employer_id.required' => 'O campo employer_id é obrigatório.',
+        'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+        'employer_id.exists' => 'O colaborador informado não existe.',
 
-            // 🗓️ Mensagens de validação de horários e agendas
-            'employer_id.required' => 'O campo employer_id é obrigatório.',
-            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
-            'employer_id.exists' => 'O colaborador informado não existe.',
-            'day_of_week.required' => 'O campo dia da semana é obrigatório.',
-            'day_of_week.in' => 'O campo dia da semana deve ser um dos valores válidos (monday, tuesday, wednesday, thursday, friday, saturday, sunday).',
-            'start_time.required' => 'O campo horário de início é obrigatório.',
-            'end_time.required' => 'O campo horário de término é obrigatório.',
-        ];
-    }
+        'schedules.required' => 'A lista de horários é obrigatória.',
+        'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
+        'schedules.min' => 'É necessário informar pelo menos um horário.',
+
+        'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
+        'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido (monday a sunday).',
+
+        'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
+        'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
+
+        'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
+        'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
+        'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
+    ];
+}
+
 
 
     public function store(Request $request)
@@ -822,38 +815,48 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
+public function saveSchedules(Request $request)
+{
+    try {
+        $data = $request->validate([
+            'employer_id' => 'required|integer|exists:employers,id',
+            'schedules' => 'required|array|min:1',
+            'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'schedules.*.start_time' => 'required|date_format:H:i',
+            'schedules.*.end_time' => 'required|date_format:H:i',
+        ], $this->getScheduleValidationMessages());
 
-    public function saveSchedules(Request $request)
-    {
-        try {
-            $data = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-                'schedules' => 'required|array|min:1',
-                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
-                'schedules.*.start_time' => 'required|date_format:H:i',
-                'schedules.*.end_time' => 'required|date_format:H:i|after:schedules.*.start_time',
-            ], $this->getScheduleValidationMessages());
-
-            foreach ($data['schedules'] as $schedule) {
-                \App\Models\EmployerSchedule::updateOrCreate(
-                    [
-                        'employer_id' => $data['employer_id'],
-                        'day_of_week' => $schedule['day_of_week'],
-                        'start_time' => $schedule['start_time'],
-                        'end_time' => $schedule['end_time'],
-                    ],
-                    ['is_active' => true, 'type' => 'work']
-                );
+        // 🕒 Validação manual: end_time deve ser maior que start_time
+        foreach ($data['schedules'] as $schedule) {
+            if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
+                return response()->json([
+                    'errors' => [
+                        'schedules' => ['O horário de término deve ser posterior ao horário de início.']
+                    ]
+                ], 422, [], JSON_UNESCAPED_UNICODE);
             }
-
-            return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            \Log::error('Employer.saveSchedules error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
+
+        foreach ($data['schedules'] as $schedule) {
+            \App\Models\EmployerSchedule::updateOrCreate(
+                [
+                    'employer_id' => $data['employer_id'],
+                    'day_of_week' => $schedule['day_of_week'],
+                    'start_time' => $schedule['start_time'],
+                    'end_time' => $schedule['end_time'],
+                ],
+                ['is_active' => true, 'type' => 'work']
+            );
+        }
+
+        return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Exception $e) {
+        \Log::error('Employer.saveSchedules error', ['exception' => $e]);
+        return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
 
     public function deleteSchedule($id)
     {
