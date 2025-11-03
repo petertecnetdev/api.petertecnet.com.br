@@ -16,15 +16,15 @@ use App\Http\Controllers\{
     OrderController,
     MenuController,
     EmployerController,
-    OrderForecastController,
-    EmployerScheduleController
-
+    OrderForecastController
 };
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'auth'
-], function ($router) {
+/*
+|--------------------------------------------------------------------------
+| AUTHENTICAÇÃO
+|--------------------------------------------------------------------------
+*/
+Route::prefix('auth')->middleware('api')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
     Route::post('/register', [AuthController::class, 'register'])->name('register');
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->name('passwordEmail');
@@ -38,13 +38,16 @@ Route::group([
     Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])
         ->middleware('auth:api')
         ->name('resendVerificationCode');
-});// Autenticação via Google
+});
+Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 
-Route::post('auth/google', [AuthController::class, 'googleAuth']);
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'user'
-], function () {
+
+/*
+|--------------------------------------------------------------------------
+| USUÁRIOS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/', [UserController::class, 'list'])->name('user.list');
     Route::get('/search', [UserController::class, 'search'])->name('user.search');
     Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
@@ -55,10 +58,12 @@ Route::group([
 });
 
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'profile'
-], function ($router) {
+/*
+|--------------------------------------------------------------------------
+| PERFIL
+|--------------------------------------------------------------------------
+*/
+Route::prefix('profile')->middleware('api')->group(function () {
     Route::get('/', [ProfileController::class, 'list'])->name('profile.list');
     Route::get('/{id}', [ProfileController::class, 'show'])->name('profile.show');
     Route::post('/', [ProfileController::class, 'store'])->name('profile.store');
@@ -66,117 +71,115 @@ Route::group([
     Route::delete('/{id}', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'production'
-], function ($router) {
-    Route::post('/', [ProductionController::class, 'store'])->name('production.store');
+
+/*
+|--------------------------------------------------------------------------
+| PRODUÇÃO
+|--------------------------------------------------------------------------
+*/
+Route::prefix('production')->middleware('api')->group(function () {
     Route::get('/', [ProductionController::class, 'list'])->name('production.list');
     Route::get('/show/{id}', [ProductionController::class, 'show'])->name('production.show');
+    Route::get('/{slug}', [ProductionController::class, 'view'])->name('production.view');
+    Route::post('/', [ProductionController::class, 'store'])->name('production.store');
     Route::post('/{id}', [ProductionController::class, 'update'])->name('production.update');
     Route::delete('/{id}', [ProductionController::class, 'delete'])->name('production.delete');
-    Route::get('/{slug}', [ProductionController::class, 'view'])->name('production.view');
-    Route::get('/cnpj/get-company-info', [ProductionController::class, 'getCompanyInfo'])
-        ->name('production.getCompanyInfo');
+    Route::get('/cnpj/get-company-info', [ProductionController::class, 'getCompanyInfo'])->name('production.getCompanyInfo');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'event'
-], function ($router) {
-    Route::post('/', [EventController::class, 'store'])->name('event.store');
+
+/*
+|--------------------------------------------------------------------------
+| EVENTOS E INGRESSOS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('event')->middleware('api')->group(function () {
     Route::get('/', [EventController::class, 'list'])->name('event.list');
     Route::get('/show/{id}', [EventController::class, 'show'])->name('event.show');
-    Route::post('/{id}', [EventController::class, 'update'])->name('event.update');
-    Route::delete('/{id}', [EventController::class, 'delete'])->name('event.delete');
     Route::get('/{slug}', [EventController::class, 'view'])->name('event.view');
     Route::get('/myevents/list', [EventController::class, 'myEvents'])->name('event.myevents');
+    Route::post('/', [EventController::class, 'store'])->name('event.store');
+    Route::post('/{id}', [EventController::class, 'update'])->name('event.update');
+    Route::delete('/{id}', [EventController::class, 'delete'])->name('event.delete');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'ticket'
-], function ($router) {
+Route::prefix('ticket')->middleware('api')->group(function () {
     Route::get('/', [TicketController::class, 'list'])->name('ticket.list');
     Route::get('/show/{id}', [TicketController::class, 'show'])->name('ticket.show');
-    Route::post('/', [TicketController::class, 'store'])->name('ticket.store');
-    Route::put('/{id}', [TicketController::class, 'update'])->name('ticket.update');
-    Route::delete('/{id}', [TicketController::class, 'destroy'])->name('ticket.destroy');
     Route::get('/event/{eventId}', [TicketController::class, 'listByEvent'])->name('ticket.listByEvent');
     Route::get('/user', [TicketController::class, 'listByUser'])->name('ticket.listByUser');
     Route::get('/production/{productionId}', [TicketController::class, 'listByProduction'])->name('ticket.listByProduction');
+    Route::post('/', [TicketController::class, 'store'])->name('ticket.store');
+    Route::put('/{id}', [TicketController::class, 'update'])->name('ticket.update');
+    Route::delete('/{id}', [TicketController::class, 'destroy'])->name('ticket.destroy');
 });
 
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'news'
-], function () {
-    Route::post('/', [NewsController::class, 'store'])->name('news.store');
+/*
+|--------------------------------------------------------------------------
+| NOTÍCIAS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('news')->middleware('api')->group(function () {
     Route::get('/', [NewsController::class, 'list'])->name('news.list');
     Route::get('/show/{id}', [NewsController::class, 'show'])->name('news.show');
+    Route::get('/search', [NewsController::class, 'search'])->name('news.search');
+    Route::post('/', [NewsController::class, 'store'])->name('news.store');
     Route::post('/{id}', [NewsController::class, 'update'])->name('news.update');
     Route::delete('/{id}', [NewsController::class, 'destroy'])->name('news.destroy');
-    Route::get('/search', [NewsController::class, 'search'])->name('news.search');
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
 });
 
 
-
-
-
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'report',
-], function () {
+/*
+|--------------------------------------------------------------------------
+| RELATÓRIOS E REGISTROS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('report')->middleware('api')->group(function () {
     Route::post('/order', [ReportController::class, 'order'])->name('report.order');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'service-record'
-], function ($router) {
+Route::prefix('service-record')->middleware('api')->group(function () {
     Route::post('/', [ServiceRecordController::class, 'store'])->name('service_record.store');
     Route::get('/listmy', [ServiceRecordController::class, 'listMy'])->name('service_record.listMy');
     Route::get('/listbyclient', [ServiceRecordController::class, 'listByClient'])->name('service_record.listByClient');
     Route::get('/listbyentity', [ServiceRecordController::class, 'listByEntity'])->name('service_record.listByEntity');
     Route::get('/listbyprovider', [ServiceRecordController::class, 'listByProvider'])->name('service_record.listByProvider');
-    Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
-
+    Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
 });
 
-Route::prefix('establishment')
-    ->middleware('api')
-    ->group(function () {
 
-        // ✅ Coloque essa rota primeiro
-        Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])
-            ->name('establishment.generatePdf');
+/*
+|--------------------------------------------------------------------------
+| ESTABELECIMENTOS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('establishment')->middleware('api')->group(function () {
+    Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
+    Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
+    Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
+    Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
+    Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
+});
 
-        // Outras rotas
-        Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
-        Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
-        Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
-        Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
-    });
+Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function () {
+    Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
+    Route::match(['post', 'put'], '/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
+    Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
+    Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
+    Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
+    Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
+});
 
 
-Route::prefix('establishment')
-    ->middleware(['api', 'auth:api'])
-    ->group(function () {
-        Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
-        Route::match(['post', 'put'], '/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
-        Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
-        Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
-        Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
-        Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
-    });
-
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'order'
-], function () {
+/*
+|--------------------------------------------------------------------------
+| PEDIDOS E PREVISÕES
+|--------------------------------------------------------------------------
+*/
+Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
@@ -184,11 +187,19 @@ Route::group([
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
     Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])->whereNumber('id')->name('order.updateAppointmentStatus');
 });
-// Rotas públicas (listar e visualizar itens)
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'item'
-], function ($router) {
+
+Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function () {
+    Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
+    Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| ITENS
+|--------------------------------------------------------------------------
+*/
+Route::prefix('item')->middleware('api')->group(function () {
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
     Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
@@ -197,71 +208,50 @@ Route::group([
     Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
 });
 
-// Rotas autenticadas (criação, atualização, exclusão, aumento e redução de preços)
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'item'
-], function () {
-    // Ações administrativas de preço
-    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
-    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
-
-    // CRUD
+Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
     Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
     Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
+    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
+    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
 });
 
 
-Route::group([
-    'middleware' => 'api',
-], function () {
-    // Public
-    Route::get('menu', [MenuController::class, 'list'])->name('menu.list');
-    Route::get('menu/{id}', [MenuController::class, 'show'])->name('menu.show');
+/*
+|--------------------------------------------------------------------------
+| CARDÁPIO
+|--------------------------------------------------------------------------
+*/
+Route::prefix('menu')->middleware('api')->group(function () {
+    Route::get('/', [MenuController::class, 'list'])->name('menu.list');
+    Route::get('/{id}', [MenuController::class, 'show'])->name('menu.show');
 });
 
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-], function () {
-    // Protected
-    Route::post('menu', [MenuController::class, 'store'])->name('menu.store');
-    Route::put('menu/{id}', [MenuController::class, 'update'])->name('menu.update');
-    Route::delete('menu/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
+Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
+    Route::post('/', [MenuController::class, 'store'])->name('menu.store');
+    Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
+    Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
 
 
+/*
+|--------------------------------------------------------------------------
+| EMPLOYER (COLABORADORES E AGENDAMENTOS)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
+    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
+    Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
+    Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
+    Route::get('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
+    Route::get('/appointments', [EmployerController::class, 'listAppointments'])->name('employer.appointments');
 
-// Rotas para OrderForecastController
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'order-forecast',
-], function () {
-    // Listar previs�es por intervalo de datas e entidade
-    Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
-    // Gerar previs�es para intervalo de datas e entidade (sem deletar registros antigos)
-    Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
-});
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'employer'
-], function () {
-    Route::post('/', [App\Http\Controllers\EmployerController::class, 'store'])->name('employer.store');
-    Route::get('/list', [App\Http\Controllers\EmployerController::class, 'listByEstablishment'])->name('employer.list');
-    Route::post('/detach', [App\Http\Controllers\EmployerController::class, 'detach'])->name('employer.detach');
-    Route::get('/check-updates', [App\Http\Controllers\EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
-    Route::get('/appointments', [App\Http\Controllers\EmployerController::class, 'listAppointments'])->name('employer.appointments'); // ✅ nova rota
+    // 🗓️ Horários e Agendas (unificados)
+    Route::get('/schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
+    Route::post('/schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
+    Route::delete('/schedules/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
+    Route::get('/available', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
+    Route::post('/reserve', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
 });
 Route::get('/employer/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
-
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'employer-schedule'
-], function () {
-    Route::get('/', [EmployerScheduleController::class, 'index'])->name('employerSchedule.index');
-    Route::post('/', [EmployerScheduleController::class, 'store'])->name('employerSchedule.store');
-    Route::delete('/{id}', [EmployerScheduleController::class, 'destroy'])->name('employerSchedule.destroy');
-    Route::get('/available', [EmployerScheduleController::class, 'availableTimes'])->name('employerSchedule.availableTimes');
-    Route::post('/reserve', [EmployerScheduleController::class, 'reserve'])->name('employerSchedule.reserve');
-});
