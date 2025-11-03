@@ -15,9 +15,10 @@ use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
 
 class EmployerController extends Controller
 {
-    protected function getValidationMessages()
+       protected function getValidationMessages()
     {
         return [
+            // 🧍‍♂️ Mensagens de validação de colaborador
             'first_name.required' => 'O campo nome é obrigatório.',
             'first_name.string' => 'O campo nome deve ser um texto válido.',
             'first_name.max' => 'O campo nome não pode ter mais que 255 caracteres.',
@@ -33,8 +34,18 @@ class EmployerController extends Controller
             'role.string' => 'O campo função deve ser um texto válido.',
             'permissions.required' => 'O campo permissões é obrigatório.',
             'permissions.array' => 'O campo permissões deve ser um array de permissões.',
+
+            // 🗓️ Mensagens de validação de horários e agendas
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
+            'day_of_week.required' => 'O campo dia da semana é obrigatório.',
+            'day_of_week.in' => 'O campo dia da semana deve ser um dos valores válidos (monday, tuesday, wednesday, thursday, friday, saturday, sunday).',
+            'start_time.required' => 'O campo horário de início é obrigatório.',
+            'end_time.required' => 'O campo horário de término é obrigatório.',
         ];
     }
+
 
     public function store(Request $request)
     {
@@ -631,161 +642,385 @@ class EmployerController extends Controller
                 'details' => $e->getMessage(),
             ], 500);
         }
-    }public function view($user_name)
-{
-    try {
-        Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['user_name' => $user_name]);
-
-        $user = Auth::user();
-
-        // 🔹 Busca o colaborador pelo user_name vinculado ao usuário
-        $employer = Employer::with([
-            'user:id,first_name,last_name,email,phone,avatar,user_name',
-            'establishment:id,name,slug,logo,background,address,phone',
-            'creator:id,first_name,last_name,email',
-            'updater:id,first_name,last_name,email'
-        ])
-            ->whereHas('user', function ($q) use ($user_name) {
-                $q->where('user_name', $user_name);
-            })
-            ->first();
-
-        if (!$employer) {
-            Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['user_name' => $user_name]);
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-        }
-
-        $establishment = $employer->establishment;
-        if (!$establishment) {
-            Log::warning('[' . __METHOD__ . '] Colaborador sem estabelecimento associado', ['employer_id' => $employer->id]);
-            return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
-        }
-
-        // =========================
-        // REGISTRAR INTERAÇÃO
-        // =========================
-        try {
-            \App\Models\Interaction::create([
-                'entity_type' => 'employer',
-                'entity_id' => $employer->id,
-                'user_id' => $user?->id,
-                'interaction_type' => 'view',
-                'content' => json_encode([
-                    'user_name' => $user_name,
-                    'ip' => request()->ip(),
-                    'user_agent' => request()->userAgent(),
-                ]),
-                'name' => $employer->user?->first_name ?? 'Colaborador',
-            ]);
-        } catch (\Exception $ex) {
-            Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
-        }
-
-        // =========================
-        // MÉTRICAS DE INTERAÇÕES
-        // =========================
-        $totalViews = \App\Models\Interaction::where('entity_type', 'employer')
-            ->where('entity_id', $employer->id)
-            ->count();
-
-        $userInteractions = \App\Models\Interaction::where('entity_type', 'employer')
-            ->where('entity_id', $employer->id)
-            ->select(
-                'user_id',
-                \DB::raw('COUNT(*) as total_views'),
-                \DB::raw('MIN(created_at) as first_view'),
-                \DB::raw('MAX(created_at) as last_view'),
-                \DB::raw('MAX(content) as last_content')
-            )
-            ->groupBy('user_id')
-            ->with(['user:id,first_name,last_name,email,avatar,user_name'])
-            ->orderByDesc('total_views')
-            ->get()
-            ->map(function ($interaction) {
-                $content = json_decode($interaction->last_content ?? '{}', true);
-                return [
-                    'user_id' => $interaction->user_id,
-                    'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
-                    'user_email' => $interaction->user?->email,
-                    'user_avatar' => $interaction->user?->avatar,
-                    'total_views' => (int) $interaction->total_views,
-                    'first_view' => $interaction->first_view,
-                    'last_view' => $interaction->last_view,
-                    'ip' => $content['ip'] ?? null,
-                    'user_agent' => $content['user_agent'] ?? null,
-                ];
-            });
-
-        $distinctUsers = $userInteractions->count();
-        $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
-        $lastUser = $userInteractions->sortByDesc('last_view')->first();
-
-        $interactionSummary = [
-            'total_views' => $totalViews,
-            'unique_users' => $distinctUsers,
-            'most_active_user' => $mostActiveUser ? [
-                'name' => $mostActiveUser['user_name'],
-                'views' => $mostActiveUser['total_views'],
-                'last_view' => $mostActiveUser['last_view'],
-            ] : null,
-            'last_view_user' => $lastUser ? [
-                'name' => $lastUser['user_name'],
-                'last_view' => $lastUser['last_view'],
-            ] : null,
-        ];
-
-        // =========================
-        // ATENDIMENTOS
-        // =========================
-        $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
-            ->where('type', 'appointment');
-
-        $appointmentsCount = (clone $appointmentsQuery)->count();
-        $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
-        $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
-        $totalValue = (clone $appointmentsQuery)->sum('total_price');
-
-        $lastAppointments = (clone $appointmentsQuery)
-            ->latest('order_datetime')
-            ->take(5)
-            ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
-
-        // =========================
-        // FORMATAÇÃO FINAL
-        // =========================
-        $employer->views_total = $totalViews;
-        $employer->views_unique = $distinctUsers;
-        $employer->appointments_total = $appointmentsCount;
-        $employer->appointments_attended = $attendedCount;
-        $employer->appointments_cancelled = $cancelledCount;
-        $employer->appointments_value = number_format($totalValue, 2, '.', '');
-        $employer->created_since = $employer->created_at?->diffForHumans();
-        $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
-
-        return response()->json([
-            'employer' => $employer,
-            'establishment' => $establishment,
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $userInteractions,
-            'appointments_recent' => $lastAppointments,
-            'metrics' => [
-                'total_appointments' => $appointmentsCount,
-                'attended' => $attendedCount,
-                'cancelled' => $cancelledCount,
-                'total_value' => number_format($totalValue, 2, '.', ''),
-            ],
-            'message' => 'Dados detalhados do colaborador carregados com sucesso.',
-        ], 200);
-
-    } catch (\Exception $e) {
-        Log::error('[' . __METHOD__ . '] Falha ao exibir colaborador', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        return response()->json([
-            'error' => 'Ocorreu um erro ao carregar os dados do colaborador.',
-            'details' => $e->getMessage(),
-        ], 500);
     }
-}
+    public function view($user_name)
+    {
+        try {
+            Log::info('[' . __METHOD__ . '] Iniciando exibição detalhada de colaborador', ['user_name' => $user_name]);
+
+            $user = Auth::user();
+
+            // 🔹 Busca o colaborador pelo user_name vinculado ao usuário
+            $employer = Employer::with([
+                'user:id,first_name,last_name,email,phone,avatar,user_name',
+                'establishment:id,name,slug,logo,background,address,phone',
+                'creator:id,first_name,last_name,email',
+                'updater:id,first_name,last_name,email'
+            ])
+                ->whereHas('user', function ($q) use ($user_name) {
+                    $q->where('user_name', $user_name);
+                })
+                ->first();
+
+            if (!$employer) {
+                Log::warning('[' . __METHOD__ . '] Colaborador não encontrado', ['user_name' => $user_name]);
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+
+            $establishment = $employer->establishment;
+            if (!$establishment) {
+                Log::warning('[' . __METHOD__ . '] Colaborador sem estabelecimento associado', ['employer_id' => $employer->id]);
+                return response()->json(['error' => 'Estabelecimento associado não encontrado.'], 404);
+            }
+
+            // =========================
+            // REGISTRAR INTERAÇÃO
+            // =========================
+            try {
+                \App\Models\Interaction::create([
+                    'entity_type' => 'employer',
+                    'entity_id' => $employer->id,
+                    'user_id' => $user?->id,
+                    'interaction_type' => 'view',
+                    'content' => json_encode([
+                        'user_name' => $user_name,
+                        'ip' => request()->ip(),
+                        'user_agent' => request()->userAgent(),
+                    ]),
+                    'name' => $employer->user?->first_name ?? 'Colaborador',
+                ]);
+            } catch (\Exception $ex) {
+                Log::warning('[' . __METHOD__ . '] Falha ao registrar interação', ['erro' => $ex->getMessage()]);
+            }
+
+            // =========================
+            // MÉTRICAS DE INTERAÇÕES
+            // =========================
+            $totalViews = \App\Models\Interaction::where('entity_type', 'employer')
+                ->where('entity_id', $employer->id)
+                ->count();
+
+            $userInteractions = \App\Models\Interaction::where('entity_type', 'employer')
+                ->where('entity_id', $employer->id)
+                ->select(
+                    'user_id',
+                    \DB::raw('COUNT(*) as total_views'),
+                    \DB::raw('MIN(created_at) as first_view'),
+                    \DB::raw('MAX(created_at) as last_view'),
+                    \DB::raw('MAX(content) as last_content')
+                )
+                ->groupBy('user_id')
+                ->with(['user:id,first_name,last_name,email,avatar,user_name'])
+                ->orderByDesc('total_views')
+                ->get()
+                ->map(function ($interaction) {
+                    $content = json_decode($interaction->last_content ?? '{}', true);
+                    return [
+                        'user_id' => $interaction->user_id,
+                        'user_name' => trim($interaction->user?->first_name . ' ' . $interaction->user?->last_name),
+                        'user_email' => $interaction->user?->email,
+                        'user_avatar' => $interaction->user?->avatar,
+                        'total_views' => (int) $interaction->total_views,
+                        'first_view' => $interaction->first_view,
+                        'last_view' => $interaction->last_view,
+                        'ip' => $content['ip'] ?? null,
+                        'user_agent' => $content['user_agent'] ?? null,
+                    ];
+                });
+
+            $distinctUsers = $userInteractions->count();
+            $mostActiveUser = $userInteractions->sortByDesc('total_views')->first();
+            $lastUser = $userInteractions->sortByDesc('last_view')->first();
+
+            $interactionSummary = [
+                'total_views' => $totalViews,
+                'unique_users' => $distinctUsers,
+                'most_active_user' => $mostActiveUser ? [
+                    'name' => $mostActiveUser['user_name'],
+                    'views' => $mostActiveUser['total_views'],
+                    'last_view' => $mostActiveUser['last_view'],
+                ] : null,
+                'last_view_user' => $lastUser ? [
+                    'name' => $lastUser['user_name'],
+                    'last_view' => $lastUser['last_view'],
+                ] : null,
+            ];
+
+            // =========================
+            // ATENDIMENTOS
+            // =========================
+            $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
+                ->where('type', 'appointment');
+
+            $appointmentsCount = (clone $appointmentsQuery)->count();
+            $attendedCount = (clone $appointmentsQuery)->where('appointment_status', 'attended')->count();
+            $cancelledCount = (clone $appointmentsQuery)->where('appointment_status', 'cancelled')->count();
+            $totalValue = (clone $appointmentsQuery)->sum('total_price');
+
+            $lastAppointments = (clone $appointmentsQuery)
+                ->latest('order_datetime')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            // =========================
+            // FORMATAÇÃO FINAL
+            // =========================
+            $employer->views_total = $totalViews;
+            $employer->views_unique = $distinctUsers;
+            $employer->appointments_total = $appointmentsCount;
+            $employer->appointments_attended = $attendedCount;
+            $employer->appointments_cancelled = $cancelledCount;
+            $employer->appointments_value = number_format($totalValue, 2, '.', '');
+            $employer->created_since = $employer->created_at?->diffForHumans();
+            $employer->last_updated_at = $employer->updated_at?->format('d/m/Y H:i');
+
+            return response()->json([
+                'employer' => $employer,
+                'establishment' => $establishment,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'appointments_recent' => $lastAppointments,
+                'metrics' => [
+                    'total_appointments' => $appointmentsCount,
+                    'attended' => $attendedCount,
+                    'cancelled' => $cancelledCount,
+                    'total_value' => number_format($totalValue, 2, '.', ''),
+                ],
+                'message' => 'Dados detalhados do colaborador carregados com sucesso.',
+            ], 200);
+
+        } catch (\Exception $e) {
+            Log::error('[' . __METHOD__ . '] Falha ao exibir colaborador', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Ocorreu um erro ao carregar os dados do colaborador.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+    public function listSchedules(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+            ], $this->getScheduleValidationMessages());
+
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $data['employer_id'])
+                ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
+                ->orderBy('start_time')
+                ->get();
+
+            return response()->json($schedules, 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.listSchedules error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function saveSchedules(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'schedules' => 'required|array|min:1',
+                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required|date_format:H:i',
+                'schedules.*.end_time' => 'required|date_format:H:i|after:schedules.*.start_time',
+            ], $this->getScheduleValidationMessages());
+
+            foreach ($data['schedules'] as $schedule) {
+                \App\Models\EmployerSchedule::updateOrCreate(
+                    [
+                        'employer_id' => $data['employer_id'],
+                        'day_of_week' => $schedule['day_of_week'],
+                        'start_time' => $schedule['start_time'],
+                        'end_time' => $schedule['end_time'],
+                    ],
+                    ['is_active' => true, 'type' => 'work']
+                );
+            }
+
+            return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.saveSchedules error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function deleteSchedule($id)
+    {
+        try {
+            $schedule = \App\Models\EmployerSchedule::findOrFail($id);
+            $schedule->delete();
+
+            return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function availableTimes(Request $request)
+    {
+        try {
+            \Log::info('📥 Recebendo requisição para horários disponíveis', ['payload' => $request->all()]);
+
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'date' => 'required|date',
+                'duration' => 'required|integer|min:5',
+            ]);
+
+            $employerId = $data['employer_id'];
+            $date = \Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('Y-m-d');
+            $duration = (int) $data['duration'];
+            $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
+            $now = \Carbon\Carbon::now('America/Sao_Paulo');
+
+            $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'holiday')
+                ->whereDate('reserved_date', $date)
+                ->exists();
+
+            if ($isHoliday) {
+                return response()->json(['available_times' => []]);
+            }
+
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('is_active', true)
+                ->where('type', 'work')
+                ->get();
+
+            if ($schedules->isEmpty()) {
+                return response()->json(['available_times' => []]);
+            }
+
+            $appointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->where('type', 'appointment')
+                ->whereBetween('order_datetime', [
+                    \Carbon\Carbon::parse("{$date} 00:00:00", 'America/Sao_Paulo')->setTimezone('UTC'),
+                    \Carbon\Carbon::parse("{$date} 23:59:59", 'America/Sao_Paulo')->setTimezone('UTC'),
+                ])
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->get(['order_datetime', 'total_duration']);
+
+            $occupied = [];
+            foreach ($appointments as $a) {
+                $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+                $end = $start->copy()->addMinutes($a->total_duration ?? 30);
+                $occupied[] = [$start, $end];
+            }
+
+            $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'break')
+                ->whereDate('reserved_date', $date)
+                ->get();
+
+            foreach ($breaks as $b) {
+                $start = \Carbon\Carbon::parse("{$date} {$b->start_time}", 'America/Sao_Paulo');
+                $end = \Carbon\Carbon::parse("{$date} {$b->end_time}", 'America/Sao_Paulo');
+                $occupied[] = [$start, $end];
+            }
+
+            usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
+            $availableTimes = [];
+
+            foreach ($schedules as $schedule) {
+                $workStart = \Carbon\Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
+                $workEnd = \Carbon\Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
+                $step = 15;
+                $pointer = $workStart->copy();
+
+                while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
+                    $slotStart = $pointer->copy();
+                    $slotEnd = $slotStart->copy()->addMinutes($duration);
+
+                    if ($date === $now->format('Y-m-d') && $slotStart->lt($now)) {
+                        $pointer->addMinutes($step);
+                        continue;
+                    }
+
+                    $hasConflict = false;
+                    foreach ($occupied as [$occStart, $occEnd]) {
+                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                            $hasConflict = true;
+                            break;
+                        }
+                    }
+
+                    if (!$hasConflict) {
+                        $availableTimes[] = $slotStart->format('H:i');
+                    }
+
+                    $pointer->addMinutes($step);
+                }
+            }
+
+            $availableTimes = array_values(array_unique($availableTimes));
+            sort($availableTimes);
+
+            return response()->json(['available_times' => $availableTimes]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            \Log::error('❌ Erro inesperado em availableTimes', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
+        }
+    }
+
+    public function reserveSchedule(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'date' => 'required|date',
+                'type' => 'required|in:break,holiday',
+                'start_time' => 'nullable|date_format:H:i|required_if:type,break',
+                'end_time' => 'nullable|date_format:H:i|after:start_time|required_if:type,break',
+            ], [
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
+                'date.required' => 'O campo data é obrigatório.',
+                'type.required' => 'O campo tipo é obrigatório.',
+                'type.in' => 'O tipo deve ser break (pausa) ou holiday (feriado).',
+                'start_time.required_if' => 'O campo horário de início é obrigatório para pausas.',
+                'end_time.required_if' => 'O campo horário de término é obrigatório para pausas.',
+            ]);
+
+            $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'])->format('l'));
+
+            \App\Models\EmployerSchedule::create([
+                'employer_id' => $data['employer_id'],
+                'day_of_week' => $dayOfWeek,
+                'reserved_date' => $data['date'],
+                'start_time' => $data['start_time'] ?? '00:00',
+                'end_time' => $data['end_time'] ?? '23:59',
+                'is_active' => false,
+                'type' => $data['type'],
+            ]);
+
+            return response()->json(['message' => 'Horário reservado com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+
 }

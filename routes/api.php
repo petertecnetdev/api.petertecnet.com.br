@@ -2,17 +2,14 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\{
-    AppointmentController,
     AuthController,
     UserController,
     ProfileController,
     ProductionController,
     EventController,
     TicketController,
-    BarbershopController,
     ItemController,
     NewsController,
-    BarberController,
     ReportController,
     ServiceRecordController,
     EstablishmentController,
@@ -110,25 +107,6 @@ Route::group([
     Route::get('/production/{productionId}', [TicketController::class, 'listByProduction'])->name('ticket.listByProduction');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'barbershop'
-], function ($router) {
-    Route::get('/', [BarbershopController::class, 'list'])->name('barbershop.list');
-    Route::get('/show/{id}', [BarbershopController::class, 'show'])->name('barbershop.show');
-    Route::get('/view/{slug}', [BarbershopController::class, 'view'])->name('barbershop.view');
-});
-
-Route::group([
-    'middleware' => ['api', 'auth:api'],
-    'prefix' => 'barbershop'
-], function ($router) {
-    Route::post('/', [BarbershopController::class, 'store'])->name('barbershop.store');
-    Route::get('/myBarbershops', [BarbershopController::class, 'myBarbershops'])->name('barbershop.myBarbershops');
-    Route::post('/{id}', [BarbershopController::class, 'update'])->name('barbershop.update');
-    Route::delete('/{id}', [BarbershopController::class, 'destroy'])->name('barbershop.destroy');
-    Route::get('/user', [BarbershopController::class, 'listByUser'])->name('barbershop.listByUser');
-});
 
 Route::group([
     'middleware' => 'api',
@@ -143,35 +121,6 @@ Route::group([
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
 });
 
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'barber'
-], function () {
-    Route::post('/', [BarberController::class, 'store'])->name('barber.store');
-    Route::delete('/', [BarberController::class, 'destroy'])->name('barber.destroy');
-    Route::get('/show/{id}', [BarberController::class, 'show'])->name('barber.showById');
-    Route::get('/{username}', [BarberController::class, 'view'])->name('barber.view');
-    Route::get('/', [BarberController::class, 'list'])->name('barber.list');
-    Route::post('/{id}', [BarberController::class, 'update'])->name('barber.update');
-});
-
-
-Route::group([
-    'middleware' => 'api',
-    'prefix' => 'appointment'
-], function ($router) {
-    Route::post('/', [AppointmentController::class, 'store'])->name('appointment.store');
-    Route::get('/listmy', [AppointmentController::class, 'listMy'])->name('appointment.listMy');
-    Route::get('/listbyentity', [AppointmentController::class, 'listByEntity'])->name('appointment.listByEntity');
-    Route::get('/listbyprovider', [AppointmentController::class, 'listByProvider'])->name('appointment.listByProvider');
-    Route::get('/listbyclient', [AppointmentController::class, 'listByClient'])->name('appointment.listByClient');
-
-    // disponibilidade de hor�rios para um barbeiro em uma data
-    Route::get('/availability', [AppointmentController::class, 'availability'])->name('appointment.availability');
-
-    Route::delete('/{id}', [AppointmentController::class, 'destroy'])->name('appointment.destroy');
-    Route::patch('/{id}/status', [AppointmentController::class, 'updateStatus'])->name('appointment.updateStatus');
-});
 
 
 
