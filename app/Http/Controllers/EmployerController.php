@@ -642,55 +642,21 @@ class EmployerController extends Controller
     try {
         $authUser = Auth::user();
 
-        // 🔹 Busca o colaborador pelo username vinculado ao user
-        $employer = \App\Models\Employer::whereHas('user', fn($q) => 
-            $q->where('user_name', $user_name)
-        )
-        ->with([
-            'user:id,first_name,last_name,user_name,avatar,email,about,occupation,city,uf',
-            'establishment:id,name,slug,city,uf,logo',
-        ])
-        ->firstOrFail();
+        $employer = \App\Models\Employer::findOrFallbackByUserName($user_name);
+        if (!$employer) {
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+        }
 
-        // 🔹 Registra a visualização do colaborador
-        \App\Models\Interaction::registerView($employer, $authUser);
+        $employer->refreshViewMetrics($authUser);
 
-        // 🔹 Limpa caches antigos
-        \Illuminate\Support\Facades\Cache::forget("employer_{$employer->id}_metrics");
-        \Illuminate\Support\Facades\Cache::forget("employer_{$employer->id}_summary");
-
-        // 🔹 Retorna dados completos para o frontend
-        return response()->json([
-            'employer' => $employer,
-            'user' => $employer->user,
-            'establishment' => $employer->establishment,
-            'metrics' => $employer->metrics,
-            'interaction_summary' => $employer->interactionSummary(),
-            'user_interactions' => $employer->userInteractions(),
-            'other_employers' => $employer->otherEmployers(),
-            'orders_summary' => $employer->ordersSummary(),
-        ], 200, [], JSON_UNESCAPED_UNICODE);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'error' => 'Colaborador não encontrado.',
-            'details' => "Nenhum colaborador associado ao usuário '{$user_name}' foi localizado."
-        ], 404, [], JSON_UNESCAPED_UNICODE);
+        return response()->json(['employer' => $employer->toRichArray()], 200, [], JSON_UNESCAPED_UNICODE);
 
     } catch (\Throwable $e) {
-        \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
-            'user_name' => $user_name,
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao carregar colaborador.',
-            'details' => $e->getMessage(),
-        ], 500, [], JSON_UNESCAPED_UNICODE);
+        \Log::error('[EmployerController::view] Erro', ['msg' => $e->getMessage()]);
+        return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
     }
 }
+
 
     public function listSchedules(Request $request)
     {
