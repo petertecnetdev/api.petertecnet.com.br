@@ -869,8 +869,7 @@ class EmployerController extends Controller
             \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
-public function availableTimes(Request $request)
+    }public function availableTimes(Request $request)
 {
     try {
         \Log::info('📥 Recebendo requisição para horários disponíveis', ['payload' => $request->all()]);
@@ -887,13 +886,13 @@ public function availableTimes(Request $request)
         $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
         $now = \Carbon\Carbon::now('America/Sao_Paulo');
 
-        // 🚫 Se a data for anterior ao dia atual, retorna vazio
+        // 🚫 Bloqueia datas passadas inteiras
         if (\Carbon\Carbon::parse($date, 'America/Sao_Paulo')->lt($now->startOfDay())) {
             \Log::info('⛔ Data anterior ao dia atual, nenhum horário será retornado', ['date' => $date]);
             return response()->json(['available_times' => []]);
         }
 
-        // 🔒 Verifica feriado / folga
+        // 🔒 Feriado / folga
         $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
@@ -904,7 +903,7 @@ public function availableTimes(Request $request)
             return response()->json(['available_times' => []]);
         }
 
-        // 🔍 Busca horários de trabalho do barbeiro
+        // 📆 Horários de trabalho ativos
         $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -916,7 +915,7 @@ public function availableTimes(Request $request)
             return response()->json(['available_times' => []]);
         }
 
-        // 📋 Busca agendamentos existentes
+        // 🧾 Agendamentos do dia
         $appointments = \App\Models\Order::where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereBetween('order_datetime', [
@@ -927,14 +926,13 @@ public function availableTimes(Request $request)
             ->get(['order_datetime', 'total_duration']);
 
         $occupied = [];
-
         foreach ($appointments as $a) {
             $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
             $end = $start->copy()->addMinutes($a->total_duration ?? 30);
             $occupied[] = [$start, $end];
         }
 
-        // 🕒 Quebras (intervalos)
+        // ☕ Quebras (pausas)
         $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
@@ -960,13 +958,16 @@ public function availableTimes(Request $request)
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ⏳ Ignora horários passados do dia atual
-                if ($slotStart->lt($now)) {
+                // ⏳ Atualiza "agora" a cada iteração para precisão de segundos
+                $now = \Carbon\Carbon::now('America/Sao_Paulo');
+
+                // 🚫 Ignora horários passados do dia atual (ex: 21:17 agora → não mostrar 21:00)
+                if ($slotEnd->lte($now)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ⚠️ Verifica conflito com agendamentos e pausas
+                // ⚠️ Verifica conflito
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -986,8 +987,9 @@ public function availableTimes(Request $request)
         $availableTimes = array_values(array_unique($availableTimes));
         sort($availableTimes);
 
-        \Log::info('✅ Horários disponíveis gerados com sucesso', [
+        \Log::info('✅ Horários disponíveis filtrados', [
             'date' => $date,
+            'now' => $now->format('H:i'),
             'available_count' => count($availableTimes),
             'first' => $availableTimes[0] ?? null,
             'last' => end($availableTimes) ?: null,
