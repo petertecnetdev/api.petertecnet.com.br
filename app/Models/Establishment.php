@@ -212,25 +212,46 @@ public function interactionSummary()
    public function userInteractions()
 {
     return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
-        $views = Interaction::where('entity_type', 'Establishment')
-            ->where('entity_id', $this->id)
-            ->where('interaction_type', 'view')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $views = collect()
+            ->merge(
+                $this->views()
+                    ->where('interaction_type', 'view')
+                    ->with('user:id,first_name,last_name,user_name,avatar,email')
+                    ->get()
+            )
+            ->merge(
+                $this->items->flatMap(fn($i) =>
+                    $i->views()
+                        ->where('interaction_type', 'view')
+                        ->with('user:id,first_name,last_name,user_name,avatar,email')
+                        ->get()
+                )
+            )
+            ->merge(
+                $this->employers->flatMap(fn($e) =>
+                    $e->views()
+                        ->where('interaction_type', 'view')
+                        ->with('user:id,first_name,last_name,user_name,avatar,email')
+                        ->get()
+                )
+            )
+            ->filter(fn($v) => $v->user)
+            ->sortByDesc('created_at');
 
         $grouped = $views->groupBy('user_id')->map(function ($group) {
-            $u = $group->first()->user;
+            $view = $group->first();
+            $u = $view->user;
+
             return [
-                'user_id' => $u?->id,
-                'user_name' => $u?->user_name,
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'avatar' => $u?->avatar,
-                'email' => $u?->email,
-                'last_interaction' => $group->first()->created_at
-                    ? $group->first()->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                'user_id' => $u->id,
+                'user_name' => $u->user_name,
+                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                'avatar' => $u->avatar,
+                'email' => $u->email,
+                'last_interaction' => $view->created_at
+                    ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
                     : null,
-                'profile_link' => $u?->user_name ? url("/user/view/{$u->user_name}") : null,
+                'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
             ];
         });
 
