@@ -637,70 +637,131 @@ class EmployerController extends Controller
             ], 500);
         }
 
-    }
+    }public function view($user_name)
+{
+    try {
+        \Log::info('[EmployerController::view] Iniciando busca do colaborador', [
+            'user_name' => $user_name,
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ]);
 
-    public function view($user_name)
-    {
-        try {
-            $authUser = Auth::user();
+        $authUser = Auth::user();
+        \Log::info('[EmployerController::view] Usuário autenticado', [
+            'auth_user_id' => $authUser?->id,
+            'auth_user_name' => $authUser?->user_name,
+        ]);
 
-            // 🔹 Carrega o colaborador pelo user_name do usuário vinculado
-            $employer = Employer::whereHas('user', function ($q) use ($user_name) {
-                $q->where('user_name', $user_name);
-            })
-                ->with([
-                    'user:id,first_name,last_name,user_name,avatar,email,about,occupation,city,uf',
-                    'establishment:id,name,slug,city,uf,logo',
+        // 🔹 Busca o colaborador pelo user_name vinculado ao user
+        $employer = Employer::whereHas('user', function ($q) use ($user_name) {
+            $q->where('user_name', $user_name);
+        })
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email,about,occupation,city,uf',
+                'establishment:id,name,slug,city,uf,logo',
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->first();
 
-                    'orders.client:id,first_name,last_name,user_name,avatar,email',
-                    'interactions.user:id,first_name,last_name,user_name,avatar,email',
-                ])
-                ->firstOrFail();
-
-            // 🔹 Registra visualização
-            Interaction::registerView($employer, $authUser);
-
-            // 🔹 Limpa caches
-            Cache::forget("employer_{$employer->id}_metrics");
-            Cache::forget("employer_{$employer->id}_summary");
-
-            // 🔹 Métricas e interações atualizadas
-            $metrics = $employer->metrics();
-            $interactionSummary = $employer->fullInteractionsSummary();
-
-            // 🔹 Outros colaboradores do mesmo estabelecimento
-            $otherEmployers = Employer::where('establishment_id', $employer->establishment_id)
-                ->where('id', '!=', $employer->id)
-                ->with('user:id,first_name,last_name,user_name,avatar,email')
-                ->get();
-
-            return response()->json([
-                'employer' => $employer,
-                'user' => $employer->user,
-                'establishment' => $employer->establishment,
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $employer->interactions()->latest()->take(20)->get(),
-                'other_employers' => $otherEmployers,
-                'orders_summary' => [
-                    'total_orders' => $employer->orders()->count(),
-                    'latest_orders' => $employer->orders()
-                        ->with('client:id,first_name,last_name,user_name,avatar,email')
-                        ->latest()
-                        ->take(10)
-                        ->get(),
-                ],
-            ], 200);
-
-        } catch (\Throwable $e) {
-            \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
+        // 🔹 Verifica se o colaborador existe
+        if (!$employer) {
+            \Log::warning('[EmployerController::view] Colaborador não encontrado', [
                 'user_name' => $user_name,
-                'message' => $e->getMessage(),
             ]);
-
-            return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
+            return response()->json([
+                'error' => 'Colaborador não encontrado.',
+                'details' => "Nenhum colaborador associado ao usuário '{$user_name}' foi localizado."
+            ], 404, [], JSON_UNESCAPED_UNICODE);
         }
+
+        \Log::info('[EmployerController::view] Colaborador encontrado', [
+            'employer_id' => $employer->id,
+            'establishment_id' => $employer->establishment_id,
+        ]);
+
+        // 🔹 Registra visualização
+        $interaction = Interaction::registerView($employer, $authUser);
+        \Log::info('[EmployerController::view] Visualização registrada', [
+            'interaction_id' => $interaction?->id ?? null,
+        ]);
+
+        // 🔹 Limpa caches
+        Cache::forget("employer_{$employer->id}_metrics");
+        Cache::forget("employer_{$employer->id}_summary");
+        \Log::info('[EmployerController::view] Cache limpo', [
+            'keys' => ["employer_{$employer->id}_metrics", "employer_{$employer->id}_summary"],
+        ]);
+
+        // 🔹 Métricas e interações atualizadas
+        $metrics = $employer->metrics();
+        $interactionSummary = $employer->fullInteractionsSummary();
+        \Log::info('[EmployerController::view] Métricas e resumo de interações obtidos com sucesso', [
+            'metrics' => $metrics,
+        ]);
+
+        // 🔹 Outros colaboradores
+        $otherEmployers = Employer::where('establishment_id', $employer->establishment_id)
+            ->where('id', '!=', $employer->id)
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->get();
+        \Log::info('[EmployerController::view] Outros colaboradores carregados', [
+            'count' => $otherEmployers->count(),
+        ]);
+
+        return response()->json([
+            'employer' => $employer,
+            'user' => $employer->user,
+            'establishment' => $employer->establishment,
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $employer->interactions()->latest()->take(20)->get(),
+            'other_employers' => $otherEmployers,
+            'orders_summary' => [
+                'total_orders' => $employer->orders()->count(),
+                'latest_orders' => $employer->orders()
+                    ->with('client:id,first_name,last_name,user_name,avatar,email')
+                    ->latest()
+                    ->take(10)
+                    ->get(),
+            ],
+        ], 200, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        \Log::warning('[EmployerController::view] Colaborador não encontrado (ModelNotFoundException)', [
+            'user_name' => $user_name,
+            'message' => $e->getMessage(),
+        ]);
+        return response()->json([
+            'error' => 'Colaborador não encontrado.',
+            'details' => 'O sistema não localizou nenhum registro correspondente a este colaborador.',
+        ], 404, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Illuminate\Database\QueryException $e) {
+        \Log::error('[EmployerController::view] Erro de banco de dados', [
+            'user_name' => $user_name,
+            'sql_error' => $e->getMessage(),
+            'sql_code' => $e->getCode(),
+        ]);
+        return response()->json([
+            'error' => 'Erro de banco de dados ao carregar colaborador.',
+            'details' => $e->getMessage(),
+        ], 500, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Throwable $e) {
+        \Log::error('[EmployerController::view] Erro inesperado ao carregar colaborador', [
+            'user_name' => $user_name,
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json([
+            'error' => 'Erro inesperado ao carregar colaborador.',
+            'details' => $e->getMessage(),
+        ], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
     public function listSchedules(Request $request)
     {
         try {
