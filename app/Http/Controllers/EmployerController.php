@@ -872,7 +872,7 @@ class EmployerController extends Controller
     }public function availableTimes(Request $request)
 {
     try {
-        \Log::info('📥 Recebendo requisição para horários disponíveis', ['payload' => $request->all()]);
+        \Log::info('📥 Requisição recebida para horários disponíveis', ['payload' => $request->all()]);
 
         $data = $request->validate([
             'employer_id' => 'required|integer|exists:employers,id',
@@ -881,36 +881,34 @@ class EmployerController extends Controller
         ]);
 
         $employerId = $data['employer_id'];
-
-        // ✅ Garante que a data seja interpretada corretamente no fuso de São Paulo
-        $date = \Carbon\Carbon::createFromFormat('Y-m-d', substr($data['date'], 0, 10))
-            ->setTimezone('America/Sao_Paulo')
-            ->format('Y-m-d');
-
         $duration = (int) $data['duration'];
+
+        // 📅 Garante que a data seja corretamente interpretada no fuso de São Paulo
+        $date = \Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('Y-m-d');
         $dayOfWeek = strtolower(\Carbon\Carbon::parse($date, 'America/Sao_Paulo')->format('l'));
 
+        // 🕐 Pega o horário atual e cria uma margem de 30min
         $now = \Carbon\Carbon::now('America/Sao_Paulo');
-        $minTime = $now->copy()->addMinutes(30);
+        $futureLimit = $now->copy()->addMinutes(30);
 
         // 🚫 Bloqueia datas passadas inteiras
         if (\Carbon\Carbon::parse($date, 'America/Sao_Paulo')->lt($now->startOfDay())) {
-            \Log::info('⛔ Data anterior ao dia atual, nenhum horário será retornado', ['date' => $date]);
+            \Log::info('⛔ Data anterior ao dia atual, sem horários disponíveis', ['date' => $date]);
             return response()->json(['available_times' => []]);
         }
 
-        // 🔒 Verifica feriados / folgas
+        // 🔒 Bloqueia feriados / folgas
         $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'holiday')
             ->whereDate('reserved_date', $date)
             ->exists();
 
         if ($isHoliday) {
-            \Log::info('📅 Dia marcado como folga/feriado', ['date' => $date]);
+            \Log::info('📅 Dia de folga detectado', ['date' => $date]);
             return response()->json(['available_times' => []]);
         }
 
-        // 🕒 Horários de expediente ativos
+        // 🕒 Busca horários de expediente ativos
         $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -922,7 +920,7 @@ class EmployerController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 📋 Agendamentos do dia
+        // 📋 Agendamentos existentes no dia
         $appointments = \App\Models\Order::where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereBetween('order_datetime', [
@@ -939,7 +937,7 @@ class EmployerController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // ☕ Pausas registradas
+        // ☕ Pausas
         $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
@@ -959,19 +957,19 @@ class EmployerController extends Controller
             $workStart = \Carbon\Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = \Carbon\Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
             $pointer = $workStart->copy();
-            $step = 15;
+            $step = 15; // Intervalo padrão de 15 minutos
 
             while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // 🚫 Ignora horários passados ou próximos demais se o dia for hoje
-                if ($date === $now->format('Y-m-d') && $slotStart->lte($minTime)) {
+                // 🚫 Se a data for hoje, ignora horários passados ou dentro de 30min
+                if ($date === $now->format('Y-m-d') && $slotStart->lte($futureLimit)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ⚠️ Verifica conflitos
+                // ⚠️ Verifica conflitos com agendamentos ou pausas
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -980,6 +978,7 @@ class EmployerController extends Controller
                     }
                 }
 
+                // ✅ Se estiver livre, adiciona
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -993,16 +992,19 @@ class EmployerController extends Controller
 
         \Log::info('✅ Horários disponíveis calculados', [
             'date' => $date,
-            'agora' => $now->format('H:i'),
-            'disponíveis' => count($availableTimes),
+            'hora_atual' => $now->format('H:i'),
+            'horarios_disponiveis' => count($availableTimes),
+            'primeiro' => $availableTimes[0] ?? null,
+            'ultimo' => end($availableTimes) ?: null,
         ]);
 
         return response()->json(['available_times' => $availableTimes]);
 
     } catch (\Illuminate\Validation\ValidationException $e) {
+        \Log::warning('⚠️ Erro de validação em availableTimes', ['errors' => $e->errors()]);
         return response()->json(['errors' => $e->errors()], 422);
     } catch (\Throwable $e) {
-        \Log::error('❌ Erro em availableTimes', [
+        \Log::error('❌ Erro inesperado em availableTimes', [
             'message' => $e->getMessage(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
@@ -1010,6 +1012,7 @@ class EmployerController extends Controller
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
+
 
 
     public function reserveSchedule(Request $request)
