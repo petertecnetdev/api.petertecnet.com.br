@@ -877,14 +877,16 @@ class EmployerController extends Controller
         $data = $request->validate([
             'employer_id' => 'required|integer|exists:employers,id',
             'date' => 'required|date',
-            'duration' => 'required|integer|min:5',
+            'duration' => 'required|integer|min:5', // duração total dos serviços selecionados
         ]);
 
         $employerId = $data['employer_id'];
         $date = \Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('Y-m-d');
-        $duration = (int) $data['duration'];
+        $duration = (int) $data['duration']; // total de minutos
         $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'], 'America/Sao_Paulo')->format('l'));
+
         $now = \Carbon\Carbon::now('America/Sao_Paulo');
+        $thirtyMinutesLater = $now->copy()->addMinutes(30);
 
         // 🚫 Bloqueia datas passadas inteiras
         if (\Carbon\Carbon::parse($date, 'America/Sao_Paulo')->lt($now->startOfDay())) {
@@ -903,7 +905,7 @@ class EmployerController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 📆 Horários de trabalho ativos
+        // 📅 Horários de expediente
         $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('day_of_week', $dayOfWeek)
             ->where('is_active', true)
@@ -915,7 +917,7 @@ class EmployerController extends Controller
             return response()->json(['available_times' => []]);
         }
 
-        // 🧾 Agendamentos do dia
+        // 🧾 Agendamentos existentes do dia (pending + confirmed)
         $appointments = \App\Models\Order::where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereBetween('order_datetime', [
@@ -932,7 +934,7 @@ class EmployerController extends Controller
             $occupied[] = [$start, $end];
         }
 
-        // ☕ Quebras (pausas)
+        // ☕ Pausas / Quebras
         $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
             ->where('type', 'break')
             ->whereDate('reserved_date', $date)
@@ -944,6 +946,7 @@ class EmployerController extends Controller
             $occupied[] = [$start, $end];
         }
 
+        // Ordena os períodos ocupados
         usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
         $availableTimes = [];
@@ -951,23 +954,22 @@ class EmployerController extends Controller
         foreach ($schedules as $schedule) {
             $workStart = \Carbon\Carbon::parse("{$date} {$schedule->start_time}", 'America/Sao_Paulo');
             $workEnd = \Carbon\Carbon::parse("{$date} {$schedule->end_time}", 'America/Sao_Paulo');
-            $step = 15;
+            $step = 15; // intervalo mínimo entre slots
             $pointer = $workStart->copy();
 
             while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
                 $slotStart = $pointer->copy();
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                // ⏳ Atualiza "agora" a cada iteração para precisão de segundos
-                $now = \Carbon\Carbon::now('America/Sao_Paulo');
+                $isToday = $date === $now->format('Y-m-d');
 
-                // 🚫 Ignora horários passados do dia atual (ex: 21:17 agora → não mostrar 21:00)
-                if ($slotEnd->lte($now)) {
+                // 🚫 Ignora horários passados ou dentro dos próximos 30 minutos se for hoje
+                if ($isToday && $slotStart->lte($thirtyMinutesLater)) {
                     $pointer->addMinutes($step);
                     continue;
                 }
 
-                // ⚠️ Verifica conflito
+                // ⚠️ Verifica conflito com outros atendimentos ou pausas
                 $hasConflict = false;
                 foreach ($occupied as [$occStart, $occEnd]) {
                     if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -976,6 +978,7 @@ class EmployerController extends Controller
                     }
                 }
 
+                // ✅ Se não houver conflito e o horário for válido, adiciona
                 if (!$hasConflict) {
                     $availableTimes[] = $slotStart->format('H:i');
                 }
@@ -987,12 +990,13 @@ class EmployerController extends Controller
         $availableTimes = array_values(array_unique($availableTimes));
         sort($availableTimes);
 
-        \Log::info('✅ Horários disponíveis filtrados', [
+        \Log::info('✅ Horários disponíveis processados', [
             'date' => $date,
-            'now' => $now->format('H:i'),
-            'available_count' => count($availableTimes),
-            'first' => $availableTimes[0] ?? null,
-            'last' => end($availableTimes) ?: null,
+            'duration' => $duration,
+            'agora' => $now->format('H:i'),
+            'primeiro' => $availableTimes[0] ?? null,
+            'ultimo' => end($availableTimes) ?: null,
+            'total' => count($availableTimes),
         ]);
 
         return response()->json(['available_times' => $availableTimes]);
@@ -1009,6 +1013,7 @@ class EmployerController extends Controller
         return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
 }
+
 
 
     public function reserveSchedule(Request $request)
