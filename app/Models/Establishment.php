@@ -209,31 +209,34 @@ public function interactionSummary()
         });
     }
 
-    public function userInteractions()
-    {
-        return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
-            $userIds = collect()
-                ->merge($this->views()->pluck('user_id')->toArray())
-                ->merge($this->items->flatMap(fn($i) => $i->views()->pluck('user_id')->toArray()))
-                ->merge($this->employers->flatMap(fn($e) => $e->views()->pluck('user_id')->toArray()))
-                ->filter()
-                ->unique()
-                ->values();
+   public function userInteractions()
+{
+    return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
+        $views = Interaction::where('entity_type', 'Establishment')
+            ->where('entity_id', $this->id)
+            ->where('interaction_type', 'view')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->orderBy('created_at', 'desc')
+            ->get();
 
-            return User::whereIn('id', $userIds)
-                ->get(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'email'])
-                ->map(function ($u) {
-                    return [
-                        'user_id' => $u->id,
-                        'user_name' => $u->user_name,
-                        'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                        'avatar' => $u->avatar,
-                        'email' => $u->email,
-                        'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
-                    ];
-                });
+        $grouped = $views->groupBy('user_id')->map(function ($group) {
+            $u = $group->first()->user;
+            return [
+                'user_id' => $u?->id,
+                'user_name' => $u?->user_name,
+                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                'avatar' => $u?->avatar,
+                'email' => $u?->email,
+                'last_interaction' => $group->first()->created_at
+                    ? $group->first()->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                    : null,
+                'profile_link' => $u?->user_name ? url("/user/view/{$u->user_name}") : null,
+            ];
         });
-    }
+
+        return $grouped->values();
+    });
+}
 
     public function otherEstablishments()
     {
