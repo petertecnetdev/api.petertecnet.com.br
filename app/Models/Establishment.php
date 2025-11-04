@@ -212,31 +212,13 @@ public function interactionSummary()
    public function userInteractions()
 {
     return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
-        $views = collect()
-            ->merge(
-                $this->views()
-                    ->where('interaction_type', 'view')
-                    ->with('user:id,first_name,last_name,user_name,avatar,email')
-                    ->get()
-            )
-            ->merge(
-                $this->items->flatMap(fn($i) =>
-                    $i->views()
-                        ->where('interaction_type', 'view')
-                        ->with('user:id,first_name,last_name,user_name,avatar,email')
-                        ->get()
-                )
-            )
-            ->merge(
-                $this->employers->flatMap(fn($e) =>
-                    $e->views()
-                        ->where('interaction_type', 'view')
-                        ->with('user:id,first_name,last_name,user_name,avatar,email')
-                        ->get()
-                )
-            )
-            ->filter(fn($v) => $v->user)
-            ->sortByDesc('created_at');
+        $views = \App\Models\Interaction::where('entity_type', 'Establishment')
+            ->where('entity_id', $this->id)
+            ->where('interaction_type', 'view')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->orderByDesc('created_at')
+            ->get()
+            ->filter(fn($v) => $v->user);
 
         $grouped = $views->groupBy('user_id')->map(function ($group) {
             $view = $group->first();
