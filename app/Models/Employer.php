@@ -163,59 +163,143 @@ class Employer extends Model
                 ->get();
         });
     }
+public function ordersSummary()
+{
+    return Cache::remember("employer_{$this->id}_orders_summary", 120, function () {
+        $orders = $this->orders()
+            ->with(['client:id,first_name,last_name,user_name,avatar,email'])
+            ->get();
 
-    public function ordersSummary()
-    {
-        return Cache::remember("employer_{$this->id}_orders_summary", 120, function () {
-            $orders = $this->orders()
-                ->with(['client:id,first_name,last_name,user_name,avatar,email'])
-                ->get();
-
-            if ($orders->isEmpty()) {
-                return [
-                    'total_orders' => 0,
-                    'completed_orders' => 0,
-                    'cancelled_orders' => 0,
-                    'pending_orders' => 0,
-                    'total_revenue' => 0,
-                    'average_ticket' => 0,
-                    'completion_rate' => 0,
-                    'cancellation_rate' => 0,
-                    'top_client' => null,
-                ];
-            }
-
-            $total = $orders->count();
-            $completed = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
-            $cancelled = $orders->where('appointment_status', 'cancelled')->count();
-            $pending = $orders->where('appointment_status', 'pending')->count();
-            $revenue = $orders->sum('total_price');
-            $avg = $total > 0 ? round($revenue / $total, 2) : 0;
-
-            $topClient = $orders->groupBy('client_id')->map(function ($group) {
-                $c = $group->first()->client;
-                return [
-                    'id' => $c?->id,
-                    'name' => trim(($c?->first_name ?? '') . ' ' . ($c?->last_name ?? '')),
-                    'user_name' => $c?->user_name,
-                    'avatar' => $c?->avatar,
-                    'total_orders' => $group->count(),
-                ];
-            })->sortByDesc('total_orders')->first();
-
+        if ($orders->isEmpty()) {
             return [
-                'total_orders' => $total,
-                'completed_orders' => $completed,
-                'cancelled_orders' => $cancelled,
-                'pending_orders' => $pending,
-                'total_revenue' => $revenue,
-                'average_ticket' => $avg,
-                'completion_rate' => $total > 0 ? round(($completed / $total) * 100, 2) : 0,
-                'cancellation_rate' => $total > 0 ? round(($cancelled / $total) * 100, 2) : 0,
-                'top_client' => $topClient,
+                'total_orders' => 0,
+                'completed_orders' => 0,
+                'attended_orders' => 0,
+                'not_attended_orders' => 0,
+                'cancelled_orders' => 0,
+                'pending_orders' => 0,
+                'total_revenue' => 0,
+                'average_ticket' => 0,
+                'completion_rate' => 0,
+                'cancellation_rate' => 0,
+                'return_rate' => 0,
+                'average_service_time' => 0,
+                'top_client_by_value' => null,
+                'top_client_by_count' => null,
+                'top_recurring_client' => null,
+                'recent_orders' => [],
+                'active_days' => 0,
             ];
-        });
-    }
+        }
+
+        $total = $orders->count();
+        $completed = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
+        $attended = $orders->where('appointment_status', 'attended')->count();
+        $notAttended = $orders->where('appointment_status', 'not_attended')->count();
+        $cancelled = $orders->where('appointment_status', 'cancelled')->count();
+        $pending = $orders->where('appointment_status', 'pending')->count();
+
+        $revenue = $orders->sum('total_price');
+        $avgTicket = $total > 0 ? round($revenue / $total, 2) : 0;
+
+        $completionRate = $total > 0 ? round(($completed / $total) * 100, 2) : 0;
+        $cancellationRate = $total > 0 ? round(($cancelled / $total) * 100, 2) : 0;
+
+        // 🔹 Clientes recorrentes e retorno
+        $clientsCount = $orders->groupBy('client_id')->map->count();
+        $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+        $returnRate = $clientsCount->count() > 0
+            ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
+            : 0;
+
+        $topRecurringClient = null;
+        if ($recurringClients->isNotEmpty()) {
+            $topRecurringId = $recurringClients->sortDesc()->keys()->first();
+            $client = $orders->firstWhere('client_id', $topRecurringId)?->client;
+            $topRecurringClient = [
+                'id' => $client?->id,
+                'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                'user_name' => $client?->user_name,
+                'avatar' => $client?->avatar,
+                'repeat_orders' => $recurringClients[$topRecurringId],
+            ];
+        }
+
+        // 🔹 Cliente que mais gastou
+        $topClientByValue = $orders->groupBy('client_id')->map(function ($group) {
+            $client = $group->first()?->client;
+            return [
+                'id' => $client?->id,
+                'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                'user_name' => $client?->user_name,
+                'avatar' => $client?->avatar,
+                'total_spent' => $group->sum('total_price'),
+                'total_orders' => $group->count(),
+            ];
+        })->sortByDesc('total_spent')->first();
+
+        // 🔹 Cliente com mais pedidos
+        $topClientByCount = $orders->groupBy('client_id')->map(function ($group) {
+            $client = $group->first()?->client;
+            return [
+                'id' => $client?->id,
+                'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                'user_name' => $client?->user_name,
+                'avatar' => $client?->avatar,
+                'total_orders' => $group->count(),
+            ];
+        })->sortByDesc('total_orders')->first();
+
+        // 🔹 Tempo médio de atendimento (criação -> finalização)
+        $averageServiceTime = 0;
+        $completedWithDates = $orders->whereNotNull('created_at')->whereNotNull('updated_at');
+        if ($completedWithDates->count() > 0) {
+            $averageServiceTime = round(
+                $completedWithDates->map(fn($o) => $o->updated_at->diffInMinutes($o->created_at))->avg(),
+                2
+            );
+        }
+
+        // 🔹 Pedidos recentes (últimos 5)
+        $recentOrders = $orders->sortByDesc('created_at')
+            ->take(5)
+            ->map(function ($o) {
+                return [
+                    'id' => $o->id,
+                    'order_number' => $o->order_number,
+                    'customer_name' => $o->customer_name,
+                    'total_price' => $o->total_price,
+                    'appointment_status' => $o->appointment_status,
+                    'order_datetime' => $o->order_datetime,
+                ];
+            })
+            ->values();
+
+        // 🔹 Dias ativos
+        $activeDays = $orders->pluck('created_at')->map(fn($d) => $d->toDateString())->unique()->count();
+
+        return [
+            'total_orders' => $total,
+            'completed_orders' => $completed,
+            'attended_orders' => $attended,
+            'not_attended_orders' => $notAttended,
+            'cancelled_orders' => $cancelled,
+            'pending_orders' => $pending,
+            'total_revenue' => $revenue,
+            'average_ticket' => $avgTicket,
+            'completion_rate' => $completionRate,
+            'cancellation_rate' => $cancellationRate,
+            'return_rate' => $returnRate,
+            'average_service_time' => $averageServiceTime,
+            'top_client_by_value' => $topClientByValue,
+            'top_client_by_count' => $topClientByCount,
+            'top_recurring_client' => $topRecurringClient,
+            'recent_orders' => $recentOrders,
+            'active_days' => $activeDays,
+        ];
+    });
+}
+
 
     /* ===============================
        🔹 NOVOS MÉTODOS AUXILIARES
