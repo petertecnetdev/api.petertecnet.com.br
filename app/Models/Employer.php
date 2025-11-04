@@ -61,7 +61,7 @@ class Employer extends Model
     }
 
     /* ===============================
-       MÉTRICAS E RESUMOS (CACHEADOS)
+       MÉTRICAS E RESUMOS CACHEADOS
     ================================ */
 
     public function getMetricsAttribute()
@@ -124,7 +124,7 @@ class Employer extends Model
     public function userInteractions()
     {
         return Cache::remember("employer_{$this->id}_user_interactions", 120, function () {
-            $views = \App\Models\Interaction::where('entity_type', 'Employer')
+            $views = Interaction::where('entity_type', 'Employer')
                 ->where('entity_id', $this->id)
                 ->where('interaction_type', 'view')
                 ->with('user:id,first_name,last_name,user_name,avatar,email')
@@ -215,5 +215,56 @@ class Employer extends Model
                 'top_client' => $topClient,
             ];
         });
+    }
+
+    /* ===============================
+       🔹 NOVOS MÉTODOS AUXILIARES
+    ================================ */
+
+    public static function findOrFallbackByUserName($user_name)
+    {
+        $employer = self::whereHas('user', fn($q) => $q->where('user_name', $user_name))
+            ->with(['user', 'establishment'])
+            ->first();
+
+        if ($employer) {
+            return $employer;
+        }
+
+        $user = User::where('user_name', $user_name)->first();
+        if (!$user) {
+            return null;
+        }
+
+        return self::where('user_id', $user->id)
+            ->with(['establishment'])
+            ->withCount('interactions')
+            ->orderByDesc('interactions_count')
+            ->first();
+    }
+
+    public function refreshViewMetrics($viewer = null)
+    {
+        Interaction::registerView($this, $viewer);
+        Cache::forget("employer_{$this->id}_metrics");
+        Cache::forget("employer_{$this->id}_summary");
+    }
+
+    public function toRichArray()
+    {
+        return [
+            'id' => $this->id,
+            'role' => $this->role,
+            'permissions' => $this->permissions,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'user' => $this->user ? $this->user->toArray() : null,
+            'establishment' => $this->establishment ? $this->establishment->toArray() : null,
+            'metrics' => $this->metrics,
+            'interaction_summary' => $this->interactionSummary(),
+            'user_interactions' => $this->userInteractions(),
+            'other_employers' => $this->otherEmployers(),
+            'orders_summary' => $this->ordersSummary(),
+        ];
     }
 }
