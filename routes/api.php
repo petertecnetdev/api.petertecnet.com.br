@@ -237,7 +237,7 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| EMPLOYER (COLABORADORES E AGENDAMENTOS)
+| EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
 */
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
@@ -247,7 +247,7 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
     Route::get('/appointments', [EmployerController::class, 'listAppointments'])->name('employer.appointments');
 
-    // 🗓️ Horários e Agendas (unificados)
+    // 🗓️ Horários 
     Route::get('/schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
     Route::post('/schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
     Route::delete('/schedules/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
