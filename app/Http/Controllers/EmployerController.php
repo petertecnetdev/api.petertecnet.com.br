@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Employer, Establishment,Interaction, User};
+use App\Models\{Employer, Establishment, Interaction, User};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -638,18 +638,19 @@ class EmployerController extends Controller
 
     }
 
-     public function view($user_name)
+    public function view($user_name)
     {
         try {
             $authUser = Auth::user();
 
             // 🔹 Carrega o colaborador pelo user_name do usuário vinculado
             $employer = Employer::whereHas('user', function ($q) use ($user_name) {
-                    $q->where('user_name', $user_name);
-                })
+                $q->where('user_name', $user_name);
+            })
                 ->with([
                     'user:id,first_name,last_name,user_name,avatar,email,about,occupation,city,uf',
-                    'establishment:id,name,slug,city,uf,image',
+                    'establishment:id,name,slug,city,uf,logo',
+
                     'orders.client:id,first_name,last_name,user_name,avatar,email',
                     'interactions.user:id,first_name,last_name,user_name,avatar,email',
                 ])
@@ -773,134 +774,135 @@ class EmployerController extends Controller
             \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }public function availableTimes(Request $request)
-{
-    try {
-        $data = $request->validate([
-            'employer_id' => 'required|integer|exists:employers,id',
-            'date' => 'required', // pode vir com hora, será ignorada
-            'duration' => 'required|integer|min:5',
-        ]);
-
-        $employerId = (int) $data['employer_id'];
-        $duration   = (int) $data['duration'];
-
-        // 🕒 Horário atual verdadeiro (do servidor)
-        $now = \Carbon\Carbon::now('America/Sao_Paulo');
-        $today = $now->format('Y-m-d');
-
-        // 🧹 Extrai apenas o dia e ignora completamente a hora enviada
-        $raw = (string) $data['date'];
-        $dateStr = preg_replace('/T.*/', '', $raw);
-        $date = \Carbon\Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
-        $dayOfWeek = strtolower($date->format('l'));
-
-        // 🚫 Se o dia for passado, retorna vazio
-        if ($date->lt($now->copy()->startOfDay())) {
-            return response()->json(['available_times' => []]);
-        }
-
-        // 🔒 Folga ou feriado
-        $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
-            ->where('type', 'holiday')
-            ->whereDate('reserved_date', $date->toDateString())
-            ->exists();
-
-        if ($isHoliday) {
-            return response()->json(['available_times' => []]);
-        }
-
-        // 🗓️ Horários de expediente
-        $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
-            ->where('day_of_week', $dayOfWeek)
-            ->where('is_active', true)
-            ->where('type', 'work')
-            ->get();
-
-        if ($schedules->isEmpty()) {
-            return response()->json(['available_times' => []]);
-        }
-
-        // 📋 Agendamentos do dia
-        $appointments = \App\Models\Order::where('attendant_id', $employerId)
-            ->where('type', 'appointment')
-            ->whereBetween('order_datetime', [
-                $date->copy()->startOfDay()->setTimezone('UTC'),
-                $date->copy()->endOfDay()->setTimezone('UTC'),
-            ])
-            ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->get(['order_datetime', 'total_duration']);
-
-        $occupied = [];
-        foreach ($appointments as $a) {
-            $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
-            $end = $start->copy()->addMinutes($a->total_duration ?? 30);
-            $occupied[] = [$start, $end];
-        }
-
-        // ☕ Pausas
-        $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
-            ->where('type', 'break')
-            ->whereDate('reserved_date', $date->toDateString())
-            ->get();
-
-        foreach ($breaks as $b) {
-            $start = \Carbon\Carbon::parse("{$date->toDateString()} {$b->start_time}", 'America/Sao_Paulo');
-            $end = \Carbon\Carbon::parse("{$date->toDateString()} {$b->end_time}", 'America/Sao_Paulo');
-            $occupied[] = [$start, $end];
-        }
-
-        usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
-
-        // ⚙️ Geração de horários disponíveis
-        $availableTimes = [];
-        $step = 15;
-        $limitFuture = $now->copy()->addMinutes(30); // tolerância mínima
-
-        foreach ($schedules as $schedule) {
-            $workStart = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
-            $workEnd = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->end_time}", 'America/Sao_Paulo');
-
-            $pointer = $workStart->copy();
-
-            while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
-                $slotStart = $pointer->copy();
-                $slotEnd = $slotStart->copy()->addMinutes($duration);
-
-                // 🚫 Se o dia for hoje, só horários depois de agora + 30 min
-                if ($date->isSameDay($now) && $slotStart->lte($limitFuture)) {
-                    $pointer->addMinutes($step);
-                    continue;
-                }
-
-                // ⚠️ Verifica conflito
-                $hasConflict = false;
-                foreach ($occupied as [$occStart, $occEnd]) {
-                    if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
-                        $hasConflict = true;
-                        break;
-                    }
-                }
-
-                // ✅ Adiciona se estiver livre
-                if (!$hasConflict) {
-                    $availableTimes[] = $slotStart->format('H:i');
-                }
-
-                $pointer->addMinutes($step);
-            }
-        }
-
-        sort($availableTimes);
-        return response()->json(['available_times' => $availableTimes]);
-    } catch (\Throwable $e) {
-        \Log::error('❌ Erro em availableTimes', [
-            'message' => $e->getMessage(),
-            'line' => $e->getLine(),
-        ]);
-        return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
     }
-}
+    public function availableTimes(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'date' => 'required', // pode vir com hora, será ignorada
+                'duration' => 'required|integer|min:5',
+            ]);
+
+            $employerId = (int) $data['employer_id'];
+            $duration = (int) $data['duration'];
+
+            // 🕒 Horário atual verdadeiro (do servidor)
+            $now = \Carbon\Carbon::now('America/Sao_Paulo');
+            $today = $now->format('Y-m-d');
+
+            // 🧹 Extrai apenas o dia e ignora completamente a hora enviada
+            $raw = (string) $data['date'];
+            $dateStr = preg_replace('/T.*/', '', $raw);
+            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
+            $dayOfWeek = strtolower($date->format('l'));
+
+            // 🚫 Se o dia for passado, retorna vazio
+            if ($date->lt($now->copy()->startOfDay())) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // 🔒 Folga ou feriado
+            $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'holiday')
+                ->whereDate('reserved_date', $date->toDateString())
+                ->exists();
+
+            if ($isHoliday) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // 🗓️ Horários de expediente
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('is_active', true)
+                ->where('type', 'work')
+                ->get();
+
+            if ($schedules->isEmpty()) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // 📋 Agendamentos do dia
+            $appointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->where('type', 'appointment')
+                ->whereBetween('order_datetime', [
+                    $date->copy()->startOfDay()->setTimezone('UTC'),
+                    $date->copy()->endOfDay()->setTimezone('UTC'),
+                ])
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->get(['order_datetime', 'total_duration']);
+
+            $occupied = [];
+            foreach ($appointments as $a) {
+                $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+                $end = $start->copy()->addMinutes($a->total_duration ?? 30);
+                $occupied[] = [$start, $end];
+            }
+
+            // ☕ Pausas
+            $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'break')
+                ->whereDate('reserved_date', $date->toDateString())
+                ->get();
+
+            foreach ($breaks as $b) {
+                $start = \Carbon\Carbon::parse("{$date->toDateString()} {$b->start_time}", 'America/Sao_Paulo');
+                $end = \Carbon\Carbon::parse("{$date->toDateString()} {$b->end_time}", 'America/Sao_Paulo');
+                $occupied[] = [$start, $end];
+            }
+
+            usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
+
+            // ⚙️ Geração de horários disponíveis
+            $availableTimes = [];
+            $step = 15;
+            $limitFuture = $now->copy()->addMinutes(30); // tolerância mínima
+
+            foreach ($schedules as $schedule) {
+                $workStart = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
+                $workEnd = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->end_time}", 'America/Sao_Paulo');
+
+                $pointer = $workStart->copy();
+
+                while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
+                    $slotStart = $pointer->copy();
+                    $slotEnd = $slotStart->copy()->addMinutes($duration);
+
+                    // 🚫 Se o dia for hoje, só horários depois de agora + 30 min
+                    if ($date->isSameDay($now) && $slotStart->lte($limitFuture)) {
+                        $pointer->addMinutes($step);
+                        continue;
+                    }
+
+                    // ⚠️ Verifica conflito
+                    $hasConflict = false;
+                    foreach ($occupied as [$occStart, $occEnd]) {
+                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                            $hasConflict = true;
+                            break;
+                        }
+                    }
+
+                    // ✅ Adiciona se estiver livre
+                    if (!$hasConflict) {
+                        $availableTimes[] = $slotStart->format('H:i');
+                    }
+
+                    $pointer->addMinutes($step);
+                }
+            }
+
+            sort($availableTimes);
+            return response()->json(['available_times' => $availableTimes]);
+        } catch (\Throwable $e) {
+            \Log::error('❌ Erro em availableTimes', [
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
+        }
+    }
 
 
 
