@@ -39,7 +39,8 @@ class Establishment extends Model
         'twitter_url',
         'youtube_url',
         'segments',
-        'app_id'
+        'app_id', 
+        'uf'
     ];
 
     protected $casts = [

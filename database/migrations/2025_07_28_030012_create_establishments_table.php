@@ -27,6 +27,7 @@ $table->foreign('app_id')->references('id')->on('applications')->nullOnDelete();
             $table->text('additional_info')->nullable();
 
             $table->string('city')->nullable();
+            $table->string(column: 'uf')->nullable();
             $table->text('location')->nullable();
             $table->string('cep')->nullable();
             $table->string('address')->nullable();
