@@ -95,6 +95,7 @@ class OrderController extends Controller
                 'customer_cpf' => 'nullable|string|max:20',
                 'order_datetime' => 'required|date',
                 'attendant_id' => 'required|integer|exists:employers,id',
+                'client_id' => 'nullable|integer|exists:users,id', 
             ]);
 
             $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
