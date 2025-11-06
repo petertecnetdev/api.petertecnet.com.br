@@ -637,25 +637,26 @@ class EmployerController extends Controller
             ], 500);
         }
 
-    }public function view($user_name)
-{
-    try {
-        $authUser = Auth::user();
-
-        $employer = \App\Models\Employer::findOrFallbackByUserName($user_name);
-        if (!$employer) {
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-        }
-
-        $employer->refreshViewMetrics($authUser);
-
-        return response()->json(['employer' => $employer->toRichArray()], 200, [], JSON_UNESCAPED_UNICODE);
-
-    } catch (\Throwable $e) {
-        \Log::error('[EmployerController::view] Erro', ['msg' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
     }
-}
+    public function view($user_name)
+    {
+        try {
+            $authUser = Auth::user();
+
+            $employer = \App\Models\Employer::findOrFallbackByUserName($user_name);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+            }
+
+            $employer->refreshViewMetrics($authUser);
+
+            return response()->json(['employer' => $employer->toRichArray()], 200, [], JSON_UNESCAPED_UNICODE);
+
+        } catch (\Throwable $e) {
+            \Log::error('[EmployerController::view] Erro', ['msg' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
+        }
+    }
 
 
     public function listSchedules(Request $request)
