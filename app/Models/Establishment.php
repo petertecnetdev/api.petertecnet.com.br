@@ -78,14 +78,18 @@ class Establishment extends Model
         return $this->belongsTo(Application::class, 'app_id');
     }
 
-    public function items()
+
+public function items()
 {
     return $this->hasMany(Item::class, 'entity_id')
         ->where('entity_name', 'establishment')
         ->withCount([
-            'views as total_views', // total de visualizações
-            'views as unique_users' => function ($query) {
-                $query->select(\DB::raw('COUNT(DISTINCT user_id)'));
+            'views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            },
+            'views as unique_users' => function ($q) {
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view');
             },
         ]);
 }
