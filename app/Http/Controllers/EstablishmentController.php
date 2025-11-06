@@ -322,8 +322,7 @@ class EstablishmentController extends Controller
             Log::error('Erro ao listar estabelecimentos do usu�rio: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }
-public function view($slug)
+    }public function view($slug)
 {
     try {
         $authUser = Auth::user();
@@ -332,13 +331,24 @@ public function view($slug)
         $establishment = Establishment::whereSlug($slug)
             ->with([
                 'employers.user:id,first_name,last_name,user_name,avatar,email',
-                'items:id,entity_id,name,slug,price,type',
+                'items' => function ($q) {
+                    $q->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
+                      ->withCount([
+                          'views as total_views' => function ($x) {
+                              $x->where('interaction_type', 'view');
+                          },
+                          'views as unique_users' => function ($x) {
+                              $x->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                                ->where('interaction_type', 'view');
+                          },
+                      ]);
+                },
                 'orders.client:id,first_name,last_name,user_name,avatar,email',
                 'interactions.user:id,first_name,last_name,user_name,avatar,email',
             ])
             ->firstOrFail();
 
-        // 🔹 Registra a visualização
+        // 🔹 Registra a visualização do estabelecimento
         Interaction::registerView($establishment, $authUser);
 
         // 🔹 Limpa o cache antes de recarregar
@@ -351,7 +361,17 @@ public function view($slug)
 
         return response()->json([
             'establishment' => $establishment,
-            'items' => $establishment->items,
+            'items' => $establishment->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'type' => $item->type,
+                    'total_views' => $item->total_views ?? 0,
+                    'unique_users' => $item->unique_users ?? 0,
+                ];
+            }),
             'metrics' => $metrics,
             'interaction_summary' => $interactionSummary,
             'user_interactions' => $establishment->userInteractions(),
@@ -368,6 +388,7 @@ public function view($slug)
         return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
 }
+
 
 
     public function show($id)
