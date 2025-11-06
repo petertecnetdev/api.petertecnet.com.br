@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-
-
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class Item extends Model
 {
@@ -43,39 +43,52 @@ class Item extends Model
     ];
 
     protected $casts = [
-        'tags'               => 'array',
+        'tags' => 'array',
         'availability_start' => 'datetime',
-        'availability_end'   => 'datetime',
-        'expiration_date'    => 'datetime',
+        'availability_end' => 'datetime',
+        'expiration_date' => 'datetime',
     ];
+
+    protected $appends = ['metrics'];
+
+    protected static function boot()
+    {
+        parent::boot();
+        static::saving(function ($model) {
+            if (empty($model->slug)) {
+                $model->slug = Str::slug($model->name);
+            }
+        });
+    }
 
     /* ===============================
        RELACIONAMENTOS DIRETOS
     ================================ */
 
-    public function user(): BelongsTo
+    public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    public function app(): BelongsTo
+    public function app()
     {
         return $this->belongsTo(Application::class, 'app_id');
     }
 
-    public function creator(): BelongsTo
+    public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function updater(): BelongsTo
+    public function updater()
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
 
-    public function establishment(): BelongsTo
+    public function establishment()
     {
-        return $this->belongsTo(Establishment::class, 'entity_id');
+        return $this->belongsTo(Establishment::class, 'entity_id')
+            ->where('entity_name', 'establishment');
     }
 
     public function orderItems()
@@ -98,75 +111,67 @@ class Item extends Model
         return $this->interactions()->where('interaction_type', 'view');
     }
 
-    public function latestViews()
+    public function getMetricsAttribute()
     {
-        return $this->views()->latest()->limit(10);
+        return Cache::remember("item_{$this->id}_metrics", 120, function () {
+            return [
+                'total_views'   => $this->views()->count(),
+                'unique_users'  => $this->views()->pluck('user_id')->unique()->count(),
+                'appointments'  => $this->appointmentsCount(),
+                'is_available'  => $this->isAvailable(),
+                'price'         => $this->price,
+                'discount'      => $this->discount,
+                'stock'         => $this->stock,
+            ];
+        });
     }
 
-    public function uniqueViewers()
+    public function interactionSummary()
     {
-        return $this->views()
-            ->select('user_id')
-            ->distinct()
-            ->with('user:id,first_name,last_name,user_name,avatar,email');
-    }
+        return Cache::remember("item_{$this->id}_summary", 120, function () {
+            $views = $this->views()
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->get();
 
-    public function mostActiveViewer()
-    {
-        return $this->views()
-            ->selectRaw('user_id, COUNT(*) as total')
-            ->groupBy('user_id')
-            ->orderByDesc('total')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->first();
-    }
+            if ($views->isEmpty()) {
+                return [
+                    'total_views'      => 0,
+                    'unique_users'     => 0,
+                    'most_active_user' => null,
+                    'last_view_user'   => null,
+                ];
+            }
 
-    public function totalViewsCount()
-    {
-        return $this->views()->count();
-    }
+            $mostActive = $views->groupBy('user_id')->map(function ($group) {
+                $u = $group->first()->user;
+                return [
+                    'user_id'     => $u?->id,
+                    'user_name'   => $u?->user_name,
+                    'name'        => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'avatar'      => $u?->avatar,
+                    'total_views' => $group->count(),
+                ];
+            })->sortByDesc('total_views')->first();
 
-    public function orderViews()
-    {
-        return $this->orderItems()
-            ->withCount(['interactions as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
-            ->get()
-            ->sum('total_views');
-    }
+            $lastView = $views->sortByDesc('created_at')->first()?->user;
 
-    public function metrics()
-    {
-        return [
-            'total_orders'       => $this->orderItems()->count(),
-            'total_views'        => $this->totalViewsCount(),
-            'unique_viewers'     => $this->uniqueViewers()->count(),
-            'order_views'        => $this->orderViews(),
-            'most_active_viewer' => $this->mostActiveViewer(),
-        ];
-    }
-
-    public function fullInteractionsSummary()
-    {
-        $data = [
-            'item' => [
-                'id' => $this->id,
-                'name' => $this->name,
-                'total_views' => $this->totalViewsCount(),
-                'unique_users' => $this->uniqueViewers()->count(),
-                'most_active_user' => $this->mostActiveViewer()?->user ?? null,
-            ],
-            'orders' => $this->orderItems()->withCount(['interactions as views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])->get(['id', 'order_id', 'views']),
-        ];
-
-        return $data;
+            return [
+                'total_views'      => $views->count(),
+                'unique_users'     => $views->pluck('user_id')->unique()->count(),
+                'most_active_user' => $mostActive,
+                'last_view_user'   => $lastView ? [
+                    'user_id'   => $lastView->id,
+                    'user_name' => $lastView->user_name,
+                    'name'      => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+                    'avatar'    => $lastView->avatar,
+                    'email'     => $lastView->email,
+                ] : null,
+            ];
+        });
     }
 
     /* ===============================
-       DISPONIBILIDADE
+       DISPONIBILIDADE E AGENDAMENTOS
     ================================ */
 
     public function isAvailable(): bool
@@ -174,6 +179,102 @@ class Item extends Model
         return (bool) $this->status
             && ($this->stock > 0)
             && (is_null($this->availability_start) || $this->availability_start->lte(now()))
-            && (is_null($this->availability_end)   || $this->availability_end->gte(now()));
+            && (is_null($this->availability_end) || $this->availability_end->gte(now()));
+    }
+
+    public function appointmentsCount(): int
+    {
+        return Cache::remember("item_{$this->id}_appointments", 120, function () {
+            return DB::table('order_items')
+                ->where('item_id', $this->id)
+                ->count();
+        });
+    }
+
+    /* ===============================
+       ITENS RELACIONADOS
+    ================================ */
+
+    public function relatedItems($limit = 6)
+    {
+        return Cache::remember("item_{$this->id}_related", 120, function () use ($limit) {
+            return self::where('entity_name', 'establishment')
+                ->where('entity_id', $this->entity_id)
+                ->where('id', '!=', $this->id)
+                ->where('status', 1)
+                ->limit($limit)
+                ->get(['id', 'name', 'slug', 'price', 'image', 'category', 'type']);
+        });
+    }
+
+    /* ===============================
+       PROFISSIONAIS ASSOCIADOS (SERVIÇOS)
+    ================================ */
+
+    public function associatedEmployers()
+    {
+        $establishment = $this->establishment;
+
+        if (!$establishment) {
+            return collect();
+        }
+
+        if (Str::contains(Str::lower($this->type), 'serv') || $this->type === 'serviço') {
+            return $establishment->employers()
+                ->with(['user:id,first_name,last_name,avatar,user_name,email'])
+                ->get();
+        }
+
+        return collect();
+    }
+
+    /* ===============================
+       PRÓXIMOS HORÁRIOS DISPONÍVEIS
+    ================================ */
+
+    public function nextSlots()
+    {
+        if (!method_exists($this, 'nextAvailableSlots')) {
+            return [];
+        }
+
+        try {
+            return $this->nextAvailableSlots();
+        } catch (\Exception $e) {
+            \Log::warning('[Item::nextSlots] Erro ao buscar horários', [
+                'item_id' => $this->id,
+                'erro'    => $e->getMessage(),
+            ]);
+            return [];
+        }
+    }
+
+    /* ===============================
+       LINK WHATSAPP DO ESTABELECIMENTO
+    ================================ */
+
+    public function whatsappLink()
+    {
+        $establishment = $this->establishment;
+
+        if (!$establishment || !$establishment->phone) {
+            return null;
+        }
+
+        return 'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
+            . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o item \"{$this->name}\".");
+    }
+
+    /* ===============================
+       VARIANTE REDUZIDA (para listagens leves)
+    ================================ */
+
+    public static function withLightItems($id)
+    {
+        return self::where('id', $id)
+            ->with(['views' => function ($q) {
+                $q->select('entity_id')->withCount('id as total_views');
+            }])
+            ->first();
     }
 }

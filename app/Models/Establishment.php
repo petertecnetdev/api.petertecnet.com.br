@@ -79,10 +79,17 @@ class Establishment extends Model
     }
 
     public function items()
-    {
-        return $this->hasMany(Item::class, 'entity_id')
-            ->where('entity_name', 'establishment');
-    }
+{
+    return $this->hasMany(Item::class, 'entity_id')
+        ->where('entity_name', 'establishment')
+        ->withCount([
+            'views as total_views', // total de visualizações
+            'views as unique_users' => function ($query) {
+                $query->select(\DB::raw('COUNT(DISTINCT user_id)'));
+            },
+        ]);
+}
+
 
     public function orders()
     {
