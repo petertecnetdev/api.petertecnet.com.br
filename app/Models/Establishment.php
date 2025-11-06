@@ -39,7 +39,7 @@ class Establishment extends Model
         'twitter_url',
         'youtube_url',
         'segments',
-        'app_id', 
+        'app_id',
         'uf'
     ];
 
@@ -79,20 +79,20 @@ class Establishment extends Model
     }
 
 
-public function items()
-{
-    return $this->hasMany(Item::class, 'entity_id')
-        ->where('entity_name', 'establishment')
-        ->withCount([
-            'views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            },
-            'views as unique_users' => function ($q) {
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view');
-            },
-        ]);
-}
+    public function items()
+    {
+        return $this->hasMany(Item::class, 'entity_id')
+            ->where('entity_name', 'establishment')
+            ->withCount([
+                'views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                },
+                'views as unique_users' => function ($q) {
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                        ->where('interaction_type', 'view');
+                },
+            ]);
+    }
 
 
     public function orders()
@@ -105,8 +105,19 @@ public function items()
 
     public function employers()
     {
-        return $this->hasMany(Employer::class);
+        return $this->hasMany(Employer::class)
+            ->withCount([
+                'views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                },
+                'views as unique_users' => function ($q) {
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                        ->where('interaction_type', 'view');
+                },
+            ]);
     }
+
+
 
     public function creator()
     {
@@ -144,54 +155,54 @@ public function items()
             ];
         });
     }
-public function interactionSummary()
-{
-    return Cache::remember("establishment_{$this->id}_summary", 120, function () {
-        $views = $this->views()
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->get();
+    public function interactionSummary()
+    {
+        return Cache::remember("establishment_{$this->id}_summary", 120, function () {
+            $views = $this->views()
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->get();
 
-        if ($views->isEmpty()) {
+            if ($views->isEmpty()) {
+                return [
+                    'total_views' => 0,
+                    'unique_users' => 0,
+                    'most_active_user' => null,
+                    'last_view_user' => null,
+                ];
+            }
+
+            // 🔹 Usuário mais ativo
+            $mostActive = $views->groupBy('user_id')->map(function ($g) {
+                $u = $g->first()->user;
+                return [
+                    'user_id' => $u?->id,
+                    'user_name' => $u?->user_name,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'avatar' => $u?->avatar,
+                    'email' => $u?->email,
+                    'total' => $g->count(),
+                ];
+            })->sortByDesc('total')->first();
+
+            // 🔹 Último visitante (com avatar e nome)
+            $lastView = $views->sortByDesc('created_at')->first()?->user;
+
+            $lastViewUser = $lastView ? [
+                'user_id' => $lastView->id,
+                'user_name' => $lastView->user_name,
+                'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+                'avatar' => $lastView->avatar,
+                'email' => $lastView->email,
+            ] : null;
+
             return [
-                'total_views' => 0,
-                'unique_users' => 0,
-                'most_active_user' => null,
-                'last_view_user' => null,
+                'total_views' => $views->count(),
+                'unique_users' => $views->pluck('user_id')->unique()->count(),
+                'most_active_user' => $mostActive,
+                'last_view_user' => $lastViewUser,
             ];
-        }
-
-        // 🔹 Usuário mais ativo
-        $mostActive = $views->groupBy('user_id')->map(function ($g) {
-            $u = $g->first()->user;
-            return [
-                'user_id' => $u?->id,
-                'user_name' => $u?->user_name,
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'avatar' => $u?->avatar,
-                'email' => $u?->email,
-                'total' => $g->count(),
-            ];
-        })->sortByDesc('total')->first();
-
-        // 🔹 Último visitante (com avatar e nome)
-        $lastView = $views->sortByDesc('created_at')->first()?->user;
-
-        $lastViewUser = $lastView ? [
-            'user_id' => $lastView->id,
-            'user_name' => $lastView->user_name,
-            'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-            'avatar' => $lastView->avatar,
-            'email' => $lastView->email,
-        ] : null;
-
-        return [
-            'total_views' => $views->count(),
-            'unique_users' => $views->pluck('user_id')->unique()->count(),
-            'most_active_user' => $mostActive,
-            'last_view_user' => $lastViewUser,
-        ];
-    });
-}
+        });
+    }
 
 
     public function itemsInteractions()
@@ -221,37 +232,37 @@ public function interactionSummary()
         });
     }
 
-   public function userInteractions()
-{
-    return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
-        $views = \App\Models\Interaction::where('entity_type', 'Establishment')
-            ->where('entity_id', $this->id)
-            ->where('interaction_type', 'view')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->orderByDesc('created_at')
-            ->get()
-            ->filter(fn($v) => $v->user);
+    public function userInteractions()
+    {
+        return Cache::remember("establishment_{$this->id}_user_interactions", 120, function () {
+            $views = \App\Models\Interaction::where('entity_type', 'Establishment')
+                ->where('entity_id', $this->id)
+                ->where('interaction_type', 'view')
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->orderByDesc('created_at')
+                ->get()
+                ->filter(fn($v) => $v->user);
 
-        $grouped = $views->groupBy('user_id')->map(function ($group) {
-            $view = $group->first();
-            $u = $view->user;
+            $grouped = $views->groupBy('user_id')->map(function ($group) {
+                $view = $group->first();
+                $u = $view->user;
 
-            return [
-                'user_id' => $u->id,
-                'user_name' => $u->user_name,
-                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                'avatar' => $u->avatar,
-                'email' => $u->email,
-                'last_interaction' => $view->created_at
-                    ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
-                    : null,
-                'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
-            ];
+                return [
+                    'user_id' => $u->id,
+                    'user_name' => $u->user_name,
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'avatar' => $u->avatar,
+                    'email' => $u->email,
+                    'last_interaction' => $view->created_at
+                        ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                        : null,
+                    'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                ];
+            });
+
+            return $grouped->values();
         });
-
-        return $grouped->values();
-    });
-}
+    }
 
     public function otherEstablishments()
     {
@@ -290,159 +301,159 @@ public function interactionSummary()
         return implode(' | ', $names);
     }
 
-public function ordersSummary()
-{
-    return Cache::remember("establishment_{$this->id}_orders_summary", 120, function () {
-        $orders = $this->orders()
-            ->with(['client:id,first_name,last_name,user_name,avatar,email'])
-            ->get();
+    public function ordersSummary()
+    {
+        return Cache::remember("establishment_{$this->id}_orders_summary", 120, function () {
+            $orders = $this->orders()
+                ->with(['client:id,first_name,last_name,user_name,avatar,email'])
+                ->get();
 
-        if ($orders->isEmpty()) {
+            if ($orders->isEmpty()) {
+                return [
+                    'total_orders' => 0,
+                    'completed_orders' => 0,
+                    'cancelled_orders' => 0,
+                    'pending_orders' => 0,
+                    'total_revenue' => 0,
+                    'average_ticket' => 0,
+                    'cancellation_rate' => 0,
+                    'completion_rate' => 0,
+                    'pending_rate' => 0,
+                    'efficiency_rate' => 0,
+                    'average_service_time' => 0,
+                    'return_rate' => 0,
+                    'top_client_by_count' => null,
+                    'top_client_by_value' => null,
+                    'top_client_completed' => null,
+                    'top_recurring_client' => null,
+                    'active_days' => 0,
+                ];
+            }
+
+            // 🔹 Total geral de pedidos
+            $totalOrders = $orders->count();
+
+            // 🔹 Status baseados em appointment_status
+            $completedOrders = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
+            $cancelledOrders = $orders->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
+            $pendingOrders = $orders->where('appointment_status', 'pending')->count();
+
+            // 🔹 Cálculo de receita e ticket médio
+            $totalRevenue = $orders->sum('total_price');
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            // 🔹 Taxas comportamentais
+            $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
+            $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
+            $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
+            $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
+                ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
+                : 0;
+
+            // 🔹 Tempo médio entre criação e conclusão
+            $averageServiceTime = 0;
+            $completedWithDates = $orders->whereNotNull('created_at')->whereNotNull('updated_at');
+            if ($completedWithDates->count() > 0) {
+                $averageServiceTime = round(
+                    $completedWithDates->map(function ($o) {
+                        return $o->updated_at->diffInMinutes($o->created_at);
+                    })->avg(),
+                    2
+                );
+            }
+
+            // 🔹 Clientes recorrentes
+            $clientsCount = $orders->groupBy('client_id')->map->count();
+            $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+            $returnRate = $clientsCount->count() > 0
+                ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
+                : 0;
+
+            $topRecurringClient = null;
+            if ($recurringClients->isNotEmpty()) {
+                $topRecurringId = $recurringClients->sortDesc()->keys()->first();
+                $client = $orders->firstWhere('client_id', $topRecurringId)?->client;
+                $topRecurringClient = [
+                    'id' => $client?->id,
+                    'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                    'user_name' => $client?->user_name,
+                    'avatar' => $client?->avatar,
+                    'repeat_orders' => $recurringClients[$topRecurringId],
+                ];
+            }
+
+            // 🔹 Dias de atividade
+            $activeDays = $orders->pluck('created_at')->map(fn($d) => $d->toDateString())->unique()->count();
+
+            // 🔹 Cliente com mais pedidos
+            $topClientByCount = $orders->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'total_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('total_orders')
+                ->first();
+
+            // 🔹 Cliente que mais gastou
+            $topClientByValue = $orders->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'total_spent' => $group->sum('total_price'),
+                        'total_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('total_spent')
+                ->first();
+
+            // 🔹 Cliente com mais pedidos concluídos
+            $topClientByCompleted = $orders->whereIn('appointment_status', ['confirmed', 'attended'])
+                ->groupBy('client_id')
+                ->map(function ($group) {
+                    $client = $group->first()->client;
+                    return [
+                        'id' => $client?->id,
+                        'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
+                        'user_name' => $client?->user_name,
+                        'avatar' => $client?->avatar,
+                        'completed_orders' => $group->count(),
+                    ];
+                })
+                ->sortByDesc('completed_orders')
+                ->first();
+
+            // 🔹 Retorno final
             return [
-                'total_orders' => 0,
-                'completed_orders' => 0,
-                'cancelled_orders' => 0,
-                'pending_orders' => 0,
-                'total_revenue' => 0,
-                'average_ticket' => 0,
-                'cancellation_rate' => 0,
-                'completion_rate' => 0,
-                'pending_rate' => 0,
-                'efficiency_rate' => 0,
-                'average_service_time' => 0,
-                'return_rate' => 0,
-                'top_client_by_count' => null,
-                'top_client_by_value' => null,
-                'top_client_completed' => null,
-                'top_recurring_client' => null,
-                'active_days' => 0,
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
+                'pending_orders' => $pendingOrders,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'cancellation_rate' => $cancellationRate,
+                'completion_rate' => $completionRate,
+                'pending_rate' => $pendingRate,
+                'efficiency_rate' => $efficiencyRate,
+                'average_service_time' => $averageServiceTime,
+                'return_rate' => $returnRate,
+                'top_client_by_count' => $topClientByCount,
+                'top_client_by_value' => $topClientByValue,
+                'top_client_completed' => $topClientByCompleted,
+                'top_recurring_client' => $topRecurringClient,
+                'active_days' => $activeDays,
             ];
-        }
-
-        // 🔹 Total geral de pedidos
-        $totalOrders = $orders->count();
-
-        // 🔹 Status baseados em appointment_status
-        $completedOrders = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
-        $cancelledOrders = $orders->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
-        $pendingOrders = $orders->where('appointment_status', 'pending')->count();
-
-        // 🔹 Cálculo de receita e ticket médio
-        $totalRevenue = $orders->sum('total_price');
-        $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
-
-        // 🔹 Taxas comportamentais
-        $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
-        $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
-        $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
-        $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
-            ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
-            : 0;
-
-        // 🔹 Tempo médio entre criação e conclusão
-        $averageServiceTime = 0;
-        $completedWithDates = $orders->whereNotNull('created_at')->whereNotNull('updated_at');
-        if ($completedWithDates->count() > 0) {
-            $averageServiceTime = round(
-                $completedWithDates->map(function ($o) {
-                    return $o->updated_at->diffInMinutes($o->created_at);
-                })->avg(),
-                2
-            );
-        }
-
-        // 🔹 Clientes recorrentes
-        $clientsCount = $orders->groupBy('client_id')->map->count();
-        $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
-        $returnRate = $clientsCount->count() > 0
-            ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
-            : 0;
-
-        $topRecurringClient = null;
-        if ($recurringClients->isNotEmpty()) {
-            $topRecurringId = $recurringClients->sortDesc()->keys()->first();
-            $client = $orders->firstWhere('client_id', $topRecurringId)?->client;
-            $topRecurringClient = [
-                'id' => $client?->id,
-                'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
-                'user_name' => $client?->user_name,
-                'avatar' => $client?->avatar,
-                'repeat_orders' => $recurringClients[$topRecurringId],
-            ];
-        }
-
-        // 🔹 Dias de atividade
-        $activeDays = $orders->pluck('created_at')->map(fn($d) => $d->toDateString())->unique()->count();
-
-        // 🔹 Cliente com mais pedidos
-        $topClientByCount = $orders->groupBy('client_id')
-            ->map(function ($group) {
-                $client = $group->first()->client;
-                return [
-                    'id' => $client?->id,
-                    'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
-                    'user_name' => $client?->user_name,
-                    'avatar' => $client?->avatar,
-                    'total_orders' => $group->count(),
-                ];
-            })
-            ->sortByDesc('total_orders')
-            ->first();
-
-        // 🔹 Cliente que mais gastou
-        $topClientByValue = $orders->groupBy('client_id')
-            ->map(function ($group) {
-                $client = $group->first()->client;
-                return [
-                    'id' => $client?->id,
-                    'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
-                    'user_name' => $client?->user_name,
-                    'avatar' => $client?->avatar,
-                    'total_spent' => $group->sum('total_price'),
-                    'total_orders' => $group->count(),
-                ];
-            })
-            ->sortByDesc('total_spent')
-            ->first();
-
-        // 🔹 Cliente com mais pedidos concluídos
-        $topClientByCompleted = $orders->whereIn('appointment_status', ['confirmed', 'attended'])
-            ->groupBy('client_id')
-            ->map(function ($group) {
-                $client = $group->first()->client;
-                return [
-                    'id' => $client?->id,
-                    'name' => trim(($client?->first_name ?? '') . ' ' . ($client?->last_name ?? '')),
-                    'user_name' => $client?->user_name,
-                    'avatar' => $client?->avatar,
-                    'completed_orders' => $group->count(),
-                ];
-            })
-            ->sortByDesc('completed_orders')
-            ->first();
-
-        // 🔹 Retorno final
-        return [
-            'total_orders' => $totalOrders,
-            'completed_orders' => $completedOrders,
-            'cancelled_orders' => $cancelledOrders,
-            'pending_orders' => $pendingOrders,
-            'total_revenue' => $totalRevenue,
-            'average_ticket' => $averageTicket,
-            'cancellation_rate' => $cancellationRate,
-            'completion_rate' => $completionRate,
-            'pending_rate' => $pendingRate,
-            'efficiency_rate' => $efficiencyRate,
-            'average_service_time' => $averageServiceTime,
-            'return_rate' => $returnRate,
-            'top_client_by_count' => $topClientByCount,
-            'top_client_by_value' => $topClientByValue,
-            'top_client_completed' => $topClientByCompleted,
-            'top_recurring_client' => $topRecurringClient,
-            'active_days' => $activeDays,
-        ];
-    });
-}
+        });
+    }
 
 
     /**
@@ -452,13 +463,15 @@ public function ordersSummary()
      * @return \App\Models\Establishment|null
      */
     public static function withLightItems($slug)
-{
-    return self::where('slug', $slug)
-        ->with(['items' => function ($q) {
-            $q->select('id', 'entity_id', 'name', 'slug', 'price');
-        }])
-        ->firstOrFail();
-}
+    {
+        return self::where('slug', $slug)
+            ->with([
+                'items' => function ($q) {
+                    $q->select('id', 'entity_id', 'name', 'slug', 'price');
+                }
+            ])
+            ->firstOrFail();
+    }
 
 
 }
