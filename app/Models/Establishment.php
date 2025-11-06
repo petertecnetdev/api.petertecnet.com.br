@@ -143,112 +143,117 @@ class Establishment extends Model
     /* =======================
        MÉTRICAS E INTERAÇÕES
        ======================= */
-    public function getMetricsAttribute()
-    {
-        return Cache::remember("establishment_{$this->id}_metrics", 120, function () {
-            $views = $this->views();
-            $items = $this->items();
-            $employers = $this->employers();
-            $orders = $this->orders();
+public function getMetricsAttribute()
+{
+    return Cache::remember("establishment_{$this->id}_metrics", 120, function () {
+        $views = $this->views();
+        $items = $this->items();
+        $employers = $this->employers();
+        $orders = $this->orders();
 
-            // 🔹 Totais básicos
-            $totalViews = $views->count();
-            $uniqueUsers = $views->distinct('user_id')->count('user_id');
-            $totalItems = $items->count();
-            $totalEmployers = $employers->count();
-            $totalOrders = $orders->count();
+        // 🔹 Totais básicos
+        $totalViews = $views->count();
+        $uniqueUsers = $views->distinct('user_id')->count('user_id');
+        $totalItems = $items->count();
+        $totalEmployers = $employers->count();
+        $totalOrders = $orders->count();
 
-            // 🔹 Pedidos por status
-            $completedOrders = (clone $orders)->whereIn('appointment_status', ['confirmed', 'attended'])->count();
-            $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
-            $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
+        // 🔹 Pedidos por status
+        $completedOrders = (clone $orders)->whereIn('appointment_status', ['confirmed', 'attended'])->count();
+        $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
+        $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
 
-            // 🔹 Receita e ticket médio
-            $totalRevenue = (clone $orders)->sum('total_price');
-            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+        // 🔹 Receita e ticket médio
+        $totalRevenue = (clone $orders)->sum('total_price');
+        $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
-            // 🔹 Cálculo de engajamento
-            $avgViewsPerUser = $uniqueUsers > 0 ? round($totalViews / $uniqueUsers, 2) : 0;
-            $avgViewsPerItem = $totalItems > 0 ? round($totalViews / $totalItems, 2) : 0;
-            $avgViewsPerEmployer = $totalEmployers > 0 ? round($totalViews / $totalEmployers, 2) : 0;
+        // 🔹 Cálculo de engajamento
+        $avgViewsPerUser = $uniqueUsers > 0 ? round($totalViews / $uniqueUsers, 2) : 0;
+        $avgViewsPerItem = $totalItems > 0 ? round($totalViews / $totalItems, 2) : 0;
+        $avgViewsPerEmployer = $totalEmployers > 0 ? round($totalViews / $totalEmployers, 2) : 0;
 
-            // 🔹 Eficiência dos colaboradores (média de visualizações por colaborador)
-            $totalEmployerViews = \App\Models\Interaction::where('entity_type', 'Employer')
-                ->whereIn('entity_id', $employers->pluck('id'))
-                ->where('interaction_type', 'view')
-                ->count();
+        // 🔹 Eficiência dos colaboradores (média de visualizações por colaborador)
+        $totalEmployerViews = \App\Models\Interaction::where('entity_type', 'Employer')
+            ->whereIn('entity_id', $employers->pluck('id'))
+            ->where('interaction_type', 'view')
+            ->count();
 
-            $avgEmployerViews = $totalEmployers > 0 ? round($totalEmployerViews / $totalEmployers, 2) : 0;
+        $avgEmployerViews = $totalEmployers > 0 ? round($totalEmployerViews / $totalEmployers, 2) : 0;
 
-            // 🔹 Frequência de atividade
-            $firstView = $views->min('created_at');
-            $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
-            $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
+        // 🔹 Frequência de atividade
+        $firstView = $views->min('created_at');
+        if ($firstView && !($firstView instanceof \Carbon\Carbon)) {
+            $firstView = Carbon::parse($firstView);
+        }
 
-            // 🔹 Taxas de comportamento
-            $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
-            $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
-            $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
-            $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
-                ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
-                : 0;
+        $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
+        $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
 
-            // 🔹 Clientes recorrentes (otimizado via SQL)
-            $clientsCount = (clone $orders)
-                ->selectRaw('client_id, COUNT(*) as total')
-                ->groupBy('client_id')
-                ->pluck('total', 'client_id');
+        // 🔹 Taxas de comportamento
+        $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
+        $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
+        $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
+        $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
+            ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
+            : 0;
 
-            $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
-            $returnRate = $clientsCount->count() > 0
-                ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
-                : 0;
+        // 🔹 Clientes recorrentes (SQL otimizado)
+        $clientsCount = (clone $orders)
+            ->selectRaw('client_id, COUNT(*) as total')
+            ->groupBy('client_id')
+            ->pluck('total', 'client_id');
 
-            // 🔹 Engajamento geral (pontuação simbólica)
-            $engagementScore = round(
-                ($uniqueUsers * 1.5) +
-                ($totalViews * 0.2) +
-                ($completedOrders * 1.2) +
-                ($returnRate * 0.5),
-                2
-            );
+        $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+        $returnRate = $clientsCount->count() > 0
+            ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
+            : 0;
 
-            // 🔹 Receita média por colaborador
-            $avgRevenuePerEmployer = $totalEmployers > 0 ? round($totalRevenue / $totalEmployers, 2) : 0;
+        // 🔹 Engajamento geral (pontuação simbólica)
+        $engagementScore = round(
+            ($uniqueUsers * 1.5) +
+            ($totalViews * 0.2) +
+            ($completedOrders * 1.2) +
+            ($returnRate * 0.5),
+            2
+        );
 
-            return [
-                // 🧩 Estrutura geral
-                'total_items' => $totalItems,
-                'total_employers' => $totalEmployers,
-                'total_orders' => $totalOrders,
-                'completed_orders' => $completedOrders,
-                'cancelled_orders' => $cancelledOrders,
-                'pending_orders' => $pendingOrders,
+        // 🔹 Receita média por colaborador
+        $avgRevenuePerEmployer = $totalEmployers > 0 ? round($totalRevenue / $totalEmployers, 2) : 0;
 
-                // 💰 Financeiro
-                'total_revenue' => $totalRevenue,
-                'average_ticket' => $averageTicket,
-                'avg_revenue_per_employer' => $avgRevenuePerEmployer,
+        return [
+            // 🧩 Estrutura geral
+            'total_items' => $totalItems,
+            'total_employers' => $totalEmployers,
+            'total_orders' => $totalOrders,
+            'completed_orders' => $completedOrders,
+            'cancelled_orders' => $cancelledOrders,
+            'pending_orders' => $pendingOrders,
 
-                // 👁️ Engajamento
-                'total_views' => $totalViews,
-                'unique_users' => $uniqueUsers,
-                'avg_views_per_user' => $avgViewsPerUser,
-                'avg_views_per_item' => $avgViewsPerItem,
-                'avg_views_per_employer' => $avgViewsPerEmployer,
-                'avg_employer_views' => $avgEmployerViews,
-                'avg_views_per_day' => $avgViewsPerDay,
-                'days_active' => $daysActive,
-                'engagement_score' => $engagementScore,
+            // 💰 Financeiro
+            'total_revenue' => $totalRevenue,
+            'average_ticket' => $averageTicket,
+            'avg_revenue_per_employer' => $avgRevenuePerEmployer,
 
-                // 📈 Taxas
-                'completion_rate' => $completionRate,
-                'cancellation_rate' => $cancellationRate,
-                'pending_rate' => $pendingRate,
-                'efficiency_rate' => $efficiencyRate,
-                'return_rate' => $returnRate,
-            ];
-        });
+            // 👁️ Engajamento
+            'total_views' => $totalViews,
+            'unique_users' => $uniqueUsers,
+            'avg_views_per_user' => $avgViewsPerUser,
+            'avg_views_per_item' => $avgViewsPerItem,
+            'avg_views_per_employer' => $avgViewsPerEmployer,
+            'avg_employer_views' => $avgEmployerViews,
+            'avg_views_per_day' => $avgViewsPerDay,
+            'days_active' => $daysActive,
+            'engagement_score' => $engagementScore,
+
+            // 📈 Taxas
+            'completion_rate' => $completionRate,
+            'cancellation_rate' => $cancellationRate,
+            'pending_rate' => $pendingRate,
+            'efficiency_rate' => $efficiencyRate,
+            'return_rate' => $returnRate,
+        ];
+    });
+
     }
 
     public function interactionSummary()
