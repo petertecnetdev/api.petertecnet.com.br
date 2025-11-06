@@ -104,19 +104,32 @@ class Establishment extends Model
 
 
 
-    public function employers()
-    {
-        return $this->hasMany(Employer::class)
-            ->withCount([
-                'views as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                },
-                'views as unique_users' => function ($q) {
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                        ->where('interaction_type', 'view');
-                },
-            ]);
-    }
+   public function employers()
+{
+    return $this->hasMany(Employer::class)
+        ->withCount([
+            // 👁️ Visualizações gerais
+            'views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            },
+            'views as unique_users' => function ($q) {
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                    ->where('interaction_type', 'view');
+            },
+
+            // 💈 Total de atendimentos (pedidos confirmados ou atendidos)
+            'orders as total_appointments' => function ($q) {
+                $q->whereIn('appointment_status', ['confirmed', 'attended']);
+            },
+
+            // 💰 Total de receita gerada pelo colaborador (opcional)
+            'orders as total_revenue' => function ($q) {
+                $q->whereIn('appointment_status', ['confirmed', 'attended'])
+                    ->select(\DB::raw('COALESCE(SUM(total_price),0)'));
+            },
+        ]);
+}
+
 
 
 
