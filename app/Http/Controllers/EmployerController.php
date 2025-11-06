@@ -637,23 +637,67 @@ class EmployerController extends Controller
             ], 500);
         }
 
-    }public function view($user_name)
+    }// app/Http/Controllers/EstablishmentController.php
+public function view($slug)
 {
     try {
         $authUser = Auth::user();
 
-        $employer = \App\Models\Employer::findOrFallbackByUserName($user_name);
-        if (!$employer) {
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-        }
+        $establishment = Establishment::whereSlug($slug)
+            ->with([
+                'employers.user:id,first_name,last_name,user_name,avatar,email',
+                'items' => function ($q) {
+                    $q->select('id','entity_id','name','slug','price','type')
+                      ->withCount([
+                          'views as total_views' => function ($x) {
+                              $x->where('interaction_type', 'view');
+                          },
+                          'views as unique_users' => function ($x) {
+                              $x->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                                ->where('interaction_type', 'view');
+                          },
+                      ]);
+                },
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->firstOrFail();
 
-        $employer->refreshViewMetrics($authUser);
+        Interaction::registerView($establishment, $authUser);
 
-        return response()->json(['employer' => $employer->toRichArray()], 200, [], JSON_UNESCAPED_UNICODE);
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
+
+        $metrics = $establishment->metrics;
+        $interactionSummary = $establishment->interactionSummary();
+
+        return response()->json([
+            'establishment' => $establishment,
+            'items' => $establishment->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'type' => $item->type,
+                    'total_views' => $item->total_views ?? 0,
+                    'unique_users' => $item->unique_users ?? 0,
+                ];
+            }),
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $establishment->userInteractions(),
+            'other_establishments' => $establishment->otherEstablishments(),
+            'orders_summary' => $establishment->ordersSummary(),
+        ], 200);
 
     } catch (\Throwable $e) {
-        \Log::error('[EmployerController::view] Erro', ['msg' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
 }
 
