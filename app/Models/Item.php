@@ -86,10 +86,10 @@ class Item extends Model
     }
 
     public function establishment()
-    {
-        return $this->belongsTo(Establishment::class, 'entity_id')
-            ->where('entity_name', 'establishment');
-    }
+{
+    return $this->belongsTo(Establishment::class, 'entity_id');
+}
+
 
     public function orderItems()
     {
