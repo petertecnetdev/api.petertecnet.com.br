@@ -643,20 +643,74 @@ class EmployerController extends Controller
         try {
             $authUser = Auth::user();
 
-            $employer = \App\Models\Employer::findOrFallbackByUserName($user_name);
-            if (!$employer) {
-                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
-            }
+            // 🔹 Carrega o colaborador completo com usuário e estabelecimento
+            $employer = \App\Models\Employer::whereHas('user', fn($q) => $q->where('user_name', $user_name))
+                ->with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                    'establishment' => function ($q) {
+                        $q->with([
+                            'items' => function ($i) {
+                                $i->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
+                                    ->withCount([
+                                        'views as total_views' => function ($x) {
+                                            $x->where('interaction_type', 'view');
+                                        },
+                                        'views as unique_users' => function ($x) {
+                                            $x->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                                                ->where('interaction_type', 'view');
+                                        },
+                                    ]);
+                            },
+                            'orders.client:id,first_name,last_name,user_name,avatar,email',
+                            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+                        ]);
+                    },
+                    'orders.client:id,first_name,last_name,user_name,avatar,email',
+                    'interactions.user:id,first_name,last_name,user_name,avatar,email',
+                ])
+                ->firstOrFail();
 
-            $employer->refreshViewMetrics($authUser);
+            // 🔹 Registra a visualização do colaborador
+            \App\Models\Interaction::registerView($employer, $authUser);
 
-            return response()->json(['employer' => $employer->toRichArray()], 200, [], JSON_UNESCAPED_UNICODE);
+            // 🔹 Limpa o cache antes de recarregar dados
+            Cache::forget("employer_{$employer->id}_metrics");
+            Cache::forget("employer_{$employer->id}_summary");
+            Cache::forget("employer_{$employer->id}_user_interactions");
+            Cache::forget("employer_{$employer->id}_items_interactions");
+            Cache::forget("employer_{$employer->id}_related");
+            Cache::forget("employer_{$employer->id}_establishment_interactions");
+
+            // 🔹 Recarrega métricas e interações com dados atualizados
+            $metrics = $employer->metrics;
+            $interactionSummary = $employer->interactionSummary();
+            $userInteractions = $employer->userInteractions();
+            $itemsInteractions = $employer->itemsInteractions();
+            $establishmentInteractions = $employer->establishmentInteractions();
+            $relatedEmployers = $employer->relatedEmployers();
+            $ordersSummary = $employer->establishment ? $employer->establishment->ordersSummary() : [];
+
+            return response()->json([
+                'employer' => $employer,
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'items_interactions' => $itemsInteractions,
+                'establishment_interactions' => $establishmentInteractions,
+                'related_employers' => $relatedEmployers,
+                'orders_summary' => $ordersSummary,
+            ], 200, [], JSON_UNESCAPED_UNICODE);
 
         } catch (\Throwable $e) {
-            \Log::error('[EmployerController::view] Erro', ['msg' => $e->getMessage()]);
+            \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
+                'user_name' => $user_name,
+                'message' => $e->getMessage(),
+            ]);
+
             return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
         }
     }
+
 
 
     public function listSchedules(Request $request)
