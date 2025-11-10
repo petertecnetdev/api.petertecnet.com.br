@@ -580,9 +580,11 @@ class Establishment extends Model
     return Cache::remember("establishment_{$this->id}_related", 120, function () {
         return self::where('app_id', $this->app_id)
             ->where('id', '!=', $this->id)
-            ->withCount(['views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
+            ->withCount([
+                'views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                },
+            ])
             ->limit(6)
             ->get([
                 'id',
@@ -592,7 +594,15 @@ class Establishment extends Model
                 'background',
                 'city',
                 'category',
-            ]);
+            ])
+            ->map(function ($est) {
+                $est->completed_appointments = \App\Models\Order::where('entity_name', 'App\\Models\\Establishment')
+                    ->where('entity_id', $est->id)
+                    ->where('type', 'appointment')
+                    ->where('appointment_status', 'attended')
+                    ->count();
+                return $est;
+            });
     });
 }
 
@@ -601,18 +611,27 @@ public function otherEmployers()
     return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
         return \App\Models\Employer::with([
                 'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,logo,background,app_id'
+                'establishment:id,name,slug,logo,background,app_id',
             ])
             ->whereHas('establishment', function ($q) {
                 $q->where('app_id', $this->app_id);
             })
             ->where('establishment_id', '!=', $this->id)
-            ->withCount(['views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
+            ->withCount([
+                'views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                },
+            ])
             ->inRandomOrder()
             ->limit(6)
-            ->get(['id', 'establishment_id']);
+            ->get(['id', 'establishment_id'])
+            ->map(function ($emp) {
+                $emp->completed_appointments = \App\Models\Order::where('attendant_id', $emp->id)
+                    ->where('type', 'appointment')
+                    ->where('appointment_status', 'attended')
+                    ->count();
+                return $emp;
+            });
     });
 }
 
@@ -620,15 +639,17 @@ public function otherItems()
 {
     return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
         return \App\Models\Item::with([
-                'entity:id,name,slug,logo,background,app_id'
+                'entity:id,name,slug,logo,background,app_id',
             ])
             ->whereHas('entity', function ($q) {
                 $q->where('app_id', $this->app_id);
             })
             ->where('entity_id', '!=', $this->id)
-            ->withCount(['views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
+            ->withCount([
+                'views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                },
+            ])
             ->inRandomOrder()
             ->limit(6)
             ->get([
@@ -639,9 +660,19 @@ public function otherItems()
                 'price',
                 'type',
                 'image',
-            ]);
+            ])
+            ->map(function ($item) {
+                $item->completed_appointments = \App\Models\OrderItem::where('item_id', $item->id)
+                    ->whereHas('order', function ($q) {
+                        $q->where('type', 'appointment')
+                          ->where('appointment_status', 'attended');
+                    })
+                    ->count();
+                return $item;
+            });
     });
 }
+
 
 
 
