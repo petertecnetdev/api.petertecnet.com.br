@@ -639,7 +639,7 @@ class EmployerController extends Controller
 
     }
 
-    public function view($user_name)
+   public function view($user_name)
 {
     try {
         $authUser = Auth::user();
@@ -683,7 +683,7 @@ class EmployerController extends Controller
         $metrics = $employer->metrics;
         $interactionSummary = $employer->interactionSummary();
 
-        // 🔹 Retorno no mesmo padrão de Establishment
+        // 🔹 Retorno no mesmo padrão da view de Establishment
         return response()->json([
             'employer' => $employer,
             'establishment' => $employer->establishment,
@@ -703,7 +703,7 @@ class EmployerController extends Controller
             'user_interactions' => $employer->userInteractions(),
             'orders_summary' => $employer->ordersSummary(),
 
-            // 🔹 Dados de rotatividade (padrão da Establishment)
+            // 🔹 Dados de rotatividade — mesmo padrão de retorno
             'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
             'other_employers' => $employer->establishment?->otherEmployers() ?? [],
             'other_items' => $employer->establishment?->otherItems() ?? [],
