@@ -575,77 +575,74 @@ class Establishment extends Model
                 }
             ])
             ->firstOrFail();
-    }
-    public function otherEstablishments()
-    {
-        return Cache::remember("establishment_{$this->id}_related", 120, function () {
-            return self::where('app_id', $this->app_id)
-                ->where('id', '!=', $this->id)
-                ->withCount([
-                    'views as total_views' => function ($q) {
-                        $q->where('interaction_type', 'view');
-                    }
-                ])
-                ->limit(6)
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'logo',
-                    'background',
-                    'city',
-                    'category',
-                ]);
-        });
-    }
+    }public function otherEstablishments()
+{
+    return Cache::remember("establishment_{$this->id}_related", 120, function () {
+        return self::where('app_id', $this->app_id)
+            ->where('id', '!=', $this->id)
+            ->withCount(['views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
+            ->limit(6)
+            ->get([
+                'id',
+                'name',
+                'slug',
+                'logo',
+                'background',
+                'city',
+                'category',
+            ]);
+    });
+}
 
-    public function otherEmployers()
-    {
-        return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
-            return \App\Models\Employer::with([
+public function otherEmployers()
+{
+    return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
+        return \App\Models\Employer::with([
                 'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,logo,background',
+                'establishment:id,name,slug,logo,background,app_id'
             ])
-                ->where('establishment_id', '!=', $this->id)
-                ->withCount([
-                    'views as total_views' => function ($q) {
-                        $q->where('interaction_type', 'view');
-                    }
-                ])
-                ->inRandomOrder()
-                ->limit(6)
-                ->get([
-                    'id',
-                    'establishment_id',
-                ]);
-        });
-    }
+            ->whereHas('establishment', function ($q) {
+                $q->where('app_id', $this->app_id);
+            })
+            ->where('establishment_id', '!=', $this->id)
+            ->withCount(['views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
+            ->inRandomOrder()
+            ->limit(6)
+            ->get(['id', 'establishment_id']);
+    });
+}
 
-    public function otherItems()
-    {
-        return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
-            return \App\Models\Item::with([
-                'entity:id,name,slug,logo,background',
+public function otherItems()
+{
+    return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
+        return \App\Models\Item::with([
+                'entity:id,name,slug,logo,background,app_id'
             ])
-                ->where('entity_id', '!=', $this->id)
-                ->withCount([
-                    'views as total_views' => function ($q) {
-                        $q->where('interaction_type', 'view');
-                    }
-                ])
-                ->inRandomOrder()
-                ->limit(6)
-                ->get([
-                    'id',
-                    'entity_id',
-                    'name',
-                    'slug',
-                    'price',
-                    'type',
-                    'image',
-                ]);
-        });
-    }
+            ->whereHas('entity', function ($q) {
+                $q->where('app_id', $this->app_id);
+            })
+            ->where('entity_id', '!=', $this->id)
+            ->withCount(['views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
+            ->inRandomOrder()
+            ->limit(6)
+            ->get([
+                'id',
+                'entity_id',
+                'name',
+                'slug',
+                'price',
+                'type',
+                'image',
+            ]);
+    });
+}
+
 
 
 }
