@@ -587,7 +587,15 @@ class Establishment extends Model
                     }
                 ])
                 ->limit(6)
-                ->get(['id', 'name', 'slug', 'logo', 'city', 'category']);
+                ->get([
+                    'id',
+                    'name',
+                    'slug',
+                    'logo',
+                    'background',
+                    'city',
+                    'category',
+                ]);
         });
     }
 
@@ -595,7 +603,8 @@ class Establishment extends Model
     {
         return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
             return \App\Models\Employer::with([
-                'user:id,first_name,last_name,user_name,avatar'
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'establishment:id,name,slug,logo,background',
             ])
                 ->where('establishment_id', '!=', $this->id)
                 ->withCount([
@@ -605,7 +614,10 @@ class Establishment extends Model
                 ])
                 ->inRandomOrder()
                 ->limit(6)
-                ->get(['id', 'establishment_id']);
+                ->get([
+                    'id',
+                    'establishment_id',
+                ]);
         });
     }
 
@@ -613,7 +625,7 @@ class Establishment extends Model
     {
         return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
             return \App\Models\Item::with([
-                'entity:id,name,slug'
+                'entity:id,name,slug,logo,background',
             ])
                 ->where('entity_id', '!=', $this->id)
                 ->withCount([
@@ -623,7 +635,15 @@ class Establishment extends Model
                 ])
                 ->inRandomOrder()
                 ->limit(6)
-                ->get(['id', 'entity_id', 'name', 'slug', 'price', 'type']);
+                ->get([
+                    'id',
+                    'entity_id',
+                    'name',
+                    'slug',
+                    'price',
+                    'type',
+                    'image',
+                ]);
         });
     }
 
