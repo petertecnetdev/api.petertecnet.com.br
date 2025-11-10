@@ -95,6 +95,11 @@ class Item extends Model
         return $this->hasMany(OrderItem::class, 'item_id');
     }
 
+    public function entity()
+    {
+        return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
+    }
+
     /* ===============================
        REGRAS DE NEGÓCIO
     ================================ */
@@ -119,7 +124,7 @@ class Item extends Model
         return self::whereIn('id', $itemIds)
             ->where(function ($q) use ($entityName, $entityId) {
                 $q->where('entity_name', '!=', $entityName)
-                  ->orWhere('entity_id', '!=', $entityId);
+                    ->orWhere('entity_id', '!=', $entityId);
             })
             ->pluck('name')
             ->toArray();
@@ -144,13 +149,13 @@ class Item extends Model
     {
         return Cache::remember("item_{$this->id}_metrics", 120, function () {
             return [
-                'total_views'   => $this->views()->count(),
-                'unique_users'  => $this->views()->pluck('user_id')->unique()->count(),
-                'appointments'  => $this->appointmentsCount(),
-                'is_available'  => $this->isAvailable(),
-                'price'         => $this->price,
-                'discount'      => $this->discount,
-                'stock'         => $this->stock,
+                'total_views' => $this->views()->count(),
+                'unique_users' => $this->views()->pluck('user_id')->unique()->count(),
+                'appointments' => $this->appointmentsCount(),
+                'is_available' => $this->isAvailable(),
+                'price' => $this->price,
+                'discount' => $this->discount,
+                'stock' => $this->stock,
             ];
         });
     }
@@ -278,9 +283,11 @@ class Item extends Model
     public static function withLightItems($id)
     {
         return self::where('id', $id)
-            ->with(['views' => function ($q) {
-                $q->select('entity_id')->withCount('id as total_views');
-            }])
+            ->with([
+                'views' => function ($q) {
+                    $q->select('entity_id')->withCount('id as total_views');
+                }
+            ])
             ->first();
     }
 }
