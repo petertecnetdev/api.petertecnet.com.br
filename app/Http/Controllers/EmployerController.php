@@ -637,7 +637,9 @@ class EmployerController extends Controller
             ], 500);
         }
 
-    }public function view($user_name)
+    }
+
+    public function view($user_name)
 {
     try {
         $authUser = Auth::user();
