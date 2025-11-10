@@ -5,8 +5,8 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class Order extends Model
 {
@@ -94,6 +94,36 @@ class Order extends Model
     }
 
     /* ===============================
+       MÉTODOS ESTÁTICOS AUXILIARES
+    ================================ */
+
+    public static function hasScheduleConflict($attendantId, $start, $end)
+    {
+        return self::where('attendant_id', $attendantId)
+            ->where('type', 'appointment')
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->where(function ($query) use ($start, $end) {
+                $query->whereBetween('order_datetime', [$start, $end])
+                    ->orWhere(function ($q) use ($start, $end) {
+                        $q->where('order_datetime', '<', $start)
+                          ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
+                    });
+            })
+            ->exists();
+    }
+
+    public static function nextOrderNumber($appId)
+    {
+        $last = self::where('app_id', $appId)->max('order_number') ?: 0;
+        return str_pad($last + 1, 3, '0', STR_PAD_LEFT);
+    }
+
+    public static function generateAccessCode()
+    {
+        return str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
+    /* ===============================
        INTERAÇÕES E MÉTRICAS
     ================================ */
 
@@ -159,7 +189,7 @@ class Order extends Model
 
     public function fullInteractionsSummary()
     {
-        $data = [
+        return [
             'order' => [
                 'order_number'     => $this->order_number,
                 'total_views'      => $this->totalViewsCount(),
@@ -170,8 +200,6 @@ class Order extends Model
                 $q->where('interaction_type', 'view');
             }])->get(['id', 'item_id', 'quantity', 'views']),
         ];
-
-        return $data;
     }
 
     /* ===============================

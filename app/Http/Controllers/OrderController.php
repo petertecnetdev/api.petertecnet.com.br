@@ -60,227 +60,62 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-
-    public function store(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            $user = Auth::user();
-
-            Log::info('🟢 Iniciando criação de pedido.', [
-                'user_id' => $user->id,
-                'payload' => $request->all(),
-            ]);
-
-            $data = $request->validate([
-                'app_id' => 'required|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required',
-                'items.*.item_id.*' => 'integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'customer_name' => 'required|string|max:255',
-                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-                'payment_status' => 'required|string|in:pending,paid,failed',
-                'payment_method' => 'required|string|max:255',
-                'notes' => 'nullable|string|max:500',
-                'customer_phone' => 'nullable|string|max:20',
-                'customer_cpf' => 'nullable|string|max:20',
-                'order_datetime' => 'required|date',
-                'attendant_id' => 'required|integer|exists:employers,id',
-                'client_id' => 'nullable|integer|exists:users,id', 
-            ]);
-
-            $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
-            $now = Carbon::now('America/Sao_Paulo');
-
-            if ($orderDate->lt($now)) {
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
-            }
-
-            $isScheduled = $orderDate->gt($now);
-            $type = $isScheduled ? 'appointment' : 'service';
-            $appointmentStatus = $isScheduled ? 'pending' : null;
-
-            $employer = \App\Models\Employer::with('user')
-                ->where('id', $data['attendant_id'])
-                ->where('establishment_id', $data['entity_id'])
-                ->first();
-
-            if (!$employer) {
-                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-            }
-
-            $totalDuration = 0;
-            foreach ($data['items'] as $entry) {
-                $itemIds = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-                foreach ($itemIds as $id) {
-                    $item = \App\Models\Item::findOrFail($id);
-                    $totalDuration += $item->duration ?? 0;
-                }
-            }
-
-            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-            $hasConflict = \App\Models\Order::where('attendant_id', $data['attendant_id'])
-                ->where('type', 'appointment')
-                ->whereIn('appointment_status', ['pending', 'confirmed'])
-                ->where(function ($query) use ($orderDate, $orderDateEnd) {
-                    $query->whereBetween('order_datetime', [$orderDate, $orderDateEnd])
-                        ->orWhere(function ($q) use ($orderDate, $orderDateEnd) {
-                            $q->where('order_datetime', '<', $orderDate)
-                                ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$orderDate]);
-                        });
-                })
-                ->exists();
-
-            if ($hasConflict) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-            }
-
-            $itemIds = collect($data['items'])
-                ->flatMap(fn($entry) => is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']])
-                ->toArray();
-
-            $invalidItems = \App\Models\Item::whereIn('id', $itemIds)
-                ->where(function ($q) use ($data) {
-                    $q->where('entity_name', '!=', $data['entity_name'])
-                        ->orWhere('entity_id', '!=', $data['entity_id']);
-                })
-                ->pluck('name')
-                ->toArray();
-
-            if (!empty($invalidItems)) {
-                DB::rollBack();
-                return response()->json([
-                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                    'invalid_items' => $invalidItems,
-                ], 422);
-            }
-
-            $lastNumber = \App\Models\Order::where('app_id', $data['app_id'])->max('order_number') ?: 0;
-            $orderNumber = str_pad($lastNumber + 1, 3, '0', STR_PAD_LEFT);
-            $accessCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-            $order = \App\Models\Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => $orderNumber,
-                'order_datetime' => $orderDate,
-                'created_by' => $user->id, // quem criou o registro (ex: colaborador)
-                'client_id' => $request->has('client_id') ? $data['client_id'] : null, // quem será atendido
-                'attendant_id' => $data['attendant_id'], // barbeiro ou colaborador que atenderá
-                'customer_name' => $data['customer_name'], // nome visível do cliente
-                'customer_phone' => $data['customer_phone'] ?? null,
-                'customer_cpf' => $data['customer_cpf'] ?? null,
-                'access_code' => $accessCode,
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'status' => $isScheduled ? 'scheduled' : 'completed',
-                'notes' => $data['notes'] ?? null,
-                'type' => $type,
-                'appointment_status' => $appointmentStatus,
-                'total_price' => 0,
-                'total_duration' => $totalDuration,
-            ]);
-
-
-            $total = 0;
-            foreach ($data['items'] as $entry) {
-                $itemIds = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-                foreach ($itemIds as $id) {
-                    $item = \App\Models\Item::findOrFail($id);
-                    $subtotal = $item->price * $entry['quantity'];
-
-                    $order->items()->create([
-                        'item_id' => $item->id,
-                        'quantity' => $entry['quantity'],
-                        'unit_price' => $item->price,
-                        'subtotal' => $subtotal,
-                    ]);
-
-                    $total += $subtotal;
-                }
-            }
-
-            $order->update(['total_price' => $total]);
-            DB::commit();
-
-            // ===============================
-            // ✉️ Envio de e-mails
-            // ===============================
-            try {
-                $establishment = Establishment::with('user')->find($data['entity_id']);
-                $owner = $establishment?->user;
-                $attendant = $employer->user;
-                $clientEmail = $user?->email;
-
-                // 🔹 Cliente
-                if (!empty($clientEmail)) {
-                    Mail::to($clientEmail)
-                        ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
-                }
-
-                // 🔹 Colaborador
-                if ($attendant && !empty($attendant->email)) {
-                    Mail::to($attendant->email)
-                        ->queue(new NewAppointmentNotification($order, $establishment, $user));
-                }
-
-                // 🔹 Dono do estabelecimento
-                if ($owner && !empty($owner->email)) {
-                    $ownerName = trim("{$owner->first_name} {$owner->last_name}");
-                    Mail::to($owner->email)
-                        ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
-                }
-
-
-                Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
-                    'order_id' => $order->id,
-                    'owner_email' => $owner?->email,
-                    'attendant_email' => $attendant?->email,
-                    'client_email' => $clientEmail,
-                ]);
-            } catch (\Throwable $ex) {
-                Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
-                    'message' => $ex->getMessage(),
-                    'file' => $ex->getFile(),
-                    'line' => $ex->getLine(),
-                ]);
-            }
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-
-            Log::error('🔥 Erro inesperado ao criar pedido.', [
-                'message' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
-            ]);
-
-            return response()->json([
-                'error' => 'Erro interno ao criar o pedido.',
-                'details' => $e->getMessage(),
-            ], 500);
-        }
+public function store(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
 
+    DB::beginTransaction();
+
+    try {
+        $user = Auth::user();
+        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
+
+        $data = $this->validateOrder($request);
+
+        [$orderDate, $isScheduled, $type, $appointmentStatus] = $this->resolveOrderTiming($data);
+
+        $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
+        if (!$employer) {
+            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+        }
+
+        $totalDuration = Item::totalDurationForItems($data['items']);
+        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
+            DB::rollBack();
+            return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+        }
+
+        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+        if (!empty($invalidItems)) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
+        $order = Order::createOrder($data, $user, $orderDate, $totalDuration, $isScheduled, $type, $appointmentStatus);
+        $order->attachItems($data['items']);
+        DB::commit();
+
+        $this->sendAppointmentEmails($order, $employer, $user);
+
+        return response()->json([
+            'message' => 'Agendamento registrado com sucesso!',
+            'order' => $order->load('items.item'),
+        ], 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('🔥 Erro inesperado ao criar pedido.', ['message' => $e->getMessage(), 'line' => $e->getLine()]);
+        return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
+    }
+}
 
 
     public function listByEntity(Request $request)
