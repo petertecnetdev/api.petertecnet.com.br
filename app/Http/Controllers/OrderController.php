@@ -75,6 +75,12 @@ public function store(Request $request)
 
         [$orderDate, $isScheduled, $type, $appointmentStatus] = $this->resolveOrderTiming($data);
 
+        $now = now('America/Sao_Paulo')->startOfMinute();
+        if ($orderDate->lt($now)) {
+            DB::rollBack();
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+        }
+
         $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
         if (!$employer) {
             return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
@@ -111,10 +117,15 @@ public function store(Request $request)
 
     } catch (\Throwable $e) {
         DB::rollBack();
-        Log::error('🔥 Erro inesperado ao criar pedido.', ['message' => $e->getMessage(), 'line' => $e->getLine()]);
+        Log::error('🔥 Erro inesperado ao criar pedido.', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ]);
         return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
     }
 }
+
 
 private function validateOrder(Request $request)
 {
