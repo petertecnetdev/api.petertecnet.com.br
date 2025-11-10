@@ -86,14 +86,43 @@ class Item extends Model
     }
 
     public function establishment()
-{
-    return $this->belongsTo(Establishment::class, 'entity_id');
-}
-
+    {
+        return $this->belongsTo(Establishment::class, 'entity_id');
+    }
 
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class, 'item_id');
+    }
+
+    /* ===============================
+       REGRAS DE NEGÓCIO
+    ================================ */
+
+    public static function totalDurationForItems(array $items)
+    {
+        $total = 0;
+        foreach ($items as $entry) {
+            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+            foreach ($ids as $id) {
+                $item = self::find($id);
+                if ($item) {
+                    $total += $item->duration ?? 0;
+                }
+            }
+        }
+        return $total;
+    }
+
+    public static function invalidForEntity(array $itemIds, $entityName, $entityId)
+    {
+        return self::whereIn('id', $itemIds)
+            ->where(function ($q) use ($entityName, $entityId) {
+                $q->where('entity_name', '!=', $entityName)
+                  ->orWhere('entity_id', '!=', $entityId);
+            })
+            ->pluck('name')
+            ->toArray();
     }
 
     /* ===============================
@@ -129,26 +158,24 @@ class Item extends Model
     public function interactionSummary()
     {
         return Cache::remember("item_{$this->id}_summary", 120, function () {
-            $views = $this->views()
-                ->with('user:id,first_name,last_name,user_name,avatar,email')
-                ->get();
+            $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
 
             if ($views->isEmpty()) {
                 return [
-                    'total_views'      => 0,
-                    'unique_users'     => 0,
+                    'total_views' => 0,
+                    'unique_users' => 0,
                     'most_active_user' => null,
-                    'last_view_user'   => null,
+                    'last_view_user' => null,
                 ];
             }
 
             $mostActive = $views->groupBy('user_id')->map(function ($group) {
                 $u = $group->first()->user;
                 return [
-                    'user_id'     => $u?->id,
-                    'user_name'   => $u?->user_name,
-                    'name'        => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'avatar'      => $u?->avatar,
+                    'user_id' => $u?->id,
+                    'user_name' => $u?->user_name,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'avatar' => $u?->avatar,
                     'total_views' => $group->count(),
                 ];
             })->sortByDesc('total_views')->first();
@@ -156,15 +183,15 @@ class Item extends Model
             $lastView = $views->sortByDesc('created_at')->first()?->user;
 
             return [
-                'total_views'      => $views->count(),
-                'unique_users'     => $views->pluck('user_id')->unique()->count(),
+                'total_views' => $views->count(),
+                'unique_users' => $views->pluck('user_id')->unique()->count(),
                 'most_active_user' => $mostActive,
-                'last_view_user'   => $lastView ? [
-                    'user_id'   => $lastView->id,
+                'last_view_user' => $lastView ? [
+                    'user_id' => $lastView->id,
                     'user_name' => $lastView->user_name,
-                    'name'      => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-                    'avatar'    => $lastView->avatar,
-                    'email'     => $lastView->email,
+                    'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+                    'avatar' => $lastView->avatar,
+                    'email' => $lastView->email,
                 ] : null,
             ];
         });
@@ -229,28 +256,7 @@ class Item extends Model
     }
 
     /* ===============================
-       PRÓXIMOS HORÁRIOS DISPONÍVEIS
-    ================================ */
-
-    public function nextSlots()
-    {
-        if (!method_exists($this, 'nextAvailableSlots')) {
-            return [];
-        }
-
-        try {
-            return $this->nextAvailableSlots();
-        } catch (\Exception $e) {
-            \Log::warning('[Item::nextSlots] Erro ao buscar horários', [
-                'item_id' => $this->id,
-                'erro'    => $e->getMessage(),
-            ]);
-            return [];
-        }
-    }
-
-    /* ===============================
-       LINK WHATSAPP DO ESTABELECIMENTO
+       WHATSAPP DO ESTABELECIMENTO
     ================================ */
 
     public function whatsappLink()
@@ -266,7 +272,7 @@ class Item extends Model
     }
 
     /* ===============================
-       VARIANTE REDUZIDA (para listagens leves)
+       VERSÃO LEVE PARA LISTAGENS
     ================================ */
 
     public static function withLightItems($id)
