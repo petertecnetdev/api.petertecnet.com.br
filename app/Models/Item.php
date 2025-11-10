@@ -2,21 +2,21 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Support\Carbon;
 
 class Item extends Model
 {
-    use HasFactory;
-
     protected $fillable = [
         'user_id',
-        'slug',
         'app_id',
+        'entity_id',
+        'entity_name',
         'name',
+        'slug',
         'type',
         'sku',
         'description',
@@ -32,8 +32,6 @@ class Item extends Model
         'availability_end',
         'image',
         'is_featured',
-        'entity_id',
-        'entity_name',
         'tags',
         'discount',
         'expiration_date',
@@ -47,6 +45,7 @@ class Item extends Model
         'availability_start' => 'datetime',
         'availability_end' => 'datetime',
         'expiration_date' => 'datetime',
+        'is_featured' => 'boolean',
     ];
 
     protected $appends = ['metrics'];
@@ -59,20 +58,18 @@ class Item extends Model
                 $base = Str::slug($model->name);
                 $slug = $base;
                 $count = 1;
-
                 while (self::where('slug', $slug)->where('id', '!=', $model->id)->exists()) {
                     $slug = "{$base}-{$count}";
                     $count++;
                 }
-
                 $model->slug = $slug;
             }
         });
     }
 
-    /* ===============================
-       RELACIONAMENTOS DIRETOS
-    ================================ */
+    /* =======================
+       RELACIONAMENTOS
+       ======================= */
 
     public function user()
     {
@@ -84,24 +81,9 @@ class Item extends Model
         return $this->belongsTo(Application::class, 'app_id');
     }
 
-    public function creator()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
-    public function updater()
-    {
-        return $this->belongsTo(User::class, 'updated_by');
-    }
-
     public function establishment()
     {
         return $this->belongsTo(Establishment::class, 'entity_id');
-    }
-
-    public function orderItems()
-    {
-        return $this->hasMany(OrderItem::class, 'item_id');
     }
 
     public function entity()
@@ -109,39 +91,10 @@ class Item extends Model
         return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
     }
 
-    /* ===============================
-       REGRAS DE NEGÓCIO
-    ================================ */
-
-    public static function totalDurationForItems(array $items)
+    public function orderItems()
     {
-        $total = 0;
-        foreach ($items as $entry) {
-            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-            foreach ($ids as $id) {
-                $item = self::find($id);
-                if ($item) {
-                    $total += $item->duration ?? 0;
-                }
-            }
-        }
-        return $total;
+        return $this->hasMany(OrderItem::class, 'item_id');
     }
-
-    public static function invalidForEntity(array $itemIds, $entityName, $entityId)
-    {
-        return self::whereIn('id', $itemIds)
-            ->where(function ($q) use ($entityName, $entityId) {
-                $q->where('entity_name', '!=', $entityName)
-                    ->orWhere('entity_id', '!=', $entityId);
-            })
-            ->pluck('name')
-            ->toArray();
-    }
-
-    /* ===============================
-       INTERAÇÕES E MÉTRICAS
-    ================================ */
 
     public function interactions()
     {
@@ -154,17 +107,76 @@ class Item extends Model
         return $this->interactions()->where('interaction_type', 'view');
     }
 
+    /* =======================
+       MÉTRICAS E INTERAÇÕES
+       ======================= */
+
     public function getMetricsAttribute()
     {
         return Cache::remember("item_{$this->id}_metrics", 120, function () {
+            $views = $this->views();
+            $orders = $this->orderItems();
+
+            $totalViews = $views->count();
+            $uniqueUsers = $views->distinct('user_id')->count('user_id');
+
+            $totalOrders = $orders->count();
+            $completedOrders = (clone $orders)
+                ->whereHas('order', fn($q) => $q->whereIn('appointment_status', ['confirmed', 'attended']))
+                ->count();
+            $cancelledOrders = (clone $orders)
+                ->whereHas('order', fn($q) => $q->whereIn('appointment_status', ['cancelled', 'rejected']))
+                ->count();
+            $pendingOrders = (clone $orders)
+                ->whereHas('order', fn($q) => $q->where('appointment_status', 'pending'))
+                ->count();
+
+            $totalRevenue = (clone $orders)->with('order')->get()->sum(fn($oi) => $oi->order?->total_price ?? 0);
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
+            $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
+            $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
+            $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
+                ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
+                : 0;
+
+            $firstView = $views->min('created_at');
+            if ($firstView && !($firstView instanceof Carbon)) {
+                $firstView = Carbon::parse($firstView);
+            }
+
+            $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
+            $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
+
+            $clientsCount = (clone $orders)
+                ->whereHas('order', fn($q) => $q->whereNotNull('client_id'))
+                ->selectRaw('order_id')
+                ->count();
+
+            $engagementScore = round(
+                ($uniqueUsers * 1.5) +
+                ($totalViews * 0.2) +
+                ($completedOrders * 1.2),
+                2
+            );
+
             return [
-                'total_views' => $this->views()->count(),
-                'unique_users' => $this->views()->pluck('user_id')->unique()->count(),
-                'appointments' => $this->appointmentsCount(),
-                'is_available' => $this->isAvailable(),
-                'price' => $this->price,
-                'discount' => $this->discount,
-                'stock' => $this->stock,
+                'total_views' => $totalViews,
+                'unique_users' => $uniqueUsers,
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
+                'pending_orders' => $pendingOrders,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'completion_rate' => $completionRate,
+                'cancellation_rate' => $cancellationRate,
+                'pending_rate' => $pendingRate,
+                'efficiency_rate' => $efficiencyRate,
+                'avg_views_per_day' => $avgViewsPerDay,
+                'days_active' => $daysActive,
+                'engagement_score' => $engagementScore,
             ];
         });
     }
@@ -173,7 +185,6 @@ class Item extends Model
     {
         return Cache::remember("item_{$this->id}_summary", 120, function () {
             $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
-
             if ($views->isEmpty()) {
                 return [
                     'total_views' => 0,
@@ -183,30 +194,78 @@ class Item extends Model
                 ];
             }
 
-            $mostActive = $views->groupBy('user_id')->map(function ($group) {
-                $u = $group->first()->user;
+            $mostActive = $views->groupBy('user_id')->map(function ($g) {
+                $u = $g->first()->user;
                 return [
                     'user_id' => $u?->id,
                     'user_name' => $u?->user_name,
                     'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
                     'avatar' => $u?->avatar,
-                    'total_views' => $group->count(),
+                    'email' => $u?->email,
+                    'total' => $g->count(),
                 ];
-            })->sortByDesc('total_views')->first();
+            })->sortByDesc('total')->first();
 
             $lastView = $views->sortByDesc('created_at')->first()?->user;
+            $lastViewUser = $lastView ? [
+                'user_id' => $lastView->id,
+                'user_name' => $lastView->user_name,
+                'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+                'avatar' => $lastView->avatar,
+                'email' => $lastView->email,
+            ] : null;
 
             return [
                 'total_views' => $views->count(),
                 'unique_users' => $views->pluck('user_id')->unique()->count(),
                 'most_active_user' => $mostActive,
-                'last_view_user' => $lastView ? [
-                    'user_id' => $lastView->id,
-                    'user_name' => $lastView->user_name,
-                    'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-                    'avatar' => $lastView->avatar,
-                    'email' => $lastView->email,
-                ] : null,
+                'last_view_user' => $lastViewUser,
+            ];
+        });
+    }
+
+    public function ordersSummary()
+    {
+        return Cache::remember("item_{$this->id}_orders_summary", 120, function () {
+            $orders = \App\Models\OrderItem::where('item_id', $this->id)
+                ->with(['order.client:id,first_name,last_name,user_name,avatar,email'])
+                ->get();
+
+            if ($orders->isEmpty()) {
+                return [
+                    'total_orders' => 0,
+                    'completed_orders' => 0,
+                    'cancelled_orders' => 0,
+                    'pending_orders' => 0,
+                    'total_revenue' => 0,
+                    'average_ticket' => 0,
+                    'cancellation_rate' => 0,
+                    'completion_rate' => 0,
+                    'pending_rate' => 0,
+                    'efficiency_rate' => 0,
+                ];
+            }
+
+            $totalOrders = $orders->count();
+            $completed = $orders->where('order.appointment_status', 'attended')->count();
+            $cancelled = $orders->where('order.appointment_status', 'cancelled')->count();
+            $pending = $orders->where('order.appointment_status', 'pending')->count();
+            $totalRevenue = $orders->sum(fn($oi) => $oi->order?->total_price ?? 0);
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            return [
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completed,
+                'cancelled_orders' => $cancelled,
+                'pending_orders' => $pending,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'completion_rate' => $totalOrders > 0 ? round(($completed / $totalOrders) * 100, 2) : 0,
+                'cancellation_rate' => $totalOrders > 0 ? round(($cancelled / $totalOrders) * 100, 2) : 0,
+                'pending_rate' => $totalOrders > 0 ? round(($pending / $totalOrders) * 100, 2) : 0,
+                'efficiency_rate' => ($completed + $cancelled) > 0
+                    ? round(($completed / ($completed + $cancelled)) * 100, 2)
+                    : 0,
             ];
         });
     }
@@ -243,156 +302,67 @@ class Item extends Model
         });
     }
 
-    /* ===============================
-       DISPONIBILIDADE E AGENDAMENTOS
-    ================================ */
-
-    public function isAvailable(): bool
-    {
-        return (bool) $this->status
-            && ($this->stock > 0)
-            && (is_null($this->availability_start) || $this->availability_start->lte(now()))
-            && (is_null($this->availability_end) || $this->availability_end->gte(now()));
-    }
-
-    public function appointmentsCount(): int
-    {
-        return Cache::remember("item_{$this->id}_appointments", 120, function () {
-            return DB::table('order_items')
-                ->where('item_id', $this->id)
-                ->count();
-        });
-    }
-
-    public function ordersSummary()
-    {
-        return Cache::remember("item_{$this->id}_orders_summary", 120, function () {
-            $orders = \App\Models\OrderItem::where('item_id', $this->id)
-                ->with(['order.client:id,first_name,last_name,user_name,avatar,email'])
-                ->get();
-
-            if ($orders->isEmpty()) {
-                return [
-                    'total_orders' => 0,
-                    'completed_orders' => 0,
-                    'cancelled_orders' => 0,
-                    'pending_orders' => 0,
-                    'total_revenue' => 0,
-                    'average_ticket' => 0,
-                    'cancellation_rate' => 0,
-                    'completion_rate' => 0,
-                    'pending_rate' => 0,
-                    'efficiency_rate' => 0,
-                    'return_rate' => 0,
-                ];
-            }
-
-            $totalOrders = $orders->count();
-            $completed = $orders->where('order.appointment_status', 'attended')->count();
-            $cancelled = $orders->where('order.appointment_status', 'cancelled')->count();
-            $pending = $orders->where('order.appointment_status', 'pending')->count();
-            $totalRevenue = $orders->sum(fn($oi) => $oi->order?->total_price ?? 0);
-            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
-
-            return [
-                'total_orders' => $totalOrders,
-                'completed_orders' => $completed,
-                'cancelled_orders' => $cancelled,
-                'pending_orders' => $pending,
-                'total_revenue' => $totalRevenue,
-                'average_ticket' => $averageTicket,
-                'cancellation_rate' => $totalOrders > 0 ? round(($cancelled / $totalOrders) * 100, 2) : 0,
-                'completion_rate' => $totalOrders > 0 ? round(($completed / $totalOrders) * 100, 2) : 0,
-                'pending_rate' => $totalOrders > 0 ? round(($pending / $totalOrders) * 100, 2) : 0,
-                'efficiency_rate' => ($completed + $cancelled) > 0 ? round(($completed / ($completed + $cancelled)) * 100, 2) : 0,
-                'return_rate' => 0,
-            ];
-        });
-    }
-
-    /* ===============================
-       ITENS RELACIONADOS
-    ================================ */
-
-    public function relatedItems($limit = 6)
-    {
-        return Cache::remember("item_{$this->id}_related", 120, function () use ($limit) {
-            return self::where('entity_name', 'establishment')
-                ->where('entity_id', $this->entity_id)
-                ->where('id', '!=', $this->id)
-                ->where('status', 1)
-                ->limit($limit)
-                ->get(['id', 'name', 'slug', 'price', 'image', 'category', 'type']);
-        });
-    }
+    /* =======================
+       OUTROS ELEMENTOS
+       ======================= */
 
     public function otherItems()
     {
-        return Cache::remember("item_{$this->id}_related_all", 120, function () {
+        return Cache::remember("item_{$this->id}_other_items", 120, function () {
             return self::where('app_id', $this->app_id)
                 ->where('id', '!=', $this->id)
                 ->with(['entity:id,name,slug,logo,background,app_id'])
                 ->withCount(['views as total_views' => function ($q) {
                     $q->where('interaction_type', 'view');
                 }])
+                ->inRandomOrder()
                 ->limit(6)
-                ->get([
-                    'id',
-                    'entity_id',
-                    'name',
-                    'slug',
-                    'price',
-                    'type',
-                    'image',
-                ]);
+                ->get(['id', 'entity_id', 'name', 'slug', 'price', 'type', 'image'])
+                ->map(function ($item) {
+                    $item->completed_appointments = \App\Models\OrderItem::where('item_id', $item->id)
+                        ->whereHas('order', fn($q) => $q->where('appointment_status', 'attended'))
+                        ->count();
+                    return $item;
+                });
         });
     }
 
-    /* ===============================
-       PROFISSIONAIS ASSOCIADOS (SERVIÇOS)
-    ================================ */
-
-    public function associatedEmployers()
+    public function otherEmployers()
     {
-        $establishment = $this->establishment;
-
-        if (!$establishment) {
-            return collect();
-        }
-
-        if (Str::contains(Str::lower($this->type), 'serv') || $this->type === 'serviço') {
-            return $establishment->employers()
-                ->with(['user:id,first_name,last_name,avatar,user_name,email'])
-                ->get();
-        }
-
-        return collect();
+        return Cache::remember("item_{$this->id}_other_employers", 120, function () {
+            return \App\Models\Employer::with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                    'establishment:id,name,slug,logo,background,app_id',
+                ])
+                ->whereHas('establishment', fn($q) => $q->where('app_id', $this->app_id))
+                ->withCount(['views as total_views' => fn($q) => $q->where('interaction_type', 'view')])
+                ->inRandomOrder()
+                ->limit(6)
+                ->get(['id', 'establishment_id'])
+                ->map(function ($emp) {
+                    $emp->completed_appointments = \App\Models\Order::where('attendant_id', $emp->id)
+                        ->where('appointment_status', 'attended')
+                        ->count();
+                    return $emp;
+                });
+        });
     }
 
-    /* ===============================
-       WHATSAPP DO ESTABELECIMENTO
-    ================================ */
-
-    public function whatsappLink()
+    public function otherEstablishments()
     {
-        $establishment = $this->establishment;
-
-        if (!$establishment || !$establishment->phone) {
-            return null;
-        }
-
-        return 'https://wa.me/55' . preg_replace('/\D/', '', $establishment->phone)
-            . '?text=' . urlencode("Olá! Gostaria de saber mais sobre o item \"{$this->name}\".");
-    }
-
-    /* ===============================
-       VERSÃO LEVE PARA LISTAGENS
-    ================================ */
-
-    public static function withLightItems($id)
-    {
-        return self::where('id', $id)
-            ->withCount(['views as total_views'])
-            ->first();
+        return Cache::remember("item_{$this->id}_other_establishments", 120, function () {
+            return \App\Models\Establishment::where('app_id', $this->app_id)
+                ->withCount(['views as total_views' => fn($q) => $q->where('interaction_type', 'view')])
+                ->inRandomOrder()
+                ->limit(6)
+                ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category'])
+                ->map(function ($est) {
+                    $est->completed_appointments = \App\Models\Order::where('entity_name', 'App\\Models\\Establishment')
+                        ->where('entity_id', $est->id)
+                        ->where('appointment_status', 'attended')
+                        ->count();
+                    return $est;
+                });
+        });
     }
 }

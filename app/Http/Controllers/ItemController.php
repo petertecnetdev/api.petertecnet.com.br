@@ -205,56 +205,40 @@ class ItemController extends Controller
     try {
         $authUser = Auth::user();
 
-        // 🔹 Carrega o item com todas as relações relevantes
-        $item = Item::whereSlug($slug)
+        // 🔹 Carrega o item completo com entidade, pedidos e interações
+        $item = \App\Models\Item::where('slug', $slug)
             ->with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,logo,background,phone,app_id',
-                'orderItems',
+                'entity:id,name,slug,logo,background,app_id',
+                'orderItems.order.client:id,first_name,last_name,user_name,avatar,email',
                 'interactions.user:id,first_name,last_name,user_name,avatar,email',
             ])
             ->firstOrFail();
 
-        // 🔹 Registra visualização
-        Interaction::registerView($item, $authUser);
+        // 🔹 Registra visualização do item
+        \App\Models\Interaction::registerView($item, $authUser);
 
-        // 🔹 Limpa cache antes de recalcular
+        // 🔹 Limpa cache
         Cache::forget("item_{$item->id}_metrics");
         Cache::forget("item_{$item->id}_summary");
+        Cache::forget("item_{$item->id}_orders_summary");
 
-        // 🔹 Recalcula métricas e interações
+        // 🔹 Recarrega métricas e interações com dados atualizados
         $metrics = $item->metrics;
         $interactionSummary = $item->interactionSummary();
 
-        // 🔹 Dados principais
+        // 🔹 Retorno padronizado com Establishment e Employer
         return response()->json([
-            'item' => [
-                'id' => $item->id,
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'description' => $item->description,
-                'price' => $item->price,
-                'type' => $item->type,
-                'duration' => $item->duration,
-                'image' => $item->image,
-                'category' => $item->category,
-                'subcategory' => $item->subcategory,
-                'stock' => $item->stock,
-                'status' => $item->status,
-                'availability_start' => $item->availability_start,
-                'availability_end' => $item->availability_end,
-                'created_at' => $item->created_at,
-                'updated_at' => $item->updated_at,
-            ],
-            'establishment' => $item->establishment,
-            'employers' => $item->associatedEmployers(),
+            'item' => $item,
+            'entity' => $item->entity,
             'metrics' => $metrics,
             'interaction_summary' => $interactionSummary,
             'user_interactions' => $item->userInteractions(),
             'orders_summary' => $item->ordersSummary(),
-            'related_items' => $item->relatedItems(),
+
+            // 🔹 Dados de rotatividade — mesmo padrão
+            'other_establishments' => $item->otherEstablishments(),
+            'other_employers' => $item->otherEmployers(),
             'other_items' => $item->otherItems(),
-            'whatsapp_url' => $item->whatsappLink(),
         ], 200);
 
     } catch (\Throwable $e) {
