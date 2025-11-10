@@ -168,9 +168,10 @@ class OrderController extends Controller
 
     private function resolveOrderTiming(array $data)
     {
-        $orderDate = Carbon::parse($data['order_datetime'])
-            ->setTimezone('America/Sao_Paulo')
-            ->startOfMinute();
+       $orderDate = Carbon::parse($data['order_datetime'])
+    ->tz('America/Sao_Paulo') // força converter para o horário local do servidor
+    ->startOfMinute();
+
 
         $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
 
