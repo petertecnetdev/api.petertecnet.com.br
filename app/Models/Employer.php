@@ -291,4 +291,37 @@ class Employer extends Model
         Cache::forget("employer_{$this->id}_summary");
         Cache::forget("employer_{$this->id}_orders_summary");
     }
+public function userInteractions()
+{
+    return Cache::remember("employer_{$this->id}_user_interactions", 120, function () {
+        $views = \App\Models\Interaction::where('entity_type', 'Employer')
+            ->where('entity_id', $this->id)
+            ->where('interaction_type', 'view')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')
+            ->orderByDesc('created_at')
+            ->get()
+            ->filter(fn($v) => $v->user);
+
+        $grouped = $views->groupBy('user_id')->map(function ($group) {
+            $view = $group->first();
+            $u = $view->user;
+
+            return [
+                'user_id' => $u->id,
+                'user_name' => $u->user_name,
+                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                'avatar' => $u->avatar,
+                'email' => $u->email,
+                'last_interaction' => $view->created_at
+                    ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                    : null,
+                'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+            ];
+        });
+
+        return $grouped->values();
+    });
+}
+
+    
 }
