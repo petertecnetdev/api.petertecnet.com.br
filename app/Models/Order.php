@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Facades\DB;
 
 class Order extends Model
 {
@@ -97,7 +98,7 @@ class Order extends Model
        MÉTODOS ESTÁTICOS AUXILIARES
     ================================ */
 
-    public static function hasScheduleConflict($attendantId, $start, $end)
+    public static function hasScheduleConflict($attendantId, $start, $end): bool
     {
         return self::where('attendant_id', $attendantId)
             ->where('type', 'appointment')
@@ -106,39 +107,87 @@ class Order extends Model
                 $query->whereBetween('order_datetime', [$start, $end])
                     ->orWhere(function ($q) use ($start, $end) {
                         $q->where('order_datetime', '<', $start)
-                            ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
+                          ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
                     });
             })
             ->exists();
     }
 
-    public static function nextOrderNumber($appId)
+    public static function nextOrderNumber($appId): string
     {
         $last = self::where('app_id', $appId)->max('order_number') ?: 0;
         return str_pad($last + 1, 3, '0', STR_PAD_LEFT);
     }
 
-    public static function generateAccessCode()
+    public static function generateAccessCode(): string
     {
         return str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
+    public static function createOrder($data, $user, $orderDate, $totalDuration, $isScheduled, $type, $appointmentStatus): self
+    {
+        return self::create([
+            'app_id' => $data['app_id'],
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+            'order_number' => self::nextOrderNumber($data['app_id']),
+            'order_datetime' => $orderDate,
+            'created_by' => $user->id,
+            'client_id' => $data['client_id'] ?? null,
+            'attendant_id' => $data['attendant_id'],
+            'customer_name' => $data['customer_name'],
+            'customer_phone' => $data['customer_phone'] ?? null,
+            'customer_cpf' => $data['customer_cpf'] ?? null,
+            'access_code' => self::generateAccessCode(),
+            'origin' => $data['origin'],
+            'fulfillment' => $data['fulfillment'],
+            'payment_status' => $data['payment_status'],
+            'payment_method' => $data['payment_method'],
+            'status' => $isScheduled ? 'scheduled' : 'completed',
+            'notes' => $data['notes'] ?? null,
+            'type' => $type,
+            'appointment_status' => $appointmentStatus,
+            'total_price' => 0,
+            'total_duration' => $totalDuration,
+        ]);
+    }
+
+    public function attachItems(array $items): void
+    {
+        $total = 0;
+        foreach ($items as $entry) {
+            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+            foreach ($ids as $id) {
+                $item = Item::findOrFail($id);
+                $subtotal = $item->price * $entry['quantity'];
+                $this->items()->create([
+                    'item_id' => $item->id,
+                    'quantity' => $entry['quantity'],
+                    'unit_price' => $item->price,
+                    'subtotal' => $subtotal,
+                ]);
+                $total += $subtotal;
+            }
+        }
+        $this->update(['total_price' => $total]);
     }
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS
     ================================ */
 
-    public function interactions()
+    public function interactions(): HasMany
     {
         return $this->hasMany(Interaction::class, 'entity_id')
             ->where('entity_type', 'Order');
     }
 
-    public function views()
+    public function views(): HasMany
     {
         return $this->interactions()->where('interaction_type', 'view');
     }
 
-    public function latestViews()
+    public function latestViews(): HasMany
     {
         return $this->views()->latest()->limit(10);
     }
@@ -161,24 +210,22 @@ class Order extends Model
             ->first();
     }
 
-    public function totalViewsCount()
+    public function totalViewsCount(): int
     {
         return $this->views()->count();
     }
 
-    public function itemsViews()
+    public function itemsViews(): int
     {
         return $this->items()
-            ->withCount([
-                'interactions as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                }
-            ])
+            ->withCount(['interactions as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])
             ->get()
             ->sum('total_views');
     }
 
-    public function metrics()
+    public function metrics(): array
     {
         return [
             'total_items' => $this->items()->count(),
@@ -189,7 +236,7 @@ class Order extends Model
         ];
     }
 
-    public function fullInteractionsSummary()
+    public function fullInteractionsSummary(): array
     {
         return [
             'order' => [
@@ -198,11 +245,9 @@ class Order extends Model
                 'unique_users' => $this->uniqueViewers()->count(),
                 'most_active_user' => $this->mostActiveViewer()?->user ?? null,
             ],
-            'items' => $this->items()->withCount([
-                'interactions as views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                }
-            ])->get(['id', 'item_id', 'quantity', 'views']),
+            'items' => $this->items()->withCount(['interactions as views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            }])->get(['id', 'item_id', 'quantity', 'views']),
         ];
     }
 
@@ -244,52 +289,4 @@ class Order extends Model
     {
         return $this->payment_status === 'refunded';
     }
-    public static function createOrder($data, $user, $orderDate, $totalDuration, $isScheduled, $type, $appointmentStatus)
-    {
-        return self::create([
-            'app_id' => $data['app_id'],
-            'entity_name' => $data['entity_name'],
-            'entity_id' => $data['entity_id'],
-            'order_number' => self::nextOrderNumber($data['app_id']),
-            'order_datetime' => $orderDate,
-            'created_by' => $user->id,
-            'client_id' => $data['client_id'] ?? null,
-            'attendant_id' => $data['attendant_id'],
-            'customer_name' => $data['customer_name'],
-            'customer_phone' => $data['customer_phone'] ?? null,
-            'customer_cpf' => $data['customer_cpf'] ?? null,
-            'access_code' => self::generateAccessCode(),
-            'origin' => $data['origin'],
-            'fulfillment' => $data['fulfillment'],
-            'payment_status' => $data['payment_status'],
-            'payment_method' => $data['payment_method'],
-            'status' => $isScheduled ? 'scheduled' : 'completed',
-            'notes' => $data['notes'] ?? null,
-            'type' => $type,
-            'appointment_status' => $appointmentStatus,
-            'total_price' => 0,
-            'total_duration' => $totalDuration,
-        ]);
-    }
-
-    public function attachItems(array $items)
-    {
-        $total = 0;
-        foreach ($items as $entry) {
-            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-            foreach ($ids as $id) {
-                $item = Item::findOrFail($id);
-                $subtotal = $item->price * $entry['quantity'];
-                $this->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $entry['quantity'],
-                    'unit_price' => $item->price,
-                    'subtotal' => $subtotal,
-                ]);
-                $total += $subtotal;
-            }
-        }
-        $this->update(['total_price' => $total]);
-    }
-
 }
