@@ -322,6 +322,12 @@ public function userInteractions()
         return $grouped->values();
     });
 }
+public static function validateEmployer($employerId, $establishmentId)
+{
+    return self::where('id', $employerId)
+        ->where('establishment_id', $establishmentId)
+        ->exists();
+}
 
     
 }
