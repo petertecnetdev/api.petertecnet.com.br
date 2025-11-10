@@ -58,89 +58,89 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
+    }public function store(Request $request)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
-    public function store(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
 
-        DB::beginTransaction();
+    DB::beginTransaction();
 
-        try {
-            $user = Auth::user();
-            Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
+    try {
+        $user = Auth::user();
+        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
 
-            $data = $this->validateOrder($request);
+        $data = $this->validateOrder($request);
 
-            // ✅ Garante timezone correto antes de qualquer operação
-            $orderDate = \Carbon\Carbon::parse($data['order_datetime'])->setTimezone('America/Sao_Paulo')->startOfMinute();
-            $now = \Carbon\Carbon::now('America/Sao_Paulo')->startOfMinute();
+        // ✅ Sempre interpretar a data recebida como São Paulo (mesmo que venha com Z ou outro fuso)
+        $orderDate = Carbon::parse($data['order_datetime'])->tz('America/Sao_Paulo')->startOfMinute();
+        $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
 
-            if ($orderDate->lt($now)) {
-                DB::rollBack();
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
-            }
-
-
-            $isScheduled = $orderDate->gt($now);
-            $type = $isScheduled ? 'appointment' : 'service';
-            $appointmentStatus = $isScheduled ? 'pending' : null;
-
-            $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
-            if (!$employer) {
-                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-            }
-
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-            }
-
-            $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
-            $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-            if (!empty($invalidItems)) {
-                DB::rollBack();
-                return response()->json([
-                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                    'invalid_items' => $invalidItems,
-                ], 422);
-            }
-
-            // ✅ Força o timezone correto no salvamento
-            $order = Order::createOrder(
-                $data,
-                $user,
-                $orderDate->timezone('America/Sao_Paulo'),
-                $totalDuration,
-                $isScheduled,
-                $type,
-                $appointmentStatus
-            );
-
-            $order->attachItems($data['items']);
-            DB::commit();
-
-            $this->sendAppointmentEmails($order, $employer, $user);
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
-
-        } catch (\Throwable $e) {
+        // 🚫 Se a data está no passado comparada com o horário do servidor — rejeita
+        if ($orderDate->lte($now)) {
             DB::rollBack();
-            Log::error('🔥 Erro inesperado ao criar pedido.', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ]);
-            return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
         }
+
+        $isScheduled = true;
+        $type = 'appointment';
+        $appointmentStatus = 'pending';
+
+        $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
+        if (!$employer) {
+            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+        }
+
+        $totalDuration = Item::totalDurationForItems($data['items']);
+        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+        // 🚫 Verifica conflito de horários
+        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
+            DB::rollBack();
+            return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+        }
+
+        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+        if (!empty($invalidItems)) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
+        // ✅ Salva já normalizado no timezone do backend
+        $order = Order::createOrder(
+            $data,
+            $user,
+            $orderDate,
+            $totalDuration,
+            $isScheduled,
+            $type,
+            $appointmentStatus
+        );
+
+        $order->attachItems($data['items']);
+        DB::commit();
+
+        $this->sendAppointmentEmails($order, $employer, $user);
+
+        return response()->json([
+            'message' => 'Agendamento registrado com sucesso!',
+            'order' => $order->load('items.item'),
+        ], 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('🔥 Erro inesperado ao criar pedido.', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ]);
+        return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
     }
+}
 
     private function validateOrder(Request $request)
     {
