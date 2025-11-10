@@ -59,152 +59,167 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-public function store(Request $request)
-{
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
-
-    DB::beginTransaction();
-
-    try {
-        $user = Auth::user();
-        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
-
-        $data = $this->validateOrder($request);
-
-        [$orderDate, $isScheduled, $type, $appointmentStatus] = $this->resolveOrderTiming($data);
-
-        $now = now('America/Sao_Paulo')->startOfMinute();
-        if ($orderDate->lt($now)) {
-            DB::rollBack();
-            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+    public function store(Request $request)
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
-        if (!$employer) {
-            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-        }
+        DB::beginTransaction();
 
-        $totalDuration = Item::totalDurationForItems($data['items']);
-        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+        try {
+            $user = Auth::user();
+            Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
 
-        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
-            DB::rollBack();
-            return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-        }
+            $data = $this->validateOrder($request);
 
-        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
-        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-        if (!empty($invalidItems)) {
-            DB::rollBack();
+            // ✅ Garante timezone correto antes de qualquer operação
+            $orderDate = \Carbon\Carbon::parse($data['order_datetime'])->setTimezone('America/Sao_Paulo')->startOfMinute();
+            $now = \Carbon\Carbon::now('America/Sao_Paulo')->startOfMinute();
+
+            if ($orderDate->lt($now)) {
+                DB::rollBack();
+                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+            }
+
+
+            $isScheduled = $orderDate->gt($now);
+            $type = $isScheduled ? 'appointment' : 'service';
+            $appointmentStatus = $isScheduled ? 'pending' : null;
+
+            $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
+            if (!$employer) {
+                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+            }
+
+            $totalDuration = Item::totalDurationForItems($data['items']);
+            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
+                DB::rollBack();
+                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+            }
+
+            $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+            $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+            if (!empty($invalidItems)) {
+                DB::rollBack();
+                return response()->json([
+                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                    'invalid_items' => $invalidItems,
+                ], 422);
+            }
+
+            // ✅ Força o timezone correto no salvamento
+            $order = Order::createOrder(
+                $data,
+                $user,
+                $orderDate->timezone('America/Sao_Paulo'),
+                $totalDuration,
+                $isScheduled,
+                $type,
+                $appointmentStatus
+            );
+
+            $order->attachItems($data['items']);
+            DB::commit();
+
+            $this->sendAppointmentEmails($order, $employer, $user);
+
             return response()->json([
-                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                'invalid_items' => $invalidItems,
-            ], 422);
+                'message' => 'Agendamento registrado com sucesso!',
+                'order' => $order->load('items.item'),
+            ], 201);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('🔥 Erro inesperado ao criar pedido.', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
         }
-
-        $order = Order::createOrder($data, $user, $orderDate, $totalDuration, $isScheduled, $type, $appointmentStatus);
-        $order->attachItems($data['items']);
-        DB::commit();
-
-        $this->sendAppointmentEmails($order, $employer, $user);
-
-        return response()->json([
-            'message' => 'Agendamento registrado com sucesso!',
-            'order' => $order->load('items.item'),
-        ], 201);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        Log::error('🔥 Erro inesperado ao criar pedido.', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-        return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
-    }
-}
-
-
-private function validateOrder(Request $request)
-{
-    return $request->validate([
-        'app_id' => 'required|exists:applications,id',
-        'entity_name' => 'required|string|max:255',
-        'entity_id' => 'required|integer',
-        'items' => 'required|array|min:1',
-        'items.*.item_id' => 'required',
-        'items.*.item_id.*' => 'integer|exists:items,id',
-        'items.*.quantity' => 'required|integer|min:1',
-        'customer_name' => 'required|string|max:255',
-        'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-        'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-        'payment_status' => 'required|string|in:pending,paid,failed',
-        'payment_method' => 'required|string|max:255',
-        'notes' => 'nullable|string|max:500',
-        'customer_phone' => 'nullable|string|max:20',
-        'customer_cpf' => 'nullable|string|max:20',
-        'order_datetime' => 'required|date',
-        'attendant_id' => 'required|integer|exists:employers,id',
-        'client_id' => 'nullable|integer|exists:users,id',
-    ]);
-}
-
-private function resolveOrderTiming(array $data)
-{
-    $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
-    $now = Carbon::now('America/Sao_Paulo');
-
-    if ($orderDate->lt($now)) {
-        throw new \Exception('A data do agendamento deve ser futura.');
     }
 
-    $isScheduled = $orderDate->gt($now);
-    $type = $isScheduled ? 'appointment' : 'service';
-    $appointmentStatus = $isScheduled ? 'pending' : null;
-
-    return [$orderDate, $isScheduled, $type, $appointmentStatus];
-}
-
-private function sendAppointmentEmails($order, $employer, $user)
-{
-    try {
-        $establishment = Establishment::with('user')->find($order->entity_id);
-        $owner = $establishment?->user;
-        $attendant = $employer->user;
-        $clientEmail = $user?->email;
-
-        if ($clientEmail) {
-            Mail::to($clientEmail)
-                ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
-        }
-
-        if ($attendant?->email) {
-            Mail::to($attendant->email)
-                ->queue(new NewAppointmentNotification($order, $establishment, $user));
-        }
-
-        if ($owner?->email) {
-            $ownerName = trim("{$owner->first_name} {$owner->last_name}");
-            Mail::to($owner->email)
-                ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
-        }
-
-        Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
-            'order_id' => $order->id,
-            'owner_email' => $owner?->email,
-            'attendant_email' => $attendant?->email,
-            'client_email' => $clientEmail,
-        ]);
-    } catch (\Throwable $ex) {
-        Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
-            'message' => $ex->getMessage(),
-            'file' => $ex->getFile(),
-            'line' => $ex->getLine(),
+    private function validateOrder(Request $request)
+    {
+        return $request->validate([
+            'app_id' => 'required|exists:applications,id',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required',
+            'items.*.item_id.*' => 'integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'customer_name' => 'required|string|max:255',
+            'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+            'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+            'payment_status' => 'required|string|in:pending,paid,failed',
+            'payment_method' => 'required|string|max:255',
+            'notes' => 'nullable|string|max:500',
+            'customer_phone' => 'nullable|string|max:20',
+            'customer_cpf' => 'nullable|string|max:20',
+            'order_datetime' => 'required|date',
+            'attendant_id' => 'required|integer|exists:employers,id',
+            'client_id' => 'nullable|integer|exists:users,id',
         ]);
     }
-}
+
+    private function resolveOrderTiming(array $data)
+    {
+        $orderDate = Carbon::parse($data['order_datetime'])
+            ->setTimezone('America/Sao_Paulo')
+            ->startOfMinute();
+
+        $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
+
+        $isScheduled = $orderDate->gt($now);
+        $type = $isScheduled ? 'appointment' : 'service';
+        $appointmentStatus = $isScheduled ? 'pending' : null;
+
+        return [$orderDate, $isScheduled, $type, $appointmentStatus];
+    }
+
+
+    private function sendAppointmentEmails($order, $employer, $user)
+    {
+        try {
+            $establishment = Establishment::with('user')->find($order->entity_id);
+            $owner = $establishment?->user;
+            $attendant = $employer->user;
+            $clientEmail = $user?->email;
+
+            if ($clientEmail) {
+                Mail::to($clientEmail)
+                    ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
+            }
+
+            if ($attendant?->email) {
+                Mail::to($attendant->email)
+                    ->queue(new NewAppointmentNotification($order, $establishment, $user));
+            }
+
+            if ($owner?->email) {
+                $ownerName = trim("{$owner->first_name} {$owner->last_name}");
+                Mail::to($owner->email)
+                    ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
+            }
+
+            Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
+                'order_id' => $order->id,
+                'owner_email' => $owner?->email,
+                'attendant_email' => $attendant?->email,
+                'client_email' => $clientEmail,
+            ]);
+        } catch (\Throwable $ex) {
+            Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
+                'message' => $ex->getMessage(),
+                'file' => $ex->getFile(),
+                'line' => $ex->getLine(),
+            ]);
+        }
+    }
 
     public function listByEntity(Request $request)
     {
