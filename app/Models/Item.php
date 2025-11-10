@@ -305,16 +305,19 @@ class Item extends Model
     /* =======================
        OUTROS ELEMENTOS
        ======================= */
-
     public function otherItems()
     {
         return Cache::remember("item_{$this->id}_other_items", 120, function () {
-            return self::where('app_id', $this->app_id)
+            $appId = $this->establishment?->app_id ?? $this->app_id;
+
+            return self::where('app_id', $appId)
                 ->where('id', '!=', $this->id)
                 ->with(['entity:id,name,slug,logo,background,app_id'])
-                ->withCount(['views as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                }])
+                ->withCount([
+                    'views as total_views' => function ($q) {
+                        $q->where('interaction_type', 'view');
+                    }
+                ])
                 ->inRandomOrder()
                 ->limit(6)
                 ->get(['id', 'entity_id', 'name', 'slug', 'price', 'type', 'image'])
@@ -330,11 +333,13 @@ class Item extends Model
     public function otherEmployers()
     {
         return Cache::remember("item_{$this->id}_other_employers", 120, function () {
+            $appId = $this->establishment?->app_id ?? $this->app_id;
+
             return \App\Models\Employer::with([
-                    'user:id,first_name,last_name,user_name,avatar,email',
-                    'establishment:id,name,slug,logo,background,app_id',
-                ])
-                ->whereHas('establishment', fn($q) => $q->where('app_id', $this->app_id))
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'establishment:id,name,slug,logo,background,app_id',
+            ])
+                ->whereHas('establishment', fn($q) => $q->where('app_id', $appId))
                 ->withCount(['views as total_views' => fn($q) => $q->where('interaction_type', 'view')])
                 ->inRandomOrder()
                 ->limit(6)
@@ -351,7 +356,9 @@ class Item extends Model
     public function otherEstablishments()
     {
         return Cache::remember("item_{$this->id}_other_establishments", 120, function () {
-            return \App\Models\Establishment::where('app_id', $this->app_id)
+            $appId = $this->establishment?->app_id ?? $this->app_id;
+
+            return \App\Models\Establishment::where('app_id', $appId)
                 ->withCount(['views as total_views' => fn($q) => $q->where('interaction_type', 'view')])
                 ->inRandomOrder()
                 ->limit(6)
@@ -365,4 +372,5 @@ class Item extends Model
                 });
         });
     }
+
 }
