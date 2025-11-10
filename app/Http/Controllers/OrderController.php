@@ -117,6 +117,84 @@ public function store(Request $request)
     }
 }
 
+private function validateOrder(Request $request)
+{
+    return $request->validate([
+        'app_id' => 'required|exists:applications,id',
+        'entity_name' => 'required|string|max:255',
+        'entity_id' => 'required|integer',
+        'items' => 'required|array|min:1',
+        'items.*.item_id' => 'required',
+        'items.*.item_id.*' => 'integer|exists:items,id',
+        'items.*.quantity' => 'required|integer|min:1',
+        'customer_name' => 'required|string|max:255',
+        'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
+        'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
+        'payment_status' => 'required|string|in:pending,paid,failed',
+        'payment_method' => 'required|string|max:255',
+        'notes' => 'nullable|string|max:500',
+        'customer_phone' => 'nullable|string|max:20',
+        'customer_cpf' => 'nullable|string|max:20',
+        'order_datetime' => 'required|date',
+        'attendant_id' => 'required|integer|exists:employers,id',
+        'client_id' => 'nullable|integer|exists:users,id',
+    ]);
+}
+
+private function resolveOrderTiming(array $data)
+{
+    $orderDate = Carbon::parse($data['order_datetime'], 'America/Sao_Paulo')->startOfMinute();
+    $now = Carbon::now('America/Sao_Paulo');
+
+    if ($orderDate->lt($now)) {
+        throw new \Exception('A data do agendamento deve ser futura.');
+    }
+
+    $isScheduled = $orderDate->gt($now);
+    $type = $isScheduled ? 'appointment' : 'service';
+    $appointmentStatus = $isScheduled ? 'pending' : null;
+
+    return [$orderDate, $isScheduled, $type, $appointmentStatus];
+}
+
+private function sendAppointmentEmails($order, $employer, $user)
+{
+    try {
+        $establishment = Establishment::with('user')->find($order->entity_id);
+        $owner = $establishment?->user;
+        $attendant = $employer->user;
+        $clientEmail = $user?->email;
+
+        if ($clientEmail) {
+            Mail::to($clientEmail)
+                ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
+        }
+
+        if ($attendant?->email) {
+            Mail::to($attendant->email)
+                ->queue(new NewAppointmentNotification($order, $establishment, $user));
+        }
+
+        if ($owner?->email) {
+            $ownerName = trim("{$owner->first_name} {$owner->last_name}");
+            Mail::to($owner->email)
+                ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
+        }
+
+        Log::info('📧 E-mails de agendamento enfileirados com sucesso.', [
+            'order_id' => $order->id,
+            'owner_email' => $owner?->email,
+            'attendant_email' => $attendant?->email,
+            'client_email' => $clientEmail,
+        ]);
+    } catch (\Throwable $ex) {
+        Log::error('⚠️ Falha ao enviar e-mails de agendamento.', [
+            'message' => $ex->getMessage(),
+            'file' => $ex->getFile(),
+            'line' => $ex->getLine(),
+        ]);
+    }
+}
 
     public function listByEntity(Request $request)
     {
