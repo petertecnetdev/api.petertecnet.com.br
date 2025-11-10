@@ -205,24 +205,56 @@ class ItemController extends Controller
     try {
         $authUser = Auth::user();
 
+        // 🔹 Carrega o item com todas as relações relevantes
         $item = Item::whereSlug($slug)
-            ->with(['establishment', 'user:id,first_name,last_name,user_name,avatar,email'])
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'establishment:id,name,slug,logo,background,phone,app_id',
+                'orderItems',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
             ->firstOrFail();
 
+        // 🔹 Registra visualização
         Interaction::registerView($item, $authUser);
 
+        // 🔹 Limpa cache antes de recalcular
         Cache::forget("item_{$item->id}_metrics");
         Cache::forget("item_{$item->id}_summary");
 
+        // 🔹 Recalcula métricas e interações
+        $metrics = $item->metrics;
+        $interactionSummary = $item->interactionSummary();
+
+        // 🔹 Dados principais
         return response()->json([
-            'item'               => $item,
-            'establishment'      => $item->establishment,
-            'employers'          => $item->associatedEmployers(),
-            'related_items'      => $item->relatedItems(),
-            'metrics'            => $item->metrics,
-            'interaction_summary'=> $item->interactionSummary(),
-            'next_slots'         => $item->nextSlots(),
-            'whatsapp_url'       => $item->whatsappLink(),
+            'item' => [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'description' => $item->description,
+                'price' => $item->price,
+                'type' => $item->type,
+                'duration' => $item->duration,
+                'image' => $item->image,
+                'category' => $item->category,
+                'subcategory' => $item->subcategory,
+                'stock' => $item->stock,
+                'status' => $item->status,
+                'availability_start' => $item->availability_start,
+                'availability_end' => $item->availability_end,
+                'created_at' => $item->created_at,
+                'updated_at' => $item->updated_at,
+            ],
+            'establishment' => $item->establishment,
+            'employers' => $item->associatedEmployers(),
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $item->userInteractions(),
+            'orders_summary' => $item->ordersSummary(),
+            'related_items' => $item->relatedItems(),
+            'other_items' => $item->otherItems(),
+            'whatsapp_url' => $item->whatsappLink(),
         ], 200);
 
     } catch (\Throwable $e) {

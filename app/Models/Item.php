@@ -56,7 +56,16 @@ class Item extends Model
         parent::boot();
         static::saving(function ($model) {
             if (empty($model->slug)) {
-                $model->slug = Str::slug($model->name);
+                $base = Str::slug($model->name);
+                $slug = $base;
+                $count = 1;
+
+                while (self::where('slug', $slug)->where('id', '!=', $model->id)->exists()) {
+                    $slug = "{$base}-{$count}";
+                    $count++;
+                }
+
+                $model->slug = $slug;
             }
         });
     }
@@ -202,6 +211,38 @@ class Item extends Model
         });
     }
 
+    public function userInteractions()
+    {
+        return Cache::remember("item_{$this->id}_user_interactions", 120, function () {
+            $views = \App\Models\Interaction::where('entity_type', 'Item')
+                ->where('entity_id', $this->id)
+                ->where('interaction_type', 'view')
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->orderByDesc('created_at')
+                ->get()
+                ->filter(fn($v) => $v->user);
+
+            $grouped = $views->groupBy('user_id')->map(function ($group) {
+                $view = $group->first();
+                $u = $view->user;
+
+                return [
+                    'user_id' => $u->id,
+                    'user_name' => $u->user_name,
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'avatar' => $u->avatar,
+                    'email' => $u->email,
+                    'last_interaction' => $view->created_at
+                        ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                        : null,
+                    'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                ];
+            });
+
+            return $grouped->values();
+        });
+    }
+
     /* ===============================
        DISPONIBILIDADE E AGENDAMENTOS
     ================================ */
@@ -223,6 +264,52 @@ class Item extends Model
         });
     }
 
+    public function ordersSummary()
+    {
+        return Cache::remember("item_{$this->id}_orders_summary", 120, function () {
+            $orders = \App\Models\OrderItem::where('item_id', $this->id)
+                ->with(['order.client:id,first_name,last_name,user_name,avatar,email'])
+                ->get();
+
+            if ($orders->isEmpty()) {
+                return [
+                    'total_orders' => 0,
+                    'completed_orders' => 0,
+                    'cancelled_orders' => 0,
+                    'pending_orders' => 0,
+                    'total_revenue' => 0,
+                    'average_ticket' => 0,
+                    'cancellation_rate' => 0,
+                    'completion_rate' => 0,
+                    'pending_rate' => 0,
+                    'efficiency_rate' => 0,
+                    'return_rate' => 0,
+                ];
+            }
+
+            $totalOrders = $orders->count();
+            $completed = $orders->where('order.appointment_status', 'attended')->count();
+            $cancelled = $orders->where('order.appointment_status', 'cancelled')->count();
+            $pending = $orders->where('order.appointment_status', 'pending')->count();
+            $totalRevenue = $orders->sum(fn($oi) => $oi->order?->total_price ?? 0);
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            return [
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completed,
+                'cancelled_orders' => $cancelled,
+                'pending_orders' => $pending,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'cancellation_rate' => $totalOrders > 0 ? round(($cancelled / $totalOrders) * 100, 2) : 0,
+                'completion_rate' => $totalOrders > 0 ? round(($completed / $totalOrders) * 100, 2) : 0,
+                'pending_rate' => $totalOrders > 0 ? round(($pending / $totalOrders) * 100, 2) : 0,
+                'efficiency_rate' => ($completed + $cancelled) > 0 ? round(($completed / ($completed + $cancelled)) * 100, 2) : 0,
+                'return_rate' => 0,
+            ];
+        });
+    }
+
     /* ===============================
        ITENS RELACIONADOS
     ================================ */
@@ -236,6 +323,28 @@ class Item extends Model
                 ->where('status', 1)
                 ->limit($limit)
                 ->get(['id', 'name', 'slug', 'price', 'image', 'category', 'type']);
+        });
+    }
+
+    public function otherItems()
+    {
+        return Cache::remember("item_{$this->id}_related_all", 120, function () {
+            return self::where('app_id', $this->app_id)
+                ->where('id', '!=', $this->id)
+                ->with(['entity:id,name,slug,logo,background,app_id'])
+                ->withCount(['views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }])
+                ->limit(6)
+                ->get([
+                    'id',
+                    'entity_id',
+                    'name',
+                    'slug',
+                    'price',
+                    'type',
+                    'image',
+                ]);
         });
     }
 
@@ -283,11 +392,7 @@ class Item extends Model
     public static function withLightItems($id)
     {
         return self::where('id', $id)
-            ->with([
-                'views' => function ($q) {
-                    $q->select('entity_id')->withCount('id as total_views');
-                }
-            ])
+            ->withCount(['views as total_views'])
             ->first();
     }
 }
