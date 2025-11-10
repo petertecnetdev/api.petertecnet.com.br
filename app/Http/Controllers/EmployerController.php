@@ -642,7 +642,7 @@ class EmployerController extends Controller
     try {
         $authUser = Auth::user();
 
-        // 🔹 Carrega o colaborador completo com usuário e estabelecimento e suas relações
+        // 🔹 Carrega o colaborador com todas as relações relevantes
         $employer = \App\Models\Employer::whereHas('user', fn($q) => $q->where('user_name', $user_name))
             ->with([
                 'user:id,first_name,last_name,user_name,avatar,email',
@@ -672,34 +672,40 @@ class EmployerController extends Controller
         // 🔹 Registra a visualização do colaborador
         \App\Models\Interaction::registerView($employer, $authUser);
 
-        // 🔹 Limpa caches específicos
+        // 🔹 Limpa o cache antes de recarregar
         Cache::forget("employer_{$employer->id}_metrics");
         Cache::forget("employer_{$employer->id}_summary");
-        Cache::forget("employer_{$employer->id}_user_interactions");
-        Cache::forget("employer_{$employer->id}_items_interactions");
-        Cache::forget("employer_{$employer->id}_related");
-        Cache::forget("employer_{$employer->id}_establishment_interactions");
+        Cache::forget("employer_{$employer->id}_orders_summary");
 
-        // 🔹 Atualiza dados em cache
+        // 🔹 Recarrega métricas e interações com dados atualizados
         $metrics = $employer->metrics;
         $interactionSummary = $employer->interactionSummary();
-        $userInteractions = $employer->userInteractions();
-        $itemsInteractions = $employer->itemsInteractions();
-        $establishmentInteractions = $employer->establishmentInteractions();
-        $relatedEmployers = $employer->relatedEmployers();
-        $ordersSummary = $employer->ordersSummary();
 
-        // 🔹 Retorna no mesmo padrão de Establishment e Item
+        // 🔹 Retorno no mesmo padrão de Establishment
         return response()->json([
             'employer' => $employer,
+            'establishment' => $employer->establishment,
+            'items' => $employer->establishment?->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'type' => $item->type,
+                    'total_views' => $item->total_views ?? 0,
+                    'unique_users' => $item->unique_users ?? 0,
+                ];
+            }) ?? [],
             'metrics' => $metrics,
             'interaction_summary' => $interactionSummary,
-            'user_interactions' => $userInteractions,
-            'items_interactions' => $itemsInteractions,
-            'establishment_interactions' => $establishmentInteractions,
-            'related_employers' => $relatedEmployers,
-            'orders_summary' => $ordersSummary,
-        ], 200, [], JSON_UNESCAPED_UNICODE);
+            'user_interactions' => $employer->userInteractions(),
+            'orders_summary' => $employer->ordersSummary(),
+
+            // 🔹 Dados de rotatividade (padrão da Establishment)
+            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer->establishment?->otherItems() ?? [],
+        ], 200);
 
     } catch (\Throwable $e) {
         \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
