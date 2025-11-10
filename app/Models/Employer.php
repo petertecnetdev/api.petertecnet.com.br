@@ -49,16 +49,6 @@ class Employer extends Model
         return $this->belongsTo(Establishment::class);
     }
 
-    public function creator()
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
-
-    public function updater()
-    {
-        return $this->belongsTo(User::class, 'updated_by');
-    }
-
     public function orders()
     {
         return $this->hasMany(Order::class, 'attendant_id');
@@ -76,22 +66,6 @@ class Employer extends Model
     }
 
     /* ==========================
-       RELACIONAMENTOS DERIVADOS
-       ========================== */
-
-    public function establishmentItems()
-    {
-        return $this->hasManyThrough(Item::class, Establishment::class, 'id', 'entity_id', 'establishment_id', 'id')
-            ->where('items.entity_name', 'establishment');
-    }
-
-    public function establishmentOrders()
-    {
-        return $this->hasManyThrough(Order::class, Establishment::class, 'id', 'entity_id', 'establishment_id', 'id')
-            ->where('orders.entity_name', 'establishment');
-    }
-
-    /* ==========================
        MÉTRICAS E INTERAÇÕES
        ========================== */
 
@@ -100,18 +74,13 @@ class Employer extends Model
         return Cache::remember("employer_{$this->id}_metrics", 120, function () {
             $views = $this->views();
             $orders = $this->orders();
-            $establishment = $this->establishment;
-            $estOrders = $establishment ? $establishment->orders() : collect([]);
-            $estViews = $establishment ? $establishment->views() : collect([]);
 
             $totalViews = $views->count();
             $uniqueUsers = $views->distinct('user_id')->count('user_id');
             $totalOrders = $orders->count();
-
             $completedOrders = (clone $orders)->whereIn('appointment_status', ['confirmed', 'attended'])->count();
             $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
             $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
-            $attendedOrders = (clone $orders)->where('appointment_status', 'attended')->count();
 
             $totalRevenue = (clone $orders)->sum('total_price');
             $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
@@ -127,6 +96,7 @@ class Employer extends Model
             if ($firstView && !($firstView instanceof \Carbon\Carbon)) {
                 $firstView = Carbon::parse($firstView);
             }
+
             $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
             $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
 
@@ -148,14 +118,9 @@ class Employer extends Model
                 2
             );
 
-            $establishmentMetrics = $establishment ? $establishment->metrics : [];
-            $totalEstablishmentViews = $estViews ? $estViews->count() : 0;
-            $totalEstablishmentOrders = $estOrders ? $estOrders->count() : 0;
-
             return [
                 'total_orders' => $totalOrders,
                 'completed_orders' => $completedOrders,
-                'attended_orders' => $attendedOrders,
                 'cancelled_orders' => $cancelledOrders,
                 'pending_orders' => $pendingOrders,
                 'total_revenue' => $totalRevenue,
@@ -170,9 +135,6 @@ class Employer extends Model
                 'days_active' => $daysActive,
                 'return_rate' => $returnRate,
                 'engagement_score' => $engagementScore,
-                'establishment_views' => $totalEstablishmentViews,
-                'establishment_orders' => $totalEstablishmentOrders,
-                'establishment_metrics' => $establishmentMetrics,
             ];
         });
     }
@@ -181,7 +143,6 @@ class Employer extends Model
     {
         return Cache::remember("employer_{$this->id}_summary", 120, function () {
             $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
-
             if ($views->isEmpty()) {
                 return [
                     'total_views' => 0,
@@ -221,164 +182,113 @@ class Employer extends Model
         });
     }
 
-    public function userInteractions()
+    public function ordersSummary()
     {
-        return Cache::remember("employer_{$this->id}_user_interactions", 120, function () {
-            $views = Interaction::where('entity_type', 'Employer')
-                ->where('entity_id', $this->id)
-                ->where('interaction_type', 'view')
-                ->with('user:id,first_name,last_name,user_name,avatar,email')
-                ->orderByDesc('created_at')
-                ->get()
-                ->filter(fn($v) => $v->user);
+        return Cache::remember("employer_{$this->id}_orders_summary", 120, function () {
+            $orders = $this->orders()->with('client:id,first_name,last_name,user_name,avatar,email')->get();
 
-            $grouped = $views->groupBy('user_id')->map(function ($group) {
-                $view = $group->first();
-                $u = $view->user;
-
+            if ($orders->isEmpty()) {
                 return [
-                    'user_id' => $u->id,
-                    'user_name' => $u->user_name,
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'avatar' => $u->avatar,
-                    'email' => $u->email,
-                    'last_interaction' => $view->created_at
-                        ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
-                        : null,
-                    'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
+                    'total_orders' => 0,
+                    'completed_orders' => 0,
+                    'cancelled_orders' => 0,
+                    'pending_orders' => 0,
+                    'total_revenue' => 0,
+                    'average_ticket' => 0,
+                    'cancellation_rate' => 0,
+                    'completion_rate' => 0,
+                    'pending_rate' => 0,
+                    'efficiency_rate' => 0,
+                    'return_rate' => 0,
+                    'top_client_by_count' => null,
+                    'top_client_by_value' => null,
+                    'top_client_completed' => null,
                 ];
-            });
+            }
 
-            return $grouped->values();
-        });
-    }
+            $totalOrders = $orders->count();
+            $completedOrders = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
+            $cancelledOrders = $orders->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
+            $pendingOrders = $orders->where('appointment_status', 'pending')->count();
+            $totalRevenue = $orders->sum('total_price');
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
-    public function establishmentInteractions()
-    {
-        return Cache::remember("employer_{$this->id}_establishment_interactions", 120, function () {
-            $establishment = $this->establishment;
-            if (!$establishment)
-                return [];
+            $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
+            $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
+            $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
+            $efficiencyRate = ($completedOrders + $cancelledOrders) > 0
+                ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
+                : 0;
 
-            $views = $establishment->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
+            $clientsCount = $orders->groupBy('client_id')->map->count();
+            $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+            $returnRate = $clientsCount->count() > 0
+                ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
+                : 0;
+
+            $topClientByCount = $orders->groupBy('client_id')->map(function ($group) {
+                $c = $group->first()->client;
+                return [
+                    'id' => $c?->id,
+                    'name' => trim(($c?->first_name ?? '') . ' ' . ($c?->last_name ?? '')),
+                    'user_name' => $c?->user_name,
+                    'avatar' => $c?->avatar,
+                    'total_orders' => $group->count(),
+                ];
+            })->sortByDesc('total_orders')->first();
+
+            $topClientByValue = $orders->groupBy('client_id')->map(function ($group) {
+                $c = $group->first()->client;
+                return [
+                    'id' => $c?->id,
+                    'name' => trim(($c?->first_name ?? '') . ' ' . ($c?->last_name ?? '')),
+                    'user_name' => $c?->user_name,
+                    'avatar' => $c?->avatar,
+                    'total_spent' => $group->sum('total_price'),
+                ];
+            })->sortByDesc('total_spent')->first();
+
+            $topClientCompleted = $orders->whereIn('appointment_status', ['confirmed', 'attended'])
+                ->groupBy('client_id')
+                ->map(function ($group) {
+                    $c = $group->first()->client;
+                    return [
+                        'id' => $c?->id,
+                        'name' => trim(($c?->first_name ?? '') . ' ' . ($c?->last_name ?? '')),
+                        'user_name' => $c?->user_name,
+                        'avatar' => $c?->avatar,
+                        'completed_orders' => $group->count(),
+                    ];
+                })->sortByDesc('completed_orders')->first();
 
             return [
-                'total_views' => $views->count(),
-                'unique_users' => $views->pluck('user_id')->unique()->count(),
-                'most_active_user' => $views->groupBy('user_id')->map(function ($g) {
-                    $u = $g->first()->user;
-                    return [
-                        'user_id' => $u?->id,
-                        'user_name' => $u?->user_name,
-                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                        'avatar' => $u?->avatar,
-                        'total_views' => $g->count(),
-                    ];
-                })->sortByDesc('total_views')->first(),
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
+                'pending_orders' => $pendingOrders,
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+                'completion_rate' => $completionRate,
+                'cancellation_rate' => $cancellationRate,
+                'pending_rate' => $pendingRate,
+                'efficiency_rate' => $efficiencyRate,
+                'return_rate' => $returnRate,
+                'top_client_by_count' => $topClientByCount,
+                'top_client_by_value' => $topClientByValue,
+                'top_client_completed' => $topClientCompleted,
             ];
         });
     }
 
-    public function relatedEmployers()
-    {
-        return Cache::remember("employer_{$this->id}_related", 120, function () {
-            return self::where('establishment_id', $this->establishment_id)
-                ->where('id', '!=', $this->id)
-                ->with('user:id,first_name,last_name,user_name,avatar,email')
-                ->limit(6)
-                ->get();
-        });
-    }
-
-    public function itemsInteractions()
-    {
-        return Cache::remember("employer_{$this->id}_items_interactions", 120, function () {
-            $items = $this->establishmentItems()->get();
-            return $items->map(function ($item) {
-                $views = $item->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
-                $mostActive = $views->groupBy('user_id')->map(function ($g) {
-                    $u = $g->first()->user;
-                    return [
-                        'user_id' => $u?->id,
-                        'user_name' => $u?->user_name,
-                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                        'avatar' => $u?->avatar,
-                        'total_views' => $g->count(),
-                    ];
-                })->sortByDesc('total_views')->first();
-
-                return [
-                    'item_id' => $item->id,
-                    'name' => $item->name,
-                    'total_views' => $views->count(),
-                    'unique_users' => $views->pluck('user_id')->unique()->count(),
-                    'most_active_user' => $mostActive,
-                ];
-            });
-        });
-    }
-
     /* ==========================
-       MÉTODOS AUXILIARES
+       AUXILIARES
        ========================== */
-
-    public static function findOrFallbackByUserName($user_name)
-    {
-        $employer = self::whereHas('user', fn($q) => $q->where('user_name', $user_name))
-            ->with(['user', 'establishment'])
-            ->first();
-
-        if ($employer) {
-            return $employer;
-        }
-
-        $user = User::where('user_name', $user_name)->first();
-        if (!$user) {
-            return null;
-        }
-
-        return self::where('user_id', $user->id)
-            ->with(['establishment'])
-            ->withCount('interactions')
-            ->orderByDesc('interactions_count')
-            ->first();
-    }
 
     public function refreshViewMetrics($viewer = null)
     {
         Interaction::registerView($this, $viewer);
         Cache::forget("employer_{$this->id}_metrics");
         Cache::forget("employer_{$this->id}_summary");
-        Cache::forget("employer_{$this->id}_user_interactions");
-        Cache::forget("employer_{$this->id}_items_interactions");
-        Cache::forget("employer_{$this->id}_related");
-        Cache::forget("employer_{$this->id}_establishment_interactions");
+        Cache::forget("employer_{$this->id}_orders_summary");
     }
-
-    public function toRichArray()
-    {
-        return [
-            'id' => $this->id,
-            'role' => $this->role,
-            'permissions' => $this->permissions,
-            'created_at' => $this->created_at,
-            'updated_at' => $this->updated_at,
-            'user' => $this->user ? $this->user->toArray() : null,
-            'establishment' => $this->establishment ? $this->establishment->toArray() : null,
-            'metrics' => $this->metrics,
-            'interaction_summary' => $this->interactionSummary(),
-            'user_interactions' => $this->userInteractions(),
-            'establishment_interactions' => $this->establishmentInteractions(),
-            'items_interactions' => $this->itemsInteractions(),
-            'related_employers' => $this->relatedEmployers(),
-        ];
-    }
-    public static function validateEmployer($attendantId, $entityId)
-{
-    return self::with('user')
-        ->where('id', $attendantId)
-        ->where('establishment_id', $entityId)
-        ->first();
-}
-
 }
