@@ -373,4 +373,12 @@ class Employer extends Model
             'related_employers' => $this->relatedEmployers(),
         ];
     }
+    public static function validateEmployer($attendantId, $entityId)
+{
+    return self::with('user')
+        ->where('id', $attendantId)
+        ->where('establishment_id', $entityId)
+        ->first();
+}
+
 }
