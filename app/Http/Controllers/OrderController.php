@@ -72,14 +72,16 @@ class OrderController extends Controller
 
         $data = $this->validateOrder($request);
 
-        // ✅ Sempre interpretar a data recebida como São Paulo (mesmo que venha com Z ou outro fuso)
+        // ✅ Sempre interpretar a data recebida como São Paulo e impedir agendamento passado
         $orderDate = Carbon::parse($data['order_datetime'])->tz('America/Sao_Paulo')->startOfMinute();
         $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
 
-        // 🚫 Se a data está no passado comparada com o horário do servidor — rejeita
+        // 🚫 Impede qualquer data/hora passada ou igual ao horário atual do servidor
         if ($orderDate->lte($now)) {
             DB::rollBack();
-            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+            return response()->json([
+                'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
+            ], 422);
         }
 
         $isScheduled = true;
@@ -88,6 +90,7 @@ class OrderController extends Controller
 
         $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
         if (!$employer) {
+            DB::rollBack();
             return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
         }
 
@@ -100,6 +103,7 @@ class OrderController extends Controller
             return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
         }
 
+        // 🚫 Garante que todos os itens pertencem à entidade
         $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
         $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
         if (!empty($invalidItems)) {
@@ -110,7 +114,7 @@ class OrderController extends Controller
             ], 422);
         }
 
-        // ✅ Salva já normalizado no timezone do backend
+        // ✅ Cria o pedido com base no horário oficial do backend
         $order = Order::createOrder(
             $data,
             $user,
@@ -141,6 +145,7 @@ class OrderController extends Controller
         return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
     }
 }
+
 
     private function validateOrder(Request $request)
     {
