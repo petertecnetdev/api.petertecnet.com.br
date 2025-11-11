@@ -372,5 +372,22 @@ class Item extends Model
                 });
         });
     }
+public static function totalDurationForItems(array $items)
+{
+    $total = 0;
+
+    foreach ($items as $entry) {
+        $itemId = $entry['item_id'] ?? null;
+
+        if ($itemId) {
+            $item = self::find($itemId);
+            if ($item && isset($item->duration)) {
+                $total += (int) $item->duration;
+            }
+        }
+    }
+
+    return $total;
+}
 
 }
