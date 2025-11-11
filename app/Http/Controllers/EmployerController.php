@@ -698,8 +698,8 @@ class EmployerController extends Controller
                     'unique_users' => $item->unique_users ?? 0,
                 ];
             }) ?? [],
-            'metrics' => $metrics,
-            'colleagues' => $employer->colleagues(),
+            'metrics' => $metrics,'colleagues' => $employer->colleagues()['list'] ?? [],
+'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
             'interaction_summary' => $interactionSummary,
             'user_interactions' => $employer->userInteractions(),
             'orders_summary' => $employer->ordersSummary(),

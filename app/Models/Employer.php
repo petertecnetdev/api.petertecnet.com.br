@@ -340,7 +340,7 @@ public static function validateEmployer($employerId, $establishmentId)
             ->get()
             ->map(function ($col) {
                 $u = $col->user;
-                $metrics = $col->metrics; // usa o accessor já existente
+                $metrics = $col->metrics;
 
                 return [
                     'id' => $col->id,
@@ -358,11 +358,10 @@ public static function validateEmployer($employerId, $establishmentId)
                 ];
             });
 
-        // se quiser, calcula uma média geral de engajamento dos colegas
         $avgEngagement = $colleagues->avg(fn($c) => $c['metrics']['engagement_score'] ?? 0);
 
         return [
-            'colleagues' => $colleagues,
+            'list' => $colleagues->values(),
             'average_engagement_score' => round($avgEngagement, 2),
         ];
     });
