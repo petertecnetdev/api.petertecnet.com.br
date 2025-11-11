@@ -393,4 +393,39 @@ class Item extends Model
         }
         return $invalid;
     }
+
+    public function topEmployer()
+{
+    return Cache::remember("item_{$this->id}_top_employer", 120, function () {
+        $top = \App\Models\OrderItem::where('item_id', $this->id)
+            ->whereHas('order', fn($q) => $q->where('appointment_status', 'attended'))
+            ->selectRaw('attendant_id, COUNT(*) as total_completed')
+            ->groupBy('attendant_id')
+            ->orderByDesc('total_completed')
+            ->first();
+
+        if (!$top || !$top->attendant_id) {
+            return null;
+        }
+
+        $employer = \App\Models\Employer::with([
+            'user:id,first_name,last_name,user_name,avatar,email',
+            'establishment:id,name,slug,logo,background,city',
+        ])->find($top->attendant_id);
+
+        if (!$employer) return null;
+
+        return [
+            'id' => $employer->id,
+            'name' => trim(($employer->user?->first_name ?? '') . ' ' . ($employer->user?->last_name ?? '')),
+            'user_name' => $employer->user?->user_name,
+            'avatar' => $employer->user?->avatar,
+            'role' => $employer->role,
+            'establishment' => $employer->establishment?->name,
+            'city' => $employer->establishment?->city,
+            'total_completed' => $top->total_completed,
+        ];
+    });
+}
+
 }

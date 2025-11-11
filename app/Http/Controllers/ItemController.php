@@ -238,6 +238,7 @@ class ItemController extends Controller
             // 🔹 Dados de rotatividade — mesmo padrão
             'other_establishments' => $item->otherEstablishments(),
             'other_employers' => $item->otherEmployers(),
+            'top_employer' => $item->topEmployer(),
             'other_items' => $item->otherItems(),
         ], 200);
 
