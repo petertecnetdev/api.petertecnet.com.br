@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 
@@ -302,9 +301,6 @@ class Item extends Model
         });
     }
 
-    /* =======================
-       OUTROS ELEMENTOS
-       ======================= */
     public function otherItems()
     {
         return Cache::remember("item_{$this->id}_other_items", 120, function () {
@@ -313,11 +309,9 @@ class Item extends Model
             return self::where('app_id', $appId)
                 ->where('id', '!=', $this->id)
                 ->with(['entity:id,name,slug,logo,background,app_id'])
-                ->withCount([
-                    'views as total_views' => function ($q) {
-                        $q->where('interaction_type', 'view');
-                    }
-                ])
+                ->withCount(['views as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }])
                 ->inRandomOrder()
                 ->limit(6)
                 ->get(['id', 'entity_id', 'name', 'slug', 'price', 'type', 'image'])
@@ -372,22 +366,31 @@ class Item extends Model
                 });
         });
     }
-public static function totalDurationForItems(array $items)
-{
-    $total = 0;
 
-    foreach ($items as $entry) {
-        $itemId = $entry['item_id'] ?? null;
-
-        if ($itemId) {
-            $item = self::find($itemId);
-            if ($item && isset($item->duration)) {
-                $total += (int) $item->duration;
+    public static function totalDurationForItems(array $items)
+    {
+        $total = 0;
+        foreach ($items as $entry) {
+            $itemId = $entry['item_id'] ?? null;
+            if ($itemId) {
+                $item = self::find($itemId);
+                if ($item && isset($item->duration)) {
+                    $total += (int) $item->duration;
+                }
             }
         }
+        return $total;
     }
 
-    return $total;
-}
-
+    public static function invalidForEntity($items, $entityName, $entityId)
+    {
+        $invalid = [];
+        foreach ($items as $i) {
+            $item = self::find($i['item_id'] ?? null);
+            if (!$item || $item->entity_name !== $entityName || $item->entity_id != $entityId) {
+                $invalid[] = $i['item_id'] ?? null;
+            }
+        }
+        return $invalid;
+    }
 }
