@@ -291,81 +291,174 @@ class Employer extends Model
         Cache::forget("employer_{$this->id}_summary");
         Cache::forget("employer_{$this->id}_orders_summary");
     }
-public function userInteractions()
-{
-    return Cache::remember("employer_{$this->id}_user_interactions", 120, function () {
-        $views = \App\Models\Interaction::where('entity_type', 'Employer')
-            ->where('entity_id', $this->id)
-            ->where('interaction_type', 'view')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->orderByDesc('created_at')
-            ->get()
-            ->filter(fn($v) => $v->user);
+    public function userInteractions()
+    {
+        return Cache::remember("employer_{$this->id}_user_interactions", 120, function () {
+            $views = \App\Models\Interaction::where('entity_type', 'Employer')
+                ->where('entity_id', $this->id)
+                ->where('interaction_type', 'view')
+                ->with('user:id,first_name,last_name,user_name,avatar,email')
+                ->orderByDesc('created_at')
+                ->get()
+                ->filter(fn($v) => $v->user);
 
-        $grouped = $views->groupBy('user_id')->map(function ($group) {
-            $view = $group->first();
-            $u = $view->user;
-
-            return [
-                'user_id' => $u->id,
-                'user_name' => $u->user_name,
-                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                'avatar' => $u->avatar,
-                'email' => $u->email,
-                'last_interaction' => $view->created_at
-                    ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
-                    : null,
-                'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
-            ];
-        });
-
-        return $grouped->values();
-    });
-}
-public static function validateEmployer($employerId, $establishmentId)
-{
-    return self::where('id', $employerId)
-        ->where('establishment_id', $establishmentId)
-        ->exists();
-}public function colleagues()
-{
-    if (!$this->establishment_id) {
-        return collect(); // sem estabelecimento, sem colegas
-    }
-
-    return Cache::remember("employer_{$this->id}_colleagues_list", 120, function () {
-        $colleagues = self::where('establishment_id', $this->establishment_id)
-            ->where('id', '!=', $this->id)
-            ->with(['user:id,first_name,last_name,user_name,avatar,email'])
-            ->get()
-            ->map(function ($col) {
-                $u = $col->user;
-                $metrics = $col->metrics;
+            $grouped = $views->groupBy('user_id')->map(function ($group) {
+                $view = $group->first();
+                $u = $view->user;
 
                 return [
-                    'id' => $col->id,
-                    'user_id' => $u?->id,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'user_name' => $u?->user_name,
-                    'avatar' => $u?->avatar,
-                    'email' => $u?->email,
-                    'metrics' => [
-                        'total_views' => $metrics['total_views'] ?? 0,
-                        'unique_users' => $metrics['unique_users'] ?? 0,
-                        'total_orders' => $metrics['total_orders'] ?? 0,
-                        'engagement_score' => $metrics['engagement_score'] ?? 0,
-                    ],
+                    'user_id' => $u->id,
+                    'user_name' => $u->user_name,
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'avatar' => $u->avatar,
+                    'email' => $u->email,
+                    'last_interaction' => $view->created_at
+                        ? $view->created_at->timezone('America/Sao_Paulo')->format('d/m/Y H:i')
+                        : null,
+                    'profile_link' => $u->user_name ? url("/user/view/{$u->user_name}") : null,
                 ];
             });
 
-        $avgEngagement = $colleagues->avg(fn($c) => $c['metrics']['engagement_score'] ?? 0);
+            return $grouped->values();
+        });
+    }
+    public static function validateEmployer($employerId, $establishmentId)
+    {
+        return self::where('id', $employerId)
+            ->where('establishment_id', $establishmentId)
+            ->exists();
+    }
+    public function colleagues()
+    {
+        if (!$this->establishment_id) {
+            return collect(); // sem estabelecimento, sem colegas
+        }
+
+        return Cache::remember("employer_{$this->id}_colleagues_list", 120, function () {
+            $colleagues = self::where('establishment_id', $this->establishment_id)
+                ->where('id', '!=', $this->id)
+                ->with(['user:id,first_name,last_name,user_name,avatar,email'])
+                ->get()
+                ->map(function ($col) {
+                    $u = $col->user;
+                    $metrics = $col->metrics;
+
+                    return [
+                        'id' => $col->id,
+                        'user_id' => $u?->id,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'user_name' => $u?->user_name,
+                        'avatar' => $u?->avatar,
+                        'email' => $u?->email,
+                        'metrics' => [
+                            'total_views' => $metrics['total_views'] ?? 0,
+                            'unique_users' => $metrics['unique_users'] ?? 0,
+                            'total_orders' => $metrics['total_orders'] ?? 0,
+                            'engagement_score' => $metrics['engagement_score'] ?? 0,
+                        ],
+                    ];
+                });
+
+            $avgEngagement = $colleagues->avg(fn($c) => $c['metrics']['engagement_score'] ?? 0);
+
+            return [
+                'list' => $colleagues->values(),
+                'average_engagement_score' => round($avgEngagement, 2),
+            ];
+        });
+    }
+public function topItemAndClient()
+{
+    return Cache::remember("employer_{$this->id}_top_item_client", 120, function () {
+        // Pega apenas pedidos concluídos/atendidos
+        $orders = $this->orders()
+            ->whereIn('appointment_status', ['confirmed', 'attended'])
+            ->with([
+                'items.item:id,name,slug,image',
+                'client:id,first_name,last_name,user_name,avatar,email'
+            ])
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return [
+                'top_item' => null,
+                'top_client_for_item' => null,
+                'total_attended_orders' => 0,
+            ];
+        }
+
+        // Conta quantas vezes cada item foi atendido por este employer
+        $itemCount = [];
+        foreach ($orders as $order) {
+            foreach ($order->items as $orderItem) {
+                $itemId = $orderItem->item_id;
+                $itemCount[$itemId] = ($itemCount[$itemId] ?? 0) + $orderItem->quantity;
+            }
+        }
+
+        // Identifica o item mais atendido
+        arsort($itemCount);
+        $topItemId = array_key_first($itemCount);
+
+        if (!$topItemId) {
+            return [
+                'top_item' => null,
+                'top_client_for_item' => null,
+                'total_attended_orders' => $orders->count(),
+            ];
+        }
+
+        // Carrega o item completo
+        $topItem = \App\Models\Item::find($topItemId);
+        if (!$topItem) {
+            return [
+                'top_item' => null,
+                'top_client_for_item' => null,
+                'total_attended_orders' => $orders->count(),
+            ];
+        }
+
+        // Agora, conta qual cliente mais fez esse item específico
+        $clientCount = [];
+        foreach ($orders as $order) {
+            foreach ($order->items as $orderItem) {
+                if ($orderItem->item_id === $topItemId && $order->client_id) {
+                    $clientCount[$order->client_id] = ($clientCount[$order->client_id] ?? 0) + $orderItem->quantity;
+                }
+            }
+        }
+
+        arsort($clientCount);
+        $topClientId = array_key_first($clientCount);
+        $topClient = null;
+
+        if ($topClientId) {
+            $client = \App\Models\User::find($topClientId);
+            if ($client) {
+                $topClient = [
+                    'id' => $client->id,
+                    'name' => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')),
+                    'user_name' => $client->user_name,
+                    'avatar' => $client->avatar,
+                    'email' => $client->email,
+                    'total_attended_for_item' => $clientCount[$topClientId] ?? 0,
+                ];
+            }
+        }
 
         return [
-            'list' => $colleagues->values(),
-            'average_engagement_score' => round($avgEngagement, 2),
+            'top_item' => [
+                'id' => $topItem->id,
+                'name' => $topItem->name,
+                'slug' => $topItem->slug,
+                'image' => $topItem->image,
+                'total_attended' => $itemCount[$topItemId] ?? 0,
+            ],
+            'top_client_for_item' => $topClient,
+            'total_attended_orders' => $orders->count(),
         ];
     });
 }
 
-    
+
 }
