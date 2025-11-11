@@ -699,6 +699,7 @@ class EmployerController extends Controller
                 ];
             }) ?? [],
             'metrics' => $metrics,
+            'colleagues' => $employer->colleagues(),
             'interaction_summary' => $interactionSummary,
             'user_interactions' => $employer->userInteractions(),
             'orders_summary' => $employer->ordersSummary(),

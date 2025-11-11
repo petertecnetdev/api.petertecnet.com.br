@@ -328,6 +328,13 @@ public static function validateEmployer($employerId, $establishmentId)
         ->where('establishment_id', $establishmentId)
         ->exists();
 }
+public function colleagues()
+{
+    return self::where('establishment_id', $this->establishment_id)
+        ->where('id', '!=', $this->id)
+        ->with('user:id,first_name,last_name,user_name,avatar,email')
+        ->get();
+}
 
     
 }
