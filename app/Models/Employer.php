@@ -327,28 +327,45 @@ public static function validateEmployer($employerId, $establishmentId)
     return self::where('id', $employerId)
         ->where('establishment_id', $establishmentId)
         ->exists();
-}
-public function colleagues()
+}public function colleagues()
 {
     if (!$this->establishment_id) {
         return collect(); // sem estabelecimento, sem colegas
     }
 
-    return self::where('establishment_id', $this->establishment_id)
-        ->where('id', '!=', $this->id)
-        ->with('user:id,first_name,last_name,user_name,avatar,email')
-        ->get()
-        ->map(function ($col) {
-            $u = $col->user;
-            return [
-                'id' => $col->id,
-                'user_id' => $u?->id,
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'user_name' => $u?->user_name,
-                'avatar' => $u?->avatar,
-                'email' => $u?->email,
-            ];
-        });
+    return Cache::remember("employer_{$this->id}_colleagues_list", 120, function () {
+        $colleagues = self::where('establishment_id', $this->establishment_id)
+            ->where('id', '!=', $this->id)
+            ->with(['user:id,first_name,last_name,user_name,avatar,email'])
+            ->get()
+            ->map(function ($col) {
+                $u = $col->user;
+                $metrics = $col->metrics; // usa o accessor já existente
+
+                return [
+                    'id' => $col->id,
+                    'user_id' => $u?->id,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'user_name' => $u?->user_name,
+                    'avatar' => $u?->avatar,
+                    'email' => $u?->email,
+                    'metrics' => [
+                        'total_views' => $metrics['total_views'] ?? 0,
+                        'unique_users' => $metrics['unique_users'] ?? 0,
+                        'total_orders' => $metrics['total_orders'] ?? 0,
+                        'engagement_score' => $metrics['engagement_score'] ?? 0,
+                    ],
+                ];
+            });
+
+        // se quiser, calcula uma média geral de engajamento dos colegas
+        $avgEngagement = $colleagues->avg(fn($c) => $c['metrics']['engagement_score'] ?? 0);
+
+        return [
+            'colleagues' => $colleagues,
+            'average_engagement_score' => round($avgEngagement, 2),
+        ];
+    });
 }
 
     
