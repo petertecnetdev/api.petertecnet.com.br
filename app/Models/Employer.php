@@ -330,10 +330,25 @@ public static function validateEmployer($employerId, $establishmentId)
 }
 public function colleagues()
 {
+    if (!$this->establishment_id) {
+        return collect(); // sem estabelecimento, sem colegas
+    }
+
     return self::where('establishment_id', $this->establishment_id)
         ->where('id', '!=', $this->id)
         ->with('user:id,first_name,last_name,user_name,avatar,email')
-        ->get();
+        ->get()
+        ->map(function ($col) {
+            $u = $col->user;
+            return [
+                'id' => $col->id,
+                'user_id' => $u?->id,
+                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                'user_name' => $u?->user_name,
+                'avatar' => $u?->avatar,
+                'email' => $u?->email,
+            ];
+        });
 }
 
     
