@@ -200,21 +200,26 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | ITENS
 |--------------------------------------------------------------------------
 */
-Route::prefix('item')->middleware('api')->group(function () {
+
+// 🔹 Rotas públicas (sem autenticação)
+Route::prefix('item')->middleware(['api'])->group(function () {
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
-    Route::get('/listbyapp', [ItemController::class, 'listAll'])->name('item.listByApp');
+    Route::get('/listbyapp', [ItemController::class, 'listByApp'])->name('item.listByApp');
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
     Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
     Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
     Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
+
+    // ✅ Home pública — lista itens por app_id
+    Route::get('/home/{app_id}', [ItemController::class, 'home'])->name('item.home');
 });
 
+// 🔒 Rotas protegidas (requer autenticação)
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
@@ -223,6 +228,7 @@ Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
     Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
 });
+
 
 
 /*

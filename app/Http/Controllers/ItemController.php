@@ -854,4 +854,57 @@ class ItemController extends Controller
         }
     }
 
+    public function home($app_id)
+{
+    try {
+        if (!$app_id || !is_numeric($app_id)) {
+            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+        }
+
+        $items = Item::with([
+                'entity:id,name,slug,logo,background,app_id'
+            ])
+            ->where('app_id', $app_id)
+            ->where('status', true)
+            ->withCount([
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orderItems as total_orders' => fn($q) =>
+                    $q->whereHas('order', fn($o) =>
+                        $o->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended'])
+                    ),
+            ])
+            ->orderByDesc('total_orders')
+            ->limit(12)
+            ->get([
+                'id',
+                'name',
+                'slug',
+                'type',
+                'price',
+                'image',
+                'category',
+                'app_id',
+                'entity_id',
+                'entity_name',
+            ]);
+
+        return response()->json([
+            'message' => 'Itens listados com sucesso.',
+            'items' => $items,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        \Log::error('[ItemController::home] Erro ao listar itens', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro inesperado ao listar itens.'
+        ], 500);
+    }
+}
+
 }
