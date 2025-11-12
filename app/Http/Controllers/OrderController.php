@@ -89,11 +89,16 @@ class OrderController extends Controller
             $type = 'appointment';
             $appointmentStatus = 'pending';
 
-            $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-            }
+            $employer = Employer::where('id', $data['attendant_id'])
+    ->where('establishment_id', $data['entity_id'])
+    ->with('user')
+    ->first();
+
+if (!$employer) {
+    DB::rollBack();
+    return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+}
+
 
             $totalDuration = Item::totalDurationForItems($data['items']);
             $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
