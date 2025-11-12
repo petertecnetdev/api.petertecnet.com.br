@@ -639,8 +639,6 @@ class EstablishmentController extends Controller
                 'user:id,first_name,last_name,user_name,avatar,email',
             ])
             ->where('app_id', $app_id)
-            ->where('is_published', true)
-            ->where('is_approved', true)
             ->withCount([
                 'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
                 'views as unique_users' => fn($q) =>
