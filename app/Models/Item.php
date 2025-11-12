@@ -431,15 +431,18 @@ class Item extends Model
     return $total;
 }
 
-    public static function invalidForEntity($items, $entityName, $entityId)
-    {
-        $invalid = [];
-        foreach ($items as $i) {
-            $item = self::find($i['item_id'] ?? null);
-            if (!$item || $item->entity_name !== $entityName || $item->entity_id != $entityId) {
-                $invalid[] = $i['item_id'] ?? null;
-            }
+    public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
+{
+    $invalid = [];
+
+    foreach ($itemIds as $id) {
+        $item = self::find($id);
+        if (!$item || $item->entity_name !== $entityName || (int) $item->entity_id !== (int) $entityId) {
+            $invalid[] = $id;
         }
-        return $invalid;
     }
+
+    return $invalid;
+}
+
 }
