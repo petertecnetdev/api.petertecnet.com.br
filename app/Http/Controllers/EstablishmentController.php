@@ -324,75 +324,51 @@ class EstablishmentController extends Controller
         }
     }
     public function view($slug)
-{
-    try {
-        $authUser = Auth::user();
+    {
+        try {
+            $authUser = Auth::user();
 
-        // 🔹 Carrega o estabelecimento com todas as relações relevantes
-        $establishment = Establishment::whereSlug($slug)
-            ->with([
+            // Carrega o estabelecimento com todas as relações necessárias
+            $establishment = Establishment::with([
                 'employers.user:id,first_name,last_name,user_name,avatar,email',
-                'items' => function ($q) {
-                    $q->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
-                        ->withCount([
-                            'views as total_views' => function ($x) {
-                                $x->where('interaction_type', 'view');
-                            },
-                            'views as unique_users' => function ($x) {
-                                $x->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                                    ->where('interaction_type', 'view');
-                            },
-                        ]);
-                },
+                'items:id,entity_id,name,slug,price,type,image',
                 'orders.client:id,first_name,last_name,user_name,avatar,email',
                 'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-            ->firstOrFail();
+            ])->where('slug', $slug)->firstOrFail();
 
-        // 🔹 Registra a visualização do estabelecimento
-        Interaction::registerView($establishment, $authUser);
+            // Usa o método da model para registrar view e limpar cache
+            Interaction::registerView($establishment, $authUser);
+            Cache::forget("establishment_{$establishment->id}_metrics");
+            Cache::forget("establishment_{$establishment->id}_summary");
 
-        // 🔹 Limpa o cache antes de recarregar
-        Cache::forget("establishment_{$establishment->id}_metrics");
-        Cache::forget("establishment_{$establishment->id}_summary");
+            // Usa métodos prontos da model
+            $metrics = $establishment->metrics;
+            $interactionSummary = $establishment->interactionSummary();
+            $ordersSummary = $establishment->ordersSummary();
+            $userInteractions = $establishment->userInteractions();
 
-        // 🔹 Recarrega métricas e interações com dados atualizados
-        $metrics = $establishment->metrics;
-        $interactionSummary = $establishment->interactionSummary();
+            // Retorna já no padrão usado em EmployerController
+            return response()->json([
+                'establishment' => $establishment,
+                'items' => $establishment->items ?? [],
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'orders_summary' => $ordersSummary,
+                'other_establishments' => $establishment->otherEstablishments() ?? [],
+                'other_employers' => $establishment->otherEmployers() ?? [],
+                'other_items' => $establishment->otherItems() ?? [],
+            ], 200);
 
-        return response()->json([
-            'establishment' => $establishment,
-            'items' => $establishment->items->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'total_views' => $item->total_views ?? 0,
-                    'unique_users' => $item->unique_users ?? 0,
-                ];
-            }),
-            'metrics' => $metrics,
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $establishment->userInteractions(),
-            'orders_summary' => $establishment->ordersSummary(),
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::view] Erro ao carregar', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+            ]);
 
-            // 🔹 Dados de rotatividade
-            'other_establishments' => $establishment->otherEstablishments(),
-            'other_employers' => $establishment->otherEmployers(),
-            'other_items' => $establishment->otherItems(),
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::view] Erro ao carregar', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+        }
     }
-}
 
 
 
