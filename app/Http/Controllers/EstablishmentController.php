@@ -638,8 +638,6 @@ class EstablishmentController extends Controller
         }
 
         $establishments = Establishment::where('app_id', $appId)
-            ->where('is_published', true)
-            ->where('is_approved', true)
             ->get([
                 'id',
                 'name',
