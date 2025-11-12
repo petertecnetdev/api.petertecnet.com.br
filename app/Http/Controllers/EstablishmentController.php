@@ -628,16 +628,28 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-   public function home(Request $request)
+  public function home($app_id)
 {
     try {
-        $appId = $request->input('app_id');
-
-        if (!$appId) {
-            return response()->json(['error' => 'O campo app_id é obrigatório.'], 422);
+        if (!$app_id || !is_numeric($app_id)) {
+            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
         }
 
-        $establishments = Establishment::where('app_id', $appId)
+        $establishments = Establishment::with([
+                'user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->where('app_id', $app_id)
+            ->where('is_published', true)
+            ->where('is_approved', true)
+            ->withCount([
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as total_appointments' => fn($q) =>
+                    $q->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->orderByDesc('total_appointments')
+            ->limit(6)
             ->get([
                 'id',
                 'name',
@@ -651,7 +663,7 @@ class EstablishmentController extends Controller
 
         return response()->json([
             'message' => 'Estabelecimentos listados com sucesso.',
-            'establishments' => $establishments
+            'establishments' => $establishments,
         ], 200);
 
     } catch (\Throwable $e) {
@@ -661,10 +673,11 @@ class EstablishmentController extends Controller
         ]);
 
         return response()->json([
-            'error' => 'Ocorreu um erro ao listar os estabelecimentos.'
+            'error' => 'Erro inesperado ao listar estabelecimentos.'
         ], 500);
     }
 }
+
 
 
 }
