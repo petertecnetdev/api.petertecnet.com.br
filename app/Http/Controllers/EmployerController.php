@@ -647,7 +647,7 @@ class EmployerController extends Controller
             // 🔹 Carrega o colaborador com todas as relações relevantes
             $employer = \App\Models\Employer::whereHas('user', fn($q) => $q->where('user_name', $user_name))
                 ->with([
-                    'user:id,first_name,last_name,user_name,avatar,about,email',
+                    'user:id,first_name,last_name,user_name,phone, avatar,about,email',
                     'establishment' => function ($q) {
                         $q->with([
                             'items' => function ($i) {
