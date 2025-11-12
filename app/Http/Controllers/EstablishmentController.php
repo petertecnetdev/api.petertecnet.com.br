@@ -324,51 +324,54 @@ class EstablishmentController extends Controller
         }
     }
     public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
+{
+    try {
+        $authUser = Auth::user();
 
-            // Carrega o estabelecimento com todas as relações necessárias
-            $establishment = Establishment::with([
-                'employers.user:id,first_name,last_name,user_name,avatar,email',
-                'items:id,entity_id,name,slug,price,type,image',
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])->where('slug', $slug)->firstOrFail();
+        // Carrega o estabelecimento com todas as relações necessárias
+        $establishment = Establishment::with([
+            'employers.user:id,first_name,last_name,user_name,avatar,email',
+            'items:id,entity_id,name,slug,price,type,image',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])->where('slug', $slug)->firstOrFail();
 
-            // Usa o método da model para registrar view e limpar cache
-            Interaction::registerView($establishment, $authUser);
-            Cache::forget("establishment_{$establishment->id}_metrics");
-            Cache::forget("establishment_{$establishment->id}_summary");
+        // Registra visualização e limpa cache
+        Interaction::registerView($establishment, $authUser);
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
 
-            // Usa métodos prontos da model
-            $metrics = $establishment->metrics;
-            $interactionSummary = $establishment->interactionSummary();
-            $ordersSummary = $establishment->ordersSummary();
-            $userInteractions = $establishment->userInteractions();
+        // Usa métodos prontos da model
+        $metrics = $establishment->metrics;
+        $interactionSummary = $establishment->interactionSummary();
+        $ordersSummary = $establishment->ordersSummary();
+        $userInteractions = $establishment->userInteractions();
+        $completedAppointments = $establishment->completedAppointments(); // ✅ CHAMADA NOVA
 
-            // Retorna já no padrão usado em EmployerController
-            return response()->json([
-                'establishment' => $establishment,
-                'items' => $establishment->items ?? [],
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'orders_summary' => $ordersSummary,
-                'other_establishments' => $establishment->otherEstablishments() ?? [],
-                'other_employers' => $establishment->otherEmployers() ?? [],
-                'other_items' => $establishment->otherItems() ?? [],
-            ], 200);
+        // Retorno padronizado
+        return response()->json([
+            'establishment' => $establishment,
+            'items' => $establishment->items ?? [],
+            'metrics' => $metrics,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $userInteractions,
+            'orders_summary' => $ordersSummary,
+            'completed_appointments' => $completedAppointments, // ✅ RETORNO NOVO
+            'other_establishments' => $establishment->otherEstablishments() ?? [],
+            'other_employers' => $establishment->otherEmployers() ?? [],
+            'other_items' => $establishment->otherItems() ?? [],
+        ], 200);
 
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::view] Erro ao carregar', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+        ]);
 
-            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
-        }
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
     }
+}
+
 
 
 
