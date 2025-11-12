@@ -636,20 +636,12 @@ class EstablishmentController extends Controller
             'plat.api.petertecnet.com.br' => 3,
         ];
 
-        // ✅ permite forçar o app_id via query param, se informado
-        $appId = $request->query('app_id') ?? ($map[$host] ?? env('APP_ID'));
+        $appId = $map[$host] ?? env('APP_ID');
 
         $establishments = Establishment::where('app_id', $appId)
-            ->where('is_published', true)
-            ->where('is_approved', true)
-            ->orderByDesc('is_featured')
-            ->limit(20)
             ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category', 'app_id']);
 
-        return response()->json([
-            'app_id' => (int) $appId,
-            'establishments' => $establishments,
-        ]);
+        return response()->json(['establishments' => $establishments]);
     }
 
 }
