@@ -938,6 +938,43 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
+ public function home($app_id)
+{
+    try {
+        if (!$app_id || !is_numeric($app_id)) {
+            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+        }
+
+        $employers = Employer::with([
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'establishment:id,name,slug,logo,background,app_id'
+            ])
+            ->whereHas('establishment', function ($q) use ($app_id) {
+                $q->where('app_id', $app_id);
+            })
+            ->withCount([
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as total_appointments' => fn($q) =>
+                    $q->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->orderByDesc('total_appointments')
+            ->limit(6)
+            ->get();
+
+        return response()->json([
+            'message' => 'Colaboradores listados com sucesso.',
+            'employers' => $employers,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        \Log::error('Erro ao carregar home de employers', [
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json(['error' => 'Erro inesperado ao listar colaboradores.'], 500);
+    }
+}
 
 
 }
