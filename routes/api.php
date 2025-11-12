@@ -150,23 +150,25 @@ Route::prefix('service-record')->middleware('api')->group(function () {
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | ESTABELECIMENTOS
 |--------------------------------------------------------------------------
 */
-Route::prefix('establishment')->middleware('api')->group(function () {
+
+// 🔹 Rotas públicas (sem autenticação)
+Route::prefix('establishment')->middleware(['api'])->group(function () {
     Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
     Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
     Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
     Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
     Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
 
-    // ✅ rota pública correta
-    Route::get('/home', [EstablishmentController::class, 'home'])->name('establishment.home');
+    // ✅ Home pública — lista estabelecimentos por app_id
+    Route::get('/home/{app_id}', [EstablishmentController::class, 'home'])->name('establishment.home');
 });
 
+// 🔒 Rotas protegidas (requer autenticação)
 Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
     Route::match(['post', 'put'], '/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
@@ -175,6 +177,7 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
     Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
     Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
 });
+
 
 /*
 |--------------------------------------------------------------------------
