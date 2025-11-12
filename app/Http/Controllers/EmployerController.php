@@ -639,92 +639,58 @@ class EmployerController extends Controller
 
     }
 
-    public function view($user_name)
-    {
-        try {
-            $authUser = Auth::user();
+   public function view($user_name)
+{
+    try {
+        $authUser = Auth::user();
 
-            // 🔹 Carrega o colaborador com todas as relações relevantes
-            $employer = \App\Models\Employer::whereHas('user', fn($q) => $q->where('user_name', $user_name))
-                ->with([
-                    'user:id,first_name,last_name,user_name,phone,avatar,about,email',
-                    'establishment' => function ($q) {
-                        $q->with([
-                            'items' => function ($i) {
-                                $i->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
-                                    ->withCount([
-                                        'views as total_views' => function ($x) {
-                                            $x->where('interaction_type', 'view');
-                                        },
-                                        'views as unique_users' => function ($x) {
-                                            $x->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                                                ->where('interaction_type', 'view');
-                                        },
-                                    ]);
-                            },
-                            'orders.client:id,first_name,last_name,user_name,avatar,email',
-                            'interactions.user:id,first_name,last_name,user_name,avatar,email',
-                        ]);
-                    },
-                    'orders.client:id,first_name,last_name,user_name,avatar,email',
-                    'interactions.user:id,first_name,last_name,user_name,avatar,email',
-                ])
-                ->firstOrFail();
+        $employer = \App\Models\Employer::with([
+            'user:id,first_name,last_name,user_name,phone,avatar,about,email',
+            'establishment.items:id,entity_id,name,slug,price,type',
+            'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+        ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
+        ->firstOrFail();
 
-            // 🔹 Registra a visualização do colaborador
-            \App\Models\Interaction::registerView($employer, $authUser);
+        // Usa método da model para registrar view e limpar cache
+        $employer->refreshViewMetrics($authUser);
 
-            // 🔹 Limpa o cache antes de recarregar
-            Cache::forget("employer_{$employer->id}_metrics");
-            Cache::forget("employer_{$employer->id}_summary");
-            Cache::forget("employer_{$employer->id}_orders_summary");
+        // Usa os métodos já existentes da model
+        $metrics = $employer->metrics;
+        $interactionSummary = $employer->interactionSummary();
+        $colleaguesData = $employer->colleagues();
+        $ordersSummary = $employer->ordersSummary();
+        $userInteractions = $employer->userInteractions();
+        $topItemAndClient = $employer->topItemAndClient();
 
-            // 🔹 Recarrega métricas e interações com dados atualizados
-            $metrics = $employer->metrics;
-            $interactionSummary = $employer->interactionSummary();
+        return response()->json([
+            'employer' => $employer,
+            'establishment' => $employer->establishment,
+            'items' => $employer->establishment?->items ?? [],
+            'metrics' => $metrics,
+            'colleagues' => $colleaguesData['list'] ?? [],
+            'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $userInteractions,
+            'orders_summary' => $ordersSummary,
+            'top_item_and_client' => $topItemAndClient,
+            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer->establishment?->otherItems() ?? [],
+        ], 200);
 
-            // 🔹 Retorno no mesmo padrão da view de Establishment
-            return response()->json([
-    'employer' => $employer,
-    'establishment' => $employer->establishment,
-    'items' => $employer->establishment?->items->map(function ($item) {
-        return [
-            'id' => $item->id,
-            'name' => $item->name,
-            'slug' => $item->slug,
-            'price' => $item->price,
-            'type' => $item->type,
-            'total_views' => $item->total_views ?? 0,
-            'unique_users' => $item->unique_users ?? 0,
-        ];
-    }) ?? [],
+    } catch (\Throwable $e) {
+        \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
+            'user_name' => $user_name,
+            'message' => $e->getMessage(),
+        ]);
 
-    'metrics' => $metrics,
-    'colleagues' => $employer->colleagues()['list'] ?? [],
-    'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
-    'interaction_summary' => $interactionSummary,
-    'user_interactions' => $employer->userInteractions(),
-    'orders_summary' => $employer->ordersSummary(),
-
-    // 🔹 Top item e cliente (novo dado)
-    'top_item_and_client' => $employer->topItemAndClient(),
-
-    // 🔹 Dados de rotatividade — mesmo padrão de retorno
-    'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
-    'other_employers' => $employer->establishment?->otherEmployers() ?? [],
-    'other_items' => $employer->establishment?->otherItems() ?? [],
-], 200);
-
-
-        } catch (\Throwable $e) {
-            \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
-                'user_name' => $user_name,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
-        }
+        return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
     }
+}
 
 
 
