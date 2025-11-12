@@ -673,6 +673,51 @@ public function otherItems()
     });
 }
 
+public function completedAppointments()
+{
+    return Cache::remember("establishment_{$this->id}_completed_appointments", 120, function () {
+        return \App\Models\Order::where('entity_name', 'establishment')
+            ->where('entity_id', $this->id)
+            ->where('type', 'appointment')
+            ->where('appointment_status', 'attended')
+            ->with([
+                'client:id,first_name,last_name,user_name,avatar,email',
+                'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                'items:id,order_id,item_id,quantity',
+                'items.item:id,name,price,type'
+            ])
+            ->orderByDesc('attended_at')
+            ->get()
+            ->map(function ($order) {
+                $client = $order->client;
+                $attendant = $order->attendant?->user;
+
+                $totalItems = $order->items->sum('quantity');
+                $itemNames = $order->items->pluck('item.name')->toArray();
+
+                return [
+                    'order_id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'attended_at' => optional($order->attended_at)->format('d/m/Y H:i'),
+                    'client' => $client ? [
+                        'id' => $client->id,
+                        'name' => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')),
+                        'user_name' => $client->user_name,
+                        'avatar' => $client->avatar,
+                    ] : null,
+                    'attendant' => $attendant ? [
+                        'id' => $attendant->id,
+                        'name' => trim(($attendant->first_name ?? '') . ' ' . ($attendant->last_name ?? '')),
+                        'user_name' => $attendant->user_name,
+                        'avatar' => $attendant->avatar,
+                    ] : null,
+                    'total_items' => $totalItems,
+                    'item_list' => $itemNames,
+                    'total_price' => $order->total_price,
+                ];
+            });
+    });
+}
 
 
 
