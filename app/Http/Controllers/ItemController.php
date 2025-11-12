@@ -200,58 +200,55 @@ class ItemController extends Controller
             \Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
-    }public function view($slug)
-{
-    try {
-        $authUser = Auth::user();
+    }
+    public function view($slug)
+    {
+        try {
+            $authUser = Auth::user();
 
-        // 🔹 Carrega o item completo com entidade, pedidos e interações
-        $item = \App\Models\Item::where('slug', $slug)
-            ->with([
+            // Carrega o item com todas as relações principais
+            $item = Item::with([
                 'entity:id,name,slug,logo,background,app_id',
                 'orderItems.order.client:id,first_name,last_name,user_name,avatar,email',
                 'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-            ->firstOrFail();
+            ])->where('slug', $slug)->firstOrFail();
 
-        // 🔹 Registra visualização do item
-        \App\Models\Interaction::registerView($item, $authUser);
+            // Registra visualização e limpa cache via Interaction
+            Interaction::registerView($item, $authUser);
+            Cache::forget("item_{$item->id}_metrics");
+            Cache::forget("item_{$item->id}_summary");
+            Cache::forget("item_{$item->id}_orders_summary");
 
-        // 🔹 Limpa cache
-        Cache::forget("item_{$item->id}_metrics");
-        Cache::forget("item_{$item->id}_summary");
-        Cache::forget("item_{$item->id}_orders_summary");
+            // Usa métodos prontos da model
+            $metrics = $item->metrics;
+            $interactionSummary = $item->interactionSummary();
+            $ordersSummary = $item->ordersSummary();
+            $userInteractions = $item->userInteractions();
+            $topEmployer = $item->topEmployer();
 
-        // 🔹 Recarrega métricas e interações com dados atualizados
-        $metrics = $item->metrics;
-        $interactionSummary = $item->interactionSummary();
+            // Retorno padronizado com os outros controllers
+            return response()->json([
+                'item' => $item,
+                'entity' => $item->entity,
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'orders_summary' => $ordersSummary,
+                'top_employer' => $topEmployer,
+                'other_establishments' => $item->otherEstablishments() ?? [],
+                'other_employers' => $item->otherEmployers() ?? [],
+                'other_items' => $item->otherItems() ?? [],
+            ], 200);
 
-        // 🔹 Retorno padronizado com Establishment e Employer
-        return response()->json([
-            'item' => $item,
-            'entity' => $item->entity,
-            'metrics' => $metrics,
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $item->userInteractions(),
-            'orders_summary' => $item->ordersSummary(),
+        } catch (\Throwable $e) {
+            \Log::error('[ItemController::view] Erro ao carregar item', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+            ]);
 
-            // 🔹 Dados de rotatividade — mesmo padrão
-            'other_establishments' => $item->otherEstablishments(),
-            'other_employers' => $item->otherEmployers(),
-            'top_employer' => $item->topEmployer(),
-            'other_items' => $item->otherItems(),
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[ItemController::view] Erro ao carregar item', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao carregar item.'], 500);
+            return response()->json(['error' => 'Erro ao carregar item.'], 500);
+        }
     }
-}
-
 
     public function show($id)
     {

@@ -58,94 +58,156 @@ class OrderController extends Controller
             'payment_method.in' => 'O método de pagamento selecionado não é válido.',
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
-    }public function store(Request $request)
-{
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    }
+    public function store(Request $request)
+    {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        DB::beginTransaction();
+
+        try {
+            $user = Auth::user();
+            Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
+
+            $data = $this->validateOrder($request);
+
+            // ✅ Sempre interpretar a data recebida como São Paulo e impedir agendamento passado
+            $orderDate = Carbon::parse($data['order_datetime'])->tz('America/Sao_Paulo')->startOfMinute();
+            $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
+
+            // 🚫 Impede qualquer data/hora passada ou igual ao horário atual do servidor
+            if ($orderDate->lte($now)) {
+                DB::rollBack();
+                return response()->json([
+                    'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
+                ], 422);
+            }
+
+            $isScheduled = true;
+            $type = 'appointment';
+            $appointmentStatus = 'pending';
+
+            $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
+            if (!$employer) {
+                DB::rollBack();
+                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+            }
+
+            $totalDuration = Item::totalDurationForItems($data['items']);
+            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+            // 🚫 Verifica conflito de horários
+            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
+                DB::rollBack();
+                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+            }
+
+            // 🚫 Garante que todos os itens pertencem à entidade
+            $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+            $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+            if (!empty($invalidItems)) {
+                DB::rollBack();
+                return response()->json([
+                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                    'invalid_items' => $invalidItems,
+                ], 422);
+            }
+
+            // ✅ Cria o pedido com base no horário oficial do backend
+            $order = Order::createOrder(
+                $data,
+                $user,
+                $orderDate,
+                $totalDuration,
+                $isScheduled,
+                $type,
+                $appointmentStatus
+            );
+
+            $order->attachItems($data['items']);
+            DB::commit();
+
+            $this->sendAppointmentEmails($order, $employer, $user);
+
+            return response()->json([
+                'message' => 'Agendamento registrado com sucesso!',
+                'order' => $order->load('items.item'),
+            ], 201);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('🔥 Erro inesperado ao criar pedido.', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
+        }
     }
 
-    DB::beginTransaction();
+    public function view($id)
+    {
+        try {
+            $authUser = Auth::user();
 
-    try {
-        $user = Auth::user();
-        Log::info('🟢 Iniciando criação de pedido.', ['user_id' => $user->id, 'payload' => $request->all()]);
+            // 🔹 Carrega o pedido completo com todas as relações relevantes
+            $order = \App\Models\Order::with([
+                'items.item:id,name,slug,price,image,type',
+                'items.modifiers.modifier:id,name,type',
+                'creator:id,first_name,last_name,user_name,avatar,email',
+                'client:id,first_name,last_name,user_name,avatar,email',
+                'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                'entity:id,name,slug,logo,background,app_id'
+            ])->findOrFail($id);
 
-        $data = $this->validateOrder($request);
+            // 🔹 Registra a visualização
+            \App\Models\Interaction::registerView($order, $authUser);
 
-        // ✅ Sempre interpretar a data recebida como São Paulo e impedir agendamento passado
-        $orderDate = Carbon::parse($data['order_datetime'])->tz('America/Sao_Paulo')->startOfMinute();
-        $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
+            // 🔹 Limpa cache de métricas (se existir)
+            Cache::forget("order_{$order->id}_metrics");
+            Cache::forget("order_{$order->id}_summary");
 
-        // 🚫 Impede qualquer data/hora passada ou igual ao horário atual do servidor
-        if ($orderDate->lte($now)) {
-            DB::rollBack();
+            // 🔹 Obtém métricas e interações diretamente do model
+            $metrics = $order->metrics();
+            $interactionSummary = $order->fullInteractionsSummary();
+
+            // 🔹 Retorno padronizado igual aos outros controllers
             return response()->json([
-                'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
-            ], 422);
+                'order' => $order,
+                'entity' => $order->entity,
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $order->uniqueViewers()->get()->map(function ($view) {
+                    $u = $view->user;
+                    return [
+                        'user_id' => $u?->id,
+                        'user_name' => $u?->user_name,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'avatar' => $u?->avatar,
+                        'email' => $u?->email,
+                    ];
+                }),
+                'attendant' => $order->attendant?->user,
+                'client' => $order->client,
+                'establishment' => $order->establishment,
+            ], 200);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            \Log::warning('[OrderController::view] Pedido não encontrado', ['order_id' => $id]);
+            return response()->json(['error' => 'Pedido não encontrado.'], 404);
+
+        } catch (\Throwable $e) {
+            \Log::error('[OrderController::view] Erro ao carregar pedido', [
+                'order_id' => $id,
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro ao carregar pedido.'], 500);
         }
-
-        $isScheduled = true;
-        $type = 'appointment';
-        $appointmentStatus = 'pending';
-
-        $employer = Employer::validateEmployer($data['attendant_id'], $data['entity_id']);
-        if (!$employer) {
-            DB::rollBack();
-            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-        }
-
-        $totalDuration = Item::totalDurationForItems($data['items']);
-        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-        // 🚫 Verifica conflito de horários
-        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
-            DB::rollBack();
-            return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-        }
-
-        // 🚫 Garante que todos os itens pertencem à entidade
-        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
-        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-        if (!empty($invalidItems)) {
-            DB::rollBack();
-            return response()->json([
-                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                'invalid_items' => $invalidItems,
-            ], 422);
-        }
-
-        // ✅ Cria o pedido com base no horário oficial do backend
-        $order = Order::createOrder(
-            $data,
-            $user,
-            $orderDate,
-            $totalDuration,
-            $isScheduled,
-            $type,
-            $appointmentStatus
-        );
-
-        $order->attachItems($data['items']);
-        DB::commit();
-
-        $this->sendAppointmentEmails($order, $employer, $user);
-
-        return response()->json([
-            'message' => 'Agendamento registrado com sucesso!',
-            'order' => $order->load('items.item'),
-        ], 201);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        Log::error('🔥 Erro inesperado ao criar pedido.', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-        return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
     }
-}
-
 
     private function validateOrder(Request $request)
     {
@@ -173,9 +235,9 @@ class OrderController extends Controller
 
     private function resolveOrderTiming(array $data)
     {
-       $orderDate = Carbon::parse($data['order_datetime'])
-    ->tz('America/Sao_Paulo') // força converter para o horário local do servidor
-    ->startOfMinute();
+        $orderDate = Carbon::parse($data['order_datetime'])
+            ->tz('America/Sao_Paulo') // força converter para o horário local do servidor
+            ->startOfMinute();
 
 
         $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
