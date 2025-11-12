@@ -16,7 +16,7 @@ class EstablishmentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:api')->except(['view', 'home','listByCategory', 'show', 'list', 'generatePdf']);
+        $this->middleware('auth:api')->except(['view', 'home', 'listByCategory', 'show', 'list', 'generatePdf']);
     }
 
     protected function getValidationMessages()
@@ -627,23 +627,29 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }public function home(Request $request)
-{
-    $host = $request->getHost();
-    $map = [
-        'rasoio.api.petertecnet.com.br' => 2,
-        'plat.api.petertecnet.com.br' => 3,
-    ];
+    }
+    public function home(Request $request)
+    {
+        $host = $request->getHost();
+        $map = [
+            'rasoio.api.petertecnet.com.br' => 2,
+            'plat.api.petertecnet.com.br' => 3,
+        ];
 
-    $appId = $map[$host] ?? env('APP_ID');
+        // ✅ permite forçar o app_id via query param, se informado
+        $appId = $request->query('app_id') ?? ($map[$host] ?? env('APP_ID'));
 
-    $establishments = Establishment::where('app_id', $appId)
-        ->where('is_published', true)
-        ->where('is_approved', true)
-        ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category', 'app_id']);
+        $establishments = Establishment::where('app_id', $appId)
+            ->where('is_published', true)
+            ->where('is_approved', true)
+            ->orderByDesc('is_featured')
+            ->limit(20)
+            ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category', 'app_id']);
 
-    return response()->json(['establishments' => $establishments]);
-}
-
+        return response()->json([
+            'app_id' => (int) $appId,
+            'establishments' => $establishments,
+        ]);
+    }
 
 }
