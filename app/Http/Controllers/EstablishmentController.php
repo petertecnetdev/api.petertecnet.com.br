@@ -628,20 +628,45 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-    public function home(Request $request)
-    {
-        $host = $request->getHost();
-        $map = [
-            'rasoio.api.petertecnet.com.br' => 2,
-            'plat.api.petertecnet.com.br' => 3,
-        ];
+   public function home(Request $request)
+{
+    try {
+        $appId = $request->input('app_id');
 
-        $appId = $map[$host] ?? env('APP_ID');
+        if (!$appId) {
+            return response()->json(['error' => 'O campo app_id é obrigatório.'], 422);
+        }
 
         $establishments = Establishment::where('app_id', $appId)
-            ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category', 'app_id']);
+            ->where('is_published', true)
+            ->where('is_approved', true)
+            ->get([
+                'id',
+                'name',
+                'slug',
+                'logo',
+                'background',
+                'city',
+                'category',
+                'app_id'
+            ]);
 
-        return response()->json(['establishments' => $establishments]);
+        return response()->json([
+            'message' => 'Estabelecimentos listados com sucesso.',
+            'establishments' => $establishments
+        ], 200);
+
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::home] Erro ao listar estabelecimentos', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao listar os estabelecimentos.'
+        ], 500);
     }
+}
+
 
 }
