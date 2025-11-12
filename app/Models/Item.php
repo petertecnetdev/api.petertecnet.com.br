@@ -412,20 +412,24 @@ class Item extends Model
         });
     }
 
-    public static function totalDurationForItems(array $items)
-    {
-        $total = 0;
-        foreach ($items as $entry) {
-            $itemId = $entry['item_id'] ?? null;
-            if ($itemId) {
-                $item = self::find($itemId);
-                if ($item && isset($item->duration)) {
-                    $total += (int) $item->duration;
-                }
+    public static function totalDurationForItems(array $items): int
+{
+    $total = 0;
+
+    foreach ($items as $entry) {
+        $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+        $quantity = isset($entry['quantity']) ? (int) $entry['quantity'] : 1;
+
+        foreach ($ids as $id) {
+            $item = self::find($id);
+            if ($item && isset($item->duration)) {
+                $total += (int) $item->duration * $quantity;
             }
         }
-        return $total;
     }
+
+    return $total;
+}
 
     public static function invalidForEntity($items, $entityName, $entityId)
     {
