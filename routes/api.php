@@ -162,6 +162,9 @@ Route::prefix('establishment')->middleware('api')->group(function () {
     Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
     Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
     Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
+
+    // ✅ rota pública correta
+    Route::get('/home', [EstablishmentController::class, 'home'])->name('establishment.home');
 });
 
 Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function () {

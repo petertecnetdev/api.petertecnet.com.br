@@ -16,7 +16,7 @@ class EstablishmentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:api')->except(['view', 'listByCategory', 'show', 'list', 'generatePdf']);
+        $this->middleware('auth:api')->except(['view', 'home','listByCategory', 'show', 'list', 'generatePdf']);
     }
 
     protected function getValidationMessages()
@@ -324,53 +324,53 @@ class EstablishmentController extends Controller
         }
     }
     public function view($slug)
-{
-    try {
-        $authUser = Auth::user();
+    {
+        try {
+            $authUser = Auth::user();
 
-        // Carrega o estabelecimento com todas as relações necessárias
-        $establishment = Establishment::with([
-            'employers.user:id,first_name,last_name,user_name,avatar,email',
-            'items:id,entity_id,name,slug,price,type,image',
-            'orders.client:id,first_name,last_name,user_name,avatar,email',
-            'interactions.user:id,first_name,last_name,user_name,avatar,email',
-        ])->where('slug', $slug)->firstOrFail();
+            // Carrega o estabelecimento com todas as relações necessárias
+            $establishment = Establishment::with([
+                'employers.user:id,first_name,last_name,user_name,avatar,email',
+                'items:id,entity_id,name,slug,price,type,image',
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])->where('slug', $slug)->firstOrFail();
 
-        // Registra visualização e limpa cache
-        Interaction::registerView($establishment, $authUser);
-        Cache::forget("establishment_{$establishment->id}_metrics");
-        Cache::forget("establishment_{$establishment->id}_summary");
+            // Registra visualização e limpa cache
+            Interaction::registerView($establishment, $authUser);
+            Cache::forget("establishment_{$establishment->id}_metrics");
+            Cache::forget("establishment_{$establishment->id}_summary");
 
-        // Usa métodos prontos da model
-        $metrics = $establishment->metrics;
-        $interactionSummary = $establishment->interactionSummary();
-        $ordersSummary = $establishment->ordersSummary();
-        $userInteractions = $establishment->userInteractions();
-        $completedAppointments = $establishment->completedAppointments(); // ✅ CHAMADA NOVA
+            // Usa métodos prontos da model
+            $metrics = $establishment->metrics;
+            $interactionSummary = $establishment->interactionSummary();
+            $ordersSummary = $establishment->ordersSummary();
+            $userInteractions = $establishment->userInteractions();
+            $completedAppointments = $establishment->completedAppointments(); // ✅ CHAMADA NOVA
 
-        // Retorno padronizado
-        return response()->json([
-            'establishment' => $establishment,
-            'items' => $establishment->items ?? [],
-            'metrics' => $metrics,
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $userInteractions,
-            'orders_summary' => $ordersSummary,
-            'completed_appointments' => $completedAppointments, // ✅ RETORNO NOVO
-            'other_establishments' => $establishment->otherEstablishments() ?? [],
-            'other_employers' => $establishment->otherEmployers() ?? [],
-            'other_items' => $establishment->otherItems() ?? [],
-        ], 200);
+            // Retorno padronizado
+            return response()->json([
+                'establishment' => $establishment,
+                'items' => $establishment->items ?? [],
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'orders_summary' => $ordersSummary,
+                'completed_appointments' => $completedAppointments, // ✅ RETORNO NOVO
+                'other_establishments' => $establishment->otherEstablishments() ?? [],
+                'other_employers' => $establishment->otherEmployers() ?? [],
+                'other_items' => $establishment->otherItems() ?? [],
+            ], 200);
 
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::view] Erro ao carregar', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-        ]);
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::view] Erro ao carregar', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+            ]);
 
-        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+        }
     }
-}
 
 
 
@@ -627,8 +627,23 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }
+    }public function home(Request $request)
+{
+    $host = $request->getHost();
+    $map = [
+        'rasoio.api.petertecnet.com.br' => 2,
+        'plat.api.petertecnet.com.br' => 3,
+    ];
 
+    $appId = $map[$host] ?? env('APP_ID');
+
+    $establishments = Establishment::where('app_id', $appId)
+        ->where('is_published', true)
+        ->where('is_approved', true)
+        ->get(['id', 'name', 'slug', 'logo', 'background', 'city', 'category', 'app_id']);
+
+    return response()->json(['establishments' => $establishments]);
+}
 
 
 }
