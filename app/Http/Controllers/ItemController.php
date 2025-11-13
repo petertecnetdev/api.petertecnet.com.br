@@ -852,24 +852,29 @@ class ItemController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
-    }
-public function home(Request $request, $app_id)
+    }public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
-    $uf = $request->query('uf');
+    $uf   = $request->query('uf');
 
-    $query = Item::where('app_id', $app_id)
-        ->where('status', 'active');
+    // 1. Buscar estabelecimentos
+    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
+        ->when($city && $uf, function ($q) use ($city, $uf) {
+            $q->where('city', $city)->where('uf', $uf);
+        })
+        ->pluck('id');
 
-    if ($city && $uf) {
-        $query->where('display_city', $city)->where('display_uf', $uf);
-    }
+    // 2. Buscar itens que pertencem aos estabelecimentos filtrados
+    $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
+        ->where('entity_name', 'establishment')
+        ->with([
+            'establishment:id,name,slug,city,uf,logo,background'
+        ])
+        ->get();
 
     return response()->json([
-        'items' => $query->get()
+        'items' => $items
     ]);
 }
-
-
 
 }

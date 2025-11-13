@@ -821,18 +821,17 @@ class EstablishmentController extends Controller
     }public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
-    $uf = $request->query('uf');
+    $uf   = $request->query('uf');
 
-    $query = Establishment::where('app_id', $app_id)
-        ->where('status', 'active');
+    $query = Establishment::where('app_id', $app_id);
 
     if ($city && $uf) {
         $query->where('city', $city)->where('uf', $uf);
     }
 
     $establishments = $query
-        ->select("id", "name", "slug", "city", "uf", "logo", "background")
-        ->orderBy("name")
+        ->select('id', 'name', 'slug', 'city', 'uf', 'logo', 'background', 'category')
+        ->orderBy('name')
         ->get();
 
     return response()->json([
