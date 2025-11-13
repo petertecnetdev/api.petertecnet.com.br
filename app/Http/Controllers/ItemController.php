@@ -852,29 +852,96 @@ class ItemController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
-    }public function home(Request $request, $app_id)
+    }
+    public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
 
-    // 1. Buscar estabelecimentos
+    // 1. Buscar estabelecimentos válidos
     $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
         ->when($city && $uf, function ($q) use ($city, $uf) {
             $q->where('city', $city)->where('uf', $uf);
         })
         ->pluck('id');
 
-    // 2. Buscar itens que pertencem aos estabelecimentos filtrados
+    // 2. Buscar itens pertencentes aos estabelecimentos filtrados
     $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
         ->where('entity_name', 'establishment')
         ->with([
-            'establishment:id,name,slug,city,uf,logo,background'
+            'establishment:id,name,slug,city,uf,logo,background,category'
         ])
-        ->get();
+        ->withCount([
+            // 👁️ Visualizações
+            'views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            },
+
+            // 👤 Usuários únicos
+            'views as unique_users' => function ($q) {
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view');
+            },
+
+            // 💈 Atendimentos concluídos deste item
+            'orderItems as completed_appointments' => function ($q) {
+                $q->whereHas('order', function ($o) {
+                    $o->whereIn('appointment_status', ['confirmed', 'attended']);
+                });
+            },
+        ])
+        ->orderByDesc('completed_appointments')
+        ->get()
+        ->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'type' => $item->type,
+                'price' => $item->price,
+                'image' => $item->image,
+                'tags' => $item->tags,
+                'status' => $item->status,
+                'discount' => $item->discount,
+                'is_featured' => $item->is_featured,
+
+                // 🔥 informações fortes
+                'total_views' => $item->total_views,
+                'unique_users' => $item->unique_users,
+                'completed_appointments' => $item->completed_appointments,
+
+                // 🔥 métricas completas do model
+                'metrics' => $item->metrics,
+
+                // 🔥 resumo das interações (quem vê mais, último visitante)
+                'interaction_summary' => $item->interactionSummary(),
+
+                // 🔥 resumo dos pedidos deste item
+                'orders_summary' => $item->ordersSummary(),
+
+                // 🔥 barbeiro que mais faz este serviço / vende este produto
+                'top_employer' => $item->topEmployer(),
+
+                // 🔥 dados do estabelecimento
+                'establishment' => $item->establishment
+                    ? [
+                        'id' => $item->establishment->id,
+                        'name' => $item->establishment->name,
+                        'slug' => $item->establishment->slug,
+                        'city' => $item->establishment->city,
+                        'uf' => $item->establishment->uf,
+                        'logo' => $item->establishment->logo,
+                        'background' => $item->establishment->background,
+                        'category' => $item->establishment->category,
+                    ]
+                    : null,
+            ];
+        });
 
     return response()->json([
         'items' => $items
     ]);
 }
+
 
 }

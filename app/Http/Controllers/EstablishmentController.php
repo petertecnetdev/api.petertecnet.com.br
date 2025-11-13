@@ -818,26 +818,53 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }public function home(Request $request, $app_id)
+    }
+    public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
-    $uf   = $request->query('uf');
+    $uf = $request->query('uf');
 
-    $query = Establishment::where('app_id', $app_id);
+    $query = Establishment::query()
+        ->where('app_id', $app_id)
+        ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
+        ->withCount([
+            // 👁️ Visualizações totais
+            'views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            },
 
-    if ($city && $uf) {
-        $query->where('city', $city)->where('uf', $uf);
-    }
+            // 👤 Usuários únicos
+            'views as unique_users' => function ($q) {
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view');
+            },
 
-    $establishments = $query
-        ->select('id', 'name', 'slug', 'city', 'uf', 'logo', 'background', 'category')
-        ->orderBy('name')
-        ->get();
+            // 💈 Atendimentos concluídos
+            'orders as completed_appointments' => function ($q) {
+                $q->where('entity_name', 'establishment')
+                  ->where('type', 'appointment')
+                  ->where('appointment_status', 'attended');
+            },
+        ])
+        ->orderBy('name');
+
+    $establishments = $query->get([
+        'id',
+        'name',
+        'slug',
+        'city',
+        'uf',
+        'logo',
+        'background',
+        'category',
+        'segments'
+    ]);
 
     return response()->json([
         'establishments' => $establishments
     ]);
 }
+
 
     public function listCities($app_id)
     {
