@@ -852,8 +852,7 @@ class ItemController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
-    }
-public function home($app_id)
+    }public function home(Request $request, $app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
@@ -862,10 +861,26 @@ public function home($app_id)
             ], 422);
         }
 
+        $city = $request->city;
+        $uf   = $request->uf;
+
         $items = Item::with([
                 'entity:id,name,slug,logo,background,city,uf,category,app_id'
             ])
             ->where('app_id', $app_id)
+
+            // ============================================================
+            // 🔥 FILTRO POR CIDADE/UF — IGUAL AO DE ESTABLISHMENT/EMPLOYER
+            // ============================================================
+            ->whereHas('entity', function ($q) use ($city, $uf) {
+                if ($city && $uf) {
+                    $q->whereNotNull('city')
+                      ->whereNotNull('uf')
+                      ->whereRaw('LOWER(city) = LOWER(?)', [$city])
+                      ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
+                }
+            })
+
             ->select([
                 'id',
                 'name',
@@ -904,10 +919,10 @@ public function home($app_id)
             ->get();
 
         // ============================================================
-        // 🔥 NOVO: Adicionar city/uf do estabelecimento ao item
+        // 🔥 display_city/display_uf
         // ============================================================
         $items->transform(function ($item) {
-            $est = $item->entity; // sempre Establishment
+            $est = $item->entity;
 
             $item->display_city = $est->city ?? null;
             $item->display_uf   = $est->uf   ?? null;
@@ -915,7 +930,7 @@ public function home($app_id)
             return $item;
         });
 
-        // 🔥 EMPLOYER QUE MAIS ATENDEU CADA ITEM
+        // 🔥 TOP EMPLOYER
         foreach ($items as $item) {
             $topEmployer = \DB::table('order_items')
                 ->join('orders', 'order_items.order_id', '=', 'orders.id')
