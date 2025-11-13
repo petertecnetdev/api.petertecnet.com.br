@@ -255,12 +255,21 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
-
 /*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
 */
+
+// 🔹 Rotas públicas
+Route::prefix('employer')->middleware(['api'])->group(function () {
+    Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
+
+    // 🔥 Home pública DEVE ESTAR AQUI
+    Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
+});
+
+// 🔒 Rotas protegidas
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
     Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
@@ -275,7 +284,3 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/available', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
     Route::post('/reserve', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
 });
-
-// 🔹 Rotas públicas
-Route::get('/employer/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
-Route::get('/employer/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');

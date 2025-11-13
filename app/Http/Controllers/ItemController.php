@@ -852,130 +852,131 @@ class ItemController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
-    }public function home(Request $request, $app_id)
-{
-    try {
-        if (!$app_id || !is_numeric($app_id)) {
-            return response()->json([
-                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
-            ], 422);
-        }
+    }
+    public function home(Request $request, $app_id)
+    {
+        try {
+            if (!$app_id || !is_numeric($app_id)) {
+                return response()->json([
+                    'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+                ], 422);
+            }
 
-        $city = $request->city;
-        $uf   = $request->uf;
+            $city = $request->city;
+            $uf = $request->uf;
 
-        $items = Item::with([
+            $items = Item::with([
                 'entity:id,name,slug,logo,background,city,uf,category,app_id'
             ])
-            ->where('app_id', $app_id)
+                ->where('app_id', $app_id)
+
+                // ============================================================
+                // 🔥 FILTRO POR CIDADE/UF — IGUAL AO DE ESTABLISHMENT/EMPLOYER
+                // ============================================================
+                ->whereHas('entity', function ($q) use ($city, $uf) {
+                    if ($city && $uf) {
+                        $q->whereNotNull('city')
+                            ->whereNotNull('uf')
+                            ->whereRaw('LOWER(city) = LOWER(?)', [$city])
+                            ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
+                    }
+                })
+
+                ->select([
+                    'id',
+                    'name',
+                    'slug',
+                    'type',
+                    'price',
+                    'image',
+                    'stock',
+                    'category',
+                    'app_id',
+                    'entity_id',
+                    'entity_name',
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+
+                    'views as unique_users' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                            ->where('interaction_type', 'view'),
+
+                    'orderItems as total_orders',
+
+                    'orderItems as total_completed_appointments' => fn($q) =>
+                        $q->join('orders', 'order_items.order_id', '=', 'orders.id')
+                            ->where('orders.type', 'appointment')
+                            ->where('orders.appointment_status', 'attended'),
+
+                    'orderItems as unique_clients_attended' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT orders.client_id)'))
+                            ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                            ->where('orders.type', 'appointment')
+                            ->where('orders.appointment_status', 'attended'),
+                ])
+                ->orderBy('name')
+                ->get();
 
             // ============================================================
-            // 🔥 FILTRO POR CIDADE/UF — IGUAL AO DE ESTABLISHMENT/EMPLOYER
+            // 🔥 display_city/display_uf
             // ============================================================
-            ->whereHas('entity', function ($q) use ($city, $uf) {
-                if ($city && $uf) {
-                    $q->whereNotNull('city')
-                      ->whereNotNull('uf')
-                      ->whereRaw('LOWER(city) = LOWER(?)', [$city])
-                      ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
-                }
-            })
+            $items->transform(function ($item) {
+                $est = $item->entity;
 
-            ->select([
-                'id',
-                'name',
-                'slug',
-                'type',
-                'price',
-                'image',
-                'stock',
-                'category',
-                'app_id',
-                'entity_id',
-                'entity_name',
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
+                $item->display_city = $est->city ?? null;
+                $item->display_uf = $est->uf ?? null;
 
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                      ->where('interaction_type', 'view'),
+                return $item;
+            });
 
-                'orderItems as total_orders',
+            // 🔥 TOP EMPLOYER
+            foreach ($items as $item) {
+                $topEmployer = \DB::table('order_items')
+                    ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                    ->join('employers', 'orders.attendant_id', '=', 'employers.id')
+                    ->join('users', 'employers.user_id', '=', 'users.id')
+                    ->where('order_items.item_id', $item->id)
+                    ->where('orders.type', 'appointment')
+                    ->where('orders.appointment_status', 'attended')
+                    ->select(
+                        'employers.id as employer_id',
+                        'users.first_name',
+                        'users.last_name',
+                        'users.user_name',
+                        'users.avatar',
+                        \DB::raw('COUNT(*) as total')
+                    )
+                    ->groupBy(
+                        'employers.id',
+                        'users.first_name',
+                        'users.last_name',
+                        'users.user_name',
+                        'users.avatar'
+                    )
+                    ->orderByDesc('total')
+                    ->first();
 
-                'orderItems as total_completed_appointments' => fn($q) =>
-                    $q->join('orders', 'order_items.order_id', '=', 'orders.id')
-                      ->where('orders.type', 'appointment')
-                      ->where('orders.appointment_status', 'attended'),
+                $item->top_employer = $topEmployer ?: null;
+            }
 
-                'orderItems as unique_clients_attended' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT orders.client_id)'))
-                      ->join('orders', 'order_items.order_id', '=', 'orders.id')
-                      ->where('orders.type', 'appointment')
-                      ->where('orders.appointment_status', 'attended'),
-            ])
-            ->orderBy('name')
-            ->get();
+            return response()->json([
+                'message' => 'Itens listados com sucesso.',
+                'items' => $items,
+            ], 200);
 
-        // ============================================================
-        // 🔥 display_city/display_uf
-        // ============================================================
-        $items->transform(function ($item) {
-            $est = $item->entity;
+        } catch (\Throwable $e) {
+            \Log::error('[ItemController::home] Erro ao listar itens', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-            $item->display_city = $est->city ?? null;
-            $item->display_uf   = $est->uf   ?? null;
-
-            return $item;
-        });
-
-        // 🔥 TOP EMPLOYER
-        foreach ($items as $item) {
-            $topEmployer = \DB::table('order_items')
-                ->join('orders', 'order_items.order_id', '=', 'orders.id')
-                ->join('employers', 'orders.attendant_id', '=', 'employers.id')
-                ->join('users', 'employers.user_id', '=', 'users.id')
-                ->where('order_items.item_id', $item->id)
-                ->where('orders.type', 'appointment')
-                ->where('orders.appointment_status', 'attended')
-                ->select(
-                    'employers.id as employer_id',
-                    'users.first_name',
-                    'users.last_name',
-                    'users.user_name',
-                    'users.avatar',
-                    \DB::raw('COUNT(*) as total')
-                )
-                ->groupBy(
-                    'employers.id',
-                    'users.first_name',
-                    'users.last_name',
-                    'users.user_name',
-                    'users.avatar'
-                )
-                ->orderByDesc('total')
-                ->first();
-
-            $item->top_employer = $topEmployer ?: null;
+            return response()->json([
+                'error' => 'Erro inesperado ao listar itens.'
+            ], 500);
         }
-
-        return response()->json([
-            'message' => 'Itens listados com sucesso.',
-            'items' => $items,
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[ItemController::home] Erro ao listar itens', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao listar itens.'
-        ], 500);
     }
-}
 
 
 }
