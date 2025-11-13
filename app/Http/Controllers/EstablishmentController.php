@@ -16,7 +16,7 @@ class EstablishmentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:api')->except(['view', 'home', 'listByCategory', 'show', 'list', 'generatePdf']);
+        $this->middleware('auth:api')->except(['view', 'home', 'listCities', 'listByCategory', 'show', 'list', 'generatePdf']);
     }
 
     protected function getValidationMessages()
