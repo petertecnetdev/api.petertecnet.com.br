@@ -863,7 +863,7 @@ public function home($app_id)
         }
 
         $items = Item::with([
-                'entity:id,name,slug,logo,background,city,category,app_id'
+                'entity:id,name,slug,logo,background,city,uf,category,app_id'
             ])
             ->where('app_id', $app_id)
             ->select([
@@ -880,25 +880,20 @@ public function home($app_id)
                 'entity_name',
             ])
             ->withCount([
-                // 👁️ Views totais
                 'views as total_views' => fn($q) =>
                     $q->where('interaction_type', 'view'),
 
-                // 👤 Usuários únicos
                 'views as unique_users' => fn($q) =>
                     $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
                       ->where('interaction_type', 'view'),
 
-                // 🧾 Quantos pedidos possuem esse item
                 'orderItems as total_orders',
 
-                // 🔥 Total de atendimentos usando esse item (só atendidos)
                 'orderItems as total_completed_appointments' => fn($q) =>
                     $q->join('orders', 'order_items.order_id', '=', 'orders.id')
                       ->where('orders.type', 'appointment')
                       ->where('orders.appointment_status', 'attended'),
 
-                // 🧍‍♂️ Clientes únicos atendidos
                 'orderItems as unique_clients_attended' => fn($q) =>
                     $q->select(\DB::raw('COUNT(DISTINCT orders.client_id)'))
                       ->join('orders', 'order_items.order_id', '=', 'orders.id')
@@ -907,6 +902,18 @@ public function home($app_id)
             ])
             ->orderBy('name')
             ->get();
+
+        // ============================================================
+        // 🔥 NOVO: Adicionar city/uf do estabelecimento ao item
+        // ============================================================
+        $items->transform(function ($item) {
+            $est = $item->entity; // sempre Establishment
+
+            $item->display_city = $est->city ?? null;
+            $item->display_uf   = $est->uf   ?? null;
+
+            return $item;
+        });
 
         // 🔥 EMPLOYER QUE MAIS ATENDEU CADA ITEM
         foreach ($items as $item) {
