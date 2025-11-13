@@ -938,47 +938,50 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-   public function home($app_id)
+  public function home(Request $request, $app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
             return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
         }
 
-        $employers = Employer::with([
+        // 📍 Cidade/UF enviados pelo frontend
+        $city = $request->city;
+        $uf   = $request->uf;
+
+        $query = Employer::with([
                 'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,logo,background,city,category,app_id'
+                'establishment:id,name,slug,logo,background,city,uf,location'
             ])
-            ->whereHas('establishment', function ($q) use ($app_id) {
+            ->whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
                 $q->where('app_id', $app_id);
+
+                // 📍 Se front informar cidade/UF → filtrar pela localização
+                if ($city && $uf) {
+                    $q->where('city', $city)
+                      ->where('uf', $uf);
+                }
             })
             ->withCount([
                 'views as total_views' => fn($q) =>
                     $q->where('interaction_type', 'view'),
 
                 'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                      ->where('interaction_type', 'view'),
+                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
 
                 'orders as total_completed_appointments' => fn($q) =>
                     $q->where('type', 'appointment')
-                      ->where('appointment_status', 'attended'),
-
-                'orders as unique_clients_attended' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT client_id)'))
-                      ->where('type', 'appointment')
-                      ->where('appointment_status', 'attended'),
+                      ->where('appointment_status', 'attended')
             ])
             ->orderByDesc('total_completed_appointments')
-            ->limit(6)
-            ->get([
-                'id',
-                'user_id',
-                'establishment_id',
-                'role',
-                'permissions',
-                'created_at'
-            ]);
+            ->limit(6);
+
+        $employers = $query->get([
+            'id',
+            'user_id',
+            'establishment_id',
+            'role',
+        ]);
 
         return response()->json([
             'message' => 'Colaboradores listados com sucesso.',
@@ -986,12 +989,17 @@ class EmployerController extends Controller
         ], 200);
 
     } catch (\Throwable $e) {
-        \Log::error('Erro ao carregar home de employers', [
+        \Log::error('[EmployerController::home] Erro ao listar colaboradores', [
             'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
         ]);
-        return response()->json(['error' => 'Erro inesperado ao listar colaboradores.'], 500);
+
+        return response()->json([
+            'error' => 'Erro inesperado ao listar colaboradores.'
+        ], 500);
     }
 }
+
 
 
 }

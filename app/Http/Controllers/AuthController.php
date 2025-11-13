@@ -171,11 +171,95 @@ class AuthController extends Controller
 
             Log::info('Login realizado com sucesso', ['user_id' => auth()->user()->id]);
 
+            $ip = $request->ip();
+            $latitude = $request->latitude ?? null;
+            $longitude = $request->longitude ?? null;
+
+            $city = null;
+            $uf = null;
+
+            // 🌍 Se latitude/longitude foram enviados → buscar endereço
+            if ($latitude && $longitude) {
+                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
+
+                try {
+                    $response = json_decode(file_get_contents($url), true);
+
+                    $city = $response['address']['city']
+                        ?? $response['address']['town']
+                        ?? $response['address']['village']
+                        ?? null;
+
+                    $uf = $response['address']['state'] ?? null;
+
+                    // 🧩 Ajuste de caso: Brasil → pegar sigla ao invés do nome completo
+                    if ($uf) {
+                        $mapping = [
+                            'Acre' => 'AC',
+                            'Alagoas' => 'AL',
+                            'Amapá' => 'AP',
+                            'Amazonas' => 'AM',
+                            'Bahia' => 'BA',
+                            'Ceará' => 'CE',
+                            'Distrito Federal' => 'DF',
+                            'Espírito Santo' => 'ES',
+                            'Goiás' => 'GO',
+                            'Maranhão' => 'MA',
+                            'Mato Grosso' => 'MT',
+                            'Mato Grosso do Sul' => 'MS',
+                            'Minas Gerais' => 'MG',
+                            'Pará' => 'PA',
+                            'Paraíba' => 'PB',
+                            'Paraná' => 'PR',
+                            'Pernambuco' => 'PE',
+                            'Piauí' => 'PI',
+                            'Rio de Janeiro' => 'RJ',
+                            'Rio Grande do Norte' => 'RN',
+                            'Rio Grande do Sul' => 'RS',
+                            'Rondônia' => 'RO',
+                            'Roraima' => 'RR',
+                            'Santa Catarina' => 'SC',
+                            'São Paulo' => 'SP',
+                            'Sergipe' => 'SE',
+                            'Tocantins' => 'TO',
+                        ];
+
+                        if (isset($mapping[$uf])) {
+                            $uf = $mapping[$uf];
+                        }
+                    }
+
+                    // 🔥 Salvar CIDADE / UF no usuário
+                    $user = auth()->user();
+                    $user->update([
+                        'city' => $city,
+                        'uf' => $uf,
+                    ]);
+
+                } catch (\Throwable $geoError) {
+                    Log::warning("Falha ao fazer reverse geocode", [
+                        'lat' => $latitude,
+                        'lng' => $longitude,
+                        'error' => $geoError->getMessage(),
+                    ]);
+                }
+            }
+
+            // 🔥 Registrar interação
             Interaction::create([
                 'user_id' => auth()->user()->id,
                 'interaction_type' => 'login',
                 'entity_id' => auth()->user()->id,
-                'entity_type' => 'user',
+                'entity_type' => 'User',
+                'name' => 'Login do usuário',
+                'content' => [
+                    'ip' => $ip,
+                    'latitude' => $latitude,
+                    'longitude' => $longitude,
+                    'city' => $city,
+                    'uf' => $uf,
+                    'user_agent' => $request->userAgent(),
+                ],
             ]);
 
             return response()->json([
