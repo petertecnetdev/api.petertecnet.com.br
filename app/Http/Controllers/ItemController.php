@@ -864,7 +864,6 @@ public function home($app_id)
                 'entity:id,name,slug,logo,background,app_id'
             ])
             ->where('app_id', $app_id)
-            ->where('status', true)
             ->withCount([
                 'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
                 'views as unique_users' => fn($q) =>
