@@ -942,21 +942,25 @@ class EmployerController extends Controller
     public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
-    $uf = $request->query('uf');
+    $uf   = $request->query('uf');
 
-    $query = Employer::with(["user:id,first_name,last_name,avatar"])
-        ->whereHas("establishment", function($q) use ($app_id, $city, $uf) {
-            $q->where("app_id", $app_id);
+    // 1. Buscar estabelecimentos válidos
+    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
+        ->when($city && $uf, function ($q) use ($city, $uf) {
+            $q->where('city', $city)->where('uf', $uf);
+        })
+        ->pluck('id');
 
-            if ($city && $uf) {
-                $q->where("city", $city)->where("uf", $uf);
-            }
-        });
-
-    $employers = $query->get();
+    // 2. Buscar Employers só desses estabelecimentos
+    $employers = \App\Models\Employer::whereIn('establishment_id', $establishmentIds)
+        ->with([
+            'user:id,first_name,last_name,user_name,avatar',
+            'establishment:id,name,slug,city,uf,logo,background'
+        ])
+        ->get();
 
     return response()->json([
-        "employers" => $employers
+        'employers' => $employers
     ]);
 }
 
