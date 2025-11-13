@@ -771,6 +771,7 @@ private function resolveEstablishmentLocation($establishment)
                 'city',
                 'uf',
                 'location',
+                'address',      // ✅ AQUI
                 'category'
             ]);
 
@@ -790,6 +791,5 @@ private function resolveEstablishmentLocation($establishment)
         ], 500);
     }
 }
-
 
 }

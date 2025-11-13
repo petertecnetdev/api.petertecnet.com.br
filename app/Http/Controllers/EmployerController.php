@@ -939,25 +939,23 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-  public function home(Request $request, $app_id)
+ public function home(Request $request, $app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
             return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
         }
 
-        // 📍 Cidade/UF enviados pelo frontend
         $city = $request->city;
         $uf   = $request->uf;
 
-        $query = Employer::with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,logo,background,city,uf,location'
+        $employers = Employer::with([
+                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'establishment:id,name,slug,logo,background,city,uf,location,address,category'
             ])
             ->whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
                 $q->where('app_id', $app_id);
 
-                // 📍 Se front informar cidade/UF → filtrar pela localização
                 if ($city && $uf) {
                     $q->where('city', $city)
                       ->where('uf', $uf);
@@ -968,21 +966,34 @@ class EmployerController extends Controller
                     $q->where('interaction_type', 'view'),
 
                 'views as unique_users' => fn($q) =>
-                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))
+                      ->where('interaction_type', 'view'),
 
                 'orders as total_completed_appointments' => fn($q) =>
                     $q->where('type', 'appointment')
                       ->where('appointment_status', 'attended')
             ])
             ->orderByDesc('total_completed_appointments')
-            ->limit(6);
+            ->limit(6)
+            ->get([
+                'id',
+                'user_id',
+                'establishment_id',
+                'role',
+            ]);
 
-        $employers = $query->get([
-            'id',
-            'user_id',
-            'establishment_id',
-            'role',
-        ]);
+        // ============================================================
+        // 🔥 DISPLAY_CITY E DISPLAY_UF → USER > ESTABLISHMENT
+        // ============================================================
+        $employers->transform(function ($emp) {
+            $user = $emp->user;
+            $est  = $emp->establishment;
+
+            $emp->display_city = $user->city ?: ($est->city ?? null);
+            $emp->display_uf   = $user->uf   ?: ($est->uf   ?? null);
+
+            return $emp;
+        });
 
         return response()->json([
             'message' => 'Colaboradores listados com sucesso.',
@@ -1000,7 +1011,6 @@ class EmployerController extends Controller
         ], 500);
     }
 }
-
 
 
 }
