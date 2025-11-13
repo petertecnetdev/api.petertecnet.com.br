@@ -391,55 +391,97 @@ class EstablishmentController extends Controller
         }
     }
     public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
+{
+    try {
+        $authUser = Auth::user();
 
-            // Carrega o estabelecimento com todas as relações necessárias
-            $establishment = Establishment::with([
-                'employers.user:id,first_name,last_name,user_name,avatar,email',
-                'items:id,entity_id,name,slug,price,type,image',
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])->where('slug', $slug)->firstOrFail();
+        // Carrega o estabelecimento com todas as relações necessárias
+        $establishment = Establishment::with([
+            'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
+            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+            'items:id,entity_id,name,slug,price,type,image',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+        ->where('slug', $slug)
+        ->firstOrFail();
 
-            // Registra visualização e limpa cache
-            Interaction::registerView($establishment, $authUser);
-            Cache::forget("establishment_{$establishment->id}_metrics");
-            Cache::forget("establishment_{$establishment->id}_summary");
+        // ⭐ Chamada aqui! Ajusta city/uf automaticamente
+        $establishment = $this->resolveEstablishmentLocation($establishment);
 
-            // Usa métodos prontos da model
-            $metrics = $establishment->metrics;
-            $interactionSummary = $establishment->interactionSummary();
-            $ordersSummary = $establishment->ordersSummary();
-            $userInteractions = $establishment->userInteractions();
-            $completedAppointments = $establishment->completedAppointments(); // ✅ CHAMADA NOVA
+        // Registrar visualização e limpar cache
+        Interaction::registerView($establishment, $authUser);
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
 
-            // Retorno padronizado
-            return response()->json([
-                'establishment' => $establishment,
-                'items' => $establishment->items ?? [],
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'orders_summary' => $ordersSummary,
-                'completed_appointments' => $completedAppointments, // ✅ RETORNO NOVO
-                'other_establishments' => $establishment->otherEstablishments() ?? [],
-                'other_employers' => $establishment->otherEmployers() ?? [],
-                'other_items' => $establishment->otherItems() ?? [],
-            ], 200);
+        // Dados da model
+        return response()->json([
+            'establishment' => $establishment,
+            'items' => $establishment->items ?? [],
+            'metrics' => $establishment->metrics,
+            'interaction_summary' => $establishment->interactionSummary(),
+            'user_interactions' => $establishment->userInteractions(),
+            'orders_summary' => $establishment->ordersSummary(),
+            'completed_appointments' => $establishment->completedAppointments(),
+            'other_establishments' => $establishment->otherEstablishments(),
+            'other_employers' => $establishment->otherEmployers(),
+            'other_items' => $establishment->otherItems(),
+        ], 200);
 
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::view] Erro ao carregar', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::view] Erro ao carregar', [
+            'slug' => $slug,
+            'message' => $e->getMessage(),
+        ]);
 
-            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
+    }
+}
+
+
+
+private function resolveEstablishmentLocation($establishment)
+{
+    // Se já tem cidade/UF, não precisa mexer
+    if ($establishment->city && $establishment->uf) {
+        return $establishment;
+    }
+
+    $city = null;
+    $uf = null;
+
+    // 1️⃣ Tentar pegar do dono (user)
+    if ($establishment->user) {
+        $city = $establishment->user->city;
+        $uf   = $establishment->user->uf;
+    }
+
+    // 2️⃣ Se dono não tem → tentar pegar dos colaboradores
+    if ((!$city || !$uf) && $establishment->employers->count() > 0) {
+        foreach ($establishment->employers as $emp) {
+            $u = $emp->user;
+
+            if ($u && ($u->city || $u->uf)) {
+                $city = $city ?: $u->city;
+                $uf   = $uf   ?: $u->uf;
+                break;
+            }
         }
     }
 
+    // 3️⃣ Se não achou nada → retorna sem salvar
+    if (!$city && !$uf) {
+        return $establishment;
+    }
 
+    // 4️⃣ Salvar no estabelecimento
+    $establishment->update([
+        'city' => $establishment->city ?: $city,
+        'uf'   => $establishment->uf   ?: $uf,
+    ]);
+
+    return $establishment;
+}
 
 
     public function show($id)
