@@ -885,5 +885,38 @@ class EstablishmentController extends Controller
             ], 500);
         }
     }
+public function listCities($app_id)
+{
+    try {
+        if (!$app_id || !is_numeric($app_id)) {
+            return response()->json([
+                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+            ], 422);
+        }
+
+        $cities = Establishment::where('app_id', $app_id)
+            ->whereNotNull('city')
+            ->whereNotNull('uf')
+            ->select('city', 'uf')
+            ->groupBy('city', 'uf')
+            ->orderBy('city')
+            ->get();
+
+        return response()->json([
+            'message' => 'Cidades listadas com sucesso.',
+            'cities' => $cities
+        ], 200);
+
+    } catch (\Throwable $e) {
+        \Log::error('[EstablishmentController::listCities] Erro ao listar cidades', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro inesperado ao listar cidades.'
+        ], 500);
+    }
+}
 
 }
