@@ -262,150 +262,150 @@ class EstablishmentController extends Controller
 
 
     public function update(Request $request, $id)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $user = Auth::user();
-        $establishment = Establishment::find($id);
-
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        if ($establishment->user_id !== $user->id) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        // VALIDAÇÃO
-        $validated = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'fantasy' => 'nullable|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'nullable|string|max:20',
-            'description' => 'nullable|string|max:2500',
-            'additional_info' => 'nullable|string|max:2500',
-            'address' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:100',
-            'uf' => 'nullable|string|size:2',
-            'cep' => 'nullable|string|max:10',
-            'website_url' => 'nullable|string',
-            'location' => 'nullable|string',
-            'instagram_url' => 'nullable|string',
-            'facebook_url' => 'nullable|string',
-            'twitter_url' => 'nullable|string',
-            'youtube_url' => 'nullable|string',
-            'segments' => 'nullable|array',
-            'logo' => 'nullable|image|max:2048',
-            'background' => 'nullable|image|max:4096',
-        ]);
-
-        // CALCULAR DIFERENÇAS
-        $oldData = $establishment->getOriginal();
-        $changes = [];
-
-        foreach ($validated as $key => $value) {
-            if ($key === 'segments') {
-                $value = json_encode($value);
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            if (($oldData[$key] ?? null) != $value) {
-                $changes[$key] = [
-                    'old' => $oldData[$key] ?? null,
-                    'new' => $value
+            $user = Auth::user();
+            $establishment = Establishment::find($id);
+
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            if ($establishment->user_id !== $user->id) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
+
+            // VALIDAÇÃO
+            $validated = $request->validate([
+                'name' => 'nullable|string|max:255',
+                'fantasy' => 'nullable|string|max:255',
+                'email' => 'nullable|email|max:255',
+                'phone' => 'nullable|string|max:20',
+                'description' => 'nullable|string|max:2500',
+                'additional_info' => 'nullable|string|max:2500',
+                'address' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:100',
+                'uf' => 'nullable|string|size:2',
+                'cep' => 'nullable|string|max:10',
+                'website_url' => 'nullable|string',
+                'location' => 'nullable|string',
+                'instagram_url' => 'nullable|string',
+                'facebook_url' => 'nullable|string',
+                'twitter_url' => 'nullable|string',
+                'youtube_url' => 'nullable|string',
+                'segments' => 'nullable|array',
+                'logo' => 'nullable|image|max:2048',
+                'background' => 'nullable|image|max:4096',
+            ]);
+
+            // CALCULAR DIFERENÇAS
+            $oldData = $establishment->getOriginal();
+            $changes = [];
+
+            foreach ($validated as $key => $value) {
+                if ($key === 'segments') {
+                    $value = json_encode($value);
+                }
+
+                if (($oldData[$key] ?? null) != $value) {
+                    $changes[$key] = [
+                        'old' => $oldData[$key] ?? null,
+                        'new' => $value
+                    ];
+                }
+            }
+
+            // UPLOAD LOGO
+            if ($request->hasFile('logo')) {
+                $file = $request->file('logo');
+                $name = uniqid('logo_') . '.' . $file->getClientOriginalExtension();
+                $path = public_path("images/$name");
+
+                $file->move(public_path('images'), $name);
+                \Intervention\Image\Facades\Image::make($path)->fit(150, 150)->save();
+
+                $changes['logo'] = [
+                    'old' => $establishment->logo,
+                    'new' => "images/$name"
                 ];
+
+                $validated['logo'] = "images/$name";
             }
+
+            // UPLOAD BACKGROUND
+            if ($request->hasFile('background')) {
+                $file = $request->file('background');
+                $name = uniqid('background_') . '.' . $file->getClientOriginalExtension();
+                $path = public_path("images/$name");
+
+                $file->move(public_path('images'), $name);
+                \Intervention\Image\Facades\Image::make($path)->fit(1920, 600)->save();
+
+                $changes['background'] = [
+                    'old' => $establishment->background,
+                    'new' => "images/$name"
+                ];
+
+                $validated['background'] = "images/$name";
+            }
+
+            // SLUG AUTOMÁTICO SE O NOME MUDOU
+            if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
+                $base = \Illuminate\Support\Str::slug($validated['name']);
+                $count = Establishment::where('slug', 'LIKE', "$base%")
+                    ->where('id', '!=', $establishment->id)
+                    ->count();
+
+                $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
+
+                $changes['slug'] = [
+                    'old' => $establishment->slug,
+                    'new' => $newSlug
+                ];
+
+                $validated['slug'] = $newSlug;
+            }
+
+            // segments -> json
+            if ($request->has('segments')) {
+                $validated['segments'] = json_encode($request->segments);
+            }
+
+            // SALVA
+            $establishment->fill($validated);
+            $establishment->updated_by = $user->id;
+            $establishment->save();
+
+            // REGISTRAR INTERAÇÃO COM CHANGES
+            if (!empty($changes)) {
+                Interaction::registerUpdate(
+                    $establishment,
+                    $user,
+                    $changes
+                );
+            }
+
+            return response()->json([
+                'message' => 'Estabelecimento atualizado com sucesso.',
+                'establishment' => $establishment,
+                'changes' => $changes
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao atualizar estabelecimento', [
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
         }
-
-        // UPLOAD LOGO
-        if ($request->hasFile('logo')) {
-            $file = $request->file('logo');
-            $name = uniqid('logo_') . '.' . $file->getClientOriginalExtension();
-            $path = public_path("images/$name");
-
-            $file->move(public_path('images'), $name);
-            \Intervention\Image\Facades\Image::make($path)->fit(150, 150)->save();
-
-            $changes['logo'] = [
-                'old' => $establishment->logo,
-                'new' => "images/$name"
-            ];
-
-            $validated['logo'] = "images/$name";
-        }
-
-        // UPLOAD BACKGROUND
-        if ($request->hasFile('background')) {
-            $file = $request->file('background');
-            $name = uniqid('background_') . '.' . $file->getClientOriginalExtension();
-            $path = public_path("images/$name");
-
-            $file->move(public_path('images'), $name);
-            \Intervention\Image\Facades\Image::make($path)->fit(1920, 600)->save();
-
-            $changes['background'] = [
-                'old' => $establishment->background,
-                'new' => "images/$name"
-            ];
-
-            $validated['background'] = "images/$name";
-        }
-
-        // SLUG AUTOMÁTICO SE O NOME MUDOU
-        if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
-            $base = \Illuminate\Support\Str::slug($validated['name']);
-            $count = Establishment::where('slug', 'LIKE', "$base%")
-                ->where('id', '!=', $establishment->id)
-                ->count();
-
-            $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
-
-            $changes['slug'] = [
-                'old' => $establishment->slug,
-                'new' => $newSlug
-            ];
-
-            $validated['slug'] = $newSlug;
-        }
-
-        // segments -> json
-        if ($request->has('segments')) {
-            $validated['segments'] = json_encode($request->segments);
-        }
-
-        // SALVA
-        $establishment->fill($validated);
-        $establishment->updated_by = $user->id;
-        $establishment->save();
-
-        // REGISTRAR INTERAÇÃO COM CHANGES
-        if (!empty($changes)) {
-            Interaction::registerUpdate(
-                $establishment,
-                $user,
-                $changes
-            );
-        }
-
-        return response()->json([
-            'message' => 'Estabelecimento atualizado com sucesso.',
-            'establishment' => $establishment,
-            'changes' => $changes
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Exception $e) {
-        \Log::error('Erro ao atualizar estabelecimento', [
-            'error' => $e->getMessage()
-        ]);
-
-        return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
     }
-}
 
 
 
@@ -885,38 +885,38 @@ class EstablishmentController extends Controller
             ], 500);
         }
     }
-public function listCities($app_id)
-{
-    try {
-        if (!$app_id || !is_numeric($app_id)) {
+    public function listCities($app_id)
+    {
+        try {
+            if (!$app_id || !is_numeric($app_id)) {
+                return response()->json([
+                    'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+                ], 422);
+            }
+
+            $cities = Establishment::where('app_id', $app_id)
+                ->whereNotNull('city')
+                ->whereNotNull('uf')
+                ->select('city', 'uf')
+                ->groupBy('city', 'uf')
+                ->orderBy('city')
+                ->get();
+
             return response()->json([
-                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
-            ], 422);
+                'message' => 'Cidades listadas com sucesso.',
+                'cities' => $cities
+            ], 200);
+
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::listCities] Erro ao listar cidades', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Erro inesperado ao listar cidades.'
+            ], 500);
         }
-
-        $cities = Establishment::where('app_id', $app_id)
-            ->whereNotNull('city')
-            ->whereNotNull('uf')
-            ->select('city', 'uf')
-            ->groupBy('city', 'uf')
-            ->orderBy('city')
-            ->get();
-
-        return response()->json([
-            'message' => 'Cidades listadas com sucesso.',
-            'cities' => $cities
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::listCities] Erro ao listar cidades', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao listar cidades.'
-        ], 500);
     }
-}
 
 }
