@@ -149,7 +149,6 @@ Route::prefix('service-record')->middleware('api')->group(function () {
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
 });
-
 /*
 |--------------------------------------------------------------------------
 | ESTABELECIMENTOS
@@ -158,21 +157,31 @@ Route::prefix('service-record')->middleware('api')->group(function () {
 
 // 🔹 Rotas públicas (sem autenticação)
 Route::prefix('establishment')->middleware(['api'])->group(function () {
+
+    // Básicas
     Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
     Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
     Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
+
+    // 🔥 LISTA CIDADES — DEVE VIR ANTES DE QUALQUER {slug}
+    Route::get('/cities/{app_id}', [EstablishmentController::class, 'listCities']);
+
+    // Rotas com slug
     Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
     Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
 
-    // ✅ Home pública — lista estabelecimentos por app_id
+    // Home pública
     Route::get('/home/{app_id}', [EstablishmentController::class, 'home'])->name('establishment.home');
 });
 
-// 🔒 Rotas protegidas (requer autenticação)
+
+// 🔒 Rotas protegidas (autenticadas)
 Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function () {
+
     Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
     Route::match(['post', 'put'], '/{id}', [EstablishmentController::class, 'update'])->name('establishment.update');
     Route::delete('/{id}', [EstablishmentController::class, 'destroy'])->name('establishment.destroy');
+
     Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
     Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
     Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
