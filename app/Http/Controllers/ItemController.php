@@ -852,28 +852,36 @@ class ItemController extends Controller
             ]);
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
-    }
-public function home($app_id)
+    }public function home($app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
-            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+            return response()->json([
+                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+            ], 422);
         }
 
-        $baseQuery = Item::with([
+        $items = Item::with([
                 'entity:id,name,slug,logo,background,app_id'
             ])
             ->where('app_id', $app_id)
+            ->where('status', true)
             ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+
                 'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                      ->where('interaction_type', 'view'),
+
                 'orderItems as total_orders' => fn($q) =>
                     $q->whereHas('order', fn($o) =>
-                        $o->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended'])
+                        $o->where('type', 'appointment')
+                          ->whereIn('appointment_status', ['confirmed', 'attended'])
                     ),
             ])
-            ->select([
+            ->orderBy('name')
+            ->get([
                 'id',
                 'name',
                 'slug',
@@ -886,27 +894,13 @@ public function home($app_id)
                 'entity_name',
             ]);
 
-        // 🔵 Serviços
-        $services = (clone $baseQuery)
-            ->where('type', 'service')
-            ->orderBy('name')
-            ->limit(20)
-            ->get();
-
-        // 🟢 Produtos
-        $products = (clone $baseQuery)
-            ->where('type', 'product')
-            ->orderBy('name')
-            ->limit(20)
-            ->get();
-
         return response()->json([
             'message' => 'Itens listados com sucesso.',
-            'services' => $services,
-            'products' => $products,
+            'items' => $items,
         ], 200);
 
     } catch (\Throwable $e) {
+
         \Log::error('[ItemController::home] Erro ao listar itens', [
             'error' => $e->getMessage(),
             'trace' => $e->getTraceAsString(),
@@ -917,5 +911,6 @@ public function home($app_id)
         ], 500);
     }
 }
+
 
 }
