@@ -241,91 +241,99 @@ class EstablishmentController extends Controller
 
 
 
-    public function update(Request $request, $id)
-    {
-        try {
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usu�rio n�o autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-
-            try {
-                $establishment = Establishment::findOrFail($id);
-            } catch (ModelNotFoundException $e) {
-                return response()->json(['error' => 'Estabelecimento n�o encontrado com o ID fornecido.'], 404);
-            }
-
-            if ($establishment->user_id !== $user->id) {
-                return response()->json(['error' => 'Acesso negado.'], 403);
-            }
-
-            $validatedData = $request->validate([
-                'name' => 'sometimes|required|string|max:255',
-                'email' => 'nullable|email|max:255',
-                'phone' => 'nullable|string|max:20',
-                'description' => 'nullable|string|max:2500',
-                'address' => 'nullable|string|max:255',
-                'city' => 'nullable|string|max:100',
-                'cep' => 'nullable|string|max:10',
-                'website_url' => 'nullable|string',
-                'location' => 'nullable|string',
-                'instagram_url' => 'nullable|string',
-                'logo' => 'nullable|image',
-                'background' => 'nullable|image',
-            ], $this->getValidationMessages());
-
-            $establishment->fill($validatedData);
-            $establishment->updated_by = $user->id;
-
-            if ($request->hasFile('logo')) {
-                $dest = public_path('images');
-                $name = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-                $request->file('logo')->move($dest, $name);
-                Image::make("$dest/$name")->fit(150, 150)->save();
-                $establishment->logo = "images/$name";
-            }
-
-            if ($request->hasFile('background')) {
-                $dest = public_path('images');
-                $name = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
-                $request->file('background')->move($dest, $name);
-                Image::make("$dest/$name")->fit(1920, 600)->save();
-                $establishment->background = "images/$name";
-            }
-
-            if ($request->filled('name')) {
-                $slugBase = Str::slug($request->input('name'));
-                $count = Establishment::where('slug', $slugBase)
-                    ->where('id', '!=', $establishment->id)
-                    ->count();
-                $establishment->slug = $count
-                    ? "{$slugBase}-" . ($count + 1)
-                    : $slugBase;
-            }
-
-            $establishment->save();
-
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'Update';
-            $interaction->entity_type = 'establishment';
-            $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuário {$user->first_name} atualizou o estabelecimento {$establishment->name}.";
-            $interaction->save();
-
-            return response()->json([
-                'message' => 'Estabelecimento atualizado com sucesso.',
-                'establishment' => $establishment,
-            ], 200);
-        } catch (ValidationException $e) {
-            Log::error('Erro de valida��o ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao atualizar estabelecimento: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
+   public function update(Request $request, $id)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+
+        try {
+            $establishment = Establishment::findOrFail($id);
+        } catch (ModelNotFoundException $e) {
+            return response()->json(['error' => 'Estabelecimento não encontrado com o ID fornecido.'], 404);
+        }
+
+        if ($establishment->user_id !== $user->id) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $validatedData = $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'email' => 'nullable|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'description' => 'nullable|string|max:2500',
+            'address' => 'nullable|string|max:255',
+            'city' => 'nullable|string|max:100',
+            'uf' => 'nullable|string|size:2',
+            'cep' => 'nullable|string|max:10',
+            'website_url' => 'nullable|string',
+            'location' => 'nullable|string',
+            'instagram_url' => 'nullable|string',
+            'facebook_url' => 'nullable|string',
+            'twitter_url' => 'nullable|string',
+            'youtube_url' => 'nullable|string',
+            'fantasy' => 'nullable|string|max:255',
+            'segments' => 'nullable|array',
+            'logo' => 'nullable|image',
+            'background' => 'nullable|image',
+        ], $this->getValidationMessages());
+
+        if ($request->has('segments')) {
+            $validatedData['segments'] = json_encode($request->segments);
+        }
+
+        $establishment->fill($validatedData);
+        $establishment->updated_by = $user->id;
+
+        if ($request->hasFile('logo')) {
+            $dest = public_path('images');
+            $name = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
+            $request->file('logo')->move($dest, $name);
+            Image::make("$dest/$name")->fit(150, 150)->save();
+            $establishment->logo = "images/$name";
+        }
+
+        if ($request->hasFile('background')) {
+            $dest = public_path('images');
+            $name = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
+            $request->file('background')->move($dest, $name);
+            Image::make("$dest/$name")->fit(1920, 600)->save();
+            $establishment->background = "images/$name";
+        }
+
+        if ($request->filled('name')) {
+            $slugBase = Str::slug($request->name);
+            $count = Establishment::where('slug', $slugBase)->where('id', '!=', $establishment->id)->count();
+            $establishment->slug = $count ? "{$slugBase}-" . ($count + 1) : $slugBase;
+        }
+
+        $establishment->save();
+
+        $interaction = new Interaction();
+        $interaction->user_id = $user->id;
+        $interaction->interaction_type = 'Update';
+        $interaction->entity_type = 'establishment';
+        $interaction->entity_id = $establishment->id;
+        $interaction->content = "O usuário {$user->first_name} atualizou o estabelecimento {$establishment->name}.";
+        $interaction->save();
+
+        return response()->json([
+            'message' => 'Estabelecimento atualizado com sucesso.',
+            'establishment' => $establishment,
+        ], 200);
+
+    } catch (ValidationException $e) {
+        Log::error('Erro de validação ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
+        return response()->json(['errors' => $e->errors()], 422);
+    } catch (\Exception $e) {
+        Log::error('Erro ao atualizar estabelecimento: ' . $e->getMessage());
+        return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
     }
+}
+
 
     public function destroy($id)
     {
