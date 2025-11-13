@@ -818,73 +818,28 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
+    }public function home(Request $request, $app_id)
+{
+    $city = $request->query('city');
+    $uf = $request->query('uf');
+
+    $query = Establishment::where('app_id', $app_id)
+        ->where('status', 'active');
+
+    if ($city && $uf) {
+        $query->where('city', $city)->where('uf', $uf);
     }
-    public function home(Request $request, $app_id)
-    {
-        try {
-            if (!$app_id || !is_numeric($app_id)) {
-                return response()->json([
-                    'error' => 'O campo app_id é obrigatório e deve ser numérico.'
-                ], 422);
-            }
 
-            $city = $request->city;
-            $uf = $request->uf;
+    $establishments = $query
+        ->select("id", "name", "slug", "city", "uf", "logo", "background")
+        ->orderBy("name")
+        ->get();
 
-            $query = Establishment::where('app_id', $app_id);
+    return response()->json([
+        'establishments' => $establishments
+    ]);
+}
 
-            // ============================================================
-            // 🔥 FILTRO CORRIGIDO
-            // Só filtra se o user tiver city/uf e o estabelecimento tiver tbm
-            // ============================================================
-            if ($city && $uf) {
-                $query->whereNotNull('city')
-                    ->whereNotNull('uf')
-                    ->whereRaw('LOWER(city) = LOWER(?)', [$city])
-                    ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
-            }
-
-            $establishments = $query
-                ->with(['user:id,first_name,last_name,user_name,avatar,email'])
-                ->withCount([
-                    'views as total_views' => fn($q) =>
-                        $q->where('interaction_type', 'view'),
-
-                    'views as unique_users' => fn($q) =>
-                        $q->select(DB::raw('COUNT(DISTINCT user_id)'))
-                            ->where('interaction_type', 'view')
-                ])
-                ->orderByDesc('total_views')
-                ->limit(6)
-                ->get([
-                    'id',
-                    'name',
-                    'slug',
-                    'logo',
-                    'background',
-                    'city',
-                    'uf',
-                    'location',
-                    'address',
-                    'category'
-                ]);
-
-            return response()->json([
-                'message' => 'Estabelecimentos listados com sucesso.',
-                'establishments' => $establishments,
-            ], 200);
-
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::home] Erro ao listar estabelecimentos', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'error' => 'Erro inesperado ao listar estabelecimentos.'
-            ], 500);
-        }
-    }
     public function listCities($app_id)
     {
         try {
