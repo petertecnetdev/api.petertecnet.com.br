@@ -740,7 +740,9 @@ private function resolveEstablishmentLocation($establishment)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
-            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+            return response()->json([
+                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+            ], 422);
         }
 
         $city = $request->city;
@@ -748,17 +750,26 @@ private function resolveEstablishmentLocation($establishment)
 
         $query = Establishment::where('app_id', $app_id);
 
+        // ============================================================
+        // 🔥 FILTRO CORRIGIDO
+        // Só filtra se o user tiver city/uf e o estabelecimento tiver tbm
+        // ============================================================
         if ($city && $uf) {
-            $query->where('city', $city)
-                  ->where('uf', $uf);
+            $query->whereNotNull('city')
+                  ->whereNotNull('uf')
+                  ->whereRaw('LOWER(city) = LOWER(?)', [$city])
+                  ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
         }
 
         $establishments = $query
             ->with(['user:id,first_name,last_name,user_name,avatar,email'])
             ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+
                 'views as unique_users' => fn($q) =>
-                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view')
+                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))
+                      ->where('interaction_type', 'view')
             ])
             ->orderByDesc('total_views')
             ->limit(6)
@@ -771,7 +782,7 @@ private function resolveEstablishmentLocation($establishment)
                 'city',
                 'uf',
                 'location',
-                'address',      // ✅ AQUI
+                'address',
                 'category'
             ]);
 
