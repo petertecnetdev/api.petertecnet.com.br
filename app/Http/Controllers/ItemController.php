@@ -853,15 +853,14 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
     }
-
-    public function home($app_id)
+public function home($app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
             return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
         }
 
-        $items = Item::with([
+        $baseQuery = Item::with([
                 'entity:id,name,slug,logo,background,app_id'
             ])
             ->where('app_id', $app_id)
@@ -875,9 +874,7 @@ class ItemController extends Controller
                         $o->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended'])
                     ),
             ])
-            ->orderByDesc('total_orders')
-            ->limit(12)
-            ->get([
+            ->select([
                 'id',
                 'name',
                 'slug',
@@ -890,9 +887,24 @@ class ItemController extends Controller
                 'entity_name',
             ]);
 
+        // 🔵 Serviços
+        $services = (clone $baseQuery)
+            ->where('type', 'service')
+            ->orderBy('name')
+            ->limit(20)
+            ->get();
+
+        // 🟢 Produtos
+        $products = (clone $baseQuery)
+            ->where('type', 'product')
+            ->orderBy('name')
+            ->limit(20)
+            ->get();
+
         return response()->json([
             'message' => 'Itens listados com sucesso.',
-            'items' => $items,
+            'services' => $services,
+            'products' => $products,
         ], 200);
 
     } catch (\Throwable $e) {
