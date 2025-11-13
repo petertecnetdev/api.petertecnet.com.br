@@ -939,7 +939,7 @@ class EmployerController extends Controller
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-    public function home(Request $request, $app_id)
+  public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
@@ -951,12 +951,30 @@ class EmployerController extends Controller
         })
         ->pluck('id');
 
-    // 2. Buscar Employers só desses estabelecimentos
+    // 2. Buscar Employers com métricas
     $employers = \App\Models\Employer::whereIn('establishment_id', $establishmentIds)
         ->with([
             'user:id,first_name,last_name,user_name,avatar',
-            'establishment:id,name,slug,city,uf,logo,background'
+            'establishment:id,name,slug,city,uf,logo,background,category'
         ])
+        ->withCount([
+            // 👁️ Views
+            'views as total_views' => function ($q) {
+                $q->where('interaction_type', 'view');
+            },
+
+            // 👤 Usuários únicos
+            'views as unique_users' => function ($q) {
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view');
+            },
+
+            // 💈 Atendimentos concluídos
+            'orders as completed_appointments' => function ($q) {
+                $q->whereIn('appointment_status', ['confirmed', 'attended']);
+            },
+        ])
+        ->orderByDesc('completed_appointments')
         ->get();
 
     return response()->json([
