@@ -627,8 +627,7 @@ class EstablishmentController extends Controller
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }
-  public function home($app_id)
+    }public function home($app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
@@ -640,13 +639,25 @@ class EstablishmentController extends Controller
             ])
             ->where('app_id', $app_id)
             ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+
                 'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                'orders as total_appointments' => fn($q) =>
-                    $q->where('type', 'appointment')->whereIn('appointment_status', ['confirmed', 'attended']),
+                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))
+                      ->where('interaction_type', 'view'),
+
+                // 🔥 Total de atendimentos concluídos
+                'orders as total_completed_appointments' => fn($q) =>
+                    $q->where('type', 'appointment')
+                      ->where('appointment_status', 'attended'),
+
+                // 🔥 Quantidade de clientes únicos atendidos
+                'orders as unique_clients_attended' => fn($q) =>
+                    $q->select(DB::raw('COUNT(DISTINCT client_id)'))
+                      ->where('type', 'appointment')
+                      ->where('appointment_status', 'attended'),
             ])
-            ->orderByDesc('total_appointments')
+            ->orderByDesc('total_completed_appointments')
             ->limit(6)
             ->get([
                 'id',
