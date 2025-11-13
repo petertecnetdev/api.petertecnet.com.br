@@ -187,4 +187,41 @@ class User extends Authenticatable implements JWTSubject
         }
         return in_array($permissionName, $this->profile->permissions);
     }
+    public function updateAddress($city, $uf)
+{
+    if (!$city && !$uf) {
+        return false;
+    }
+
+    return $this->update([
+        'city' => $city ?: $this->city,
+        'uf'   => $uf   ?: $this->uf,
+    ]);
+}
+
+public static function geoFromIp($ip)
+{
+    try {
+        $url = "http://ip-api.com/json/{$ip}?fields=status,message,city,region";
+        $geo = json_decode(file_get_contents($url), true);
+
+        if ($geo['status'] === 'success') {
+            return [
+                'city' => $geo['city'] ?? null,
+                'uf'   => $geo['region'] ?? null,
+            ];
+        }
+    } catch (\Throwable $e) {}
+
+    return ['city' => null, 'uf' => null];
+}
+public static function credentials($username, $password)
+{
+    if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
+        return ['email' => $username, 'password' => $password];
+    }
+
+    return ['cpf' => preg_replace('/[^0-9]/', '', $username), 'password' => $password];
+}
+
 }

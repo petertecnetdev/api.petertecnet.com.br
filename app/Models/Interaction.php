@@ -169,6 +169,28 @@ class Interaction extends Model
     /* ===============================
        MÉTODOS PARA REUTILIZAÇÃO GLOBAL
     ================================ */
+public static function registerLogin($user, $data = [])
+{
+    if (!$user) {
+        return null;
+    }
+
+    return static::create([
+        'user_id' => $user->id,
+        'entity_id' => $user->id,
+        'entity_type' => 'User',
+        'interaction_type' => 'login',
+        'name' => 'Login do usuário',
+        'content' => [
+            'ip' => $data['ip'] ?? null,
+            'latitude' => $data['latitude'] ?? null,
+            'longitude' => $data['longitude'] ?? null,
+            'city' => $data['city'] ?? null,
+            'uf' => $data['uf'] ?? null,
+            'user_agent' => $data['user_agent'] ?? request()->userAgent(),
+        ],
+    ]);
+}
 
    public static function registerView($entity, $user = null, $extra = [])
 {
@@ -227,4 +249,38 @@ class Interaction extends Model
             'comment' => $commentText,
         ]);
     }
+    public static function tooManyRecentLogins($userId)
+{
+    return static::where('user_id', $userId)
+        ->where('interaction_type', 'login')
+        ->where('created_at', '>=', now()->subSeconds(10))
+        ->exists();
+}
+
+public static function registerLoginAuto($user)
+{
+    return static::registerLogin($user, [
+        'ip' => request()->ip(),
+        'latitude' => request('latitude'),
+        'longitude' => request('longitude'),
+        'city' => request('city'),
+        'uf' => request('uf'),
+        'user_agent' => request()->userAgent(),
+    ]);
+}
+public static function register($type, $entity, $user = null, $content = [])
+{
+    return static::create([
+        'interaction_type' => $type,
+        'entity_type' => class_basename($entity),
+        'entity_id' => $entity->id,
+        'user_id' => $user?->id,
+        'name' => ucfirst($type),
+        'content' => array_merge([
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+        ], $content),
+    ]);
+}
+
 }

@@ -128,141 +128,157 @@ class AuthController extends Controller
     }
 
 
-  public function login(Request $request)
-{
-    try {
-        Log::info('Tentativa de login', ['username' => $request->username]);
+    public function login(Request $request)
+    {
+        try {
+            Log::info('Tentativa de login', ['username' => $request->username]);
 
-        $validator = Validator::make($request->all(), [
-            'username' => 'required|string',
-            'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-        ], $this->getValidationMessages());
+            // =======================
+            //  VALIDAR LOGIN
+            // =======================
+            $validator = Validator::make($request->all(), [
+                'username' => 'required|string',
+                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+            ], $this->getValidationMessages());
 
-        if ($validator->fails()) {
-            throw new ValidationException($validator);
-        }
-
-        $username = $request->username;
-        $password = $request->password;
-
-        if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
-            $credentials = ['email' => $username, 'password' => $password];
-        } else {
-            $cpf = preg_replace('/[^0-9]/', '', $username);
-            $credentials = ['cpf' => $cpf, 'password' => $password];
-        }
-
-        if (!$token = auth()->attempt($credentials)) {
-            $user = filter_var($username, FILTER_VALIDATE_EMAIL)
-                ? User::where('email', $username)->first()
-                : User::where('cpf', $cpf)->first();
-
-            return response()->json([
-                'error' => !$user ? 'Usuário não cadastrado.' : 'Senha incorreta.'
-            ], !$user ? 404 : 401);
-        }
-
-        $user = auth()->user();
-
-        $ip = $request->ip();
-        $latitude = $request->latitude ?? null;
-        $longitude = $request->longitude ?? null;
-
-        $city = null;
-        $uf = null;
-
-        /* ============================================================
-           1) PRIORIDADE → FRONT MANDOU LAT/LON
-        ============================================================ */
-        if ($latitude && $longitude) {
-            try {
-                $context = stream_context_create([
-                    'http' => ['header' => "User-Agent: Rasoio/1.0\r\n"]
-                ]);
-
-                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
-                $json = file_get_contents($url, false, $context);
-                $response = json_decode($json, true);
-
-                $city = $response['address']['city']
-                    ?? $response['address']['town']
-                    ?? $response['address']['village']
-                    ?? null;
-
-                $uf = $response['address']['state'] ?? null;
-
-            } catch (\Throwable $e) {
-                Log::warning('Erro ao geocodificar coordenadas.', ['msg' => $e->getMessage()]);
+            if ($validator->fails()) {
+                throw new ValidationException($validator);
             }
-        }
 
-        /* ============================================================
-           2) FALLBACK → NÃO VEIO LAT/LON → TENTA GEOLOCALIZAR PELO IP
-        ============================================================ */
-        if (!$city || !$uf) {
-            try {
-                $ipUrl = "http://ip-api.com/json/{$ip}?fields=status,message,city,region";
-                $geo = json_decode(file_get_contents($ipUrl), true);
+            $username = $request->username;
+            $password = $request->password;
 
-                if ($geo['status'] === 'success') {
-                    $city = $city ?: $geo['city'];
-                    $uf   = $uf   ?: $geo['region']; // região vem como "GO", "SP" etc
+            // =======================
+            //  CREDENCIAIS VIA MODEL
+            // =======================
+            $credentials = User::credentials($username, $password);
+
+            if (!$token = auth()->attempt($credentials)) {
+
+                $user = filter_var($username, FILTER_VALIDATE_EMAIL)
+                    ? User::where('email', $username)->first()
+                    : User::where('cpf', preg_replace('/[^0-9]/', '', $username))->first();
+
+                return response()->json([
+                    'error' => !$user ? 'Usuário não cadastrado.' : 'Senha incorreta.'
+                ], !$user ? 404 : 401);
+            }
+
+            // Usuário autenticado
+            $user = auth()->user();
+
+            $ip = $request->ip();
+            $latitude = $request->latitude ?? null;
+            $longitude = $request->longitude ?? null;
+
+            $city = null;
+            $uf = null;
+
+            // ============================================================
+            // 1) PRIORIDADE — TENTAR COORDENADAS DO FRONT
+            // ============================================================
+            if ($latitude && $longitude) {
+                try {
+                    $context = stream_context_create([
+                        'http' => ['header' => "User-Agent: Rasoio/1.0\r\n"]
+                    ]);
+
+                    $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
+                    $json = file_get_contents($url, false, $context);
+                    $response = json_decode($json, true);
+
+                    $city = $response['address']['city']
+                        ?? $response['address']['town']
+                        ?? $response['address']['village']
+                        ?? null;
+
+                    $uf = $response['address']['state'] ?? null;
+
+                    // Transformar para UF
+                    $ufs = [
+                        'Acre' => 'AC',
+                        'Alagoas' => 'AL',
+                        'Amapá' => 'AP',
+                        'Amazonas' => 'AM',
+                        'Bahia' => 'BA',
+                        'Ceará' => 'CE',
+                        'Distrito Federal' => 'DF',
+                        'Espírito Santo' => 'ES',
+                        'Goiás' => 'GO',
+                        'Maranhão' => 'MA',
+                        'Mato Grosso' => 'MT',
+                        'Mato Grosso do Sul' => 'MS',
+                        'Minas Gerais' => 'MG',
+                        'Pará' => 'PA',
+                        'Paraíba' => 'PB',
+                        'Paraná' => 'PR',
+                        'Pernambuco' => 'PE',
+                        'Piauí' => 'PI',
+                        'Rio de Janeiro' => 'RJ',
+                        'Rio Grande do Norte' => 'RN',
+                        'Rio Grande do Sul' => 'RS',
+                        'Rondônia' => 'RO',
+                        'Roraima' => 'RR',
+                        'Santa Catarina' => 'SC',
+                        'São Paulo' => 'SP',
+                        'Sergipe' => 'SE',
+                        'Tocantins' => 'TO'
+                    ];
+
+                    if (isset($ufs[$uf])) {
+                        $uf = $ufs[$uf];
+                    }
+
+                } catch (\Throwable $e) {
+                    Log::warning('Falha no reverse geocode.', ['msg' => $e->getMessage()]);
                 }
-
-            } catch (\Throwable $ipErr) {
-                Log::warning('Falha ao geolocalizar via IP', ['error' => $ipErr->getMessage()]);
             }
-        }
 
-        /* ============================================================
-           3) SALVAR CITY e UF NO USER (SE TIVER ALGO)
-        ============================================================ */
-        if ($city || $uf) {
-            $user->update([
-                'city' => $city,
-                'uf'   => $uf,
-            ]);
+            // ============================================================
+            // 2) FALLBACK — GEOLOCALIZAÇÃO VIA IP PELA MODEL
+            // ============================================================
+            if (!$city || !$uf) {
+                $geo = User::geoFromIp($ip);
 
-            Log::info('Endereço atualizado pelo backend', [
-                'user_id' => $user->id,
-                'city'    => $city,
-                'uf'      => $uf,
-                'via'     => $latitude ? 'GPS' : 'IP'
-            ]);
-        }
+                $city = $city ?: $geo['city'];
+                $uf = $uf ?: $geo['uf'];
+            }
 
-        /* ============================================================
-           4) REGISTRAR INTERAÇÃO DO LOGIN
-        ============================================================ */
-        Interaction::create([
-            'user_id' => $user->id,
-            'interaction_type' => 'login',
-            'entity_id' => $user->id,
-            'entity_type' => 'User',
-            'name' => 'Login do usuário',
-            'content' => [
+            // ============================================================
+            // 3) SALVAR ENDEREÇO DO USUÁRIO (via método da MODEL)
+            // ============================================================
+            $user->updateAddress($city, $uf);
+
+            // ============================================================
+            // 4) REGISTRAR INTERAÇÃO (via MODEL)
+            // ============================================================
+            Interaction::registerLogin($user, [
                 'ip' => $ip,
                 'latitude' => $latitude,
                 'longitude' => $longitude,
                 'city' => $city,
                 'uf' => $uf,
                 'user_agent' => $request->userAgent(),
-            ],
-        ]);
+            ]);
 
-        return response()->json([
-            'message' => 'Login realizado com sucesso!',
-            'token' => $this->createNewToken($token),
-        ], 200);
+            return response()->json([
+                'message' => 'Login realizado com sucesso!',
+                'token' => $this->createNewToken($token),
+            ], 200);
 
-    } catch (ValidationException $e) {
-        return response()->json($e->errors(), 422);
+        } catch (ValidationException $e) {
+            return response()->json($e->errors(), 422);
 
-    } catch (\Exception $e) {
-        Log::error('Erro inesperado no login', ['msg' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro durante o login'], 500);
+        } catch (\Exception $e) {
+            Log::error('Erro inesperado no login', [
+                'msg' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json(['error' => 'Erro durante o login'], 500);
+        }
     }
-}
+
 
 
     /**
