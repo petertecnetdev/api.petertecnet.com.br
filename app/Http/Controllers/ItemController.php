@@ -853,8 +853,7 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
     }
-
- public function home($app_id)
+public function home($app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
@@ -863,7 +862,9 @@ class ItemController extends Controller
             ], 422);
         }
 
-        $items = Item::with('entity:id,name,slug,logo,background,app_id')
+        $items = Item::with([
+                'entity:id,name,slug,logo,background,city,category,app_id'
+            ])
             ->where('app_id', $app_id)
             ->select([
                 'id',
@@ -879,15 +880,63 @@ class ItemController extends Controller
                 'entity_name',
             ])
             ->withCount([
-                'views as total_views' => fn($q) => 
+                // 👁️ Views totais
+                'views as total_views' => fn($q) =>
                     $q->where('interaction_type', 'view'),
+
+                // 👤 Usuários únicos
                 'views as unique_users' => fn($q) =>
                     $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                       ->where('interaction_type', 'view'),
+                      ->where('interaction_type', 'view'),
+
+                // 🧾 Quantos pedidos possuem esse item
                 'orderItems as total_orders',
+
+                // 🔥 Total de atendimentos usando esse item (só atendidos)
+                'orderItems as total_completed_appointments' => fn($q) =>
+                    $q->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->where('orders.type', 'appointment')
+                      ->where('orders.appointment_status', 'attended'),
+
+                // 🧍‍♂️ Clientes únicos atendidos
+                'orderItems as unique_clients_attended' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT orders.client_id)'))
+                      ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                      ->where('orders.type', 'appointment')
+                      ->where('orders.appointment_status', 'attended'),
             ])
             ->orderBy('name')
             ->get();
+
+        // 🔥 EMPLOYER QUE MAIS ATENDEU CADA ITEM
+        foreach ($items as $item) {
+            $topEmployer = \DB::table('order_items')
+                ->join('orders', 'order_items.order_id', '=', 'orders.id')
+                ->join('employers', 'orders.attendant_id', '=', 'employers.id')
+                ->join('users', 'employers.user_id', '=', 'users.id')
+                ->where('order_items.item_id', $item->id)
+                ->where('orders.type', 'appointment')
+                ->where('orders.appointment_status', 'attended')
+                ->select(
+                    'employers.id as employer_id',
+                    'users.first_name',
+                    'users.last_name',
+                    'users.user_name',
+                    'users.avatar',
+                    \DB::raw('COUNT(*) as total')
+                )
+                ->groupBy(
+                    'employers.id',
+                    'users.first_name',
+                    'users.last_name',
+                    'users.user_name',
+                    'users.avatar'
+                )
+                ->orderByDesc('total')
+                ->first();
+
+            $item->top_employer = $topEmployer ?: null;
+        }
 
         return response()->json([
             'message' => 'Itens listados com sucesso.',
