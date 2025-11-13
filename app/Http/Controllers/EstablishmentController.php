@@ -55,193 +55,213 @@ class EstablishmentController extends Controller
         ];
     }
     public function store(Request $request)
-{
-    try {
-        $user = Auth::user();
+    {
+        try {
+            $user = Auth::user();
 
-        Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
-            'user_id' => $user->id ?? null,
-            'payload' => $request->all()
-        ]);
+            Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
+                'user_id' => $user->id ?? null,
+                'payload' => $request->all()
+            ]);
 
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-            'name' => 'required|string|max:255',
-            'fantasy' => 'nullable|string|max:255',
-            'cnpj' => 'nullable|string|max:20',
-            'type' => 'nullable|string|max:100',
-            'category' => 'nullable|string|max:100',
-            'phone' => 'nullable|string|max:20',
-            'email' => 'nullable|email|max:255',
-            'description' => 'nullable|string|max:2500',
-            'additional_info' => 'nullable|string|max:2500',
-            'city' => 'nullable|string|max:100',
-            'uf' => 'nullable|string|max:2',
-            'location' => 'nullable|string',
-            'cep' => 'nullable|string|max:10',
-            'address' => 'nullable|string|max:255',
-            'latitude' => 'nullable|numeric',
-            'longitude' => 'nullable|numeric',
-            'logo' => 'nullable|image|max:2048',
-            'background' => 'nullable|image|max:4096',
-            'website_url' => 'nullable|url|max:255',
-            'facebook_url' => 'nullable|url|max:255',
-            'instagram_url' => 'nullable|url|max:255',
-            'twitter_url' => 'nullable|url|max:255',
-            'youtube_url' => 'nullable|url|max:255',
-            'segments' => 'nullable|array',
-            'segments.*' => 'string',
-            'is_featured' => 'boolean',
-            'is_published' => 'boolean',
-            'is_approved' => 'boolean',
-            'is_cancelled' => 'boolean',
-        ], $this->getValidationMessages());
+            $data = $request->validate([
+                'app_id' => 'required|integer|exists:applications,id',
+                'name' => 'required|string|max:255',
+                'fantasy' => 'nullable|string|max:255',
+                'cnpj' => 'nullable|string|max:20',
+                'type' => 'nullable|string|max:100',
+                'category' => 'nullable|string|max:100',
+                'phone' => 'nullable|string|max:20',
+                'email' => 'nullable|email|max:255',
+                'description' => 'nullable|string|max:2500',
+                'additional_info' => 'nullable|string|max:2500',
+                'city' => 'nullable|string|max:100',
+                'uf' => 'nullable|string|max:2',
+                'location' => 'nullable|string',
+                'cep' => 'nullable|string|max:10',
+                'address' => 'nullable|string|max:255',
+                'latitude' => 'nullable|numeric',
+                'longitude' => 'nullable|numeric',
+                'logo' => 'nullable|image|max:2048',
+                'background' => 'nullable|image|max:4096',
+                'website_url' => 'nullable|url|max:255',
+                'facebook_url' => 'nullable|url|max:255',
+                'instagram_url' => 'nullable|url|max:255',
+                'twitter_url' => 'nullable|url|max:255',
+                'youtube_url' => 'nullable|url|max:255',
+                'segments' => 'nullable|array',
+                'segments.*' => 'string',
+                'is_featured' => 'boolean',
+                'is_published' => 'boolean',
+                'is_approved' => 'boolean',
+                'is_cancelled' => 'boolean',
+            ], $this->getValidationMessages());
 
-        DB::beginTransaction();
+            DB::beginTransaction();
 
-        // 🔵 Slug único
-        $slug = Str::slug($data['fantasy'] ?? $data['name']);
-        if (Establishment::where('slug', $slug)->exists()) {
-            $slug .= '-' . uniqid();
-        }
-
-        // 🔵 Uploads
-        if (!empty($data['logo'])) {
-            $data['logo'] = $data['logo']->store('logos', 'public');
-        }
-
-        if (!empty($data['background'])) {
-            $data['background'] = $data['background']->store('backgrounds', 'public');
-        }
-
-        // 🔵 Herdar cidade e UF do usuário se não vierem do front
-        if (empty($data['city']) && !empty($user->city)) {
-            $data['city'] = $user->city;
-        }
-
-        if (empty($data['uf']) && !empty($user->uf)) {
-            $data['uf'] = $user->uf;
-        }
-
-        // 🔵 Localização inteligente
-        $latitude = $data['latitude'] ?? null;
-        $longitude = $data['longitude'] ?? null;
-        $city = $data['city'] ?? null;
-        $uf = $data['uf'] ?? null;
-
-        // 🟣 Se latitude/longitude foram enviados → reverse geocode
-        if ($latitude && $longitude && (!$city || !$uf)) {
-            try {
-                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
-                $geo = json_decode(file_get_contents($url), true);
-
-                $data['city'] = $geo['address']['city']
-                    ?? $geo['address']['town']
-                    ?? $geo['address']['village']
-                    ?? $data['city'];
-
-                $ufText = $geo['address']['state'] ?? null;
-                if ($ufText) {
-                    $mapping = [
-                        'Acre'=>'AC','Alagoas'=>'AL','Amapá'=>'AP','Amazonas'=>'AM',
-                        'Bahia'=>'BA','Ceará'=>'CE','Distrito Federal'=>'DF','Espírito Santo'=>'ES',
-                        'Goiás'=>'GO','Maranhão'=>'MA','Mato Grosso'=>'MT','Mato Grosso do Sul'=>'MS',
-                        'Minas Gerais'=>'MG','Pará'=>'PA','Paraíba'=>'PB','Paraná'=>'PR',
-                        'Pernambuco'=>'PE','Piauí'=>'PI','Rio de Janeiro'=>'RJ','Rio Grande do Norte'=>'RN',
-                        'Rio Grande do Sul'=>'RS','Rondônia'=>'RO','Roraima'=>'RR','Santa Catarina'=>'SC',
-                        'São Paulo'=>'SP','Sergipe'=>'SE','Tocantins'=>'TO'
-                    ];
-
-                    $data['uf'] = $mapping[$ufText] ?? $data['uf'];
-                }
-            } catch (\Throwable $geoError) {
-                Log::warning('[EstablishmentController::store] Erro ao tentar reverse geocode', [
-                    'error' => $geoError->getMessage(),
-                ]);
+            // 🔵 Slug único
+            $slug = Str::slug($data['fantasy'] ?? $data['name']);
+            if (Establishment::where('slug', $slug)->exists()) {
+                $slug .= '-' . uniqid();
             }
-        }
 
-        // 🟣 Se não temos lat/lng mas temos CEP/endereço → buscar coordenadas
-        if ((!$latitude || !$longitude) && (!empty($data['cep']) || !empty($data['address']))) {
-            try {
-                $query = urlencode($data['address'] . ' ' . $data['cep'] . ' ' . ($data['city'] ?? '') . ' ' . ($data['uf'] ?? ''));
-                $url = "https://nominatim.openstreetmap.org/search?format=json&q={$query}&limit=1";
-
-                $search = json_decode(file_get_contents($url), true);
-
-                if (!empty($search[0])) {
-                    $latitude = $search[0]['lat'];
-                    $longitude = $search[0]['lon'];
-                }
-
-            } catch (\Throwable $geoSearchError) {
-                Log::warning('[EstablishmentController::store] Erro ao geocodificar endereço', [
-                    'error' => $geoSearchError->getMessage(),
-                ]);
+            // 🔵 Uploads
+            if (!empty($data['logo'])) {
+                $data['logo'] = $data['logo']->store('logos', 'public');
             }
+
+            if (!empty($data['background'])) {
+                $data['background'] = $data['background']->store('backgrounds', 'public');
+            }
+
+            // 🔵 Herdar cidade e UF do usuário se não vierem do front
+            if (empty($data['city']) && !empty($user->city)) {
+                $data['city'] = $user->city;
+            }
+
+            if (empty($data['uf']) && !empty($user->uf)) {
+                $data['uf'] = $user->uf;
+            }
+
+            // 🔵 Localização inteligente
+            $latitude = $data['latitude'] ?? null;
+            $longitude = $data['longitude'] ?? null;
+            $city = $data['city'] ?? null;
+            $uf = $data['uf'] ?? null;
+
+            // 🟣 Se latitude/longitude foram enviados → reverse geocode
+            if ($latitude && $longitude && (!$city || !$uf)) {
+                try {
+                    $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
+                    $geo = json_decode(file_get_contents($url), true);
+
+                    $data['city'] = $geo['address']['city']
+                        ?? $geo['address']['town']
+                        ?? $geo['address']['village']
+                        ?? $data['city'];
+
+                    $ufText = $geo['address']['state'] ?? null;
+                    if ($ufText) {
+                        $mapping = [
+                            'Acre' => 'AC',
+                            'Alagoas' => 'AL',
+                            'Amapá' => 'AP',
+                            'Amazonas' => 'AM',
+                            'Bahia' => 'BA',
+                            'Ceará' => 'CE',
+                            'Distrito Federal' => 'DF',
+                            'Espírito Santo' => 'ES',
+                            'Goiás' => 'GO',
+                            'Maranhão' => 'MA',
+                            'Mato Grosso' => 'MT',
+                            'Mato Grosso do Sul' => 'MS',
+                            'Minas Gerais' => 'MG',
+                            'Pará' => 'PA',
+                            'Paraíba' => 'PB',
+                            'Paraná' => 'PR',
+                            'Pernambuco' => 'PE',
+                            'Piauí' => 'PI',
+                            'Rio de Janeiro' => 'RJ',
+                            'Rio Grande do Norte' => 'RN',
+                            'Rio Grande do Sul' => 'RS',
+                            'Rondônia' => 'RO',
+                            'Roraima' => 'RR',
+                            'Santa Catarina' => 'SC',
+                            'São Paulo' => 'SP',
+                            'Sergipe' => 'SE',
+                            'Tocantins' => 'TO'
+                        ];
+
+                        $data['uf'] = $mapping[$ufText] ?? $data['uf'];
+                    }
+                } catch (\Throwable $geoError) {
+                    Log::warning('[EstablishmentController::store] Erro ao tentar reverse geocode', [
+                        'error' => $geoError->getMessage(),
+                    ]);
+                }
+            }
+
+            // 🟣 Se não temos lat/lng mas temos CEP/endereço → buscar coordenadas
+            if ((!$latitude || !$longitude) && (!empty($data['cep']) || !empty($data['address']))) {
+                try {
+                    $query = urlencode($data['address'] . ' ' . $data['cep'] . ' ' . ($data['city'] ?? '') . ' ' . ($data['uf'] ?? ''));
+                    $url = "https://nominatim.openstreetmap.org/search?format=json&q={$query}&limit=1";
+
+                    $search = json_decode(file_get_contents($url), true);
+
+                    if (!empty($search[0])) {
+                        $latitude = $search[0]['lat'];
+                        $longitude = $search[0]['lon'];
+                    }
+
+                } catch (\Throwable $geoSearchError) {
+                    Log::warning('[EstablishmentController::store] Erro ao geocodificar endereço', [
+                        'error' => $geoSearchError->getMessage(),
+                    ]);
+                }
+            }
+
+            // 🔵 Se temos lat/lng → gerar "location" formatado
+            if ($latitude && $longitude) {
+                $data['location'] = "{$latitude},{$longitude}";
+            }
+
+            // 🔵 Criar estabelecimento
+            $establishment = Establishment::create([
+                'app_id' => $data['app_id'],
+                'name' => $data['name'],
+                'fantasy' => $data['fantasy'] ?? null,
+                'slug' => $slug,
+                'cnpj' => $data['cnpj'] ?? null,
+                'type' => $data['type'] ?? null,
+                'category' => $data['category'] ?? null,
+                'phone' => $data['phone'] ?? null,
+                'email' => $data['email'] ?? null,
+                'description' => $data['description'] ?? null,
+                'additional_info' => $data['additional_info'] ?? null,
+                'city' => $data['city'] ?? null,
+                'uf' => $data['uf'] ?? null,
+                'location' => $data['location'] ?? null,
+                'cep' => $data['cep'] ?? null,
+                'address' => $data['address'] ?? null,
+                'logo' => $data['logo'] ?? null,
+                'background' => $data['background'] ?? null,
+                'website_url' => $data['website_url'] ?? null,
+                'facebook_url' => $data['facebook_url'] ?? null,
+                'instagram_url' => $data['instagram_url'] ?? null,
+                'twitter_url' => $data['twitter_url'] ?? null,
+                'youtube_url' => $data['youtube_url'] ?? null,
+                'segments' => $data['segments'] ?? [],
+                'is_featured' => $data['is_featured'] ?? false,
+                'is_published' => $data['is_published'] ?? false,
+                'is_approved' => $data['is_approved'] ?? false,
+                'is_cancelled' => $data['is_cancelled'] ?? false,
+                'user_id' => $user->id ?? null,
+                'updated_by' => $user->id ?? null,
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Estabelecimento criado com sucesso!',
+                'establishment' => $establishment,
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['error' => 'Ocorreu um erro ao criar o estabelecimento.'], 500);
         }
-
-        // 🔵 Se temos lat/lng → gerar "location" formatado
-        if ($latitude && $longitude) {
-            $data['location'] = "{$latitude},{$longitude}";
-        }
-
-        // 🔵 Criar estabelecimento
-        $establishment = Establishment::create([
-            'app_id' => $data['app_id'],
-            'name' => $data['name'],
-            'fantasy' => $data['fantasy'] ?? null,
-            'slug' => $slug,
-            'cnpj' => $data['cnpj'] ?? null,
-            'type' => $data['type'] ?? null,
-            'category' => $data['category'] ?? null,
-            'phone' => $data['phone'] ?? null,
-            'email' => $data['email'] ?? null,
-            'description' => $data['description'] ?? null,
-            'additional_info' => $data['additional_info'] ?? null,
-            'city' => $data['city'] ?? null,
-            'uf' => $data['uf'] ?? null,
-            'location' => $data['location'] ?? null,
-            'cep' => $data['cep'] ?? null,
-            'address' => $data['address'] ?? null,
-            'logo' => $data['logo'] ?? null,
-            'background' => $data['background'] ?? null,
-            'website_url' => $data['website_url'] ?? null,
-            'facebook_url' => $data['facebook_url'] ?? null,
-            'instagram_url' => $data['instagram_url'] ?? null,
-            'twitter_url' => $data['twitter_url'] ?? null,
-            'youtube_url' => $data['youtube_url'] ?? null,
-            'segments' => $data['segments'] ?? [],
-            'is_featured' => $data['is_featured'] ?? false,
-            'is_published' => $data['is_published'] ?? false,
-            'is_approved' => $data['is_approved'] ?? false,
-            'is_cancelled' => $data['is_cancelled'] ?? false,
-            'user_id' => $user->id ?? null,
-            'updated_by' => $user->id ?? null,
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Estabelecimento criado com sucesso!',
-            'establishment' => $establishment,
-        ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        DB::rollBack();
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        return response()->json(['error' => 'Ocorreu um erro ao criar o estabelecimento.'], 500);
     }
-}
 
 
 
 
 
-   public function update(Request $request, $id)
+    public function update(Request $request, $id)
 {
     try {
         if (!Auth::check()) {
@@ -249,22 +269,24 @@ class EstablishmentController extends Controller
         }
 
         $user = Auth::user();
+        $establishment = Establishment::find($id);
 
-        try {
-            $establishment = Establishment::findOrFail($id);
-        } catch (ModelNotFoundException $e) {
-            return response()->json(['error' => 'Estabelecimento não encontrado com o ID fornecido.'], 404);
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
         if ($establishment->user_id !== $user->id) {
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        $validatedData = $request->validate([
-            'name' => 'sometimes|required|string|max:255',
+        // VALIDAÇÃO
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'fantasy' => 'nullable|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:20',
             'description' => 'nullable|string|max:2500',
+            'additional_info' => 'nullable|string|max:2500',
             'address' => 'nullable|string|max:255',
             'city' => 'nullable|string|max:100',
             'uf' => 'nullable|string|size:2',
@@ -275,64 +297,116 @@ class EstablishmentController extends Controller
             'facebook_url' => 'nullable|string',
             'twitter_url' => 'nullable|string',
             'youtube_url' => 'nullable|string',
-            'fantasy' => 'nullable|string|max:255',
             'segments' => 'nullable|array',
-            'logo' => 'nullable|image',
-            'background' => 'nullable|image',
-        ], $this->getValidationMessages());
+            'logo' => 'nullable|image|max:2048',
+            'background' => 'nullable|image|max:4096',
+        ]);
 
-        if ($request->has('segments')) {
-            $validatedData['segments'] = json_encode($request->segments);
+        // CALCULAR DIFERENÇAS
+        $oldData = $establishment->getOriginal();
+        $changes = [];
+
+        foreach ($validated as $key => $value) {
+            if ($key === 'segments') {
+                $value = json_encode($value);
+            }
+
+            if (($oldData[$key] ?? null) != $value) {
+                $changes[$key] = [
+                    'old' => $oldData[$key] ?? null,
+                    'new' => $value
+                ];
+            }
         }
 
-        $establishment->fill($validatedData);
-        $establishment->updated_by = $user->id;
-
+        // UPLOAD LOGO
         if ($request->hasFile('logo')) {
-            $dest = public_path('images');
-            $name = uniqid('logo_') . '.' . $request->file('logo')->getClientOriginalExtension();
-            $request->file('logo')->move($dest, $name);
-            Image::make("$dest/$name")->fit(150, 150)->save();
-            $establishment->logo = "images/$name";
+            $file = $request->file('logo');
+            $name = uniqid('logo_') . '.' . $file->getClientOriginalExtension();
+            $path = public_path("images/$name");
+
+            $file->move(public_path('images'), $name);
+            \Intervention\Image\Facades\Image::make($path)->fit(150, 150)->save();
+
+            $changes['logo'] = [
+                'old' => $establishment->logo,
+                'new' => "images/$name"
+            ];
+
+            $validated['logo'] = "images/$name";
         }
 
+        // UPLOAD BACKGROUND
         if ($request->hasFile('background')) {
-            $dest = public_path('images');
-            $name = uniqid('background_') . '.' . $request->file('background')->getClientOriginalExtension();
-            $request->file('background')->move($dest, $name);
-            Image::make("$dest/$name")->fit(1920, 600)->save();
-            $establishment->background = "images/$name";
+            $file = $request->file('background');
+            $name = uniqid('background_') . '.' . $file->getClientOriginalExtension();
+            $path = public_path("images/$name");
+
+            $file->move(public_path('images'), $name);
+            \Intervention\Image\Facades\Image::make($path)->fit(1920, 600)->save();
+
+            $changes['background'] = [
+                'old' => $establishment->background,
+                'new' => "images/$name"
+            ];
+
+            $validated['background'] = "images/$name";
         }
 
-        if ($request->filled('name')) {
-            $slugBase = Str::slug($request->name);
-            $count = Establishment::where('slug', $slugBase)->where('id', '!=', $establishment->id)->count();
-            $establishment->slug = $count ? "{$slugBase}-" . ($count + 1) : $slugBase;
+        // SLUG AUTOMÁTICO SE O NOME MUDOU
+        if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
+            $base = \Illuminate\Support\Str::slug($validated['name']);
+            $count = Establishment::where('slug', 'LIKE', "$base%")
+                ->where('id', '!=', $establishment->id)
+                ->count();
+
+            $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
+
+            $changes['slug'] = [
+                'old' => $establishment->slug,
+                'new' => $newSlug
+            ];
+
+            $validated['slug'] = $newSlug;
         }
 
+        // segments -> json
+        if ($request->has('segments')) {
+            $validated['segments'] = json_encode($request->segments);
+        }
+
+        // SALVA
+        $establishment->fill($validated);
+        $establishment->updated_by = $user->id;
         $establishment->save();
 
-        $interaction = new Interaction();
-        $interaction->user_id = $user->id;
-        $interaction->interaction_type = 'Update';
-        $interaction->entity_type = 'establishment';
-        $interaction->entity_id = $establishment->id;
-        $interaction->content = "O usuário {$user->first_name} atualizou o estabelecimento {$establishment->name}.";
-        $interaction->save();
+        // REGISTRAR INTERAÇÃO COM CHANGES
+        if (!empty($changes)) {
+            Interaction::registerUpdate(
+                $establishment,
+                $user,
+                $changes
+            );
+        }
 
         return response()->json([
             'message' => 'Estabelecimento atualizado com sucesso.',
             'establishment' => $establishment,
+            'changes' => $changes
         ], 200);
 
-    } catch (ValidationException $e) {
-        Log::error('Erro de validação ao atualizar o estabelecimento.', ['errors' => $e->errors()]);
+    } catch (\Illuminate\Validation\ValidationException $e) {
         return response()->json(['errors' => $e->errors()], 422);
+
     } catch (\Exception $e) {
-        Log::error('Erro ao atualizar estabelecimento: ' . $e->getMessage());
+        \Log::error('Erro ao atualizar estabelecimento', [
+            'error' => $e->getMessage()
+        ]);
+
         return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
     }
 }
+
 
 
     public function destroy($id)
@@ -399,97 +473,97 @@ class EstablishmentController extends Controller
         }
     }
     public function view($slug)
-{
-    try {
-        $authUser = Auth::user();
+    {
+        try {
+            $authUser = Auth::user();
 
-        // Carrega o estabelecimento com todas as relações necessárias
-        $establishment = Establishment::with([
-            'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
-            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-            'items:id,entity_id,name,slug,price,type,image',
-            'orders.client:id,first_name,last_name,user_name,avatar,email',
-            'interactions.user:id,first_name,last_name,user_name,avatar,email',
-        ])
-        ->where('slug', $slug)
-        ->firstOrFail();
+            // Carrega o estabelecimento com todas as relações necessárias
+            $establishment = Establishment::with([
+                'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'items:id,entity_id,name,slug,price,type,image',
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+                ->where('slug', $slug)
+                ->firstOrFail();
 
-        // ⭐ Chamada aqui! Ajusta city/uf automaticamente
-        $establishment = $this->resolveEstablishmentLocation($establishment);
+            // ⭐ Chamada aqui! Ajusta city/uf automaticamente
+            $establishment = $this->resolveEstablishmentLocation($establishment);
 
-        // Registrar visualização e limpar cache
-        Interaction::registerView($establishment, $authUser);
-        Cache::forget("establishment_{$establishment->id}_metrics");
-        Cache::forget("establishment_{$establishment->id}_summary");
+            // Registrar visualização e limpar cache
+            Interaction::registerView($establishment, $authUser);
+            Cache::forget("establishment_{$establishment->id}_metrics");
+            Cache::forget("establishment_{$establishment->id}_summary");
 
-        // Dados da model
-        return response()->json([
-            'establishment' => $establishment,
-            'items' => $establishment->items ?? [],
-            'metrics' => $establishment->metrics,
-            'interaction_summary' => $establishment->interactionSummary(),
-            'user_interactions' => $establishment->userInteractions(),
-            'orders_summary' => $establishment->ordersSummary(),
-            'completed_appointments' => $establishment->completedAppointments(),
-            'other_establishments' => $establishment->otherEstablishments(),
-            'other_employers' => $establishment->otherEmployers(),
-            'other_items' => $establishment->otherItems(),
-        ], 200);
+            // Dados da model
+            return response()->json([
+                'establishment' => $establishment,
+                'items' => $establishment->items ?? [],
+                'metrics' => $establishment->metrics,
+                'interaction_summary' => $establishment->interactionSummary(),
+                'user_interactions' => $establishment->userInteractions(),
+                'orders_summary' => $establishment->ordersSummary(),
+                'completed_appointments' => $establishment->completedAppointments(),
+                'other_establishments' => $establishment->otherEstablishments(),
+                'other_employers' => $establishment->otherEmployers(),
+                'other_items' => $establishment->otherItems(),
+            ], 200);
 
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::view] Erro ao carregar', [
-            'slug' => $slug,
-            'message' => $e->getMessage(),
-        ]);
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::view] Erro ao carregar', [
+                'slug' => $slug,
+                'message' => $e->getMessage(),
+            ]);
 
-        return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
-    }
-}
-
-
-
-private function resolveEstablishmentLocation($establishment)
-{
-    // Se já tem cidade/UF, não precisa mexer
-    if ($establishment->city && $establishment->uf) {
-        return $establishment;
-    }
-
-    $city = null;
-    $uf = null;
-
-    // 1️⃣ Tentar pegar do dono (user)
-    if ($establishment->user) {
-        $city = $establishment->user->city;
-        $uf   = $establishment->user->uf;
-    }
-
-    // 2️⃣ Se dono não tem → tentar pegar dos colaboradores
-    if ((!$city || !$uf) && $establishment->employers->count() > 0) {
-        foreach ($establishment->employers as $emp) {
-            $u = $emp->user;
-
-            if ($u && ($u->city || $u->uf)) {
-                $city = $city ?: $u->city;
-                $uf   = $uf   ?: $u->uf;
-                break;
-            }
+            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
         }
     }
 
-    // 3️⃣ Se não achou nada → retorna sem salvar
-    if (!$city && !$uf) {
+
+
+    private function resolveEstablishmentLocation($establishment)
+    {
+        // Se já tem cidade/UF, não precisa mexer
+        if ($establishment->city && $establishment->uf) {
+            return $establishment;
+        }
+
+        $city = null;
+        $uf = null;
+
+        // 1️⃣ Tentar pegar do dono (user)
+        if ($establishment->user) {
+            $city = $establishment->user->city;
+            $uf = $establishment->user->uf;
+        }
+
+        // 2️⃣ Se dono não tem → tentar pegar dos colaboradores
+        if ((!$city || !$uf) && $establishment->employers->count() > 0) {
+            foreach ($establishment->employers as $emp) {
+                $u = $emp->user;
+
+                if ($u && ($u->city || $u->uf)) {
+                    $city = $city ?: $u->city;
+                    $uf = $uf ?: $u->uf;
+                    break;
+                }
+            }
+        }
+
+        // 3️⃣ Se não achou nada → retorna sem salvar
+        if (!$city && !$uf) {
+            return $establishment;
+        }
+
+        // 4️⃣ Salvar no estabelecimento
+        $establishment->update([
+            'city' => $establishment->city ?: $city,
+            'uf' => $establishment->uf ?: $uf,
+        ]);
+
         return $establishment;
     }
-
-    // 4️⃣ Salvar no estabelecimento
-    $establishment->update([
-        'city' => $establishment->city ?: $city,
-        'uf'   => $establishment->uf   ?: $uf,
-    ]);
-
-    return $establishment;
-}
 
 
     public function show($id)
@@ -744,71 +818,72 @@ private function resolveEstablishmentLocation($establishment)
             \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
-    }public function home(Request $request, $app_id)
-{
-    try {
-        if (!$app_id || !is_numeric($app_id)) {
+    }
+    public function home(Request $request, $app_id)
+    {
+        try {
+            if (!$app_id || !is_numeric($app_id)) {
+                return response()->json([
+                    'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+                ], 422);
+            }
+
+            $city = $request->city;
+            $uf = $request->uf;
+
+            $query = Establishment::where('app_id', $app_id);
+
+            // ============================================================
+            // 🔥 FILTRO CORRIGIDO
+            // Só filtra se o user tiver city/uf e o estabelecimento tiver tbm
+            // ============================================================
+            if ($city && $uf) {
+                $query->whereNotNull('city')
+                    ->whereNotNull('uf')
+                    ->whereRaw('LOWER(city) = LOWER(?)', [$city])
+                    ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
+            }
+
+            $establishments = $query
+                ->with(['user:id,first_name,last_name,user_name,avatar,email'])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+
+                    'views as unique_users' => fn($q) =>
+                        $q->select(DB::raw('COUNT(DISTINCT user_id)'))
+                            ->where('interaction_type', 'view')
+                ])
+                ->orderByDesc('total_views')
+                ->limit(6)
+                ->get([
+                    'id',
+                    'name',
+                    'slug',
+                    'logo',
+                    'background',
+                    'city',
+                    'uf',
+                    'location',
+                    'address',
+                    'category'
+                ]);
+
             return response()->json([
-                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
-            ], 422);
-        }
+                'message' => 'Estabelecimentos listados com sucesso.',
+                'establishments' => $establishments,
+            ], 200);
 
-        $city = $request->city;
-        $uf   = $request->uf;
-
-        $query = Establishment::where('app_id', $app_id);
-
-        // ============================================================
-        // 🔥 FILTRO CORRIGIDO
-        // Só filtra se o user tiver city/uf e o estabelecimento tiver tbm
-        // ============================================================
-        if ($city && $uf) {
-            $query->whereNotNull('city')
-                  ->whereNotNull('uf')
-                  ->whereRaw('LOWER(city) = LOWER(?)', [$city])
-                  ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
-        }
-
-        $establishments = $query
-            ->with(['user:id,first_name,last_name,user_name,avatar,email'])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-
-                'views as unique_users' => fn($q) =>
-                    $q->select(DB::raw('COUNT(DISTINCT user_id)'))
-                      ->where('interaction_type', 'view')
-            ])
-            ->orderByDesc('total_views')
-            ->limit(6)
-            ->get([
-                'id',
-                'name',
-                'slug',
-                'logo',
-                'background',
-                'city',
-                'uf',
-                'location',
-                'address',
-                'category'
+        } catch (\Throwable $e) {
+            \Log::error('[EstablishmentController::home] Erro ao listar estabelecimentos', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
-        return response()->json([
-            'message' => 'Estabelecimentos listados com sucesso.',
-            'establishments' => $establishments,
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[EstablishmentController::home] Erro ao listar estabelecimentos', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao listar estabelecimentos.'
-        ], 500);
+            return response()->json([
+                'error' => 'Erro inesperado ao listar estabelecimentos.'
+            ], 500);
+        }
     }
-}
 
 }

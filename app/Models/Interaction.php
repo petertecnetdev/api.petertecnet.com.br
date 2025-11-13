@@ -282,5 +282,25 @@ public static function register($type, $entity, $user = null, $content = [])
         ], $content),
     ]);
 }
+public static function registerUpdate($entity, $user, array $changes = [], array $extra = [])
+{
+    if (!$entity || !$user) {
+        return null;
+    }
+
+    return static::create([
+        'interaction_type' => 'update',
+        'entity_type' => class_basename($entity),
+        'entity_id' => $entity->id,
+        'user_id' => $user->id,
+        'name' => 'Atualização de ' . class_basename($entity),
+
+        'content' => array_merge([
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'changes' => $changes
+        ], $extra),
+    ]);
+}
 
 }
