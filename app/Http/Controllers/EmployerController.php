@@ -938,12 +938,13 @@ class EmployerController extends Controller
             \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
- public function home(Request $request, $app_id)
+    }public function home(Request $request, $app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
-            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+            return response()->json([
+                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+            ], 422);
         }
 
         $city = $request->city;
@@ -954,11 +955,17 @@ class EmployerController extends Controller
                 'establishment:id,name,slug,logo,background,city,uf,location,address,category'
             ])
             ->whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+
                 $q->where('app_id', $app_id);
 
+                // ============================================================
+                // 🔥 FILTRO CORRIGIDO (CASE-INSENSITIVE + NULL-SAFE)
+                // ============================================================
                 if ($city && $uf) {
-                    $q->where('city', $city)
-                      ->where('uf', $uf);
+                    $q->whereNotNull('city')
+                      ->whereNotNull('uf')
+                      ->whereRaw('LOWER(city) = LOWER(?)', [$city])
+                      ->whereRaw('LOWER(uf) = LOWER(?)', [$uf]);
                 }
             })
             ->withCount([
@@ -983,7 +990,8 @@ class EmployerController extends Controller
             ]);
 
         // ============================================================
-        // 🔥 DISPLAY_CITY E DISPLAY_UF → USER > ESTABLISHMENT
+        // 🔥 DISPLAY_CITY E DISPLAY_UF
+        // USER > ESTABLISHMENT (fallback)
         // ============================================================
         $employers->transform(function ($emp) {
             $user = $emp->user;
@@ -1011,6 +1019,7 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
 
 
 }
