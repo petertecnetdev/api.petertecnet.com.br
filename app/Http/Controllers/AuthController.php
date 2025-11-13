@@ -128,157 +128,157 @@ class AuthController extends Controller
     }
 
 
-    public function login(Request $request)
-    {
-        try {
-            Log::info('Tentativa de login', ['username' => $request->username]);
+  public function login(Request $request)
+{
+    try {
+        Log::info('Tentativa de login', ['username' => $request->username]);
 
-            $validator = Validator::make($request->all(), [
-                'username' => 'required|string',
-                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-            ], $this->getValidationMessages());
+        $validator = Validator::make($request->all(), [
+            'username' => 'required|string',
+            'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
+        ], $this->getValidationMessages());
 
-            if ($validator->fails()) {
-                Log::warning('Falha na validação do login', ['erros' => $validator->errors()]);
-                throw new ValidationException($validator);
+        if ($validator->fails()) {
+            Log::warning('Falha na validação do login', ['erros' => $validator->errors()]);
+            throw new ValidationException($validator);
+        }
+
+        $username = $request->username;
+        $password = $request->password;
+
+        if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
+            $credentials = ['email' => $username, 'password' => $password];
+        } else {
+            $cpf = preg_replace('/[^0-9]/', '', $username);
+            $credentials = ['cpf' => $cpf, 'password' => $password];
+        }
+
+        if (!$token = auth()->attempt($credentials)) {
+            Log::warning('Falha na autenticação', ['username' => $username]);
+
+            $user = filter_var($username, FILTER_VALIDATE_EMAIL)
+                ? User::where('email', $username)->first()
+                : User::where('cpf', $cpf)->first();
+
+            if (!$user) {
+                Log::error('Usuário não cadastrado', ['username' => $username]);
+                return response()->json(['error' => 'Usuário não cadastrado.'], 404);
             }
 
-            $username = $request->username;
-            $password = $request->password;
+            Log::error('Senha incorreta', ['username' => $username]);
+            return response()->json(['error' => 'Senha incorreta.'], 401);
+        }
 
-            if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
-                $credentials = ['email' => $username, 'password' => $password];
-            } else {
-                $cpf = preg_replace('/[^0-9]/', '', $username);
-                $credentials = ['cpf' => $cpf, 'password' => $password];
-            }
+        $user = auth()->user();
 
-            if (!$token = auth()->attempt($credentials)) {
-                Log::warning('Falha na autenticação', ['username' => $username]);
+        Log::info('Login realizado com sucesso', ['user_id' => $user->id]);
 
-                $user = filter_var($username, FILTER_VALIDATE_EMAIL)
-                    ? User::where('email', $username)->first()
-                    : User::where('cpf', $cpf)->first();
+        $ip = $request->ip();
+        $latitude = $request->latitude ?? null;
+        $longitude = $request->longitude ?? null;
 
-                if (!$user) {
-                    Log::error('Usuário não cadastrado', ['username' => $username]);
-                    return response()->json(['error' => 'Usuário não cadastrado.'], 404);
-                }
+        $city = null;
+        $uf = null;
 
-                Log::error('Senha incorreta', ['username' => $username]);
-                return response()->json(['error' => 'Senha incorreta.'], 401);
-            }
+        Log::info('Coordenadas recebidas para geolocalização', [
+            'lat' => $latitude,
+            'lng' => $longitude
+        ]);
 
-            Log::info('Login realizado com sucesso', ['user_id' => auth()->user()->id]);
+        if ($latitude && $longitude) {
+            $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
 
-            $ip = $request->ip();
-            $latitude = $request->latitude ?? null;
-            $longitude = $request->longitude ?? null;
+            try {
+                $context = stream_context_create([
+                    'http' => [
+                        'header' => "User-Agent: Rasoio/1.0\r\n"
+                    ]
+                ]);
 
-            $city = null;
-            $uf = null;
+                $responseJson = file_get_contents($url, false, $context);
+                $response = json_decode($responseJson, true);
 
-            // 🌍 Se latitude/longitude foram enviados → buscar endereço
-            if ($latitude && $longitude) {
-                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
+                Log::info('Dados retornados pelo Reverse Geocode', [
+                    'response' => $response
+                ]);
 
-                try {
-                    $response = json_decode(file_get_contents($url), true);
+                $city = $response['address']['city']
+                    ?? $response['address']['town']
+                    ?? $response['address']['village']
+                    ?? null;
 
-                    $city = $response['address']['city']
-                        ?? $response['address']['town']
-                        ?? $response['address']['village']
-                        ?? null;
+                $uf = $response['address']['state'] ?? null;
 
-                    $uf = $response['address']['state'] ?? null;
+                if ($uf) {
+                    $mapping = [
+                        'Acre' => 'AC', 'Alagoas' => 'AL', 'Amapá' => 'AP', 'Amazonas' => 'AM',
+                        'Bahia' => 'BA', 'Ceará' => 'CE', 'Distrito Federal' => 'DF', 'Espírito Santo' => 'ES',
+                        'Goiás' => 'GO', 'Maranhão' => 'MA', 'Mato Grosso' => 'MT', 'Mato Grosso do Sul' => 'MS',
+                        'Minas Gerais' => 'MG', 'Pará' => 'PA', 'Paraíba' => 'PB', 'Paraná' => 'PR',
+                        'Pernambuco' => 'PE', 'Piauí' => 'PI', 'Rio de Janeiro' => 'RJ', 'Rio Grande do Norte' => 'RN',
+                        'Rio Grande do Sul' => 'RS', 'Rondônia' => 'RO', 'Roraima' => 'RR', 'Santa Catarina' => 'SC',
+                        'São Paulo' => 'SP', 'Sergipe' => 'SE', 'Tocantins' => 'TO',
+                    ];
 
-                    // 🧩 Ajuste de caso: Brasil → pegar sigla ao invés do nome completo
-                    if ($uf) {
-                        $mapping = [
-                            'Acre' => 'AC',
-                            'Alagoas' => 'AL',
-                            'Amapá' => 'AP',
-                            'Amazonas' => 'AM',
-                            'Bahia' => 'BA',
-                            'Ceará' => 'CE',
-                            'Distrito Federal' => 'DF',
-                            'Espírito Santo' => 'ES',
-                            'Goiás' => 'GO',
-                            'Maranhão' => 'MA',
-                            'Mato Grosso' => 'MT',
-                            'Mato Grosso do Sul' => 'MS',
-                            'Minas Gerais' => 'MG',
-                            'Pará' => 'PA',
-                            'Paraíba' => 'PB',
-                            'Paraná' => 'PR',
-                            'Pernambuco' => 'PE',
-                            'Piauí' => 'PI',
-                            'Rio de Janeiro' => 'RJ',
-                            'Rio Grande do Norte' => 'RN',
-                            'Rio Grande do Sul' => 'RS',
-                            'Rondônia' => 'RO',
-                            'Roraima' => 'RR',
-                            'Santa Catarina' => 'SC',
-                            'São Paulo' => 'SP',
-                            'Sergipe' => 'SE',
-                            'Tocantins' => 'TO',
-                        ];
-
-                        if (isset($mapping[$uf])) {
-                            $uf = $mapping[$uf];
-                        }
+                    if (isset($mapping[$uf])) {
+                        $uf = $mapping[$uf];
                     }
-
-                    // 🔥 Salvar CIDADE / UF no usuário
-                    $user = auth()->user();
-                    $user->update([
-                        'city' => $city,
-                        'uf' => $uf,
-                    ]);
-
-                } catch (\Throwable $geoError) {
-                    Log::warning("Falha ao fazer reverse geocode", [
-                        'lat' => $latitude,
-                        'lng' => $longitude,
-                        'error' => $geoError->getMessage(),
-                    ]);
                 }
-            }
 
-            // 🔥 Registrar interação
-            Interaction::create([
-                'user_id' => auth()->user()->id,
-                'interaction_type' => 'login',
-                'entity_id' => auth()->user()->id,
-                'entity_type' => 'User',
-                'name' => 'Login do usuário',
-                'content' => [
-                    'ip' => $ip,
-                    'latitude' => $latitude,
-                    'longitude' => $longitude,
+                $user->update([
                     'city' => $city,
                     'uf' => $uf,
-                    'user_agent' => $request->userAgent(),
-                ],
-            ]);
+                ]);
 
-            return response()->json([
-                'message' => 'Login realizado com sucesso!',
-                'token' => $this->createNewToken($token),
-            ], 200);
+                Log::info('Cidade e UF atualizadas no usuário', [
+                    'user_id' => $user->id,
+                    'city' => $city,
+                    'uf' => $uf
+                ]);
 
-        } catch (ValidationException $exception) {
-            Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
-            return response()->json($exception->errors(), 422);
-
-        } catch (\Exception $exception) {
-            Log::error('Erro inesperado durante o login', [
-                'message' => $exception->getMessage(),
-                'trace' => $exception->getTraceAsString()
-            ]);
-            return response()->json(['error' => 'Erro durante o login'], 500);
+            } catch (\Throwable $geoError) {
+                Log::warning("Falha ao fazer reverse geocode", [
+                    'lat' => $latitude,
+                    'lng' => $longitude,
+                    'error' => $geoError->getMessage(),
+                ]);
+            }
         }
+
+        Interaction::create([
+            'user_id' => $user->id,
+            'interaction_type' => 'login',
+            'entity_id' => $user->id,
+            'entity_type' => 'User',
+            'name' => 'Login do usuário',
+            'content' => [
+                'ip' => $ip,
+                'latitude' => $latitude,
+                'longitude' => $longitude,
+                'city' => $city,
+                'uf' => $uf,
+                'user_agent' => $request->userAgent(),
+            ],
+        ]);
+
+        return response()->json([
+            'message' => 'Login realizado com sucesso!',
+            'token' => $this->createNewToken($token),
+        ], 200);
+
+    } catch (ValidationException $exception) {
+        Log::error('Erro de validação no login', ['erros' => $exception->errors()]);
+        return response()->json($exception->errors(), 422);
+
+    } catch (\Exception $exception) {
+        Log::error('Erro inesperado durante o login', [
+            'message' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString()
+        ]);
+        return response()->json(['error' => 'Erro durante o login'], 500);
     }
+}
+
 
 
     /**
