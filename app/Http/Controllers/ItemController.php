@@ -854,16 +854,17 @@ class ItemController extends Controller
         }
     }
 
-   public function home($app_id)
+ public function home($app_id)
 {
     try {
         if (!$app_id || !is_numeric($app_id)) {
-            return response()->json(['error' => 'O campo app_id é obrigatório e deve ser numérico.'], 422);
+            return response()->json([
+                'error' => 'O campo app_id é obrigatório e deve ser numérico.'
+            ], 422);
         }
 
-        $base = Item::with('entity:id,name,slug,logo,background,app_id')
+        $items = Item::with('entity:id,name,slug,logo,background,app_id')
             ->where('app_id', $app_id)
-            ->where('status', true) // opcional
             ->select([
                 'id',
                 'name',
@@ -878,28 +879,19 @@ class ItemController extends Controller
                 'entity_name',
             ])
             ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views' => fn($q) => 
+                    $q->where('interaction_type', 'view'),
                 'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                       ->where('interaction_type', 'view'),
                 'orderItems as total_orders',
-            ]);
-
-        // 🔵 Serviços
-        $services = (clone $base)
-            ->where('type', 'service')
-            ->orderBy('name')
-            ->get();
-
-        // 🟢 Produtos (SEM FILTRO POR PEDIDO, SEM STOCK)
-        $products = (clone $base)
-            ->where('type', 'product')
+            ])
             ->orderBy('name')
             ->get();
 
         return response()->json([
             'message' => 'Itens listados com sucesso.',
-            'services' => $services,
-            'products' => $products,
+            'items' => $items,
         ], 200);
 
     } catch (\Throwable $e) {
@@ -913,7 +905,6 @@ class ItemController extends Controller
         ], 500);
     }
 }
-
 
 
 }
