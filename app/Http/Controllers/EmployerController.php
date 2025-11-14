@@ -946,36 +946,65 @@ class EmployerController extends Controller
 
     // 1. Buscar estabelecimentos válidos
     $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, function ($q) use ($city, $uf) {
-            $q->where('city', $city)->where('uf', $uf);
-        })
+        ->when($city && $uf, fn($q) =>
+            $q->where('city', $city)->where('uf', $uf)
+        )
         ->pluck('id');
 
     // 2. Buscar Employers com métricas
     $employers = \App\Models\Employer::whereIn('establishment_id', $establishmentIds)
         ->with([
-            'user:id,first_name,last_name,user_name,avatar',
+            'user:id,first_name,last_name,user_name,avatar,email',
             'establishment:id,name,slug,city,uf,logo,background,category'
         ])
         ->withCount([
             // 👁️ Views
-            'views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            },
+            'views as total_views' => fn($q) =>
+                $q->where('interaction_type', 'view'),
 
             // 👤 Usuários únicos
-            'views as unique_users' => function ($q) {
+            'views as unique_users' => fn($q) =>
                 $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view');
-            },
+                  ->where('interaction_type', 'view'),
 
             // 💈 Atendimentos concluídos
-            'orders as completed_appointments' => function ($q) {
-                $q->whereIn('appointment_status', ['confirmed', 'attended']);
-            },
+            'orders as completed_appointments' => fn($q) =>
+                $q->whereIn('appointment_status', ['confirmed', 'attended']),
         ])
         ->orderByDesc('completed_appointments')
-        ->get();
+        ->get()
+        ->map(function ($emp) {
+
+            $u = $emp->user;
+            $e = $emp->establishment;
+
+            return [
+                'id' => $emp->id,
+                'type' => 'employer',
+
+                // Dados principais usados no card
+                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                'slug' => $u?->user_name,
+                'avatar' => $u?->avatar,
+
+                // Localidade aparece no GlobalCard
+                'city' => $e?->city,
+                'uf'   => $e?->uf,
+
+                // Métricas
+                'total_views' => $emp->total_views ?? 0,
+                'unique_users' => $emp->unique_users ?? 0,
+                'total_completed_appointments' => $emp->completed_appointments ?? 0,
+
+                // Mostrar barbearia no card
+                'establishment' => [
+                    'name' => $e?->name,
+                    'slug' => $e?->slug,
+                    'logo' => $e?->logo,
+                    'background' => $e?->background,
+                ],
+            ];
+        });
 
     return response()->json([
         'employers' => $employers
