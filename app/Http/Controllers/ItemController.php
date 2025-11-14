@@ -853,88 +853,82 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
     }
-    public function home(Request $request, $app_id)
+ public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
 
     // 1. Buscar estabelecimentos válidos
     $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, function ($q) use ($city, $uf) {
-            $q->where('city', $city)->where('uf', $uf);
-        })
+        ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
         ->pluck('id');
 
-    // 2. Buscar itens pertencentes aos estabelecimentos filtrados
+    // 2. Buscar itens desses estabelecimentos
     $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
         ->where('entity_name', 'establishment')
         ->with([
-            'establishment:id,name,slug,city,uf,logo,background,category'
+            'establishment:id,name,slug,city,uf,logo,background',
         ])
         ->withCount([
             // 👁️ Visualizações
-            'views as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            },
+            'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
 
-            // 👤 Usuários únicos
-            'views as unique_users' => function ($q) {
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view');
-            },
+            // 🔥 Usuários únicos
+            'views as unique_users' => fn($q) =>
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
 
-            // 💈 Atendimentos concluídos deste item
-            'orderItems as completed_appointments' => function ($q) {
-                $q->whereHas('order', function ($o) {
-                    $o->whereIn('appointment_status', ['confirmed', 'attended']);
-                });
-            },
+            // 🧔‍♂️ Atendimentos concluídos
+            'orderItems as total_completed_appointments' => fn($q) =>
+                $q->whereHas('order', fn($o) =>
+                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                ),
         ])
-        ->orderByDesc('completed_appointments')
         ->get()
         ->map(function ($item) {
+            // 🔥 Descobre o barbeiro que mais executa este item
+            $topEmployer = $item->topEmployer();
+
+            // 🔥 Calcula clientes únicos que realizaram esse item
+            $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
+                ->whereHas('order', fn($o) => $o->whereIn('appointment_status', ['confirmed', 'attended']))
+                ->with('order')
+                ->get()
+                ->pluck('order.client_id')
+                ->filter()
+                ->unique()
+                ->count();
+
             return [
                 'id' => $item->id,
+                'type' => 'item',
                 'name' => $item->name,
                 'slug' => $item->slug,
-                'type' => $item->type,
                 'price' => $item->price,
                 'image' => $item->image,
-                'tags' => $item->tags,
-                'status' => $item->status,
-                'discount' => $item->discount,
-                'is_featured' => $item->is_featured,
 
-                // 🔥 informações fortes
+                // 🔥 LOCALIDADE (para o GlobalCard funcionar)
+                'city' => $item->establishment?->city,
+                'uf'   => $item->establishment?->uf,
+
+                // 🔥 MÉTRICAS DE INTERESSE
                 'total_views' => $item->total_views,
-                'unique_users' => $item->unique_users,
-                'completed_appointments' => $item->completed_appointments,
+                'unique_clients_attended' => $uniqueClients,
+                'total_completed_appointments' => $item->total_completed_appointments,
 
-                // 🔥 métricas completas do model
-                'metrics' => $item->metrics,
+                // 🔥 BARBEIRO QUE MAIS FAZ ESTE SERVIÇO
+                'top_employer' => $topEmployer ? [
+                    'first_name' => explode(' ', trim($topEmployer['name']))[0] ?? null,
+                    'user_name'  => $topEmployer['user_name'],
+                    'avatar'     => $topEmployer['avatar'],
+                ] : null,
 
-                // 🔥 resumo das interações (quem vê mais, último visitante)
-                'interaction_summary' => $item->interactionSummary(),
-
-                // 🔥 resumo dos pedidos deste item
-                'orders_summary' => $item->ordersSummary(),
-
-                // 🔥 barbeiro que mais faz este serviço / vende este produto
-                'top_employer' => $item->topEmployer(),
-
-                // 🔥 dados do estabelecimento
-                'establishment' => $item->establishment
-                    ? [
-                        'id' => $item->establishment->id,
-                        'name' => $item->establishment->name,
-                        'slug' => $item->establishment->slug,
-                        'city' => $item->establishment->city,
-                        'uf' => $item->establishment->uf,
-                        'logo' => $item->establishment->logo,
-                        'background' => $item->establishment->background,
-                        'category' => $item->establishment->category,
-                    ]
-                    : null,
+                // 🔥 ESTABELECIMENTO PAI
+                'establishment' => $item->establishment ? [
+                    'name' => $item->establishment->name,
+                    'slug' => $item->establishment->slug,
+                    'logo' => $item->establishment->logo,
+                    'background' => $item->establishment->background,
+                ] : null,
             ];
         });
 
