@@ -100,3 +100,72 @@ trait HandlesImages
         }
     }
 }
+<?php
+
+namespace App\Traits;
+
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Intervention\Image\Facades\Image;
+
+trait HandlesImages
+{
+    /**
+     * Remove uma imagem do disco `public`
+     * Espera caminhos como: storage/items/xxx.png
+     */
+    public function deleteImage($relativePath)
+    {
+        if (!$relativePath) return;
+
+        // Converte "storage/items/xxx.png" → "public/items/xxx.png"
+        $path = str_replace('storage/', '', $relativePath);
+
+        if (Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
+
+            Log::info("🗑️ [IMAGE] Imagem removida", [
+                'path' => $relativePath
+            ]);
+        }
+    }
+
+    /**
+     * Upload + resize idêntico ao Establishment
+     * Salva no disco "public" usando Storage::put
+     *
+     * @param  UploadedFile $file
+     * @param  string $folder ("items", "logos", etc.)
+     * @param  int $size
+     */
+    public function uploadImage($file, $folder = 'items', $size = 250)
+    {
+        Log::info("📥 [IMAGE] Iniciando upload...", [
+            'folder' => $folder,
+            'size' => $size,
+        ]);
+
+        // Gera nome único
+        $name = uniqid($folder . '_') . '.' . $file->getClientOriginalExtension();
+
+        // Caminho completo dentro do disco public
+        $path = $folder . '/' . $name;
+
+        // Salva o arquivo original no disco
+        Storage::disk('public')->put($path, file_get_contents($file));
+
+        // Agora abre e redimensiona via Intervention
+        $fullPath = Storage::disk('public')->path($path);
+
+        Image::make($fullPath)
+            ->fit($size, $size)
+            ->save();
+
+        Log::info("✅ [IMAGE] Upload concluído", [
+            'saved_as' => "storage/" . $path
+        ]);
+
+        // Retorna caminho igual Establishment
+        return "storage/" . $path;
+    }
+}
