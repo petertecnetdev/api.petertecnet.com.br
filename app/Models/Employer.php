@@ -7,9 +7,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
+use App\Models\Traits\HasFiles;
 
 class Employer extends Model
-{
+{  
+    use HasFiles;
     protected $fillable = [
         'user_id',
         'establishment_id',

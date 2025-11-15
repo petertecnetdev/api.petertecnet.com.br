@@ -7,9 +7,11 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Carbon;
+use App\Models\Traits\HasFiles;
 
 class Establishment extends Model
-{
+{   
+     use HasFiles;
     protected $fillable = [
         'name',
         'fantasy',
@@ -745,6 +747,12 @@ class Establishment extends Model
     {
         return $this->morphMany(File::class, 'fileable');
     }
+protected static function booted()
+{
+    static::creating(function ($model) {
+        $model->entity_name = 'establishment';
+    });
+}
 
 
 }

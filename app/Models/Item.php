@@ -7,9 +7,11 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 use App\Traits\HandlesImages;
+use App\Models\Traits\HasFiles;
 
 class Item extends Model
 {
+     use HasFiles;
     use HandlesImages;
     protected $fillable = [
         'user_id',
