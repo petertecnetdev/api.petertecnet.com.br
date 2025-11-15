@@ -844,73 +844,66 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-    public function home(Request $request, $app_id)
-    {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
+   public function home(Request $request, $app_id)
+{
+    $city = $request->query('city');
+    $uf   = $request->query('uf');
 
-        // Buscar estabelecimentos filtrados
-        $establishments = \App\Models\Establishment::where('app_id', $app_id)
-            ->when(
-                $city && $uf,
-                fn($q) =>
-                $q->where('city', $city)->where('uf', $uf)
-            )
-            ->withCount([
-                // 👁️ Visualizações totais
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
+    // Buscar estabelecimentos do app
+    $establishments = \App\Models\Establishment::where('app_id', $app_id)
+        ->when($city && $uf, fn($q) => 
+            $q->where('city', $city)->where('uf', $uf)
+        )
+        ->with([
+            'files' => function($q) {
+                $q->where('entity_name', 'establishment');
+            }
+        ])
+        ->withCount([
+            'views as total_views' => fn($q) =>
+                $q->where('interaction_type', 'view'),
 
-                // 👤 Usuários únicos
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                        ->where('interaction_type', 'view'),
+            'views as unique_users' => fn($q) =>
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view'),
 
-                // 💈 Atendimentos concluídos
-                'orders as completed_appointments' => fn($q) =>
-                    $q->where('entity_name', 'establishment')
-                        ->where('type', 'appointment')
-                        ->where('appointment_status', 'attended'),
-            ])
-            ->get([
-                'id',
-                'name',
-                'slug',
-                'city',
-                'uf',
-                'logo',
-                'background',
-                'category',
-                'segments'
-            ])
-            ->map(function ($est) {
-                return [
-                    'id' => $est->id,
-                    'type' => 'establishment',
+            'orders as completed_appointments' => fn($q) =>
+                $q->where('entity_name', 'establishment')
+                  ->whereIn('appointment_status', ['confirmed', 'attended']),
+        ])
+        ->get()
+        ->map(function ($e) {
 
-                    // Dados básicos
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'city' => $est->city,
-                    'uf' => $est->uf,
-                    'logo' => $est->logo,
-                    'background' => $est->background,
+            // Montar images[]
+            $images = [
+                'logo' => $e->files->firstWhere('type', 'logo')?->public_url,
+                'background' => $e->files->firstWhere('type', 'background')?->public_url,
+                'gallery' => $e->files
+                    ->whereNotIn('type', ['logo', 'background'])
+                    ->pluck('public_url')
+                    ->values()
+            ];
 
-                    // Métricas
-                    'total_views' => $est->total_views,
-                    'unique_users' => $est->unique_users,
-                    'total_completed_appointments' => $est->completed_appointments,
+            return [
+                'id' => $e->id,
+                'name' => $e->name,
+                'slug' => $e->slug,
+                'city' => $e->city,
+                'uf'   => $e->uf,
 
-                    // Info adicional usada em cards antigos
-                    'category' => $est->category,
-                    'segments' => $est->segments,
-                ];
-            });
+                'images' => $images,
 
-        return response()->json([
-            'establishments' => $establishments
-        ]);
-    }
+                'total_views' => $e->total_views,
+                'unique_users' => $e->unique_users,
+                'completed_appointments' => $e->completed_appointments,
+            ];
+        });
+
+    return response()->json([
+        'establishments' => $establishments
+    ]);
+}
+
 
     public function listCities($app_id)
     {

@@ -892,90 +892,89 @@ class ItemController extends Controller
         }
     }
     public function home(Request $request, $app_id)
-    {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
+{
+    $city = $request->query('city');
+    $uf   = $request->query('uf');
 
-        // 1. Buscar estabelecimentos válidos
-        $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
-            ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
-            ->pluck('id');
+    // Estabelecimentos válidos
+    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
+        ->when($city && $uf, fn($q) =>
+            $q->where('city', $city)->where('uf', $uf)
+        )
+        ->pluck('id');
 
-        // 2. Buscar itens desses estabelecimentos
-        $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
-            ->where('entity_name', 'establishment')
-            ->with([
-                'establishment:id,name,slug,city,uf,logo,background',
-            ])
-            ->withCount([
-                // 👁️ Visualizações
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+    // Items
+    $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
+        ->where('entity_name', 'establishment')
+        ->with([
+            'establishment:id,name,slug,city,uf',
+            'files' => fn($q) =>
+                $q->where('entity_name', 'item'),
+        ])
+        ->withCount([
+            'views as total_views' => fn($q) =>
+                $q->where('interaction_type', 'view'),
 
-                // 🔥 Usuários únicos
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+            'views as unique_users' => fn($q) =>
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                  ->where('interaction_type', 'view'),
 
-                // 🧔‍♂️ Atendimentos concluídos
-                'orderItems as total_completed_appointments' => fn($q) =>
-                    $q->whereHas(
-                        'order',
-                        fn($o) =>
-                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                    ),
-            ])
-            ->get()
-            ->map(function ($item) {
-                // 🔥 Descobre o barbeiro que mais executa este item
-                $topEmployer = $item->topEmployer();
+            'orderItems as total_completed_appointments' => fn($q) =>
+                $q->whereHas('order', fn($o) =>
+                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                ),
+        ])
+        ->get()
+        ->map(function ($item) {
 
-                // 🔥 Calcula clientes únicos que realizaram esse item
-                $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
-                    ->whereHas('order', fn($o) => $o->whereIn('appointment_status', ['confirmed', 'attended']))
-                    ->with('order')
-                    ->get()
-                    ->pluck('order.client_id')
-                    ->filter()
-                    ->unique()
-                    ->count();
+            // IMAGENS
+            $images = [
+                'image' => $item->files->firstWhere('type', 'image')?->public_url,
+                'gallery' => $item->files
+                    ->whereNotIn('type', ['image'])
+                    ->pluck('public_url')
+                    ->values(),
+            ];
 
-                return [
-                    'id' => $item->id,
-                    'type' => 'item',
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'image' => $item->image,
+            $est = $item->establishment;
 
-                    // 🔥 LOCALIDADE (para o GlobalCard funcionar)
-                    'city' => $item->establishment?->city,
-                    'uf' => $item->establishment?->uf,
+            // CLIENTES ÚNICOS QUE JÁ FIZERAM ESSE ITEM
+            $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
+                ->whereHas('order', fn($o) =>
+                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                )
+                ->pluck('order.client_id')
+                ->filter()
+                ->unique()
+                ->count();
 
-                    // 🔥 MÉTRICAS DE INTERESSE
-                    'total_views' => $item->total_views,
-                    'unique_clients_attended' => $uniqueClients,
-                    'total_completed_appointments' => $item->total_completed_appointments,
+            return [
+                'id' => $item->id,
+                'type' => 'item',
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'price' => $item->price,
 
-                    // 🔥 BARBEIRO QUE MAIS FAZ ESTE SERVIÇO
-                    'top_employer' => $topEmployer ? [
-                        'first_name' => explode(' ', trim($topEmployer['name']))[0] ?? null,
-                        'user_name' => $topEmployer['user_name'],
-                        'avatar' => $topEmployer['avatar'],
-                    ] : null,
+                'images' => $images,
 
-                    // 🔥 ESTABELECIMENTO PAI
-                    'establishment' => $item->establishment ? [
-                        'name' => $item->establishment->name,
-                        'slug' => $item->establishment->slug,
-                        'logo' => $item->establishment->logo,
-                        'background' => $item->establishment->background,
-                    ] : null,
-                ];
-            });
+                'city' => $est?->city,
+                'uf'   => $est?->uf,
 
-        return response()->json([
-            'items' => $items
-        ]);
-    }
+                'total_views' => $item->total_views,
+                'unique_clients_attended' => $uniqueClients,
+                'total_completed_appointments' => $item->total_completed_appointments,
+
+                'establishment' => [
+                    'name' => $est?->name,
+                    'slug' => $est?->slug,
+                ],
+            ];
+        });
+
+    return response()->json([
+        'items' => $items
+    ]);
+}
 
 
 }
