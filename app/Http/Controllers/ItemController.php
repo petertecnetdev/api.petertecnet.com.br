@@ -13,6 +13,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 
+
 class ItemController extends Controller
 {
     protected function getValidationMessages()
@@ -292,37 +293,15 @@ class ItemController extends Controller
     public function update(Request $request, $id)
     {
         try {
-            \Log::info('Iniciando a atualização de um item.', ['item_id' => $id]);
-
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso.', ['item_id' => $id]);
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            // Obter o usuário autenticado
             $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
 
-            // Verificar se o usuário possui permissão para atualizar itens
-            if (!$user->hasPermission('item_update')) {
-                \Log::warning('Usuário sem permissão tentou atualizar item.', ['user_id' => $user->id, 'item_id' => $id]);
-                return response()->json(['error' => 'Você não tem permissão para atualizar itens.'], 403);
+            if (!$user || !$user->hasPermission('item_update')) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            // Buscar o item pelo ID
-            $item = Item::find($id);
-            if (!$item) {
-                \Log::warning('Item não encontrado.', ['item_id' => $id]);
-                return response()->json(['error' => 'Item não encontrado.'], 404);
-            }
-            if ($request->has('stock') && $request->input('stock') === '') {
-                $request->merge(['stock' => null]);
-            }
+            $item = Item::findOrFail($id);
 
-            // Validar os dados da requisição
-            \Log::info('Validando dados da requisição.');
-            $validatedData = $request->validate([
+            $validated = $request->validate([
                 'name' => 'nullable|string|max:255',
                 'type' => 'nullable|string|max:100',
                 'price' => 'nullable|numeric|min:0',
@@ -333,70 +312,28 @@ class ItemController extends Controller
                 'availability_end' => 'nullable|date|after:availability_start',
                 'discount' => 'nullable|numeric|min:0|max:100',
                 'expiration_date' => 'nullable|date',
-                'app_id' => 'nullable|exists:applications,id',
                 'duration' => 'nullable|integer|min:1|max:480',
             ], $this->getValidationMessages());
 
-            \Log::info('Dados validados com sucesso:', $validatedData);
+            $item->fillFromRequest($request)->save();
 
-            // Atualizar os dados do item apenas com os campos presentes na requisição
-            $item->update(array_filter([
-                'name' => $validatedData['name'] ?? $item->name,
-                'type' => $validatedData['type'] ?? $item->type,
-                'price' => $validatedData['price'] ?? $item->price,
-                'stock' => $validatedData['stock'] ?? $item->stock,
-                'status' => isset($validatedData['status']) ? (int) $validatedData['status'] : $item->status,
-                'description' => $request->input('description', $item->description),
-                'category' => $request->input('category', $item->category),
-                'subcategory' => $request->input('subcategory', $item->subcategory),
-                'brand' => $request->input('brand', $item->brand),
-                'availability_start' => $request->input('availability_start', $item->availability_start),
-                'availability_end' => $request->input('availability_end', $item->availability_end),
-                'is_featured' => $request->input('is_featured', $item->is_featured),
-                'discount' => $request->input('discount', $item->discount),
-                'expiration_date' => $request->input('expiration_date', $item->expiration_date),
-                'limited_by_user' => $request->input('limited_by_user', $item->limited_by_user),
-                'notes' => $request->input('notes', $item->notes),
-                'duration' => $request->input('duration', $item->duration),
-            ]));
+            // 🔥 Remover imagem
+            $item->removeImageIfRequested($request);
 
-            \Log::info('Item atualizado no banco de dados.', ['item_id' => $item->id]);
+            // 🔥 Upload nova imagem
+            $item->uploadNewImageIfProvided($request);
 
-            // Processar e salvar a logo se fornecida
-            if ($request->hasFile('image')) {
-                Log::info('Imagem do item  fornecida, processando...');
-
-                // Definir o caminho do diretório público para imagens
-                $destinationPath = public_path('images');
-
-                // Gerar um nome único para a imagem
-                $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
-
-                // Mover a imagem para o diretório público "images"
-                $request->file('image')->move($destinationPath, $imageName);
-
-                // Redimensionar a imagem para 150x150
-                $image = Image::make($destinationPath . '/' . $imageName);
-                $image->fit(150, 150);
-                $image->save();
-
-                // Atualizar o caminho da logo no banco
-                $item->image = 'images/' . $imageName;
-                $item->save();
-            }
-            // Retornar sucesso
-            \Log::info('Item atualizado com sucesso.', ['item_id' => $item->id]);
-            return response()->json(['message' => 'Item atualizado com sucesso.', 'item' => $item], 200);
-
-        } catch (ValidationException $e) {
-            \Log::warning('Erros de validação ao atualizar item.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
+            return response()->json([
+                'message' => 'Item atualizado com sucesso.',
+                'item' => $item
+            ]);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao atualizar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar o item.'], 500);
+            return response()->json(['error' => 'Erro ao atualizar o item.'], 500);
         }
     }
+
+
 
     public function destroy($id)
     {
@@ -853,89 +790,91 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
     }
- public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
 
-    // 1. Buscar estabelecimentos válidos
-    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
-        ->pluck('id');
+        // 1. Buscar estabelecimentos válidos
+        $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
+            ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
+            ->pluck('id');
 
-    // 2. Buscar itens desses estabelecimentos
-    $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
-        ->where('entity_name', 'establishment')
-        ->with([
-            'establishment:id,name,slug,city,uf,logo,background',
-        ])
-        ->withCount([
-            // 👁️ Visualizações
-            'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+        // 2. Buscar itens desses estabelecimentos
+        $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
+            ->where('entity_name', 'establishment')
+            ->with([
+                'establishment:id,name,slug,city,uf,logo,background',
+            ])
+            ->withCount([
+                // 👁️ Visualizações
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
 
-            // 🔥 Usuários únicos
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                // 🔥 Usuários únicos
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
 
-            // 🧔‍♂️ Atendimentos concluídos
-            'orderItems as total_completed_appointments' => fn($q) =>
-                $q->whereHas('order', fn($o) =>
-                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                ),
-        ])
-        ->get()
-        ->map(function ($item) {
-            // 🔥 Descobre o barbeiro que mais executa este item
-            $topEmployer = $item->topEmployer();
+                // 🧔‍♂️ Atendimentos concluídos
+                'orderItems as total_completed_appointments' => fn($q) =>
+                    $q->whereHas(
+                        'order',
+                        fn($o) =>
+                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                    ),
+            ])
+            ->get()
+            ->map(function ($item) {
+                // 🔥 Descobre o barbeiro que mais executa este item
+                $topEmployer = $item->topEmployer();
 
-            // 🔥 Calcula clientes únicos que realizaram esse item
-            $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
-                ->whereHas('order', fn($o) => $o->whereIn('appointment_status', ['confirmed', 'attended']))
-                ->with('order')
-                ->get()
-                ->pluck('order.client_id')
-                ->filter()
-                ->unique()
-                ->count();
+                // 🔥 Calcula clientes únicos que realizaram esse item
+                $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
+                    ->whereHas('order', fn($o) => $o->whereIn('appointment_status', ['confirmed', 'attended']))
+                    ->with('order')
+                    ->get()
+                    ->pluck('order.client_id')
+                    ->filter()
+                    ->unique()
+                    ->count();
 
-            return [
-                'id' => $item->id,
-                'type' => 'item',
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
-                'image' => $item->image,
+                return [
+                    'id' => $item->id,
+                    'type' => 'item',
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'image' => $item->image,
 
-                // 🔥 LOCALIDADE (para o GlobalCard funcionar)
-                'city' => $item->establishment?->city,
-                'uf'   => $item->establishment?->uf,
+                    // 🔥 LOCALIDADE (para o GlobalCard funcionar)
+                    'city' => $item->establishment?->city,
+                    'uf' => $item->establishment?->uf,
 
-                // 🔥 MÉTRICAS DE INTERESSE
-                'total_views' => $item->total_views,
-                'unique_clients_attended' => $uniqueClients,
-                'total_completed_appointments' => $item->total_completed_appointments,
+                    // 🔥 MÉTRICAS DE INTERESSE
+                    'total_views' => $item->total_views,
+                    'unique_clients_attended' => $uniqueClients,
+                    'total_completed_appointments' => $item->total_completed_appointments,
 
-                // 🔥 BARBEIRO QUE MAIS FAZ ESTE SERVIÇO
-                'top_employer' => $topEmployer ? [
-                    'first_name' => explode(' ', trim($topEmployer['name']))[0] ?? null,
-                    'user_name'  => $topEmployer['user_name'],
-                    'avatar'     => $topEmployer['avatar'],
-                ] : null,
+                    // 🔥 BARBEIRO QUE MAIS FAZ ESTE SERVIÇO
+                    'top_employer' => $topEmployer ? [
+                        'first_name' => explode(' ', trim($topEmployer['name']))[0] ?? null,
+                        'user_name' => $topEmployer['user_name'],
+                        'avatar' => $topEmployer['avatar'],
+                    ] : null,
 
-                // 🔥 ESTABELECIMENTO PAI
-                'establishment' => $item->establishment ? [
-                    'name' => $item->establishment->name,
-                    'slug' => $item->establishment->slug,
-                    'logo' => $item->establishment->logo,
-                    'background' => $item->establishment->background,
-                ] : null,
-            ];
-        });
+                    // 🔥 ESTABELECIMENTO PAI
+                    'establishment' => $item->establishment ? [
+                        'name' => $item->establishment->name,
+                        'slug' => $item->establishment->slug,
+                        'logo' => $item->establishment->logo,
+                        'background' => $item->establishment->background,
+                    ] : null,
+                ];
+            });
 
-    return response()->json([
-        'items' => $items
-    ]);
-}
+        return response()->json([
+            'items' => $items
+        ]);
+    }
 
 
 }

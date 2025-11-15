@@ -6,9 +6,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
+use App\Traits\HandlesImages;
 
 class Item extends Model
 {
+    use HandlesImages;
     protected $fillable = [
         'user_id',
         'app_id',
@@ -443,6 +445,58 @@ class Item extends Model
     }
 
     return $invalid;
+}
+public function fillFromRequest($request)
+{
+    $this->fill([
+        'name' => $request->input('name', $this->name),
+        'type' => $request->input('type', $this->type),
+        'price' => $request->input('price', $this->price),
+        'stock' => $request->input('stock', $this->stock),
+        'status' => (int) $request->input('status', $this->status),
+        'description' => $request->input('description', $this->description),
+        'category' => $request->input('category', $this->category),
+        'subcategory' => $request->input('subcategory', $this->subcategory),
+        'brand' => $request->input('brand', $this->brand),
+        'availability_start' => $request->input('availability_start', $this->availability_start),
+        'availability_end' => $request->input('availability_end', $this->availability_end),
+        'is_featured' => (int) $request->input('is_featured', $this->is_featured),
+        'discount' => $request->input('discount', $this->discount),
+        'expiration_date' => $request->input('expiration_date', $this->expiration_date),
+        'limited_by_user' => $request->input('limited_by_user', $this->limited_by_user),
+        'notes' => $request->input('notes', $this->notes),
+        'duration' => $request->input('duration', $this->duration),
+    ]);
+
+    return $this;
+}
+
+public function removeImageIfRequested($request)
+{
+    if ((int)$request->input('remove_image') !== 1) {
+        return $this;
+    }
+
+    $this->deleteImage($this->image);
+
+    $this->image = null;
+    $this->save();
+
+    return $this;
+}
+
+public function uploadNewImageIfProvided($request)
+{
+    if (!$request->hasFile('image')) {
+        return $this;
+    }
+
+    $this->deleteImage($this->image);
+
+    $this->image = $this->uploadImage($request->file('image'));
+    $this->save();
+
+    return $this;
 }
 
 }
