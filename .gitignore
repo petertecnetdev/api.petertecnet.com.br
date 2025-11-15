@@ -12,3 +12,4 @@
 .env.example
 .gitignore
 composer.lock
+public/images/*
