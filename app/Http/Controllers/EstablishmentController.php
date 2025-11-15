@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Establishment, Interaction, User, Employer};
+use App\Models\{Establishment, Interaction, File, Employer};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -54,6 +54,7 @@ class EstablishmentController extends Controller
             'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
         ];
     }
+
     public function store(Request $request)
     {
         try {
@@ -82,8 +83,8 @@ class EstablishmentController extends Controller
                 'address' => 'nullable|string|max:255',
                 'latitude' => 'nullable|numeric',
                 'longitude' => 'nullable|numeric',
-                'logo' => 'nullable|image|max:2048',
-                'background' => 'nullable|image|max:4096',
+                'logo' => 'nullable|image|max:4096',
+                'background' => 'nullable|image|max:8192',
                 'website_url' => 'nullable|url|max:255',
                 'facebook_url' => 'nullable|url|max:255',
                 'instagram_url' => 'nullable|url|max:255',
@@ -99,38 +100,34 @@ class EstablishmentController extends Controller
 
             DB::beginTransaction();
 
-            // 🔵 Slug único
-            $slug = Str::slug($data['fantasy'] ?? $data['name']);
+            // ============================
+            // SLUG SEGURO
+            // ============================
+            $baseSlug = Str::slug($data['fantasy'] ?: $data['name']);
+            $slug = $baseSlug ?: Str::slug($data['name']);
+
             if (Establishment::where('slug', $slug)->exists()) {
                 $slug .= '-' . uniqid();
             }
 
-            // 🔵 Uploads
-            if (!empty($data['logo'])) {
-                $data['logo'] = $data['logo']->store('logos', 'public');
-            }
-
-            if (!empty($data['background'])) {
-                $data['background'] = $data['background']->store('backgrounds', 'public');
-            }
-
-            // 🔵 Herdar cidade e UF do usuário se não vierem do front
-            if (empty($data['city']) && !empty($user->city)) {
+            // ============================
+            // HERDAR CITY/UF DO USER
+            // ============================
+            if (empty($data['city']) && $user->city) {
                 $data['city'] = $user->city;
             }
 
-            if (empty($data['uf']) && !empty($user->uf)) {
+            if (empty($data['uf']) && $user->uf) {
                 $data['uf'] = $user->uf;
             }
 
-            // 🔵 Localização inteligente
+            // ============================
+            // GEO / REVERSE GEO
+            // ============================
             $latitude = $data['latitude'] ?? null;
             $longitude = $data['longitude'] ?? null;
-            $city = $data['city'] ?? null;
-            $uf = $data['uf'] ?? null;
 
-            // 🟣 Se latitude/longitude foram enviados → reverse geocode
-            if ($latitude && $longitude && (!$city || !$uf)) {
+            if ($latitude && $longitude && (!($data['city']) || !($data['uf']))) {
                 try {
                     $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
                     $geo = json_decode(file_get_contents($url), true);
@@ -141,6 +138,7 @@ class EstablishmentController extends Controller
                         ?? $data['city'];
 
                     $ufText = $geo['address']['state'] ?? null;
+
                     if ($ufText) {
                         $mapping = [
                             'Acre' => 'AC',
@@ -174,39 +172,19 @@ class EstablishmentController extends Controller
 
                         $data['uf'] = $mapping[$ufText] ?? $data['uf'];
                     }
-                } catch (\Throwable $geoError) {
-                    Log::warning('[EstablishmentController::store] Erro ao tentar reverse geocode', [
-                        'error' => $geoError->getMessage(),
-                    ]);
+
+                } catch (\Throwable $e) {
+                    Log::warning("Erro reverse geocode: {$e->getMessage()}");
                 }
             }
 
-            // 🟣 Se não temos lat/lng mas temos CEP/endereço → buscar coordenadas
-            if ((!$latitude || !$longitude) && (!empty($data['cep']) || !empty($data['address']))) {
-                try {
-                    $query = urlencode($data['address'] . ' ' . $data['cep'] . ' ' . ($data['city'] ?? '') . ' ' . ($data['uf'] ?? ''));
-                    $url = "https://nominatim.openstreetmap.org/search?format=json&q={$query}&limit=1";
-
-                    $search = json_decode(file_get_contents($url), true);
-
-                    if (!empty($search[0])) {
-                        $latitude = $search[0]['lat'];
-                        $longitude = $search[0]['lon'];
-                    }
-
-                } catch (\Throwable $geoSearchError) {
-                    Log::warning('[EstablishmentController::store] Erro ao geocodificar endereço', [
-                        'error' => $geoSearchError->getMessage(),
-                    ]);
-                }
-            }
-
-            // 🔵 Se temos lat/lng → gerar "location" formatado
             if ($latitude && $longitude) {
                 $data['location'] = "{$latitude},{$longitude}";
             }
 
-            // 🔵 Criar estabelecimento
+            // ============================
+            // CRIA O ESTABELECIMENTO
+            // ============================
             $establishment = Establishment::create([
                 'app_id' => $data['app_id'],
                 'name' => $data['name'],
@@ -224,8 +202,6 @@ class EstablishmentController extends Controller
                 'location' => $data['location'] ?? null,
                 'cep' => $data['cep'] ?? null,
                 'address' => $data['address'] ?? null,
-                'logo' => $data['logo'] ?? null,
-                'background' => $data['background'] ?? null,
                 'website_url' => $data['website_url'] ?? null,
                 'facebook_url' => $data['facebook_url'] ?? null,
                 'instagram_url' => $data['instagram_url'] ?? null,
@@ -236,15 +212,46 @@ class EstablishmentController extends Controller
                 'is_published' => $data['is_published'] ?? false,
                 'is_approved' => $data['is_approved'] ?? false,
                 'is_cancelled' => $data['is_cancelled'] ?? false,
-                'user_id' => $user->id ?? null,
-                'updated_by' => $user->id ?? null,
+                'user_id' => $user->id,
+                'created_by' => $user->id,
+                'updated_by' => $user->id,
             ]);
+
+            // ============================
+            // FILES — LOGO
+            // ============================
+            if ($request->hasFile('logo')) {
+                $file = File::storeOne(
+                    file: $request->file('logo'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'logo',
+                    createdBy: $user->id
+                );
+
+                $establishment->update(['logo' => $file->public_url]);
+            }
+
+            // ============================
+            // FILES — BACKGROUND
+            // ============================
+            if ($request->hasFile('background')) {
+                $file = File::storeOne(
+                    file: $request->file('background'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'background',
+                    createdBy: $user->id
+                );
+
+                $establishment->update(['background' => $file->public_url]);
+            }
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Estabelecimento criado com sucesso!',
-                'establishment' => $establishment,
+                'establishment' => $establishment->refresh()
             ], 201);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -253,12 +260,12 @@ class EstablishmentController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            return response()->json(['error' => 'Ocorreu um erro ao criar o estabelecimento.'], 500);
+            return response()->json([
+                'error' => 'Ocorreu um erro ao criar o estabelecimento.',
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
-
-
-
 
 
     public function update(Request $request, $id)
@@ -279,7 +286,6 @@ class EstablishmentController extends Controller
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            // VALIDAÇÃO
             $validated = $request->validate([
                 'name' => 'nullable|string|max:255',
                 'fantasy' => 'nullable|string|max:255',
@@ -298,11 +304,12 @@ class EstablishmentController extends Controller
                 'twitter_url' => 'nullable|string',
                 'youtube_url' => 'nullable|string',
                 'segments' => 'nullable|array',
-                'logo' => 'nullable|image|max:2048',
-                'background' => 'nullable|image|max:4096',
+                'logo' => 'nullable|image|max:4096',
+                'background' => 'nullable|image|max:8192',
             ]);
 
-            // CALCULAR DIFERENÇAS
+            DB::beginTransaction();
+
             $oldData = $establishment->getOriginal();
             $changes = [];
 
@@ -310,7 +317,6 @@ class EstablishmentController extends Controller
                 if ($key === 'segments') {
                     $value = json_encode($value);
                 }
-
                 if (($oldData[$key] ?? null) != $value) {
                     $changes[$key] = [
                         'old' => $oldData[$key] ?? null,
@@ -319,68 +325,64 @@ class EstablishmentController extends Controller
                 }
             }
 
-            // UPLOAD LOGO
             if ($request->hasFile('logo')) {
-                $file = $request->file('logo');
-                $name = uniqid('logo_') . '.' . $file->getClientOriginalExtension();
-                $path = public_path("images/$name");
+                $file = File::storeOne(
+                    file: $request->file('logo'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'logo',
+                    createdBy: $user->id
+                );
 
-                $file->move(public_path('images'), $name);
-                \Intervention\Image\Facades\Image::make($path)->fit(150, 150)->save();
+                $validated['logo'] = $file->public_url;
 
                 $changes['logo'] = [
                     'old' => $establishment->logo,
-                    'new' => "images/$name"
+                    'new' => $file->public_url
                 ];
-
-                $validated['logo'] = "images/$name";
             }
 
-            // UPLOAD BACKGROUND
             if ($request->hasFile('background')) {
-                $file = $request->file('background');
-                $name = uniqid('background_') . '.' . $file->getClientOriginalExtension();
-                $path = public_path("images/$name");
+                $file = File::storeOne(
+                    file: $request->file('background'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'background',
+                    createdBy: $user->id
+                );
 
-                $file->move(public_path('images'), $name);
-                \Intervention\Image\Facades\Image::make($path)->fit(1920, 600)->save();
+                $validated['background'] = $file->public_url;
 
                 $changes['background'] = [
                     'old' => $establishment->background,
-                    'new' => "images/$name"
+                    'new' => $file->public_url
                 ];
-
-                $validated['background'] = "images/$name";
             }
 
-            // SLUG AUTOMÁTICO SE O NOME MUDOU
             if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
-                $base = \Illuminate\Support\Str::slug($validated['name']);
+                $base = Str::slug($validated['name']);
                 $count = Establishment::where('slug', 'LIKE', "$base%")
                     ->where('id', '!=', $establishment->id)
                     ->count();
 
                 $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
 
+                $validated['slug'] = $newSlug;
+
                 $changes['slug'] = [
                     'old' => $establishment->slug,
                     'new' => $newSlug
                 ];
-
-                $validated['slug'] = $newSlug;
             }
 
-            // segments -> json
             if ($request->has('segments')) {
                 $validated['segments'] = json_encode($request->segments);
             }
 
-            // SALVA
             $establishment->fill($validated);
             $establishment->updated_by = $user->id;
             $establishment->save();
 
-            // REGISTRAR INTERAÇÃO COM CHANGES
             if (!empty($changes)) {
                 Interaction::registerUpdate(
                     $establishment,
@@ -389,16 +391,20 @@ class EstablishmentController extends Controller
                 );
             }
 
+            DB::commit();
+
             return response()->json([
                 'message' => 'Estabelecimento atualizado com sucesso.',
-                'establishment' => $establishment,
+                'establishment' => $establishment->refresh(),
                 'changes' => $changes
             ], 200);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
+            DB::rollBack();
             \Log::error('Erro ao atualizar estabelecimento', [
                 'error' => $e->getMessage()
             ]);
@@ -820,70 +826,72 @@ class EstablishmentController extends Controller
         }
     }
     public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
 
-    // Buscar estabelecimentos filtrados
-    $establishments = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) =>
-            $q->where('city', $city)->where('uf', $uf)
-        )
-        ->withCount([
-            // 👁️ Visualizações totais
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
+        // Buscar estabelecimentos filtrados
+        $establishments = \App\Models\Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->withCount([
+                // 👁️ Visualizações totais
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
 
-            // 👤 Usuários únicos
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view'),
+                // 👤 Usuários únicos
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                        ->where('interaction_type', 'view'),
 
-            // 💈 Atendimentos concluídos
-            'orders as completed_appointments' => fn($q) =>
-                $q->where('entity_name', 'establishment')
-                  ->where('type', 'appointment')
-                  ->where('appointment_status', 'attended'),
-        ])
-        ->get([
-            'id',
-            'name',
-            'slug',
-            'city',
-            'uf',
-            'logo',
-            'background',
-            'category',
-            'segments'
-        ])
-        ->map(function ($est) {
-            return [
-                'id' => $est->id,
-                'type' => 'establishment',
+                // 💈 Atendimentos concluídos
+                'orders as completed_appointments' => fn($q) =>
+                    $q->where('entity_name', 'establishment')
+                        ->where('type', 'appointment')
+                        ->where('appointment_status', 'attended'),
+            ])
+            ->get([
+                'id',
+                'name',
+                'slug',
+                'city',
+                'uf',
+                'logo',
+                'background',
+                'category',
+                'segments'
+            ])
+            ->map(function ($est) {
+                return [
+                    'id' => $est->id,
+                    'type' => 'establishment',
 
-                // Dados básicos
-                'name' => $est->name,
-                'slug' => $est->slug,
-                'city' => $est->city,
-                'uf'   => $est->uf,
-                'logo' => $est->logo,
-                'background' => $est->background,
+                    // Dados básicos
+                    'name' => $est->name,
+                    'slug' => $est->slug,
+                    'city' => $est->city,
+                    'uf' => $est->uf,
+                    'logo' => $est->logo,
+                    'background' => $est->background,
 
-                // Métricas
-                'total_views' => $est->total_views,
-                'unique_users' => $est->unique_users,
-                'total_completed_appointments' => $est->completed_appointments,
+                    // Métricas
+                    'total_views' => $est->total_views,
+                    'unique_users' => $est->unique_users,
+                    'total_completed_appointments' => $est->completed_appointments,
 
-                // Info adicional usada em cards antigos
-                'category' => $est->category,
-                'segments' => $est->segments,
-            ];
-        });
+                    // Info adicional usada em cards antigos
+                    'category' => $est->category,
+                    'segments' => $est->segments,
+                ];
+            });
 
-    return response()->json([
-        'establishments' => $establishments
-    ]);
-}
+        return response()->json([
+            'establishments' => $establishments
+        ]);
+    }
 
     public function listCities($app_id)
     {

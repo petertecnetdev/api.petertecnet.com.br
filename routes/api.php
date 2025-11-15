@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
 use App\Http\Controllers\{
     AuthController,
     UserController,
@@ -16,7 +17,8 @@ use App\Http\Controllers\{
     OrderController,
     MenuController,
     EmployerController,
-    OrderForecastController
+    OrderForecastController,
+    FileController
 };
 
 /*
@@ -31,16 +33,19 @@ Route::prefix('auth')->middleware('api')->group(function () {
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('resetPassword');
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
     Route::post('/refresh', [AuthController::class, 'refresh'])->name('refresh');
+
     Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api')->name('me');
     Route::get('/check-auth', [AuthController::class, 'checkauth'])->middleware('auth:api')->name('checkAuth');
+
     Route::post('/email-verify', [AuthController::class, 'emailVerify'])->middleware('auth:api')->name('emailVerify');
     Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:api')->name('changePassword');
+
     Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])
         ->middleware('auth:api')
         ->name('resendVerificationCode');
 });
-Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 
+Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 
 /*
 |--------------------------------------------------------------------------
@@ -57,7 +62,6 @@ Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
     Route::delete('/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | PERFIL
@@ -70,7 +74,6 @@ Route::prefix('profile')->middleware('api')->group(function () {
     Route::put('/{id}', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/{id}', [ProfileController::class, 'destroy'])->name('profile.destroy');
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -87,10 +90,9 @@ Route::prefix('production')->middleware('api')->group(function () {
     Route::get('/cnpj/get-company-info', [ProductionController::class, 'getCompanyInfo'])->name('production.getCompanyInfo');
 });
 
-
 /*
 |--------------------------------------------------------------------------
-| EVENTOS E INGRESSOS
+| EVENTOS
 |--------------------------------------------------------------------------
 */
 Route::prefix('event')->middleware('api')->group(function () {
@@ -98,22 +100,28 @@ Route::prefix('event')->middleware('api')->group(function () {
     Route::get('/show/{id}', [EventController::class, 'show'])->name('event.show');
     Route::get('/{slug}', [EventController::class, 'view'])->name('event.view');
     Route::get('/myevents/list', [EventController::class, 'myEvents'])->name('event.myevents');
+
     Route::post('/', [EventController::class, 'store'])->name('event.store');
     Route::post('/{id}', [EventController::class, 'update'])->name('event.update');
     Route::delete('/{id}', [EventController::class, 'delete'])->name('event.delete');
 });
 
+/*
+|--------------------------------------------------------------------------
+| TICKETS
+|--------------------------------------------------------------------------
+*/
 Route::prefix('ticket')->middleware('api')->group(function () {
     Route::get('/', [TicketController::class, 'list'])->name('ticket.list');
     Route::get('/show/{id}', [TicketController::class, 'show'])->name('ticket.show');
     Route::get('/event/{eventId}', [TicketController::class, 'listByEvent'])->name('ticket.listByEvent');
     Route::get('/user', [TicketController::class, 'listByUser'])->name('ticket.listByUser');
     Route::get('/production/{productionId}', [TicketController::class, 'listByProduction'])->name('ticket.listByProduction');
+
     Route::post('/', [TicketController::class, 'store'])->name('ticket.store');
     Route::put('/{id}', [TicketController::class, 'update'])->name('ticket.update');
     Route::delete('/{id}', [TicketController::class, 'destroy'])->name('ticket.destroy');
 });
-
 
 /*
 |--------------------------------------------------------------------------
@@ -130,10 +138,9 @@ Route::prefix('news')->middleware('api')->group(function () {
     Route::post('/{id}/comment', [NewsController::class, 'comment'])->name('news.comment');
 });
 
-
 /*
 |--------------------------------------------------------------------------
-| RELATÓRIOS E REGISTROS
+| RELATÓRIOS / SERVICE RECORDS
 |--------------------------------------------------------------------------
 */
 Route::prefix('report')->middleware('api')->group(function () {
@@ -149,33 +156,28 @@ Route::prefix('service-record')->middleware('api')->group(function () {
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
 });
+
 /*
 |--------------------------------------------------------------------------
 | ESTABELECIMENTOS
 |--------------------------------------------------------------------------
 */
-
-// 🔹 Rotas públicas (sem autenticação)
+// PUBLIC
 Route::prefix('establishment')->middleware(['api'])->group(function () {
 
-    // Básicas
     Route::get('/', [EstablishmentController::class, 'list'])->name('establishment.list');
     Route::get('/category/{category}', [EstablishmentController::class, 'listByCategory'])->name('establishment.listByCategory');
     Route::get('/show/{id}', [EstablishmentController::class, 'show'])->name('establishment.show');
 
-    // 🔥 LISTA CIDADES — DEVE VIR ANTES DE QUALQUER {slug}
     Route::get('/cities/{app_id}', [EstablishmentController::class, 'listCities']);
 
-    // Rotas com slug
     Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
     Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
 
-    // Home pública
     Route::get('/home/{app_id}', [EstablishmentController::class, 'home'])->name('establishment.home');
 });
 
-
-// 🔒 Rotas protegidas (autenticadas)
+// PRIVATE
 Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [EstablishmentController::class, 'store'])->name('establishment.store');
@@ -187,23 +189,31 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
     Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
 });
 
-
 /*
 |--------------------------------------------------------------------------
-| PEDIDOS E PREVISÕES
+| ORDERS
 |--------------------------------------------------------------------------
 */
 Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
+
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
-    Route::get('/view/{id}', [OrderController::class, 'view'])->whereNumber('id')->name('order.view'); // ✅ NOVA ROTA
+
+    Route::get('/view/{id}', [OrderController::class, 'view'])->whereNumber('id')->name('order.view');
     Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
+
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
-    Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])->whereNumber('id')->name('order.updateAppointmentStatus');
+    Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])
+        ->whereNumber('id')
+        ->name('order.updateAppointmentStatus');
 });
 
-
+/*
+|--------------------------------------------------------------------------
+| ORDER FORECAST
+|--------------------------------------------------------------------------
+*/
 Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
@@ -211,24 +221,23 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
 
 /*
 |--------------------------------------------------------------------------
-| ITENS
+| ITEMS
 |--------------------------------------------------------------------------
 */
-
-// 🔹 Rotas públicas (sem autenticação)
+// PUBLIC
 Route::prefix('item')->middleware(['api'])->group(function () {
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
     Route::get('/listbyapp', [ItemController::class, 'listByApp'])->name('item.listByApp');
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
     Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
+
     Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
     Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
 
-    // ✅ Home pública — lista itens por app_id
     Route::get('/home/{app_id}', [ItemController::class, 'home'])->name('item.home');
 });
 
-// 🔒 Rotas protegidas (requer autenticação)
+// PRIVATE
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
@@ -238,11 +247,9 @@ Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
 });
 
-
-
 /*
 |--------------------------------------------------------------------------
-| CARDÁPIO
+| MENU
 |--------------------------------------------------------------------------
 */
 Route::prefix('menu')->middleware('api')->group(function () {
@@ -255,21 +262,19 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
+
 /*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
 */
-
-// 🔹 Rotas públicas
+// PUBLIC
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
-
-    // 🔥 Home pública DEVE ESTAR AQUI
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
 });
 
-// 🔒 Rotas protegidas
+// PRIVATE
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
     Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
@@ -277,10 +282,32 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
     Route::get('/appointments', [EmployerController::class, 'listAppointments'])->name('employer.appointments');
 
-    // 🗓️ Horários 
     Route::get('/schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
     Route::post('/schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
     Route::delete('/schedules/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
+
     Route::get('/available', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
     Route::post('/reserve', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
+});
+
+/*
+|--------------------------------------------------------------------------
+| FILES (ARQUIVOS / MÍDIA)
+|--------------------------------------------------------------------------
+*/
+// PUBLIC
+Route::prefix('file')->middleware(['api'])->group(function () {
+
+    Route::get('/view/{slug}', [FileController::class, 'view'])->name('file.view');
+    Route::get('/download/{id}', [FileController::class, 'download'])->whereNumber('id')->name('file.download');
+    Route::get('/list-by-entity', [FileController::class, 'listByEntity'])->name('file.listByEntity');
+});
+
+// PRIVATE
+Route::prefix('file')->middleware(['api', 'auth:api'])->group(function () {
+
+    Route::post('/', [FileController::class, 'store'])->name('file.store');
+    Route::put('/{id}', [FileController::class, 'update'])->whereNumber('id')->name('file.update');
+    Route::post('/{id}', [FileController::class, 'update'])->whereNumber('id')->name('file.update.post');
+    Route::delete('/{id}', [FileController::class, 'delete'])->whereNumber('id')->name('file.delete');
 });
