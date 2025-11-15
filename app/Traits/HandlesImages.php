@@ -2,34 +2,49 @@
 
 namespace App\Traits;
 
+use Illuminate\Support\Facades\Log;
 use Intervention\Image\Facades\Image;
 
 trait HandlesImages
 {
-    protected $basePath = "/home/petert03/api.petertecnet.com.br/public/";
-
+    /**
+     * Remove uma imagem existente.
+     */
     public function deleteImage($relativePath)
     {
         if (!$relativePath) return;
 
-        $full = $this->basePath . $relativePath;
+        $fullPath = public_path($relativePath);
 
-        if (file_exists($full)) {
-            unlink($full);
+        if (file_exists($fullPath)) {
+            unlink($fullPath);
+            Log::info("🗑️ [IMAGE] Imagem removida", ['path' => $relativePath]);
         }
     }
 
-    public function uploadImage($file)
+    /**
+     * Faz upload + resize (250x250)
+     */
+    public function uploadImage($file, $prefix = 'item_', $size = 250)
     {
-        $destination = $this->basePath . "images/";
-        $imageName = uniqid("item_") . "." . $file->getClientOriginalExtension();
+        Log::info("📥 [IMAGE] Iniciando upload da imagem...");
 
-        $file->move($destination, $imageName);
+        $folder = public_path('images');
+        if (!is_dir($folder)) {
+            mkdir($folder, 0775, true);
+        }
 
-        $path = $destination . $imageName;
+        $imageName = uniqid($prefix) . '.' . $file->getClientOriginalExtension();
+        $filePath = $folder . '/' . $imageName;
 
-        $img = Image::make($path)->fit(250, 250);
-        $img->save($path);
+        $file->move($folder, $imageName);
+
+        // RESIZE
+        Image::make($filePath)->fit($size, $size)->save();
+
+        Log::info("✅ [IMAGE] Upload concluído", [
+            'file' => "images/" . $imageName
+        ]);
 
         return "images/" . $imageName;
     }
