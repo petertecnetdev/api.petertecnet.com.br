@@ -3,169 +3,62 @@
 namespace App\Traits;
 
 use Illuminate\Support\Facades\Log;
-use Intervention\Image\Facades\Image;
-
-trait HandlesImages
-{
-    /**
-     * Remove imagem antiga.
-     */
-    public function deleteImage($relativePath)
-    {
-        if (!$relativePath) return;
-
-        $fullPath = public_path($relativePath);
-
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-
-            Log::info("🗑️ [IMAGE] Imagem removida", [
-                'path' => $relativePath
-            ]);
-        }
-    }
-
-    /**
-     * Upload + resize genérico.
-     *
-     * $prefix = item_, employer_, establishment_
-     * $size = 250 (item), 150 (logo), 1920x600 (background) -> mas pode ser alterado
-     */
-    public function uploadImage($file, $prefix = 'item_', $size = 250, $height = null)
-    {
-        Log::info("📥 [IMAGE] Iniciando upload da imagem...");
-
-        $folder = public_path('images');
-
-        // cria pasta se não existir
-        if (!is_dir($folder)) {
-            mkdir($folder, 0775, true);
-        }
-
-        // nome da imagem
-        $imageName = uniqid($prefix) . '.' . $file->getClientOriginalExtension();
-        $fullPath = $folder . '/' . $imageName;
-
-        // move arquivo
-        $file->move($folder, $imageName);
-
-        // resize
-        if ($height) {
-            // exemplo: background 1920x600
-            Image::make($fullPath)->fit($size, $height)->save();
-        } else {
-            // resize padrão quadrado: 250x250 ou outro passado
-            Image::make($fullPath)->fit($size, $size)->save();
-        }
-
-        Log::info("✅ [IMAGE] Upload concluído", [
-            'file' => "images/" . $imageName
-        ]);
-
-        return "images/" . $imageName;
-    }
-
-    /**
-     * Remove imagem se `remove_image = 1`.
-     */
-    public function handleRemoveImage($request)
-    {
-        if ($request->remove_image == 1 && $this->image) {
-
-            $this->deleteImage($this->image);
-
-            $this->image = null;
-        }
-    }
-
-    /**
-     * Faz upload de uma nova imagem, removendo a antiga.
-     */
-    public function handleUploadNewImage($request, $prefix = 'item_', $size = 250, $height = null)
-    {
-        if ($request->hasFile('image')) {
-
-            // remove anterior
-            if ($this->image) {
-                $this->deleteImage($this->image);
-            }
-
-            // faz upload
-            $this->image = $this->uploadImage(
-                $request->file('image'),
-                $prefix,
-                $size,
-                $height
-            );
-        }
-    }
-}
-<?php
-
-namespace App\Traits;
-
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Facades\Image;
 
 trait HandlesImages
 {
     /**
-     * Remove uma imagem do disco `public`
-     * Espera caminhos como: storage/items/xxx.png
+     * Remove uma imagem do disco public/
+     * Ex: storage/items/abc.png → public/items/abc.png
      */
     public function deleteImage($relativePath)
     {
-        if (!$relativePath) return;
+        if (!$relativePath) {
+            return;
+        }
 
-        // Converte "storage/items/xxx.png" → "public/items/xxx.png"
-        $path = str_replace('storage/', '', $relativePath);
+        $cleanPath = str_replace('storage/', '', $relativePath);
 
-        if (Storage::disk('public')->exists($path)) {
-            Storage::disk('public')->delete($path);
+        if (Storage::disk('public')->exists($cleanPath)) {
+            Storage::disk('public')->delete($cleanPath);
 
-            Log::info("🗑️ [IMAGE] Imagem removida", [
+            Log::info("🗑️ [IMAGE] Removida com sucesso", [
                 'path' => $relativePath
             ]);
         }
     }
 
     /**
-     * Upload + resize idêntico ao Establishment
-     * Salva no disco "public" usando Storage::put
-     *
-     * @param  UploadedFile $file
-     * @param  string $folder ("items", "logos", etc.)
-     * @param  int $size
+     * Upload + resize igual ao Establishment
+     * Salva em: storage/app/public/{folder}/arquivo.png
+     * Retorna:  storage/{folder}/arquivo.png
      */
     public function uploadImage($file, $folder = 'items', $size = 250)
     {
-        Log::info("📥 [IMAGE] Iniciando upload...", [
+        Log::info("📤 [IMAGE] Iniciando upload...", [
             'folder' => $folder,
-            'size' => $size,
+            'size'   => $size
         ]);
 
-        // Gera nome único
-        $name = uniqid($folder . '_') . '.' . $file->getClientOriginalExtension();
+        $extension = $file->getClientOriginalExtension();
+        $fileName  = uniqid($folder . '_') . '.' . $extension;
+        $path      = $folder . '/' . $fileName;
 
-        // Caminho completo dentro do disco public
-        $path = $folder . '/' . $name;
-
-        // Salva o arquivo original no disco
+        // Salva o arquivo bruto
         Storage::disk('public')->put($path, file_get_contents($file));
 
-        // Agora abre e redimensiona via Intervention
-        $fullPath = Storage::disk('public')->path($path);
+        // Redimensiona
+        $absolute = Storage::disk('public')->path($path);
 
-        Image::make($fullPath)
+        Image::make($absolute)
             ->fit($size, $size)
             ->save();
 
-        Log::info("✅ [IMAGE] Upload concluído", [
+        Log::info("✅ [IMAGE] Upload finalizado", [
             'saved_as' => "storage/" . $path
         ]);
 
-        // Retorna caminho igual Establishment
         return "storage/" . $path;
     }
 }
