@@ -292,137 +292,147 @@ class ItemController extends Controller
 
     public function update(Request $request, $id)
 {
-    \Log::info("🔄 [ITEM UPDATE] Iniciando atualização do item", [
-        'item_id' => $id,
-        'request_data' => $request->all()
-    ]);
-
     try {
-        // ================================
-        // 🔐 AUTENTICAÇÃO & PERMISSÃO
-        // ================================
-        $user = Auth::user();
-
-        if (!$user) {
-            \Log::warning("⛔ [ITEM UPDATE] Usuário não autenticado");
+        if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        \Log::info("👤 [ITEM UPDATE] Usuário autenticado", [
-            'user_id' => $user->id,
-            'name'    => $user->name
-        ]);
-
-        if (!$user->hasPermission('item_update')) {
-            \Log::warning("⛔ [ITEM UPDATE] Usuário sem permissão", [
-                'user_id' => $user->id
-            ]);
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        // ================================
-        // 🔍 CARREGAR ITEM
-        // ================================
+        $user = Auth::user();
         $item = Item::find($id);
 
         if (!$item) {
-            \Log::warning("⚠️ [ITEM UPDATE] Item não encontrado", [
-                'item_id' => $id
-            ]);
             return response()->json(['error' => 'Item não encontrado.'], 404);
         }
 
-        \Log::info("📦 [ITEM UPDATE] Item carregado com sucesso", [
-            'item_id' => $item->id,
-            'name'    => $item->name
-        ]);
-
-        // ================================
-        // 📌 AJUSTAR STOCK VAZIO
-        // ================================
-        if ($request->has('stock') && $request->input('stock') === '') {
-            $request->merge(['stock' => null]);
-            \Log::info("🔧 [ITEM UPDATE] Stock estava vazio, ajustado para null");
+        // Permissão (igual ao padrão do Establishment)
+        if (!$user->hasPermission('item_update')) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        // ================================
-        // 🧪 VALIDAÇÃO
-        // ================================
-        \Log::info("🧪 [ITEM UPDATE] Validando dados…");
-
+        // ============================
+        // 🔍 VALIDAÇÃO
+        // ============================
         $validated = $request->validate([
             'name' => 'nullable|string|max:255',
             'type' => 'nullable|string|max:100',
+            'description' => 'nullable|string|max:2500',
             'price' => 'nullable|numeric|min:0',
             'stock' => 'nullable|integer|min:0',
             'status' => 'nullable|boolean',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'limited_by_user' => 'nullable|boolean',
+            'category' => 'nullable|string|max:255',
+            'subcategory' => 'nullable|string|max:255',
+            'brand' => 'nullable|string|max:255',
             'availability_start' => 'nullable|date',
-            'availability_end' => 'nullable|date|after:availability_start',
+            'availability_end'   => 'nullable|date|after:availability_start',
+            'tags' => 'nullable|string',
             'discount' => 'nullable|numeric|min:0|max:100',
             'expiration_date' => 'nullable|date',
-            'duration' => 'nullable|integer|min:1|max:480',
-        ], $this->getValidationMessages());
+            'notes' => 'nullable|string|max:2500',
+            'is_featured' => 'nullable|boolean',
 
-        \Log::info("✅ [ITEM UPDATE] Dados validados com sucesso", [
-            'validated' => $validated
+            // imagens
+            'image' => 'nullable|image|max:4096',
+            'remove_image' => 'nullable|integer|in:0,1',
         ]);
 
-        // ================================
-        // 📝 ATUALIZAR CAMPOS SIMPLES
-        // ================================
-        $item->fillFromRequest($request)->save();
-        \Log::info("📝 [ITEM UPDATE] Campos atualizados no banco");
+        // CAPTURA DADOS ANTES DA ALTERAÇÃO
+        $oldData = $item->getOriginal();
+        $changes = [];
 
-        // ================================
-        // 🧹 REMOVER IMAGEM SE SOLICITADO
-        // ================================
-        if ($request->input('remove_image') == 1) {
-            \Log::info("🗑️ [ITEM UPDATE] Solicitação de remoção de imagem recebida");
+        foreach ($validated as $key => $value) {
+            if (($oldData[$key] ?? null) != $value && $key !== "image") {
+                $changes[$key] = [
+                    'old' => $oldData[$key] ?? null,
+                    'new' => $value
+                ];
+            }
         }
 
-        $item->removeImageIfRequested($request);
+        // ============================
+        // 🔥 ✔ REMOVER IMAGEM
+        // ============================
+        if ($request->remove_image == 1 && $item->image) {
 
-        // ================================
-        // 📤 UPLOAD DA NOVA IMAGEM
-        // ================================
+            $item->deleteImage($item->image); // ← Usa o trait HandlesImages
+            $changes['image'] = [
+                'old' => $item->image,
+                'new' => null
+            ];
+
+            $item->image = null;
+        }
+
+        // ============================
+        // 🔥 ✔ UPLOAD NOVA IMAGEM
+        // ============================
         if ($request->hasFile('image')) {
-            \Log::info("📤 [ITEM UPDATE] Nova imagem enviada");
+
+            // Remove imagem antiga
+            if ($item->image) {
+                $item->deleteImage($item->image);
+            }
+
+            // Upload pelo trait HandlesImages
+            $newPath = $item->uploadImage($request->file('image'), 'item_', 250);
+
+            $changes['image'] = [
+                'old' => $oldData['image'] ?? null,
+                'new' => $newPath
+            ];
+
+            $validated['image'] = $newPath;
         }
 
-        $item->uploadNewImageIfProvided($request);
+        // ============================
+        // 🔠 SLUG SE NOME MUDAR
+        // ============================
+        if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
+            $base = \Illuminate\Support\Str::slug($validated['name']);
+            $count = Item::where('slug', 'LIKE', "$base%")
+                ->where('id', '!=', $item->id)
+                ->count();
 
-        // ================================
-        // 🎉 SUCESSO
-        // ================================
-        \Log::info("🎉 [ITEM UPDATE] Item atualizado com sucesso!", [
-            'item_id' => $item->id
-        ]);
+            $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
+
+            $changes['slug'] = [
+                'old' => $item->slug,
+                'new' => $newSlug
+            ];
+
+            $validated['slug'] = $newSlug;
+        }
+
+        // ============================
+        // 💾 SALVAR ALTERAÇÕES
+        // ============================
+        $item->fill($validated);
+        $item->updated_by = $user->id;
+        $item->save();
+
+        // SALVA INTERAÇÃO SE TIVER CHANGES
+        if (!empty($changes)) {
+            Interaction::registerUpdate($item, $user, $changes);
+        }
 
         return response()->json([
             'message' => 'Item atualizado com sucesso.',
             'item' => $item,
-        ]);
+            'changes' => $changes
+        ], 200);
 
     } catch (\Illuminate\Validation\ValidationException $e) {
-
-        \Log::warning("⚠️ [ITEM UPDATE] Erros de validação", [
-            'errors' => $e->errors()
-        ]);
-
         return response()->json(['errors' => $e->errors()], 422);
 
     } catch (\Exception $e) {
-
-        \Log::error("💥 [ITEM UPDATE] Erro inesperado ao atualizar item", [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
+        \Log::error('Erro ao atualizar item', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
         ]);
 
-        return response()->json(['error' => 'Erro ao atualizar o item.'], 500);
+        return response()->json(['error' => 'Erro ao atualizar item.'], 500);
     }
 }
-
 
 
 
