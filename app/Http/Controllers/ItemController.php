@@ -291,47 +291,138 @@ class ItemController extends Controller
     }
 
     public function update(Request $request, $id)
-    {
-        try {
-            $user = Auth::user();
+{
+    \Log::info("🔄 [ITEM UPDATE] Iniciando atualização do item", [
+        'item_id' => $id,
+        'request_data' => $request->all()
+    ]);
 
-            if (!$user || !$user->hasPermission('item_update')) {
-                return response()->json(['error' => 'Acesso negado.'], 403);
-            }
+    try {
+        // ================================
+        // 🔐 AUTENTICAÇÃO & PERMISSÃO
+        // ================================
+        $user = Auth::user();
 
-            $item = Item::findOrFail($id);
-
-            $validated = $request->validate([
-                'name' => 'nullable|string|max:255',
-                'type' => 'nullable|string|max:100',
-                'price' => 'nullable|numeric|min:0',
-                'stock' => 'nullable|integer|min:0',
-                'status' => 'nullable|boolean',
-                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-                'availability_start' => 'nullable|date',
-                'availability_end' => 'nullable|date|after:availability_start',
-                'discount' => 'nullable|numeric|min:0|max:100',
-                'expiration_date' => 'nullable|date',
-                'duration' => 'nullable|integer|min:1|max:480',
-            ], $this->getValidationMessages());
-
-            $item->fillFromRequest($request)->save();
-
-            // 🔥 Remover imagem
-            $item->removeImageIfRequested($request);
-
-            // 🔥 Upload nova imagem
-            $item->uploadNewImageIfProvided($request);
-
-            return response()->json([
-                'message' => 'Item atualizado com sucesso.',
-                'item' => $item
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Erro ao atualizar o item.'], 500);
+        if (!$user) {
+            \Log::warning("⛔ [ITEM UPDATE] Usuário não autenticado");
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        \Log::info("👤 [ITEM UPDATE] Usuário autenticado", [
+            'user_id' => $user->id,
+            'name'    => $user->name
+        ]);
+
+        if (!$user->hasPermission('item_update')) {
+            \Log::warning("⛔ [ITEM UPDATE] Usuário sem permissão", [
+                'user_id' => $user->id
+            ]);
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        // ================================
+        // 🔍 CARREGAR ITEM
+        // ================================
+        $item = Item::find($id);
+
+        if (!$item) {
+            \Log::warning("⚠️ [ITEM UPDATE] Item não encontrado", [
+                'item_id' => $id
+            ]);
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        \Log::info("📦 [ITEM UPDATE] Item carregado com sucesso", [
+            'item_id' => $item->id,
+            'name'    => $item->name
+        ]);
+
+        // ================================
+        // 📌 AJUSTAR STOCK VAZIO
+        // ================================
+        if ($request->has('stock') && $request->input('stock') === '') {
+            $request->merge(['stock' => null]);
+            \Log::info("🔧 [ITEM UPDATE] Stock estava vazio, ajustado para null");
+        }
+
+        // ================================
+        // 🧪 VALIDAÇÃO
+        // ================================
+        \Log::info("🧪 [ITEM UPDATE] Validando dados…");
+
+        $validated = $request->validate([
+            'name' => 'nullable|string|max:255',
+            'type' => 'nullable|string|max:100',
+            'price' => 'nullable|numeric|min:0',
+            'stock' => 'nullable|integer|min:0',
+            'status' => 'nullable|boolean',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
+            'availability_start' => 'nullable|date',
+            'availability_end' => 'nullable|date|after:availability_start',
+            'discount' => 'nullable|numeric|min:0|max:100',
+            'expiration_date' => 'nullable|date',
+            'duration' => 'nullable|integer|min:1|max:480',
+        ], $this->getValidationMessages());
+
+        \Log::info("✅ [ITEM UPDATE] Dados validados com sucesso", [
+            'validated' => $validated
+        ]);
+
+        // ================================
+        // 📝 ATUALIZAR CAMPOS SIMPLES
+        // ================================
+        $item->fillFromRequest($request)->save();
+        \Log::info("📝 [ITEM UPDATE] Campos atualizados no banco");
+
+        // ================================
+        // 🧹 REMOVER IMAGEM SE SOLICITADO
+        // ================================
+        if ($request->input('remove_image') == 1) {
+            \Log::info("🗑️ [ITEM UPDATE] Solicitação de remoção de imagem recebida");
+        }
+
+        $item->removeImageIfRequested($request);
+
+        // ================================
+        // 📤 UPLOAD DA NOVA IMAGEM
+        // ================================
+        if ($request->hasFile('image')) {
+            \Log::info("📤 [ITEM UPDATE] Nova imagem enviada");
+        }
+
+        $item->uploadNewImageIfProvided($request);
+
+        // ================================
+        // 🎉 SUCESSO
+        // ================================
+        \Log::info("🎉 [ITEM UPDATE] Item atualizado com sucesso!", [
+            'item_id' => $item->id
+        ]);
+
+        return response()->json([
+            'message' => 'Item atualizado com sucesso.',
+            'item' => $item,
+        ]);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+
+        \Log::warning("⚠️ [ITEM UPDATE] Erros de validação", [
+            'errors' => $e->errors()
+        ]);
+
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+
+        \Log::error("💥 [ITEM UPDATE] Erro inesperado ao atualizar item", [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json(['error' => 'Erro ao atualizar o item.'], 500);
     }
+}
+
 
 
 
