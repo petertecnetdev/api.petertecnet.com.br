@@ -575,150 +575,176 @@ class Establishment extends Model
                 }
             ])
             ->firstOrFail();
-    }public function otherEstablishments()
-{
-    return Cache::remember("establishment_{$this->id}_related", 120, function () {
-        return self::where('app_id', $this->app_id)
-            ->where('id', '!=', $this->id)
-            ->withCount([
-                'views as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                },
-            ])
-            ->limit(6)
-            ->get([
-                'id',
-                'name',
-                'slug',
-                'logo',
-                'background',
-                'city',
-                'category',
-            ])
-            ->map(function ($est) {
-                $est->completed_appointments = \App\Models\Order::where('entity_name', 'App\\Models\\Establishment')
-                    ->where('entity_id', $est->id)
-                    ->where('type', 'appointment')
-                    ->where('appointment_status', 'attended')
-                    ->count();
-                return $est;
-            });
-    });
-}
+    }
+    public function otherEstablishments()
+    {
+        return Cache::remember("establishment_{$this->id}_related", 120, function () {
+            return self::where('app_id', $this->app_id)
+                ->where('id', '!=', $this->id)
+                ->withCount([
+                    'views as total_views' => function ($q) {
+                        $q->where('interaction_type', 'view');
+                    },
+                ])
+                ->limit(6)
+                ->get([
+                    'id',
+                    'name',
+                    'slug',
+                    'logo',
+                    'background',
+                    'city',
+                    'category',
+                ])
+                ->map(function ($est) {
+                    $est->completed_appointments = \App\Models\Order::where('entity_name', 'App\\Models\\Establishment')
+                        ->where('entity_id', $est->id)
+                        ->where('type', 'appointment')
+                        ->where('appointment_status', 'attended')
+                        ->count();
+                    return $est;
+                });
+        });
+    }
 
-public function otherEmployers()
-{
-    return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
-        return \App\Models\Employer::with([
+    public function otherEmployers()
+    {
+        return Cache::remember("establishment_{$this->id}_other_employers", 120, function () {
+            return \App\Models\Employer::with([
                 'user:id,first_name,last_name,user_name,avatar,email',
                 'establishment:id,name,slug,logo,background,app_id',
             ])
-            ->whereHas('establishment', function ($q) {
-                $q->where('app_id', $this->app_id);
-            })
-            ->where('establishment_id', '!=', $this->id)
-            ->withCount([
-                'views as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                },
-            ])
-            ->inRandomOrder()
-            ->limit(6)
-            ->get(['id', 'establishment_id'])
-            ->map(function ($emp) {
-                $emp->completed_appointments = \App\Models\Order::where('attendant_id', $emp->id)
-                    ->where('type', 'appointment')
-                    ->where('appointment_status', 'attended')
-                    ->count();
-                return $emp;
-            });
-    });
-}
+                ->whereHas('establishment', function ($q) {
+                    $q->where('app_id', $this->app_id);
+                })
+                ->where('establishment_id', '!=', $this->id)
+                ->withCount([
+                    'views as total_views' => function ($q) {
+                        $q->where('interaction_type', 'view');
+                    },
+                ])
+                ->inRandomOrder()
+                ->limit(6)
+                ->get(['id', 'establishment_id'])
+                ->map(function ($emp) {
+                    $emp->completed_appointments = \App\Models\Order::where('attendant_id', $emp->id)
+                        ->where('type', 'appointment')
+                        ->where('appointment_status', 'attended')
+                        ->count();
+                    return $emp;
+                });
+        });
+    }
 
-public function otherItems()
-{
-    return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
-        return \App\Models\Item::with([
+    public function otherItems()
+    {
+        return Cache::remember("establishment_{$this->id}_other_items", 120, function () {
+            return \App\Models\Item::with([
                 'entity:id,name,slug,logo,background,app_id',
             ])
-            ->whereHas('entity', function ($q) {
-                $q->where('app_id', $this->app_id);
-            })
-            ->where('entity_id', '!=', $this->id)
-            ->withCount([
-                'views as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                },
-            ])
-            ->inRandomOrder()
-            ->limit(6)
-            ->get([
-                'id',
-                'entity_id',
-                'name',
-                'slug',
-                'price',
-                'type',
-                'image',
-            ])
-            ->map(function ($item) {
-                $item->completed_appointments = \App\Models\OrderItem::where('item_id', $item->id)
-                    ->whereHas('order', function ($q) {
-                        $q->where('type', 'appointment')
-                          ->where('appointment_status', 'attended');
-                    })
-                    ->count();
-                return $item;
-            });
-    });
-}
+                ->whereHas('entity', function ($q) {
+                    $q->where('app_id', $this->app_id);
+                })
+                ->where('entity_id', '!=', $this->id)
+                ->withCount([
+                    'views as total_views' => function ($q) {
+                        $q->where('interaction_type', 'view');
+                    },
+                ])
+                ->inRandomOrder()
+                ->limit(6)
+                ->get([
+                    'id',
+                    'entity_id',
+                    'name',
+                    'slug',
+                    'price',
+                    'type',
+                    'image',
+                ])
+                ->map(function ($item) {
+                    $item->completed_appointments = \App\Models\OrderItem::where('item_id', $item->id)
+                        ->whereHas('order', function ($q) {
+                            $q->where('type', 'appointment')
+                                ->where('appointment_status', 'attended');
+                        })
+                        ->count();
+                    return $item;
+                });
+        });
+    }
 
-public function completedAppointments()
-{
-    return Cache::remember("establishment_{$this->id}_completed_appointments", 120, function () {
-        return \App\Models\Order::where('entity_name', 'establishment')
-            ->where('entity_id', $this->id)
-            ->where('type', 'appointment')
-            ->where('appointment_status', 'attended')
-            ->with([
-                'client:id,first_name,last_name,user_name,avatar,email',
-                'attendant.user:id,first_name,last_name,user_name,avatar,email',
-                'items:id,order_id,item_id,quantity',
-                'items.item:id,name,price,type'
-            ])
-            ->orderByDesc('attended_at')
-            ->get()
-            ->map(function ($order) {
-                $client = $order->client;
-                $attendant = $order->attendant?->user;
+    public function completedAppointments()
+    {
+        return Cache::remember("establishment_{$this->id}_completed_appointments", 120, function () {
+            return \App\Models\Order::where('entity_name', 'establishment')
+                ->where('entity_id', $this->id)
+                ->where('type', 'appointment')
+                ->where('appointment_status', 'attended')
+                ->with([
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                    'items:id,order_id,item_id,quantity',
+                    'items.item:id,name,price,type'
+                ])
+                ->orderByDesc('attended_at')
+                ->get()
+                ->map(function ($order) {
+                    $client = $order->client;
+                    $attendant = $order->attendant?->user;
 
-                $totalItems = $order->items->sum('quantity');
-                $itemNames = $order->items->pluck('item.name')->toArray();
+                    $totalItems = $order->items->sum('quantity');
+                    $itemNames = $order->items->pluck('item.name')->toArray();
 
-                return [
-                    'order_id' => $order->id,
-                    'order_number' => $order->order_number,
-                    'attended_at' => optional($order->attended_at)->format('d/m/Y H:i'),
-                    'client' => $client ? [
-                        'id' => $client->id,
-                        'name' => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')),
-                        'user_name' => $client->user_name,
-                        'avatar' => $client->avatar,
-                    ] : null,
-                    'attendant' => $attendant ? [
-                        'id' => $attendant->id,
-                        'name' => trim(($attendant->first_name ?? '') . ' ' . ($attendant->last_name ?? '')),
-                        'user_name' => $attendant->user_name,
-                        'avatar' => $attendant->avatar,
-                    ] : null,
-                    'total_items' => $totalItems,
-                    'item_list' => $itemNames,
-                    'total_price' => $order->total_price,
-                ];
-            });
-    });
-}
+                    return [
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'attended_at' => optional($order->attended_at)->format('d/m/Y H:i'),
+                        'client' => $client ? [
+                            'id' => $client->id,
+                            'name' => trim(($client->first_name ?? '') . ' ' . ($client->last_name ?? '')),
+                            'user_name' => $client->user_name,
+                            'avatar' => $client->avatar,
+                        ] : null,
+                        'attendant' => $attendant ? [
+                            'id' => $attendant->id,
+                            'name' => trim(($attendant->first_name ?? '') . ' ' . ($attendant->last_name ?? '')),
+                            'user_name' => $attendant->user_name,
+                            'avatar' => $attendant->avatar,
+                        ] : null,
+                        'total_items' => $totalItems,
+                        'item_list' => $itemNames,
+                        'total_price' => $order->total_price,
+                    ];
+                });
+        });
+    }
 
+    public function files()
+    {
+        return $this->hasMany(File::class, 'entity_id')
+            ->where('entity_name', 'establishment')
+            ->orderBy('position');
+    }
+
+    public function logoFile()
+    {
+        return $this->hasOne(File::class, 'entity_id')
+            ->where('entity_name', 'establishment')
+            ->where('type', 'logo');
+    }
+
+    public function backgroundFile()
+    {
+        return $this->hasOne(File::class, 'entity_id')
+            ->where('entity_name', 'establishment')
+            ->where('type', 'background');
+    }
+
+    public function media()
+    {
+        return $this->morphMany(File::class, 'fileable');
+    }
 
 
 }
