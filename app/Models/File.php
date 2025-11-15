@@ -22,50 +22,62 @@ class File extends Model
         'entity_name',
         'fileable_id',
         'fileable_type',
-        'slug',
+
         'original_name',
         'extension',
         'mime_type',
         'file_size',
         'content_hash',
+
         'type',
         'storage',
         'path',
         'storage_path',
         'public_url',
+
         'width',
         'height',
         'quality',
         'color_profile',
         'orientation',
+
         'duration',
         'fps',
         'bitrate',
         'video_width',
         'video_height',
         'codec',
+
         'group',
         'tags',
         'sort_order',
         'position',
         'is_primary',
         'processed',
+
         'variants',
         'meta',
+
         'visibility',
         'visibility_scope',
         'status',
+
         'locked',
         'expires_at',
+
         'usage_count',
         'last_used_at',
+
         'source',
         'version',
         'checksum',
+
         'download_count',
         'last_downloaded_at',
+
         'compressed',
         'compression_ratio',
+
         'created_by',
         'updated_by',
     ];
@@ -83,7 +95,10 @@ class File extends Model
         'last_downloaded_at' => 'datetime',
     ];
 
-    protected $appends = ['metrics', 'interaction_summary'];
+    protected $appends = [
+        'metrics',
+        'interaction_summary',
+    ];
 
     /* ============================================================
        BOOT
@@ -99,17 +114,8 @@ class File extends Model
                 $model->uuid = (string) Str::uuid();
             }
 
-            if (empty($model->slug) && !empty($model->original_name)) {
-                $base = Str::slug(pathinfo($model->original_name, PATHINFO_FILENAME));
-                $slug = $base;
-                $count = 1;
-
-                while (self::where('slug', $slug)->exists()) {
-                    $slug = "{$base}-{$count}";
-                    $count++;
-                }
-
-                $model->slug = $slug;
+            if (!empty($model->path)) {
+                $model->content_hash = md5($model->path . microtime());
             }
         });
     }
@@ -166,6 +172,7 @@ class File extends Model
     public function getMetricsAttribute()
     {
         return Cache::remember("file_{$this->id}_metrics", 120, function () {
+
             $views = $this->views();
             $downloads = $this->downloads();
 
@@ -181,6 +188,7 @@ class File extends Model
             }
 
             $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
+
             $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
 
             $engagementScore = round(
@@ -209,6 +217,7 @@ class File extends Model
     public function getInteractionSummaryAttribute()
     {
         return Cache::remember("file_{$this->id}_summary", 120, function () {
+
             $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
 
             if ($views->isEmpty()) {
@@ -221,6 +230,7 @@ class File extends Model
             }
 
             $mostActive = $views->groupBy('user_id')->map(function ($g) {
+
                 $u = $g->first()->user;
 
                 return [
@@ -231,6 +241,7 @@ class File extends Model
                     'email' => $u?->email,
                     'total' => $g->count(),
                 ];
+
             })->sortByDesc('total')->first();
 
             $lastView = $views->sortByDesc('created_at')->first()?->user;
@@ -287,7 +298,7 @@ class File extends Model
     }
 
     /* ============================================================
-       MÉTODO storeOne — corrigido sem excluir nada
+       MÉTODO storeOne — FINAL
     ============================================================ */
 
     public static function storeOne(
@@ -303,26 +314,28 @@ class File extends Model
         $mime = $file->getMimeType();
         $size = $file->getSize();
 
-        $slug = Str::slug("{$entityName}-{$entityId}-{$type}-" . uniqid());
-        $filename = "{$slug}.{$ext}";
+        $uuid = (string) Str::uuid();
+        $filename = "{$uuid}.{$ext}";
 
         $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
-        $publicUrl = Storage::disk('public')->url($path);
 
         return self::create([
-            'uuid' => Str::uuid(),
+            'uuid' => $uuid,
             'app_id' => $appId,
             'entity_name' => $entityName,
             'entity_id' => $entityId,
             'type' => $type,
+
             'original_name' => $original,
             'extension' => $ext,
             'mime_type' => $mime,
             'file_size' => $size,
+
             'storage' => 'public',
             'path' => $path,
             'storage_path' => $path,
-            'public_url' => $publicUrl,
+            'public_url' => Storage::disk('public')->url($path),
+
             'created_by' => $createdBy,
         ]);
     }
