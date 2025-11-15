@@ -267,7 +267,6 @@ class EstablishmentController extends Controller
         }
     }
 
-
     public function update(Request $request, $id)
     {
         try {
@@ -314,7 +313,7 @@ class EstablishmentController extends Controller
             $changes = [];
 
             foreach ($validated as $key => $value) {
-                if ($key === 'segments') {
+                if ($key === 'segments' && is_array($value)) {
                     $value = json_encode($value);
                 }
                 if (($oldData[$key] ?? null) != $value) {
@@ -325,12 +324,16 @@ class EstablishmentController extends Controller
                 }
             }
 
+            // ============================================
+            // LOGO UPLOAD → registra histórico de arquivos
+            // ============================================
             if ($request->hasFile('logo')) {
                 $file = File::storeOne(
                     file: $request->file('logo'),
                     entityName: 'establishment',
                     entityId: $establishment->id,
                     type: 'logo',
+                    appId: $establishment->app_id,
                     createdBy: $user->id
                 );
 
@@ -342,12 +345,16 @@ class EstablishmentController extends Controller
                 ];
             }
 
+            // ============================================
+            // BACKGROUND UPLOAD
+            // ============================================
             if ($request->hasFile('background')) {
                 $file = File::storeOne(
                     file: $request->file('background'),
                     entityName: 'establishment',
                     entityId: $establishment->id,
                     type: 'background',
+                    appId: $establishment->app_id,
                     createdBy: $user->id
                 );
 
@@ -359,6 +366,9 @@ class EstablishmentController extends Controller
                 ];
             }
 
+            // ============================================
+            // SLUG SE MUDAR O NOME
+            // ============================================
             if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
                 $base = Str::slug($validated['name']);
                 $count = Establishment::where('slug', 'LIKE', "$base%")
@@ -375,14 +385,23 @@ class EstablishmentController extends Controller
                 ];
             }
 
+            // ============================================
+            // SEGMENTS JSON
+            // ============================================
             if ($request->has('segments')) {
                 $validated['segments'] = json_encode($request->segments);
             }
 
+            // ============================================
+            // SALVA ALTERAÇÕES
+            // ============================================
             $establishment->fill($validated);
             $establishment->updated_by = $user->id;
             $establishment->save();
 
+            // ============================================
+            // REGISTRA INTERAÇÃO DE UPDATE
+            // ============================================
             if (!empty($changes)) {
                 Interaction::registerUpdate(
                     $establishment,
