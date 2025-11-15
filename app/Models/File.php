@@ -310,20 +310,20 @@ class File extends Model
         $publicUrl = Storage::disk('public')->url($path);
 
         return self::create([
-            'uuid'          => Str::uuid(),
-            'app_id'        => $appId,
-            'entity_name'   => $entityName,
-            'entity_id'     => $entityId,
-            'type'          => $type,
+            'uuid' => Str::uuid(),
+            'app_id' => $appId,
+            'entity_name' => $entityName,
+            'entity_id' => $entityId,
+            'type' => $type,
             'original_name' => $original,
-            'extension'     => $ext,
-            'mime_type'     => $mime,
-            'file_size'     => $size,
-            'storage'       => 'public',
-            'path'          => $path,
-            'storage_path'  => $path,
-            'public_url'    => $publicUrl,
-            'created_by'    => $createdBy,
+            'extension' => $ext,
+            'mime_type' => $mime,
+            'file_size' => $size,
+            'storage' => 'public',
+            'path' => $path,
+            'storage_path' => $path,
+            'public_url' => $publicUrl,
+            'created_by' => $createdBy,
         ]);
     }
 }
