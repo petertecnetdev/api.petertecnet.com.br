@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -93,7 +94,12 @@ class File extends Model
         parent::boot();
 
         static::creating(function ($model) {
-            if (empty($model->slug)) {
+
+            if (empty($model->uuid)) {
+                $model->uuid = (string) Str::uuid();
+            }
+
+            if (empty($model->slug) && !empty($model->original_name)) {
                 $base = Str::slug(pathinfo($model->original_name, PATHINFO_FILENAME));
                 $slug = $base;
                 $count = 1;
@@ -278,5 +284,46 @@ class File extends Model
     public function scopePrimary($q)
     {
         return $q->where('is_primary', true);
+    }
+
+    /* ============================================================
+       MÉTODO storeOne — corrigido sem excluir nada
+    ============================================================ */
+
+    public static function storeOne(
+        $file,
+        string $entityName,
+        int $entityId,
+        string $type,
+        int $appId,
+        int $createdBy
+    ) {
+        $ext = strtolower($file->getClientOriginalExtension());
+        $original = $file->getClientOriginalName();
+        $mime = $file->getMimeType();
+        $size = $file->getSize();
+
+        $slug = Str::slug("{$entityName}-{$entityId}-{$type}-" . uniqid());
+        $filename = "{$slug}.{$ext}";
+
+        $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
+        $publicUrl = Storage::disk('public')->url($path);
+
+        return self::create([
+            'uuid'          => Str::uuid(),
+            'app_id'        => $appId,
+            'entity_name'   => $entityName,
+            'entity_id'     => $entityId,
+            'type'          => $type,
+            'original_name' => $original,
+            'extension'     => $ext,
+            'mime_type'     => $mime,
+            'file_size'     => $size,
+            'storage'       => 'public',
+            'path'          => $path,
+            'storage_path'  => $path,
+            'public_url'    => $publicUrl,
+            'created_by'    => $createdBy,
+        ]);
     }
 }
