@@ -938,36 +938,34 @@ class EmployerController extends Controller
             \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
-  public function home(Request $request, $app_id)
+    }public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
 
-    // 1. Buscar estabelecimentos válidos
+    // 1. Estabelecimentos válidos
     $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
         ->when($city && $uf, fn($q) =>
             $q->where('city', $city)->where('uf', $uf)
         )
         ->pluck('id');
 
-    // 2. Buscar Employers com métricas
+    // 2. Employers
     $employers = \App\Models\Employer::whereIn('establishment_id', $establishmentIds)
         ->with([
             'user:id,first_name,last_name,user_name,avatar,email',
-            'establishment:id,name,slug,city,uf,logo,background,category'
+            'establishment:id,name,slug,city,uf',
+            'files' => fn($q) =>
+                $q->where('entity_name', 'employer'),
         ])
         ->withCount([
-            // 👁️ Views
             'views as total_views' => fn($q) =>
                 $q->where('interaction_type', 'view'),
 
-            // 👤 Usuários únicos
             'views as unique_users' => fn($q) =>
                 $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
                   ->where('interaction_type', 'view'),
 
-            // 💈 Atendimentos concluídos
             'orders as completed_appointments' => fn($q) =>
                 $q->whereIn('appointment_status', ['confirmed', 'attended']),
         ])
@@ -976,32 +974,38 @@ class EmployerController extends Controller
         ->map(function ($emp) {
 
             $u = $emp->user;
-            $e = $emp->establishment;
+
+            // IMAGENS ~ files
+            $images = [
+                'avatar' => $emp->files->firstWhere('type', 'avatar')?->public_url
+                    ?? $u?->avatar,
+                'gallery' => $emp->files
+                    ->whereNotIn('type', ['avatar'])
+                    ->pluck('public_url')
+                    ->values()
+            ];
+
+            $est = $emp->establishment;
 
             return [
                 'id' => $emp->id,
                 'type' => 'employer',
 
-                // Dados principais usados no card
                 'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
                 'slug' => $u?->user_name,
-                'avatar' => $u?->avatar,
 
-                // Localidade aparece no GlobalCard
-                'city' => $e?->city,
-                'uf'   => $e?->uf,
+                'images' => $images,
 
-                // Métricas
-                'total_views' => $emp->total_views ?? 0,
-                'unique_users' => $emp->unique_users ?? 0,
-                'total_completed_appointments' => $emp->completed_appointments ?? 0,
+                'city' => $est?->city,
+                'uf'   => $est?->uf,
 
-                // Mostrar barbearia no card
+                'total_views' => $emp->total_views,
+                'unique_users' => $emp->unique_users,
+                'total_completed_appointments' => $emp->completed_appointments,
+
                 'establishment' => [
-                    'name' => $e?->name,
-                    'slug' => $e?->slug,
-                    'logo' => $e?->logo,
-                    'background' => $e?->background,
+                    'name' => $est?->name,
+                    'slug' => $est?->slug,
                 ],
             ];
         });
