@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Support\Carbon;
 use App\Traits\HandlesImages;
-use App\Models\Traits\HasFiles;
+use App\Traits\HasFiles;
 
 class Item extends Model
 {
