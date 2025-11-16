@@ -306,7 +306,8 @@ class File extends Model
         string $entityName,
         int $entityId,
         string $type,
-        int $appId,
+        ?int $appId,
+
         int $createdBy
     ) {
         $ext = strtolower($file->getClientOriginalExtension());
