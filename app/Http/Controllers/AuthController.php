@@ -612,26 +612,19 @@ class AuthController extends Controller
     public function me()
 {
     try {
-        $auth = Auth::user();
-
-        if (!$auth) {
-            return response()->json(['error' => 'Usuário não autenticado'], 401);
-        }
-
-        $user = User::with([
-            'profile',
-            'employer',
-            'establishments',
-            'avatarFile', // 🔥 carrega avatar real
-        ])
-        ->where('id', $auth->id)
-        ->first();
+        $user = User::with(['profile', 'employer', 'establishments'])
+            ->where('user_name', Auth::user()->user_name)
+            ->first();
 
         if (!$user) {
-            return response()->json(['error' => 'Usuário não encontrado'], 404);
+            return response()->json(['error' => 'Usuário não autenticado'], 404);
         }
 
-        // REGISTRA INTERAÇÃO
+        // 🔥 FIX — garantir URL completa do avatar
+        if ($user->avatar) {
+            $user->avatar = url('storage/' . ltrim($user->avatar, '/'));
+        }
+
         Interaction::create([
             'user_id' => $user->id,
             'interaction_type' => 'me',
@@ -639,30 +632,21 @@ class AuthController extends Controller
             'entity_type' => 'user',
         ]);
 
-        // 🔥 resolve a URL final do avatar (se existir)
-        $avatarUrl = $user->avatarFile?->public_url 
-            ? url($user->avatarFile->public_url)
-            : ($user->avatar ?? null);
-
-        // remove relações duplicadas
         $employerData = $user->employer;
         $establishments = $user->establishments;
 
         $user->setRelation('employer', null);
         $user->setRelation('establishments', null);
 
-        // adiciona o avatar resolvido
-        $user->avatar = $avatarUrl;
-
         return response()->json([
-            'message' => 'Usuário carregado com sucesso.',
+            'message' => 'Usuário encontrado com sucesso.',
             'user' => $user,
             'is_employer' => (bool) $employerData,
             'employer' => $employerData,
             'establishments' => $establishments,
         ], 200);
 
-    } catch (\Throwable $e) {
+    } catch (\Exception $e) {
         return response()->json([
             'error' => 'Ocorreu um erro: ' . $e->getMessage()
         ], 500);
