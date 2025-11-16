@@ -10,8 +10,6 @@
 !storage/app/public
 .env
 .env.example
+.gitignore
 composer.lock
-public/images/
-/public/storage
-/storage/app/public
-	
+public/images/*
