@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Carbon;
-use App\Traits\HasFiles;
+use App\Traits\HasFiles; 
 
 class Establishment extends Model
 {   
