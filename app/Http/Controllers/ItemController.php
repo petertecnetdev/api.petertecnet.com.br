@@ -938,11 +938,14 @@ class ItemController extends Controller
 
             $est = $item->establishment;
 
-            // CLIENTES ÚNICOS QUE JÁ FIZERAM ESSE ITEM
+            // 🔥 AQUI É A PARTE QUE QUEBRAVA — AGORA FUNCIONA
+            // Carrega order + client_id corretamente
             $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
                 ->whereHas('order', fn($o) =>
                     $o->whereIn('appointment_status', ['confirmed', 'attended'])
                 )
+                ->with('order:id,client_id')
+                ->get()
                 ->pluck('order.client_id')
                 ->filter()
                 ->unique()
@@ -975,6 +978,5 @@ class ItemController extends Controller
         'items' => $items
     ]);
 }
-
 
 }
