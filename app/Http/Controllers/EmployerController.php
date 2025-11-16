@@ -20,23 +20,23 @@ class EmployerController extends Controller
     protected function getScheduleValidationMessages()
     {
         return [
-            'employer_id.required' => 'O campo employer_id Ã© obrigatÃ³rio.',
-            'employer_id.integer' => 'O campo employer_id deve ser um nÃºmero inteiro.',
-            'employer_id.exists' => 'O colaborador informado nÃ£o existe.',
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
 
-            'schedules.required' => 'A lista de horÃ¡rios Ã© obrigatÃ³ria.',
-            'schedules.array' => 'Os horÃ¡rios devem ser enviados em formato de lista.',
-            'schedules.min' => 'Ã‰ necessÃ¡rio informar pelo menos um horÃ¡rio.',
+            'schedules.required' => 'A lista de horários é obrigatória.',
+            'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
+            'schedules.min' => 'É necessário informar pelo menos um horário.',
 
-            'schedules.*.day_of_week.required' => 'O campo dia da semana Ã© obrigatÃ³rio.',
-            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor vÃ¡lido (monday a sunday).',
+            'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
+            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido (monday a sunday).',
 
-            'schedules.*.start_time.required' => 'O campo horÃ¡rio de inÃ­cio Ã© obrigatÃ³rio.',
-            'schedules.*.start_time.date_format' => 'O horÃ¡rio de inÃ­cio deve estar no formato HH:mm.',
+            'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
+            'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
 
-            'schedules.*.end_time.required' => 'O campo horÃ¡rio de tÃ©rmino Ã© obrigatÃ³rio.',
-            'schedules.*.end_time.date_format' => 'O horÃ¡rio de tÃ©rmino deve estar no formato HH:mm.',
-            'schedules.*.end_time.after' => 'O horÃ¡rio de tÃ©rmino deve ser posterior ao horÃ¡rio de inÃ­cio.',
+            'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
+            'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
+            'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
         ];
     }
 
@@ -48,7 +48,7 @@ class EmployerController extends Controller
             Log::info('Employer.store start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
 
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -65,11 +65,11 @@ class EmployerController extends Controller
             $establishment = Establishment::find($validatedData['establishment_id']);
             if (!$establishment) {
                 return response()->json([
-                    'error' => 'O estabelecimento informado nÃ£o existe ou foi removido.'
+                    'error' => 'O estabelecimento informado não existe ou foi removido.'
                 ], 404);
             }
 
-            // âœ… CorreÃ§Ã£o da verificaÃ§Ã£o do dono do estabelecimento
+            // ? Correção da verificação do dono do estabelecimento
             if ($establishment->user_id !== $user->id) {
                 return response()->json([
                     'error' => 'Apenas o dono do estabelecimento pode adicionar novos colaboradores.'
@@ -84,7 +84,7 @@ class EmployerController extends Controller
                     ->exists()
             ) {
                 return response()->json([
-                    'error' => 'Este usuÃ¡rio jÃ¡ estÃ¡ vinculado a este estabelecimento.'
+                    'error' => 'Este usuário já está vinculado a este estabelecimento.'
                 ], 409);
             }
 
@@ -142,7 +142,7 @@ class EmployerController extends Controller
                     Mail::to($establishment->user->email)->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
                 }
 
-                $message = 'UsuÃ¡rio jÃ¡ existente vinculado como colaborador com sucesso.';
+                $message = 'Usuário já existente vinculado como colaborador com sucesso.';
             }
 
             Log::info('Employer.store success', ['employer_id' => $employer->id]);
@@ -155,7 +155,7 @@ class EmployerController extends Controller
         } catch (ValidationException $e) {
             Log::warning('Employer.store validation failed', ['errors' => $e->errors()]);
             return response()->json([
-                'message' => 'Erro de validaÃ§Ã£o nos dados enviados.',
+                'message' => 'Erro de validação nos dados enviados.',
                 'errors' => $e->errors()
             ], 422);
 
@@ -177,15 +177,15 @@ class EmployerController extends Controller
             ]);
 
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $validatedData = $request->validate([
                 'establishment_id' => 'required|integer|exists:establishments,id',
             ], [
-                'establishment_id.required' => 'O ID do estabelecimento Ã© obrigatÃ³rio.',
-                'establishment_id.integer' => 'O ID do estabelecimento deve ser um nÃºmero inteiro vÃ¡lido.',
-                'establishment_id.exists' => 'O estabelecimento informado nÃ£o existe.',
+                'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
+                'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro válido.',
+                'establishment_id.exists' => 'O estabelecimento informado não existe.',
             ]);
 
             $user = Auth::user();
@@ -193,7 +193,7 @@ class EmployerController extends Controller
 
             if (!$establishment) {
                 return response()->json([
-                    'error' => 'O estabelecimento informado nÃ£o existe ou foi removido.'
+                    'error' => 'O estabelecimento informado não existe ou foi removido.'
                 ], 404);
             }
 
@@ -231,7 +231,7 @@ class EmployerController extends Controller
         } catch (ValidationException $e) {
             Log::warning('Employer.list validation failed', ['errors' => $e->errors()]);
             return response()->json([
-                'message' => 'Erro de validaÃ§Ã£o nos dados enviados.',
+                'message' => 'Erro de validação nos dados enviados.',
                 'errors' => $e->errors()
             ], 422);
 
@@ -257,19 +257,19 @@ class EmployerController extends Controller
             ]);
 
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $validatedData = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
                 'establishment_id' => 'required|integer|exists:establishments,id',
             ], [
-                'employer_id.required' => 'O ID do colaborador Ã© obrigatÃ³rio.',
-                'employer_id.integer' => 'O ID do colaborador deve ser um nÃºmero inteiro.',
-                'employer_id.exists' => 'O colaborador informado nÃ£o existe.',
-                'establishment_id.required' => 'O ID do estabelecimento Ã© obrigatÃ³rio.',
-                'establishment_id.integer' => 'O ID do estabelecimento deve ser um nÃºmero inteiro.',
-                'establishment_id.exists' => 'O estabelecimento informado nÃ£o existe.',
+                'employer_id.required' => 'O ID do colaborador é obrigatório.',
+                'employer_id.integer' => 'O ID do colaborador deve ser um número inteiro.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
+                'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
+                'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
+                'establishment_id.exists' => 'O estabelecimento informado não existe.',
             ]);
 
             $user = Auth::user();
@@ -277,7 +277,7 @@ class EmployerController extends Controller
 
             if (!$establishment) {
                 return response()->json([
-                    'error' => 'O estabelecimento informado nÃ£o existe.'
+                    'error' => 'O estabelecimento informado não existe.'
                 ], 404);
             }
 
@@ -294,9 +294,9 @@ class EmployerController extends Controller
                 ->first();
 
             if (!$employer) {
-                // Caso a validaÃ§Ã£o 'exists' falhe por causa do establishment_id, este erro Ã© mais especÃ­fico
+                // Caso a validação 'exists' falhe por causa do establishment_id, este erro é mais específico
                 return response()->json([
-                    'error' => 'O colaborador nÃ£o estÃ¡ vinculado a este estabelecimento.'
+                    'error' => 'O colaborador não está vinculado a este estabelecimento.'
                 ], 404);
             }
 
@@ -309,8 +309,8 @@ class EmployerController extends Controller
             // Envio de e-mail ao colaborador desvinculado
             if ($collaboratorUser && !empty($collaboratorUser->email)) {
                 try {
-                    // Ã‰ importante garantir que esta classe de Mail estÃ¡ sendo importada corretamente.
-                    // No cabeÃ§alho do seu controller, estÃ¡: use App\Mail\{..., EmployerRemoved, ...};
+                    // É importante garantir que esta classe de Mail está sendo importada corretamente.
+                    // No cabeçalho do seu controller, está: use App\Mail\{..., EmployerRemoved, ...};
                     Mail::to($collaboratorUser->email)
                         ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
                 } catch (\Exception $e) {
@@ -321,11 +321,11 @@ class EmployerController extends Controller
                 }
             }
 
-            // Envio de e-mail ao dono do estabelecimento (proprietÃ¡rio)
+            // Envio de e-mail ao dono do estabelecimento (proprietário)
             if ($ownerUser && !empty($ownerUser->email)) {
                 try {
-                    // Ã‰ importante garantir que esta classe de Mail estÃ¡ sendo importada corretamente.
-                    // No cabeÃ§alho do seu controller, estÃ¡: use App\Mail\{..., OwnerNotifiedEmployerDetached};
+                    // É importante garantir que esta classe de Mail está sendo importada corretamente.
+                    // No cabeçalho do seu controller, está: use App\Mail\{..., OwnerNotifiedEmployerDetached};
                     Mail::to($ownerUser->email)
                         ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
                 } catch (\Exception $e) {
@@ -342,19 +342,19 @@ class EmployerController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Colaborador desvinculado com sucesso e notificaÃ§Ãµes enviadas.'
+                'message' => 'Colaborador desvinculado com sucesso e notificações enviadas.'
             ], 200);
 
         } catch (ValidationException $e) {
-            // Bloco de tratamento de erro de validaÃ§Ã£o (para evitar o erro de UTF-8)
+            // Bloco de tratamento de erro de validação (para evitar o erro de UTF-8)
             Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
 
             // Mapeia e sanitiza as mensagens de erro para garantir o UTF-8 correto no JSON
             $sanitizedErrors = array_map(function ($messages) {
                 return array_map(function ($message) {
-                    // Garante que o string Ã© UTF-8 vÃ¡lido (Ãºtil contra o erro que vocÃª viu)
+                    // Garante que o string é UTF-8 válido (útil contra o erro que você viu)
                     return mb_convert_encoding($message, 'UTF-8', 'UTF-8');
-                }, (array) $messages); // Garante que $messages Ã© um array para o loop
+                }, (array) $messages); // Garante que $messages é um array para o loop
             }, $e->errors());
 
             return response()->json([
@@ -378,7 +378,7 @@ class EmployerController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -387,14 +387,14 @@ class EmployerController extends Controller
                 'employer_id' => 'required|integer|exists:employers,id',
                 'last_check' => 'nullable|date',
             ], [
-                'employer_id.required' => 'O campo employer_id Ã© obrigatÃ³rio.',
-                'employer_id.exists' => 'O colaborador informado nÃ£o existe.',
-                'last_check.date' => 'O campo last_check deve ser uma data vÃ¡lida.',
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
+                'last_check.date' => 'O campo last_check deve ser uma data válida.',
             ]);
 
             $employer = \App\Models\Employer::with('establishment')->find($data['employer_id']);
             if (!$employer) {
-                return response()->json(['error' => 'Colaborador nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
             }
 
             $isOwner = \App\Models\Establishment::where('user_id', $user->id)
@@ -457,7 +457,7 @@ class EmployerController extends Controller
                 ->orderBy('order_datetime', 'desc')
                 ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
 
-            // --- Identifica atendimentos finalizados que precisam ser marcados como atendidos ou nÃ£o ---
+            // --- Identifica atendimentos finalizados que precisam ser marcados como atendidos ou não ---
             $finalizableAppointments = (clone $appointmentsQuery)
                 ->whereIn('appointment_status', ['confirmed'])
                 ->get()
@@ -520,7 +520,7 @@ class EmployerController extends Controller
                 foreach ($finalizableAppointments as $appt) {
                     $notifications[] = [
                         'type' => 'finalize',
-                        'message' => "O atendimento de {$appt['customer_name']} estÃ¡ finalizado. Marque como atendido ou nÃ£o atendido.",
+                        'message' => "O atendimento de {$appt['customer_name']} está finalizado. Marque como atendido ou não atendido.",
                     ];
                 }
             }
@@ -543,13 +543,13 @@ class EmployerController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao verificar atualizaÃ§Ãµes do colaborador.', [
+            \Log::error('Erro ao verificar atualizações do colaborador.', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'error' => 'Falha ao verificar atualizaÃ§Ãµes.',
+                'error' => 'Falha ao verificar atualizações.',
                 'details' => $e->getMessage(),
             ], 500);
         }
@@ -559,7 +559,7 @@ class EmployerController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -567,8 +567,8 @@ class EmployerController extends Controller
             $data = $request->validate([
                 'employer_id' => 'nullable|integer|exists:employers,id',
             ], [
-                'employer_id.integer' => 'O campo employer_id deve ser um nÃºmero inteiro.',
-                'employer_id.exists' => 'O colaborador informado nÃ£o existe.',
+                'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
             ]);
 
             $employer = isset($data['employer_id'])
@@ -576,7 +576,7 @@ class EmployerController extends Controller
                 : \App\Models\Employer::where('user_id', $user->id)->first();
 
             if (!$employer) {
-                return response()->json(['error' => 'Colaborador nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
             }
 
             $appointments = \App\Models\Order::with([
@@ -597,7 +597,7 @@ class EmployerController extends Controller
                 ->orderBy('order_datetime', 'desc')
                 ->get();
 
-            // ðŸ”¹ Garante cÃ¡lculo do total e estrutura dos serviÃ§os solicitados
+            // ?? Garante cálculo do total e estrutura dos serviços solicitados
             foreach ($appointments as $order) {
                 if (!$order->total_price || $order->total_price == 0) {
                     $order->total_price = $order->items->sum(function ($item) {
@@ -607,7 +607,7 @@ class EmployerController extends Controller
 
                 $order->services = $order->items->map(function ($item) {
                     return [
-                        'name' => $item->item->name ?? 'ServiÃ§o nÃ£o identificado',
+                        'name' => $item->item->name ?? 'Serviço não identificado',
                         'price' => $item->unit_price ?? $item->item->price ?? 0,
                         'quantity' => $item->quantity ?? 1,
                         'subtotal' => ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1),
@@ -656,10 +656,10 @@ class EmployerController extends Controller
                 ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
                 ->firstOrFail();
 
-            // Usa mÃ©todo da model para registrar view e limpar cache
+            // Usa método da model para registrar view e limpar cache
             $employer->refreshViewMetrics($authUser);
 
-            // Usa os mÃ©todos jÃ¡ existentes da model
+            // Usa os métodos já existentes da model
             $metrics = $employer->metrics;
             $interactionSummary = $employer->interactionSummary();
             $colleaguesData = $employer->colleagues();
@@ -712,7 +712,7 @@ class EmployerController extends Controller
             return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             \Log::error('Employer.listSchedules error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao listar horÃ¡rios.'], 500, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
     public function saveSchedules(Request $request)
@@ -726,12 +726,12 @@ class EmployerController extends Controller
                 'schedules.*.end_time' => 'required|date_format:H:i',
             ], $this->getScheduleValidationMessages());
 
-            // ðŸ•’ ValidaÃ§Ã£o manual: end_time deve ser maior que start_time
+            // ?? Validação manual: end_time deve ser maior que start_time
             foreach ($data['schedules'] as $schedule) {
                 if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
                     return response()->json([
                         'errors' => [
-                            'schedules' => ['O horÃ¡rio de tÃ©rmino deve ser posterior ao horÃ¡rio de inÃ­cio.']
+                            'schedules' => ['O horário de término deve ser posterior ao horário de início.']
                         ]
                     ], 422, [], JSON_UNESCAPED_UNICODE);
                 }
@@ -749,12 +749,12 @@ class EmployerController extends Controller
                 );
             }
 
-            return response()->json(['message' => 'HorÃ¡rios cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             \Log::error('Employer.saveSchedules error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao salvar horÃ¡rios.'], 500, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
 
@@ -764,10 +764,10 @@ class EmployerController extends Controller
             $schedule = \App\Models\EmployerSchedule::findOrFail($id);
             $schedule->delete();
 
-            return response()->json(['message' => 'HorÃ¡rio removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao remover horÃ¡rio.'], 500, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
     public function availableTimes(Request $request)
@@ -775,29 +775,29 @@ class EmployerController extends Controller
         try {
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
-                'date' => 'required', // pode vir com hora, serÃ¡ ignorada
+                'date' => 'required', // pode vir com hora, será ignorada
                 'duration' => 'required|integer|min:5',
             ]);
 
             $employerId = (int) $data['employer_id'];
             $duration = (int) $data['duration'];
 
-            // ðŸ•’ HorÃ¡rio atual verdadeiro (do servidor)
+            // ?? Horário atual verdadeiro (do servidor)
             $now = \Carbon\Carbon::now('America/Sao_Paulo');
             $today = $now->format('Y-m-d');
 
-            // ðŸ§¹ Extrai apenas o dia e ignora completamente a hora enviada
+            // ?? Extrai apenas o dia e ignora completamente a hora enviada
             $raw = (string) $data['date'];
             $dateStr = preg_replace('/T.*/', '', $raw);
             $date = \Carbon\Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
             $dayOfWeek = strtolower($date->format('l'));
 
-            // ðŸš« Se o dia for passado, retorna vazio
+            // ?? Se o dia for passado, retorna vazio
             if ($date->lt($now->copy()->startOfDay())) {
                 return response()->json(['available_times' => []]);
             }
 
-            // ðŸ”’ Folga ou feriado
+            // ?? Folga ou feriado
             $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('type', 'holiday')
                 ->whereDate('reserved_date', $date->toDateString())
@@ -807,7 +807,7 @@ class EmployerController extends Controller
                 return response()->json(['available_times' => []]);
             }
 
-            // ðŸ—“ï¸ HorÃ¡rios de expediente
+            // ??? Horários de expediente
             $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('day_of_week', $dayOfWeek)
                 ->where('is_active', true)
@@ -818,7 +818,7 @@ class EmployerController extends Controller
                 return response()->json(['available_times' => []]);
             }
 
-            // ðŸ“‹ Agendamentos do dia
+            // ?? Agendamentos do dia
             $appointments = \App\Models\Order::where('attendant_id', $employerId)
                 ->where('type', 'appointment')
                 ->whereBetween('order_datetime', [
@@ -835,7 +835,7 @@ class EmployerController extends Controller
                 $occupied[] = [$start, $end];
             }
 
-            // â˜• Pausas
+            // ? Pausas
             $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('type', 'break')
                 ->whereDate('reserved_date', $date->toDateString())
@@ -849,10 +849,10 @@ class EmployerController extends Controller
 
             usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
-            // âš™ï¸ GeraÃ§Ã£o de horÃ¡rios disponÃ­veis
+            // ?? Geração de horários disponíveis
             $availableTimes = [];
             $step = 15;
-            $limitFuture = $now->copy()->addMinutes(30); // tolerÃ¢ncia mÃ­nima
+            $limitFuture = $now->copy()->addMinutes(30); // tolerância mínima
 
             foreach ($schedules as $schedule) {
                 $workStart = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
@@ -864,13 +864,13 @@ class EmployerController extends Controller
                     $slotStart = $pointer->copy();
                     $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                    // ðŸš« Se o dia for hoje, sÃ³ horÃ¡rios depois de agora + 30 min
+                    // ?? Se o dia for hoje, só horários depois de agora + 30 min
                     if ($date->isSameDay($now) && $slotStart->lte($limitFuture)) {
                         $pointer->addMinutes($step);
                         continue;
                     }
 
-                    // âš ï¸ Verifica conflito
+                    // ?? Verifica conflito
                     $hasConflict = false;
                     foreach ($occupied as [$occStart, $occEnd]) {
                         if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -879,7 +879,7 @@ class EmployerController extends Controller
                         }
                     }
 
-                    // âœ… Adiciona se estiver livre
+                    // ? Adiciona se estiver livre
                     if (!$hasConflict) {
                         $availableTimes[] = $slotStart->format('H:i');
                     }
@@ -891,11 +891,11 @@ class EmployerController extends Controller
             sort($availableTimes);
             return response()->json(['available_times' => $availableTimes]);
         } catch (\Throwable $e) {
-            \Log::error('âŒ Erro em availableTimes', [
+            \Log::error('? Erro em availableTimes', [
                 'message' => $e->getMessage(),
                 'line' => $e->getLine(),
             ]);
-            return response()->json(['error' => 'Erro ao listar horÃ¡rios disponÃ­veis.'], 500);
+            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
         }
     }
 
@@ -911,12 +911,12 @@ class EmployerController extends Controller
                 'start_time' => 'nullable|date_format:H:i|required_if:type,break',
                 'end_time' => 'nullable|date_format:H:i|after:start_time|required_if:type,break',
             ], [
-                'employer_id.required' => 'O campo employer_id Ã© obrigatÃ³rio.',
-                'date.required' => 'O campo data Ã© obrigatÃ³rio.',
-                'type.required' => 'O campo tipo Ã© obrigatÃ³rio.',
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
+                'date.required' => 'O campo data é obrigatório.',
+                'type.required' => 'O campo tipo é obrigatório.',
                 'type.in' => 'O tipo deve ser break (pausa) ou holiday (feriado).',
-                'start_time.required_if' => 'O campo horÃ¡rio de inÃ­cio Ã© obrigatÃ³rio para pausas.',
-                'end_time.required_if' => 'O campo horÃ¡rio de tÃ©rmino Ã© obrigatÃ³rio para pausas.',
+                'start_time.required_if' => 'O campo horário de início é obrigatório para pausas.',
+                'end_time.required_if' => 'O campo horário de término é obrigatório para pausas.',
             ]);
 
             $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'])->format('l'));
@@ -931,19 +931,19 @@ class EmployerController extends Controller
                 'type' => $data['type'],
             ]);
 
-            return response()->json(['message' => 'HorÃ¡rio reservado com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['message' => 'Horário reservado com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
         } catch (\Exception $e) {
             \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao reservar horÃ¡rio.'], 500, [], JSON_UNESCAPED_UNICODE);
+            return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
 
-    // 1. Estabelecimentos vÃ¡lidos
+    // 1. Estabelecimentos válidos
     $establishmentIds = Establishment::where('app_id', $app_id)
         ->when($city && $uf, fn($q) =>
             $q->where('city', $city)->where('uf', $uf)

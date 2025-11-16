@@ -1,0 +1,3 @@
+# força sempre a versão “theirs” (do branch sendo mergeado) para esses arquivos
+app/Http/Controllers/EmployerController.php merge=theirs
+routes/api.php                              merge=theirs

@@ -22,36 +22,36 @@ class EstablishmentController extends Controller
     protected function getValidationMessages()
     {
         return [
-            'app_id.required' => 'O campo app_id Ã© obrigatÃ³rio.',
-            'app_id.integer' => 'O campo app_id deve ser um nÃºmero inteiro vÃ¡lido.',
-            'app_id.exists' => 'O aplicativo selecionado nÃ£o Ã© vÃ¡lido.',
-            'name.required' => 'O nome do estabelecimento Ã© obrigatÃ³rio.',
-            'name.string' => 'O nome deve ser uma string vÃ¡lida.',
-            'name.max' => 'O nome deve ter no mÃ¡ximo 255 caracteres.',
-            'email.email' => 'O email fornecido nÃ£o Ã© vÃ¡lido.',
-            'email.max' => 'O email deve ter no mÃ¡ximo 255 caracteres.',
-            'phone.string' => 'O telefone deve ser uma string vÃ¡lida.',
-            'phone.max' => 'O telefone deve ter no mÃ¡ximo 20 caracteres.',
-            'description.string' => 'A descriÃ§Ã£o deve ser uma string vÃ¡lida.',
-            'description.max' => 'A descriÃ§Ã£o deve ter no mÃ¡ximo 2500 caracteres.',
-            'address.string' => 'O endereÃ§o deve ser uma string vÃ¡lida.',
-            'address.max' => 'O endereÃ§o deve ter no mÃ¡ximo 255 caracteres.',
-            'city.string' => 'A cidade deve ser uma string vÃ¡lida.',
-            'city.max' => 'A cidade deve ter no mÃ¡ximo 100 caracteres.',
-            'cep.string' => 'O CEP deve ser uma string vÃ¡lida.',
-            'cep.max' => 'O CEP deve ter no mÃ¡ximo 10 caracteres.',
-            'website_url.url' => 'O website deve ser um URL vÃ¡lido.',
-            'location.string' => 'A localizaÃ§Ã£o deve ser uma string vÃ¡lida.',
-            'instagram_url.url' => 'O link do Instagram deve ser um URL vÃ¡lido.',
-            'facebook_url.url' => 'O link do Facebook deve ser um URL vÃ¡lido.',
-            'twitter_url.url' => 'O link do Twitter deve ser um URL vÃ¡lido.',
-            'youtube_url.url' => 'O link do YouTube deve ser um URL vÃ¡lido.',
+            'app_id.required' => 'O campo app_id é obrigatório.',
+            'app_id.integer' => 'O campo app_id deve ser um número inteiro válido.',
+            'app_id.exists' => 'O aplicativo selecionado não é válido.',
+            'name.required' => 'O nome do estabelecimento é obrigatório.',
+            'name.string' => 'O nome deve ser uma string válida.',
+            'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+            'email.email' => 'O email fornecido não é válido.',
+            'email.max' => 'O email deve ter no máximo 255 caracteres.',
+            'phone.string' => 'O telefone deve ser uma string válida.',
+            'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+            'description.string' => 'A descrição deve ser uma string válida.',
+            'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+            'address.string' => 'O endereço deve ser uma string válida.',
+            'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+            'city.string' => 'A cidade deve ser uma string válida.',
+            'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+            'cep.string' => 'O CEP deve ser uma string válida.',
+            'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+            'website_url.url' => 'O website deve ser um URL válido.',
+            'location.string' => 'A localização deve ser uma string válida.',
+            'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
+            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
             'segments.array' => 'Os segmentos devem ser enviados como array.',
             'segments.*.string' => 'Cada segmento deve ser uma string.',
-            'logo.required' => 'A logo Ã© obrigatÃ³ria.',
-            'logo.image' => 'A logo deve ser uma imagem vÃ¡lida.',
-            'logo.max' => 'A logo deve ter no mÃ¡ximo 2048 KB.',
-            'background.image' => 'A imagem de fundo deve ser uma imagem vÃ¡lida.',
+            'logo.required' => 'A logo é obrigatória.',
+            'logo.image' => 'A logo deve ser uma imagem válida.',
+            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+            'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
         ];
     }
 
@@ -60,7 +60,7 @@ class EstablishmentController extends Controller
         try {
             $user = Auth::user();
 
-            Log::info('[EstablishmentController::store] Iniciando criaÃ§Ã£o de estabelecimento.', [
+            Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
                 'user_id' => $user->id ?? null,
                 'payload' => $request->all()
             ]);
@@ -143,29 +143,29 @@ class EstablishmentController extends Controller
                         $mapping = [
                             'Acre' => 'AC',
                             'Alagoas' => 'AL',
-                            'AmapÃ¡' => 'AP',
+                            'Amapá' => 'AP',
                             'Amazonas' => 'AM',
                             'Bahia' => 'BA',
-                            'CearÃ¡' => 'CE',
+                            'Ceará' => 'CE',
                             'Distrito Federal' => 'DF',
-                            'EspÃ­rito Santo' => 'ES',
-                            'GoiÃ¡s' => 'GO',
-                            'MaranhÃ£o' => 'MA',
+                            'Espírito Santo' => 'ES',
+                            'Goiás' => 'GO',
+                            'Maranhão' => 'MA',
                             'Mato Grosso' => 'MT',
                             'Mato Grosso do Sul' => 'MS',
                             'Minas Gerais' => 'MG',
-                            'ParÃ¡' => 'PA',
-                            'ParaÃ­ba' => 'PB',
-                            'ParanÃ¡' => 'PR',
+                            'Pará' => 'PA',
+                            'Paraíba' => 'PB',
+                            'Paraná' => 'PR',
                             'Pernambuco' => 'PE',
-                            'PiauÃ­' => 'PI',
+                            'Piauí' => 'PI',
                             'Rio de Janeiro' => 'RJ',
                             'Rio Grande do Norte' => 'RN',
                             'Rio Grande do Sul' => 'RS',
-                            'RondÃ´nia' => 'RO',
+                            'Rondônia' => 'RO',
                             'Roraima' => 'RR',
                             'Santa Catarina' => 'SC',
-                            'SÃ£o Paulo' => 'SP',
+                            'São Paulo' => 'SP',
                             'Sergipe' => 'SE',
                             'Tocantins' => 'TO'
                         ];
@@ -218,7 +218,7 @@ class EstablishmentController extends Controller
             ]);
 
             // ============================
-            // FILES â€” LOGO
+            // FILES — LOGO
             // ============================
             if ($request->hasFile('logo')) {
                 $file = File::storeOne(
@@ -233,7 +233,7 @@ class EstablishmentController extends Controller
             }
 
             // ============================
-            // FILES â€” BACKGROUND
+            // FILES — BACKGROUND
             // ============================
             if ($request->hasFile('background')) {
                 $file = File::storeOne(
@@ -271,14 +271,14 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
             $establishment = Establishment::find($id);
 
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
 
             if ($establishment->user_id !== $user->id) {
@@ -325,7 +325,7 @@ class EstablishmentController extends Controller
             }
 
             // ============================================
-            // LOGO UPLOAD â†’ registra histÃ³rico de arquivos
+            // LOGO UPLOAD ? registra histórico de arquivos
             // ============================================
             if ($request->hasFile('logo')) {
                 $file = File::storeOne(
@@ -393,14 +393,14 @@ class EstablishmentController extends Controller
             }
 
             // ============================================
-            // SALVA ALTERAÃ‡Ã•ES
+            // SALVA ALTERAÇÕES
             // ============================================
             $establishment->fill($validated);
             $establishment->updated_by = $user->id;
             $establishment->save();
 
             // ============================================
-            // REGISTRA INTERAÃ‡ÃƒO DE UPDATE
+            // REGISTRA INTERAÇÃO DE UPDATE
             // ============================================
             if (!empty($changes)) {
                 Interaction::registerUpdate(
@@ -438,13 +438,13 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuï¿½rio nï¿½o autenticado.'], 401);
+                return response()->json(['error' => 'Usu rio n o autenticado.'], 401);
             }
 
             $user = Auth::user();
 
             if (!$user->hasPermission('establishment_destroy')) {
-                return response()->json(['error' => 'Vocï¿½ nï¿½o tem permissï¿½o para deletar estabelecimentos.'], 403);
+                return response()->json(['error' => 'Voc  n o tem permiss o para deletar estabelecimentos.'], 403);
             }
 
             $establishment = Establishment::findOrFail($id);
@@ -453,16 +453,16 @@ class EstablishmentController extends Controller
             $interaction->user_id = $user->id;
             $interaction->interaction_type = 'Destroy';
             $interaction->entity_id = $establishment->id;
-            $interaction->content = "O usuï¿½rio " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
+            $interaction->content = "O usu rio " . $user->first_name . " deletou o estabelecimento " . $establishment->name . ".";
             $interaction->entity_type = 'establishment';
             $interaction->save();
 
             $establishment->delete();
 
-            return response()->json(['message' => 'Estabelecimento excluï¿½do com sucesso.'], 200);
+            return response()->json(['message' => 'Estabelecimento exclu do com sucesso.'], 200);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json(['error' => 'Estabelecimento nï¿½o encontrado.'], 404);
+            return response()->json(['error' => 'Estabelecimento n o encontrado.'], 404);
 
         } catch (\Exception $e) {
             Log::error('Erro ao excluir estabelecimento: ' . $e->getMessage());
@@ -474,7 +474,7 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuï¿½rio nï¿½o autenticado.'], 401);
+                return response()->json(['error' => 'Usu rio n o autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -493,7 +493,7 @@ class EstablishmentController extends Controller
             ], 200);
 
         } catch (\Exception $e) {
-            Log::error('Erro ao listar estabelecimentos do usuï¿½rio: ' . $e->getMessage());
+            Log::error('Erro ao listar estabelecimentos do usu rio: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
@@ -502,7 +502,7 @@ class EstablishmentController extends Controller
         try {
             $authUser = Auth::user();
 
-            // Carrega o estabelecimento com todas as relaÃ§Ãµes necessÃ¡rias
+            // Carrega o estabelecimento com todas as relações necessárias
             $establishment = Establishment::with([
                 'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
                 'user:id,first_name,last_name,user_name,avatar,email,city,uf',
@@ -513,10 +513,10 @@ class EstablishmentController extends Controller
                 ->where('slug', $slug)
                 ->firstOrFail();
 
-            // â­ Chamada aqui! Ajusta city/uf automaticamente
+            // ? Chamada aqui! Ajusta city/uf automaticamente
             $establishment = $this->resolveEstablishmentLocation($establishment);
 
-            // Registrar visualizaÃ§Ã£o e limpar cache
+            // Registrar visualização e limpar cache
             Interaction::registerView($establishment, $authUser);
             Cache::forget("establishment_{$establishment->id}_metrics");
             Cache::forget("establishment_{$establishment->id}_summary");
@@ -549,7 +549,7 @@ class EstablishmentController extends Controller
 
     private function resolveEstablishmentLocation($establishment)
     {
-        // Se jÃ¡ tem cidade/UF, nÃ£o precisa mexer
+        // Se já tem cidade/UF, não precisa mexer
         if ($establishment->city && $establishment->uf) {
             return $establishment;
         }
@@ -557,13 +557,13 @@ class EstablishmentController extends Controller
         $city = null;
         $uf = null;
 
-        // 1ï¸âƒ£ Tentar pegar do dono (user)
+        //1?? Tentar pegar do dono (user)
         if ($establishment->user) {
             $city = $establishment->user->city;
             $uf = $establishment->user->uf;
         }
 
-        // 2ï¸âƒ£ Se dono nÃ£o tem â†’ tentar pegar dos colaboradores
+        // 2?? Se dono não tem ? tentar pegar dos colaboradores
         if ((!$city || !$uf) && $establishment->employers->count() > 0) {
             foreach ($establishment->employers as $emp) {
                 $u = $emp->user;
@@ -576,12 +576,12 @@ class EstablishmentController extends Controller
             }
         }
 
-        // 3ï¸âƒ£ Se nÃ£o achou nada â†’ retorna sem salvar
+        // 3?? Se não achou nada ? retorna sem salvar
         if (!$city && !$uf) {
             return $establishment;
         }
 
-        // 4ï¸âƒ£ Salvar no estabelecimento
+        // 4?? Salvar no estabelecimento
         $establishment->update([
             'city' => $establishment->city ?: $city,
             'uf' => $establishment->uf ?: $uf,
@@ -599,7 +599,7 @@ class EstablishmentController extends Controller
             $establishment = Establishment::find($id);
 
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nï¿½o encontrado.'], 404);
+                return response()->json(['error' => 'Estabelecimento n o encontrado.'], 404);
             }
 
             Interaction::create([
@@ -607,7 +607,7 @@ class EstablishmentController extends Controller
                 'entity_id' => $establishment->id,
                 'entity_type' => 'establishment',
                 'interaction_type' => 'View',
-                'content' => 'O usuï¿½rio ' . ($user?->first_name ?? 'anï¿½nimo') . ' acessou o estabelecimento.',
+                'content' => 'O usu rio ' . ($user?->first_name ?? 'an nimo') . ' acessou o estabelecimento.',
             ]);
 
             return response()->json([
@@ -652,16 +652,16 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                Log::warning('listMyByCategory: usuÃ¡rio nÃ£o autenticado', [
+                Log::warning('listMyByCategory: usuário não autenticado', [
                     'route_category' => $category,
                     'query' => $request->all(),
                 ]);
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
 
-            // Normaliza e aceita mÃºltiplas categorias via "barbershop,beauty"
+            // Normaliza e aceita múltiplas categorias via "barbershop,beauty"
             $cats = collect(explode(',', (string) $category))
                 ->map(fn($c) => trim($c))
                 ->filter()
@@ -690,11 +690,11 @@ class EstablishmentController extends Controller
             ]);
 
             if (empty($cats)) {
-                Log::warning('listMyByCategory: categoria invÃ¡lida', [
+                Log::warning('listMyByCategory: categoria inválida', [
                     'user_id' => $user->id,
                     'route_category' => $category,
                 ]);
-                return response()->json(['error' => 'Categoria invÃ¡lida.'], 422);
+                return response()->json(['error' => 'Categoria inválida.'], 422);
             }
 
             $q = Establishment::query()
@@ -717,7 +717,7 @@ class EstablishmentController extends Controller
 
             $establishments = $q->orderBy($sort, $direction)->paginate($perPage);
 
-            // Sanitiza strings com bytes invÃ¡lidos para evitar "Malformed UTF-8"
+            // Sanitiza strings com bytes inválidos para evitar "Malformed UTF-8"
             $invalidFields = [];
             $establishments->getCollection()->transform(function ($model) use (&$invalidFields) {
                 foreach ($model->getAttributes() as $k => $v) {
@@ -730,13 +730,13 @@ class EstablishmentController extends Controller
                 return $model;
             });
             if (!empty($invalidFields)) {
-                Log::warning('listMyByCategory: atributos com UTF-8 invÃ¡lido sanitizados', [
+                Log::warning('listMyByCategory: atributos com UTF-8 inválido sanitizados', [
                     'user_id' => $user->id,
                     'fields' => $invalidFields,
                 ]);
             }
 
-            Log::info('listMyByCategory: consulta concluÃ­da', [
+            Log::info('listMyByCategory: consulta concluída', [
                 'user_id' => $user->id,
                 'cats' => $cats,
                 'total' => $establishments->total(),
@@ -745,7 +745,7 @@ class EstablishmentController extends Controller
             ]);
 
             return response()->json([
-                'message' => 'Estabelecimentos do usuÃ¡rio listados por categoria com sucesso.',
+                'message' => 'Estabelecimentos do usuário listados por categoria com sucesso.',
                 'establishments' => $establishments,
             ], 200, [], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         } catch (\Exception $e) {
@@ -768,13 +768,13 @@ class EstablishmentController extends Controller
             $establishment = Establishment::with('items')->where('slug', $slug)->first();
 
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
 
             $category = strtolower($establishment->category ?? '');
             $tipo = in_array($category, ['barbershop', 'beauty', 'salon'])
-                ? 'Tabela de PreÃ§os'
-                : 'CardÃ¡pio';
+                ? 'Tabela de Preços'
+                : 'Cardápio';
 
             $items = $establishment->items()
                 ->where('is_published', true)
@@ -825,7 +825,7 @@ class EstablishmentController extends Controller
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -835,12 +835,12 @@ class EstablishmentController extends Controller
                 ->get();
 
             return response()->json([
-                'message' => 'Estabelecimentos do usuÃ¡rio listados com sucesso.',
+                'message' => 'Estabelecimentos do usuário listados com sucesso.',
                 'establishments' => $establishments,
             ], 200);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao listar estabelecimentos do usuÃ¡rio: ' . $e->getMessage());
+            \Log::error('Erro ao listar estabelecimentos do usuário: ' . $e->getMessage());
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
@@ -910,7 +910,7 @@ class EstablishmentController extends Controller
         try {
             if (!$app_id || !is_numeric($app_id)) {
                 return response()->json([
-                    'error' => 'O campo app_id Ã© obrigatÃ³rio e deve ser numÃ©rico.'
+                    'error' => 'O campo app_id é obrigatório e deve ser numérico.'
                 ], 422);
             }
 

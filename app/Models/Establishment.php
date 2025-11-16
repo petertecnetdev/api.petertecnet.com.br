@@ -392,7 +392,7 @@ class Establishment extends Model
             : ($this->segments ?? []);
 
         if (empty($segmentsArray)) {
-            return '<i>Nenhum seguimento atribuÃ­do</i>';
+            return '<i>Nenhum seguimento atribuído</i>';
         }
 
         $names = [];
