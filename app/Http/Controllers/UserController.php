@@ -6,12 +6,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use App\Models\{User, Interaction, Profile};
+use App\Models\{User, Interaction, File, Profile};
 use App\Mail\WelcomeMail;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Intervention\Image\Facades\Image;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\DB;
 
 
