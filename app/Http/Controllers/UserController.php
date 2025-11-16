@@ -6,7 +6,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use App\Models\{User, Profile};
+use App\Models\{User, Interaction, Profile};
 use App\Mail\WelcomeMail;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
@@ -124,135 +124,96 @@ class UserController extends Controller
      * @param int $userId
      * @return \Illuminate\Http\JsonResponse
      */
-   public function update(Request $request, $userId)
-{
-    try {
-        Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
+ public function update(Request $request, $userId)
+    {
+        try {
+            Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
 
-        $currentUser = $this->getAuthenticatedUser();
-
-        if ((int) $currentUser->id !== (int) $userId) {
-            if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
-                Log::warning('Usuário sem permissão tentou atualizar outro usuário.', [
-                    'authenticated_id' => $currentUser->id,
-                    'target_id' => $userId,
-                ]);
-                return response()->json([
-                    'error' => 'Você não tem permissão para atualizar este usuário.'
-                ], 403);
+            $currentUser = Auth::user();
+            if (!$currentUser) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-        }
 
-        $validator = Validator::make($request->all(), [
-            'first_name' => 'nullable|string|max:255',
-            'last_name' => 'nullable|string|max:255',
-            'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
-            'email' => 'nullable|email',
-            'avatar' => 'nullable|image|max:4096',
-            'cpf' => 'nullable|string|max:20',
-            'address' => 'nullable|string|max:255',
-            'phone' => 'nullable|string|max:20',
-            'city' => 'nullable|string|max:255',
-            'uf' => 'nullable|string|max:2',
-            'postal_code' => 'nullable|string|max:20',
-            'birthdate' => 'nullable|date',
-            'gender' => 'nullable|string|max:20',
-            'occupation' => 'nullable|string|max:255',
-            'about' => 'nullable|string|max:500',
-            'is_barber' => 'nullable|boolean',
-        ], $this->getValidationMessages());
-
-        if ($validator->fails()) {
-            return response()->json(['errors' => $validator->errors()], 422);
-        }
-
-        DB::beginTransaction();
-
-        $userToUpdate = User::findOrFail($userId);
-        $oldData = $userToUpdate->getOriginal();
-        $changes = [];
-
-        $updatableFields = [
-            'first_name',
-            'last_name',
-            'user_name',
-            'email',
-            'cpf',
-            'address',
-            'phone',
-            'city',
-            'uf',
-            'postal_code',
-            'birthdate',
-            'gender',
-            'occupation',
-            'about',
-            'is_barber',
-        ];
-
-        foreach ($updatableFields as $field) {
-            if ($request->has($field)) {
-                $newValue = $request->input($field);
-                if (($oldData[$field] ?? null) != $newValue) {
-                    $changes[$field] = [
-                        'old' => $oldData[$field] ?? null,
-                        'new' => $newValue
-                    ];
+            // Permissão
+            if ((int) $currentUser->id !== (int) $userId) {
+                if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
+                    return response()->json(['error' => 'Você não tem permissão para atualizar este usuário.'], 403);
                 }
-                $userToUpdate->{$field} = $newValue;
             }
+
+            // Validação
+            $validator = Validator::make($request->all(), [
+                'first_name' => 'nullable|string|max:255',
+                'last_name' => 'nullable|string|max:255',
+                'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
+                'email'     => 'nullable|email',
+                'cpf'       => 'nullable|string|max:20',
+                'address'   => 'nullable|string|max:255',
+                'phone'     => 'nullable|string|max:20',
+                'city'      => 'nullable|string|max:255',
+                'uf'        => 'nullable|string|max:2',
+                'postal_code' => 'nullable|string|max:20',
+                'birthdate'   => 'nullable|date',
+                'gender'      => 'nullable|string|max:20',
+                'occupation'  => 'nullable|string|max:255',
+                'about'       => 'nullable|string|max:500',
+                'is_barber'   => 'nullable|boolean',
+                'avatar'      => 'nullable|image|max:4096',
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json(['errors' => $validator->errors()], 422);
+            }
+
+            DB::beginTransaction();
+
+            $userToUpdate = User::findOrFail($userId);
+            $validated = $validator->validated();
+
+            // UPDATE dos campos normais
+            foreach ($validated as $key => $value) {
+                if ($key !== 'avatar') {
+                    $userToUpdate->{$key} = $value;
+                }
+            }
+
+            // ============================
+            // AVATAR (COMO ESTAMOS FAZENDO EM ESTABLISHMENT)
+            // ============================
+            if ($request->hasFile('avatar')) {
+
+                $file = File::storeOne(
+                    file: $request->file('avatar'),
+                    entityName: 'user',
+                    entityId: $userToUpdate->id,
+                    type: 'avatar',
+                    appId: 0,
+                    createdBy: $currentUser->id
+                );
+
+                $userToUpdate->avatar = $file->public_url;
+            }
+
+            $userToUpdate->save();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Usuário atualizado com sucesso.',
+                'user' => $userToUpdate->refresh()
+            ], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Erro inesperado ao atualizar usuário.', [
+                'userId' => $userId,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
         }
-
-        if ($request->hasFile('avatar')) {
-            $file = File::storeOne(
-                file: $request->file('avatar'),
-                entityName: 'user',
-                entityId: $userToUpdate->id,
-                type: 'avatar',
-                appId: $userToUpdate->app_id ?? null,
-                createdBy: $currentUser->id
-            );
-
-            $changes['avatar'] = [
-                'old' => $userToUpdate->avatar,
-                'new' => $file->public_url
-            ];
-
-            $userToUpdate->avatar = $file->public_url;
-        }
-
-        $userToUpdate->save();
-
-        if (!empty($changes)) {
-            Interaction::registerUpdate($userToUpdate, $currentUser, $changes);
-        }
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Usuário atualizado com sucesso.',
-            'user' => $userToUpdate->refresh(),
-            'changes' => $changes
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        DB::rollBack();
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        DB::rollBack();
-        return response()->json(['error' => 'Usuário não encontrado.'], 404);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        Log::error('Erro inesperado ao atualizar usuário.', [
-            'userId' => $userId,
-            'exception' => $e->getMessage(),
-        ]);
-        return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
     }
-}
-
 
 
     /**
