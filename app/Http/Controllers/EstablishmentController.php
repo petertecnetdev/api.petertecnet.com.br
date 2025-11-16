@@ -850,7 +850,7 @@ class EstablishmentController extends Controller
     $uf   = $request->query('uf');
 
     // Buscar estabelecimentos do app
-    $establishments = \App\Models\Establishment::where('app_id', $app_id)
+    $establishments = Establishment::where('app_id', $app_id)
         ->when($city && $uf, fn($q) => 
             $q->where('city', $city)->where('uf', $uf)
         )
@@ -876,11 +876,11 @@ class EstablishmentController extends Controller
 
             // Montar images[]
             $images = [
-                'logo' => $e->files->firstWhere('type', 'logo')?->public_url,
-                'background' => $e->files->firstWhere('type', 'background')?->public_url,
+                'logo' => $e->files->firstWhere('type', 'logo')?->storage_path,
+                'background' => $e->files->firstWhere('type', 'background')?->storage_path,
                 'gallery' => $e->files
                     ->whereNotIn('type', ['logo', 'background'])
-                    ->pluck('public_url')
+                    ->pluck('storage_path')
                     ->values()
             ];
 
