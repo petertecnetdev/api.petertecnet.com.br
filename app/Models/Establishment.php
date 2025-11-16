@@ -743,10 +743,6 @@ class Establishment extends Model
             ->where('type', 'background');
     }
 
-    public function media()
-    {
-        return $this->morphMany(File::class, 'fileable');
-    }
 protected static function booted()
 {
     static::creating(function ($model) {
