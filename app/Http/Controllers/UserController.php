@@ -122,106 +122,135 @@ class UserController extends Controller
      * @param int $userId
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, $userId)
-    {
-        try {
-            Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
+   public function update(Request $request, $userId)
+{
+    try {
+        Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
 
-            $currentUser = $this->getAuthenticatedUser();
+        $currentUser = $this->getAuthenticatedUser();
 
-            if ((int) $currentUser->id !== (int) $userId) {
-                if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
-                    Log::warning('Usuário sem permissão tentou atualizar outro usuário.', [
-                        'authenticated_id' => $currentUser->id,
-                        'target_id' => $userId,
-                    ]);
-                    return response()->json([
-                        'error' => 'Você não tem permissão para atualizar este usuário.'
-                    ], 403);
+        if ((int) $currentUser->id !== (int) $userId) {
+            if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
+                Log::warning('Usuário sem permissão tentou atualizar outro usuário.', [
+                    'authenticated_id' => $currentUser->id,
+                    'target_id' => $userId,
+                ]);
+                return response()->json([
+                    'error' => 'Você não tem permissão para atualizar este usuário.'
+                ], 403);
+            }
+        }
+
+        $validator = Validator::make($request->all(), [
+            'first_name' => 'nullable|string|max:255',
+            'last_name' => 'nullable|string|max:255',
+            'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
+            'email' => 'nullable|email',
+            'avatar' => 'nullable|image|max:4096',
+            'cpf' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:255',
+            'phone' => 'nullable|string|max:20',
+            'city' => 'nullable|string|max:255',
+            'uf' => 'nullable|string|max:2',
+            'postal_code' => 'nullable|string|max:20',
+            'birthdate' => 'nullable|date',
+            'gender' => 'nullable|string|max:20',
+            'occupation' => 'nullable|string|max:255',
+            'about' => 'nullable|string|max:500',
+            'is_barber' => 'nullable|boolean',
+        ], $this->getValidationMessages());
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+
+        DB::beginTransaction();
+
+        $userToUpdate = User::findOrFail($userId);
+        $oldData = $userToUpdate->getOriginal();
+        $changes = [];
+
+        $updatableFields = [
+            'first_name',
+            'last_name',
+            'user_name',
+            'email',
+            'cpf',
+            'address',
+            'phone',
+            'city',
+            'uf',
+            'postal_code',
+            'birthdate',
+            'gender',
+            'occupation',
+            'about',
+            'is_barber',
+        ];
+
+        foreach ($updatableFields as $field) {
+            if ($request->has($field)) {
+                $newValue = $request->input($field);
+                if (($oldData[$field] ?? null) != $newValue) {
+                    $changes[$field] = [
+                        'old' => $oldData[$field] ?? null,
+                        'new' => $newValue
+                    ];
                 }
+                $userToUpdate->{$field} = $newValue;
             }
+        }
 
-            $validator = Validator::make($request->all(), [
-                'first_name' => 'nullable|string|max:255',
-                'last_name' => 'nullable|string|max:255',
-                'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
-                'email' => 'nullable|email',
-                'avatar' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
-                'cpf' => 'nullable|string|max:20',
-                'address' => 'nullable|string|max:255',
-                'phone' => 'nullable|string|max:20',
-                'city' => 'nullable|string|max:255',
-                'uf' => 'nullable|string|max:2',
-                'postal_code' => 'nullable|string|max:20',
-                'birthdate' => 'nullable|date',
-                'gender' => 'nullable|string|max:20',
-                'occupation' => 'nullable|string|max:255',
-                'about' => 'nullable|string|max:500',
-                'is_barber' => 'nullable|boolean',
-            ], $this->getValidationMessages());
+        if ($request->hasFile('avatar')) {
+            $file = File::storeOne(
+                file: $request->file('avatar'),
+                entityName: 'user',
+                entityId: $userToUpdate->id,
+                type: 'avatar',
+                appId: $userToUpdate->app_id ?? null,
+                createdBy: $currentUser->id
+            );
 
-            if ($validator->fails()) {
-                return response()->json(['errors' => $validator->errors()], 422);
-            }
-
-            $userToUpdate = User::findOrFail($userId);
-
-            $updatableFields = [
-                'first_name',
-                'last_name',
-                'user_name',
-                'email',
-                'cpf',
-                'address',
-                'phone',
-                'city',
-                'uf',
-                'postal_code',
-                'birthdate',
-                'gender',
-                'occupation',
-                'about',
-                'is_barber',
+            $changes['avatar'] = [
+                'old' => $userToUpdate->avatar,
+                'new' => $file->public_url
             ];
 
-            foreach ($updatableFields as $field) {
-                if ($request->has($field)) {
-                    $userToUpdate->{$field} = $request->input($field);
-                }
-            }
-
-            if ($request->hasFile('avatar')) {
-                Log::info('Avatar fornecido, processando...');
-                $this->processAvatar($request->file('avatar'), $userToUpdate);
-            }
-
-            $userToUpdate->save();
-
-            Log::info('Usuário atualizado com sucesso.', ['id' => $userToUpdate->id]);
-            return response()->json(['message' => 'Usuário atualizado com sucesso.'], 200);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::error('Usuário não encontrado.', ['userId' => $userId]);
-            return response()->json(['error' => 'Usuário não encontrado.'], 404);
-
-        } catch (\Illuminate\Database\QueryException $e) {
-            if (str_contains($e->getMessage(), 'Duplicate entry')) {
-                return response()->json(['error' => 'O nome de usuário já está em uso.'], 409);
-            }
-            Log::error('Erro de banco ao atualizar usuário.', [
-                'userId' => $userId,
-                'exception' => $e->getMessage(),
-            ]);
-            return response()->json(['error' => 'Erro de banco de dados ao atualizar usuário.'], 500);
-
-        } catch (\Exception $e) {
-            Log::error('Erro inesperado ao atualizar usuário.', [
-                'userId' => $userId,
-                'exception' => $e->getMessage(),
-            ]);
-            return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
+            $userToUpdate->avatar = $file->public_url;
         }
+
+        $userToUpdate->save();
+
+        if (!empty($changes)) {
+            Interaction::registerUpdate($userToUpdate, $currentUser, $changes);
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Usuário atualizado com sucesso.',
+            'user' => $userToUpdate->refresh(),
+            'changes' => $changes
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        DB::rollBack();
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        DB::rollBack();
+        return response()->json(['error' => 'Usuário não encontrado.'], 404);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        Log::error('Erro inesperado ao atualizar usuário.', [
+            'userId' => $userId,
+            'exception' => $e->getMessage(),
+        ]);
+        return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
     }
+}
+
 
 
     /**
@@ -351,28 +380,106 @@ class UserController extends Controller
      * @param string $userName
      * @return \Illuminate\Http\JsonResponse
      */
-    public function view($userName)
-    {
-        try {
-            $this->getAuthenticatedUser();
+   public function view($userName)
+{
+    try {
+        $authUser = Auth::user();
 
-            $userToShow = User::with([
-                'productions' => function ($query) {
-                    $query->orderBy('created_at', 'desc');
-                }
-            ])->where('user_name', $userName)->first();
+        $user = User::with([
+            'employer.establishment.items:id,entity_id,name,slug,price,type',
+            'employer.establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'employer.establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'employer.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'employer.interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+        ->where('user_name', $userName)
+        ->firstOrFail();
 
-            if (!$userToShow) {
-                return response()->json(['error' => 'Usuário não encontrado.'], 404);
-            }
+        // ============================================
+        // REGISTRA VIEW EM USER (como entidade isolada)
+        // ============================================
+        Interaction::registerView($user, $authUser);
 
-            return response()->json(['user' => $userToShow], 200);
+        // ============================================
+        // MÉTRICAS DO USER
+        // ============================================
+        $views = $user->views();
+        $totalViews   = $views->count();
+        $uniqueUsers  = $views->distinct('user_id')->count('user_id');
 
-        } catch (\Exception $e) {
-            Log::error('Erro ao mostrar o perfil do usuário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao mostrar o perfil do usuário.'], 500);
+        $interactionSummary = [
+            'total_views'  => $totalViews,
+            'unique_users' => $uniqueUsers,
+            'last_view_user' => $views->latest()->first()?->user,
+        ];
+
+        // ============================================
+        // USER COMO EMPLOYER? → carrega tudo igual EmployerView
+        // ============================================
+        $employer = $user->employer;
+
+        $metrics = null;
+        $colleagues = [];
+        $ordersSummary = null;
+        $topItemAndClient = null;
+        $userInteractions = [];
+
+        if ($employer) {
+            $employer->refreshViewMetrics($authUser);
+
+            $metrics            = $employer->metrics;
+            $colleaguesData     = $employer->colleagues();
+            $colleagues         = $colleaguesData['list'] ?? [];
+            $ordersSummary      = $employer->ordersSummary();
+            $userInteractions   = $employer->userInteractions();
+            $topItemAndClient   = $employer->topItemAndClient();
         }
+
+        return response()->json([
+            'user' => $user,
+
+            // employer vinculado
+            'employer' => $employer,
+
+            // dados da barbearia (se existir)
+            'establishment' => $employer?->establishment,
+
+            // itens do estabelecimento vinculado
+            'items' => $employer?->establishment?->items ?? [],
+
+            // métricas completíssimas (se for employer)
+            'metrics' => $metrics,
+
+            // colegas (somente se employer)
+            'colleagues' => $colleagues,
+            'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
+
+            // resumo de interações
+            'interaction_summary' => $interactionSummary,
+            'user_interactions' => $userInteractions,
+
+            // resumo dos pedidos (se employer)
+            'orders_summary' => $ordersSummary,
+
+            // item mais atendido e melhor cliente
+            'top_item_and_client' => $topItemAndClient,
+
+            // outras categorias
+            'other_establishments' => $employer?->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer?->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer?->establishment?->otherItems() ?? [],
+
+        ], 200);
+
+    } catch (\Throwable $e) {
+        \Log::error('[UserController::view] Erro ao carregar usuário', [
+            'user_name' => $userName,
+            'message' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => 'Erro ao carregar usuário.'], 500);
     }
+}
 
     /**
      * Deleta um usuário.

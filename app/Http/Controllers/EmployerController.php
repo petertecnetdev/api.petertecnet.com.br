@@ -944,7 +944,7 @@ class EmployerController extends Controller
     $uf   = $request->query('uf');
 
     // 1. Estabelecimentos válidos
-    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
+    $establishmentIds = Establishment::where('app_id', $app_id)
         ->when($city && $uf, fn($q) =>
             $q->where('city', $city)->where('uf', $uf)
         )
