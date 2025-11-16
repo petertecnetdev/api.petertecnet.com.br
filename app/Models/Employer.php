@@ -10,8 +10,9 @@ use Illuminate\Support\Carbon;
 use App\Traits\HasFiles;
 
 class Employer extends Model
-{  
+{
     use HasFiles;
+
     protected $fillable = [
         'user_id',
         'establishment_id',

@@ -6,42 +6,66 @@ use App\Models\File;
 
 trait HasFiles
 {
+    /**
+     * Relacionamento padrão:
+     * Toda entidade pode ter vários arquivos associados.
+     * Usa entity_name e entity_id (padrão Rasoio).
+     */
     public function files()
     {
-        return $this->morphMany(
-            File::class,
-            'entity',
-            'entity_name',
-            'entity_id'
-        )
-        ->orderBy('is_primary', 'desc')
-        ->orderBy('sort_order')
-        ->orderBy('position')
-        ->orderBy('id');
+        return $this->hasMany(File::class, 'entity_id')
+            ->where('entity_name', $this->getEntityName());
     }
 
-    public function primaryImage()
+    /**
+     * Retorna o nome da entidade baseado no Model.
+     */
+    protected function getEntityName()
     {
-        return $this->files()->where('is_primary', true)->first();
+        return strtolower(class_basename($this)); 
+        // establishment, employer, item, user, etc.
     }
 
-    public function logoImage()
+    /**
+     * Pega o primeiro arquivo de um tipo.
+     * Ex: logo, background, avatar, gallery, etc.
+     */
+    public function file(string $type)
     {
-        return $this->files()->where('type', 'logo')->first();
+        return $this->files()->where('type', $type)->first();
     }
 
-    public function backgroundImage()
+    /**
+     * Retorna a URL pública de um tipo de arquivo.
+     */
+    public function fileUrl(string $type)
     {
-        return $this->files()->where('type', 'background')->first();
+        return $this->file($type)?->public_url;
     }
 
-    public function galleryImages()
+    /**
+     * Deleta arquivos do tipo especificado.
+     */
+    public function deleteFilesOfType(string $type)
     {
-        return $this->files()->where('type', 'gallery')->get();
+        return $this->files()->where('type', $type)->delete();
     }
 
-    public function avatarImage()
+    /**
+     * Cria um arquivo para esta entidade (já processado pela FileController).
+     */
+    public function attachFile(array $data)
     {
-        return $this->files()->where('type', 'avatar')->first();
+        $data['entity_id'] = $this->id;
+        $data['entity_name'] = $this->getEntityName();
+        return File::create($data);
+    }
+
+    /**
+     * Retorna a lista de imagens para galeria.
+     */
+    public function gallery()
+    {
+        return $this->files()->where('type', 'gallery')->orderBy('sort_order')->get();
     }
 }
