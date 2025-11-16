@@ -87,7 +87,8 @@ return new class extends Migration {
             $table->foreign('created_by')->references('id')->on('users')->nullOnDelete();
             $table->foreign('updated_by')->references('id')->on('users')->nullOnDelete();
 
-            $table->index(['app_id']);
+            $table->unsignedBigInteger('app_id')->nullable()->change();
+
             $table->index(['entity_id', 'entity_name']);
             $table->index(['fileable_id', 'fileable_type']);
             $table->index(['type']);
