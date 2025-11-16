@@ -622,7 +622,7 @@ class AuthController extends Controller
 
         // 🔥 FIX — garantir URL completa do avatar
         if ($user->avatar) {
-            $user->avatar = url('storage/' . ltrim($user->avatar, '/'));
+            $user->avatar ;
         }
 
         Interaction::create([

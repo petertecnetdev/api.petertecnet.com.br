@@ -123,7 +123,7 @@ class UserController extends Controller
      * @param int $userId
      * @return \Illuminate\Http\JsonResponse
      */
- public function update(Request $request, $userId)
+    public function update(Request $request, $userId)
     {
         try {
             Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
@@ -145,19 +145,19 @@ class UserController extends Controller
                 'first_name' => 'nullable|string|max:255',
                 'last_name' => 'nullable|string|max:255',
                 'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
-                'email'     => 'nullable|email',
-                'cpf'       => 'nullable|string|max:20',
-                'address'   => 'nullable|string|max:255',
-                'phone'     => 'nullable|string|max:20',
-                'city'      => 'nullable|string|max:255',
-                'uf'        => 'nullable|string|max:2',
+                'email' => 'nullable|email',
+                'cpf' => 'nullable|string|max:20',
+                'address' => 'nullable|string|max:255',
+                'phone' => 'nullable|string|max:20',
+                'city' => 'nullable|string|max:255',
+                'uf' => 'nullable|string|max:2',
                 'postal_code' => 'nullable|string|max:20',
-                'birthdate'   => 'nullable|date',
-                'gender'      => 'nullable|string|max:20',
-                'occupation'  => 'nullable|string|max:255',
-                'about'       => 'nullable|string|max:500',
-                'is_barber'   => 'nullable|boolean',
-                'avatar'      => 'nullable|image|max:4096',
+                'birthdate' => 'nullable|date',
+                'gender' => 'nullable|string|max:20',
+                'occupation' => 'nullable|string|max:255',
+                'about' => 'nullable|string|max:500',
+                'is_barber' => 'nullable|boolean',
+                'avatar' => 'nullable|image|max:4096',
             ]);
 
             if ($validator->fails()) {
@@ -182,13 +182,13 @@ class UserController extends Controller
             if ($request->hasFile('avatar')) {
 
                 $file = File::storeOne(
-    file: $request->file('avatar'),
-    entityName: 'user',
-    entityId: $userToUpdate->id,
-    type: 'avatar',
-    appId: null,
-    createdBy: $currentUser->id
-);
+                    file: $request->file('avatar'),
+                    entityName: 'user',
+                    entityId: $userToUpdate->id,
+                    type: 'avatar',
+                    appId: null,
+                    createdBy: $currentUser->id
+                );
 
                 $userToUpdate->avatar = $file->public_url;
             }
@@ -342,106 +342,106 @@ class UserController extends Controller
      * @param string $userName
      * @return \Illuminate\Http\JsonResponse
      */
-   public function view($userName)
-{
-    try {
-        $authUser = Auth::user();
+    public function view($userName)
+    {
+        try {
+            $authUser = Auth::user();
 
-        $user = User::with([
-            'employer.establishment.items:id,entity_id,name,slug,price,type',
-            'employer.establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
-            'employer.establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
-            'employer.orders.client:id,first_name,last_name,user_name,avatar,email',
-            'employer.interactions.user:id,first_name,last_name,user_name,avatar,email',
-        ])
-        ->where('user_name', $userName)
-        ->firstOrFail();
+            $user = User::with([
+                'employer.establishment.items:id,entity_id,name,slug,price,type',
+                'employer.establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+                'employer.establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+                'employer.orders.client:id,first_name,last_name,user_name,avatar,email',
+                'employer.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+                ->where('user_name', $userName)
+                ->firstOrFail();
 
-        // ============================================
-        // REGISTRA VIEW EM USER (como entidade isolada)
-        // ============================================
-        Interaction::registerView($user, $authUser);
+            // ============================================
+            // REGISTRA VIEW EM USER (como entidade isolada)
+            // ============================================
+            Interaction::registerView($user, $authUser);
 
-        // ============================================
-        // MÉTRICAS DO USER
-        // ============================================
-        $views = $user->views();
-        $totalViews   = $views->count();
-        $uniqueUsers  = $views->distinct('user_id')->count('user_id');
+            // ============================================
+            // MÉTRICAS DO USER
+            // ============================================
+            $views = $user->views();
+            $totalViews = $views->count();
+            $uniqueUsers = $views->distinct('user_id')->count('user_id');
 
-        $interactionSummary = [
-            'total_views'  => $totalViews,
-            'unique_users' => $uniqueUsers,
-            'last_view_user' => $views->latest()->first()?->user,
-        ];
+            $interactionSummary = [
+                'total_views' => $totalViews,
+                'unique_users' => $uniqueUsers,
+                'last_view_user' => $views->latest()->first()?->user,
+            ];
 
-        // ============================================
-        // USER COMO EMPLOYER? → carrega tudo igual EmployerView
-        // ============================================
-        $employer = $user->employer;
+            // ============================================
+            // USER COMO EMPLOYER? → carrega tudo igual EmployerView
+            // ============================================
+            $employer = $user->employer;
 
-        $metrics = null;
-        $colleagues = [];
-        $ordersSummary = null;
-        $topItemAndClient = null;
-        $userInteractions = [];
+            $metrics = null;
+            $colleagues = [];
+            $ordersSummary = null;
+            $topItemAndClient = null;
+            $userInteractions = [];
 
-        if ($employer) {
-            $employer->refreshViewMetrics($authUser);
+            if ($employer) {
+                $employer->refreshViewMetrics($authUser);
 
-            $metrics            = $employer->metrics;
-            $colleaguesData     = $employer->colleagues();
-            $colleagues         = $colleaguesData['list'] ?? [];
-            $ordersSummary      = $employer->ordersSummary();
-            $userInteractions   = $employer->userInteractions();
-            $topItemAndClient   = $employer->topItemAndClient();
+                $metrics = $employer->metrics;
+                $colleaguesData = $employer->colleagues();
+                $colleagues = $colleaguesData['list'] ?? [];
+                $ordersSummary = $employer->ordersSummary();
+                $userInteractions = $employer->userInteractions();
+                $topItemAndClient = $employer->topItemAndClient();
+            }
+
+            return response()->json([
+                'user' => $user,
+
+                // employer vinculado
+                'employer' => $employer,
+
+                // dados da barbearia (se existir)
+                'establishment' => $employer?->establishment,
+
+                // itens do estabelecimento vinculado
+                'items' => $employer?->establishment?->items ?? [],
+
+                // métricas completíssimas (se for employer)
+                'metrics' => $metrics,
+
+                // colegas (somente se employer)
+                'colleagues' => $colleagues,
+                'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
+
+                // resumo de interações
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+
+                // resumo dos pedidos (se employer)
+                'orders_summary' => $ordersSummary,
+
+                // item mais atendido e melhor cliente
+                'top_item_and_client' => $topItemAndClient,
+
+                // outras categorias
+                'other_establishments' => $employer?->establishment?->otherEstablishments() ?? [],
+                'other_employers' => $employer?->establishment?->otherEmployers() ?? [],
+                'other_items' => $employer?->establishment?->otherItems() ?? [],
+
+            ], 200);
+
+        } catch (\Throwable $e) {
+            \Log::error('[UserController::view] Erro ao carregar usuário', [
+                'user_name' => $userName,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao carregar usuário.'], 500);
         }
-
-        return response()->json([
-            'user' => $user,
-
-            // employer vinculado
-            'employer' => $employer,
-
-            // dados da barbearia (se existir)
-            'establishment' => $employer?->establishment,
-
-            // itens do estabelecimento vinculado
-            'items' => $employer?->establishment?->items ?? [],
-
-            // métricas completíssimas (se for employer)
-            'metrics' => $metrics,
-
-            // colegas (somente se employer)
-            'colleagues' => $colleagues,
-            'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
-
-            // resumo de interações
-            'interaction_summary' => $interactionSummary,
-            'user_interactions' => $userInteractions,
-
-            // resumo dos pedidos (se employer)
-            'orders_summary' => $ordersSummary,
-
-            // item mais atendido e melhor cliente
-            'top_item_and_client' => $topItemAndClient,
-
-            // outras categorias
-            'other_establishments' => $employer?->establishment?->otherEstablishments() ?? [],
-            'other_employers' => $employer?->establishment?->otherEmployers() ?? [],
-            'other_items' => $employer?->establishment?->otherItems() ?? [],
-
-        ], 200);
-
-    } catch (\Throwable $e) {
-        \Log::error('[UserController::view] Erro ao carregar usuário', [
-            'user_name' => $userName,
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao carregar usuário.'], 500);
     }
-}
 
     /**
      * Deleta um usuário.
