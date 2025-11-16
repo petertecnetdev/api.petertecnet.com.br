@@ -849,14 +849,13 @@ class EstablishmentController extends Controller
     $city = $request->query('city');
     $uf   = $request->query('uf');
 
-    // Buscar estabelecimentos do app
     $establishments = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) => 
+        ->when($city && $uf, fn($q) =>
             $q->where('city', $city)->where('uf', $uf)
         )
         ->with([
             'files' => function($q) {
-                $q->where('entity_name', 'establishment');
+                $q->where('model_type', 'App\Models\Establishment');
             }
         ])
         ->withCount([
@@ -874,14 +873,13 @@ class EstablishmentController extends Controller
         ->get()
         ->map(function ($e) {
 
-            // Montar images[]
             $images = [
                 'logo' => $e->files->firstWhere('type', 'logo')?->public_url,
                 'background' => $e->files->firstWhere('type', 'background')?->public_url,
                 'gallery' => $e->files
                     ->whereNotIn('type', ['logo', 'background'])
                     ->pluck('public_url')
-                    ->values()
+                    ->values(),
             ];
 
             return [
