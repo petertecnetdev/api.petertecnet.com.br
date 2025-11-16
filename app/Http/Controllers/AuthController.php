@@ -610,43 +610,64 @@ class AuthController extends Controller
     // App\Http\Controllers\AuthController.php
 
     public function me()
-    {
-        try {
-            $user = User::with(['profile', 'employer', 'establishments'])
-                ->where('user_name', Auth::user()->user_name)
-                ->first();
+{
+    try {
+        $auth = Auth::user();
 
-            if (!$user) {
-                return response()->json(['error' => 'Usuário não autenticado'], 404);
-            }
-
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'me',
-                'entity_id' => $user->id,
-                'entity_type' => 'user',
-            ]);
-
-            $employerData = $user->employer;
-            $establishments = $user->establishments;
-
-            $user->setRelation('employer', null);
-            $user->setRelation('establishments', null);
-
-            return response()->json([
-                'message' => 'Usuário encontrado com sucesso.',
-                'user' => $user,
-                'is_employer' => (bool) $employerData,
-                'employer' => $employerData,
-                'establishments' => $establishments,
-            ], 200);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Ocorreu um erro: ' . $e->getMessage()
-            ], 500);
+        if (!$auth) {
+            return response()->json(['error' => 'Usuário não autenticado'], 401);
         }
+
+        $user = User::with([
+            'profile',
+            'employer',
+            'establishments',
+            'avatarFile', // 🔥 carrega avatar real
+        ])
+        ->where('id', $auth->id)
+        ->first();
+
+        if (!$user) {
+            return response()->json(['error' => 'Usuário não encontrado'], 404);
+        }
+
+        // REGISTRA INTERAÇÃO
+        Interaction::create([
+            'user_id' => $user->id,
+            'interaction_type' => 'me',
+            'entity_id' => $user->id,
+            'entity_type' => 'user',
+        ]);
+
+        // 🔥 resolve a URL final do avatar (se existir)
+        $avatarUrl = $user->avatarFile?->public_url 
+            ? url($user->avatarFile->public_url)
+            : ($user->avatar ?? null);
+
+        // remove relações duplicadas
+        $employerData = $user->employer;
+        $establishments = $user->establishments;
+
+        $user->setRelation('employer', null);
+        $user->setRelation('establishments', null);
+
+        // adiciona o avatar resolvido
+        $user->avatar = $avatarUrl;
+
+        return response()->json([
+            'message' => 'Usuário carregado com sucesso.',
+            'user' => $user,
+            'is_employer' => (bool) $employerData,
+            'employer' => $employerData,
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        return response()->json([
+            'error' => 'Ocorreu um erro: ' . $e->getMessage()
+        ], 500);
     }
+}
 
 
     /**

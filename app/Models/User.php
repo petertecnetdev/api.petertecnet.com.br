@@ -224,5 +224,12 @@ public static function credentials($username, $password)
 
     return ['cpf' => preg_replace('/[^0-9]/', '', $username), 'password' => $password];
 }
+public function avatarFile()
+{
+    return $this->hasOne(File::class, 'entity_id')
+        ->where('entity_name', 'user')
+        ->where('type', 'avatar')
+        ->orderByDesc('id');
+}
 
 }
