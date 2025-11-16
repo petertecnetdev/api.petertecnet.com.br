@@ -13,3 +13,6 @@
 .gitignore
 composer.lock
 public/images/*
+public/storage
+storage/app/public
+
