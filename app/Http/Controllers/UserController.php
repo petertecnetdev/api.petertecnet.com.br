@@ -182,13 +182,13 @@ class UserController extends Controller
             if ($request->hasFile('avatar')) {
 
                 $file = File::storeOne(
-                    file: $request->file('avatar'),
-                    entityName: 'user',
-                    entityId: $userToUpdate->id,
-                    type: 'avatar',
-                    appId: 0,
-                    createdBy: $currentUser->id
-                );
+    file: $request->file('avatar'),
+    entityName: 'user',
+    entityId: $userToUpdate->id,
+    type: 'avatar',
+    appId: null,
+    createdBy: $currentUser->id
+);
 
                 $userToUpdate->avatar = $file->public_url;
             }
