@@ -1,51 +1,71 @@
 <?php
 
-namespace App\Models\Traits;
+namespace App\Traits;
 
 use App\Models\File;
 
 trait HasFiles
 {
-    protected function getEntityName()
-    {
-        return strtolower(class_basename($this)); 
-        // "establishment", "item", "employer"
-    }
-
+    /**
+     * Relacionamento padrão:
+     * Toda entidade pode ter vários arquivos associados.
+     * Usa entity_name e entity_id (padrão Rasoio).
+     */
     public function files()
     {
         return $this->hasMany(File::class, 'entity_id')
             ->where('entity_name', $this->getEntityName());
     }
 
-    public function getFile(string $type)
+    /**
+     * Retorna o nome da entidade baseado no Model.
+     */
+    protected function getEntityName()
+    {
+        return strtolower(class_basename($this)); 
+        // establishment, employer, item, user, etc.
+    }
+
+    /**
+     * Pega o primeiro arquivo de um tipo.
+     * Ex: logo, background, avatar, gallery, etc.
+     */
+    public function file(string $type)
     {
         return $this->files()->where('type', $type)->first();
     }
 
-    public function getFilesUrls()
+    /**
+     * Retorna a URL pública de um tipo de arquivo.
+     */
+    public function fileUrl(string $type)
     {
-        return $this->files->map(fn($file) => $file->public_url)->toArray();
+        return $this->file($type)?->public_url;
     }
 
-    public function storeFile($uploadedFile, string $type)
-    {
-        if (!$uploadedFile) return null;
-
-        $filename = uniqid() . '_' . time() . '.' . $uploadedFile->getClientOriginalExtension();
-        $path = $uploadedFile->storeAs('uploads', $filename, 'public');
-
-        $this->files()->where('type', $type)->delete();
-
-        return $this->files()->create([
-            'entity_name' => $this->getEntityName(),
-            'type' => $type,
-            'path' => $path,
-        ]);
-    }
-
-    public function deleteFile(string $type)
+    /**
+     * Deleta arquivos do tipo especificado.
+     */
+    public function deleteFilesOfType(string $type)
     {
         return $this->files()->where('type', $type)->delete();
+    }
+
+    /**
+     * Cria um arquivo para esta entidade (já processado pela FileController).
+     */
+    public function attachFile(array $data)
+    {
+        $data['entity_id'] = $this->id;
+        $data['entity_name'] = $this->getEntityName();
+        return File::create($data);
+    }
+
+    /**
+     * Retorna a lista de imagens para galeria.
+     */
+    public function gallery()
+    {
+        return $this->files()->where('type', 'gallery')->orderBy('sort_order')->get();
     }
 }
