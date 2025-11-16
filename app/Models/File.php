@@ -301,43 +301,47 @@ class File extends Model
        MÉTODO storeOne — FINAL
     ============================================================ */
 
-    public static function storeOne(
-        $file,
-        string $entityName,
-        int $entityId,
-        string $type,
-        ?int $appId,
+   public static function storeOne(
+    $file,
+    string $entityName,
+    int $entityId,
+    string $type,
+    ?int $appId,
+    int $createdBy
+) {
+    $ext = strtolower($file->getClientOriginalExtension());
+    $original = $file->getClientOriginalName();
+    $mime = $file->getMimeType();
+    $size = $file->getSize();
 
-        int $createdBy
-    ) {
-        $ext = strtolower($file->getClientOriginalExtension());
-        $original = $file->getClientOriginalName();
-        $mime = $file->getMimeType();
-        $size = $file->getSize();
+    $uuid = (string) Str::uuid();
+    $filename = "{$uuid}.{$ext}";
 
-        $uuid = (string) Str::uuid();
-        $filename = "{$uuid}.{$ext}";
+    // Caminho relativo dentro do disco public
+    $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
 
-        $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
+    // Caminho físico real no servidor
+    $absolute = Storage::disk('public')->path($path);
 
-        return self::create([
-            'uuid' => $uuid,
-            'app_id' => $appId,
-            'entity_name' => $entityName,
-            'entity_id' => $entityId,
-            'type' => $type,
+    return self::create([
+        'uuid' => $uuid,
+        'app_id' => $appId,
+        'entity_name' => $entityName,
+        'entity_id' => $entityId,
+        'type' => $type,
 
-            'original_name' => $original,
-            'extension' => $ext,
-            'mime_type' => $mime,
-            'file_size' => $size,
+        'original_name' => $original,
+        'extension' => $ext,
+        'mime_type' => $mime,
+        'file_size' => $size,
 
-            'storage' => 'public',
-            'path' => $path,
-            'storage_path' => $path,
-            'public_url' => Storage::disk('public')->url($path),
+        'storage' => 'public',
+        'path' => $path,
+        'storage_path' => $absolute,
+        'public_url' => Storage::disk('public')->url($path),
 
-            'created_by' => $createdBy,
-        ]);
-    }
+        'created_by' => $createdBy,
+    ]);
+}
+
 }
