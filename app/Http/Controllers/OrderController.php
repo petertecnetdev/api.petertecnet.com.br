@@ -164,7 +164,6 @@ public function storeAppointment(Request $request)
         return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
     }
 }
-
 public function storeDirect(Request $request)
 {
     if (!Auth::check()) {
@@ -175,30 +174,63 @@ public function storeDirect(Request $request)
 
     try {
         $user = Auth::user();
-        Log::info('🟢 Iniciando criação de pedido direto.', ['user_id' => $user->id, 'payload' => $request->all()]);
 
-        $data = $this->validateOrder($request);
+        Log::info('🟡 [storeDirect] Iniciando criação de pedido direto...', [
+            'user_id' => $user->id,
+            'payload' => $request->all()
+        ]);
 
-        // Data do pedido imediato = agora
-        $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
+        // ========================================================
+        // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
+        // ========================================================
+        $data = $request->validate([
+            'entity_id'        => 'required|integer|exists:establishments,id',
+            'entity_name'      => 'required|string',
+            'customer_name'    => 'nullable|string|max:255',
+            'origin'           => 'required|string',
+            'fulfillment'      => 'required|string',
+            'payment_status'   => 'required|string',
+            'payment_method'   => 'required|string',
+            'notes'            => 'nullable|string',
+            'items'            => 'required|array|min:1',
+            'items.*.item_id'  => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.additions' => 'array',
+            'items.*.removals'  => 'array'
+        ]);
 
-        $isScheduled = false;
-        $type = 'direct';
-        $appointmentStatus = 'completed'; // pedido imediato concluído
+        Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
 
-        // Valida itens pertencentes ao estabelecimento
-        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+        // ========================================================
+        // 🔥 VALIDA ITENS PERTENCENTES AO ESTABELECIMENTO
+        // ========================================================
+        $itemIds = collect($data['items'])->pluck('item_id')->toArray();
         $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+
+        Log::info('🟡 [storeDirect] Verificando itens inválidos...', [
+            'itemIds' => $itemIds,
+            'invalid' => $invalidItems
+        ]);
 
         if (!empty($invalidItems)) {
             DB::rollBack();
             return response()->json([
                 'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                'invalid_items' => $invalidItems,
+                'invalid_items' => $invalidItems
             ], 422);
         }
 
-        // Direto não valida colaborador, conflito, duração, horário
+        // ========================================================
+        // 🔥 CRIANDO PEDIDO
+        // ========================================================
+        $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
+        $isScheduled = false;
+        $type = 'direct';
+        $appointmentStatus = 'completed';
+
+        Log::info('🟡 [storeDirect] Criando pedido...', [
+            'order_datetime' => $orderDate
+        ]);
 
         $order = Order::createOrder(
             $data,
@@ -210,7 +242,20 @@ public function storeDirect(Request $request)
             $appointmentStatus
         );
 
+        Log::info('🟢 [storeDirect] Pedido criado com sucesso.', [
+            'order_id' => $order->id
+        ]);
+
+        // ========================================================
+        // 🔥 ATTACH ITEMS
+        // ========================================================
         $order->attachItems($data['items']);
+
+        Log::info('🟢 [storeDirect] Itens anexados com sucesso.', [
+            'order_id' => $order->id,
+            'items' => $data['items']
+        ]);
+
         DB::commit();
 
         return response()->json([
@@ -220,12 +265,19 @@ public function storeDirect(Request $request)
 
     } catch (\Throwable $e) {
         DB::rollBack();
-        Log::error('🔥 Erro inesperado ao criar pedido direto.', [
+
+        Log::error('🔥 [storeDirect] Erro inesperado ao criar pedido direto.', [
             'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
             'file' => $e->getFile(),
             'line' => $e->getLine(),
+            'payload' => $request->all()
         ]);
-        return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
+
+        return response()->json([
+            'error' => 'Erro interno ao criar o pedido direto.',
+            'details' => $e->getMessage()
+        ], 500);
     }
 }
 
