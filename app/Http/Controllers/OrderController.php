@@ -183,28 +183,27 @@ public function storeDirect(Request $request)
         // ========================================================
         // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
         // ========================================================
-        $data = $request->validate([
-            'app_id'            => 'required|integer',
-            'entity_id'         => 'required|integer|exists:establishments,id',
-            'entity_name'       => 'required|string',
-            'customer_name'     => 'nullable|string|max:255',
-            'origin'            => 'required|string',
-            'fulfillment'       => 'required|string',
-            'payment_status'    => 'required|string',
-            'payment_method'    => 'required|string',
-            'notes'             => 'nullable|string',
+       $data = $request->validate([
+    'app_id'          => 'required|integer',
+    'entity_id'       => 'required|integer|exists:establishments,id',
+    'entity_name'     => 'required|string',
+    'attendant_id'    => 'required|integer|exists:users,id', // ← AQUI
+    'customer_name'   => 'nullable|string|max:255',
+    'origin'          => 'required|string',
+    'fulfillment'     => 'required|string',
+    'payment_status'  => 'required|string',
+    'payment_method'  => 'required|string',
+    'notes'           => 'nullable|string',
 
-            'items'             => 'required|array|min:1',
-            'items.*.item_id'   => 'required|integer|exists:items,id',
-            'items.*.quantity'  => 'required|integer|min:1',
+    'items'                   => 'required|array|min:1',
+    'items.*.item_id'         => 'required|integer|exists:items,id',
+    'items.*.quantity'        => 'required|integer|min:1',
+    'items.*.additions'       => 'array',
+    'items.*.additions.*.id'  => 'integer|exists:items,id',
+    'items.*.removals'        => 'array',
+    'items.*.removals.*'      => 'integer|exists:items,id'
+]);
 
-            'items.*.additions' => 'array',
-            'items.*.additions.*.id' => 'integer|exists:items,id',
-            'items.*.additions.*.quantity' => 'integer|min:1',
-
-            'items.*.removals'  => 'array',
-            'items.*.removals.*' => 'integer|exists:items,id',
-        ], $this->getValidationMessages());
 
         Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
 
