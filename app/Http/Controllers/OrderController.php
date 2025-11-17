@@ -163,7 +163,8 @@ public function storeAppointment(Request $request)
         ]);
         return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
     }
-}public function storeDirect(Request $request)
+}
+public function storeDirect(Request $request)
 {
     if (!Auth::check()) {
         return response()->json(['error' => 'Usuário não autenticado.'], 401);
@@ -179,29 +180,36 @@ public function storeAppointment(Request $request)
             'payload' => $request->all()
         ]);
 
-        $data = $request->validate([
-            'app_id'          => 'required|integer',
-            'entity_id'       => 'required|integer|exists:establishments,id',
-            'entity_name'     => 'required|string',
-            'attendant_id'    => 'required|integer|exists:users,id',
-            'customer_name'   => 'nullable|string|max:255',
-            'origin'          => 'required|string',
-            'fulfillment'     => 'required|string',
-            'payment_status'  => 'required|string',
-            'payment_method'  => 'required|string',
-            'notes'           => 'nullable|string',
+        // ========================================================
+        // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
+        // ========================================================
+       $data = $request->validate([
+    'app_id'          => 'required|integer',
+    'entity_id'       => 'required|integer|exists:establishments,id',
+    'entity_name'     => 'required|string',
+    'attendant_id'    => 'required|integer|exists:users,id', // ← AQUI
+    'customer_name'   => 'nullable|string|max:255',
+    'origin'          => 'required|string',
+    'fulfillment'     => 'required|string',
+    'payment_status'  => 'required|string',
+    'payment_method'  => 'required|string',
+    'notes'           => 'nullable|string',
 
-            'items'                   => 'required|array|min:1',
-            'items.*.item_id'         => 'required|integer|exists:items,id',
-            'items.*.quantity'        => 'required|integer|min:1',
-            'items.*.additions'       => 'array',
-            'items.*.additions.*.id'  => 'integer|exists:items,id',
-            'items.*.removals'        => 'array',
-            'items.*.removals.*'      => 'integer|exists:items,id'
-        ]);
+    'items'                   => 'required|array|min:1',
+    'items.*.item_id'         => 'required|integer|exists:items,id',
+    'items.*.quantity'        => 'required|integer|min:1',
+    'items.*.additions'       => 'array',
+    'items.*.additions.*.id'  => 'integer|exists:items,id',
+    'items.*.removals'        => 'array',
+    'items.*.removals.*'      => 'integer|exists:items,id'
+]);
+
 
         Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
 
+        // ========================================================
+        // 🔥 VALIDA ITENS PERTENCENTES AO ESTABELECIMENTO
+        // ========================================================
         $itemIds = collect($data['items'])->pluck('item_id')->toArray();
         $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
 
@@ -218,20 +226,26 @@ public function storeAppointment(Request $request)
             ], 422);
         }
 
+        // ========================================================
+        // 🔥 DEFINIÇÃO DO PEDIDO DIRETO
+        // ========================================================
         $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
         $isScheduled = false;
-        $type = 'service';
-        $appointmentStatus = null;
+        $type = 'direct';
+        $appointmentStatus = 'completed';
 
         Log::info('🟡 [storeDirect] Criando pedido...', [
             'order_datetime' => $orderDate->toDateTimeString()
         ]);
 
+        // ========================================================
+        // 🔥 CRIAR PEDIDO
+        // ========================================================
         $order = Order::createOrder(
             $data,
             $user,
             $orderDate,
-            0,
+            0,                // sem duração no pedido direto
             $isScheduled,
             $type,
             $appointmentStatus
@@ -241,6 +255,9 @@ public function storeAppointment(Request $request)
             'order_id' => $order->id
         ]);
 
+        // ========================================================
+        // 🔥 ANEXAR ITENS
+        // ========================================================
         $order->attachItems($data['items']);
 
         Log::info('🟢 [storeDirect] Itens anexados com sucesso.', [
@@ -250,6 +267,9 @@ public function storeAppointment(Request $request)
 
         DB::commit();
 
+        // ========================================================
+        // 🔥 RETORNO FINAL
+        // ========================================================
         return response()->json([
             'message' => 'Pedido criado com sucesso!',
             'order' => $order->load('items.item'),
@@ -272,7 +292,6 @@ public function storeAppointment(Request $request)
         ], 500);
     }
 }
-
 
 
 
