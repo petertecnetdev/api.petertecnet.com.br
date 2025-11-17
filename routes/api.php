@@ -20,7 +20,6 @@ use App\Http\Controllers\{
     OrderForecastController,
     FileController
 };
-
 /*
 |--------------------------------------------------------------------------
 | AUTHENTICAÇÃO
@@ -43,9 +42,14 @@ Route::prefix('auth')->middleware('api')->group(function () {
     Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])
         ->middleware('auth:api')
         ->name('resendVerificationCode');
+
+    // 🔹 NOVAS ROTAS — CONVITE
+    Route::post('/invite', [AuthController::class, 'invite'])->name('invite');
+    Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name('invite.complete');
 });
 
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
+
 
 /*
 |--------------------------------------------------------------------------
