@@ -709,4 +709,122 @@ class AuthController extends Controller
         }
     }
 
+
+    public function invite(Request $request)
+    {
+        try {
+            $request->validate([
+                'first_name' => ['required','regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
+                'email' => 'required|email',
+                'app_id' => 'required|integer'
+            ]);
+
+            $existing = User::where('email', $request->email)->first();
+            if ($existing) {
+                return response()->json([
+                    'message' => 'Este e-mail já está cadastrado no sistema.'
+                ], 422);
+            }
+
+            $username = Str::slug($request->first_name) . '-' . Str::random(4);
+            while (User::where('user_name', $username)->exists()) {
+                $username = Str::slug($request->first_name) . '-' . Str::random(4);
+            }
+
+            $code = Str::random(6);
+
+            $user = User::create([
+                'first_name' => $request->first_name,
+                'email' => $request->email,
+                'password' => bcrypt(Str::random(16)),
+                'user_name' => $username,
+                'verification_code' => $code,
+                'app_id' => $request->app_id
+            ]);
+
+            Mail::to($user->email)->send(new InviteUserMail($user, $code));
+
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'invite_sent',
+                'entity_id' => $user->id,
+                'entity_type' => 'user'
+            ]);
+
+            return response()->json([
+                'message' => 'Convite enviado com sucesso.'
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => 'Erro de validação.',
+                'errors' => $e->errors()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('invite: '.$e->getMessage());
+            return response()->json([
+                'message' => 'Erro ao enviar convite.'
+            ], 500);
+        }
+    }
+
+    public function completeInvite(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => 'required|email',
+                'verification_code' => 'required|string|size:6',
+                'password' => [
+                    'required',
+                    'string',
+                    'min:6',
+                    'regex:/[A-Z]/',
+                    'regex:/[a-z]/',
+                    'regex:/[!@#$%^&*(),.?":{}|<>]/'
+                ]
+            ]);
+
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'message' => 'Usuário não encontrado.'
+                ], 404);
+            }
+
+            if ($user->verification_code !== $request->verification_code) {
+                return response()->json([
+                    'message' => 'Código inválido.'
+                ], 422);
+            }
+
+            $user->password = bcrypt($request->password);
+            $user->verification_code = null;
+            $user->email_verified_at = now();
+            $user->save();
+
+            Mail::to($user->email)->send(new InviteCompleteMail($user));
+
+            Interaction::create([
+                'user_id' => $user->id,
+                'interaction_type' => 'invite_completed',
+                'entity_id' => $user->id,
+                'entity_type' => 'user'
+            ]);
+
+            return response()->json([
+                'message' => 'Senha criada com sucesso. Você já pode acessar o aplicativo.'
+            ]);
+
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => $e->validator->errors()->first()
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('completeInvite: '.$e->getMessage());
+            return response()->json([
+                'message' => 'Erro ao finalizar convite.'
+            ], 500);
+        }
+    }
 }
