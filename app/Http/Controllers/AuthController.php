@@ -52,10 +52,21 @@ class AuthController extends Controller
      *
      * @return void
      */
-    public function __construct()
-    {
-        $this->middleware('auth:api', ['except' => ['login', 'completeInvite', 'Invite', 'register', 'sendResetCodeEmail', 'resetPassword', 'googleAuth']]);
-    }
+   public function __construct()
+{
+    $this->middleware('auth:api', [
+        'except' => [
+            'login',
+            'register',
+            'sendResetCodeEmail',
+            'resetPassword',
+            'googleAuth',
+            'invite',          // ← agora está correto
+            'completeInvite',  // ← ok
+        ],
+    ]);
+}
+
 
 
     /**
