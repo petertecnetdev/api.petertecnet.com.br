@@ -184,20 +184,27 @@ public function storeDirect(Request $request)
         // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
         // ========================================================
         $data = $request->validate([
-            'entity_id'        => 'required|integer|exists:establishments,id',
-            'entity_name'      => 'required|string',
-            'customer_name'    => 'nullable|string|max:255',
-            'origin'           => 'required|string',
-            'fulfillment'      => 'required|string',
-            'payment_status'   => 'required|string',
-            'payment_method'   => 'required|string',
-            'notes'            => 'nullable|string',
-            'items'            => 'required|array|min:1',
-            'items.*.item_id'  => 'required|integer|exists:items,id',
-            'items.*.quantity' => 'required|integer|min:1',
+            'app_id'            => 'required|integer',
+            'entity_id'         => 'required|integer|exists:establishments,id',
+            'entity_name'       => 'required|string',
+            'customer_name'     => 'nullable|string|max:255',
+            'origin'            => 'required|string',
+            'fulfillment'       => 'required|string',
+            'payment_status'    => 'required|string',
+            'payment_method'    => 'required|string',
+            'notes'             => 'nullable|string',
+
+            'items'             => 'required|array|min:1',
+            'items.*.item_id'   => 'required|integer|exists:items,id',
+            'items.*.quantity'  => 'required|integer|min:1',
+
             'items.*.additions' => 'array',
-            'items.*.removals'  => 'array'
-        ]);
+            'items.*.additions.*.id' => 'integer|exists:items,id',
+            'items.*.additions.*.quantity' => 'integer|min:1',
+
+            'items.*.removals'  => 'array',
+            'items.*.removals.*' => 'integer|exists:items,id',
+        ], $this->getValidationMessages());
 
         Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
 
@@ -221,7 +228,7 @@ public function storeDirect(Request $request)
         }
 
         // ========================================================
-        // 🔥 CRIANDO PEDIDO
+        // 🔥 DEFINIÇÃO DO PEDIDO DIRETO
         // ========================================================
         $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
         $isScheduled = false;
@@ -229,14 +236,17 @@ public function storeDirect(Request $request)
         $appointmentStatus = 'completed';
 
         Log::info('🟡 [storeDirect] Criando pedido...', [
-            'order_datetime' => $orderDate
+            'order_datetime' => $orderDate->toDateTimeString()
         ]);
 
+        // ========================================================
+        // 🔥 CRIAR PEDIDO
+        // ========================================================
         $order = Order::createOrder(
             $data,
             $user,
             $orderDate,
-            0,
+            0,                // sem duração no pedido direto
             $isScheduled,
             $type,
             $appointmentStatus
@@ -247,7 +257,7 @@ public function storeDirect(Request $request)
         ]);
 
         // ========================================================
-        // 🔥 ATTACH ITEMS
+        // 🔥 ANEXAR ITENS
         // ========================================================
         $order->attachItems($data['items']);
 
@@ -258,6 +268,9 @@ public function storeDirect(Request $request)
 
         DB::commit();
 
+        // ========================================================
+        // 🔥 RETORNO FINAL
+        // ========================================================
         return response()->json([
             'message' => 'Pedido criado com sucesso!',
             'order' => $order->load('items.item'),
