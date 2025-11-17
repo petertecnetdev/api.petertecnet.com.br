@@ -21,33 +21,33 @@ use App\Http\Controllers\{
     FileController
 };/*
 |--------------------------------------------------------------------------
-| AUTHENTICAÇÃO
+| AUTHENTICAÇÃO (PROTEGIDAS)
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->middleware('api')->group(function () {
     Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/register', [AuthController::class, 'register'])->name('register');
-    Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->name('passwordEmail');
-    Route::post('/password-reset', [AuthController::class, 'resetPassword'])->name('resetPassword');
-    Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
-    Route::post('/refresh', [AuthController::class, 'refresh'])->name('refresh');
+    Route::post('/register', [AuthController::class, 'register']);
+    Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail']);
+    Route::post('/password-reset', [AuthController::class, 'resetPassword']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::post('/refresh', [AuthController::class, 'refresh']);
 
-    Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api')->name('me');
-    Route::get('/check-auth', [AuthController::class, 'checkauth'])->middleware('auth:api')->name('checkAuth');
+    Route::get('/me', [AuthController::class, 'me'])->middleware('auth:api');
+    Route::get('/check-auth', [AuthController::class, 'checkauth'])->middleware('auth:api');
 
-    Route::post('/email-verify', [AuthController::class, 'emailVerify'])->middleware('auth:api')->name('emailVerify');
-    Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:api')->name('changePassword');
-
-    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])
-        ->middleware('auth:api')
-        ->name('resendVerificationCode');
+    Route::post('/email-verify', [AuthController::class, 'emailVerify'])->middleware('auth:api');
+    Route::post('/change-password', [AuthController::class, 'changePassword'])->middleware('auth:api');
+    Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('auth:api');
 });
 
-/* 🔹 Convite público — NÃO requer autenticação */
-Route::post('auth/invite', [AuthController::class, 'invite'])->name('invite');
+/*
+|--------------------------------------------------------------------------
+| ROTAS PÚBLICAS
+|--------------------------------------------------------------------------
+*/
 
-/* 🔹 Usuário finalizar invite — também público */
-Route::post('auth/invite-complete', [AuthController::class, 'completeInvite'])->name('invite.complete');
+Route::post('/invite', [AuthController::class, 'invite'])->name('invite');
+Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name('invite.complete');
 
 
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
