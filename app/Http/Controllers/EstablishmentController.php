@@ -324,10 +324,13 @@ class EstablishmentController extends Controller
                 }
             }
 
-            // ============================================
-            // LOGO UPLOAD → registra histórico de arquivos
-            // ============================================
             if ($request->hasFile('logo')) {
+
+                File::where('entity_name', 'establishment')
+                    ->where('entity_id', $establishment->id)
+                    ->where('type', 'logo')
+                    ->delete();
+
                 $file = File::storeOne(
                     file: $request->file('logo'),
                     entityName: 'establishment',
@@ -345,10 +348,13 @@ class EstablishmentController extends Controller
                 ];
             }
 
-            // ============================================
-            // BACKGROUND UPLOAD
-            // ============================================
             if ($request->hasFile('background')) {
+
+                File::where('entity_name', 'establishment')
+                    ->where('entity_id', $establishment->id)
+                    ->where('type', 'background')
+                    ->delete();
+
                 $file = File::storeOne(
                     file: $request->file('background'),
                     entityName: 'establishment',
@@ -366,9 +372,6 @@ class EstablishmentController extends Controller
                 ];
             }
 
-            // ============================================
-            // SLUG SE MUDAR O NOME
-            // ============================================
             if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
                 $base = Str::slug($validated['name']);
                 $count = Establishment::where('slug', 'LIKE', "$base%")
@@ -385,23 +388,14 @@ class EstablishmentController extends Controller
                 ];
             }
 
-            // ============================================
-            // SEGMENTS JSON
-            // ============================================
             if ($request->has('segments')) {
                 $validated['segments'] = json_encode($request->segments);
             }
 
-            // ============================================
-            // SALVA ALTERAÇÕES
-            // ============================================
             $establishment->fill($validated);
             $establishment->updated_by = $user->id;
             $establishment->save();
 
-            // ============================================
-            // REGISTRA INTERAÇÃO DE UPDATE
-            // ============================================
             if (!empty($changes)) {
                 Interaction::registerUpdate(
                     $establishment,
@@ -431,6 +425,7 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao atualizar o estabelecimento.'], 500);
         }
     }
+
 
 
 
@@ -844,66 +839,76 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-   public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
 
-    // Buscar estabelecimentos do app
-    $establishments = Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) => 
-            $q->where('city', $city)->where('uf', $uf)
-        )
-        ->with([
-            'files' => function($q) {
-                $q->where('entity_name', 'establishment');
-            }
-        ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
+        // Buscar estabelecimentos do app
+        $establishments = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->with([
+                'files' => function ($q) {
+                    $q->where('entity_name', 'establishment');
+                }
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
 
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                        ->where('interaction_type', 'view'),
 
-            'orders as completed_appointments' => fn($q) =>
-                $q->where('entity_name', 'establishment')
-                  ->whereIn('appointment_status', ['confirmed', 'attended']),
-        ])
-        ->get()
-        ->map(function ($e) {
+                'orders as completed_appointments' => fn($q) =>
+                    $q->where('entity_name', 'establishment')
+                        ->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->get()
+            ->map(function ($e) {
 
-            // Montar images[]
-            $images = [
-    'logo' => $e->files->firstWhere('type', 'logo')?->public_url,
-    'background' => $e->files->firstWhere('type', 'background')?->public_url,
-    'gallery' => $e->files
-        ->whereNotIn('type', ['logo', 'background'])
-        ->pluck('public_url')
-        ->values()
-];
+                // Buscar logo e background na tabela files
+                $logoFile = $e->files->firstWhere('type', 'logo');
+                $backgroundFile = $e->files->firstWhere('type', 'background');
 
+                // Montar images[]
+                $images = [
+                    'logo' => $logoFile?->public_url,
+                    'background' => $backgroundFile?->public_url,
+                    'gallery' => $e->files
+                        ->whereNotIn('type', ['logo', 'background'])
+                        ->pluck('public_url')
+                        ->values()
+                ];
 
-            return [
-                'id' => $e->id,
-                'name' => $e->name,
-                'slug' => $e->slug,
-                'city' => $e->city,
-                'uf'   => $e->uf,
+                return [
+                    'id' => $e->id,
+                    'name' => $e->name,
+                    'slug' => $e->slug,
+                    'city' => $e->city,
+                    'uf' => $e->uf,
 
-                'images' => $images,
+                    // 🔥 Chave para o FRONT funcionar igual na VIEW
+                    'logo' => $images['logo'],
+                    'background' => $images['background'],
 
-                'total_views' => $e->total_views,
-                'unique_users' => $e->unique_users,
-                'completed_appointments' => $e->completed_appointments,
-            ];
-        });
+                    // 🔥 Mantém images[] para compatibilidade futura
+                    'images' => $images,
 
-    return response()->json([
-        'establishments' => $establishments
-    ]);
-}
+                    'total_views' => $e->total_views,
+                    'unique_users' => $e->unique_users,
+                    'completed_appointments' => $e->completed_appointments,
+                ];
+            });
+
+        return response()->json([
+            'establishments' => $establishments
+        ]);
+    }
 
 
     public function listCities($app_id)
