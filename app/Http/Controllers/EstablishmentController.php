@@ -876,13 +876,14 @@ class EstablishmentController extends Controller
 
             // Montar images[]
             $images = [
-                'logo' => $e->files->firstWhere('type', 'logo')?->storage_path,
-                'background' => $e->files->firstWhere('type', 'background')?->storage_path,
-                'gallery' => $e->files
-                    ->whereNotIn('type', ['logo', 'background'])
-                    ->pluck('storage_path')
-                    ->values()
-            ];
+    'logo' => $e->files->firstWhere('type', 'logo')?->public_url,
+    'background' => $e->files->firstWhere('type', 'background')?->public_url,
+    'gallery' => $e->files
+        ->whereNotIn('type', ['logo', 'background'])
+        ->pluck('public_url')
+        ->values()
+];
+
 
             return [
                 'id' => $e->id,
