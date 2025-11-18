@@ -462,6 +462,12 @@ public function topItemAndClient()
         ];
     });
 }
+protected static function booted()
+{
+    static::creating(function ($model) {
+        $model->entity_name = 'employer';
+    });
+}
 
 
 }
