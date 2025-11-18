@@ -52,6 +52,7 @@ class Item extends Model
     ];
 
     protected $appends = ['metrics'];
+protected $entity_name = 'item';          // na model de Item
 
     protected static function boot()
     {
@@ -357,25 +358,128 @@ class Item extends Model
 /**
  * Retorna outros itens do mesmo app, com imagem da tabela files.
  */
-public function otherItems()
-{
-    return Cache::remember("item_{$this->id}_other_items", 120, function () {
-        $appId = $this->establishment?->app_id ?? $this->app_id;
+/* ============================================================================
+   OTHERS — PADRÃO PARA Establishment, Employer e Item
+   ============================================================================
+*/
 
-        return self::where('app_id', $appId)
+/**
+ * Outros estabelecimentos do mesmo app.
+ */
+public function otherEstablishments()
+{
+    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+
+    if (!$appId) {
+        return collect();
+    }
+
+    return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
+        return \App\Models\Establishment::where('app_id', $appId)
             ->where('id', '!=', $this->id)
-            ->with(['files'])
-            ->withCount(['views as total_views' => fn($q) => 
+            ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
+            ->withCount(['views as total_views' => fn($q) =>
                 $q->where('interaction_type', 'view')
             ])
-            ->inRandomOrder()
+            ->limit(6)
+            ->get()
+            ->map(function ($est) {
+
+                $logo = $est->files->firstWhere('type', 'logo')?->public_url;
+                $background = $est->files->firstWhere('type', 'background')?->public_url;
+
+                return [
+                    'id' => $est->id,
+                    'name' => $est->name,
+                    'slug' => $est->slug,
+                    'city' => $est->city,
+                    'category' => $est->category,
+
+                    'logo' => $logo,
+                    'background' => $background,
+
+                    'images' => [
+                        'logo' => $logo,
+                        'background' => $background,
+                        'gallery' => $est->files
+                            ->whereNotIn('type', ['logo', 'background'])
+                            ->pluck('public_url')
+                            ->values()
+                    ],
+
+                    'total_views' => $est->total_views ?? 0,
+                ];
+            });
+    });
+}
+
+/**
+ * Outros colaboradores (employers) do mesmo app.
+ */
+public function otherEmployers()
+{
+    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+
+    if (!$appId) {
+        return collect();
+    }
+
+    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId) {
+        return \App\Models\Employer::whereHas('establishment', fn($q) => $q->where('app_id', $appId))
+            ->where('id', '!=', $this->id) // evita retornar ele mesmo
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+            ])
+            ->limit(6)
+            ->get()
+            ->map(function ($emp) {
+
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
+                    ?? $emp->user?->avatar;
+
+                return [
+                    'id' => $emp->id,
+                    'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
+                    'user_name' => $emp->user?->user_name,
+                    'avatar' => $avatar,
+                    'total_views' => $emp->total_views ?? 0,
+                ];
+            });
+    });
+}
+
+/**
+ * Outros itens do mesmo app.
+ */
+public function otherItems()
+{
+    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+
+    if (!$appId) {
+        return collect();
+    }
+
+    return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
+        return \App\Models\Item::where('id', '!=', $this->id)
+            ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
+            ->with([
+                'files' => fn($q) => $q->where('entity_name', 'item'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+            ])
             ->limit(6)
             ->get()
             ->map(function ($item) {
 
-                $image = $item->files
-                    ->firstWhere('type', 'image')
-                    ?->public_url;
+                $image = $item->files->firstWhere('type', 'image')?->public_url
+                    ?? $item->image;
 
                 return [
                     'id' => $item->id,
@@ -384,113 +488,12 @@ public function otherItems()
                     'price' => $item->price,
                     'type' => $item->type,
                     'image' => $image,
-                    'total_views' => $item->total_views,
-                    'completed_appointments' => \App\Models\OrderItem::where('item_id', $item->id)
-                        ->whereHas('order', fn($q) => $q->where('appointment_status', 'attended'))
-                        ->count(),
+                    'total_views' => $item->total_views ?? 0,
                 ];
             });
     });
 }
 
-/**
- * Retorna outros employers do mesmo app, com avatar pelo HasFiles.
- */
-public function otherEmployers()
-{
-    return Cache::remember("item_{$this->id}_other_employers", 120, function () {
-        $appId = $this->establishment?->app_id ?? $this->app_id;
-
-        return \App\Models\Employer::with([
-                'user.files',
-                'establishment.files',
-            ])
-            ->whereHas('establishment', fn($q) => $q->where('app_id', $appId))
-            ->withCount(['views as total_views' => fn($q) => 
-                $q->where('interaction_type', 'view')
-            ])
-            ->inRandomOrder()
-            ->limit(6)
-            ->get()
-            ->map(function ($emp) {
-
-                $avatar = $emp->user?->files
-                    ->firstWhere('type', 'avatar')
-                    ?->public_url;
-
-                $estLogo = $emp->establishment?->files
-                    ->firstWhere('type', 'logo')
-                    ?->public_url;
-
-                $estBg = $emp->establishment?->files
-                    ->firstWhere('type', 'background')
-                    ?->public_url;
-
-                return [
-                    'id' => $emp->id,
-                    'name' => $emp->user?->first_name . ' ' . $emp->user?->last_name,
-                    'user_name' => $emp->user?->user_name,
-                    'avatar' => $avatar,
-                    'role' => $emp->role,
-                    'establishment' => [
-                        'id' => $emp->establishment?->id,
-                        'name' => $emp->establishment?->name,
-                        'slug' => $emp->establishment?->slug,
-                        'logo' => $estLogo,
-                        'background' => $estBg,
-                    ],
-                    'total_views' => $emp->total_views,
-                    'completed_appointments' => \App\Models\Order::where('attendant_id', $emp->id)
-                        ->where('appointment_status', 'attended')
-                        ->count(),
-                ];
-            });
-    });
-}
-
-/**
- * Retorna outros estabelecimentos do mesmo app, com logo/background via tabela files.
- */
-public function otherEstablishments()
-{
-    return Cache::remember("item_{$this->id}_other_establishments", 120, function () {
-        $appId = $this->establishment?->app_id ?? $this->app_id;
-
-        return \App\Models\Establishment::where('app_id', $appId)
-            ->with(['files'])
-            ->withCount(['views as total_views' => fn($q) => 
-                $q->where('interaction_type', 'view')
-            ])
-            ->inRandomOrder()
-            ->limit(6)
-            ->get()
-            ->map(function ($est) {
-
-                $logo = $est->files
-                    ->firstWhere('type', 'logo')
-                    ?->public_url;
-
-                $background = $est->files
-                    ->firstWhere('type', 'background')
-                    ?->public_url;
-
-                return [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'city' => $est->city,
-                    'category' => $est->category,
-                    'logo' => $logo,
-                    'background' => $background,
-                    'total_views' => $est->total_views,
-                    'completed_appointments' => \App\Models\Order::where('entity_name', 'App\\Models\\Establishment')
-                        ->where('entity_id', $est->id)
-                        ->where('appointment_status', 'attended')
-                        ->count(),
-                ];
-            });
-    });
-}
 
 
     public static function totalDurationForItems(array $items): int
