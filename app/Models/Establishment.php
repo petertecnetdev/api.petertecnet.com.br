@@ -636,7 +636,9 @@ public function otherEstablishments()
 
 /**
  * Outros colaboradores (employers) do mesmo app.
- */public function otherEmployers()
+ */
+
+public function otherEmployers()
 {
     $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
     $establishmentId = $this->establishment_id ?? null;
@@ -646,38 +648,60 @@ public function otherEstablishments()
     }
 
     return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
-        return \App\Models\Employer::whereHas('establishment', fn($q) =>
-                $q->where('app_id', $appId)
-        )
-        ->where('id', '!=', $this->id) // evita retornar ele mesmo
-        ->with([
-            'user:id,first_name,last_name,user_name,avatar,email',
-            'files' => fn($q) => $q->where('entity_name', 'employer'),
-        ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
-        ])
-        ->limit(6)
-        ->get()
-        ->map(function ($emp) {
 
-            // 👇 PRIMEIRA FONTE: avatar do USER
-            $avatar = $emp->user?->avatar;
+        // Estabelecimentos do mesmo app
+        $estIds = \App\Models\Establishment::where('app_id', $appId)
+            ->pluck('id');
 
-            // 👇 SEGUNDA FONTE: tabela files
-            if (!$avatar) {
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url;
-            }
+        return \App\Models\Employer::whereIn('establishment_id', $estIds)
+            ->where('id', '!=', $this->id)
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email',
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) =>
+                    $q->where('entity_name', 'employer'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+            ])
+            ->limit(6)
+            ->get()
+            ->map(function ($emp) {
 
-            return [
-                'id' => $emp->id,
-                'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
-                'user_name' => $emp->user?->user_name,
-                'avatar' => $avatar,
-                'total_views' => $emp->total_views ?? 0,
-            ];
-        });
+                $u = $emp->user;
+
+                // 🔥 EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
+                    ?? $u?->avatar;
+
+                return [
+                    'id' => $emp->id,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'user_name' => $u?->user_name,
+
+                    'avatar' => $avatar,
+
+                    'city' => $emp->establishment?->city,
+                    'uf' => $emp->establishment?->uf,
+
+                    'total_views' => $emp->total_views ?? 0,
+
+                    // Mesmo formato da home
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $emp->files
+                            ->whereNotIn('type', ['avatar'])
+                            ->pluck('public_url')
+                            ->values(),
+                    ],
+
+                    'establishment' => [
+                        'name' => $emp->establishment?->name,
+                        'slug' => $emp->establishment?->slug,
+                    ]
+                ];
+            });
     });
 }
 

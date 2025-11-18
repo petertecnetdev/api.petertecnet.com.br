@@ -11,7 +11,7 @@ use App\Traits\HasFiles;
 
 class Item extends Model
 {
-     use HasFiles;
+    use HasFiles;
     use HandlesImages;
     protected $fillable = [
         'user_id',
@@ -52,7 +52,7 @@ class Item extends Model
     ];
 
     protected $appends = ['metrics'];
-protected $entity_name = 'item';          // na model de Item
+    protected $entity_name = 'item';          // na model de Item
 
     protected static function boot()
     {
@@ -280,8 +280,8 @@ protected $entity_name = 'item';          // na model de Item
 
         return Cache::remember("item_{$itemId}_top_employer", 120, function () use ($itemId) {
             $top = \App\Models\Order::whereHas('items', function ($q) use ($itemId) {
-                    $q->where('item_id', $itemId);
-                })
+                $q->where('item_id', $itemId);
+            })
                 ->where('appointment_status', 'attended')
                 ->whereNotNull('attendant_id')
                 ->selectRaw('attendant_id, COUNT(*) as total_completed')
@@ -350,235 +350,267 @@ protected $entity_name = 'item';          // na model de Item
             return $grouped->values();
         });
     }
-/* ================================
-   OTHERS (Item)
-   Usando HasFiles e tabela files
-================================ */
+    /* ================================
+       OTHERS (Item)
+       Usando HasFiles e tabela files
+    ================================ */
 
-/**
- * Retorna outros itens do mesmo app, com imagem da tabela files.
- */
-/* ============================================================================
-   OTHERS — PADRÃO PARA Establishment, Employer e Item
-   ============================================================================
-*/
+    /**
+     * Retorna outros itens do mesmo app, com imagem da tabela files.
+     */
+    /* ============================================================================
+       OTHERS — PADRÃO PARA Establishment, Employer e Item
+       ============================================================================
+    */
 
-/**
- * Outros estabelecimentos do mesmo app.
- */
-public function otherEstablishments()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+    /**
+     * Outros estabelecimentos do mesmo app.
+     */
+    public function otherEstablishments()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-    if (!$appId) {
-        return collect();
-    }
+        if (!$appId) {
+            return collect();
+        }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
-        return \App\Models\Establishment::where('app_id', $appId)
-            ->where('id', '!=', $this->id)
-            ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
-            ->withCount(['views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view')
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($est) {
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
+            return \App\Models\Establishment::where('app_id', $appId)
+                ->where('id', '!=', $this->id)
+                ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view')
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($est) {
 
-                $logo = $est->files->firstWhere('type', 'logo')?->public_url;
-                $background = $est->files->firstWhere('type', 'background')?->public_url;
+                    $logo = $est->files->firstWhere('type', 'logo')?->public_url;
+                    $background = $est->files->firstWhere('type', 'background')?->public_url;
 
-                return [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'city' => $est->city,
-                    'category' => $est->category,
+                    return [
+                        'id' => $est->id,
+                        'name' => $est->name,
+                        'slug' => $est->slug,
+                        'city' => $est->city,
+                        'category' => $est->category,
 
-                    'logo' => $logo,
-                    'background' => $background,
-
-                    'images' => [
                         'logo' => $logo,
                         'background' => $background,
-                        'gallery' => $est->files
-                            ->whereNotIn('type', ['logo', 'background'])
-                            ->pluck('public_url')
-                            ->values()
-                    ],
 
-                    'total_views' => $est->total_views ?? 0,
-                ];
-            });
-    });
-}
+                        'images' => [
+                            'logo' => $logo,
+                            'background' => $background,
+                            'gallery' => $est->files
+                                ->whereNotIn('type', ['logo', 'background'])
+                                ->pluck('public_url')
+                                ->values()
+                        ],
 
-/**
- * Outros colaboradores (employers) do mesmo app.
- */
-public function otherEmployers()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
-
-    if (!$appId) {
-        return collect();
+                        'total_views' => $est->total_views ?? 0,
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId) {
-        return \App\Models\Employer::whereHas('establishment', fn($q) => $q->where('app_id', $appId))
-            ->where('id', '!=', $this->id) // evita retornar ele mesmo
-            ->with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($emp) {
+    /**
+     * Outros colaboradores (employers) do mesmo app.
+     */
+    public function otherEmployers()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+        $establishmentId = $this->establishment_id ?? null;
 
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $emp->user?->avatar;
+        if (!$appId) {
+            return collect();
+        }
 
-                return [
-                    'id' => $emp->id,
-                    'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
-                    'user_name' => $emp->user?->user_name,
-                    'avatar' => $avatar,
-                    'total_views' => $emp->total_views ?? 0,
-                ];
-            });
-    });
-}
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
 
-/**
- * Outros itens do mesmo app.
- */
-public function otherItems()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+            // Estabelecimentos do mesmo app
+            $estIds = \App\Models\Establishment::where('app_id', $appId)
+                ->pluck('id');
 
-    if (!$appId) {
-        return collect();
+            return \App\Models\Employer::whereIn('establishment_id', $estIds)
+                ->where('id', '!=', $this->id)
+                ->with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                    'establishment:id,name,slug,city,uf',
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'employer'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($emp) {
+
+                    $u = $emp->user;
+
+                    // 🔥 EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+                    $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
+                        ?? $u?->avatar;
+
+                    return [
+                        'id' => $emp->id,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'user_name' => $u?->user_name,
+
+                        'avatar' => $avatar,
+
+                        'city' => $emp->establishment?->city,
+                        'uf' => $emp->establishment?->uf,
+
+                        'total_views' => $emp->total_views ?? 0,
+
+                        // Mesmo formato da home
+                        'images' => [
+                            'avatar' => $avatar,
+                            'gallery' => $emp->files
+                                ->whereNotIn('type', ['avatar'])
+                                ->pluck('public_url')
+                                ->values(),
+                        ],
+
+                        'establishment' => [
+                            'name' => $emp->establishment?->name,
+                            'slug' => $emp->establishment?->slug,
+                        ]
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
-        return \App\Models\Item::where('id', '!=', $this->id)
-            ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'item'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($item) {
 
-                $image = $item->files->firstWhere('type', 'image')?->public_url
-                    ?? $item->image;
+    /**
+     * Outros itens do mesmo app.
+     */
+    public function otherItems()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'image' => $image,
-                    'total_views' => $item->total_views ?? 0,
-                ];
-            });
-    });
-}
+        if (!$appId) {
+            return collect();
+        }
+
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
+            return \App\Models\Item::where('id', '!=', $this->id)
+                ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
+                ->with([
+                    'files' => fn($q) => $q->where('entity_name', 'item'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($item) {
+
+                    $image = $item->files->firstWhere('type', 'image')?->public_url
+                        ?? $item->image;
+
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->name,
+                        'slug' => $item->slug,
+                        'price' => $item->price,
+                        'type' => $item->type,
+                        'image' => $image,
+                        'total_views' => $item->total_views ?? 0,
+                    ];
+                });
+        });
+    }
 
 
 
     public static function totalDurationForItems(array $items): int
-{
-    $total = 0;
+    {
+        $total = 0;
 
-    foreach ($items as $entry) {
-        $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-        $quantity = isset($entry['quantity']) ? (int) $entry['quantity'] : 1;
+        foreach ($items as $entry) {
+            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+            $quantity = isset($entry['quantity']) ? (int) $entry['quantity'] : 1;
 
-        foreach ($ids as $id) {
-            $item = self::find($id);
-            if ($item && isset($item->duration)) {
-                $total += (int) $item->duration * $quantity;
+            foreach ($ids as $id) {
+                $item = self::find($id);
+                if ($item && isset($item->duration)) {
+                    $total += (int) $item->duration * $quantity;
+                }
             }
         }
-    }
 
-    return $total;
-}
+        return $total;
+    }
 
     public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
-{
-    $invalid = [];
+    {
+        $invalid = [];
 
-    foreach ($itemIds as $id) {
-        $item = self::find($id);
-        if (!$item || $item->entity_name !== $entityName || (int) $item->entity_id !== (int) $entityId) {
-            $invalid[] = $id;
+        foreach ($itemIds as $id) {
+            $item = self::find($id);
+            if (!$item || $item->entity_name !== $entityName || (int) $item->entity_id !== (int) $entityId) {
+                $invalid[] = $id;
+            }
         }
+
+        return $invalid;
     }
+    public function fillFromRequest($request)
+    {
+        $this->fill([
+            'name' => $request->input('name', $this->name),
+            'type' => $request->input('type', $this->type),
+            'price' => $request->input('price', $this->price),
+            'stock' => $request->input('stock', $this->stock),
+            'status' => (int) $request->input('status', $this->status),
+            'description' => $request->input('description', $this->description),
+            'category' => $request->input('category', $this->category),
+            'subcategory' => $request->input('subcategory', $this->subcategory),
+            'brand' => $request->input('brand', $this->brand),
+            'availability_start' => $request->input('availability_start', $this->availability_start),
+            'availability_end' => $request->input('availability_end', $this->availability_end),
+            'is_featured' => (int) $request->input('is_featured', $this->is_featured),
+            'discount' => $request->input('discount', $this->discount),
+            'expiration_date' => $request->input('expiration_date', $this->expiration_date),
+            'limited_by_user' => $request->input('limited_by_user', $this->limited_by_user),
+            'notes' => $request->input('notes', $this->notes),
+            'duration' => $request->input('duration', $this->duration),
+        ]);
 
-    return $invalid;
-}
-public function fillFromRequest($request)
-{
-    $this->fill([
-        'name' => $request->input('name', $this->name),
-        'type' => $request->input('type', $this->type),
-        'price' => $request->input('price', $this->price),
-        'stock' => $request->input('stock', $this->stock),
-        'status' => (int) $request->input('status', $this->status),
-        'description' => $request->input('description', $this->description),
-        'category' => $request->input('category', $this->category),
-        'subcategory' => $request->input('subcategory', $this->subcategory),
-        'brand' => $request->input('brand', $this->brand),
-        'availability_start' => $request->input('availability_start', $this->availability_start),
-        'availability_end' => $request->input('availability_end', $this->availability_end),
-        'is_featured' => (int) $request->input('is_featured', $this->is_featured),
-        'discount' => $request->input('discount', $this->discount),
-        'expiration_date' => $request->input('expiration_date', $this->expiration_date),
-        'limited_by_user' => $request->input('limited_by_user', $this->limited_by_user),
-        'notes' => $request->input('notes', $this->notes),
-        'duration' => $request->input('duration', $this->duration),
-    ]);
-
-    return $this;
-}
-
-public function removeImageIfRequested($request)
-{
-    if ((int)$request->input('remove_image') !== 1) {
         return $this;
     }
 
-    $this->deleteImage($this->image);
+    public function removeImageIfRequested($request)
+    {
+        if ((int) $request->input('remove_image') !== 1) {
+            return $this;
+        }
 
-    $this->image = null;
-    $this->save();
+        $this->deleteImage($this->image);
 
-    return $this;
-}
+        $this->image = null;
+        $this->save();
 
-public function uploadNewImageIfProvided($request)
-{
-    if (!$request->hasFile('image')) {
         return $this;
     }
 
-    $this->deleteImage($this->image);
+    public function uploadNewImageIfProvided($request)
+    {
+        if (!$request->hasFile('image')) {
+            return $this;
+        }
 
-    $this->image = $this->uploadImage($request->file('image'));
-    $this->save();
+        $this->deleteImage($this->image);
 
-    return $this;
-}
+        $this->image = $this->uploadImage($request->file('image'));
+        $this->save();
+
+        return $this;
+    }
 
 }
