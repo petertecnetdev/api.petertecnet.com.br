@@ -537,37 +537,45 @@ public function otherEstablishments()
 public function otherEmployers()
 {
     $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+    $establishmentId = $this->establishment_id ?? null;
 
     if (!$appId) {
         return collect();
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId) {
-        return \App\Models\Employer::whereHas('establishment', fn($q) => $q->where('app_id', $appId))
-            ->where('id', '!=', $this->id) // evita retornar ele mesmo
-            ->with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($emp) {
+    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
+        return \App\Models\Employer::whereHas('establishment', fn($q) =>
+                $q->where('app_id', $appId)
+        )
+        ->where('id', '!=', $this->id) // evita retornar ele mesmo
+        ->with([
+            'user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'employer'),
+        ])
+        ->withCount([
+            'views as total_views' => fn($q) =>
+                $q->where('interaction_type', 'view'),
+        ])
+        ->limit(6)
+        ->get()
+        ->map(function ($emp) {
 
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $emp->user?->avatar;
+            // 👇 PRIMEIRA FONTE: avatar do USER
+            $avatar = $emp->user?->avatar;
 
-                return [
-                    'id' => $emp->id,
-                    'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
-                    'user_name' => $emp->user?->user_name,
-                    'avatar' => $avatar,
-                    'total_views' => $emp->total_views ?? 0,
-                ];
-            });
+            // 👇 SEGUNDA FONTE: tabela files
+            if (!$avatar) {
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url;
+            }
+
+            return [
+                'id' => $emp->id,
+                'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
+                'user_name' => $emp->user?->user_name,
+                'avatar' => $avatar,
+                'total_views' => $emp->total_views ?? 0,
+            ];
+        });
     });
 }
 
