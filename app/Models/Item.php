@@ -52,7 +52,6 @@ class Item extends Model
     ];
 
     protected $appends = ['metrics'];
-    protected $entity_name = 'item';          // na model de Item
 
     protected static function boot()
     {
