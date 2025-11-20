@@ -492,54 +492,6 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-    public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
-
-            // Carrega o estabelecimento com todas as relações necessárias
-            $establishment = Establishment::with([
-                'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
-                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-                'items:id,entity_id,name,slug,price,type,image',
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-                ->where('slug', $slug)
-                ->firstOrFail();
-
-            // ? Chamada aqui! Ajusta city/uf automaticamente
-            $establishment = $this->resolveEstablishmentLocation($establishment);
-
-            // Registrar visualização e limpar cache
-            Interaction::registerView($establishment, $authUser);
-            Cache::forget("establishment_{$establishment->id}_metrics");
-            Cache::forget("establishment_{$establishment->id}_summary");
-
-            // Dados da model
-            return response()->json([
-                'establishment' => $establishment,
-                'items' => $establishment->items ?? [],
-                'metrics' => $establishment->metrics,
-                'interaction_summary' => $establishment->interactionSummary(),
-                'user_interactions' => $establishment->userInteractions(),
-                'orders_summary' => $establishment->ordersSummary(),
-                'completed_appointments' => $establishment->completedAppointments(),
-                'other_establishments' => $establishment->otherEstablishments(),
-                'other_employers' => $establishment->otherEmployers(),
-                'other_items' => $establishment->otherItems(),
-            ], 200);
-
-        } catch (\Throwable $e) {
-            \Log::error('[EstablishmentController::view] Erro ao carregar', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar estabelecimento.'], 500);
-        }
-    }
-
 
 
     private function resolveEstablishmentLocation($establishment)
@@ -552,7 +504,7 @@ class EstablishmentController extends Controller
         $city = null;
         $uf = null;
 
-        //1?? Tentar pegar do dono (user)
+        // 1?? Tentar pegar do dono (user)
         if ($establishment->user) {
             $city = $establishment->user->city;
             $uf = $establishment->user->uf;
@@ -839,76 +791,7 @@ class EstablishmentController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao listar seus estabelecimentos.'], 500);
         }
     }
-    public function home(Request $request, $app_id)
-    {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
 
-        // Buscar estabelecimentos do app
-        $establishments = Establishment::where('app_id', $app_id)
-            ->when(
-                $city && $uf,
-                fn($q) =>
-                $q->where('city', $city)->where('uf', $uf)
-            )
-            ->with([
-                'files' => function ($q) {
-                    $q->where('entity_name', 'establishment');
-                }
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                        ->where('interaction_type', 'view'),
-
-                'orders as completed_appointments' => fn($q) =>
-                    $q->where('entity_name', 'establishment')
-                        ->whereIn('appointment_status', ['confirmed', 'attended']),
-            ])
-            ->get()
-            ->map(function ($e) {
-
-                // Buscar logo e background na tabela files
-                $logoFile = $e->files->firstWhere('type', 'logo');
-                $backgroundFile = $e->files->firstWhere('type', 'background');
-
-                // Montar images[]
-                $images = [
-                    'logo' => $logoFile?->public_url,
-                    'background' => $backgroundFile?->public_url,
-                    'gallery' => $e->files
-                        ->whereNotIn('type', ['logo', 'background'])
-                        ->pluck('public_url')
-                        ->values()
-                ];
-
-                return [
-                    'id' => $e->id,
-                    'name' => $e->name,
-                    'slug' => $e->slug,
-                    'city' => $e->city,
-                    'uf' => $e->uf,
-
-                    // ?? Chave para o FRONT funcionar igual na VIEW
-                    'logo' => $images['logo'],
-                    'background' => $images['background'],
-
-                    // ?? Mantém images[] para compatibilidade futura
-                    'images' => $images,
-
-                    'total_views' => $e->total_views,
-                    'unique_users' => $e->unique_users,
-                    'completed_appointments' => $e->completed_appointments,
-                ];
-            });
-
-        return response()->json([
-            'establishments' => $establishments
-        ]);
-    }
 
 
     public function listCities($app_id)
@@ -945,4 +828,143 @@ class EstablishmentController extends Controller
         }
     }
 
+
+    public function view($slug)
+    {
+        $authUser = Auth::user();
+
+        $establishment = Establishment::with([
+            'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
+            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+            'items:id,entity_id,name,slug,price,type,image',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'establishment'),
+        ])
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        $establishment = $this->resolveEstablishmentLocation($establishment);
+
+        Interaction::registerView($establishment, $authUser);
+        Cache::forget("establishment_{$establishment->id}_metrics");
+        Cache::forget("establishment_{$establishment->id}_summary");
+
+        $logo = $establishment->files->firstWhere('type', 'logo')?->public_url;
+        $background = $establishment->files->firstWhere('type', 'background')?->public_url;
+        $gallery = $establishment->files->whereNotIn('type', ['logo', 'background'])->pluck('public_url')->values();
+
+        return response()->json([
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+                'logo' => $logo,
+                'background' => $background,
+                'images' => [
+                    'logo' => $logo,
+                    'background' => $background,
+                    'gallery' => $gallery
+                ]
+            ],
+            'items' => $establishment->items,
+            'employers' => $establishment->employers->map(function ($emp) {
+                $u = $emp->user;
+                return [
+                    'id' => $emp->id,
+                    'type' => 'employer',
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'slug' => $u->user_name,
+                    'images' => [
+                        'avatar' => $u->avatar,
+                        'gallery' => []
+                    ]
+                ];
+            }),
+            'metrics' => $establishment->metrics,
+            'interaction_summary' => $establishment->interactionSummary(),
+            'user_interactions' => $establishment->userInteractions(),
+            'orders_summary' => $establishment->ordersSummary(),
+            'completed_appointments' => $establishment->completedAppointments(),
+            'other_establishments' => $establishment->otherEstablishments(),
+            'other_employers' => $establishment->otherEmployers()->map(function ($emp) {
+                return [
+                    'id' => $emp['id'],
+                    'type' => 'employer',
+                    'name' => $emp['name'],
+                    'slug' => $emp['user_name'],
+                    'images' => [
+                        'avatar' => $emp['avatar'],
+                        'gallery' => $emp['gallery'] ?? []
+                    ]
+                ];
+            }),
+            'other_items' => $establishment->otherItems()->map(function ($it) {
+                return [
+                    'id' => $it['id'],
+                    'type' => 'item',
+                    'name' => $it['name'],
+                    'slug' => $it['slug'],
+                    'price' => $it['price'],
+                    'images' => [
+                        'avatar' => $it['image'],
+                        'gallery' => []
+                    ]
+                ];
+            }),
+        ], 200);
+    }
+
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+
+        $establishments = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->with([
+                'files' => fn($q) => $q->where('entity_name', 'establishment')
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as completed_appointments' => fn($q) =>
+                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->get()
+            ->map(function ($e) {
+                $logo = $e->files->firstWhere('type', 'logo')?->public_url;
+                $background = $e->files->firstWhere('type', 'background')?->public_url;
+                $gallery = $e->files->whereNotIn('type', ['logo', 'background'])->pluck('public_url')->values();
+
+                return [
+                    'id' => $e->id,
+                    'type' => 'establishment',
+                    'name' => $e->name,
+                    'slug' => $e->slug,
+                    'city' => $e->city,
+                    'uf' => $e->uf,
+                    'logo' => $logo,
+                    'background' => $background,
+                    'images' => [
+                        'logo' => $logo,
+                        'background' => $background,
+                        'gallery' => $gallery
+                    ],
+                    'total_views' => $e->total_views,
+                    'unique_users' => $e->unique_users,
+                    'total_completed_appointments' => $e->completed_appointments
+                ];
+            });
+
+        return response()->json(['establishments' => $establishments]);
+    }
 }

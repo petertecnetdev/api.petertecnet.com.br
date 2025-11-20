@@ -202,54 +202,6 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
         }
     }
-    public function view($slug)
-    {
-        try {
-            $authUser = Auth::user();
-
-            // Carrega o item com todas as relações principais
-            $item = Item::with([
-                'entity:id,name,slug,logo,background,app_id',
-                'orderItems.order.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])->where('slug', $slug)->firstOrFail();
-
-            // Registra visualização e limpa cache via Interaction
-            Interaction::registerView($item, $authUser);
-            Cache::forget("item_{$item->id}_metrics");
-            Cache::forget("item_{$item->id}_summary");
-            Cache::forget("item_{$item->id}_orders_summary");
-
-            // Usa métodos prontos da model
-            $metrics = $item->metrics;
-            $interactionSummary = $item->interactionSummary();
-            $ordersSummary = $item->ordersSummary();
-            $userInteractions = $item->userInteractions();
-            $topEmployer = $item->topEmployer();
-
-            // Retorno padronizado com os outros controllers
-            return response()->json([
-                'item' => $item,
-                'entity' => $item->entity,
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'orders_summary' => $ordersSummary,
-                'top_employer' => $topEmployer,
-                'other_establishments' => $item->otherEstablishments() ?? [],
-                'other_employers' => $item->otherEmployers() ?? [],
-                'other_items' => $item->otherItems() ?? [],
-            ], 200);
-
-        } catch (\Throwable $e) {
-            \Log::error('[ItemController::view] Erro ao carregar item', [
-                'slug' => $slug,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar item.'], 500);
-        }
-    }
 
     public function show($id)
     {
@@ -291,148 +243,148 @@ class ItemController extends Controller
     }
 
     public function update(Request $request, $id)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $user = Auth::user();
-        $item = Item::find($id);
+            $user = Auth::user();
+            $item = Item::find($id);
 
-        if (!$item) {
-            return response()->json(['error' => 'Item não encontrado.'], 404);
-        }
+            if (!$item) {
+                return response()->json(['error' => 'Item não encontrado.'], 404);
+            }
 
-        // Permissão (igual ao padrão do Establishment)
-        if (!$user->hasPermission('item_update')) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
+            // Permissão (igual ao padrão do Establishment)
+            if (!$user->hasPermission('item_update')) {
+                return response()->json(['error' => 'Acesso negado.'], 403);
+            }
 
-        // ============================
-        // 🔍 VALIDAÇÃO
-        // ============================
-        $validated = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'type' => 'nullable|string|max:100',
-            'description' => 'nullable|string|max:2500',
-            'price' => 'nullable|numeric|min:0',
-            'stock' => 'nullable|integer|min:0',
-            'status' => 'nullable|boolean',
-            'limited_by_user' => 'nullable|boolean',
-            'category' => 'nullable|string|max:255',
-            'subcategory' => 'nullable|string|max:255',
-            'brand' => 'nullable|string|max:255',
-            'availability_start' => 'nullable|date',
-            'availability_end'   => 'nullable|date|after:availability_start',
-            'tags' => 'nullable|string',
-            'discount' => 'nullable|numeric|min:0|max:100',
-            'expiration_date' => 'nullable|date',
-            'notes' => 'nullable|string|max:2500',
-            'is_featured' => 'nullable|boolean',
+            // ============================
+            // 🔍 VALIDAÇÃO
+            // ============================
+            $validated = $request->validate([
+                'name' => 'nullable|string|max:255',
+                'type' => 'nullable|string|max:100',
+                'description' => 'nullable|string|max:2500',
+                'price' => 'nullable|numeric|min:0',
+                'stock' => 'nullable|integer|min:0',
+                'status' => 'nullable|boolean',
+                'limited_by_user' => 'nullable|boolean',
+                'category' => 'nullable|string|max:255',
+                'subcategory' => 'nullable|string|max:255',
+                'brand' => 'nullable|string|max:255',
+                'availability_start' => 'nullable|date',
+                'availability_end' => 'nullable|date|after:availability_start',
+                'tags' => 'nullable|string',
+                'discount' => 'nullable|numeric|min:0|max:100',
+                'expiration_date' => 'nullable|date',
+                'notes' => 'nullable|string|max:2500',
+                'is_featured' => 'nullable|boolean',
 
-            // imagens
-            'image' => 'nullable|image|max:4096',
-            'remove_image' => 'nullable|integer|in:0,1',
-        ]);
+                // imagens
+                'image' => 'nullable|image|max:4096',
+                'remove_image' => 'nullable|integer|in:0,1',
+            ]);
 
-        // CAPTURA DADOS ANTES DA ALTERAÇÃO
-        $oldData = $item->getOriginal();
-        $changes = [];
+            // CAPTURA DADOS ANTES DA ALTERAÇÃO
+            $oldData = $item->getOriginal();
+            $changes = [];
 
-        foreach ($validated as $key => $value) {
-            if (($oldData[$key] ?? null) != $value && $key !== "image") {
-                $changes[$key] = [
-                    'old' => $oldData[$key] ?? null,
-                    'new' => $value
+            foreach ($validated as $key => $value) {
+                if (($oldData[$key] ?? null) != $value && $key !== "image") {
+                    $changes[$key] = [
+                        'old' => $oldData[$key] ?? null,
+                        'new' => $value
+                    ];
+                }
+            }
+
+            // ============================
+            // 🔥 ✔ REMOVER IMAGEM
+            // ============================
+            if ($request->remove_image == 1 && $item->image) {
+
+                $item->deleteImage($item->image); // ← Usa o trait HandlesImages
+                $changes['image'] = [
+                    'old' => $item->image,
+                    'new' => null
                 ];
-            }
-        }
 
-        // ============================
-        // 🔥 ✔ REMOVER IMAGEM
-        // ============================
-        if ($request->remove_image == 1 && $item->image) {
-
-            $item->deleteImage($item->image); // ← Usa o trait HandlesImages
-            $changes['image'] = [
-                'old' => $item->image,
-                'new' => null
-            ];
-
-            $item->image = null;
-        }
-
-        // ============================
-        // 🔥 ✔ UPLOAD NOVA IMAGEM
-        // ============================
-        if ($request->hasFile('image')) {
-
-            // Remove imagem antiga
-            if ($item->image) {
-                $item->deleteImage($item->image);
+                $item->image = null;
             }
 
-            // Upload pelo trait HandlesImages
-            $newPath = $item->uploadImage($request->file('image'), 'item_', 250);
+            // ============================
+            // 🔥 ✔ UPLOAD NOVA IMAGEM
+            // ============================
+            if ($request->hasFile('image')) {
 
-            $changes['image'] = [
-                'old' => $oldData['image'] ?? null,
-                'new' => $newPath
-            ];
+                // Remove imagem antiga
+                if ($item->image) {
+                    $item->deleteImage($item->image);
+                }
 
-            $validated['image'] = $newPath;
+                // Upload pelo trait HandlesImages
+                $newPath = $item->uploadImage($request->file('image'), 'item_', 250);
+
+                $changes['image'] = [
+                    'old' => $oldData['image'] ?? null,
+                    'new' => $newPath
+                ];
+
+                $validated['image'] = $newPath;
+            }
+
+            // ============================
+            // 🔠 SLUG SE NOME MUDAR
+            // ============================
+            if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
+                $base = \Illuminate\Support\Str::slug($validated['name']);
+                $count = Item::where('slug', 'LIKE', "$base%")
+                    ->where('id', '!=', $item->id)
+                    ->count();
+
+                $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
+
+                $changes['slug'] = [
+                    'old' => $item->slug,
+                    'new' => $newSlug
+                ];
+
+                $validated['slug'] = $newSlug;
+            }
+
+            // ============================
+            // 💾 SALVAR ALTERAÇÕES
+            // ============================
+            $item->fill($validated);
+            $item->updated_by = $user->id;
+            $item->save();
+
+            // SALVA INTERAÇÃO SE TIVER CHANGES
+            if (!empty($changes)) {
+                Interaction::registerUpdate($item, $user, $changes);
+            }
+
+            return response()->json([
+                'message' => 'Item atualizado com sucesso.',
+                'item' => $item,
+                'changes' => $changes
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            \Log::error('Erro ao atualizar item', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json(['error' => 'Erro ao atualizar item.'], 500);
         }
-
-        // ============================
-        // 🔠 SLUG SE NOME MUDAR
-        // ============================
-        if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
-            $base = \Illuminate\Support\Str::slug($validated['name']);
-            $count = Item::where('slug', 'LIKE', "$base%")
-                ->where('id', '!=', $item->id)
-                ->count();
-
-            $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
-
-            $changes['slug'] = [
-                'old' => $item->slug,
-                'new' => $newSlug
-            ];
-
-            $validated['slug'] = $newSlug;
-        }
-
-        // ============================
-        // 💾 SALVAR ALTERAÇÕES
-        // ============================
-        $item->fill($validated);
-        $item->updated_by = $user->id;
-        $item->save();
-
-        // SALVA INTERAÇÃO SE TIVER CHANGES
-        if (!empty($changes)) {
-            Interaction::registerUpdate($item, $user, $changes);
-        }
-
-        return response()->json([
-            'message' => 'Item atualizado com sucesso.',
-            'item' => $item,
-            'changes' => $changes
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Exception $e) {
-        \Log::error('Erro ao atualizar item', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json(['error' => 'Erro ao atualizar item.'], 500);
     }
-}
 
 
 
@@ -891,124 +843,124 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao reduzir os preços.'], 500);
         }
     }
-    public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
 
-    // Estabelecimentos válidos
-    $establishmentIds = \App\Models\Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) =>
-            $q->where('city', $city)->where('uf', $uf)
-        )
-        ->pluck('id');
 
-    // Items
-    $items = \App\Models\Item::whereIn('entity_id', $establishmentIds)
-        ->where('entity_name', 'establishment')
-        ->with([
-            'establishment:id,name,slug,city,uf',
-            'files' => fn($q) =>
-                $q->where('entity_name', 'item'),
+    public function view($slug)
+    {
+        $authUser = Auth::user();
+
+        $item = Item::with([
+            'entity:id,name,slug,logo,background,app_id',
+            'orderItems.order.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'item'),
         ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
+            ->where('slug', $slug)
+            ->firstOrFail();
 
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view'),
+        Interaction::registerView($item, $authUser);
+        Cache::forget("item_{$item->id}_metrics");
+        Cache::forget("item_{$item->id}_summary");
+        Cache::forget("item_{$item->id}_orders_summary");
 
-            'orderItems as total_completed_appointments' => fn($q) =>
-                $q->whereHas('order', fn($o) =>
-                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                ),
-        ])
-        ->get()
-        ->map(function ($item) {
+        $image = $item->files->firstWhere('type', 'image')?->public_url ?? $item->image;
+        $gallery = $item->files->whereNotIn('type', ['image'])->pluck('public_url')->values();
 
-            // IMAGENS
-            $images = [
-                'image' => $item->files->firstWhere('type', 'image')?->public_url,
-                'gallery' => $item->files
-                    ->whereNotIn('type', ['image'])
-                    ->pluck('public_url')
-                    ->values(),
-            ];
-
-            $est = $item->establishment;
-
-            // 🔥 AQUI É A PARTE QUE QUEBRAVA — AGORA FUNCIONA
-            // Carrega order + client_id corretamente
-            $uniqueClients = \App\Models\OrderItem::where('item_id', $item->id)
-                ->whereHas('order', fn($o) =>
-                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                )
-                ->with('order:id,client_id')
-                ->get()
-                ->pluck('order.client_id')
-                ->filter()
-                ->unique()
-                ->count();
-
-            return [
+        return response()->json([
+            'item' => [
                 'id' => $item->id,
                 'type' => 'item',
                 'name' => $item->name,
                 'slug' => $item->slug,
                 'price' => $item->price,
-
-                'images' => $images,
-
-                'city' => $est?->city,
-                'uf'   => $est?->uf,
-
-                'total_views' => $item->total_views,
-                'unique_clients_attended' => $uniqueClients,
-                'total_completed_appointments' => $item->total_completed_appointments,
-
-                'establishment' => [
-                    'name' => $est?->name,
-                    'slug' => $est?->slug,
-                ],
-            ];
-        });
-
-    return response()->json([
-        'items' => $items
-    ]);
-}
-public function index(Request $request)
-{
-    try {
-        \Log::info('Listando itens com filtros.');
-
-        $query = Item::query();
-
-        // 🔥 FILTRO POR ENTIDADE (O QUE ESTAVA FALTANDO)
-        if ($request->has('entity_name') && $request->has('entity_id')) {
-            $query->where('entity_name', $request->entity_name)
-                  ->where('entity_id', $request->entity_id);
-        }
-
-        // 🔥 FILTRO POR APP
-        if ($request->has('app_id')) {
-            $query->where('app_id', $request->app_id);
-        }
-
-        // 🔥 FILTRO POR TIPO
-        if ($request->has('type')) {
-            $query->where('type', $request->type);
-        }
-
-        $items = $query->get();
-
-        return response()->json($items, 200);
-
-    } catch (\Exception $e) {
-        \Log::error('Erro ao buscar itens.', ['erro' => $e->getMessage()]);
-        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+                'images' => [
+                    'avatar' => $image,
+                    'gallery' => $gallery
+                ]
+            ],
+            'entity' => $item->entity,
+            'metrics' => $item->metrics,
+            'interaction_summary' => $item->interactionSummary(),
+            'user_interactions' => $item->userInteractions(),
+            'orders_summary' => $item->ordersSummary(),
+            'top_employer' => $item->topEmployer(),
+            'other_establishments' => $item->otherEstablishments() ?? [],
+            'other_employers' => $item->otherEmployers() ?? [],
+            'other_items' => $item->otherItems() ?? [],
+        ]);
     }
-}
 
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+
+        $establishmentIds = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->pluck('id');
+
+        $items = Item::whereIn('entity_id', $establishmentIds)
+            ->where('entity_name', 'establishment')
+            ->with([
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) => $q->where('entity_name', 'item'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orderItems as total_completed_appointments' => fn($q) =>
+                    $q->whereHas(
+                        'order',
+                        fn($o) =>
+                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                    ),
+            ])
+            ->get()
+            ->map(function ($item) {
+                $image = $item->files->firstWhere('type', 'image')?->public_url ?? null;
+                $gallery = $item->files->whereNotIn('type', ['image'])->pluck('public_url')->values();
+
+                $uniqueClients = OrderItem::where('item_id', $item->id)
+                    ->whereHas(
+                        'order',
+                        fn($o) =>
+                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                    )
+                    ->with('order:id,client_id')
+                    ->get()
+                    ->pluck('order.client_id')
+                    ->filter()
+                    ->unique()
+                    ->count();
+
+                return [
+                    'id' => $item->id,
+                    'type' => 'item',
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'images' => [
+                        'avatar' => $image,
+                        'gallery' => $gallery
+                    ],
+                    'city' => $item->establishment?->city,
+                    'uf' => $item->establishment?->uf,
+                    'total_views' => $item->total_views,
+                    'unique_clients_attended' => $uniqueClients,
+                    'total_completed_appointments' => $item->total_completed_appointments,
+                    'establishment' => [
+                        'name' => $item->establishment?->name,
+                        'slug' => $item->establishment?->slug,
+                    ],
+                ];
+            });
+
+        return response()->json(['items' => $items]);
+    }
 }
