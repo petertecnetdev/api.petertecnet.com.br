@@ -107,7 +107,7 @@ class Order extends Model
                 $query->whereBetween('order_datetime', [$start, $end])
                     ->orWhere(function ($q) use ($start, $end) {
                         $q->where('order_datetime', '<', $start)
-                          ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
+                            ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
                     });
             })
             ->exists();
@@ -151,12 +151,12 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
-public function attachItems(array $items)
+   public function attachItems(array $items)
 {
     foreach ($items as $entry) {
 
-        $itemId = $entry['item_id'];
-        $quantity = $entry['quantity'] ?? 1;
+        $itemId    = $entry['item_id'];
+        $quantity  = $entry['quantity'] ?? 1;
         $additions = $entry['additions'] ?? [];
         $removals  = $entry['removals'] ?? [];
 
@@ -166,27 +166,26 @@ public function attachItems(array $items)
             throw new \Exception("Item ID {$itemId} não encontrado.");
         }
 
-        // 🔥 VALIDAÇÃO CORRETA — agora usando entity_name e entity_id do ITEM
+        // 🔥 VALIDAÇÃO CORRIGIDA — garantindo tipos iguais
         if (
-            $item->entity_name !== $this->entity_name ||
-            $item->entity_id !== $this->entity_id
+            (string) $item->entity_name !== (string) $this->entity_name ||
+            (int) $item->entity_id !== (int) $this->entity_id
         ) {
             throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
         }
 
-        // 🔥 GRAVAÇÃO
+        // 🔥 GRAVAÇÃO DO ITEM
         \App\Models\OrderItem::create([
-            'order_id' => $this->id,
-            'item_id' => $itemId,
-            'quantity' => $quantity,
-            'additions' => $additions,
-            'removals' => $removals,
-            'unit_price' => $item->price,
+            'order_id'    => $this->id,
+            'item_id'     => $itemId,
+            'quantity'    => $quantity,
+            'additions'   => $additions,
+            'removals'    => $removals,
+            'unit_price'  => $item->price,
             'total_price' => $item->price * $quantity,
         ]);
     }
 }
-
 
 
     /* ===============================
@@ -235,9 +234,11 @@ public function attachItems(array $items)
     public function itemsViews(): int
     {
         return $this->items()
-            ->withCount(['interactions as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
+            ->withCount([
+                'interactions as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }
+            ])
             ->get()
             ->sum('total_views');
     }
@@ -262,9 +263,11 @@ public function attachItems(array $items)
                 'unique_users' => $this->uniqueViewers()->count(),
                 'most_active_user' => $this->mostActiveViewer()?->user ?? null,
             ],
-            'items' => $this->items()->withCount(['interactions as views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])->get(['id', 'item_id', 'quantity', 'views']),
+            'items' => $this->items()->withCount([
+                'interactions as views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }
+            ])->get(['id', 'item_id', 'quantity', 'views']),
         ];
     }
 
