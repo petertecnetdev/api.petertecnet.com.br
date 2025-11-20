@@ -185,13 +185,14 @@ public function storeDirect(Request $request)
             'app_id'          => 'required|integer',
             'entity_id'       => 'required|integer|exists:establishments,id',
             'entity_name'     => 'required|string',
-            'attendant_id'    => 'nullable|integer|exists:employers,id',
+            'attendant_id'    => 'required|integer', // pode ser employer_id OU user_id do dono
             'customer_name'   => 'nullable|string|max:255',
             'origin'          => 'required|string',
             'fulfillment'     => 'required|string',
             'payment_status'  => 'required|string',
             'payment_method'  => 'required|string',
             'notes'           => 'nullable|string',
+
             'items'                   => 'required|array|min:1',
             'items.*.item_id'         => 'required|integer|exists:items,id',
             'items.*.quantity'        => 'required|integer|min:1',
@@ -201,16 +202,33 @@ public function storeDirect(Request $request)
             'items.*.removals.*'      => 'integer|exists:items,id'
         ]);
 
-        if (!empty($data['attendant_id'])) {
-            $employer = Employer::where('id', $data['attendant_id'])
-                ->where('establishment_id', $data['entity_id'])
-                ->first();
+        Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
 
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-            }
+        $est = \App\Models\Establishment::find($data['entity_id']);
+        if (!$est) {
+            DB::rollBack();
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
+
+        $attendantId = $data['attendant_id'];
+
+        $isOwner = $est->user_id == $attendantId;
+
+        $employer = \App\Models\Employer::where('user_id', $attendantId)
+            ->where('establishment_id', $data['entity_id'])
+            ->first();
+
+        if (!$isOwner && !$employer) {
+            DB::rollBack();
+            return response()->json([
+                'error' => 'O usuário informado não pertence a este estabelecimento.'
+            ], 422);
+        }
+
+        Log::info('🟢 [storeDirect] Atendente validado.', [
+            'attendant_is_owner' => $isOwner,
+            'attendant_employer_id' => $employer?->id
+        ]);
 
         $itemIds = collect($data['items'])->pluck('item_id')->toArray();
         $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
@@ -224,19 +242,24 @@ public function storeDirect(Request $request)
         }
 
         $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
-        $isScheduled = false;
-        $type = 'direct';
-        $appointmentStatus = 'completed';
 
         $order = Order::createOrder(
             $data,
             $user,
             $orderDate,
             0,
-            $isScheduled,
-            $type,
-            $appointmentStatus
+            false,
+            'direct',
+            'completed'
         );
+
+        if ($isOwner) {
+            $order->attendant_id = $est->user_id;
+        } else {
+            $order->attendant_id = $employer->id;
+        }
+
+        $order->save();
 
         $order->attachItems($data['items']);
 
@@ -244,18 +267,26 @@ public function storeDirect(Request $request)
 
         return response()->json([
             'message' => 'Pedido criado com sucesso!',
-            'order' => $order->load('items.item'),
+            'order'   => $order->load('items.item'),
         ], 201);
 
     } catch (\Throwable $e) {
         DB::rollBack();
+
+        Log::error('🔥 [storeDirect] Erro inesperado ao criar pedido direto.', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'payload' => $request->all()
+        ]);
+
         return response()->json([
             'error' => 'Erro interno ao criar o pedido direto.',
             'details' => $e->getMessage()
         ], 500);
     }
 }
-
 
 
 public function view($id)
