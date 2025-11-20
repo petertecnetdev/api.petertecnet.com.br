@@ -640,59 +640,6 @@ class EmployerController extends Controller
 
     }
 
-    public function view($user_name)
-    {
-        try {
-            $authUser = Auth::user();
-
-            $employer = Employer::with([
-                'user:id,first_name,last_name,user_name,phone,avatar,about,email',
-                'establishment.items:id,entity_id,name,slug,price,type',
-                'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
-                'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-                ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
-                ->firstOrFail();
-
-            // Usa método da model para registrar view e limpar cache
-            $employer->refreshViewMetrics($authUser);
-
-            // Usa os métodos já existentes da model
-            $metrics = $employer->metrics;
-            $interactionSummary = $employer->interactionSummary();
-            $colleaguesData = $employer->colleagues();
-            $ordersSummary = $employer->ordersSummary();
-            $userInteractions = $employer->userInteractions();
-            $topItemAndClient = $employer->topItemAndClient();
-
-            return response()->json([
-                'employer' => $employer,
-                'establishment' => $employer->establishment,
-                'items' => $employer->establishment?->items ?? [],
-                'metrics' => $metrics,
-                'colleagues' => $colleaguesData['list'] ?? [],
-                'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'orders_summary' => $ordersSummary,
-                'top_item_and_client' => $topItemAndClient,
-                'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
-                'other_employers' => $employer->establishment?->otherEmployers() ?? [],
-                'other_items' => $employer->establishment?->otherItems() ?? [],
-            ], 200);
-
-        } catch (\Throwable $e) {
-            \Log::error('[EmployerController::view] Erro ao carregar colaborador', [
-                'user_name' => $user_name,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar colaborador.'], 500);
-        }
-    }
-
 
 
     public function listSchedules(Request $request)
@@ -938,83 +885,119 @@ class EmployerController extends Controller
             \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
+    }
 
-    // 1. Estabelecimentos válidos
-    $establishmentIds = Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) =>
-            $q->where('city', $city)->where('uf', $uf)
-        )
-        ->pluck('id');
 
-    // 2. Employers
-    $employers = \App\Models\Employer::whereIn('establishment_id', $establishmentIds)
-        ->with([
-            'user:id,first_name,last_name,user_name,avatar,email',
-            'establishment:id,name,slug,city,uf',
-            'files' => fn($q) =>
-                $q->where('entity_name', 'employer'),
+
+    public function view($user_name)
+    {
+        $authUser = Auth::user();
+
+        $employer = Employer::with([
+            'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
+            'establishment.items:id,entity_id,name,slug,price,type,image',
+            'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'employer'),
         ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
+            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
+            ->firstOrFail();
 
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                  ->where('interaction_type', 'view'),
+        $employer->refreshViewMetrics($authUser);
 
-            'orders as completed_appointments' => fn($q) =>
-                $q->whereIn('appointment_status', ['confirmed', 'attended']),
-        ])
-        ->orderByDesc('completed_appointments')
-        ->get()
-        ->map(function ($emp) {
+        $u = $employer->user;
 
-            $u = $emp->user;
+        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+        $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
-            // IMAGENS ~ files
-            $images = [
-                'avatar' => $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $u?->avatar,
-                'gallery' => $emp->files
-                    ->whereNotIn('type', ['avatar'])
-                    ->pluck('public_url')
-                    ->values()
-            ];
-
-            $est = $emp->establishment;
-
-            return [
-                'id' => $emp->id,
+        return response()->json([
+            'employer' => [
+                'id' => $employer->id,
                 'type' => 'employer',
+                'name' => trim($u->first_name . ' ' . $u->last_name),
+                'slug' => $u->user_name,
+                'about' => $u->about,
+                'city' => $u->city,
+                'uf' => $u->uf,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery
+                ]
+            ],
+            'establishment' => $employer->establishment,
+            'items' => $employer->establishment?->items ?? [],
+            'metrics' => $employer->metrics,
+            'interaction_summary' => $employer->interactionSummary(),
+            'user_interactions' => $employer->userInteractions(),
+            'orders_summary' => $employer->ordersSummary(),
+            'colleagues' => $employer->colleagues()['list'] ?? [],
+            'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
+            'top_item_and_client' => $employer->topItemAndClient(),
+            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer->establishment?->otherItems() ?? [],
+        ]);
+    }
 
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'slug' => $u?->user_name,
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
 
-                'images' => $images,
+        $establishmentIds = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->pluck('id');
 
-                'city' => $est?->city,
-                'uf'   => $est?->uf,
+        $employers = Employer::whereIn('establishment_id', $establishmentIds)
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as completed_appointments' => fn($q) =>
+                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->orderByDesc('completed_appointments')
+            ->get()
+            ->map(function ($emp) {
+                $u = $emp->user;
 
-                'total_views' => $emp->total_views,
-                'unique_users' => $emp->unique_users,
-                'total_completed_appointments' => $emp->completed_appointments,
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+                $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
-                'establishment' => [
-                    'name' => $est?->name,
-                    'slug' => $est?->slug,
-                ],
-            ];
-        });
+                return [
+                    'id' => $emp->id,
+                    'type' => 'employer',
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'slug' => $u->user_name,
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $gallery,
+                    ],
+                    'city' => $emp->establishment?->city,
+                    'uf' => $emp->establishment?->uf,
+                    'total_views' => $emp->total_views,
+                    'unique_users' => $emp->unique_users,
+                    'total_completed_appointments' => $emp->completed_appointments,
+                    'establishment' => [
+                        'name' => $emp->establishment?->name,
+                        'slug' => $emp->establishment?->slug,
+                    ],
+                ];
+            });
 
-    return response()->json([
-        'employers' => $employers
-    ]);
-}
-
-
+        return response()->json(['employers' => $employers]);
+    }
 
 }
