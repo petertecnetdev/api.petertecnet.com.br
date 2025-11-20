@@ -151,43 +151,42 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
-
-public function attachItems(array $items): void
+public function attachItems(array $items)
 {
-    $total = 0;
-
     foreach ($items as $entry) {
-        $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
 
-        foreach ($ids as $id) {
-            $item = Item::findOrFail($id);
+        $itemId = $entry['item_id'];
+        $quantity = $entry['quantity'] ?? 1;
+        $additions = $entry['additions'] ?? [];
+        $removals  = $entry['removals'] ?? [];
 
-            // 🔥 ITEM PERTENCE AO MESMO ESTABELECIMENTO DA ORDER?
-            if ($item->entity_id !== $this->entity_id ||
-                strtolower($item->entity_name) !== strtolower($this->entity_name)) {
-                throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
-            }
+        $item = \App\Models\Item::find($itemId);
 
-            // 🔥 VERIFICA APP DO ITEM
-            if ($item->app_id !== $this->app_id) {
-                throw new \Exception("O item '{$item->name}' pertence a outro aplicativo.");
-            }
-
-            $subtotal = $item->price * $entry['quantity'];
-
-            $this->items()->create([
-                'item_id'   => $item->id,
-                'quantity'  => $entry['quantity'],
-                'unit_price'=> $item->price,
-                'subtotal'  => $subtotal,
-            ]);
-
-            $total += $subtotal;
+        if (!$item) {
+            throw new \Exception("Item ID {$itemId} não encontrado.");
         }
-    }
 
-    $this->update(['total_price' => $total]);
+        // 🔥 VALIDAÇÃO CORRETA — agora usando entity_name e entity_id do ITEM
+        if (
+            $item->entity_name !== $this->entity_name ||
+            $item->entity_id !== $this->entity_id
+        ) {
+            throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
+        }
+
+        // 🔥 GRAVAÇÃO
+        \App\Models\OrderItem::create([
+            'order_id' => $this->id,
+            'item_id' => $itemId,
+            'quantity' => $quantity,
+            'additions' => $additions,
+            'removals' => $removals,
+            'unit_price' => $item->price,
+            'total_price' => $item->price * $quantity,
+        ]);
+    }
 }
+
 
 
     /* ===============================
