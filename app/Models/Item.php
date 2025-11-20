@@ -53,7 +53,7 @@ class Item extends Model
 
     protected $appends = ['metrics'];
 
-    protected static function boot()
+    protected static function boot()    
     {
         parent::boot();
         static::saving(function ($model) {
