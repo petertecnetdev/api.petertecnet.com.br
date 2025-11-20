@@ -978,5 +978,37 @@ class ItemController extends Controller
         'items' => $items
     ]);
 }
+public function index(Request $request)
+{
+    try {
+        \Log::info('Listando itens com filtros.');
+
+        $query = Item::query();
+
+        // 🔥 FILTRO POR ENTIDADE (O QUE ESTAVA FALTANDO)
+        if ($request->has('entity_name') && $request->has('entity_id')) {
+            $query->where('entity_name', $request->entity_name)
+                  ->where('entity_id', $request->entity_id);
+        }
+
+        // 🔥 FILTRO POR APP
+        if ($request->has('app_id')) {
+            $query->where('app_id', $request->app_id);
+        }
+
+        // 🔥 FILTRO POR TIPO
+        if ($request->has('type')) {
+            $query->where('type', $request->type);
+        }
+
+        $items = $query->get();
+
+        return response()->json($items, 200);
+
+    } catch (\Exception $e) {
+        \Log::error('Erro ao buscar itens.', ['erro' => $e->getMessage()]);
+        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+    }
+}
 
 }
