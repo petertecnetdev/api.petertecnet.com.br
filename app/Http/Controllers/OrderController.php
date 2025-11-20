@@ -164,6 +164,7 @@ public function storeAppointment(Request $request)
         return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
     }
 }
+
 public function storeDirect(Request $request)
 {
     if (!Auth::check()) {
@@ -180,43 +181,39 @@ public function storeDirect(Request $request)
             'payload' => $request->all()
         ]);
 
-        // ========================================================
-        // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
-        // ========================================================
-       $data = $request->validate([
-    'app_id'          => 'required|integer',
-    'entity_id'       => 'required|integer|exists:establishments,id',
-    'entity_name'     => 'required|string',
-    'attendant_id'    => 'required|integer|exists:users,id', // ← AQUI
-    'customer_name'   => 'nullable|string|max:255',
-    'origin'          => 'required|string',
-    'fulfillment'     => 'required|string',
-    'payment_status'  => 'required|string',
-    'payment_method'  => 'required|string',
-    'notes'           => 'nullable|string',
+        $data = $request->validate([
+            'app_id'          => 'required|integer',
+            'entity_id'       => 'required|integer|exists:establishments,id',
+            'entity_name'     => 'required|string',
+            'attendant_id'    => 'nullable|integer|exists:employers,id',
+            'customer_name'   => 'nullable|string|max:255',
+            'origin'          => 'required|string',
+            'fulfillment'     => 'required|string',
+            'payment_status'  => 'required|string',
+            'payment_method'  => 'required|string',
+            'notes'           => 'nullable|string',
+            'items'                   => 'required|array|min:1',
+            'items.*.item_id'         => 'required|integer|exists:items,id',
+            'items.*.quantity'        => 'required|integer|min:1',
+            'items.*.additions'       => 'array',
+            'items.*.additions.*.id'  => 'integer|exists:items,id',
+            'items.*.removals'        => 'array',
+            'items.*.removals.*'      => 'integer|exists:items,id'
+        ]);
 
-    'items'                   => 'required|array|min:1',
-    'items.*.item_id'         => 'required|integer|exists:items,id',
-    'items.*.quantity'        => 'required|integer|min:1',
-    'items.*.additions'       => 'array',
-    'items.*.additions.*.id'  => 'integer|exists:items,id',
-    'items.*.removals'        => 'array',
-    'items.*.removals.*'      => 'integer|exists:items,id'
-]);
+        if (!empty($data['attendant_id'])) {
+            $employer = Employer::where('id', $data['attendant_id'])
+                ->where('establishment_id', $data['entity_id'])
+                ->first();
 
+            if (!$employer) {
+                DB::rollBack();
+                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+            }
+        }
 
-        Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
-
-        // ========================================================
-        // 🔥 VALIDA ITENS PERTENCENTES AO ESTABELECIMENTO
-        // ========================================================
         $itemIds = collect($data['items'])->pluck('item_id')->toArray();
         $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-
-        Log::info('🟡 [storeDirect] Verificando itens inválidos...', [
-            'itemIds' => $itemIds,
-            'invalid' => $invalidItems
-        ]);
 
         if (!empty($invalidItems)) {
             DB::rollBack();
@@ -226,50 +223,25 @@ public function storeDirect(Request $request)
             ], 422);
         }
 
-        // ========================================================
-        // 🔥 DEFINIÇÃO DO PEDIDO DIRETO
-        // ========================================================
         $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
         $isScheduled = false;
         $type = 'direct';
         $appointmentStatus = 'completed';
 
-        Log::info('🟡 [storeDirect] Criando pedido...', [
-            'order_datetime' => $orderDate->toDateTimeString()
-        ]);
-
-        // ========================================================
-        // 🔥 CRIAR PEDIDO
-        // ========================================================
         $order = Order::createOrder(
             $data,
             $user,
             $orderDate,
-            0,                // sem duração no pedido direto
+            0,
             $isScheduled,
             $type,
             $appointmentStatus
         );
 
-        Log::info('🟢 [storeDirect] Pedido criado com sucesso.', [
-            'order_id' => $order->id
-        ]);
-
-        // ========================================================
-        // 🔥 ANEXAR ITENS
-        // ========================================================
         $order->attachItems($data['items']);
-
-        Log::info('🟢 [storeDirect] Itens anexados com sucesso.', [
-            'order_id' => $order->id,
-            'items' => $data['items']
-        ]);
 
         DB::commit();
 
-        // ========================================================
-        // 🔥 RETORNO FINAL
-        // ========================================================
         return response()->json([
             'message' => 'Pedido criado com sucesso!',
             'order' => $order->load('items.item'),
@@ -277,15 +249,6 @@ public function storeDirect(Request $request)
 
     } catch (\Throwable $e) {
         DB::rollBack();
-
-        Log::error('🔥 [storeDirect] Erro inesperado ao criar pedido direto.', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'payload' => $request->all()
-        ]);
-
         return response()->json([
             'error' => 'Erro interno ao criar o pedido direto.',
             'details' => $e->getMessage()
