@@ -152,25 +152,43 @@ class Order extends Model
         ]);
     }
 
-    public function attachItems(array $items): void
-    {
-        $total = 0;
-        foreach ($items as $entry) {
-            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-            foreach ($ids as $id) {
-                $item = Item::findOrFail($id);
-                $subtotal = $item->price * $entry['quantity'];
-                $this->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $entry['quantity'],
-                    'unit_price' => $item->price,
-                    'subtotal' => $subtotal,
-                ]);
-                $total += $subtotal;
+   public function attachItems(array $items): void
+{
+    $total = 0;
+
+    foreach ($items as $entry) {
+        $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
+
+        foreach ($ids as $id) {
+            $item = Item::findOrFail($id);
+
+            // 🔥 VERIFICA SE O ITEM PERTENCE AO MESMO ESTABELECIMENTO DA ORDER
+            if ($item->entity_id !== $this->entity_id ||
+                strtolower($item->entity_name) !== strtolower($this->entity_name)) {
+                throw new \Exception("Item '{$item->name}' não pertence ao estabelecimento desta ordem.");
             }
+
+            // 🔥 VERIFICA SE O ITEM É DO MESMO APP
+            if ($item->app_id !== $this->app_id) {
+                throw new \Exception("Item '{$item->name}' pertence a outro aplicativo.");
+            }
+
+            $subtotal = $item->price * $entry['quantity'];
+
+            $this->items()->create([
+                'item_id'   => $item->id,
+                'quantity'  => $entry['quantity'],
+                'unit_price'=> $item->price,
+                'subtotal'  => $subtotal,
+            ]);
+
+            $total += $subtotal;
         }
-        $this->update(['total_price' => $total]);
     }
+
+    // Atualiza total
+    $this->update(['total_price' => $total]);
+}
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS
