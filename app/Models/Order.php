@@ -152,7 +152,7 @@ class Order extends Model
         ]);
     }
 
-   public function attachItems(array $items): void
+public function attachItems(array $items): void
 {
     $total = 0;
 
@@ -162,15 +162,15 @@ class Order extends Model
         foreach ($ids as $id) {
             $item = Item::findOrFail($id);
 
-            // 🔥 VERIFICA SE O ITEM PERTENCE AO MESMO ESTABELECIMENTO DA ORDER
+            // 🔥 ITEM PERTENCE AO MESMO ESTABELECIMENTO DA ORDER?
             if ($item->entity_id !== $this->entity_id ||
                 strtolower($item->entity_name) !== strtolower($this->entity_name)) {
-                throw new \Exception("Item '{$item->name}' não pertence ao estabelecimento desta ordem.");
+                throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
             }
 
-            // 🔥 VERIFICA SE O ITEM É DO MESMO APP
+            // 🔥 VERIFICA APP DO ITEM
             if ($item->app_id !== $this->app_id) {
-                throw new \Exception("Item '{$item->name}' pertence a outro aplicativo.");
+                throw new \Exception("O item '{$item->name}' pertence a outro aplicativo.");
             }
 
             $subtotal = $item->price * $entry['quantity'];
@@ -186,9 +186,9 @@ class Order extends Model
         }
     }
 
-    // Atualiza total
     $this->update(['total_price' => $total]);
 }
+
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS
