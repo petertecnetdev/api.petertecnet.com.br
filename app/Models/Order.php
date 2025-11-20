@@ -107,7 +107,7 @@ class Order extends Model
                 $query->whereBetween('order_datetime', [$start, $end])
                     ->orWhere(function ($q) use ($start, $end) {
                         $q->where('order_datetime', '<', $start)
-                          ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
+                            ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
                     });
             })
             ->exists();
@@ -151,26 +151,45 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
+  public function attachItems(array $items)
+{
+    foreach ($items as $entry) {
 
-    public function attachItems(array $items): void
-    {
-        $total = 0;
-        foreach ($items as $entry) {
-            $ids = is_array($entry['item_id']) ? $entry['item_id'] : [$entry['item_id']];
-            foreach ($ids as $id) {
-                $item = Item::findOrFail($id);
-                $subtotal = $item->price * $entry['quantity'];
-                $this->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $entry['quantity'],
-                    'unit_price' => $item->price,
-                    'subtotal' => $subtotal,
-                ]);
-                $total += $subtotal;
-            }
+        $itemId    = $entry['item_id'];
+        $quantity  = $entry['quantity'] ?? 1;
+        $additions = $entry['additions'] ?? [];
+        $removals  = $entry['removals'] ?? [];
+
+        $item = \App\Models\Item::find($itemId);
+
+        if (!$item) {
+            throw new \Exception("Item ID {$itemId} não encontrado.");
         }
-        $this->update(['total_price' => $total]);
+
+        if (
+            $item->entity_name !== $this->entity_name ||
+            $item->entity_id !== $this->entity_id
+        ) {
+            throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
+        }
+
+        $unitPrice = $item->price;
+        $subtotal  = $unitPrice * $quantity;
+
+        \App\Models\OrderItem::create([
+            'order_id'    => $this->id,
+            'item_id'     => $itemId,
+            'quantity'    => $quantity,
+            'unit_price'  => $unitPrice,
+            'subtotal'    => $subtotal,        // 🔥 OBRIGATÓRIO
+            'total_price' => $subtotal,        // 🔥 use se existir na migration
+            'additions'   => $additions,
+            'removals'    => $removals,
+        ]);
     }
+}
+
+
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS
@@ -218,9 +237,11 @@ class Order extends Model
     public function itemsViews(): int
     {
         return $this->items()
-            ->withCount(['interactions as total_views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])
+            ->withCount([
+                'interactions as total_views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }
+            ])
             ->get()
             ->sum('total_views');
     }
@@ -245,9 +266,11 @@ class Order extends Model
                 'unique_users' => $this->uniqueViewers()->count(),
                 'most_active_user' => $this->mostActiveViewer()?->user ?? null,
             ],
-            'items' => $this->items()->withCount(['interactions as views' => function ($q) {
-                $q->where('interaction_type', 'view');
-            }])->get(['id', 'item_id', 'quantity', 'views']),
+            'items' => $this->items()->withCount([
+                'interactions as views' => function ($q) {
+                    $q->where('interaction_type', 'view');
+                }
+            ])->get(['id', 'item_id', 'quantity', 'views']),
         ];
     }
 

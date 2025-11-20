@@ -164,136 +164,100 @@ public function storeAppointment(Request $request)
         return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
     }
 }
+
 public function storeDirect(Request $request)
 {
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
-
-    DB::beginTransaction();
-
     try {
-        $user = Auth::user();
-
-        Log::info('🟡 [storeDirect] Iniciando criação de pedido direto...', [
-            'user_id' => $user->id,
+        \Log::info('🟡 [storeDirect] Iniciando criação de pedido direto...', [
+            'user_id' => auth()->id(),
             'payload' => $request->all()
         ]);
 
-        // ========================================================
-        // 🔥 VALIDAÇÃO EXCLUSIVA PARA PEDIDOS DIRETOS
-        // ========================================================
-       $data = $request->validate([
-    'app_id'          => 'required|integer',
-    'entity_id'       => 'required|integer|exists:establishments,id',
-    'entity_name'     => 'required|string',
-    'attendant_id'    => 'required|integer|exists:users,id', // ← AQUI
-    'customer_name'   => 'nullable|string|max:255',
-    'origin'          => 'required|string',
-    'fulfillment'     => 'required|string',
-    'payment_status'  => 'required|string',
-    'payment_method'  => 'required|string',
-    'notes'           => 'nullable|string',
-
-    'items'                   => 'required|array|min:1',
-    'items.*.item_id'         => 'required|integer|exists:items,id',
-    'items.*.quantity'        => 'required|integer|min:1',
-    'items.*.additions'       => 'array',
-    'items.*.additions.*.id'  => 'integer|exists:items,id',
-    'items.*.removals'        => 'array',
-    'items.*.removals.*'      => 'integer|exists:items,id'
-]);
-
-
-        Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $data);
-
-        // ========================================================
-        // 🔥 VALIDA ITENS PERTENCENTES AO ESTABELECIMENTO
-        // ========================================================
-        $itemIds = collect($data['items'])->pluck('item_id')->toArray();
-        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-
-        Log::info('🟡 [storeDirect] Verificando itens inválidos...', [
-            'itemIds' => $itemIds,
-            'invalid' => $invalidItems
-        ]);
-
-        if (!empty($invalidItems)) {
-            DB::rollBack();
-            return response()->json([
-                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                'invalid_items' => $invalidItems
-            ], 422);
+        if (!auth()->check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        // ========================================================
-        // 🔥 DEFINIÇÃO DO PEDIDO DIRETO
-        // ========================================================
-        $orderDate = Carbon::now('America/Sao_Paulo')->startOfMinute();
-        $isScheduled = false;
-        $type = 'direct';
-        $appointmentStatus = 'completed';
+        $user = auth()->user();
 
-        Log::info('🟡 [storeDirect] Criando pedido...', [
-            'order_datetime' => $orderDate->toDateTimeString()
+        $validated = $request->validate([
+            'app_id'         => 'required|integer',
+            'entity_name'    => 'required|string',
+            'entity_id'      => 'required|integer',
+            'attendant_id'   => 'required|integer',
+            'customer_name'  => 'required|string',
+            'origin'         => 'required|string',
+            'fulfillment'    => 'required|string',
+            'payment_status' => 'required|string',
+            'payment_method' => 'required|string',
+            'notes'          => 'nullable|string',
+            'items'          => 'required|array|min:1',
+            'items.*.item_id'   => 'required|integer',
+            'items.*.quantity'  => 'required|integer|min:1',
+            'items.*.additions' => 'array',
+            'items.*.removals'  => 'array'
         ]);
 
-        // ========================================================
-        // 🔥 CRIAR PEDIDO
-        // ========================================================
-        $order = Order::createOrder(
-            $data,
-            $user,
-            $orderDate,
-            0,                // sem duração no pedido direto
-            $isScheduled,
-            $type,
-            $appointmentStatus
-        );
+        \Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $validated);
 
-        Log::info('🟢 [storeDirect] Pedido criado com sucesso.', [
-            'order_id' => $order->id
+        $attendant = \App\Models\User::find($validated['attendant_id']);
+
+        if (!$attendant) {
+            return response()->json(['error' => 'Atendente não encontrado.'], 404);
+        }
+
+        $isOwner = \App\Models\Establishment::where('id', $validated['entity_id'])
+            ->where('user_id', $attendant->id)
+            ->exists();
+
+        \Log::info('🟢 [storeDirect] Atendente validado.', [
+            'attendant_is_owner' => $isOwner,
+            'attendant_employer_id' => null
         ]);
 
-        // ========================================================
-        // 🔥 ANEXAR ITENS
-        // ========================================================
-        $order->attachItems($data['items']);
-
-        Log::info('🟢 [storeDirect] Itens anexados com sucesso.', [
-            'order_id' => $order->id,
-            'items' => $data['items']
+        $order = \App\Models\Order::create([
+            'app_id'         => $validated['app_id'],
+            'entity_name'    => $validated['entity_name'],
+            'entity_id'      => $validated['entity_id'],
+            'order_number'   => \App\Models\Order::nextOrderNumber($validated['app_id']),
+            'order_datetime' => now(),
+            'created_by'     => $user->id,
+            'attendant_id'   => $validated['attendant_id'],
+            'customer_name'  => $validated['customer_name'],
+            'origin'         => $validated['origin'],
+            'fulfillment'    => $validated['fulfillment'],
+            'payment_status' => $validated['payment_status'],
+            'payment_method' => $validated['payment_method'],
+            'notes'          => $validated['notes'] ?? null,
+            'type'           => 'service',
+            'appointment_status' => null,
+            'total_price'    => 0,
+            'total_duration' => 0,
+            'status'         => 'completed'
         ]);
 
-        DB::commit();
+        $order->attachItems($validated['items']);
 
-        // ========================================================
-        // 🔥 RETORNO FINAL
-        // ========================================================
+        $total = $order->items()->sum('total_price');
+        $order->update(['total_price' => $total]);
+
         return response()->json([
-            'message' => 'Pedido criado com sucesso!',
-            'order' => $order->load('items.item'),
+            'message' => 'Pedido criado com sucesso.',
+            'order'   => $order->load('items')
         ], 201);
 
     } catch (\Throwable $e) {
-        DB::rollBack();
 
-        Log::error('🔥 [storeDirect] Erro inesperado ao criar pedido direto.', [
+        \Log::error('🔥 [storeDirect] Erro inesperado ao criar pedido direto.', [
             'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'payload' => $request->all()
+            'file'    => $e->getFile(),
+            'line'    => $e->getLine(),
+            'payload' => $request->all(),
+            'trace'   => $e->getTraceAsString()
         ]);
 
-        return response()->json([
-            'error' => 'Erro interno ao criar o pedido direto.',
-            'details' => $e->getMessage()
-        ], 500);
+        return response()->json(['error' => $e->getMessage()], 500);
     }
 }
-
-
 
 public function view($id)
     {

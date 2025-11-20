@@ -51,7 +51,7 @@ return new class extends Migration
             $table->text('notes')->nullable();
 
             // Tipo e controle de agendamentos
-            $table->enum('type', ['service', 'appointment'])->default('service');
+            $table->string('type')->nullable()->default('service');
             $table->enum('appointment_status', ['pending', 'confirmed', 'rejected', 'cancelled', 'completed'])->nullable();
             $table->unsignedBigInteger('confirmed_by')->nullable();
             $table->unsignedBigInteger('cancelled_by')->nullable();

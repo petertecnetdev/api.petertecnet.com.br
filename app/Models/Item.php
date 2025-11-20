@@ -52,9 +52,8 @@ class Item extends Model
     ];
 
     protected $appends = ['metrics'];
-    protected $entity_name = 'item';          // na model de Item
 
-    protected static function boot()
+    protected static function boot()    
     {
         parent::boot();
         static::saving(function ($model) {
@@ -547,19 +546,17 @@ class Item extends Model
         return $total;
     }
 
-    public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
-    {
-        $invalid = [];
+   public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
+{
+    return self::whereIn('id', $itemIds)
+        ->where(function ($q) use ($entityName, $entityId) {
+            $q->where('entity_name', '!=', $entityName)
+              ->orWhere('entity_id', '!=', $entityId);
+        })
+        ->pluck('id')
+        ->toArray();
+}
 
-        foreach ($itemIds as $id) {
-            $item = self::find($id);
-            if (!$item || $item->entity_name !== $entityName || (int) $item->entity_id !== (int) $entityId) {
-                $invalid[] = $id;
-            }
-        }
-
-        return $invalid;
-    }
     public function fillFromRequest($request)
     {
         $this->fill([
