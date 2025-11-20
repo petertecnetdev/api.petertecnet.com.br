@@ -151,7 +151,7 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
-   public function attachItems(array $items)
+  public function attachItems(array $items)
 {
     foreach ($items as $entry) {
 
@@ -166,26 +166,29 @@ class Order extends Model
             throw new \Exception("Item ID {$itemId} não encontrado.");
         }
 
-        // 🔥 VALIDAÇÃO CORRIGIDA — garantindo tipos iguais
         if (
-            (string) $item->entity_name !== (string) $this->entity_name ||
-            (int) $item->entity_id !== (int) $this->entity_id
+            $item->entity_name !== $this->entity_name ||
+            $item->entity_id !== $this->entity_id
         ) {
             throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
         }
 
-        // 🔥 GRAVAÇÃO DO ITEM
+        $unitPrice = $item->price;
+        $subtotal  = $unitPrice * $quantity;
+
         \App\Models\OrderItem::create([
             'order_id'    => $this->id,
             'item_id'     => $itemId,
             'quantity'    => $quantity,
+            'unit_price'  => $unitPrice,
+            'subtotal'    => $subtotal,        // 🔥 OBRIGATÓRIO
+            'total_price' => $subtotal,        // 🔥 use se existir na migration
             'additions'   => $additions,
             'removals'    => $removals,
-            'unit_price'  => $item->price,
-            'total_price' => $item->price * $quantity,
         ]);
     }
 }
+
 
 
     /* ===============================
