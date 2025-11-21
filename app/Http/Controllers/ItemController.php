@@ -922,12 +922,12 @@ public function home(Request $request, $app_id)
         ->get()
         ->map(function ($item) {
 
-            // avatar principal (image)
+            // avatar principal
             $avatar = $item->files
                 ->firstWhere('type', 'image')
                 ?->public_url;
 
-            // fallback se não tiver imagem
+            // fallback caso não tenha imagem
             $avatar = $avatar ?: asset('images/logo.png');
 
             // gallery
@@ -953,8 +953,10 @@ public function home(Request $request, $app_id)
             return [
                 'id'   => $item->id,
 
-                // 🔥 AGORA O TYPE VAI CERTO
-                'type' => $item->type ?? 'service',
+                // *** AQUI ESTÁ A CORREÇÃO PRINCIPAL ***
+                // agora respeita exatamente o que está no banco:
+                // service, product, addon, etc.
+                'type' => $item->type,
 
                 'name' => $item->name,
                 'slug' => $item->slug,
