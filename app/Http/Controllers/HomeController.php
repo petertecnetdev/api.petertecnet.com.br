@@ -376,11 +376,13 @@ if ($topItem) {
                     OrderItem::where('item_id',$item->id)->sum('subtotal');
 
                 $clientFrequency =
-                    OrderItem::where('item_id',$item->id)
-                        ->select('client_id', DB::raw('COUNT(*) as total'))
-                        ->groupBy('client_id')
-                        ->orderByDesc('total')
-                        ->get();
+    OrderItem::where('order_items.item_id', $item->id)
+        ->join('orders', 'orders.id', '=', 'order_items.order_id')
+        ->select('orders.client_id', DB::raw('COUNT(*) as total'))
+        ->groupBy('orders.client_id')
+        ->orderByDesc('total')
+        ->get();
+
 
                 $peakHour =
                     OrderItem::where('item_id',$item->id)
