@@ -889,8 +889,7 @@ class ItemController extends Controller
             'other_items' => $item->otherItems() ?? [],
         ]);
     }
-
-   public function home(Request $request, $app_id)
+public function home(Request $request, $app_id)
 {
     $city = $request->query('city');
     $uf   = $request->query('uf');
@@ -919,22 +918,25 @@ class ItemController extends Controller
                     $o->whereIn('appointment_status', ['confirmed', 'attended'])
                 ),
         ])
+        ->orderByDesc('total_completed_appointments')
         ->get()
         ->map(function ($item) {
 
-            // imagem principal
-            $image = $item->files->firstWhere('type', 'image')?->public_url;
+            // avatar principal (image)
+            $avatar = $item->files
+                ->firstWhere('type', 'image')
+                ?->public_url;
 
-            // fallback SE não existir imagem
-            $avatar = $image ?: asset('images/logo.png');
+            // fallback se não tiver imagem
+            $avatar = $avatar ?: asset('images/logo.png');
 
-            // gallery (caso tenha outras imagens)
+            // gallery
             $gallery = $item->files
-                ->where('type', 'gallery')
+                ->whereNotIn('type', ['image'])
                 ->pluck('public_url')
                 ->values();
 
-            // quantidade de clientes únicos atendidos
+            // clientes únicos atendidos
             $uniqueClients = OrderItem::where('item_id', $item->id)
                 ->whereHas(
                     'order',
@@ -950,7 +952,10 @@ class ItemController extends Controller
 
             return [
                 'id'   => $item->id,
-                'type' => 'item',
+
+                // 🔥 AGORA O TYPE VAI CERTO
+                'type' => $item->type ?? 'service',
+
                 'name' => $item->name,
                 'slug' => $item->slug,
                 'price' => $item->price,
@@ -964,6 +969,7 @@ class ItemController extends Controller
                 'uf'   => $item->establishment?->uf,
 
                 'total_views' => $item->total_views,
+                'unique_users' => $item->unique_users,
                 'unique_clients_attended' => $uniqueClients,
                 'total_completed_appointments' => $item->total_completed_appointments,
 
