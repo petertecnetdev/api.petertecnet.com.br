@@ -393,18 +393,15 @@ $peakHour =
         ->first();
 
 
-                $topEmployer =
-                    OrderItem::where('item_id',$item->id)
-                        ->whereHas('order', fn($o) =>
-                            $o->whereIn('appointment_status',['confirmed','attended'])
-                        )
-                        ->select('order_id')
-                        ->with('order.attendant.user')
-                        ->get()
-                        ->groupBy(fn($x) => $x->order->attendant_id)
-                        ->map->count()
-                        ->sortDesc()
-                        ->first();
+               $topEmployerRaw =
+    OrderItem::where('order_items.item_id', $item->id)
+        ->join('orders', 'orders.id', '=', 'order_items.order_id')
+        ->whereIn('orders.appointment_status', ['confirmed','attended'])
+        ->select('orders.attendant_id', DB::raw('COUNT(*) as total'))
+        ->groupBy('orders.attendant_id')
+        ->orderByDesc('total')
+        ->first();
+
 
                $topClient =
     OrderItem::where('order_items.item_id', $item->id)
@@ -446,10 +443,11 @@ $peakHour =
                     'peak_item_hour' => $peakHour?->hour,
 
                     'top_employer' =>
-                        $topEmployer ? [
-                            'employer_id' => array_key_first($topEmployer),
-                            'total' => $topEmployer
-                        ] : null,
+    $topEmployerRaw ? [
+        'employer_id' => $topEmployerRaw->attendant_id,
+        'total' => $topEmployerRaw->total,
+    ] : null,
+
 
                     'top_client' => $topClient,
 
