@@ -255,19 +255,20 @@ class HomeController extends Controller
 
                 $topItemClient = null;
 
-                if ($topItem) {
-                    $topItemClient =
-                        OrderItem::where('item_id', $topItem->item_id)
-                            ->whereHas('order', fn($o) =>
-                                $o->where('attendant_id',$emp->id)
-                                  ->whereIn('appointment_status',['confirmed','attended'])
-                            )
-                            ->select(DB::raw('client_id, COUNT(*) as total'))
-                            ->groupBy('client_id')
-                            ->orderByDesc('total')
-                            ->with('client')
-                            ->first();
-                }
+               $topItemClient = null;
+
+if ($topItem) {
+    $topItemClient =
+        OrderItem::where('order_items.item_id', $topItem->item_id)
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('orders.attendant_id', $emp->id)
+            ->whereIn('orders.appointment_status', ['confirmed','attended'])
+            ->select('orders.client_id', DB::raw('COUNT(*) as total'))
+            ->groupBy('orders.client_id')
+            ->orderByDesc('total')
+            ->with(['order.client'])
+            ->first();
+}
 
                 return [
                     'id' => $emp->id,
