@@ -406,16 +406,15 @@ $peakHour =
                         ->sortDesc()
                         ->first();
 
-                $topClient =
-                    OrderItem::where('item_id',$item->id)
-                        ->whereHas('order', fn($o) =>
-                            $o->whereIn('appointment_status',['confirmed','attended'])
-                        )
-                        ->select(DB::raw('client_id, COUNT(*) as total'))
-                        ->groupBy('client_id')
-                        ->orderByDesc('total')
-                        ->with('order.client')
-                        ->first();
+               $topClient =
+    OrderItem::where('order_items.item_id', $item->id)
+        ->join('orders', 'orders.id', '=', 'order_items.order_id')
+        ->whereIn('orders.appointment_status', ['confirmed', 'attended'])
+        ->select('orders.client_id', DB::raw('COUNT(*) as total'))
+        ->groupBy('orders.client_id')
+        ->orderByDesc('total')
+        ->with('order.client')
+        ->first();
 
                 return [
                     'id' => $item->id,
