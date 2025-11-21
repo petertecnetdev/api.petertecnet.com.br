@@ -383,16 +383,15 @@ if ($topItem) {
         ->orderByDesc('total')
         ->get();
 
+$peakHour =
+    OrderItem::where('order_items.item_id', $item->id)
+        ->join('orders', 'orders.id', '=', 'order_items.order_id')
+        ->whereIn('orders.appointment_status', ['confirmed','attended'])
+        ->select(DB::raw('HOUR(orders.order_datetime) as hour'), DB::raw('COUNT(*) as total'))
+        ->groupBy('hour')
+        ->orderByDesc('total')
+        ->first();
 
-                $peakHour =
-                    OrderItem::where('item_id',$item->id)
-                        ->whereHas('order', fn($o) =>
-                            $o->whereIn('appointment_status',['confirmed','attended'])
-                        )
-                        ->select(DB::raw('HOUR(order_datetime) as hour'), DB::raw('COUNT(*) as total'))
-                        ->groupBy('hour')
-                        ->orderByDesc('total')
-                        ->first();
 
                 $topEmployer =
                     OrderItem::where('item_id',$item->id)
