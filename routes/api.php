@@ -18,8 +18,22 @@ use App\Http\Controllers\{
     MenuController,
     EmployerController,
     OrderForecastController,
-    FileController
-};/*
+    FileController,
+    HomeController
+};
+
+/*
+|--------------------------------------------------------------------------
+| HOME (PÚBLICA)
+|--------------------------------------------------------------------------
+*/
+
+Route::prefix('home')->middleware(['api'])->group(function () {
+    Route::get('/{app_id}', [HomeController::class, 'home'])->name('home.main');
+});
+
+
+/*
 |--------------------------------------------------------------------------
 | AUTHENTICAÇÃO (PROTEGIDAS)
 |--------------------------------------------------------------------------
