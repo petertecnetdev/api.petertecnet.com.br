@@ -89,7 +89,7 @@ class Home
 
     private static function getHighlights($establishmentIds, $city, $uf)
     {
-        $barberOfCity =
+        $employerOfCity =
             Employer::withCount([
                 'views as total_views' =>
                     fn($q) => $q->where('interaction_type', 'view')
@@ -128,7 +128,7 @@ class Home
             ->first();
 
         return [
-            'barber_of_the_city' => $barberOfCity,
+            'employer_of_the_city' => $employerOfCity,
             'top_item_week' => $topItemWeek,
             'most_sold_item_month' => $mostSoldMonth,
         ];
