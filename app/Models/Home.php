@@ -20,8 +20,7 @@ class Home
 
         $establishmentIds = Establishment::where('app_id', $appId)
             ->when($city && $uf, fn($q) =>
-                $q->where('city', $city)
-                  ->where('uf', $uf)
+                $q->where('city', $city)->where('uf', $uf)
             )
             ->pluck('id');
 
@@ -32,15 +31,18 @@ class Home
                 'uf'   => $uf,
             ],
 
-            'stats'         => self::getStats($appId, $establishmentIds),
-            'highlights'    => self::getHighlights($establishmentIds, $city, $uf),
-            'best_scores'   => self::getBestScores($establishmentIds),
+            'stats' => self::getStats($appId, $establishmentIds),
+
+            'highlights' => self::getHighlights($appId, $establishmentIds, $city, $uf),
 
             'establishments' => self::getEstablishments($establishmentIds),
-            'employers'      => self::getEmployers($establishmentIds),
-            'items'          => self::getItems($establishmentIds),
 
-            'recent_orders'       => self::recentOrders($appId),
+            'employers' => self::getEmployers($establishmentIds),
+
+            'items' => self::getItems($establishmentIds),
+
+            'recent_orders' => self::recentOrders($appId),
+
             'recent_interactions' => self::recentInteractions($appId),
         ];
     }
@@ -59,46 +61,37 @@ class Home
             'total_users' => User::count(),
             'total_establishments' => Establishment::where('app_id', $appId)->count(),
             'total_employers' => Employer::whereIn('establishment_id', $establishmentIds)->count(),
-            'total_items' => Item::where('entity_name', 'establishment')->whereIn('entity_id', $establishmentIds)->count(),
-            'total_orders' => Order::where('app_id', $appId)->count(),
-            'new_users_30d' => User::where('created_at', '>=', now()->subDays(30))->count(),
-            'new_orders_30d' => Order::where('created_at', '>=', now()->subDays(30))->count(),
+            'total_items' => Item::where('entity_name','establishment')->whereIn('entity_id',$establishmentIds)->count(),
+            'total_orders' => Order::where('app_id',$appId)->count(),
+            'new_users_30d' => User::where('created_at','>=',now()->subDays(30))->count(),
+            'new_orders_30d' => Order::where('created_at','>=',now()->subDays(30))->count(),
             'dau' => $dau,
             'mau' => $mau,
             'dau_mau_ratio' => $mau > 0 ? round($dau / $mau, 3) : 0,
         ];
     }
 
-    private static function getHighlights($establishmentIds, $city, $uf)
+    private static function getHighlights($appId, $establishmentIds, $city, $uf)
     {
-        $employerOfCity =
-            Employer::withCount(['views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view')
-            ])
-            ->when($city && $uf, fn($q) =>
-                $q->whereHas('establishment', fn($qq) =>
-                    $qq->where('city', $city)->where('uf', $uf)
-                )
-            )
-            ->orderByDesc('total_views')
-            ->with('user')
-            ->first();
+        $bestEstablishment = self::bestEstablishment($establishmentIds);
+        $bestEmployer = self::bestEmployer($establishmentIds);
+        $bestItem = self::bestItem($establishmentIds);
 
-        $topItemWeek =
-            Item::where('entity_name', 'establishment')
-                ->whereIn('entity_id', $establishmentIds)
-                ->withCount(['views as total_views' => fn($q) =>
-                    $q->where('created_at', '>=', now()->subDays(7))
-                      ->where('interaction_type', 'view')
-                ])
-                ->orderByDesc('total_views')
-                ->first();
+        $topItemWeek = Item::where('entity_name','establishment')
+            ->whereIn('entity_id',$establishmentIds)
+            ->withCount([
+                'views as total_views' =>
+                    fn($q) => $q->where('interaction_type','view')
+                                ->where('created_at','>=',now()->subDays(7))
+            ])
+            ->orderByDesc('total_views')
+            ->first();
 
         $mostSoldMonth =
             OrderItem::whereHas('order', fn($o) =>
-                $o->where('entity_name', 'establishment')
-                  ->whereIn('entity_id', $establishmentIds)
-                  ->where('created_at', '>=', now()->subDays(30))
+                $o->where('entity_name','establishment')
+                  ->whereIn('entity_id',$establishmentIds)
+                  ->where('created_at','>=',now()->subDays(30))
             )
             ->select('item_id', DB::raw('COUNT(*) as total'))
             ->groupBy('item_id')
@@ -107,113 +100,119 @@ class Home
             ->first();
 
         return [
-            'employer_of_the_city' => $employerOfCity,
+            'best_establishment' => $bestEstablishment,
+            'best_employer' => $bestEmployer,
+            'best_item' => $bestItem,
             'top_item_week' => $topItemWeek,
             'most_sold_item_month' => $mostSoldMonth,
         ];
     }
 
-    private static function getBestScores($establishmentIds)
+    private static function bestEstablishment($establishmentIds)
     {
-        return [
-            'best_establishment' => self::scoreEstablishments($establishmentIds),
-            'best_employer'      => self::scoreEmployers($establishmentIds),
-            'best_item'          => self::scoreItems($establishmentIds),
-        ];
-    }
-
-    private static function scoreEstablishments($establishmentIds)
-    {
-        return Establishment::whereIn('id', $establishmentIds)
+        return Establishment::whereIn('id',$establishmentIds)
             ->withCount([
-                'orders as completed_orders' => fn($q) => $q->where('status', 'completed'),
-                'orders as scheduled_orders' => fn($q) => $q->where('status', 'scheduled'),
-                'orders as cancelled_orders' => fn($q) => $q->where('status', 'cancelled'),
-                'views as total_views'       => fn($q) => $q->where('interaction_type', 'view'),
+                'orders as completed_orders' =>
+                    fn($q)=>$q->whereIn('appointment_status',['confirmed','attended']),
+
+                'orders as scheduled_orders' =>
+                    fn($q)=>$q->where('appointment_status','pending'),
+
+                'orders as cancelled_orders' =>
+                    fn($q)=>$q->where('appointment_status','cancelled'),
+
+                'views as total_views' =>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($est) {
-                $conversion = $est->total_views > 0 ? $est->completed_orders / $est->total_views : 0;
+            ->map(function($e){
+                $conversion = $e->total_views > 0
+                    ? $e->completed_orders / $e->total_views
+                    : 0;
 
                 $score =
-                    $est->completed_orders * 0.40 +
-                    $est->scheduled_orders * 0.10 +
-                    ($est->cancelled_orders * -0.20) +
-                    ($est->total_views * 0.10) +
-                    ($conversion * 0.15);
+                      $e->completed_orders * 0.45
+                    + $e->scheduled_orders * 0.10
+                    + ($e->cancelled_orders * -0.25)
+                    + ($e->total_views * 0.10)
+                    + ($conversion * 0.30);
 
                 return [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'score' => round($score, 2),
+                    'id'=>$e->id,
+                    'name'=>$e->name,
+                    'slug'=>$e->slug,
+                    'score'=>round($score,2),
                 ];
             })
             ->sortByDesc('score')
             ->first();
     }
 
-    private static function scoreEmployers($establishmentIds)
+    private static function bestEmployer($establishmentIds)
     {
-        return Employer::whereIn('establishment_id', $establishmentIds)
+        return Employer::whereIn('establishment_id',$establishmentIds)
             ->withCount([
-                'orders as completed_orders' => fn($q) => $q->where('appointment_status', 'attended'),
-                'orders as cancelled_orders' => fn($q) => $q->where('appointment_status', 'cancelled'),
-                'views as total_views'       => fn($q) => $q->where('interaction_type', 'view'),
+                'orders as completed_orders' =>
+                    fn($q)=>$q->whereIn('appointment_status',['confirmed','attended']),
+
+                'orders as cancelled_orders' =>
+                    fn($q)=>$q->where('appointment_status','cancelled'),
+
+                'views as total_views' =>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($emp) {
-                $conversion =
-                    $emp->total_views > 0
-                        ? $emp->completed_orders / $emp->total_views
-                        : 0;
+            ->map(function($e){
+                $conversion = $e->total_views > 0
+                    ? $e->completed_orders / $e->total_views
+                    : 0;
 
                 $score =
-                    $emp->completed_orders * 0.50 +
-                    ($emp->cancelled_orders * -0.25) +
-                    ($emp->total_views * 0.10) +
-                    ($conversion * 0.20);
+                      $e->completed_orders * 0.50
+                    + ($e->cancelled_orders * -0.30)
+                    + ($e->total_views * 0.10)
+                    + ($conversion * 0.30);
 
                 return [
-                    'id' => $emp->id,
-                    'name' => $emp->user?->first_name . ' ' . $emp->user?->last_name,
-                    'slug' => $emp->user?->user_name,
-                    'score' => round($score, 2),
+                    'id'=>$e->id,
+                    'name'=>$e->user->first_name.' '.$e->user->last_name,
+                    'score'=>round($score,2),
                 ];
             })
             ->sortByDesc('score')
             ->first();
     }
 
-    private static function scoreItems($establishmentIds)
+    private static function bestItem($establishmentIds)
     {
-        return Item::where('entity_name', 'establishment')
-            ->whereIn('entity_id', $establishmentIds)
+        return Item::where('entity_name','establishment')
+            ->whereIn('entity_id',$establishmentIds)
             ->withCount([
-                'orderItems as sold_count' => fn($q) =>
-                    $q->whereHas('order', fn($o) =>
-                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                'orderItems as sold' =>
+                    fn($q)=>$q->whereHas('order',
+                        fn($o)=>$o->whereIn('appointment_status',['confirmed','attended'])
                     ),
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
+
+                'views as total_views' =>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($item) {
-                $conversion =
-                    $item->total_views > 0
-                        ? $item->sold_count / $item->total_views
-                        : 0;
+            ->map(function($i){
+                $conversion = $i->total_views > 0
+                    ? $i->sold / $i->total_views
+                    : 0;
 
                 $score =
-                    $item->sold_count * 0.60 +
-                    ($item->total_views * 0.15) +
-                    ($conversion * 0.20);
+                      $i->sold * 0.60
+                    + ($i->total_views * 0.10)
+                    + ($conversion * 0.30);
 
                 return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'score' => round($score, 2),
+                    'id'=>$i->id,
+                    'name'=>$i->name,
+                    'slug'=>$i->slug,
+                    'type'=>$i->type,
+                    'score'=>round($score,2),
                 ];
             })
             ->sortByDesc('score')
@@ -222,123 +221,124 @@ class Home
 
     private static function getEstablishments($ids)
     {
-        return Establishment::whereIn('id', $ids)
+        return Establishment::whereIn('id',$ids)
             ->with([
                 'user:id,first_name,last_name,user_name,avatar,email',
-                'files' => fn($q) => $q->where('entity_name', 'establishment'),
+                'files'=>fn($q)=>$q->where('entity_name','establishment'),
             ])
             ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
+                'views as total_views' =>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($e) {
-                $logo = $e->files->firstWhere('type', 'logo')?->public_url;
-                $bg = $e->files->firstWhere('type', 'background')?->public_url;
-                $gallery = $e->files->whereNotIn('type', ['logo', 'background'])
-                    ->pluck('public_url')
-                    ->values();
+            ->map(function($e){
+                $logo = $e->files->firstWhere('type','logo')?->public_url;
+                $bg   = $e->files->firstWhere('type','background')?->public_url;
+                $gallery = $e->files->whereNotIn('type',['logo','background'])
+                                    ->pluck('public_url')->values();
 
                 return [
-                    'id' => $e->id,
-                    'type' => 'establishment',
-                    'name' => $e->name,
-                    'slug' => $e->slug,
-                    'city' => $e->city,
-                    'uf' => $e->uf,
-                    'images' => [
-                        'logo' => $logo,
-                        'background' => $bg,
-                        'gallery' => $gallery,
+                    'id'=>$e->id,
+                    'type'=>'establishment',
+                    'name'=>$e->name,
+                    'slug'=>$e->slug,
+                    'city'=>$e->city,
+                    'uf'=>$e->uf,
+
+                    'images'=>[
+                        'logo'=>$logo,
+                        'background'=>$bg,
+                        'gallery'=>$gallery
                     ],
-                    'total_views' => $e->total_views,
+
+                    'total_views'=>$e->total_views,
                 ];
             });
     }
 
     private static function getEmployers($establishmentIds)
     {
-        return Employer::whereIn('establishment_id', $establishmentIds)
+        return Employer::whereIn('establishment_id',$establishmentIds)
             ->with([
                 'user:id,first_name,last_name,user_name,avatar,email',
                 'establishment:id,name,slug,city,uf',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
+                'files'=>fn($q)=>$q->where('entity_name','employer'),
             ])
             ->withCount([
-                'views as total_views' =>
-                    fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views'=>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($emp) {
-
+            ->map(function($emp){
                 $u = $emp->user;
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
-                $gallery = $emp->files->whereNotIn('type', ['avatar'])
-                    ->pluck('public_url')
-                    ->values();
+                $avatar = $emp->files->firstWhere('type','avatar')?->public_url ?? $u->avatar;
+                $gallery = $emp->files->whereNotIn('type',['avatar'])
+                            ->pluck('public_url')->values();
 
                 return [
-                    'id' => $emp->id,
-                    'type' => 'employer',
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'user_name' => $u->user_name,
-                    'avatar' => $avatar,
-                    'gallery' => $gallery,
-                    'establishment' => [
-                        'name' => $emp->establishment?->name,
-                        'slug' => $emp->establishment?->slug,
-                        'city' => $emp->establishment?->city,
-                        'uf' => $emp->establishment?->uf,
+                    'id'=>$emp->id,
+                    'type'=>'employer',
+                    'name'=>trim(($u->first_name ?? '').' '.($u->last_name ?? '')),
+                    'user_name'=>$u->user_name,
+                    'avatar'=>$avatar,
+                    'gallery'=>$gallery,
+
+                    'establishment'=>[
+                        'name'=>$emp->establishment?->name,
+                        'slug'=>$emp->establishment?->slug,
+                        'city'=>$emp->establishment?->city,
+                        'uf'=>$emp->establishment?->uf,
                     ],
-                    'total_views' => $emp->total_views,
+
+                    'total_views'=>$emp->total_views,
                 ];
             });
     }
 
     private static function getItems($establishmentIds)
     {
-        return Item::where('entity_name', 'establishment')
-            ->whereIn('entity_id', $establishmentIds)
+        return Item::where('entity_name','establishment')
+            ->whereIn('entity_id',$establishmentIds)
             ->with([
                 'establishment:id,name,slug,city,uf',
-                'files' => fn($q) => $q->where('entity_name', 'item'),
+                'files'=>fn($q)=>$q->where('entity_name','item'),
             ])
             ->withCount([
-                'views as total_views' =>
-                    fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views'=>
+                    fn($q)=>$q->where('interaction_type','view'),
             ])
             ->get()
-            ->map(function ($item) {
-
-                $avatar = $item->files->firstWhere('type', 'image')?->public_url ?? $item->image;
-                $gallery = $item->files->whereNotIn('type', ['image'])
-                    ->pluck('public_url')
-                    ->values();
+            ->map(function($i){
+                $avatar = $i->files->firstWhere('type','image')?->public_url ?? $i->image;
+                $gallery= $i->files->whereNotIn('type',['image'])->pluck('public_url')->values();
 
                 return [
-                    'id' => $item->id,
-                    'type' => $item->type,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'images' => [
-                        'avatar' => $avatar,
-                        'gallery' => $gallery,
+                    'id'=>$i->id,
+                    'type'=>$i->type,
+                    'name'=>$i->name,
+                    'slug'=>$i->slug,
+                    'price'=>$i->price,
+
+                    'images'=>[
+                        'avatar'=>$avatar,
+                        'gallery'=>$gallery,
                     ],
-                    'establishment' => [
-                        'name' => $item->establishment?->name,
-                        'slug' => $item->establishment?->slug,
-                        'city' => $item->establishment?->city,
-                        'uf' => $item->establishment?->uf,
+
+                    'establishment'=>[
+                        'name'=>$i->establishment?->name,
+                        'slug'=>$i->establishment?->slug,
+                        'city'=>$i->establishment?->city,
+                        'uf'=>$i->establishment?->uf,
                     ],
-                    'total_views' => $item->total_views,
+
+                    'total_views'=>$i->total_views,
                 ];
             });
     }
 
     private static function recentOrders($appId)
     {
-        return Order::where('app_id', $appId)
+        return Order::where('app_id',$appId)
             ->latest()
             ->limit(20)
             ->get([
