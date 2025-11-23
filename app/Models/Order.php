@@ -155,8 +155,8 @@ class Order extends Model
 {
     foreach ($items as $entry) {
 
-        $itemId    = $entry['item_id'];
-        $quantity  = $entry['quantity'] ?? 1;
+        $itemId    = (int) $entry['item_id'];
+        $quantity  = isset($entry['quantity']) ? (int) $entry['quantity'] : 1;
         $additions = $entry['additions'] ?? [];
         $removals  = $entry['removals'] ?? [];
 
@@ -166,14 +166,18 @@ class Order extends Model
             throw new \Exception("Item ID {$itemId} não encontrado.");
         }
 
+        // 🔥 Normalização para evitar falhas por letra maiúscula/minúscula ou espaços
+        $orderEntityName = strtolower(trim($this->entity_name));
+        $itemEntityName  = strtolower(trim($item->entity_name));
+
         if (
-            $item->entity_name !== $this->entity_name ||
-            $item->entity_id !== $this->entity_id
+            $itemEntityName !== $orderEntityName ||
+            (int)$item->entity_id !== (int)$this->entity_id
         ) {
             throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
         }
 
-        $unitPrice = $item->price;
+        $unitPrice = (float) $item->price;
         $subtotal  = $unitPrice * $quantity;
 
         OrderItem::create([
@@ -181,8 +185,8 @@ class Order extends Model
             'item_id'     => $itemId,
             'quantity'    => $quantity,
             'unit_price'  => $unitPrice,
-            'subtotal'    => $subtotal,        // 🔥 OBRIGATÓRIO
-            'total_price' => $subtotal,        // 🔥 use se existir na migration
+            'subtotal'    => $subtotal,
+            'total_price' => $subtotal,
             'additions'   => $additions,
             'removals'    => $removals,
         ]);
