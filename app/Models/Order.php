@@ -151,28 +151,24 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
-  public function attachItems(array $items)
+ public function attachItems(array $items)
 {
     foreach ($items as $entry) {
 
         $itemId    = (int) $entry['item_id'];
-        $quantity  = isset($entry['quantity']) ? (int) $entry['quantity'] : 1;
+        $quantity  = (int) ($entry['quantity'] ?? 1);
         $additions = $entry['additions'] ?? [];
         $removals  = $entry['removals'] ?? [];
 
-        $item = \App\Models\Item::find($itemId);
+        $item = \App\Models\Item::findOrFail($itemId);
 
-        if (!$item) {
-            throw new \Exception("Item ID {$itemId} não encontrado.");
-        }
-
-        // 🔥 Normalização para evitar falhas por letra maiúscula/minúscula ou espaços
+        // Validar vínculo com entidade
         $orderEntityName = strtolower(trim($this->entity_name));
         $itemEntityName  = strtolower(trim($item->entity_name));
 
         if (
             $itemEntityName !== $orderEntityName ||
-            (int)$item->entity_id !== (int)$this->entity_id
+            (int) $item->entity_id !== (int) $this->entity_id
         ) {
             throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
         }
@@ -180,19 +176,39 @@ class Order extends Model
         $unitPrice = (float) $item->price;
         $subtotal  = $unitPrice * $quantity;
 
-        \App\Models\OrderItem::create([
-            'order_id'    => $this->id,
-            'item_id'     => $itemId,
-            'quantity'    => $quantity,
-            'unit_price'  => $unitPrice,
-            'subtotal'    => $subtotal,
-            'total_price' => $subtotal,
-            'additions'   => $additions,
-            'removals'    => $removals,
+        // Criar OrderItem
+        $orderItem = $this->items()->create([
+            'item_id'    => $item->id,
+            'quantity'   => $quantity,
+            'unit_price' => $unitPrice,
+            'subtotal'   => $subtotal,
         ]);
+
+        // ========================
+        // ADICIONAIS { id, quantity }
+        // ========================
+        foreach ($additions as $add) {
+            $modId = $add['id'];
+            $qty   = $add['quantity'] ?? 1;
+
+            $orderItem->modifiers()->create([
+                'modifier_id' => $modId,
+                'quantity'    => $qty,
+                'type'        => 'addition',
+            ]);
+        }
+
+        // ========================
+        // REMOÇÕES: array de IDs
+        // ========================
+        foreach ($removals as $remId) {
+            $orderItem->modifiers()->create([
+                'modifier_id' => $remId,
+                'type'        => 'removal',
+            ]);
+        }
     }
 }
-
 
 
     /* ===============================
