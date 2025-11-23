@@ -179,6 +179,9 @@ public function storeDirect(Request $request)
 
         $user = auth()->user();
 
+        // ========================
+        // VALIDAR DADOS
+        // ========================
         $validated = $request->validate([
             'app_id'         => 'required|integer',
             'entity_name'    => 'required|string',
@@ -191,29 +194,26 @@ public function storeDirect(Request $request)
             'payment_method' => 'required|string',
             'notes'          => 'nullable|string',
             'items'          => 'required|array|min:1',
-            'items.*.item_id'   => 'required|integer',
-            'items.*.quantity'  => 'required|integer|min:1',
-            'items.*.additions' => 'array',
-            'items.*.removals'  => 'array'
+
+            // Estrutura do item
+            'items.*.item_id'           => 'required|integer',
+            'items.*.quantity'          => 'required|integer|min:1',
+
+            // Adicionais: [{ id, quantity }]
+            'items.*.additions'         => 'array',
+            'items.*.additions.*.id'    => 'required|integer',
+            'items.*.additions.*.quantity' => 'required|integer|min:1',
+
+            // Remoções: [id, id, id]
+            'items.*.removals'        => 'array',
+            'items.*.removals.*'      => 'integer',
         ]);
 
         \Log::info('🟢 [storeDirect] Validação concluída com sucesso.', $validated);
 
-        $attendant = \App\Models\User::find($validated['attendant_id']);
-
-        if (!$attendant) {
-            return response()->json(['error' => 'Atendente não encontrado.'], 404);
-        }
-
-        $isOwner = \App\Models\Establishment::where('id', $validated['entity_id'])
-            ->where('user_id', $attendant->id)
-            ->exists();
-
-        \Log::info('🟢 [storeDirect] Atendente validado.', [
-            'attendant_is_owner' => $isOwner,
-            'attendant_employer_id' => null
-        ]);
-
+        // ========================
+        // CRIAR O PEDIDO
+        // ========================
         $order = \App\Models\Order::create([
             'app_id'         => $validated['app_id'],
             'entity_name'    => $validated['entity_name'],
@@ -235,14 +235,77 @@ public function storeDirect(Request $request)
             'status'         => 'completed'
         ]);
 
-        $order->attachItems($validated['items']);
+        // ========================
+        // INSERIR ITEMS + MODIFIERS
+        // ========================
+        $grandTotal = 0;
 
-        $total = $order->items()->sum('total_price');
-        $order->update(['total_price' => $total]);
+        foreach ($validated['items'] as $entry) {
 
+            // Carregar item
+            $item = \App\Models\Item::findOrFail($entry['item_id']);
+            $qty = intval($entry['quantity']);
+            $unitPrice = floatval($item->price);
+
+            // Subtotal do item principal
+            $subtotal = $qty * $unitPrice;
+
+            // Criar OrderItem
+            $orderItem = $order->items()->create([
+                'item_id'    => $item->id,
+                'quantity'   => $qty,
+                'unit_price' => $unitPrice,
+                'subtotal'   => $subtotal,
+            ]);
+
+            // ========================
+            // ADICIONAIS
+            // ========================
+            if (!empty($entry['additions'])) {
+                foreach ($entry['additions'] as $add) {
+                    $addItem = \App\Models\Item::findOrFail($add['id']);
+                    $addQty  = intval($add['quantity']);
+                    $addUnit = floatval($addItem->price);
+
+                    // Subtotal dos adicionais
+                    $subtotalAdd = $addUnit * $addQty * $qty;
+                    $grandTotal += $subtotalAdd;
+
+                    // Salvar modifier
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $add['id'],
+                        'quantity'    => $addQty,
+                        'type'        => 'addition',
+                    ]);
+                }
+            }
+
+            // ========================
+            // REMOÇÕES
+            // ========================
+            if (!empty($entry['removals'])) {
+                foreach ($entry['removals'] as $remId) {
+                    $orderItem->modifiers()->create([
+                        'modifier_id' => $remId,
+                        'type'        => 'removal',
+                    ]);
+                }
+            }
+
+            $grandTotal += $subtotal;
+        }
+
+        // ========================
+        // ATUALIZAR TOTAL FINAL
+        // ========================
+        $order->update(['total_price' => $grandTotal]);
+
+        // ========================
+        // RETORNAR COMPLETO
+        // ========================
         return response()->json([
             'message' => 'Pedido criado com sucesso.',
-            'order'   => $order->load('items')
+            'order'   => $order->load('items.item', 'items.modifiers.modifier')
         ], 201);
 
     } catch (\Throwable $e) {

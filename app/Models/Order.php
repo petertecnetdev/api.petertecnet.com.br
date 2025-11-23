@@ -176,7 +176,7 @@ class Order extends Model
         $unitPrice = $item->price;
         $subtotal  = $unitPrice * $quantity;
 
-        \App\Models\OrderItem::create([
+        OrderItem::create([
             'order_id'    => $this->id,
             'item_id'     => $itemId,
             'quantity'    => $quantity,
