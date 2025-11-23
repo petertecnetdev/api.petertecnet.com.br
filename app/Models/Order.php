@@ -162,7 +162,6 @@ class Order extends Model
 
         $item = \App\Models\Item::findOrFail($itemId);
 
-        // Validar vínculo com entidade
         $orderEntityName = strtolower(trim($this->entity_name));
         $itemEntityName  = strtolower(trim($item->entity_name));
 
@@ -176,7 +175,6 @@ class Order extends Model
         $unitPrice = (float) $item->price;
         $subtotal  = $unitPrice * $quantity;
 
-        // Criar OrderItem
         $orderItem = $this->items()->create([
             'item_id'    => $item->id,
             'quantity'   => $quantity,
@@ -184,23 +182,14 @@ class Order extends Model
             'subtotal'   => $subtotal,
         ]);
 
-        // ========================
-        // ADICIONAIS { id, quantity }
-        // ========================
         foreach ($additions as $add) {
-            $modId = $add['id'];
-            $qty   = $add['quantity'] ?? 1;
-
             $orderItem->modifiers()->create([
-                'modifier_id' => $modId,
-                'quantity'    => $qty,
+                'modifier_id' => $add['id'],
+                'quantity'    => $add['quantity'] ?? 1,
                 'type'        => 'addition',
             ]);
         }
 
-        // ========================
-        // REMOÇÕES: array de IDs
-        // ========================
         foreach ($removals as $remId) {
             $orderItem->modifiers()->create([
                 'modifier_id' => $remId,
@@ -209,7 +198,6 @@ class Order extends Model
         }
     }
 }
-
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS
