@@ -829,20 +829,11 @@ class EstablishmentController extends Controller
     }
 
 
-    public function view($slug)
+   public function view($slug)
     {
         $authUser = Auth::user();
 
-        $establishment = Establishment::with([
-            'employers.user:id,first_name,last_name,user_name,avatar,email,city,uf',
-            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-            'items:id,entity_id,name,slug,price,type,image',
-            'orders.client:id,first_name,last_name,user_name,avatar,email',
-            'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            'files' => fn($q) => $q->where('entity_name', 'establishment'),
-        ])
-            ->where('slug', $slug)
-            ->firstOrFail();
+        $establishment = Establishment::findForView($slug);
 
         $establishment = $this->resolveEstablishmentLocation($establishment);
 
@@ -850,71 +841,10 @@ class EstablishmentController extends Controller
         Cache::forget("establishment_{$establishment->id}_metrics");
         Cache::forget("establishment_{$establishment->id}_summary");
 
-        $logo = $establishment->files->firstWhere('type', 'logo')?->public_url;
-        $background = $establishment->files->firstWhere('type', 'background')?->public_url;
-        $gallery = $establishment->files->whereNotIn('type', ['logo', 'background'])->pluck('public_url')->values();
-
-        return response()->json([
-            'establishment' => [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'slug' => $establishment->slug,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
-                'logo' => $logo,
-                'background' => $background,
-                'images' => [
-                    'logo' => $logo,
-                    'background' => $background,
-                    'gallery' => $gallery
-                ]
-            ],
-            'items' => $establishment->items,
-            'employers' => $establishment->employers->map(function ($emp) {
-                $u = $emp->user;
-                return [
-                    'id' => $emp->id,
-                    'type' => 'employer',
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'slug' => $u->user_name,
-                    'images' => [
-                        'avatar' => $u->avatar,
-                        'gallery' => []
-                    ]
-                ];
-            }),
-            'metrics' => $establishment->metrics,
-            'interaction_summary' => $establishment->interactionSummary(),
-            'user_interactions' => $establishment->userInteractions(),
-            'orders_summary' => $establishment->ordersSummary(),
-            'completed_appointments' => $establishment->completedAppointments(),
-            'other_establishments' => $establishment->otherEstablishments(),
-            'other_employers' => $establishment->otherEmployers()->map(function ($emp) {
-                return [
-                    'id' => $emp['id'],
-                    'type' => 'employer',
-                    'name' => $emp['name'],
-                    'slug' => $emp['user_name'],
-                    'images' => [
-                        'avatar' => $emp['avatar'],
-                        'gallery' => $emp['gallery'] ?? []
-                    ]
-                ];
-            }),
-            'other_items' => $establishment->otherItems()->map(function ($it) {
-                return [
-                    'id' => $it['id'],
-                    'type' => 'item',
-                    'name' => $it['name'],
-                    'slug' => $it['slug'],
-                    'price' => $it['price'],
-                    'images' => [
-                        'avatar' => $it['image'],
-                        'gallery' => []
-                    ]
-                ];
-            }),
-        ], 200);
+        return response()->json(
+            $establishment->toViewPayload(),
+            200
+        );
     }
 
     public function home(Request $request, $app_id)
