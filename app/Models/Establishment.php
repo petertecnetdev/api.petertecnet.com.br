@@ -7,11 +7,12 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Carbon;
-use App\Traits\HasFiles; 
+use App\Traits\HasFiles;
 
 class Establishment extends Model
-{   
-     use HasFiles;
+{
+    use HasFiles;
+
     protected $fillable = [
         'name',
         'fantasy',
@@ -54,13 +55,14 @@ class Establishment extends Model
         'is_cancelled' => 'boolean',
     ];
 
-    // ⚙️ Removido para evitar loop infinito — tudo será chamado manualmente no controller
     protected $appends = ['metrics'];
 
-protected $entity_name = 'establishment'; // na model de Establishment
+    protected $entity_name = 'establishment';
+
     protected static function boot()
     {
         parent::boot();
+
         static::saving(function ($model) {
             if (empty($model->slug)) {
                 $model->slug = Str::slug($model->fantasy ?? $model->name);
@@ -68,9 +70,12 @@ protected $entity_name = 'establishment'; // na model de Establishment
         });
     }
 
-    /* =======================
-       RELACIONAMENTOS
-       ======================= */
+    protected static function booted()
+    {
+        static::creating(function ($model) {
+            $model->entity_name = 'establishment';
+        });
+    }
 
     public function user()
     {
@@ -81,7 +86,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
     {
         return $this->belongsTo(Application::class, 'app_id');
     }
-
 
     public function items()
     {
@@ -98,20 +102,16 @@ protected $entity_name = 'establishment'; // na model de Establishment
             ]);
     }
 
-
     public function orders()
     {
         return $this->hasMany(Order::class, 'entity_id')
             ->where('entity_name', 'establishment');
     }
 
-
-
     public function employers()
     {
         return $this->hasMany(Employer::class)
             ->withCount([
-                // 👁️ Visualizações gerais
                 'views as total_views' => function ($q) {
                     $q->where('interaction_type', 'view');
                 },
@@ -119,22 +119,15 @@ protected $entity_name = 'establishment'; // na model de Establishment
                     $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
                         ->where('interaction_type', 'view');
                 },
-
-                // 💈 Total de atendimentos (pedidos confirmados ou atendidos)
                 'orders as total_appointments' => function ($q) {
                     $q->whereIn('appointment_status', ['confirmed', 'attended']);
                 },
-
-                // 💰 Total de receita gerada pelo colaborador (opcional)
                 'orders as total_revenue' => function ($q) {
                     $q->whereIn('appointment_status', ['confirmed', 'attended'])
                         ->select(\DB::raw('COALESCE(SUM(total_price),0)'));
                 },
             ]);
     }
-
-
-
 
     public function creator()
     {
@@ -157,9 +150,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
         return $this->interactions()->where('interaction_type', 'view');
     }
 
-    /* =======================
-       MÉTRICAS E INTERAÇÕES
-       ======================= */
     public function getMetricsAttribute()
     {
         return Cache::remember("establishment_{$this->id}_metrics", 120, function () {
@@ -168,28 +158,23 @@ protected $entity_name = 'establishment'; // na model de Establishment
             $employers = $this->employers();
             $orders = $this->orders();
 
-            // 🔹 Totais básicos
             $totalViews = $views->count();
             $uniqueUsers = $views->distinct('user_id')->count('user_id');
             $totalItems = $items->count();
             $totalEmployers = $employers->count();
             $totalOrders = $orders->count();
 
-            // 🔹 Pedidos por status
             $completedOrders = (clone $orders)->whereIn('appointment_status', ['confirmed', 'attended'])->count();
             $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
             $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
 
-            // 🔹 Receita e ticket médio
             $totalRevenue = (clone $orders)->sum('total_price');
             $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
-            // 🔹 Cálculo de engajamento
             $avgViewsPerUser = $uniqueUsers > 0 ? round($totalViews / $uniqueUsers, 2) : 0;
             $avgViewsPerItem = $totalItems > 0 ? round($totalViews / $totalItems, 2) : 0;
             $avgViewsPerEmployer = $totalEmployers > 0 ? round($totalViews / $totalEmployers, 2) : 0;
 
-            // 🔹 Eficiência dos colaboradores (média de visualizações por colaborador)
             $totalEmployerViews = \App\Models\Interaction::where('entity_type', 'Employer')
                 ->whereIn('entity_id', $employers->pluck('id'))
                 ->where('interaction_type', 'view')
@@ -197,7 +182,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
 
             $avgEmployerViews = $totalEmployers > 0 ? round($totalEmployerViews / $totalEmployers, 2) : 0;
 
-            // 🔹 Frequência de atividade
             $firstView = $views->min('created_at');
             if ($firstView && !($firstView instanceof \Carbon\Carbon)) {
                 $firstView = Carbon::parse($firstView);
@@ -206,7 +190,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
             $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
             $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
 
-            // 🔹 Taxas de comportamento
             $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
             $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
             $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
@@ -214,7 +197,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
                 : 0;
 
-            // 🔹 Clientes recorrentes (SQL otimizado)
             $clientsCount = (clone $orders)
                 ->selectRaw('client_id, COUNT(*) as total')
                 ->groupBy('client_id')
@@ -225,7 +207,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
                 : 0;
 
-            // 🔹 Engajamento geral (pontuação simbólica)
             $engagementScore = round(
                 ($uniqueUsers * 1.5) +
                 ($totalViews * 0.2) +
@@ -234,24 +215,18 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 2
             );
 
-            // 🔹 Receita média por colaborador
             $avgRevenuePerEmployer = $totalEmployers > 0 ? round($totalRevenue / $totalEmployers, 2) : 0;
 
             return [
-                // 🧩 Estrutura geral
                 'total_items' => $totalItems,
                 'total_employers' => $totalEmployers,
                 'total_orders' => $totalOrders,
                 'completed_orders' => $completedOrders,
                 'cancelled_orders' => $cancelledOrders,
                 'pending_orders' => $pendingOrders,
-
-                // 💰 Financeiro
                 'total_revenue' => $totalRevenue,
                 'average_ticket' => $averageTicket,
                 'avg_revenue_per_employer' => $avgRevenuePerEmployer,
-
-                // 👁️ Engajamento
                 'total_views' => $totalViews,
                 'unique_users' => $uniqueUsers,
                 'avg_views_per_user' => $avgViewsPerUser,
@@ -261,8 +236,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 'avg_views_per_day' => $avgViewsPerDay,
                 'days_active' => $daysActive,
                 'engagement_score' => $engagementScore,
-
-                // 📈 Taxas
                 'completion_rate' => $completionRate,
                 'cancellation_rate' => $cancellationRate,
                 'pending_rate' => $pendingRate,
@@ -270,7 +243,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 'return_rate' => $returnRate,
             ];
         });
-
     }
 
     public function interactionSummary()
@@ -289,7 +261,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ];
             }
 
-            // 🔹 Usuário mais ativo
             $mostActive = $views->groupBy('user_id')->map(function ($g) {
                 $u = $g->first()->user;
                 return [
@@ -302,13 +273,13 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ];
             })->sortByDesc('total')->first();
 
-            // 🔹 Último visitante (com avatar e nome)
             $lastView = $views->sortByDesc('created_at')->first()?->user;
 
             $lastViewUser = $lastView ? [
                 'user_id' => $lastView->id,
                 'user_name' => $lastView->user_name,
                 'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
+// avatar aqui ainda é coluna antiga; pode ser migrado depois para files
                 'avatar' => $lastView->avatar,
                 'email' => $lastView->email,
             ] : null;
@@ -321,7 +292,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
             ];
         });
     }
-
 
     public function itemsInteractions()
     {
@@ -382,10 +352,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
         });
     }
 
-    /* =======================
-       SEGMENTOS
-       ======================= */
-
     public function getSegmentsnNamesAttribute()
     {
         $segmentsArray = is_string($this->segments)
@@ -437,19 +403,15 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ];
             }
 
-            // 🔹 Total geral de pedidos
             $totalOrders = $orders->count();
 
-            // 🔹 Status baseados em appointment_status
             $completedOrders = $orders->whereIn('appointment_status', ['confirmed', 'attended'])->count();
             $cancelledOrders = $orders->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
             $pendingOrders = $orders->where('appointment_status', 'pending')->count();
 
-            // 🔹 Cálculo de receita e ticket médio
             $totalRevenue = $orders->sum('total_price');
             $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
-            // 🔹 Taxas comportamentais
             $cancellationRate = $totalOrders > 0 ? round(($cancelledOrders / $totalOrders) * 100, 2) : 0;
             $completionRate = $totalOrders > 0 ? round(($completedOrders / $totalOrders) * 100, 2) : 0;
             $pendingRate = $totalOrders > 0 ? round(($pendingOrders / $totalOrders) * 100, 2) : 0;
@@ -457,7 +419,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ? round(($completedOrders / ($completedOrders + $cancelledOrders)) * 100, 2)
                 : 0;
 
-            // 🔹 Tempo médio entre criação e conclusão
             $averageServiceTime = 0;
             $completedWithDates = $orders->whereNotNull('created_at')->whereNotNull('updated_at');
             if ($completedWithDates->count() > 0) {
@@ -469,7 +430,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 );
             }
 
-            // 🔹 Clientes recorrentes
             $clientsCount = $orders->groupBy('client_id')->map->count();
             $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
             $returnRate = $clientsCount->count() > 0
@@ -489,10 +449,8 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ];
             }
 
-            // 🔹 Dias de atividade
             $activeDays = $orders->pluck('created_at')->map(fn($d) => $d->toDateString())->unique()->count();
 
-            // 🔹 Cliente com mais pedidos
             $topClientByCount = $orders->groupBy('client_id')
                 ->map(function ($group) {
                     $client = $group->first()->client;
@@ -507,7 +465,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ->sortByDesc('total_orders')
                 ->first();
 
-            // 🔹 Cliente que mais gastou
             $topClientByValue = $orders->groupBy('client_id')
                 ->map(function ($group) {
                     $client = $group->first()->client;
@@ -523,7 +480,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ->sortByDesc('total_spent')
                 ->first();
 
-            // 🔹 Cliente com mais pedidos concluídos
             $topClientByCompleted = $orders->whereIn('appointment_status', ['confirmed', 'attended'])
                 ->groupBy('client_id')
                 ->map(function ($group) {
@@ -539,7 +495,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
                 ->sortByDesc('completed_orders')
                 ->first();
 
-            // 🔹 Retorno final
             return [
                 'total_orders' => $totalOrders,
                 'completed_orders' => $completedOrders,
@@ -562,13 +517,6 @@ protected $entity_name = 'establishment'; // na model de Establishment
         });
     }
 
-
-    /**
-     * Retorna um estabelecimento com os itens otimizados (para o carrossel).
-     *
-     * @param string $slug
-     * @return \App\Models\Establishment|null
-     */
     public static function withLightItems($slug)
     {
         return self::where('slug', $slug)
@@ -579,172 +527,151 @@ protected $entity_name = 'establishment'; // na model de Establishment
             ])
             ->firstOrFail();
     }
-    /* ============================================================================
-   OTHERS — PADRÃO PARA Establishment, Employer e Item
-   ============================================================================
-*/
 
-/**
- * Outros estabelecimentos do mesmo app.
- */
-public function otherEstablishments()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+    public function otherEstablishments()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-    if (!$appId) {
-        return collect();
-    }
+        if (!$appId) {
+            return collect();
+        }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
-        return \App\Models\Establishment::where('app_id', $appId)
-            ->where('id', '!=', $this->id)
-            ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
-            ->withCount(['views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view')
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($est) {
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
+            return \App\Models\Establishment::where('app_id', $appId)
+                ->where('id', '!=', $this->id)
+                ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
+                ->withCount(['views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view')
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($est) {
+                    $logo = $est->files->firstWhere('type', 'logo')?->public_url;
+                    $background = $est->files->firstWhere('type', 'background')?->public_url;
 
-                $logo = $est->files->firstWhere('type', 'logo')?->public_url;
-                $background = $est->files->firstWhere('type', 'background')?->public_url;
-
-                return [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'city' => $est->city,
-                    'category' => $est->category,
-
-                    'logo' => $logo,
-                    'background' => $background,
-
-                    'images' => [
+                    return [
+                        'id' => $est->id,
+                        'name' => $est->name,
+                        'slug' => $est->slug,
+                        'city' => $est->city,
+                        'category' => $est->category,
                         'logo' => $logo,
                         'background' => $background,
-                        'gallery' => $est->files
-                            ->whereNotIn('type', ['logo', 'background'])
-                            ->pluck('public_url')
-                            ->values()
-                    ],
-
-                    'total_views' => $est->total_views ?? 0,
-                ];
-            });
-    });
-}
-
-/**
- * Outros colaboradores (employers) do mesmo app.
- */
-
-public function otherEmployers()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
-    $establishmentId = $this->establishment_id ?? null;
-
-    if (!$appId) {
-        return collect();
+                        'images' => [
+                            'logo' => $logo,
+                            'background' => $background,
+                            'gallery' => $est->files
+                                ->whereNotIn('type', ['logo', 'background'])
+                                ->pluck('public_url')
+                                ->values()
+                        ],
+                        'total_views' => $est->total_views ?? 0,
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
+    public function otherEmployers()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+        $establishmentId = $this->establishment_id ?? null;
 
-        // Estabelecimentos do mesmo app
-        $estIds = \App\Models\Establishment::where('app_id', $appId)
-            ->pluck('id');
+        if (!$appId) {
+            return collect();
+        }
 
-        return \App\Models\Employer::whereIn('establishment_id', $estIds)
-            ->where('id', '!=', $this->id)
-            ->with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,city,uf',
-                'files' => fn($q) =>
-                    $q->where('entity_name', 'employer'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($emp) {
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
+            $estIds = \App\Models\Establishment::where('app_id', $appId)
+                ->pluck('id');
 
-                $u = $emp->user;
+            return \App\Models\Employer::whereIn('establishment_id', $estIds)
+                ->where('id', '!=', $this->id)
+                ->with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                    'establishment:id,name,slug,city,uf',
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'employer'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($emp) {
+                    $u = $emp->user;
 
-                // 🔥 EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $u?->avatar;
+                    $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
+                        ?? $u?->avatar;
 
-                return [
-                    'id' => $emp->id,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'user_name' => $u?->user_name,
-
-                    'avatar' => $avatar,
-
-                    'city' => $emp->establishment?->city,
-                    'uf' => $emp->establishment?->uf,
-
-                    'total_views' => $emp->total_views ?? 0,
-
-                    // Mesmo formato da home
-                    'images' => [
+                    return [
+                        'id' => $emp->id,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'user_name' => $u?->user_name,
                         'avatar' => $avatar,
-                        'gallery' => $emp->files
-                            ->whereNotIn('type', ['avatar'])
-                            ->pluck('public_url')
-                            ->values(),
-                    ],
-
-                    'establishment' => [
-                        'name' => $emp->establishment?->name,
-                        'slug' => $emp->establishment?->slug,
-                    ]
-                ];
-            });
-    });
-}
-
-/**
- * Outros itens do mesmo app.
- */
-public function otherItems()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
-
-    if (!$appId) {
-        return collect();
+                        'city' => $emp->establishment?->city,
+                        'uf' => $emp->establishment?->uf,
+                        'total_views' => $emp->total_views ?? 0,
+                        'images' => [
+                            'avatar' => $avatar,
+                            'gallery' => $emp->files
+                                ->whereNotIn('type', ['avatar'])
+                                ->pluck('public_url')
+                                ->values(),
+                        ],
+                        'establishment' => [
+                            'name' => $emp->establishment?->name,
+                            'slug' => $emp->establishment?->slug,
+                        ]
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
-        return \App\Models\Item::where('id', '!=', $this->id)
-            ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'item'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($item) {
+    public function otherItems()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-                $image = $item->files->firstWhere('type', 'image')?->public_url
-                    ?? $item->image;
+        if (!$appId) {
+            return collect();
+        }
 
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'image' => $image,
-                    'total_views' => $item->total_views ?? 0,
-                ];
-            });
-    });
-}
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
+            return \App\Models\Item::where('id', '!=', $this->id)
+                ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
+                ->with([
+                    'files' => fn($q) => $q->where('entity_name', 'item'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($item) {
+                    $files = $item->files ?? collect();
+                    $image = $files->firstWhere('type', 'image')?->public_url
+                        ?? $item->image;
+
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->name,
+                        'slug' => $item->slug,
+                        'price' => $item->price,
+                        'type' => $item->type,
+                        'image' => $image,
+                        'total_views' => $item->total_views ?? 0,
+                        'images' => [
+                            'avatar' => $image,
+                            'gallery' => $files
+                                ->where('type', 'image')
+                                ->pluck('public_url')
+                                ->values(),
+                        ],
+                    ];
+                });
+        });
+    }
 
     public function completedAppointments()
     {
@@ -813,12 +740,166 @@ public function otherItems()
             ->where('type', 'background');
     }
 
-protected static function booted()
-{
-    static::creating(function ($model) {
-        $model->entity_name = 'establishment';
-    });
-}
+    public static function findForView(string $slug): self
+    {
+        return self::where('slug', $slug)
+            ->with([
+                'files',
+                'logoFile',
+                'backgroundFile',
+                'user' => function ($q) {
+                    $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                        ->with([
+                            'avatarFile:id,entity_id,entity_name,type,public_url',
+                            'files',
+                        ]);
+                },
+                'employers' => function ($q) {
+                    $q->with([
+                        'user' => function ($uq) {
+                            $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                                ->with([
+                                    'avatarFile:id,entity_id,entity_name,type,public_url',
+                                    'files',
+                                ]);
+                        },
+                        'files',
+                    ]);
+                },
+                'items' => function ($q) {
+                    $q->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
+                        ->with([
+                            'files',
+                        ]);
+                },
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->firstOrFail();
+    }
 
+    public function toViewPayload(): array
+    {
+        $estFiles = $this->files ?? collect();
 
+        $logoFile = $this->logoFile ?? $estFiles->firstWhere('type', 'logo');
+        $backgroundFile = $this->backgroundFile ?? $estFiles->firstWhere('type', 'background');
+
+        $logo = $logoFile?->public_url;
+        $background = $backgroundFile?->public_url;
+
+        $galleryFiles = $estFiles->whereNotIn('type', ['logo', 'background']);
+
+        $itemsPayload = $this->items->map(function ($item) {
+            $files = $item->files ?? collect();
+
+            $avatarFile = $files->firstWhere('type', 'avatar')
+                ?: $files->firstWhere('type', 'image')
+                ?: $files->firstWhere('is_primary', true)
+                ?: $files->first();
+
+            return [
+                'id' => $item->id,
+                'entity_id' => $item->entity_id,
+                'type' => 'item',
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'price' => $item->price,
+                'item_type' => $item->type,
+                'images' => [
+                    'avatar' => $avatarFile?->public_url,
+                    'gallery' => $files->map(function ($file) {
+                        return [
+                            'id' => $file->id,
+                            'type' => $file->type,
+                            'public_url' => $file->public_url,
+                        ];
+                    })->values(),
+                    'files' => $files->map(function ($file) {
+                        return [
+                            'id' => $file->id,
+                            'type' => $file->type,
+                            'public_url' => $file->public_url,
+                        ];
+                    })->values(),
+                ],
+            ];
+        })->values();
+
+        $employersPayload = $this->employers->map(function ($emp) {
+            $u = $emp->user;
+
+            $userFiles = $u->files ?? collect();
+            $userAvatarFile = $u->avatarFile ?? $userFiles->firstWhere('type', 'avatar') ?? $userFiles->first();
+
+            $empFiles = $emp->files ?? collect();
+
+            $avatar = $userAvatarFile?->public_url
+                ?? $empFiles->firstWhere('type', 'avatar')?->public_url
+                ?? $u->avatar;
+
+            $gallery = $empFiles
+                ->whereNotIn('type', ['avatar'])
+                ->pluck('public_url')
+                ->values();
+
+            return [
+                'id' => $emp->id,
+                'type' => 'employer',
+                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                'slug' => $u->user_name,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery,
+                    'files' => $empFiles->map(function ($file) {
+                        return [
+                            'id' => $file->id,
+                            'type' => $file->type,
+                            'public_url' => $file->public_url,
+                        ];
+                    })->values(),
+                ],
+            ];
+        })->values();
+
+        return [
+            'establishment' => [
+                'id' => $this->id,
+                'name' => $this->name,
+                'slug' => $this->slug,
+                'city' => $this->city,
+                'uf' => $this->uf,
+                'logo' => $logo,
+                'background' => $background,
+                'images' => [
+                    'logo' => $logo,
+                    'background' => $background,
+                    'gallery' => $galleryFiles->map(function ($file) {
+                        return [
+                            'id' => $file->id,
+                            'type' => $file->type,
+                            'public_url' => $file->public_url,
+                        ];
+                    })->values(),
+                    'files' => $estFiles->map(function ($file) {
+                        return [
+                            'id' => $file->id,
+                            'type' => $file->type,
+                            'public_url' => $file->public_url,
+                        ];
+                    })->values(),
+                ],
+            ],
+            'items' => $itemsPayload,
+            'employers' => $employersPayload,
+            'metrics' => $this->metrics,
+            'interaction_summary' => $this->interactionSummary(),
+            'user_interactions' => $this->userInteractions(),
+            'orders_summary' => $this->ordersSummary(),
+            'completed_appointments' => $this->completedAppointments(),
+            'other_establishments' => $this->otherEstablishments(),
+            'other_employers' => $this->otherEmployers(),
+            'other_items' => $this->otherItems(),
+        ];
+    }
 }
