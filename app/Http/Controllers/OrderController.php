@@ -59,196 +59,328 @@ class OrderController extends Controller
             'notes.string' => 'As observações devem ser uma string válida.',
         ];
     }
-    public function store(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+  public function store(Request $request)
+{
+    Log::info('OrderController@store - início', [
+        'mode' => $request->input('mode'),
+        'user_id' => Auth::id(),
+        'payload' => $request->all(),
+    ]);
 
-        if ($request->input('mode') === 'appointment') {
-            return $this->storeAppointment($request);
-        }
-
-        if ($request->input('mode') === 'direct') {
-            return $this->storeDirect($request);
-        }
-
-        return response()->json(['error' => 'Modo de criação inválido.'], 422);
+    if (!Auth::check()) {
+        Log::warning('OrderController@store - usuário não autenticado', [
+            'mode' => $request->input('mode'),
+        ]);
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
-    public function storeAppointment(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
 
-        DB::beginTransaction();
+    if ($request->input('mode') === 'appointment') {
+        Log::info('OrderController@store - delegando para storeAppointment', [
+            'user_id' => Auth::id(),
+        ]);
+        return $this->storeAppointment($request);
+    }
 
-        try {
-            $user = Auth::user();
-            Log::info('🟢 Iniciando criação de agendamento.', ['user_id' => $user->id, 'payload' => $request->all()]);
+    if ($request->input('mode') === 'direct') {
+        Log::info('OrderController@store - delegando para storeDirect', [
+            'user_id' => Auth::id(),
+        ]);
+        return $this->storeDirect($request);
+    }
 
-            $data = $this->validateOrder($request);
+    Log::warning('OrderController@store - modo inválido', [
+        'mode' => $request->input('mode'),
+        'user_id' => Auth::id(),
+    ]);
 
-            $orderDate = Carbon::parse($data['order_datetime'])
-                ->tz('America/Sao_Paulo')
-                ->startOfMinute();
+    return response()->json(['error' => 'Modo de criação inválido.'], 422);
+}
 
-            $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
+public function storeAppointment(Request $request)
+{
+    if (!Auth::check()) {
+        Log::warning('OrderController@storeAppointment - usuário não autenticado');
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    }
 
-            if ($orderDate->lte($now)) {
-                DB::rollBack();
-                return response()->json([
-                    'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
-                ], 422);
-            }
+    DB::beginTransaction();
 
-            $isScheduled = true;
-            $type = 'appointment';
-            $appointmentStatus = 'pending';
+    try {
+        $user = Auth::user();
 
-            $employer = Employer::where('id', $data['attendant_id'])
-                ->where('establishment_id', $data['entity_id'])
-                ->with('user')
-                ->first();
+        Log::info('OrderController@storeAppointment - início criação de agendamento', [
+            'user_id' => $user->id,
+            'payload' => $request->all(),
+        ]);
 
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
-            }
+        $data = $this->validateOrder($request);
 
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+        Log::info('OrderController@storeAppointment - payload validado', [
+            'user_id' => $user->id,
+            'data' => $data,
+        ]);
 
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
-                DB::rollBack();
-                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-            }
+        $orderDate = Carbon::parse($data['order_datetime'])
+            ->tz('America/Sao_Paulo')
+            ->startOfMinute();
 
-            $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
-            $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+        $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
 
-            if (!empty($invalidItems)) {
-                DB::rollBack();
-                return response()->json([
-                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                    'invalid_items' => $invalidItems,
-                ], 422);
-            }
+        Log::info('OrderController@storeAppointment - comparando datas', [
+            'order_datetime' => $orderDate->toIso8601String(),
+            'now' => $now->toIso8601String(),
+        ]);
 
-            $order = Order::createOrder(
-                $data,
-                $user,
-                $orderDate,
-                $totalDuration,
-                $isScheduled,
-                $type,
-                $appointmentStatus
-            );
-
-            $order->attachItems($data['items']);
-            DB::commit();
-
-            $this->sendAppointmentEmails($order, $employer, $user);
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
-
-        } catch (\Throwable $e) {
+        if ($orderDate->lte($now)) {
             DB::rollBack();
-            Log::error('🔥 Erro inesperado ao criar agendamento.', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+            Log::warning('OrderController@storeAppointment - data/hora no passado ou igual ao agora', [
+                'order_datetime' => $orderDate->toIso8601String(),
+                'now' => $now->toIso8601String(),
+                'user_id' => $user->id,
             ]);
-            return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
+            return response()->json([
+                'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
+            ], 422);
         }
+
+        $isScheduled = true;
+        $type = 'appointment';
+        $appointmentStatus = 'pending';
+
+        Log::info('OrderController@storeAppointment - buscando colaborador', [
+            'attendant_id' => $data['attendant_id'],
+            'entity_id' => $data['entity_id'],
+        ]);
+
+        $employer = Employer::where('id', $data['attendant_id'])
+            ->where('establishment_id', $data['entity_id'])
+            ->with('user')
+            ->first();
+
+        if (!$employer) {
+            DB::rollBack();
+            Log::warning('OrderController@storeAppointment - colaborador não pertence ao estabelecimento', [
+                'attendant_id' => $data['attendant_id'],
+                'entity_id' => $data['entity_id'],
+            ]);
+            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+        }
+
+        $totalDuration = Item::totalDurationForItems($data['items']);
+        $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
+
+        Log::info('OrderController@storeAppointment - calculando duração e janela de horário', [
+            'total_duration' => $totalDuration,
+            'order_start' => $orderDate->toIso8601String(),
+            'order_end' => $orderDateEnd->toIso8601String(),
+            'attendant_id' => $data['attendant_id'],
+        ]);
+
+        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
+            DB::rollBack();
+            Log::warning('OrderController@storeAppointment - conflito de agenda detectado', [
+                'attendant_id' => $data['attendant_id'],
+                'start' => $orderDate->toIso8601String(),
+                'end' => $orderDateEnd->toIso8601String(),
+            ]);
+            return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
+        }
+
+        $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
+        Log::info('OrderController@storeAppointment - validando itens do estabelecimento', [
+            'item_ids' => $itemIds,
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+        ]);
+
+        $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
+
+        if (!empty($invalidItems)) {
+            DB::rollBack();
+            Log::warning('OrderController@storeAppointment - itens inválidos para o estabelecimento', [
+                'invalid_items' => $invalidItems,
+                'entity_name' => $data['entity_name'],
+                'entity_id' => $data['entity_id'],
+            ]);
+            return response()->json([
+                'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
+                'invalid_items' => $invalidItems,
+            ], 422);
+        }
+
+        Log::info('OrderController@storeAppointment - criando ordem', [
+            'user_id' => $user->id,
+            'is_scheduled' => $isScheduled,
+            'type' => $type,
+            'appointment_status' => $appointmentStatus,
+        ]);
+
+        $order = Order::createOrder(
+            $data,
+            $user,
+            $orderDate,
+            $totalDuration,
+            $isScheduled,
+            $type,
+            $appointmentStatus
+        );
+
+        Log::info('OrderController@storeAppointment - ordem criada, anexando itens', [
+            'order_id' => $order->id ?? null,
+            'items' => $data['items'],
+        ]);
+
+        $order->attachItems($data['items']);
+
+        Log::info('OrderController@storeAppointment - itens anexados, commit da transação', [
+            'order_id' => $order->id ?? null,
+        ]);
+
+        DB::commit();
+
+        Log::info('OrderController@storeAppointment - enviando e-mails de agendamento', [
+            'order_id' => $order->id ?? null,
+            'employer_id' => $employer->id,
+            'user_id' => $user->id,
+        ]);
+
+        $this->sendAppointmentEmails($order, $employer, $user);
+
+        Log::info('OrderController@storeAppointment - agendamento concluído com sucesso', [
+            'order_id' => $order->id ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Agendamento registrado com sucesso!',
+            'order' => $order->load('items.item'),
+        ], 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        Log::error('OrderController@storeAppointment - erro inesperado ao criar agendamento', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'user_id' => Auth::id(),
+            'payload' => $request->all(),
+        ]);
+        return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
     }
-    public function storeDirect(Request $request)
-    {
-        try {
-            if (!auth()->check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+}
 
-            $validated = $request->validate([
-                'app_id' => 'required|integer',
-                'entity_name' => 'required|string',
-                'entity_id' => 'required|integer',
-                'attendant_id' => 'required|integer',
-                'customer_name' => 'required|string',
-                'origin' => 'required|string',
-                'fulfillment' => 'required|string',
-                'payment_status' => 'required|string',
-                'payment_method' => 'required|string',
-                'notes' => 'nullable|string',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'array',
-                'items.*.additions.*.id' => 'required|integer',
-                'items.*.additions.*.quantity' => 'required|integer|min:1',
-                'items.*.removals' => 'array',
-                'items.*.removals.*' => 'integer',
-            ]);
+public function storeDirect(Request $request)
+{
+    try {
+        Log::info('OrderController@storeDirect - início criação de pedido direto', [
+            'user_id' => auth()->id(),
+            'payload' => $request->all(),
+        ]);
 
-            $user = auth()->user();
+        if (!auth()->check()) {
+            Log::warning('OrderController@storeDirect - usuário não autenticado');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-            $order = \App\Models\Order::create([
-                'app_id' => $validated['app_id'],
-                'entity_name' => $validated['entity_name'],
-                'entity_id' => $validated['entity_id'],
-                'order_number' => \App\Models\Order::nextOrderNumber($validated['app_id']),
-                'order_datetime' => now(),
-                'created_by' => $user->id,
-                'attendant_id' => $validated['attendant_id'],
-                'customer_name' => $validated['customer_name'],
-                'origin' => $validated['origin'],
-                'fulfillment' => $validated['fulfillment'],
-                'payment_status' => $validated['payment_status'],
-                'payment_method' => $validated['payment_method'],
-                'notes' => $validated['notes'] ?? null,
-                'type' => 'service',
-                'appointment_status' => null,
-                'total_price' => 0,
-                'total_duration' => 0,
-                'status' => 'completed'
-            ]);
+        $validated = $request->validate([
+            'app_id' => 'required|integer',
+            'entity_name' => 'required|string',
+            'entity_id' => 'required|integer',
+            'attendant_id' => 'required|integer',
+            'customer_name' => 'required|string',
+            'origin' => 'required|string',
+            'fulfillment' => 'required|string',
+            'payment_status' => 'required|string',
+            'payment_method' => 'required|string',
+            'notes' => 'nullable|string',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer',
+            'items.*.quantity' => 'required|integer|min:1',
+            'items.*.additions' => 'array',
+            'items.*.additions.*.id' => 'required|integer',
+            'items.*.additions.*.quantity' => 'required|integer|min:1',
+            'items.*.removals' => 'array',
+            'items.*.removals.*' => 'integer',
+        ]);
 
-            $order->attachItems($validated['items']);
+        Log::info('OrderController@storeDirect - payload validado', [
+            'user_id' => auth()->id(),
+            'validated' => $validated,
+        ]);
 
-            $total = 0;
+        $user = auth()->user();
 
-            foreach ($order->items as $it) {
-                $total += $it->subtotal;
+        $order = \App\Models\Order::create([
+            'app_id' => $validated['app_id'],
+            'entity_name' => $validated['entity_name'],
+            'entity_id' => $validated['entity_id'],
+            'order_number' => \App\Models\Order::nextOrderNumber($validated['app_id']),
+            'order_datetime' => now(),
+            'created_by' => $user->id,
+            'attendant_id' => $validated['attendant_id'],
+            'customer_name' => $validated['customer_name'],
+            'origin' => $validated['origin'],
+            'fulfillment' => $validated['fulfillment'],
+            'payment_status' => $validated['payment_status'],
+            'payment_method' => $validated['payment_method'],
+            'notes' => $validated['notes'] ?? null,
+            'type' => 'service',
+            'appointment_status' => null,
+            'total_price' => 0,
+            'total_duration' => 0,
+            'status' => 'completed'
+        ]);
 
-                foreach ($it->modifiers as $m) {
-                    $modifierItem = \App\Models\Item::find($m->modifier_id);
-                    if ($modifierItem) {
-                        $mult = $m->quantity ?? 1;
-                        $total += ($modifierItem->price * $mult);
-                    }
+        Log::info('OrderController@storeDirect - ordem criada, anexando itens', [
+            'order_id' => $order->id ?? null,
+            'items' => $validated['items'],
+        ]);
+
+        $order->attachItems($validated['items']);
+
+        $total = 0;
+
+        foreach ($order->items as $it) {
+            $total += $it->subtotal;
+
+            foreach ($it->modifiers as $m) {
+                $modifierItem = \App\Models\Item::find($m->modifier_id);
+                if ($modifierItem) {
+                    $mult = $m->quantity ?? 1;
+                    $total += ($modifierItem->price * $mult);
                 }
             }
-
-            $order->update(['total_price' => $total]);
-
-            return response()->json([
-                'message' => 'Pedido criado com sucesso.',
-                'order' => $order->load('items.item', 'items.modifiers.modifier')
-            ], 201);
-
-        } catch (\Throwable $e) {
-            \Log::error('storeDirect error', [
-                'err' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
-            ]);
-
-            return response()->json(['error' => $e->getMessage()], 500);
         }
+
+        Log::info('OrderController@storeDirect - total calculado', [
+            'order_id' => $order->id ?? null,
+            'total' => $total,
+        ]);
+
+        $order->update(['total_price' => $total]);
+
+        Log::info('OrderController@storeDirect - pedido direto concluído com sucesso', [
+            'order_id' => $order->id ?? null,
+        ]);
+
+        return response()->json([
+            'message' => 'Pedido criado com sucesso.',
+            'order' => $order->load('items.item', 'items.modifiers.modifier')
+        ], 201);
+
+    } catch (\Throwable $e) {
+        \Log::error('OrderController@storeDirect - erro ao criar pedido direto', [
+            'err' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
+            'user_id' => auth()->id(),
+            'payload' => $request->all(),
+        ]);
+
+        return response()->json(['error' => $e->getMessage()], 500);
     }
+}
 
     public function view($id)
     {
