@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use App\Mail\{ResendVerificationCodeMail, InviteCompleteMail, ResetPasswordMail};
+use App\Mail\{ResendVerificationCodeMail, InviteCompleteMail,InviteUserMail, ResetPasswordMail};
 use Validator;
 use Exception;
 use App\Http\Requests\GoogleAuthRequest;
