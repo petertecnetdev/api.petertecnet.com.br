@@ -152,18 +152,24 @@ public function storeAppointment(Request $request)
             'entity_id' => $data['entity_id'],
         ]);
 
-        $employer = Employer::where('id', $data['attendant_id'])
-            ->where('establishment_id', $data['entity_id'])
-            ->with('user')
-            ->first();
+        $employer = Employer::with('user')->find($data['attendant_id']);
 
         if (!$employer) {
             DB::rollBack();
-            Log::warning('OrderController@storeAppointment - colaborador não pertence ao estabelecimento', [
+            Log::warning('OrderController@storeAppointment - colaborador não encontrado', [
                 'attendant_id' => $data['attendant_id'],
                 'entity_id' => $data['entity_id'],
             ]);
-            return response()->json(['error' => 'O colaborador selecionado não pertence a este estabelecimento.'], 422);
+            return response()->json(['error' => 'O colaborador selecionado não foi encontrado.'], 422);
+        }
+
+        if (!empty($employer->establishment_id) && (int)$data['entity_id'] !== (int)$employer->establishment_id) {
+            Log::warning('OrderController@storeAppointment - ajustando entity_id para o establishment do colaborador', [
+                'attendant_id' => $data['attendant_id'],
+                'entity_id_enviado' => $data['entity_id'],
+                'entity_id_employer' => $employer->establishment_id,
+            ]);
+            $data['entity_id'] = (int)$employer->establishment_id;
         }
 
         $totalDuration = Item::totalDurationForItems($data['items']);
