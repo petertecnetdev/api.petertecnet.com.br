@@ -866,6 +866,7 @@ class Establishment extends Model
             'establishment' => [
                 'id' => $this->id,
                 'name' => $this->name,
+                'description' => $this->description,
                 'slug' => $this->slug,
                 'city' => $this->city,
                 'uf' => $this->uf,
