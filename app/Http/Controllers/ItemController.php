@@ -203,6 +203,66 @@ class ItemController extends Controller
         }
     }
 
+    public function listByEntitySlug($slug)
+{
+    try {
+        if (!$slug || !is_string($slug)) {
+            return response()->json([
+                'error' => 'Slug inválido.'
+            ], 422);
+        }
+
+        \Log::info('[ItemController::listByEntitySlug] Iniciando listagem de itens por slug de estabelecimento.', [
+            'slug' => $slug,
+        ]);
+
+        $establishment = Establishment::where('slug', $slug)
+            ->with([
+                'items.files' => fn($q) => $q->where('entity_name', 'item'),
+            ])
+            ->first();
+
+        if (!$establishment) {
+            \Log::warning('[ItemController::listByEntitySlug] Estabelecimento não encontrado.', [
+                'slug' => $slug,
+            ]);
+
+            return response()->json([
+                'error' => 'Estabelecimento não encontrado.'
+            ], 404);
+        }
+
+        $items = $establishment->items;
+
+        \Log::info('[ItemController::listByEntitySlug] Itens listados com sucesso.', [
+            'slug' => $slug,
+            'establishment_id' => $establishment->id,
+            'total_items' => $items->count(),
+        ]);
+
+        return response()->json([
+            'message' => 'Itens listados com sucesso.',
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'slug' => $establishment->slug,
+            ],
+            'items' => $items,
+        ], 200);
+
+    } catch (\Exception $e) {
+        \Log::error('[ItemController::listByEntitySlug] Erro inesperado ao listar itens por slug.', [
+            'slug' => $slug,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao buscar os itens.'
+        ], 500);
+    }
+}
+
     public function show($id)
     {
         try {
