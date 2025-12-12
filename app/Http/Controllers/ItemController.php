@@ -171,78 +171,35 @@ class ItemController extends Controller
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
         }
     }
-
-    public function listByEntity(Request $request)
-    {
-        try {
-            \Log::info('Iniciando a busca de itens por entidade.');
-
-            // Validação dos parâmetros
-            $validatedData = $request->validate([
-                'entity_name' => 'required|string|max:100',
-                'entity_id' => 'required|integer',
-            ], $this->getValidationMessages());
-
-            \Log::info('Parâmetros validados com sucesso:', $validatedData);
-
-            // Buscar itens com base na entidade fornecida
-            $items = Item::where('entity_name', $validatedData['entity_name'])
-                ->where('entity_id', $validatedData['entity_id'])
-                ->get();
-
-            \Log::info('Itens encontrados.', ['total' => $items->count()]);
-
-            return response()->json($items, 200);
-
-        } catch (ValidationException $e) {
-            \Log::warning('Erro de validação na listagem de itens por entidade.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            \Log::error('Erro inesperado ao buscar itens por entidade.', ['message' => $e->getMessage()]);
-            return response()->json(['error' => 'Ocorreu um erro ao buscar os itens.'], 500);
-        }
-    }
-
-  public function listByEntitySlug($slug)
+public function listByEntitySlug($slug)
 {
     try {
         if (!$slug || !is_string($slug)) {
-            return response()->json([
-                'error' => 'Slug inválido.'
-            ], 422);
+            return response()->json(['error' => 'Slug inválido.'], 422);
         }
-
-        \Log::info('[ItemController::listByEntitySlug] Iniciando listagem de itens por slug de estabelecimento.', [
-            'slug' => $slug,
-        ]);
 
         $establishment = Establishment::where('slug', $slug)
             ->with([
-                'files' => function ($q) {
-                    $q->where('entity_name', 'establishment')->visible();
-                },
-                'items.files' => function ($q) {
-                    $q->where('entity_name', 'item')->visible();
-                },
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+                      ->where('type', 'logo'),
+
+                'items.files' => fn ($q) =>
+                    $q->where('entity_name', 'item'),
             ])
             ->first();
 
         if (!$establishment) {
-            \Log::warning('[ItemController::listByEntitySlug] Estabelecimento não encontrado.', [
-                'slug' => $slug,
-            ]);
-
-            return response()->json([
-                'error' => 'Estabelecimento não encontrado.'
-            ], 404);
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        $logo = $establishment->files->firstWhere('type', 'logo')?->public_url ?: $establishment->logo;
-        $background = $establishment->files->firstWhere('type', 'background')?->public_url ?: $establishment->background;
-        $gallery = $establishment->files
-            ->whereNotIn('type', ['logo', 'background'])
-            ->pluck('public_url')
-            ->values();
+        // =========================
+        // LOGO DO ESTABELECIMENTO
+        // =========================
+        $logo =
+            $establishment->files->first()?->public_url
+            ?: $establishment->logo
+            ?: null;
 
         $mappedEstablishment = [
             'id' => $establishment->id,
@@ -252,25 +209,18 @@ class ItemController extends Controller
             'city' => $establishment->city,
             'uf' => $establishment->uf,
             'logo' => $logo,
-            'background' => $background,
-            'images' => [
-                'logo' => $logo,
-                'background' => $background,
-                'gallery' => $gallery,
-            ],
         ];
 
+        // =========================
+        // IMAGEM PRINCIPAL DO ITEM
+        // =========================
         $items = $establishment->items->map(function ($item) {
-            $files = $item->files ?: collect();
 
-            $avatar = $files->firstWhere('type', 'avatar')?->public_url
-                ?: $files->first()?->public_url
-                ?: $item->image;
-
-            $gallery = $files
-                ->where('type', 'gallery')
-                ->pluck('public_url')
-                ->values();
+            $image =
+                $item->files->firstWhere('type', 'avatar')?->public_url
+                ?: $item->files->first()?->public_url
+                ?: $item->image
+                ?: null;
 
             return [
                 'id' => $item->id,
@@ -281,19 +231,9 @@ class ItemController extends Controller
                 'category' => $item->category,
                 'description' => $item->description,
                 'total_views' => $item->total_views ?? 0,
-                'image' => $avatar,
-                'images' => [
-                    'avatar' => $avatar,
-                    'gallery' => $gallery,
-                ],
+                'image' => $image,
             ];
-        });
-
-        \Log::info('[ItemController::listByEntitySlug] Itens listados com sucesso.', [
-            'slug' => $slug,
-            'establishment_id' => $establishment->id,
-            'total_items' => $items->count(),
-        ]);
+        })->values();
 
         return response()->json([
             'message' => 'Itens listados com sucesso.',
@@ -302,17 +242,15 @@ class ItemController extends Controller
         ], 200);
 
     } catch (\Exception $e) {
-        \Log::error('[ItemController::listByEntitySlug] Erro inesperado ao listar itens por slug.', [
+        \Log::error('[ItemController::listByEntitySlug]', [
             'slug' => $slug,
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
         ]);
 
-        return response()->json([
-            'error' => 'Ocorreu um erro ao buscar os itens.'
-        ], 500);
+        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
     }
 }
+
 
 
     public function show($id)
