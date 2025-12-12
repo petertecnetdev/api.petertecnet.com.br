@@ -203,7 +203,7 @@ class ItemController extends Controller
         }
     }
 
-    public function listByEntitySlug($slug)
+  public function listByEntitySlug($slug)
 {
     try {
         if (!$slug || !is_string($slug)) {
@@ -218,7 +218,12 @@ class ItemController extends Controller
 
         $establishment = Establishment::where('slug', $slug)
             ->with([
-                'items.files' => fn($q) => $q->where('entity_name', 'item'),
+                'files' => function ($q) {
+                    $q->where('entity_name', 'establishment')->visible();
+                },
+                'items.files' => function ($q) {
+                    $q->where('entity_name', 'item')->visible();
+                },
             ])
             ->first();
 
@@ -232,7 +237,57 @@ class ItemController extends Controller
             ], 404);
         }
 
-        $items = $establishment->items;
+        $logo = $establishment->files->firstWhere('type', 'logo')?->public_url ?: $establishment->logo;
+        $background = $establishment->files->firstWhere('type', 'background')?->public_url ?: $establishment->background;
+        $gallery = $establishment->files
+            ->whereNotIn('type', ['logo', 'background'])
+            ->pluck('public_url')
+            ->values();
+
+        $mappedEstablishment = [
+            'id' => $establishment->id,
+            'name' => $establishment->name,
+            'fantasy' => $establishment->fantasy,
+            'slug' => $establishment->slug,
+            'city' => $establishment->city,
+            'uf' => $establishment->uf,
+            'logo' => $logo,
+            'background' => $background,
+            'images' => [
+                'logo' => $logo,
+                'background' => $background,
+                'gallery' => $gallery,
+            ],
+        ];
+
+        $items = $establishment->items->map(function ($item) {
+            $files = $item->files ?: collect();
+
+            $avatar = $files->firstWhere('type', 'avatar')?->public_url
+                ?: $files->first()?->public_url
+                ?: $item->image;
+
+            $gallery = $files
+                ->where('type', 'gallery')
+                ->pluck('public_url')
+                ->values();
+
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'price' => $item->price,
+                'type' => $item->type,
+                'category' => $item->category,
+                'description' => $item->description,
+                'total_views' => $item->total_views ?? 0,
+                'image' => $avatar,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery,
+                ],
+            ];
+        });
 
         \Log::info('[ItemController::listByEntitySlug] Itens listados com sucesso.', [
             'slug' => $slug,
@@ -242,11 +297,7 @@ class ItemController extends Controller
 
         return response()->json([
             'message' => 'Itens listados com sucesso.',
-            'establishment' => [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'slug' => $establishment->slug,
-            ],
+            'establishment' => $mappedEstablishment,
             'items' => $items,
         ], 200);
 
@@ -262,6 +313,7 @@ class ItemController extends Controller
         ], 500);
     }
 }
+
 
     public function show($id)
     {
