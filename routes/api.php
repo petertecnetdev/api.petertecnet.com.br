@@ -284,16 +284,17 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
-
 /*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
 */
+
 // PUBLIC
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
+    Route::get('/list-by-entity/{slug}', [EmployerController::class, 'listByEntitySlug'])->name('employer.listByEntitySlug');
 });
 
 // PRIVATE

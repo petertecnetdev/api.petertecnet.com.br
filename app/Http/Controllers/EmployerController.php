@@ -1000,4 +1000,83 @@ class EmployerController extends Controller
         return response()->json(['employers' => $employers]);
     }
 
+    public function listByEntitySlug($slug)
+{
+    try {
+        if (!$slug || !is_string($slug)) {
+            return response()->json(['error' => 'Slug inválido.'], 422);
+        }
+
+        $establishment = Establishment::where('slug', $slug)
+            ->with([
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+                      ->where('type', 'logo'),
+
+                'employers' => fn ($q) =>
+                    $q->orderByDesc('updated_at')
+                      ->with([
+                          'user:id,first_name,last_name,user_name,avatar,city,uf',
+                          'files' => fn ($fq) =>
+                              $fq->where('entity_name', 'employer'),
+                      ]),
+            ])
+            ->first();
+
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        $logo =
+            $establishment->files->first()?->public_url
+            ?: $establishment->logo
+            ?: null;
+
+        $mappedEstablishment = [
+            'id' => $establishment->id,
+            'name' => $establishment->name,
+            'fantasy' => $establishment->fantasy,
+            'slug' => $establishment->slug,
+            'city' => $establishment->city,
+            'uf' => $establishment->uf,
+            'logo' => $logo,
+        ];
+
+        $employers = $establishment->employers->map(function ($emp) {
+            $u = $emp->user;
+
+            $avatar =
+                $emp->files->firstWhere('type', 'avatar')?->public_url
+                ?: $u?->avatar
+                ?: null;
+
+            return [
+                'id' => $emp->id,
+                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                'slug' => $u?->user_name,
+                'role' => $emp->role,
+                'city' => $u?->city,
+                'uf' => $u?->uf,
+                'total_views' => $emp->metrics['total_views'] ?? 0,
+                'image' => $avatar,
+                'updated_at' => $emp->updated_at,
+            ];
+        })->values();
+
+        return response()->json([
+            'message' => 'Colaboradores listados com sucesso.',
+            'establishment' => $mappedEstablishment,
+            'employers' => $employers,
+        ], 200);
+
+    } catch (\Exception $e) {
+        \Log::error('[EmployerController::listByEntitySlug]', [
+            'slug' => $slug,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
+    }
+}
+
 }
