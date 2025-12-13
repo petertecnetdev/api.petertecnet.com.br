@@ -48,199 +48,113 @@ class ItemController extends Controller
             'duration.max' => 'A duração máxima é de 480 minutos (8 horas).',
         ];
     }
-
-    public function store(Request $request)
-    {
-        try {
-            \Log::info('Iniciando a criação de um novo item.');
-
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                \Log::warning('Usuário não autenticado tentou acessar o recurso.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            // Obter o usuário autenticado
-            $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            // Verificar se o usuário possui permissão para cadastrar itens
-            if (!$user->hasPermission('item_create')) {
-                \Log::warning('Usuário sem permissão tentou cadastrar item.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
-            }
-            if ($request->has('stock') && $request->input('stock') === '') {
-                $request->merge(['stock' => null]);
-            }
-            // Validação dos dados da requisição
-            \Log::info('Validando dados da requisição.');
-            $validatedData = $request->validate([
-                'name' => 'required|string|max:255',
-                'type' => 'required|string|max:100',
-                'price' => 'required|numeric|min:0',
-                'stock' => 'nullable|integer|min:0',
-                'status' => 'required|boolean',
-                'entity_id' => 'required|integer',
-                'entity_name' => 'required|string|max:100',
-                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-                'availability_start' => 'nullable|date',
-                'availability_end' => 'nullable|date|after:availability_start',
-                'discount' => 'nullable|numeric|min:0|max:100',
-                'expiration_date' => 'nullable|date',
-                'app_id' => 'required|exists:applications,id',
-                'duration' => 'nullable|integer|min:1|max:480',
-            ], $this->getValidationMessages());
-
-            \Log::info('Dados validados com sucesso:', $validatedData);
-
-            // Criação do item
-            \Log::info('Iniciando a criação do item no banco de dados.');
-            $item = Item::create([
-                'name' => $validatedData['name'],
-                'type' => $validatedData['type'],
-                'price' => $validatedData['price'],
-                'stock' => $validatedData['stock'],
-                'status' => (int) $validatedData['status'],
-                'user_id' => $user->id,
-                'entity_id' => $validatedData['entity_id'],
-                'entity_name' => $validatedData['entity_name'],
-                'description' => $request->input('description'),
-                'category' => $request->input('category'),
-                'subcategory' => $request->input('subcategory'),
-                'brand' => $request->input('brand'),
-                'availability_start' => $request->input('availability_start'),
-                'availability_end' => $request->input('availability_end'),
-                'is_featured' => (bool) $request->input('is_featured', false),
-                'discount' => $request->input('discount'),
-                'expiration_date' => $request->input('expiration_date'),
-                'limited_by_user' => $request->input('limited_by_user', 0),
-                'notes' => $request->input('notes'),
-                'app_id' => $validatedData['app_id'],
-                'duration' => $request->input('duration'),
-
-            ]);
-
-            \Log::info('Item criado no banco de dados.', ['item_id' => $item->id]);
-
-            if ($request->hasFile('image')) {
-                \Log::info('Imagem do item fornecida, processando...');
-
-                $destinationPath = '/home/petert03/api.petertecnet.com.br/public/images';
-                $imageName = uniqid('item_') . '.' . $request->file('image')->getClientOriginalExtension();
-
-                try {
-                    // Salvar imagem temporariamente
-                    $request->file('image')->move($destinationPath, $imageName);
-
-                    // Redimensionar para 250x250
-                    $imagePath = $destinationPath . '/' . $imageName;
-                    $image = Image::make($imagePath)->fit(250, 250);
-                    $image->save($imagePath);
-
-                    // Atualizar o caminho no banco
-                    $item->image = 'images/' . $imageName;
-                    $item->save();
-
-                    \Log::info('Imagem processada e salva com sucesso.', ['image_path' => $item->image]);
-                } catch (\Exception $e) {
-                    \Log::error('Erro ao salvar a imagem do item.', ['error' => $e->getMessage()]);
-                }
-            }
-
-            // Gerar slug para o item
-            \Log::info('Gerando slug para o item.');
-            $slug = Str::slug($validatedData['name']);
-            $count = Item::where('slug', $slug)->count();
-            if ($count > 0) {
-                $slug = $slug . '-' . ($count + 1);
-            }
-            $item->slug = $slug;
-            $item->save();
-            \Log::info('Slug gerado com sucesso.', ['slug' => $item->slug]);
-
-            // Retornar sucesso
-            \Log::info('Item cadastrado com sucesso.', ['item_id' => $item->id]);
-            return response()->json(['message' => 'Item cadastrado com sucesso.', 'item' => $item], 201);
-
-        } catch (ValidationException $e) {
-            \Log::warning('Erros de validação ao cadastrar item.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            \Log::error('Erro ao cadastrar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
-        }
-    }public function listByEntitySlug($slug)
+public function store(Request $request)
 {
     try {
-        if (!$slug || !is_string($slug)) {
-            return response()->json(['error' => 'Slug inválido.'], 422);
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        $establishment = Establishment::where('slug', $slug)
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')
-                      ->where('type', 'logo'),
+        $user = Auth::user();
 
-                'items.files' => fn ($q) =>
-                    $q->where('entity_name', 'item'),
-            ])
-            ->first();
-
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        if (!$user->hasPermission('item_create')) {
+            return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
         }
 
-        $logo =
-            $establishment->files->first()?->public_url
-            ?: $establishment->logo
-            ?: null;
+        if ($request->has('stock') && $request->input('stock') === '') {
+            $request->merge(['stock' => null]);
+        }
 
-        $mappedEstablishment = [
-            'id' => $establishment->id,
-            'name' => $establishment->name,
-            'fantasy' => $establishment->fantasy,
-            'slug' => $establishment->slug,
-            'city' => $establishment->city,
-            'uf' => $establishment->uf,
-            'logo' => $logo,
-        ];
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'type' => 'required|string|max:100',
+            'price' => 'required|numeric|min:0',
+            'stock' => 'nullable|integer|min:0',
+            'status' => 'required|boolean',
+            'entity_id' => 'required|integer',
+            'entity_name' => 'required|string|max:100',
+            'images' => 'nullable|array',
+            'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:8192',
+            'primary_image_index' => 'nullable|integer|min:0',
+            'availability_start' => 'nullable|date',
+            'availability_end' => 'nullable|date|after:availability_start',
+            'discount' => 'nullable|numeric|min:0|max:100',
+            'expiration_date' => 'nullable|date',
+            'app_id' => 'required|exists:applications,id',
+            'duration' => 'nullable|integer|min:1|max:480',
+        ], $this->getValidationMessages());
 
-        $items = $establishment->items->map(function ($item) {
-            $image =
-                $item->files->firstWhere('type', 'avatar')?->public_url
-                ?: $item->files->first()?->public_url
-                ?: $item->image
-                ?: null;
+        DB::beginTransaction();
 
-            return [
-                'id' => $item->id,
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
-                'type' => $item->type,
-                'category' => $item->category,
-                'duration' => $item->duration,
-                'description' => $item->description,
-                'total_views' => $item->total_views ?? 0,
-                'image' => $image,
-            ];
-        })->values();
-
-        return response()->json([
-            'message' => 'Itens listados com sucesso.',
-            'establishment' => $mappedEstablishment,
-            'items' => $items,
-        ], 200);
-
-    } catch (\Exception $e) {
-        \Log::error('[ItemController::listByEntitySlug]', [
-            'slug' => $slug,
-            'error' => $e->getMessage(),
+        $item = Item::create([
+            'name' => $data['name'],
+            'type' => $data['type'],
+            'price' => $data['price'],
+            'stock' => $data['stock'],
+            'status' => (int) $data['status'],
+            'user_id' => $user->id,
+            'entity_id' => $data['entity_id'],
+            'entity_name' => $data['entity_name'],
+            'description' => $request->input('description'),
+            'category' => $request->input('category'),
+            'subcategory' => $request->input('subcategory'),
+            'brand' => $request->input('brand'),
+            'availability_start' => $request->input('availability_start'),
+            'availability_end' => $request->input('availability_end'),
+            'is_featured' => (bool) $request->input('is_featured', false),
+            'discount' => $request->input('discount'),
+            'expiration_date' => $request->input('expiration_date'),
+            'limited_by_user' => $request->input('limited_by_user', 0),
+            'notes' => $request->input('notes'),
+            'app_id' => $data['app_id'],
+            'duration' => $request->input('duration'),
         ]);
 
-        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+        $baseSlug = Str::slug($item->name);
+        $slug = $baseSlug;
+        if (Item::where('slug', $slug)->exists()) {
+            $slug .= '-' . uniqid();
+        }
+        $item->update(['slug' => $slug]);
+
+        if ($request->hasFile('images')) {
+            $primaryIndex = $request->input('primary_image_index', 0);
+
+            foreach ($request->file('images') as $index => $file) {
+                $stored = File::storeOne(
+                    file: $file,
+                    entityName: 'item',
+                    entityId: $item->id,
+                    type: 'avatar',
+                    appId: $data['app_id'],
+                    createdBy: $user->id
+                );
+
+                if ((int) $index === (int) $primaryIndex) {
+                    $stored->update(['is_primary' => true]);
+                    $item->update(['image' => $stored->public_url]);
+                }
+            }
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Item cadastrado com sucesso.',
+            'item' => $item->refresh()->load('files'),
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        DB::rollBack();
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+        \Log::error('[ItemController::store]', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+        return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
     }
 }
 
