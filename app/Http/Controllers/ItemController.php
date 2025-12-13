@@ -170,8 +170,7 @@ class ItemController extends Controller
             \Log::error('Erro ao cadastrar item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
             return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
         }
-    }
-public function listByEntitySlug($slug)
+    }public function listByEntitySlug($slug)
 {
     try {
         if (!$slug || !is_string($slug)) {
@@ -193,9 +192,6 @@ public function listByEntitySlug($slug)
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        // =========================
-        // LOGO DO ESTABELECIMENTO
-        // =========================
         $logo =
             $establishment->files->first()?->public_url
             ?: $establishment->logo
@@ -211,11 +207,7 @@ public function listByEntitySlug($slug)
             'logo' => $logo,
         ];
 
-        // =========================
-        // IMAGEM PRINCIPAL DO ITEM
-        // =========================
         $items = $establishment->items->map(function ($item) {
-
             $image =
                 $item->files->firstWhere('type', 'avatar')?->public_url
                 ?: $item->files->first()?->public_url
@@ -229,6 +221,7 @@ public function listByEntitySlug($slug)
                 'price' => $item->price,
                 'type' => $item->type,
                 'category' => $item->category,
+                'duration' => $item->duration,
                 'description' => $item->description,
                 'total_views' => $item->total_views ?? 0,
                 'image' => $image,
@@ -250,7 +243,6 @@ public function listByEntitySlug($slug)
         return response()->json(['error' => 'Erro ao buscar itens.'], 500);
     }
 }
-
 
 
     public function show($id)
