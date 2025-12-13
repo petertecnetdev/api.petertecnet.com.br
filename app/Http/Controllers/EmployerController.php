@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Employer, Establishment, Interaction, User};
+use App\Models\Employer;
+use App\Models\Establishment;
+use App\Models\Interaction;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
-use App\Mail\CreatePasswordMail;
-use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
+use App\Mail\NewEmployerCollaborator;
+use App\Mail\OwnerNotifiedNewCollaborator;
 
 class EmployerController extends Controller
 {
@@ -51,14 +52,19 @@ class EmployerController extends Controller
     ];
 }
 
-
 public function store(Request $request)
 {
     try {
-        $owner = Auth::user();
-        if (!$owner) {
+        Log::info('Employer.store start', [
+            'user_id' => Auth::id(),
+            'payload' => $request->all()
+        ]);
+
+        if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $owner = Auth::user();
 
         $validated = $request->validate([
             'user_id' => 'required|integer|exists:users,id',
@@ -66,7 +72,7 @@ public function store(Request $request)
             'role' => 'required|string|max:255',
             'permissions' => 'nullable|array',
             'link' => 'required|url',
-        ]);
+        ], $this->getValidationMessages());
 
         $establishment = Establishment::findOrFail($validated['establishment_id']);
 
@@ -126,6 +132,7 @@ public function store(Request $request)
 
         Log::error('Employer.store failed', [
             'error' => $e->getMessage(),
+            'line' => $e->getLine(),
         ]);
 
         return response()->json([
@@ -853,9 +860,6 @@ public function store(Request $request)
             return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
     }
-
-
-use App\Models\Interaction;
 
 public function view($user_name)
 {
