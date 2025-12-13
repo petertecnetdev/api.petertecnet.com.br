@@ -48,115 +48,194 @@ class ItemController extends Controller
             'duration.max' => 'A duração máxima é de 480 minutos (8 horas).',
         ];
     }
-public function store(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    public function store(Request $request)
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $user = Auth::user();
+            $user = Auth::user();
 
-        if (!$user->hasPermission('item_create')) {
-            return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
-        }
+            if (!$user->hasPermission('item_create')) {
+                return response()->json(['error' => 'Você não tem permissão para cadastrar itens.'], 403);
+            }
 
-        if ($request->has('stock') && $request->input('stock') === '') {
-            $request->merge(['stock' => null]);
-        }
+            if ($request->has('stock') && $request->input('stock') === '') {
+                $request->merge(['stock' => null]);
+            }
 
-        $data = $request->validate([
-            'name' => 'required|string|max:255',
-            'type' => 'required|string|max:100',
-            'price' => 'required|numeric|min:0',
-            'stock' => 'nullable|integer|min:0',
-            'status' => 'required|boolean',
-            'entity_id' => 'required|integer',
-            'entity_name' => 'required|string|max:100',
-            'images' => 'nullable|array',
-            'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:8192',
-            'primary_image_index' => 'nullable|integer|min:0',
-            'availability_start' => 'nullable|date',
-            'availability_end' => 'nullable|date|after:availability_start',
-            'discount' => 'nullable|numeric|min:0|max:100',
-            'expiration_date' => 'nullable|date',
-            'app_id' => 'required|exists:applications,id',
-            'duration' => 'nullable|integer|min:1|max:480',
-        ], $this->getValidationMessages());
+            $data = $request->validate([
+                'app_id' => 'required|exists:applications,id',
+                'name' => 'required|string|max:255',
+                'type' => 'required|string|max:100',
+                'price' => 'required|numeric|min:0',
+                'stock' => 'nullable|integer|min:0',
+                'status' => 'required|boolean',
+                'entity_id' => 'required|integer',
+                'entity_name' => 'required|string|max:100',
+                'images' => 'nullable|array',
+                'images.*' => 'image|mimes:jpeg,png,jpg,webp|max:8192',
+                'primary_image_index' => 'nullable|integer|min:0',
+                'availability_start' => 'nullable|date',
+                'availability_end' => 'nullable|date|after:availability_start',
+                'discount' => 'nullable|numeric|min:0|max:100',
+                'expiration_date' => 'nullable|date',
+                'duration' => 'nullable|integer|min:1|max:480',
+            ], $this->getValidationMessages());
 
-        DB::beginTransaction();
+            DB::beginTransaction();
 
-        $item = Item::create([
-            'name' => $data['name'],
-            'type' => $data['type'],
-            'price' => $data['price'],
-            'stock' => $data['stock'],
-            'status' => (int) $data['status'],
-            'user_id' => $user->id,
-            'entity_id' => $data['entity_id'],
-            'entity_name' => $data['entity_name'],
-            'description' => $request->input('description'),
-            'category' => $request->input('category'),
-            'subcategory' => $request->input('subcategory'),
-            'brand' => $request->input('brand'),
-            'availability_start' => $request->input('availability_start'),
-            'availability_end' => $request->input('availability_end'),
-            'is_featured' => (bool) $request->input('is_featured', false),
-            'discount' => $request->input('discount'),
-            'expiration_date' => $request->input('expiration_date'),
-            'limited_by_user' => $request->input('limited_by_user', 0),
-            'notes' => $request->input('notes'),
-            'app_id' => $data['app_id'],
-            'duration' => $request->input('duration'),
-        ]);
+            $item = Item::create([
+                'app_id' => $data['app_id'],
+                'name' => $data['name'],
+                'type' => $data['type'],
+                'price' => $data['price'],
+                'stock' => $data['stock'],
+                'status' => (int) $data['status'],
+                'user_id' => $user->id,
+                'entity_id' => $data['entity_id'],
+                'entity_name' => $data['entity_name'],
+                'description' => $request->input('description'),
+                'category' => $request->input('category'),
+                'subcategory' => $request->input('subcategory'),
+                'brand' => $request->input('brand'),
+                'availability_start' => $request->input('availability_start'),
+                'availability_end' => $request->input('availability_end'),
+                'is_featured' => (bool) $request->input('is_featured', false),
+                'discount' => $request->input('discount'),
+                'expiration_date' => $request->input('expiration_date'),
+                'limited_by_user' => $request->input('limited_by_user', 0),
+                'notes' => $request->input('notes'),
+                'duration' => $request->input('duration'),
+                'created_by' => $user->id,
+                'updated_by' => $user->id,
+            ]);
 
-        $baseSlug = Str::slug($item->name);
-        $slug = $baseSlug;
-        if (Item::where('slug', $slug)->exists()) {
-            $slug .= '-' . uniqid();
-        }
-        $item->update(['slug' => $slug]);
+            $baseSlug = Str::slug($item->name);
+            $slug = $baseSlug;
 
-        if ($request->hasFile('images')) {
-            $primaryIndex = $request->input('primary_image_index', 0);
+            if (Item::where('slug', $slug)->exists()) {
+                $slug .= '-' . uniqid();
+            }
 
-            foreach ($request->file('images') as $index => $file) {
-                $stored = File::storeOne(
-                    file: $file,
-                    entityName: 'item',
-                    entityId: $item->id,
-                    type: 'avatar',
-                    appId: $data['app_id'],
-                    createdBy: $user->id
-                );
+            $item->update(['slug' => $slug]);
 
-                if ((int) $index === (int) $primaryIndex) {
-                    $stored->update(['is_primary' => true]);
-                    $item->update(['image' => $stored->public_url]);
+            if ($request->hasFile('images')) {
+                $primaryIndex = (int) $request->input('primary_image_index', 0);
+
+                foreach ($request->file('images') as $index => $file) {
+                    $stored = File::storeOne(
+                        file: $file,
+                        entityName: 'item',
+                        entityId: $item->id,
+                        type: 'avatar',
+                        appId: $data['app_id'],
+                        createdBy: $user->id
+                    );
+
+                    if ($index === $primaryIndex) {
+                        $stored->update(['is_primary' => true]);
+                        $item->update(['image' => $stored->public_url]);
+                    }
                 }
             }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Item cadastrado com sucesso.',
+                'item' => $item->refresh()->load('files'),
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('[ItemController::store]', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Erro ao cadastrar item.'], 500);
         }
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Item cadastrado com sucesso.',
-            'item' => $item->refresh()->load('files'),
-        ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        DB::rollBack();
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-        \Log::error('[ItemController::store]', [
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-        return response()->json(['error' => 'Ocorreu um erro ao cadastrar o item.'], 500);
     }
-}
+
+
+    public function listByEntitySlug($slug)
+    {
+        try {
+            if (!$slug || !is_string($slug)) {
+                return response()->json(['error' => 'Slug inválido.'], 422);
+            }
+
+            $establishment = Establishment::where('slug', $slug)
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                            ->where('type', 'logo'),
+
+                    'items.files' => fn($q) =>
+                        $q->where('entity_name', 'item'),
+                ])
+                ->first();
+
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            $logo =
+                $establishment->files->first()?->public_url
+                ?: $establishment->logo
+                ?: null;
+
+            $mappedEstablishment = [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+                'logo' => $logo,
+            ];
+
+            $items = $establishment->items->map(function ($item) {
+                $image =
+                    $item->files->firstWhere('type', 'avatar')?->public_url
+                    ?: $item->files->first()?->public_url
+                    ?: $item->image
+                    ?: null;
+
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'type' => $item->type,
+                    'category' => $item->category,
+                    'duration' => $item->duration,
+                    'description' => $item->description,
+                    'total_views' => $item->total_views ?? 0,
+                    'image' => $image,
+                ];
+            })->values();
+
+            return response()->json([
+                'message' => 'Itens listados com sucesso.',
+                'establishment' => $mappedEstablishment,
+                'items' => $items,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('[ItemController::listByEntitySlug]', [
+                'slug' => $slug,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+        }
+    }
 
 
     public function show($id)
@@ -845,100 +924,102 @@ public function store(Request $request)
             'other_items' => $item->otherItems() ?? [],
         ]);
     }
-public function home(Request $request, $app_id)
-{
-    $city = $request->query('city');
-    $uf   = $request->query('uf');
+    public function home(Request $request, $app_id)
+    {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
 
-    $establishmentIds = Establishment::where('app_id', $app_id)
-        ->when($city && $uf, fn($q) =>
-            $q->where('city', $city)->where('uf', $uf)
-        )
-        ->pluck('id');
+        $establishmentIds = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) =>
+                $q->where('city', $city)->where('uf', $uf)
+            )
+            ->pluck('id');
 
-    $items = Item::whereIn('entity_id', $establishmentIds)
-        ->where('entity_name', 'establishment')
-        ->with([
-            'establishment:id,name,slug,city,uf',
-            'files' => fn($q) => $q->where('entity_name', 'item'),
-        ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-            'orderItems as total_completed_appointments' => fn($q) =>
-                $q->whereHas(
-                    'order',
-                    fn($o) =>
-                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                ),
-        ])
-        ->orderByDesc('total_completed_appointments')
-        ->get()
-        ->map(function ($item) {
+        $items = Item::whereIn('entity_id', $establishmentIds)
+            ->where('entity_name', 'establishment')
+            ->with([
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) => $q->where('entity_name', 'item'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orderItems as total_completed_appointments' => fn($q) =>
+                    $q->whereHas(
+                        'order',
+                        fn($o) =>
+                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                    ),
+            ])
+            ->orderByDesc('total_completed_appointments')
+            ->get()
+            ->map(function ($item) {
 
-            // avatar principal
-            $avatar = $item->files
-                ->firstWhere('type', 'image')
-                ?->public_url;
+                // avatar principal
+                $avatar = $item->files
+                    ->firstWhere('type', 'image')
+                        ?->public_url;
 
-            // fallback caso não tenha imagem
-            $avatar = $avatar ?: asset('images/logo.png');
+                // fallback caso não tenha imagem
+                $avatar = $avatar ?: asset('images/logo.png');
 
-            // gallery
-            $gallery = $item->files
-                ->whereNotIn('type', ['image'])
-                ->pluck('public_url')
-                ->values();
+                // gallery
+                $gallery = $item->files
+                    ->whereNotIn('type', ['image'])
+                    ->pluck('public_url')
+                    ->values();
 
-            // clientes únicos atendidos
-            $uniqueClients = OrderItem::where('item_id', $item->id)
-                ->whereHas(
-                    'order',
-                    fn($o) =>
-                    $o->whereIn('appointment_status', ['confirmed', 'attended'])
-                )
-                ->with('order:id,client_id')
-                ->get()
-                ->pluck('order.client_id')
-                ->filter()
-                ->unique()
-                ->count();
+                // clientes únicos atendidos
+                $uniqueClients = OrderItem::where('item_id', $item->id)
+                    ->whereHas(
+                        'order',
+                        fn($o) =>
+                        $o->whereIn('appointment_status', ['confirmed', 'attended'])
+                    )
+                    ->with('order:id,client_id')
+                    ->get()
+                    ->pluck('order.client_id')
+                    ->filter()
+                    ->unique()
+                    ->count();
 
-            return [
-                'id'   => $item->id,
+                return [
+                    'id' => $item->id,
 
-                // *** AQUI ESTÁ A CORREÇÃO PRINCIPAL ***
-                // agora respeita exatamente o que está no banco:
-                // service, product, addon, etc.
-                'type' => $item->type,
+                    // *** AQUI ESTÁ A CORREÇÃO PRINCIPAL ***
+                    // agora respeita exatamente o que está no banco:
+                    // service, product, addon, etc.
+                    'type' => $item->type,
 
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
 
-                'images' => [
-                    'avatar'  => $avatar,
-                    'gallery' => $gallery,
-                ],
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $gallery,
+                    ],
 
-                'city' => $item->establishment?->city,
-                'uf'   => $item->establishment?->uf,
+                    'city' => $item->establishment?->city,
+                    'uf' => $item->establishment?->uf,
 
-                'total_views' => $item->total_views,
-                'unique_users' => $item->unique_users,
-                'unique_clients_attended' => $uniqueClients,
-                'total_completed_appointments' => $item->total_completed_appointments,
+                    'total_views' => $item->total_views,
+                    'unique_users' => $item->unique_users,
+                    'unique_clients_attended' => $uniqueClients,
+                    'total_completed_appointments' => $item->total_completed_appointments,
 
-                'establishment' => [
-                    'name' => $item->establishment?->name,
-                    'slug' => $item->establishment?->slug,
-                ],
-            ];
-        });
+                    'establishment' => [
+                        'name' => $item->establishment?->name,
+                        'slug' => $item->establishment?->slug,
+                    ],
+                ];
+            });
 
-    return response()->json(['items' => $items]);
-}
+        return response()->json(['items' => $items]);
+    }
 
 }
