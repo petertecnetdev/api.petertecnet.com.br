@@ -113,11 +113,9 @@ class ItemController extends Controller
             ]);
 
             $baseSlug = Str::slug($item->name);
-            $slug = $baseSlug;
-
-            if (Item::where('slug', $slug)->exists()) {
-                $slug .= '-' . uniqid();
-            }
+            $slug = Item::where('slug', $baseSlug)->exists()
+                ? $baseSlug . '-' . uniqid()
+                : $baseSlug;
 
             $item->update(['slug' => $slug]);
 
@@ -126,12 +124,12 @@ class ItemController extends Controller
 
                 foreach ($request->file('images') as $index => $file) {
                     $stored = File::storeOne(
-                        file: $file,
-                        entityName: 'item',
-                        entityId: $item->id,
-                        type: 'avatar',
-                        appId: $data['app_id'],
-                        createdBy: $user->id
+                        $file,
+                        'item',
+                        $item->id,
+                        'avatar',
+                        $data['app_id'],
+                        $user->id
                     );
 
                     if ($index === $primaryIndex) {
