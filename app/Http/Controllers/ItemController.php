@@ -421,47 +421,65 @@ public function listByEntitySlug($slug)
     }
 
 
+public function destroy($id)
+{
+    try {
+        \Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
-    public function destroy($id)
-    {
-        try {
-            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
-
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-            $item = Item::with('orderItems')->find($id);
-            if (!$item) {
-                return response()->json(['error' => 'Item não encontrado.'], 404);
-            }
-
-            if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-                return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
-            }
-
-            if ($item->orderItems()->exists()) {
-                $item->orderItems()->delete();
-            }
-
-            if ($item->image) {
-                $imagePath = storage_path('app/public/items/' . $item->image);
-                if (File::exists($imagePath)) {
-                    File::delete($imagePath);
-                }
-            }
-
-            $item->delete();
-            return response()->json(['message' => 'Item deletado com sucesso.'], 200);
-
-        } catch (\Exception $e) {
-            \Log::error('Erro ao deletar o item: ' . $e->getMessage(), ['stack' => $e->getTraceAsString()]);
-            return response()->json(['error' => 'Ocorreu um erro ao deletar o item.'], 500);
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+        $item = Item::with(['orderItems', 'files'])->find($id);
+
+        if (!$item) {
+            return response()->json(['error' => 'Item não encontrado.'], 404);
+        }
+
+        if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
+            return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
+        }
+
+        DB::beginTransaction();
+
+        if ($item->orderItems()->exists()) {
+            $item->orderItems()->delete();
+        }
+
+        if ($item->files()->exists()) {
+            foreach ($item->files as $file) {
+                if ($file->storage === 'public' && $file->path) {
+                    Storage::disk('public')->delete($file->path);
+                }
+                $file->delete();
+            }
+        }
+
+        $item->delete();
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Item deletado com sucesso.'
+        ], 200);
+
+    } catch (\Exception $e) {
+        DB::rollBack();
+
+        \Log::error('[ItemController::destroy]', [
+            'item_id' => $id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao deletar o item.'
+        ], 500);
     }
+}
 
     public function listByApp(Request $request)
     {
