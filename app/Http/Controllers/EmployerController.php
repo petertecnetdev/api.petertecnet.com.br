@@ -12,9 +12,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Mail\CreatePasswordMail;
 use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 
 class EmployerController extends Controller
 {
@@ -42,132 +40,139 @@ class EmployerController extends Controller
     }
 
 
+public function store(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-    public function store(Request $request)
-    {
-        try {
-            Log::info('Employer.store start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
+        $owner = Auth::user();
 
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+        $validated = $request->validate([
+            'establishment_id' => 'required|integer|exists:establishments,id',
+            'identifier' => 'required|string', // email | cpf | user_name | phone
+            'first_name' => 'nullable|string|max:255',
+            'role' => 'required|string|max:255',
+            'permissions' => 'required|array',
+            'link' => 'required|url',
+        ], [
+            'identifier.required' => 'Informe email, CPF, usuário ou telefone.',
+        ]);
 
-            $user = Auth::user();
+        $establishment = Establishment::find($validated['establishment_id']);
 
-            $validatedData = $request->validate([
-                'first_name' => 'required|string|max:255',
-                'email' => 'required|email|max:255',
-                'establishment_id' => 'required|integer|exists:establishments,id',
-                'link' => 'required|url',
-                'role' => 'required|string|max:255',
-                'permissions' => 'required|array',
-            ], $this->getValidationMessages());
+        if ($establishment->user_id !== $owner->id) {
+            return response()->json([
+                'error' => 'Apenas o dono do estabelecimento pode convidar colaboradores.'
+            ], 403);
+        }
 
-            $establishment = Establishment::find($validatedData['establishment_id']);
-            if (!$establishment) {
-                return response()->json([
-                    'error' => 'O estabelecimento informado não existe ou foi removido.'
-                ], 404);
-            }
+        $identifier = trim($validated['identifier']);
 
-            // ✅ Correção da verificação do dono do estabelecimento
-            if ($establishment->user_id !== $user->id) {
-                return response()->json([
-                    'error' => 'Apenas o dono do estabelecimento pode adicionar novos colaboradores.'
-                ], 403);
-            }
+        $user = User::where('email', $identifier)
+            ->orWhere('user_name', $identifier)
+            ->orWhere('phone', preg_replace('/\D/', '', $identifier))
+            ->orWhere('cpf', preg_replace('/\D/', '', $identifier))
+            ->first();
 
-            $existingUser = User::where('email', $validatedData['email'])->first();
-
+        if ($user) {
             if (
-                $existingUser && Employer::where('user_id', $existingUser->id)
+                Employer::where('user_id', $user->id)
                     ->where('establishment_id', $establishment->id)
                     ->exists()
             ) {
                 return response()->json([
-                    'error' => 'Este usuário já está vinculado a este estabelecimento.'
+                    'error' => 'Este usuário já é colaborador deste estabelecimento.'
                 ], 409);
             }
+        }
 
-            if (!$existingUser) {
-                $username = Str::slug($validatedData['first_name']) . '-' . Str::random(4);
-                while (User::where('user_name', $username)->exists()) {
-                    $username = Str::slug($validatedData['first_name']) . '-' . Str::random(4);
-                }
-
-                $password = Str::random(10);
-
-                $newUser = User::create([
-                    'first_name' => $validatedData['first_name'],
-                    'name' => $validatedData['first_name'],
-                    'email' => $validatedData['email'],
-                    'user_name' => $username,
-                    'password' => Hash::make($password),
-                ]);
-
-                $employer = Employer::create([
-                    'user_id' => $newUser->id,
-                    'establishment_id' => $establishment->id,
-                    'role' => $validatedData['role'],
-                    'permissions' => $validatedData['permissions'],
-                    'created_by' => $user->id,
-                    'updated_by' => $user->id,
-                ]);
-
-                $createCode = Str::random(8);
-                $newUser->reset_password_code = $createCode;
-                $newUser->reset_password_expires_at = now()->addMinutes(10);
-                $newUser->save();
-
-                Mail::to($newUser->email)->send(new CreatePasswordMail($createCode, $newUser, $validatedData['link']));
-                Mail::to($newUser->email)->send(new NewEmployerCollaborator($establishment, $employer));
-
-                if ($establishment->user_id && $establishment->user) {
-                    Mail::to($establishment->user->email)->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
-                }
-
-                $message = 'Novo colaborador criado com sucesso. Um e-mail foi enviado para o colaborador finalizar o cadastro.';
-            } else {
-                $employer = Employer::create([
-                    'user_id' => $existingUser->id,
-                    'establishment_id' => $establishment->id,
-                    'role' => $validatedData['role'],
-                    'permissions' => $validatedData['permissions'],
-                    'created_by' => $user->id,
-                    'updated_by' => $user->id,
-                ]);
-
-                Mail::to($existingUser->email)->send(new NewEmployerCollaborator($establishment, $employer));
-
-                if ($establishment->user_id && $establishment->user) {
-                    Mail::to($establishment->user->email)->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
-                }
-
-                $message = 'Usuário já existente vinculado como colaborador com sucesso.';
+        if (!$user) {
+            if (empty($validated['first_name'])) {
+                return response()->json([
+                    'error' => 'first_name é obrigatório ao criar um novo usuário.'
+                ], 422);
             }
 
-            Log::info('Employer.store success', ['employer_id' => $employer->id]);
+            $usernameBase = Str::slug($validated['first_name']);
+            $username = $usernameBase . '-' . Str::random(4);
 
-            return response()->json([
-                'message' => $message,
-                'employer' => $employer,
-            ], 201);
+            while (User::where('user_name', $username)->exists()) {
+                $username = $usernameBase . '-' . Str::random(4);
+            }
 
-        } catch (ValidationException $e) {
-            Log::warning('Employer.store validation failed', ['errors' => $e->errors()]);
-            return response()->json([
-                'message' => 'Erro de validação nos dados enviados.',
-                'errors' => $e->errors()
-            ], 422);
+            $password = Str::random(10);
 
-        } catch (\Exception $e) {
-            Log::error('Employer.store failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
-            return response()->json([
-                'error' => 'Ocorreu um erro inesperado ao adicionar o colaborador.',
-                'details' => $e->getMessage(),
-            ], 500);
+            $user = User::create([
+                'first_name' => $validated['first_name'],
+                'name' => $validated['first_name'],
+                'email' => filter_var($identifier, FILTER_VALIDATE_EMAIL) ? $identifier : null,
+                'cpf' => strlen(preg_replace('/\D/', '', $identifier)) === 11 ? preg_replace('/\D/', '', $identifier) : null,
+                'phone' => strlen(preg_replace('/\D/', '', $identifier)) >= 10 ? preg_replace('/\D/', '', $identifier) : null,
+                'user_name' => $username,
+                'password' => Hash::make($password),
+            ]);
+
+            $code = Str::random(8);
+            $user->reset_password_code = $code;
+            $user->reset_password_expires_at = now()->addMinutes(15);
+            $user->save();
         }
+
+        $employer = Employer::create([
+            'user_id' => $user->id,
+            'establishment_id' => $establishment->id,
+            'role' => $validated['role'],
+            'permissions' => $validated['permissions'],
+            'created_by' => $owner->id,
+            'updated_by' => $owner->id,
+        ]);
+
+        if ($user->email) {
+            Mail::to($user->email)->send(
+                new NewEmployerCollaborator($establishment, $employer)
+            );
+
+            if ($user->reset_password_code) {
+                Mail::to($user->email)->send(
+                    new CreatePasswordMail(
+                        $user->reset_password_code,
+                        $user,
+                        $validated['link']
+                    )
+                );
+            }
+        }
+
+        if ($establishment->user?->email) {
+            Mail::to($establishment->user->email)
+                ->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+        }
+
+        return response()->json([
+            'message' => 'Colaborador associado ao estabelecimento com sucesso.',
+            'employer' => $employer,
+        ], 201);
+
+    } catch (ValidationException $e) {
+        return response()->json([
+            'message' => 'Erro de validação.',
+            'errors' => $e->errors()
+        ], 422);
+    } catch (\Exception $e) {
+        Log::error('Employer.store failed', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        ]);
+
+        return response()->json([
+            'error' => 'Erro inesperado ao associar colaborador.',
+            'details' => $e->getMessage(),
+        ], 500);
     }
+}
+
 
     public function listByEstablishment(Request $request)
     {
