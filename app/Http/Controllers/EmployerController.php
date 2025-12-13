@@ -54,6 +54,7 @@ class EmployerController extends Controller
 
 public function store(Request $request)
 {
+    dd(method_exists($this, 'getValidationMessages'));
     try {
         Log::info('Employer.store start', [
             'user_id' => Auth::id(),
