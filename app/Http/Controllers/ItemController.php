@@ -158,80 +158,83 @@ class ItemController extends Controller
         }
     }
 
+public function listByEntitySlug($slug)
+{
+    try {
+        if (!$slug || !is_string($slug)) {
+            return response()->json(['error' => 'Slug inválido.'], 422);
+        }
 
-    public function listByEntitySlug($slug)
-    {
-        try {
-            if (!$slug || !is_string($slug)) {
-                return response()->json(['error' => 'Slug inválido.'], 422);
-            }
+        $establishment = Establishment::where('slug', $slug)
+            ->with([
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+                      ->where('type', 'logo'),
 
-            $establishment = Establishment::where('slug', $slug)
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo'),
+                'items' => fn ($q) =>
+                    $q->orderByDesc('updated_at')
+                      ->with(['files' => fn ($fq) =>
+                          $fq->where('entity_name', 'item')
+                      ]),
+            ])
+            ->first();
 
-                    'items.files' => fn($q) =>
-                        $q->where('entity_name', 'item'),
-                ])
-                ->first();
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
 
-            if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-            }
+        $logo =
+            $establishment->files->first()?->public_url
+            ?: $establishment->logo
+            ?: null;
 
-            $logo =
-                $establishment->files->first()?->public_url
-                ?: $establishment->logo
+        $mappedEstablishment = [
+            'id' => $establishment->id,
+            'name' => $establishment->name,
+            'fantasy' => $establishment->fantasy,
+            'slug' => $establishment->slug,
+            'city' => $establishment->city,
+            'uf' => $establishment->uf,
+            'logo' => $logo,
+        ];
+
+        $items = $establishment->items->map(function ($item) {
+            $image =
+                $item->files->firstWhere('type', 'avatar')?->public_url
+                ?: $item->files->first()?->public_url
+                ?: $item->image
                 ?: null;
 
-            $mappedEstablishment = [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'fantasy' => $establishment->fantasy,
-                'slug' => $establishment->slug,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
-                'logo' => $logo,
+            return [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+                'price' => $item->price,
+                'type' => $item->type,
+                'category' => $item->category,
+                'duration' => $item->duration,
+                'description' => $item->description,
+                'total_views' => $item->total_views ?? 0,
+                'image' => $image,
+                'updated_at' => $item->updated_at,
             ];
+        })->values();
 
-            $items = $establishment->items->map(function ($item) {
-                $image =
-                    $item->files->firstWhere('type', 'avatar')?->public_url
-                    ?: $item->files->first()?->public_url
-                    ?: $item->image
-                    ?: null;
+        return response()->json([
+            'message' => 'Itens listados com sucesso.',
+            'establishment' => $mappedEstablishment,
+            'items' => $items,
+        ], 200);
 
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'category' => $item->category,
-                    'duration' => $item->duration,
-                    'description' => $item->description,
-                    'total_views' => $item->total_views ?? 0,
-                    'image' => $image,
-                ];
-            })->values();
+    } catch (\Exception $e) {
+        \Log::error('[ItemController::listByEntitySlug]', [
+            'slug' => $slug,
+            'error' => $e->getMessage(),
+        ]);
 
-            return response()->json([
-                'message' => 'Itens listados com sucesso.',
-                'establishment' => $mappedEstablishment,
-                'items' => $items,
-            ], 200);
-
-        } catch (\Exception $e) {
-            \Log::error('[ItemController::listByEntitySlug]', [
-                'slug' => $slug,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao buscar itens.'], 500);
-        }
+        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
     }
+}
 
 
     public function show($id)
