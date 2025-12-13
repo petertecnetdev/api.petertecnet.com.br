@@ -555,7 +555,6 @@ public function findForEmployer(Request $request)
     ]);
 
     try {
-        // 🔐 ÚNICA RESTRIÇÃO: estar autenticado
         $this->getAuthenticatedUser();
 
         $validated = $request->validate([
@@ -615,7 +614,7 @@ public function findForEmployer(Request $request)
 
                 $avatar = $user->avatarFile?->public_url ?? $user->avatar;
 
-                $establishments = Employer::where('user_id', $user->id)
+                $establishments = \App\Models\Employer::where('user_id', $user->id)
                     ->with(['establishment.files'])
                     ->get()
                     ->map(function ($emp) {
@@ -680,6 +679,7 @@ public function findForEmployer(Request $request)
         ], 500);
     }
 }
+
 
 
 }
