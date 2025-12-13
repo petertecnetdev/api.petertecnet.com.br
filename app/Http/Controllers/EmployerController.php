@@ -39,110 +39,56 @@ class EmployerController extends Controller
         ];
     }
 
-
 public function store(Request $request)
 {
     try {
-        if (!Auth::check()) {
+        $owner = Auth::user();
+        if (!$owner) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        $owner = Auth::user();
-
         $validated = $request->validate([
+            'user_id' => 'required|integer|exists:users,id',
             'establishment_id' => 'required|integer|exists:establishments,id',
-            'identifier' => 'required|string', // email | cpf | user_name | phone
-            'first_name' => 'nullable|string|max:255',
             'role' => 'required|string|max:255',
-            'permissions' => 'required|array',
+            'permissions' => 'nullable|array',
             'link' => 'required|url',
-        ], [
-            'identifier.required' => 'Informe email, CPF, usuário ou telefone.',
         ]);
 
-        $establishment = Establishment::find($validated['establishment_id']);
+        $establishment = Establishment::findOrFail($validated['establishment_id']);
 
         if ($establishment->user_id !== $owner->id) {
             return response()->json([
-                'error' => 'Apenas o dono do estabelecimento pode convidar colaboradores.'
+                'error' => 'Apenas o dono do estabelecimento pode associar colaboradores.'
             ], 403);
         }
 
-        $identifier = trim($validated['identifier']);
-
-        $user = User::where('email', $identifier)
-            ->orWhere('user_name', $identifier)
-            ->orWhere('phone', preg_replace('/\D/', '', $identifier))
-            ->orWhere('cpf', preg_replace('/\D/', '', $identifier))
-            ->first();
-
-        if ($user) {
-            if (
-                Employer::where('user_id', $user->id)
-                    ->where('establishment_id', $establishment->id)
-                    ->exists()
-            ) {
-                return response()->json([
-                    'error' => 'Este usuário já é colaborador deste estabelecimento.'
-                ], 409);
-            }
+        if (
+            Employer::where('user_id', $validated['user_id'])
+                ->where('establishment_id', $establishment->id)
+                ->exists()
+        ) {
+            return response()->json([
+                'error' => 'Este usuário já é colaborador deste estabelecimento.'
+            ], 409);
         }
 
-        if (!$user) {
-            if (empty($validated['first_name'])) {
-                return response()->json([
-                    'error' => 'first_name é obrigatório ao criar um novo usuário.'
-                ], 422);
-            }
-
-            $usernameBase = Str::slug($validated['first_name']);
-            $username = $usernameBase . '-' . Str::random(4);
-
-            while (User::where('user_name', $username)->exists()) {
-                $username = $usernameBase . '-' . Str::random(4);
-            }
-
-            $password = Str::random(10);
-
-            $user = User::create([
-                'first_name' => $validated['first_name'],
-                'name' => $validated['first_name'],
-                'email' => filter_var($identifier, FILTER_VALIDATE_EMAIL) ? $identifier : null,
-                'cpf' => strlen(preg_replace('/\D/', '', $identifier)) === 11 ? preg_replace('/\D/', '', $identifier) : null,
-                'phone' => strlen(preg_replace('/\D/', '', $identifier)) >= 10 ? preg_replace('/\D/', '', $identifier) : null,
-                'user_name' => $username,
-                'password' => Hash::make($password),
-            ]);
-
-            $code = Str::random(8);
-            $user->reset_password_code = $code;
-            $user->reset_password_expires_at = now()->addMinutes(15);
-            $user->save();
-        }
+        DB::beginTransaction();
 
         $employer = Employer::create([
-            'user_id' => $user->id,
+            'user_id' => $validated['user_id'],
             'establishment_id' => $establishment->id,
             'role' => $validated['role'],
-            'permissions' => $validated['permissions'],
+            'permissions' => $validated['permissions'] ?? [],
             'created_by' => $owner->id,
             'updated_by' => $owner->id,
         ]);
 
-        if ($user->email) {
-            Mail::to($user->email)->send(
-                new NewEmployerCollaborator($establishment, $employer)
-            );
+        $user = User::find($validated['user_id']);
 
-            if ($user->reset_password_code) {
-                Mail::to($user->email)->send(
-                    new CreatePasswordMail(
-                        $user->reset_password_code,
-                        $user,
-                        $validated['link']
-                    )
-                );
-            }
+        if ($user?->email) {
+            Mail::to($user->email)
+                ->send(new NewEmployerCollaborator($establishment, $employer));
         }
 
         if ($establishment->user?->email) {
@@ -150,25 +96,27 @@ public function store(Request $request)
                 ->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
         }
 
+        DB::commit();
+
         return response()->json([
-            'message' => 'Colaborador associado ao estabelecimento com sucesso.',
+            'message' => 'Colaborador associado com sucesso.',
             'employer' => $employer,
         ], 201);
 
     } catch (ValidationException $e) {
         return response()->json([
-            'message' => 'Erro de validação.',
             'errors' => $e->errors()
         ], 422);
-    } catch (\Exception $e) {
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
         Log::error('Employer.store failed', [
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
         ]);
 
         return response()->json([
             'error' => 'Erro inesperado ao associar colaborador.',
-            'details' => $e->getMessage(),
         ], 500);
     }
 }
