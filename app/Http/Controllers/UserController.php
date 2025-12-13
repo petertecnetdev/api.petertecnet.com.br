@@ -547,4 +547,139 @@ class UserController extends Controller
             ], 500);
         }
     }
+public function findForEmployer(Request $request)
+{
+    Log::info('User.findForEmployer start', [
+        'auth_user_id' => Auth::id(),
+        'payload' => $request->all(),
+    ]);
+
+    try {
+        // 🔐 ÚNICA RESTRIÇÃO: estar autenticado
+        $this->getAuthenticatedUser();
+
+        $validated = $request->validate([
+            'first_name' => 'nullable|string|max:255',
+            'email' => 'nullable|string|max:255',
+            'cpf' => 'nullable|string|max:20',
+            'phone' => 'nullable|string|max:20',
+            'user_name' => 'nullable|string|max:255',
+        ]);
+
+        if (
+            empty($validated['first_name']) &&
+            empty($validated['email']) &&
+            empty($validated['cpf']) &&
+            empty($validated['phone']) &&
+            empty($validated['user_name'])
+        ) {
+            return response()->json([
+                'error' => 'Informe ao menos um critério para buscar o usuário.'
+            ], 422);
+        }
+
+        $query = User::query()
+            ->with([
+                'profile',
+                'avatarFile',
+                'files',
+                'employer.establishment.files',
+            ]);
+
+        if (!empty($validated['first_name'])) {
+            $query->where('first_name', 'like', '%' . $validated['first_name'] . '%');
+        }
+
+        if (!empty($validated['email'])) {
+            $query->where('email', 'like', '%' . $validated['email'] . '%');
+        }
+
+        if (!empty($validated['cpf'])) {
+            $cpf = preg_replace('/[^0-9]/', '', $validated['cpf']);
+            $query->where('cpf', 'like', '%' . $cpf . '%');
+        }
+
+        if (!empty($validated['phone'])) {
+            $phone = preg_replace('/[^0-9]/', '', $validated['phone']);
+            $query->where('phone', 'like', '%' . $phone . '%');
+        }
+
+        if (!empty($validated['user_name'])) {
+            $query->where('user_name', 'like', '%' . $validated['user_name'] . '%');
+        }
+
+        $users = $query
+            ->orderBy('first_name')
+            ->get()
+            ->map(function (User $user) {
+
+                $avatar = $user->avatarFile?->public_url ?? $user->avatar;
+
+                $establishments = Employer::where('user_id', $user->id)
+                    ->with(['establishment.files'])
+                    ->get()
+                    ->map(function ($emp) {
+                        $est = $emp->establishment;
+                        if (!$est) return null;
+
+                        $logo = $est->files->firstWhere('type', 'logo')?->public_url;
+
+                        return [
+                            'employer_id' => $emp->id,
+                            'establishment_id' => $est->id,
+                            'name' => $est->name,
+                            'fantasy' => $est->fantasy,
+                            'slug' => $est->slug,
+                            'city' => $est->city,
+                            'uf' => $est->uf,
+                            'logo' => $logo,
+                            'role' => $emp->role,
+                        ];
+                    })
+                    ->filter()
+                    ->values();
+
+                return [
+                    'id' => $user->id,
+                    'first_name' => $user->first_name,
+                    'last_name' => $user->last_name,
+                    'user_name' => $user->user_name,
+                    'email' => $user->email,
+                    'cpf' => $user->cpf,
+                    'phone' => $user->phone,
+                    'city' => $user->city,
+                    'uf' => $user->uf,
+                    'avatar' => $avatar,
+                    'profile' => $user->profile,
+                    'is_employer' => $establishments->isNotEmpty(),
+                    'establishments' => $establishments,
+                    'created_at' => $user->created_at,
+                    'updated_at' => $user->updated_at,
+                ];
+            })
+            ->values();
+
+        return response()->json([
+            'message' => 'Busca realizada com sucesso.',
+            'count' => $users->count(),
+            'users' => $users,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json([
+            'errors' => $e->errors(),
+        ], 422);
+
+    } catch (\Throwable $e) {
+        Log::error('User.findForEmployer failed', [
+            'message' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro ao buscar usuário para associação.',
+        ], 500);
+    }
+}
+
+
 }

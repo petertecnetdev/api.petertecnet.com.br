@@ -65,8 +65,6 @@ Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name
 
 
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
-
-
 /*
 |--------------------------------------------------------------------------
 | USUÁRIOS
@@ -75,6 +73,7 @@ Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.go
 Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/', [UserController::class, 'list'])->name('user.list');
     Route::get('/search', [UserController::class, 'search'])->name('user.search');
+    Route::post('/find-for-employer', [UserController::class, 'findForEmployer'])->name('user.findForEmployer');
     Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
     Route::get('/{userName}', [UserController::class, 'view'])->name('user.view');
     Route::post('/new', [UserController::class, 'store'])->name('user.store');
