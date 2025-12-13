@@ -16,28 +16,41 @@ use Illuminate\Support\Facades\DB;
 
 class EmployerController extends Controller
 {
-    protected function getScheduleValidationMessages()
-    {
-        return [
-            'employer_id.required' => 'O campo employer_id é obrigatório.',
-            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
-            'employer_id.exists' => 'O colaborador informado não existe.',
+  protected function getValidationMessages()
+{
+    return [
+        'user_id.required' => 'Usuário é obrigatório.',
+        'user_id.exists' => 'Usuário não encontrado.',
 
-            'schedules.required' => 'A lista de horários é obrigatória.',
-            'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
-            'schedules.min' => 'É necessário informar pelo menos um horário.',
+        'establishment_id.required' => 'Estabelecimento é obrigatório.',
+        'establishment_id.exists' => 'Estabelecimento inválido.',
 
-            'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
-            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido (monday a sunday).',
+        'role.required' => 'A função do colaborador é obrigatória.',
+        'role.string' => 'A função deve ser um texto válido.',
 
-            'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
-            'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
+        'link.required' => 'O link é obrigatório.',
+        'link.url' => 'O link informado é inválido.',
 
-            'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
-            'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
-            'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
-        ];
-    }
+        'employer_id.required' => 'O campo employer_id é obrigatório.',
+        'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+        'employer_id.exists' => 'O colaborador informado não existe.',
+
+        'schedules.required' => 'A lista de horários é obrigatória.',
+        'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
+        'schedules.min' => 'É necessário informar pelo menos um horário.',
+
+        'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
+        'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido.',
+
+        'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
+        'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
+
+        'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
+        'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
+        'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
+    ];
+}
+
 
 public function store(Request $request)
 {
@@ -601,7 +614,7 @@ public function store(Request $request)
         try {
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
-            ], $this->getScheduleValidationMessages());
+            ], $this->getValidationMessages());
 
             $schedules = \App\Models\EmployerSchedule::where('employer_id', $data['employer_id'])
                 ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
@@ -625,7 +638,7 @@ public function store(Request $request)
                 'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
                 'schedules.*.start_time' => 'required|date_format:H:i',
                 'schedules.*.end_time' => 'required|date_format:H:i',
-            ], $this->getScheduleValidationMessages());
+            ], $this->getValidationMessages());
 
             // 🕒 Validação manual: end_time deve ser maior que start_time
             foreach ($data['schedules'] as $schedule) {
@@ -842,131 +855,142 @@ public function store(Request $request)
     }
 
 
+use App\Models\Interaction;
 
-    public function view($user_name)
-    {
-        $authUser = Auth::user();
+public function view($user_name)
+{
+    $authUser = Auth::user();
 
-        $employer = Employer::with([
-            'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
-            'establishment.items:id,entity_id,name,slug,price,type,image',
-            'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
-            'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
-            'orders.client:id,first_name,last_name,user_name,avatar,email',
-            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+    $employer = Employer::with([
+        'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
+        'establishment.items:id,entity_id,name,slug,price,type,image',
+        'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+        'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+        'orders.client:id,first_name,last_name,user_name,avatar,email',
+        'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        'files' => fn($q) => $q->where('entity_name', 'employer'),
+    ])
+        ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
+        ->firstOrFail();
+
+    Interaction::registerView($employer, $authUser);
+
+    if ($employer->establishment) {
+        Interaction::registerView($employer->establishment, $authUser);
+    }
+
+    $employer->refreshViewMetrics($authUser);
+
+    $u = $employer->user;
+
+    $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+    $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
+
+    return response()->json([
+        'employer' => [
+            'id' => $employer->id,
+            'type' => 'employer',
+            'name' => trim($u->first_name . ' ' . $u->last_name),
+            'slug' => $u->user_name,
+            'about' => $u->about,
+            'city' => $u->city,
+            'uf' => $u->uf,
+            'images' => [
+                'avatar' => $avatar,
+                'gallery' => $gallery
+            ]
+        ],
+        'establishment' => $employer->establishment,
+        'items' => $employer->establishment?->items ?? [],
+        'metrics' => $employer->metrics,
+        'interaction_summary' => $employer->interactionSummary(),
+        'user_interactions' => $employer->userInteractions(),
+        'orders_summary' => $employer->ordersSummary(),
+        'colleagues' => $employer->colleagues()['list'] ?? [],
+        'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
+        'top_item_and_client' => $employer->topItemAndClient(),
+        'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+        'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+        'other_items' => $employer->establishment?->otherItems() ?? [],
+    ]);
+}
+
+public function home(Request $request, $app_id)
+{
+    $authUser = Auth::user();
+
+    $city = $request->query('city');
+    $uf = $request->query('uf');
+
+    $establishmentIds = Establishment::where('app_id', $app_id)
+        ->when(
+            $city && $uf,
+            fn($q) => $q->where('city', $city)->where('uf', $uf)
+        )
+        ->pluck('id');
+
+    $employers = Employer::whereIn('establishment_id', $establishmentIds)
+        ->with([
+            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+            'establishment:id,name,slug,city,uf',
             'files' => fn($q) => $q->where('entity_name', 'employer'),
         ])
-            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
-            ->firstOrFail();
+        ->withCount([
+            'views as total_views' => fn($q) =>
+                $q->where('interaction_type', 'view'),
+            'views as unique_users' => fn($q) =>
+                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+            'orders as completed_appointments' => fn($q) =>
+                $q->whereIn('appointment_status', ['confirmed', 'attended']),
+        ])
+        ->orderByDesc('completed_appointments')
+        ->get()
+        ->map(function ($emp) use ($authUser) {
+            Interaction::registerView($emp, $authUser);
 
-        $employer->refreshViewMetrics($authUser);
+            $u = $emp->user;
 
-        $u = $employer->user;
+            $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+            $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
-        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
-        $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
-
-        return response()->json([
-            'employer' => [
-                'id' => $employer->id,
+            return [
+                'id' => $emp->id,
                 'type' => 'employer',
-                'name' => trim($u->first_name . ' ' . $u->last_name),
+                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
                 'slug' => $u->user_name,
-                'about' => $u->about,
-                'city' => $u->city,
-                'uf' => $u->uf,
                 'images' => [
                     'avatar' => $avatar,
-                    'gallery' => $gallery
-                ]
-            ],
-            'establishment' => $employer->establishment,
-            'items' => $employer->establishment?->items ?? [],
-            'metrics' => $employer->metrics,
-            'interaction_summary' => $employer->interactionSummary(),
-            'user_interactions' => $employer->userInteractions(),
-            'orders_summary' => $employer->ordersSummary(),
-            'colleagues' => $employer->colleagues()['list'] ?? [],
-            'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
-            'top_item_and_client' => $employer->topItemAndClient(),
-            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
-            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
-            'other_items' => $employer->establishment?->otherItems() ?? [],
-        ]);
-    }
+                    'gallery' => $gallery,
+                ],
+                'city' => $emp->establishment?->city,
+                'uf' => $emp->establishment?->uf,
+                'total_views' => $emp->total_views,
+                'unique_users' => $emp->unique_users,
+                'total_completed_appointments' => $emp->completed_appointments,
+                'establishment' => [
+                    'name' => $emp->establishment?->name,
+                    'slug' => $emp->establishment?->slug,
+                ],
+            ];
+        });
 
-    public function home(Request $request, $app_id)
-    {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
+    return response()->json(['employers' => $employers]);
+}
 
-        $establishmentIds = Establishment::where('app_id', $app_id)
-            ->when(
-                $city && $uf,
-                fn($q) =>
-                $q->where('city', $city)->where('uf', $uf)
-            )
-            ->pluck('id');
-
-        $employers = Employer::whereIn('establishment_id', $establishmentIds)
-            ->with([
-                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-                'establishment:id,name,slug,city,uf',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                'orders as completed_appointments' => fn($q) =>
-                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
-            ])
-            ->orderByDesc('completed_appointments')
-            ->get()
-            ->map(function ($emp) {
-                $u = $emp->user;
-
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
-                $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
-
-                return [
-                    'id' => $emp->id,
-                    'type' => 'employer',
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'slug' => $u->user_name,
-                    'images' => [
-                        'avatar' => $avatar,
-                        'gallery' => $gallery,
-                    ],
-                    'city' => $emp->establishment?->city,
-                    'uf' => $emp->establishment?->uf,
-                    'total_views' => $emp->total_views,
-                    'unique_users' => $emp->unique_users,
-                    'total_completed_appointments' => $emp->completed_appointments,
-                    'establishment' => [
-                        'name' => $emp->establishment?->name,
-                        'slug' => $emp->establishment?->slug,
-                    ],
-                ];
-            });
-
-        return response()->json(['employers' => $employers]);
-    }
-
-    public function listByEntitySlug($slug)
+public function listByEntitySlug($slug)
 {
     try {
         if (!$slug || !is_string($slug)) {
             return response()->json(['error' => 'Slug inválido.'], 422);
         }
 
+        $authUser = Auth::user();
+
         $establishment = Establishment::where('slug', $slug)
             ->with([
                 'files' => fn ($q) =>
                     $q->where('entity_name', 'establishment')
                       ->where('type', 'logo'),
-
                 'employers' => fn ($q) =>
                     $q->orderByDesc('updated_at')
                       ->with([
@@ -980,6 +1004,8 @@ public function store(Request $request)
         if (!$establishment) {
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
+
+        Interaction::registerView($establishment, $authUser);
 
         $logo =
             $establishment->files->first()?->public_url
@@ -1032,5 +1058,4 @@ public function store(Request $request)
         return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
     }
 }
-
 }
