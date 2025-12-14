@@ -17,40 +17,41 @@ use App\Mail\OwnerNotifiedNewCollaborator;
 
 class EmployerController extends Controller
 {
-  protected function getValidationMessages()
-{
-    return [
-        'user_id.required' => 'Usuário é obrigatório.',
-        'user_id.exists' => 'Usuário não encontrado.',
+    protected function getValidationMessages()
+    {
+        return [
+            'user_id.required' => 'Usuário é obrigatório.',
+            'user_id.exists' => 'Usuário não encontrado.',
 
-        'establishment_id.required' => 'Estabelecimento é obrigatório.',
-        'establishment_id.exists' => 'Estabelecimento inválido.',
+            'establishment_id.required' => 'Estabelecimento é obrigatório.',
+            'establishment_id.exists' => 'Estabelecimento inválido.',
 
-        'role.required' => 'A função do colaborador é obrigatória.',
-        'role.string' => 'A função deve ser um texto válido.',
+            'role.required' => 'A função do colaborador é obrigatória.',
+            'role.string' => 'A função deve ser um texto válido.',
 
-        'link.required' => 'O link é obrigatório.',
-        'link.url' => 'O link informado é inválido.',
+            'link.required' => 'O link é obrigatório.',
+            'link.url' => 'O link informado é inválido.',
 
-        'employer_id.required' => 'O campo employer_id é obrigatório.',
-        'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
-        'employer_id.exists' => 'O colaborador informado não existe.',
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
 
-        'schedules.required' => 'A lista de horários é obrigatória.',
-        'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
-        'schedules.min' => 'É necessário informar pelo menos um horário.',
+            'schedules.required' => 'A lista de horários é obrigatória.',
+            'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
+            'schedules.min' => 'É necessário informar pelo menos um horário.',
 
-        'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
-        'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido.',
+            'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
+            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido.',
 
-        'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
-        'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
+            'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
+            'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
 
-        'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
-        'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
-        'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
-    ];
-}public function store(Request $request)
+            'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
+            'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
+            'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
+        ];
+    }
+   public function store(Request $request)
 {
     Log::info('Employer.store:start', [
         'auth_user_id' => Auth::id(),
@@ -117,12 +118,17 @@ class EmployerController extends Controller
             'employer_id' => $employer->id,
         ]);
 
+        DB::commit();
+
         $user = User::find($validated['user_id']);
 
         if ($user && !empty($user->email)) {
             try {
                 Mail::to($user->email)
-                    ->send(new NewEmployerCollaborator($establishment, $employer));
+                    ->send(new NewEmployerCollaborator(
+                        $this->sanitizeEntity($establishment),
+                        $this->sanitizeEntity($employer)
+                    ));
             } catch (\Throwable $e) {
                 Log::error('Employer.store:email_collaborator_failed', [
                     'message' => $e->getMessage(),
@@ -133,15 +139,16 @@ class EmployerController extends Controller
         if ($establishment->user && !empty($establishment->user->email)) {
             try {
                 Mail::to($establishment->user->email)
-                    ->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+                    ->send(new OwnerNotifiedNewCollaborator(
+                        $this->sanitizeEntity($establishment),
+                        $this->sanitizeEntity($employer)
+                    ));
             } catch (\Throwable $e) {
                 Log::error('Employer.store:email_owner_failed', [
                     'message' => $e->getMessage(),
                 ]);
             }
         }
-
-        DB::commit();
 
         Log::info('Employer.store:success', [
             'employer_id' => $employer->id,
@@ -175,6 +182,20 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
+private function sanitizeEntity($model)
+{
+    $array = $model->toArray();
+
+    array_walk_recursive($array, function (&$value) {
+        if (is_string($value)) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+    });
+
+    return (object) $array;
+}
+
 
 
     public function listByEstablishment(Request $request)
@@ -257,113 +278,113 @@ class EmployerController extends Controller
     }
 
 
-   public function detach(Request $request)
-{
-    Log::info('Employer.detach:start', [
-        'auth_user_id' => Auth::id(),
-        'payload' => $request->all(),
-    ]);
+    public function detach(Request $request)
+    {
+        Log::info('Employer.detach:start', [
+            'auth_user_id' => Auth::id(),
+            'payload' => $request->all(),
+        ]);
 
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $validated = $request->validate(
-            [
-                'employer_id' => 'required|integer',
-                'establishment_id' => 'required|integer|exists:establishments,id',
-            ],
-            $this->getValidationMessages()
-        );
-
-        $owner = Auth::user();
-
-        $establishment = Establishment::with('user')->find($validated['establishment_id']);
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        if ((int) $establishment->user_id !== (int) $owner->id) {
-            return response()->json([
-                'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.',
-            ], 403);
-        }
-
-        $employer = Employer::with('user')
-            ->where('id', $validated['employer_id'])
-            ->where('establishment_id', $establishment->id)
-            ->first();
-
-        if (!$employer) {
-            return response()->json([
-                'error' => 'O colaborador não está vinculado a este estabelecimento.',
-            ], 404);
-        }
-
-        DB::beginTransaction();
-
-        $collaboratorUser = $employer->user;
-        $ownerUser = $establishment->user;
-
-        $employer->delete();
-
-        DB::commit();
-
-        if ($collaboratorUser && !empty($collaboratorUser->email)) {
-            try {
-                Mail::to($collaboratorUser->email)
-                    ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
-            } catch (\Throwable $e) {
-                Log::warning('Employer.detach:email_collaborator_failed', [
-                    'message' => $e->getMessage(),
-                ]);
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
-        }
 
-        if ($ownerUser && !empty($ownerUser->email)) {
-            try {
-                Mail::to($ownerUser->email)
-                    ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser));
-            } catch (\Throwable $e) {
-                Log::warning('Employer.detach:email_owner_failed', [
-                    'message' => $e->getMessage(),
-                ]);
+            $validated = $request->validate(
+                [
+                    'employer_id' => 'required|integer',
+                    'establishment_id' => 'required|integer|exists:establishments,id',
+                ],
+                $this->getValidationMessages()
+            );
+
+            $owner = Auth::user();
+
+            $establishment = Establishment::with('user')->find($validated['establishment_id']);
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
+
+            if ((int) $establishment->user_id !== (int) $owner->id) {
+                return response()->json([
+                    'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.',
+                ], 403);
+            }
+
+            $employer = Employer::with('user')
+                ->where('id', $validated['employer_id'])
+                ->where('establishment_id', $establishment->id)
+                ->first();
+
+            if (!$employer) {
+                return response()->json([
+                    'error' => 'O colaborador não está vinculado a este estabelecimento.',
+                ], 404);
+            }
+
+            DB::beginTransaction();
+
+            $collaboratorUser = $employer->user;
+            $ownerUser = $establishment->user;
+
+            $employer->delete();
+
+            DB::commit();
+
+            if ($collaboratorUser && !empty($collaboratorUser->email)) {
+                try {
+                    Mail::to($collaboratorUser->email)
+                        ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
+                } catch (\Throwable $e) {
+                    Log::warning('Employer.detach:email_collaborator_failed', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            if ($ownerUser && !empty($ownerUser->email)) {
+                try {
+                    Mail::to($ownerUser->email)
+                        ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser));
+                } catch (\Throwable $e) {
+                    Log::warning('Employer.detach:email_owner_failed', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            Log::info('Employer.detach:success', [
+                'employer_id' => $validated['employer_id'],
+                'establishment_id' => $establishment->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Colaborador desvinculado com sucesso.',
+            ], 200);
+
+        } catch (ValidationException $e) {
+            Log::warning('Employer.detach:validation_failed', [
+                'errors' => $e->errors(),
+            ]);
+
+            return response()->json([
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Employer.detach:exception', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Erro inesperado ao desvincular colaborador.',
+            ], 500);
         }
-
-        Log::info('Employer.detach:success', [
-            'employer_id' => $validated['employer_id'],
-            'establishment_id' => $establishment->id,
-        ]);
-
-        return response()->json([
-            'message' => 'Colaborador desvinculado com sucesso.',
-        ], 200);
-
-    } catch (ValidationException $e) {
-        Log::warning('Employer.detach:validation_failed', [
-            'errors' => $e->errors(),
-        ]);
-
-        return response()->json([
-            'errors' => $e->errors(),
-        ], 422);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        Log::error('Employer.detach:exception', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao desvincular colaborador.',
-        ], 500);
     }
-}
 
     public function checkUpdates(Request $request)
     {
@@ -878,205 +899,205 @@ class EmployerController extends Controller
         }
     }
 
-public function view($user_name)
-{
-    $authUser = Auth::user();
-
-    $employer = Employer::with([
-        'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
-        'establishment.items:id,entity_id,name,slug,price,type,image',
-        'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
-        'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
-        'orders.client:id,first_name,last_name,user_name,avatar,email',
-        'interactions.user:id,first_name,last_name,user_name,avatar,email',
-        'files' => fn($q) => $q->where('entity_name', 'employer'),
-    ])
-        ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
-        ->firstOrFail();
-
-    Interaction::registerView($employer, $authUser);
-
-    if ($employer->establishment) {
-        Interaction::registerView($employer->establishment, $authUser);
-    }
-
-    $employer->refreshViewMetrics($authUser);
-
-    $u = $employer->user;
-
-    $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
-    $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
-
-    return response()->json([
-        'employer' => [
-            'id' => $employer->id,
-            'type' => 'employer',
-            'name' => trim($u->first_name . ' ' . $u->last_name),
-            'slug' => $u->user_name,
-            'about' => $u->about,
-            'city' => $u->city,
-            'uf' => $u->uf,
-            'images' => [
-                'avatar' => $avatar,
-                'gallery' => $gallery
-            ]
-        ],
-        'establishment' => $employer->establishment,
-        'items' => $employer->establishment?->items ?? [],
-        'metrics' => $employer->metrics,
-        'interaction_summary' => $employer->interactionSummary(),
-        'user_interactions' => $employer->userInteractions(),
-        'orders_summary' => $employer->ordersSummary(),
-        'colleagues' => $employer->colleagues()['list'] ?? [],
-        'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
-        'top_item_and_client' => $employer->topItemAndClient(),
-        'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
-        'other_employers' => $employer->establishment?->otherEmployers() ?? [],
-        'other_items' => $employer->establishment?->otherItems() ?? [],
-    ]);
-}
-
-public function home(Request $request, $app_id)
-{
-    $authUser = Auth::user();
-
-    $city = $request->query('city');
-    $uf = $request->query('uf');
-
-    $establishmentIds = Establishment::where('app_id', $app_id)
-        ->when(
-            $city && $uf,
-            fn($q) => $q->where('city', $city)->where('uf', $uf)
-        )
-        ->pluck('id');
-
-    $employers = Employer::whereIn('establishment_id', $establishmentIds)
-        ->with([
-            'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-            'establishment:id,name,slug,city,uf',
-            'files' => fn($q) => $q->where('entity_name', 'employer'),
-        ])
-        ->withCount([
-            'views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view'),
-            'views as unique_users' => fn($q) =>
-                $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-            'orders as completed_appointments' => fn($q) =>
-                $q->whereIn('appointment_status', ['confirmed', 'attended']),
-        ])
-        ->orderByDesc('completed_appointments')
-        ->get()
-        ->map(function ($emp) use ($authUser) {
-            Interaction::registerView($emp, $authUser);
-
-            $u = $emp->user;
-
-            $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
-            $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
-
-            return [
-                'id' => $emp->id,
-                'type' => 'employer',
-                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                'slug' => $u->user_name,
-                'images' => [
-                    'avatar' => $avatar,
-                    'gallery' => $gallery,
-                ],
-                'city' => $emp->establishment?->city,
-                'uf' => $emp->establishment?->uf,
-                'total_views' => $emp->total_views,
-                'unique_users' => $emp->unique_users,
-                'total_completed_appointments' => $emp->completed_appointments,
-                'establishment' => [
-                    'name' => $emp->establishment?->name,
-                    'slug' => $emp->establishment?->slug,
-                ],
-            ];
-        });
-
-    return response()->json(['employers' => $employers]);
-}
-
-public function listByEntitySlug($slug)
-{
-    try {
-        if (!$slug || !is_string($slug)) {
-            return response()->json(['error' => 'Slug inválido.'], 422);
-        }
-
+    public function view($user_name)
+    {
         $authUser = Auth::user();
 
-        $establishment = Establishment::where('slug', $slug)
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')
-                      ->where('type', 'logo'),
-                'employers' => fn ($q) =>
-                    $q->orderByDesc('updated_at')
-                      ->with([
-                          'user:id,first_name,last_name,user_name,avatar,city,uf',
-                          'files' => fn ($fq) =>
-                              $fq->where('entity_name', 'employer'),
-                      ]),
-            ])
-            ->first();
+        $employer = Employer::with([
+            'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
+            'establishment.items:id,entity_id,name,slug,price,type,image',
+            'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'employer'),
+        ])
+            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
+            ->firstOrFail();
 
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        Interaction::registerView($employer, $authUser);
+
+        if ($employer->establishment) {
+            Interaction::registerView($employer->establishment, $authUser);
         }
 
-        Interaction::registerView($establishment, $authUser);
+        $employer->refreshViewMetrics($authUser);
 
-        $logo =
-            $establishment->files->first()?->public_url
-            ?: $establishment->logo
-            ?: null;
+        $u = $employer->user;
 
-        $mappedEstablishment = [
-            'id' => $establishment->id,
-            'name' => $establishment->name,
-            'fantasy' => $establishment->fantasy,
-            'slug' => $establishment->slug,
-            'city' => $establishment->city,
-            'uf' => $establishment->uf,
-            'logo' => $logo,
-        ];
-
-        $employers = $establishment->employers->map(function ($emp) {
-            $u = $emp->user;
-
-            $avatar =
-                $emp->files->firstWhere('type', 'avatar')?->public_url
-                ?: $u?->avatar
-                ?: null;
-
-            return [
-                'id' => $emp->id,
-                'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                'slug' => $u?->user_name,
-                'role' => $emp->role,
-                'city' => $u?->city,
-                'uf' => $u?->uf,
-                'total_views' => $emp->metrics['total_views'] ?? 0,
-                'image' => $avatar,
-                'updated_at' => $emp->updated_at,
-            ];
-        })->values();
+        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+        $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
         return response()->json([
-            'message' => 'Colaboradores listados com sucesso.',
-            'establishment' => $mappedEstablishment,
-            'employers' => $employers,
-        ], 200);
-
-    } catch (\Exception $e) {
-        \Log::error('[EmployerController::listByEntitySlug]', [
-            'slug' => $slug,
-            'error' => $e->getMessage(),
+            'employer' => [
+                'id' => $employer->id,
+                'type' => 'employer',
+                'name' => trim($u->first_name . ' ' . $u->last_name),
+                'slug' => $u->user_name,
+                'about' => $u->about,
+                'city' => $u->city,
+                'uf' => $u->uf,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery
+                ]
+            ],
+            'establishment' => $employer->establishment,
+            'items' => $employer->establishment?->items ?? [],
+            'metrics' => $employer->metrics,
+            'interaction_summary' => $employer->interactionSummary(),
+            'user_interactions' => $employer->userInteractions(),
+            'orders_summary' => $employer->ordersSummary(),
+            'colleagues' => $employer->colleagues()['list'] ?? [],
+            'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
+            'top_item_and_client' => $employer->topItemAndClient(),
+            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer->establishment?->otherItems() ?? [],
         ]);
-
-        return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
     }
-}
+
+    public function home(Request $request, $app_id)
+    {
+        $authUser = Auth::user();
+
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+
+        $establishmentIds = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) => $q->where('city', $city)->where('uf', $uf)
+            )
+            ->pluck('id');
+
+        $employers = Employer::whereIn('establishment_id', $establishmentIds)
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as completed_appointments' => fn($q) =>
+                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->orderByDesc('completed_appointments')
+            ->get()
+            ->map(function ($emp) use ($authUser) {
+                Interaction::registerView($emp, $authUser);
+
+                $u = $emp->user;
+
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+                $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
+
+                return [
+                    'id' => $emp->id,
+                    'type' => 'employer',
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'slug' => $u->user_name,
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $gallery,
+                    ],
+                    'city' => $emp->establishment?->city,
+                    'uf' => $emp->establishment?->uf,
+                    'total_views' => $emp->total_views,
+                    'unique_users' => $emp->unique_users,
+                    'total_completed_appointments' => $emp->completed_appointments,
+                    'establishment' => [
+                        'name' => $emp->establishment?->name,
+                        'slug' => $emp->establishment?->slug,
+                    ],
+                ];
+            });
+
+        return response()->json(['employers' => $employers]);
+    }
+
+    public function listByEntitySlug($slug)
+    {
+        try {
+            if (!$slug || !is_string($slug)) {
+                return response()->json(['error' => 'Slug inválido.'], 422);
+            }
+
+            $authUser = Auth::user();
+
+            $establishment = Establishment::where('slug', $slug)
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                            ->where('type', 'logo'),
+                    'employers' => fn($q) =>
+                        $q->orderByDesc('updated_at')
+                            ->with([
+                                'user:id,first_name,last_name,user_name,avatar,city,uf',
+                                'files' => fn($fq) =>
+                                    $fq->where('entity_name', 'employer'),
+                            ]),
+                ])
+                ->first();
+
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            Interaction::registerView($establishment, $authUser);
+
+            $logo =
+                $establishment->files->first()?->public_url
+                ?: $establishment->logo
+                ?: null;
+
+            $mappedEstablishment = [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+                'logo' => $logo,
+            ];
+
+            $employers = $establishment->employers->map(function ($emp) {
+                $u = $emp->user;
+
+                $avatar =
+                    $emp->files->firstWhere('type', 'avatar')?->public_url
+                    ?: $u?->avatar
+                    ?: null;
+
+                return [
+                    'id' => $emp->id,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'slug' => $u?->user_name,
+                    'role' => $emp->role,
+                    'city' => $u?->city,
+                    'uf' => $u?->uf,
+                    'total_views' => $emp->metrics['total_views'] ?? 0,
+                    'image' => $avatar,
+                    'updated_at' => $emp->updated_at,
+                ];
+            })->values();
+
+            return response()->json([
+                'message' => 'Colaboradores listados com sucesso.',
+                'establishment' => $mappedEstablishment,
+                'employers' => $employers,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('[EmployerController::listByEntitySlug]', [
+                'slug' => $slug,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
+        }
+    }
 }
