@@ -300,8 +300,7 @@ class OrderController extends Controller
         } catch (\Throwable $e) {
             Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
         }
-    }
-   public function listByEntitySlug(Request $request, $slug)
+    }public function listByEntitySlug(Request $request, $slug)
 {
     try {
         if (!Auth::check()) {
@@ -321,15 +320,12 @@ class OrderController extends Controller
             ]);
         }
 
-        $data = $request->validate(
-            [
-                'app_id' => 'required|integer|exists:applications,id',
-                'include_scheduled' => 'sometimes|boolean',
-            ],
-            $this->getValidationMessages()
-        );
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+            'include_scheduled' => 'sometimes|boolean',
+        ]);
 
-        $authUser = Auth::user();
+        $user = Auth::user();
 
         $establishment = Establishment::where('slug', $slug)
             ->with([
@@ -343,9 +339,9 @@ class OrderController extends Controller
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        $isOwner = (int) $establishment->user_id === (int) $authUser->id;
+        $isOwner = (int) $establishment->user_id === (int) $user->id;
         $isStaff = Employer::where('establishment_id', $establishment->id)
-            ->where('user_id', $authUser->id)
+            ->where('user_id', $user->id)
             ->exists();
 
         if (!$isOwner && !$isStaff) {
@@ -353,9 +349,8 @@ class OrderController extends Controller
         }
 
         $orders = Order::with([
-            'items.item:id,name,slug,price,type,duration',
-            'items.modifiers.modifier:id,name,type,price',
-            'attendant:id,user_id,name,title',
+            'items.item:id,name,price,type,duration',
+            'attendant:id,user_id',
             'attendant.user:id,first_name,last_name,user_name',
         ])
             ->where('app_id', $data['app_id'])
@@ -371,20 +366,11 @@ class OrderController extends Controller
 
                 $attendantName = null;
 
-                if ($order->attendant) {
-                    if ($order->attendant->user) {
-                        $attendantName = trim(
-                            ($order->attendant->user->first_name ?? '') . ' ' .
-                            ($order->attendant->user->last_name ?? '')
-                        );
-                    }
-
-                    if (!$attendantName) {
-                        $attendantName =
-                            $order->attendant->name ??
-                            $order->attendant->title ??
-                            null;
-                    }
+                if ($order->attendant && $order->attendant->user) {
+                    $attendantName = trim(
+                        ($order->attendant->user->first_name ?? '') . ' ' .
+                        ($order->attendant->user->last_name ?? '')
+                    );
                 }
 
                 return [
@@ -406,11 +392,9 @@ class OrderController extends Controller
                         'id' => $it->id,
                         'quantity' => $it->quantity,
                         'unit_price' => $it->unit_price,
-                        'subtotal' => $it->subtotal,
                         'item' => [
                             'id' => $it->item?->id,
                             'name' => $it->item?->name,
-                            'type' => $it->item?->type,
                             'duration' => $it->item?->duration,
                             'price' => $it->item?->price,
                         ],
@@ -431,19 +415,14 @@ class OrderController extends Controller
             'orders' => $orders,
         ], 200);
 
-    } catch (ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422);
-
     } catch (\Throwable $e) {
-        Log::error('OrderController@listByEntitySlug - erro inesperado', [
-            'slug' => $slug,
+        Log::error('OrderController@listByEntitySlug', [
             'error' => $e->getMessage(),
         ]);
+
         return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
     }
 }
-
-
 
 
 
