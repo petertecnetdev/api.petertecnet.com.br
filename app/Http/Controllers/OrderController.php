@@ -1092,6 +1092,146 @@ public function storeDirect(Request $request)
         }
     }
 
+public function listByEntitySlug(Request $request, $slug)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        if (!$slug || !is_string($slug)) {
+            return response()->json(['error' => 'Slug inválido.'], 422);
+        }
+
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+            'include_scheduled' => 'sometimes|boolean',
+        ], $this->getValidationMessages());
+
+        $authUser = Auth::user();
+
+        $establishment = Establishment::where('slug', $slug)
+            ->with([
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+                      ->where('type', 'logo'),
+            ])
+            ->first();
+
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        $isOwner = $establishment->user_id === $authUser->id;
+
+        $isStaff = Employer::where('establishment_id', $establishment->id)
+            ->where('user_id', $authUser->id)
+            ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
+            ->exists();
+
+        if (!$isOwner && !$isStaff) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $logo =
+            $establishment->files->first()?->public_url
+            ?: $establishment->logo
+            ?: null;
+
+        $mappedEstablishment = [
+            'id' => $establishment->id,
+            'name' => $establishment->name,
+            'fantasy' => $establishment->fantasy,
+            'slug' => $establishment->slug,
+            'city' => $establishment->city,
+            'uf' => $establishment->uf,
+            'logo' => $logo,
+        ];
+
+        $query = Order::with([
+            'items.item:id,name,slug,price,type',
+            'items.modifiers.modifier:id,name,type',
+            'creator:id,first_name,last_name,user_name,avatar,email',
+            'client:id,first_name,last_name,user_name,avatar,email',
+            'attendant.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+            ->where('app_id', $data['app_id'])
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id);
+
+        if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
+            $query->where('status', 'scheduled');
+        }
+
+        $orders = $query
+            ->orderByDesc('order_datetime')
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'type' => $order->type,
+                    'status' => $order->status,
+                    'appointment_status' => $order->appointment_status,
+                    'order_datetime' => $order->order_datetime,
+                    'total_price' => $order->total_price,
+                    'origin' => $order->origin,
+                    'fulfillment' => $order->fulfillment,
+                    'payment_status' => $order->payment_status,
+                    'payment_method' => $order->payment_method,
+                    'customer_name' => $order->customer_name,
+                    'attendant' => $order->attendant?->user ? [
+                        'id' => $order->attendant->id,
+                        'name' => trim(($order->attendant->user->first_name ?? '') . ' ' . ($order->attendant->user->last_name ?? '')),
+                        'slug' => $order->attendant->user->user_name,
+                        'avatar' => $order->attendant->user->avatar,
+                    ] : null,
+                    'items' => $order->items->map(function ($oi) {
+                        return [
+                            'id' => $oi->item->id,
+                            'name' => $oi->item->name,
+                            'slug' => $oi->item->slug,
+                            'type' => $oi->item->type,
+                            'quantity' => $oi->quantity,
+                            'unit_price' => $oi->unit_price,
+                            'subtotal' => $oi->subtotal,
+                            'modifiers' => $oi->modifiers->map(function ($m) {
+                                return [
+                                    'id' => $m->modifier_id,
+                                    'name' => $m->modifier?->name,
+                                    'type' => $m->type,
+                                    'quantity' => $m->quantity ?? 1,
+                                ];
+                            })->values(),
+                        ];
+                    })->values(),
+                    'updated_at' => $order->updated_at,
+                ];
+            })
+            ->values();
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'establishment' => $mappedEstablishment,
+            'orders' => $orders,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Throwable $e) {
+        \Log::error('[OrderController::listByEntitySlug]', [
+            'slug' => $slug,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
+    }
+}
 
     
 
