@@ -300,9 +300,7 @@ class OrderController extends Controller
         } catch (\Throwable $e) {
             Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
         }
-    }
-
-    public function listByEntitySlug(Request $request, $slug)
+    }public function listByEntitySlug(Request $request, $slug)
 {
     try {
         Log::info('OrderController@listByEntitySlug - início', [
@@ -319,20 +317,14 @@ class OrderController extends Controller
             return response()->json(['error' => 'Slug inválido.'], 422);
         }
 
-        // 🔥 NORMALIZA BOOLEAN
         if ($request->has('include_scheduled')) {
             $request->merge([
                 'include_scheduled' => filter_var(
                     $request->include_scheduled,
-                    FILTER_VALIDATE_BOOLEAN,
-                    FILTER_NULL_ON_FAILURE
+                    FILTER_VALIDATE_BOOLEAN
                 ),
             ]);
         }
-
-        Log::info('OrderController@listByEntitySlug - include_scheduled normalizado', [
-            'include_scheduled' => $request->include_scheduled,
-        ]);
 
         $data = $request->validate(
             [
@@ -378,35 +370,24 @@ class OrderController extends Controller
             $query->where('status', 'scheduled');
         }
 
-        $orders = $query->orderBy('order_datetime', 'desc')->get();
+        $orders = $query
+            ->orderBy('order_datetime', 'desc')
+            ->get();
 
-        Log::info('OrderController@listByEntitySlug - pedidos encontrados', [
-            'count' => $orders->count(),
-        ]);
-
-        if ($orders->isEmpty()) {
-            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-        }
-
-      // app/Http/Controllers/OrderController.php (trecho atualizado do retorno)
-return response()->json([
-    'message' => 'Pedidos listados com sucesso.',
-    'establishment' => [
-        'id' => $establishment->id,
-        'name' => $establishment->name,
-        'fantasy' => $establishment->fantasy,
-        'city' => $establishment->city,
-        'uf' => $establishment->uf,
-        'logo' => $establishment->files->first()?->public_url,
-    ],
-    'orders' => $orders,
-], 200);
-
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+                'logo' => $establishment->files->first()?->public_url,
+            ],
+            'orders' => $orders,
+        ], 200);
 
     } catch (ValidationException $e) {
-        Log::warning('OrderController@listByEntitySlug - erro de validação', [
-            'errors' => $e->errors(),
-        ]);
         return response()->json(['errors' => $e->errors()], 422);
 
     } catch (\Throwable $e) {
