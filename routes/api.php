@@ -175,7 +175,6 @@ Route::prefix('service-record')->middleware('api')->group(function () {
     Route::patch('/{id}/status', [ServiceRecordController::class, 'updateStatus'])->name('service_record.updateStatus');
     Route::delete('/{id}', [ServiceRecordController::class, 'destroy'])->name('service_record.destroy');
 });
-
 /*
 |--------------------------------------------------------------------------
 | ESTABELECIMENTOS
@@ -206,7 +205,11 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
     Route::get('/my', [EstablishmentController::class, 'myEstablishments'])->name('establishment.my');
     Route::get('/user', [EstablishmentController::class, 'listByUser'])->name('establishment.listByUser');
     Route::get('/my/category/{category}', [EstablishmentController::class, 'listMyByCategory'])->name('establishment.listMyByCategory');
+
+    Route::post('/my/app', [EstablishmentController::class, 'listMyByApp'])->name('establishment.listMyByApp');
 });
+
+
 /*
 |--------------------------------------------------------------------------
 | ORDERS
@@ -215,11 +218,6 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
 Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
-
-    Route::get('/list-by-entity/{slug}', [OrderController::class, 'listByEntitySlug'])
-        ->where('slug', '[A-Za-z0-9\-]+')
-        ->name('order.listByEntitySlug');
-
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
 
