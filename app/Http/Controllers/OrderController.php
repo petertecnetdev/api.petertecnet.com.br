@@ -300,7 +300,10 @@ class OrderController extends Controller
         } catch (\Throwable $e) {
             Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
         }
-    }public function listByEntitySlug(Request $request, $slug)
+    }
+
+
+    public function listByEntitySlug(Request $request, $slug)
 {
     try {
         if (!Auth::check()) {
@@ -323,7 +326,7 @@ class OrderController extends Controller
         $data = $request->validate([
             'app_id' => 'required|integer|exists:applications,id',
             'include_scheduled' => 'sometimes|boolean',
-        ]);
+        ], $this->getValidationMessages());
 
         $user = Auth::user();
 
@@ -350,7 +353,7 @@ class OrderController extends Controller
 
         $orders = Order::with([
             'items.item:id,name,price,type,duration',
-            'attendant:id,user_id',
+            'attendant:id,user_id,establishment_id',
             'attendant.user:id,first_name,last_name,user_name',
         ])
             ->where('app_id', $data['app_id'])
@@ -362,24 +365,32 @@ class OrderController extends Controller
             )
             ->orderBy('order_datetime', 'desc')
             ->get()
-            ->map(function ($order) {
+            ->map(function ($order) use ($establishment) {
 
                 $attendantName = null;
 
-                if ($order->attendant && $order->attendant->user) {
-                    $attendantName = trim(
-                        ($order->attendant->user->first_name ?? '') . ' ' .
-                        ($order->attendant->user->last_name ?? '')
-                    );
+                if (
+                    $order->attendant &&
+                    (int) $order->attendant->establishment_id === (int) $establishment->id
+                ) {
+                    $u = $order->attendant->user;
+
+                    if ($u) {
+                        $attendantName = trim(
+                            ($u->first_name ?? '') . ' ' . ($u->last_name ?? '')
+                        );
+
+                        if (!$attendantName) {
+                            $attendantName = $u->user_name ?? null;
+                        }
+                    }
                 }
 
                 return [
                     'id' => $order->id,
                     'order_number' => $order->order_number,
                     'order_datetime' => $order->order_datetime,
-                    'scheduled_for' => $order->type === 'appointment'
-                        ? $order->order_datetime
-                        : null,
+                    'scheduled_for' => $order->order_datetime,
                     'customer_name' => $order->customer_name,
                     'type' => $order->type,
                     'status' => $order->status,
@@ -392,9 +403,11 @@ class OrderController extends Controller
                         'id' => $it->id,
                         'quantity' => $it->quantity,
                         'unit_price' => $it->unit_price,
+                        'subtotal' => $it->subtotal,
                         'item' => [
                             'id' => $it->item?->id,
                             'name' => $it->item?->name,
+                            'type' => $it->item?->type,
                             'duration' => $it->item?->duration,
                             'price' => $it->item?->price,
                         ],
@@ -415,17 +428,16 @@ class OrderController extends Controller
             'orders' => $orders,
         ], 200);
 
+    } catch (ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422);
+
     } catch (\Throwable $e) {
         Log::error('OrderController@listByEntitySlug', [
+            'slug' => $slug,
             'error' => $e->getMessage(),
         ]);
 
         return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
     }
 }
-
-
-
-
-
 }

@@ -464,11 +464,20 @@ protected $entity_name = 'employer';
         });
     }
     protected static function booted()
-    {
-        static::creating(function ($model) {
-            $model->entity_name = 'employer';
-        });
-    }
+{
+    static::created(function ($model) {
+        if (!$model->slug && $model->user) {
+            $model->slug = Str::slug(
+                $model->user->user_name
+                ?? $model->user->first_name
+                ?? "colaborador-{$model->id}"
+            );
+
+            $model->saveQuietly();
+        }
+    });
+}
+
 
     public function files()
     {
