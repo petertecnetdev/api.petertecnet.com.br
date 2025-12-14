@@ -529,93 +529,100 @@ public function storeDirect(Request $request)
             ]);
         }
     }
-
-    public function listByEntity(Request $request)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $user = Auth::user();
-
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'include_scheduled' => 'sometimes|boolean',
-            ], $this->getValidationMessages());
-
-            $tableName = strtolower($data['entity_name']);
-            if (!str_ends_with($tableName, 's')) {
-                $tableName .= 's';
-            }
-
-            // Verifica se a entidade existe
-            $entityExists = \DB::table($tableName)
-                ->where('id', $data['entity_id'])
-                ->exists();
-
-            if (!$entityExists) {
-                return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
-            }
-
-            // Verifica se o usuário é dono da entidade
-            $isOwner = \DB::table($tableName)
-                ->where('id', $data['entity_id'])
-                ->where('user_id', $user->id)
-                ->exists();
-
-            // Verifica se o usuário é colaborador do estabelecimento
-            $isStaff = \DB::table('employers')
-                ->where('establishment_id', $data['entity_id'])
-                ->where('user_id', $user->id)
-                ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
-                ->exists();
-
-            if (!$isOwner && !$isStaff) {
-                $reason = $isOwner ? '' : 'Você não é dono da ' . $data['entity_name'] . ' nem colaborador autorizado.';
-                return response()->json(['error' => 'Acesso negado. ' . $reason], 403);
-            }
-
-            // Query principal dos pedidos
-            $query = Order::with([
-                'items.item',
-                'items.modifiers.modifier',
-                'creator:id,first_name,last_name,email,cpf',
-                'attendant.user:id,first_name,last_name,email,cpf',
-                'client:id,first_name,last_name,email,cpf',
-            ])
-                ->where('app_id', $data['app_id'])
-                ->where('entity_name', $data['entity_name'])
-                ->where('entity_id', $data['entity_id']);
-
-            // Filtro opcional: apenas agendados
-            if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
-                $query->where('status', 'scheduled');
-            }
-
-            $orders = $query->orderBy('order_datetime', 'desc')->get();
-
-            if ($orders->isEmpty()) {
-                return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-            }
-
-            return response()->json([
-                'message' => 'Pedidos listados com sucesso.',
-                'orders' => $orders,
-            ], 200);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            Log::warning('Erro de validação ao listar pedidos por entidade.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao listar pedidos por entidade: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
+public function listByEntity(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
+
+        $user = Auth::user();
+
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+            'entity_name' => 'required|string|max:255',
+            'entity_id' => 'required|integer',
+            'include_scheduled' => 'sometimes|in:0,1,true,false',
+        ], $this->getValidationMessages());
+
+        $includeScheduled = filter_var(
+            $request->query('include_scheduled', false),
+            FILTER_VALIDATE_BOOLEAN
+        );
+
+        $tableName = strtolower($data['entity_name']);
+        if (!str_ends_with($tableName, 's')) {
+            $tableName .= 's';
+        }
+
+        $entityExists = DB::table($tableName)
+            ->where('id', $data['entity_id'])
+            ->exists();
+
+        if (!$entityExists) {
+            return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
+        }
+
+        $isOwner = DB::table($tableName)
+            ->where('id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->exists();
+
+        $isStaff = DB::table('employers')
+            ->where('establishment_id', $data['entity_id'])
+            ->where('user_id', $user->id)
+            ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
+            ->exists();
+
+        if (!$isOwner && !$isStaff) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $query = Order::with([
+            'items.item',
+            'items.modifiers.modifier',
+            'creator:id,first_name,last_name,email,cpf',
+            'attendant.user:id,first_name,last_name,email,cpf',
+            'client:id,first_name,last_name,email,cpf',
+        ])
+            ->where('app_id', $data['app_id'])
+            ->where('entity_name', $data['entity_name'])
+            ->where('entity_id', $data['entity_id']);
+
+        if ($includeScheduled === true) {
+            $query->where('status', 'scheduled');
+        }
+
+        $orders = $query
+            ->orderByDesc('order_datetime')
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'orders' => $orders,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        Log::warning('Erro de validação ao listar pedidos por entidade.', [
+            'errors' => $e->errors(),
+        ]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Throwable $e) {
+        Log::error('Erro ao listar pedidos por entidade.', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ]);
+        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
     }
+}
+
 
 
     /**
