@@ -51,49 +51,71 @@ class EmployerController extends Controller
         'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
     ];
 }
-
 public function store(Request $request)
 {
-    dd(method_exists($this, 'getValidationMessages'));
-    try {
-        Log::info('Employer.store start', [
-            'user_id' => Auth::id(),
-            'payload' => $request->all()
-        ]);
+    Log::info('Employer.store:start', [
+        'auth_user_id' => Auth::id(),
+        'payload' => $request->all(),
+    ]);
 
+    try {
         if (!Auth::check()) {
+            Log::warning('Employer.store:not_authenticated');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
         $owner = Auth::user();
 
-        $validated = $request->validate([
-            'user_id' => 'required|integer|exists:users,id',
-            'establishment_id' => 'required|integer|exists:establishments,id',
-            'role' => 'required|string|max:255',
-            'permissions' => 'nullable|array',
-            'link' => 'required|url',
-        ], $this->getValidationMessages());
+        Log::info('Employer.store:validating');
 
-        $establishment = Establishment::findOrFail($validated['establishment_id']);
+        $validated = $request->validate(
+            [
+                'user_id' => 'required|integer|exists:users,id',
+                'establishment_id' => 'required|integer|exists:establishments,id',
+                'role' => 'required|string|max:255',
+                'permissions' => 'nullable|array',
+                'link' => 'required|url',
+            ],
+            $this->getValidationMessages()
+        );
+
+        Log::info('Employer.store:validated', $validated);
+
+        $establishment = Establishment::find($validated['establishment_id']);
+
+        if (!$establishment) {
+            Log::error('Employer.store:establishment_not_found', [
+                'establishment_id' => $validated['establishment_id'],
+            ]);
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
 
         if ($establishment->user_id !== $owner->id) {
+            Log::warning('Employer.store:not_owner', [
+                'owner_id' => $owner->id,
+                'establishment_owner_id' => $establishment->user_id,
+            ]);
             return response()->json([
                 'error' => 'Apenas o dono do estabelecimento pode associar colaboradores.'
             ], 403);
         }
 
-        if (
-            Employer::where('user_id', $validated['user_id'])
-                ->where('establishment_id', $establishment->id)
-                ->exists()
-        ) {
+        $alreadyExists = Employer::where('user_id', $validated['user_id'])
+            ->where('establishment_id', $establishment->id)
+            ->exists();
+
+        if ($alreadyExists) {
+            Log::warning('Employer.store:already_associated', [
+                'user_id' => $validated['user_id'],
+                'establishment_id' => $establishment->id,
+            ]);
             return response()->json([
                 'error' => 'Este usuário já é colaborador deste estabelecimento.'
             ], 409);
         }
 
         DB::beginTransaction();
+        Log::info('Employer.store:transaction_started');
 
         $employer = Employer::create([
             'user_id' => $validated['user_id'],
@@ -104,19 +126,44 @@ public function store(Request $request)
             'updated_by' => $owner->id,
         ]);
 
+        Log::info('Employer.store:employer_created', [
+            'employer_id' => $employer->id,
+        ]);
+
         $user = User::find($validated['user_id']);
 
-        if ($user?->email) {
-            Mail::to($user->email)
-                ->send(new NewEmployerCollaborator($establishment, $employer));
+        if ($user && $user->email) {
+            try {
+                Mail::to($user->email)
+                    ->send(new NewEmployerCollaborator($establishment, $employer));
+                Log::info('Employer.store:email_sent_to_collaborator', [
+                    'email' => $user->email,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Employer.store:email_collaborator_failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        if ($establishment->user?->email) {
-            Mail::to($establishment->user->email)
-                ->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+        if ($establishment->user && $establishment->user->email) {
+            try {
+                Mail::to($establishment->user->email)
+                    ->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+                Log::info('Employer.store:email_sent_to_owner', [
+                    'email' => $establishment->user->email,
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Employer.store:email_owner_failed', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         DB::commit();
+        Log::info('Employer.store:success', [
+            'employer_id' => $employer->id,
+        ]);
 
         return response()->json([
             'message' => 'Colaborador associado com sucesso.',
@@ -124,16 +171,22 @@ public function store(Request $request)
         ], 201);
 
     } catch (ValidationException $e) {
+        Log::warning('Employer.store:validation_failed', [
+            'errors' => $e->errors(),
+        ]);
+
         return response()->json([
-            'errors' => $e->errors()
+            'errors' => $e->errors(),
         ], 422);
 
     } catch (\Throwable $e) {
         DB::rollBack();
 
-        Log::error('Employer.store failed', [
-            'error' => $e->getMessage(),
+        Log::error('Employer.store:exception', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
             'line' => $e->getLine(),
+            'trace' => $e->getTraceAsString(),
         ]);
 
         return response()->json([
@@ -141,6 +194,7 @@ public function store(Request $request)
         ], 500);
     }
 }
+
 
 
     public function listByEstablishment(Request $request)
