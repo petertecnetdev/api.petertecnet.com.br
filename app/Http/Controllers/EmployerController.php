@@ -2,1043 +2,1044 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Order, Item, Employer};
+use App\Models\Employer;
 use App\Models\Establishment;
+use App\Models\Interaction;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Carbon\Carbon;
-use App\Mail\{NewAppointmentNotification, OwnerAppointmentNotification, AppointmentAwaitingConfirmation};
-use Illuminate\Support\Facades\Mail;
+use App\Mail\NewEmployerCollaborator;
+use App\Mail\OwnerNotifiedNewCollaborator;
 
-
-class OrderController extends Controller
+class EmployerController extends Controller
 {
     protected function getValidationMessages()
     {
         return [
-            'app_id.required' => 'O ID do aplicativo é obrigatório.',
-            'app_id.exists' => 'O ID do aplicativo deve existir.',
-            'entity_name.required' => 'O nome da entidade é obrigatório.',
-            'entity_name.string' => 'O nome da entidade deve ser uma string válida.',
-            'entity_id.required' => 'O ID da entidade é obrigatório.',
-            'entity_id.integer' => 'O ID da entidade deve ser um número inteiro.',
+            'user_id.required' => 'Usuário é obrigatório.',
+            'user_id.exists' => 'Usuário não encontrado.',
 
-            'items.required' => 'A lista de itens é obrigatória.',
-            'items.array' => 'Os itens devem ser enviados como lista.',
-            'items.*.item_id.required' => 'O ID do item é obrigatório.',
-            'items.*.item_id.integer' => 'O ID do item deve ser um número inteiro.',
-            'items.*.item_id.exists' => 'O item informado não existe.',
-            'items.*.quantity.required' => 'A quantidade é obrigatória.',
-            'items.*.quantity.integer' => 'A quantidade deve ser um número inteiro.',
-            'items.*.quantity.min' => 'A quantidade mínima é 1.',
-            'items.*.additions.array' => 'Adições devem ser enviadas como lista.',
-            'items.*.additions.*.integer' => 'O ID de adição deve ser inteiro.',
-            'items.*.additions.*.exists' => 'O item adicional não existe.',
-            'items.*.removals.array' => 'Remoções devem ser enviadas como lista.',
-            'items.*.removals.*.integer' => 'O ID de remoção deve ser inteiro.',
-            'items.*.removals.*.exists' => 'O item para remoção não existe.',
+            'establishment_id.required' => 'Estabelecimento é obrigatório.',
+            'establishment_id.exists' => 'Estabelecimento inválido.',
 
-            'customer_name.required' => 'O nome do cliente é obrigatório.',
-            'customer_name.string' => 'O nome do cliente deve ser uma string válida.',
-            'customer_phone.string' => 'O telefone do cliente deve ser uma string válida.',
-            'access_code.required' => 'O código de acesso é obrigatório.',
-            'access_code.string' => 'O código de acesso deve ser uma string válida.',
+            'role.required' => 'A função do colaborador é obrigatória.',
+            'role.string' => 'A função deve ser um texto válido.',
 
-            'origin.required' => 'A origem do pedido é obrigatória.',
-            'origin.in' => 'A origem deve ser WhatsApp, Balcão, Telefone ou App.',
-            'fulfillment.required' => 'O tipo de consumo é obrigatório.',
-            'fulfillment.in' => 'O consumo deve ser dine-in, take-away ou delivery.',
-            'payment_status.required' => 'O status de pagamento é obrigatório.',
-            'payment_status.in' => 'O status de pagamento deve ser pending, paid ou failed.',
+            'link.required' => 'O link é obrigatório.',
+            'link.url' => 'O link informado é inválido.',
 
-            'payment_method.required' => 'O método de pagamento é obrigatório.',
-            'payment_method.in' => 'O método de pagamento selecionado não é válido.',
-            'notes.string' => 'As observações devem ser uma string válida.',
+            'employer_id.required' => 'O campo employer_id é obrigatório.',
+            'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+            'employer_id.exists' => 'O colaborador informado não existe.',
+
+            'schedules.required' => 'A lista de horários é obrigatória.',
+            'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
+            'schedules.min' => 'É necessário informar pelo menos um horário.',
+
+            'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
+            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido.',
+
+            'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
+            'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
+
+            'schedules.*.end_time.required' => 'O campo horário de término é obrigatório.',
+            'schedules.*.end_time.date_format' => 'O horário de término deve estar no formato HH:mm.',
+            'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
         ];
     }
-    public function store(Request $request)
-    {
-        Log::info('OrderController@store - início', [
-            'mode' => $request->input('mode'),
-            'user_id' => Auth::id(),
-            'payload' => $request->all(),
-        ]);
+   public function store(Request $request)
+{
+    Log::info('Employer.store:start', [
+        'auth_user_id' => Auth::id(),
+        'payload' => $request->all(),
+    ]);
 
+    try {
         if (!Auth::check()) {
-            Log::warning('OrderController@store - usuário não autenticado', [
-                'mode' => $request->input('mode'),
-            ]);
+            Log::warning('Employer.store:not_authenticated');
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
 
-        if ($request->input('mode') === 'appointment') {
-            Log::info('OrderController@store - delegando para storeAppointment', [
-                'user_id' => Auth::id(),
-            ]);
-            return $this->storeAppointment($request);
+        $owner = Auth::user();
+
+        $validated = $request->validate(
+            [
+                'user_id' => 'required|integer|exists:users,id',
+                'establishment_id' => 'required|integer|exists:establishments,id',
+                'role' => 'required|string|max:255',
+                'permissions' => 'nullable|array',
+                'link' => 'required|url',
+            ],
+            $this->getValidationMessages()
+        );
+
+        Log::info('Employer.store:validated', $validated);
+
+        $establishment = Establishment::find($validated['establishment_id']);
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        if ($request->input('mode') === 'direct') {
-            Log::info('OrderController@store - delegando para storeDirect', [
-                'user_id' => Auth::id(),
-            ]);
-            return $this->storeDirect($request);
+        if ((int) $establishment->user_id !== (int) $owner->id) {
+            return response()->json([
+                'error' => 'Apenas o dono do estabelecimento pode associar colaboradores.',
+            ], 403);
         }
 
-        Log::warning('OrderController@store - modo inválido', [
-            'mode' => $request->input('mode'),
-            'user_id' => Auth::id(),
-        ]);
-
-        return response()->json(['error' => 'Modo de criação inválido.'], 422);
-    }
-
-    public function storeAppointment(Request $request)
-    {
-        if (!Auth::check()) {
-            Log::warning('OrderController@storeAppointment - usuário não autenticado');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        if (
+            Employer::where('user_id', $validated['user_id'])
+                ->where('establishment_id', $establishment->id)
+                ->exists()
+        ) {
+            return response()->json([
+                'error' => 'Este usuário já é colaborador deste estabelecimento.',
+            ], 409);
         }
 
         DB::beginTransaction();
+        Log::info('Employer.store:transaction_started');
+
+        $employer = Employer::withoutEvents(function () use ($validated, $establishment, $owner) {
+            return Employer::create([
+                'user_id' => $validated['user_id'],
+                'establishment_id' => $establishment->id,
+                'role' => $validated['role'],
+                'permissions' => $validated['permissions'] ?? [],
+                'created_by' => $owner->id,
+                'updated_by' => $owner->id,
+            ]);
+        });
+
+        Log::info('Employer.store:employer_created', [
+            'employer_id' => $employer->id,
+        ]);
+
+        DB::commit();
+
+        $user = User::find($validated['user_id']);
+
+        if ($user && !empty($user->email)) {
+            try {
+                Mail::to($user->email)
+                    ->send(new NewEmployerCollaborator(
+                        $this->sanitizeEntity($establishment),
+                        $this->sanitizeEntity($employer)
+                    ));
+            } catch (\Throwable $e) {
+                Log::error('Employer.store:email_collaborator_failed', [
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($establishment->user && !empty($establishment->user->email)) {
+            try {
+                Mail::to($establishment->user->email)
+                    ->send(new OwnerNotifiedNewCollaborator(
+                        $this->sanitizeEntity($establishment),
+                        $this->sanitizeEntity($employer)
+                    ));
+            } catch (\Throwable $e) {
+                Log::error('Employer.store:email_owner_failed', [
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        Log::info('Employer.store:success', [
+            'employer_id' => $employer->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Colaborador associado com sucesso.',
+            'employer' => $employer,
+        ], 201);
+
+    } catch (ValidationException $e) {
+        Log::warning('Employer.store:validation_failed', [
+            'errors' => $e->errors(),
+        ]);
+
+        return response()->json([
+            'errors' => $e->errors(),
+        ], 422);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
+        Log::error('Employer.store:exception', [
+            'message' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro inesperado ao associar colaborador.',
+        ], 500);
+    }
+}
+
+private function sanitizeEntity($model)
+{
+    $array = $model->toArray();
+
+    array_walk_recursive($array, function (&$value) {
+        if (is_string($value)) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
+        }
+    });
+
+    return (object) $array;
+}
+
+
+
+    public function listByEstablishment(Request $request)
+    {
+        try {
+            Log::info('Employer.list start', [
+                'user_id' => Auth::id(),
+                'payload' => $request->all()
+            ]);
+
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $validatedData = $request->validate([
+                'establishment_id' => 'required|integer|exists:establishments,id',
+            ], [
+                'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
+                'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro válido.',
+                'establishment_id.exists' => 'O estabelecimento informado não existe.',
+            ]);
+
+            $user = Auth::user();
+            $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
+
+            if (!$establishment) {
+                return response()->json([
+                    'error' => 'O estabelecimento informado não existe ou foi removido.'
+                ], 404);
+            }
+
+            if ($establishment->user_id !== $user->id) {
+                return response()->json([
+                    'error' => 'Apenas o dono do estabelecimento pode visualizar a lista de colaboradores.'
+                ], 403);
+            }
+
+            $employers = Employer::with(['user:id,first_name,email,user_name', 'creator:id,first_name,email'])
+                ->where('establishment_id', $establishment->id)
+                ->orderByDesc('created_at')
+                ->get();
+
+            if ($employers->isEmpty()) {
+                return response()->json([
+                    'message' => 'Nenhum colaborador encontrado para este estabelecimento.'
+                ], 200);
+            }
+
+            Log::info('Employer.list success', [
+                'establishment_id' => $establishment->id,
+                'count' => $employers->count()
+            ]);
+
+            return response()->json([
+                'message' => 'Lista de colaboradores carregada com sucesso.',
+                'establishment' => [
+                    'id' => $establishment->id,
+                    'name' => $establishment->name,
+                ],
+                'employers' => $employers
+            ], 200);
+
+        } catch (ValidationException $e) {
+            Log::warning('Employer.list validation failed', ['errors' => $e->errors()]);
+            return response()->json([
+                'message' => 'Erro de validação nos dados enviados.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Exception $e) {
+            Log::error('Employer.list failed', [
+                'error' => $e->getMessage(),
+                'stack' => $e->getTraceAsString()
+            ]);
+            return response()->json([
+                'error' => 'Ocorreu um erro inesperado ao listar os colaboradores.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+
+    public function detach(Request $request)
+    {
+        Log::info('Employer.detach:start', [
+            'auth_user_id' => Auth::id(),
+            'payload' => $request->all(),
+        ]);
 
         try {
-            $user = Auth::user();
-
-            Log::info('OrderController@storeAppointment - início criação de agendamento', [
-                'user_id' => $user->id,
-                'payload' => $request->all(),
-            ]);
-
-            $data = $this->validateOrder($request);
-
-            Log::info('OrderController@storeAppointment - payload validado', [
-                'user_id' => $user->id,
-                'data' => $data,
-            ]);
-
-            $orderDate = Carbon::parse($data['order_datetime'])
-                ->tz('America/Sao_Paulo')
-                ->startOfMinute();
-
-            $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
-
-            Log::info('OrderController@storeAppointment - comparando datas', [
-                'order_datetime' => $orderDate->toIso8601String(),
-                'now' => $now->toIso8601String(),
-            ]);
-
-            if ($orderDate->lte($now)) {
-                DB::rollBack();
-                Log::warning('OrderController@storeAppointment - data/hora no passado ou igual ao agora', [
-                    'order_datetime' => $orderDate->toIso8601String(),
-                    'now' => $now->toIso8601String(),
-                    'user_id' => $user->id,
-                ]);
-                return response()->json([
-                    'error' => 'A data e hora do agendamento devem ser futuras em relação ao horário atual de Brasília.'
-                ], 422);
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            $isScheduled = true;
-            $type = 'appointment';
-            $appointmentStatus = 'pending';
-
-            Log::info('OrderController@storeAppointment - buscando colaborador', [
-                'attendant_id' => $data['attendant_id'],
-                'entity_id' => $data['entity_id'],
-            ]);
-
-            $employer = Employer::with('user')->find($data['attendant_id']);
-
-            if (!$employer) {
-                DB::rollBack();
-                Log::warning('OrderController@storeAppointment - colaborador não encontrado', [
-                    'attendant_id' => $data['attendant_id'],
-                    'entity_id' => $data['entity_id'],
-                ]);
-                return response()->json(['error' => 'O colaborador selecionado não foi encontrado.'], 422);
-            }
-
-            if (!empty($employer->establishment_id) && (int) $data['entity_id'] !== (int) $employer->establishment_id) {
-                Log::warning('OrderController@storeAppointment - ajustando entity_id para o establishment do colaborador', [
-                    'attendant_id' => $data['attendant_id'],
-                    'entity_id_enviado' => $data['entity_id'],
-                    'entity_id_employer' => $employer->establishment_id,
-                ]);
-                $data['entity_id'] = (int) $employer->establishment_id;
-            }
-
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderDateEnd = $orderDate->copy()->addMinutes($totalDuration);
-
-            Log::info('OrderController@storeAppointment - calculando duração e janela de horário', [
-                'total_duration' => $totalDuration,
-                'order_start' => $orderDate->toIso8601String(),
-                'order_end' => $orderDateEnd->toIso8601String(),
-                'attendant_id' => $data['attendant_id'],
-            ]);
-
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderDateEnd)) {
-                DB::rollBack();
-                Log::warning('OrderController@storeAppointment - conflito de agenda detectado', [
-                    'attendant_id' => $data['attendant_id'],
-                    'start' => $orderDate->toIso8601String(),
-                    'end' => $orderDateEnd->toIso8601String(),
-                ]);
-                return response()->json(['error' => 'O colaborador já possui um agendamento neste horário.'], 422);
-            }
-
-            $itemIds = collect($data['items'])->flatMap(fn($i) => (array) $i['item_id'])->toArray();
-            Log::info('OrderController@storeAppointment - validando itens do estabelecimento', [
-                'item_ids' => $itemIds,
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-            ]);
-
-            $invalidItems = Item::invalidForEntity($itemIds, $data['entity_name'], $data['entity_id']);
-
-            if (!empty($invalidItems)) {
-                DB::rollBack();
-                Log::warning('OrderController@storeAppointment - itens inválidos para o estabelecimento', [
-                    'invalid_items' => $invalidItems,
-                    'entity_name' => $data['entity_name'],
-                    'entity_id' => $data['entity_id'],
-                ]);
-                return response()->json([
-                    'error' => 'Um ou mais itens não pertencem a este estabelecimento.',
-                    'invalid_items' => $invalidItems,
-                ], 422);
-            }
-
-            Log::info('OrderController@storeAppointment - criando ordem', [
-                'user_id' => $user->id,
-                'is_scheduled' => $isScheduled,
-                'type' => $type,
-                'appointment_status' => $appointmentStatus,
-            ]);
-
-            $order = Order::createOrder(
-                $data,
-                $user,
-                $orderDate,
-                $totalDuration,
-                $isScheduled,
-                $type,
-                $appointmentStatus
+            $validated = $request->validate(
+                [
+                    'employer_id' => 'required|integer',
+                    'establishment_id' => 'required|integer|exists:establishments,id',
+                ],
+                $this->getValidationMessages()
             );
 
-            Log::info('OrderController@storeAppointment - ordem criada, anexando itens', [
-                'order_id' => $order->id ?? null,
-                'items' => $data['items'],
-            ]);
+            $owner = Auth::user();
 
-            $order->attachItems($data['items']);
+            $establishment = Establishment::with('user')->find($validated['establishment_id']);
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
 
-            Log::info('OrderController@storeAppointment - itens anexados, commit da transação', [
-                'order_id' => $order->id ?? null,
-            ]);
+            if ((int) $establishment->user_id !== (int) $owner->id) {
+                return response()->json([
+                    'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.',
+                ], 403);
+            }
+
+            $employer = Employer::with('user')
+                ->where('id', $validated['employer_id'])
+                ->where('establishment_id', $establishment->id)
+                ->first();
+
+            if (!$employer) {
+                return response()->json([
+                    'error' => 'O colaborador não está vinculado a este estabelecimento.',
+                ], 404);
+            }
+
+            DB::beginTransaction();
+
+            $collaboratorUser = $employer->user;
+            $ownerUser = $establishment->user;
+
+            $employer->delete();
 
             DB::commit();
 
-            Log::info('OrderController@storeAppointment - enviando e-mails de agendamento', [
-                'order_id' => $order->id ?? null,
-                'employer_id' => $employer->id,
-                'user_id' => $user->id,
-            ]);
+            if ($collaboratorUser && !empty($collaboratorUser->email)) {
+                try {
+                    Mail::to($collaboratorUser->email)
+                        ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
+                } catch (\Throwable $e) {
+                    Log::warning('Employer.detach:email_collaborator_failed', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
 
-            $this->sendAppointmentEmails($order, $employer, $user);
+            if ($ownerUser && !empty($ownerUser->email)) {
+                try {
+                    Mail::to($ownerUser->email)
+                        ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser));
+                } catch (\Throwable $e) {
+                    Log::warning('Employer.detach:email_owner_failed', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
 
-            Log::info('OrderController@storeAppointment - agendamento concluído com sucesso', [
-                'order_id' => $order->id ?? null,
+            Log::info('Employer.detach:success', [
+                'employer_id' => $validated['employer_id'],
+                'establishment_id' => $establishment->id,
             ]);
 
             return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
+                'message' => 'Colaborador desvinculado com sucesso.',
+            ], 200);
+
+        } catch (ValidationException $e) {
+            Log::warning('Employer.detach:validation_failed', [
+                'errors' => $e->errors(),
+            ]);
+
+            return response()->json([
+                'errors' => $e->errors(),
+            ], 422);
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('OrderController@storeAppointment - erro inesperado ao criar agendamento', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-                'user_id' => Auth::id(),
-                'payload' => $request->all(),
-            ]);
-            return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
-        }
-    }
 
-    public function storeDirect(Request $request)
-    {
-        try {
-            Log::info('OrderController@storeDirect - início criação de pedido direto', [
-                'user_id' => auth()->id(),
-                'payload' => $request->all(),
-            ]);
-
-            if (!auth()->check()) {
-                Log::warning('OrderController@storeDirect - usuário não autenticado');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $validated = $request->validate([
-                'app_id' => 'required|integer',
-                'entity_name' => 'required|string',
-                'entity_id' => 'required|integer',
-                'attendant_id' => 'required|integer',
-                'customer_name' => 'required|string',
-                'origin' => 'required|string',
-                'fulfillment' => 'required|string',
-                'payment_status' => 'required|string',
-                'payment_method' => 'required|string',
-                'notes' => 'nullable|string',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'array',
-                'items.*.additions.*.id' => 'required|integer',
-                'items.*.additions.*.quantity' => 'required|integer|min:1',
-                'items.*.removals' => 'array',
-                'items.*.removals.*' => 'integer',
-            ]);
-
-            Log::info('OrderController@storeDirect - payload validado', [
-                'user_id' => auth()->id(),
-                'validated' => $validated,
-            ]);
-
-            $user = auth()->user();
-
-            $order = \App\Models\Order::create([
-                'app_id' => $validated['app_id'],
-                'entity_name' => $validated['entity_name'],
-                'entity_id' => $validated['entity_id'],
-                'order_number' => \App\Models\Order::nextOrderNumber($validated['app_id']),
-                'order_datetime' => now(),
-                'created_by' => $user->id,
-                'attendant_id' => $validated['attendant_id'],
-                'customer_name' => $validated['customer_name'],
-                'origin' => $validated['origin'],
-                'fulfillment' => $validated['fulfillment'],
-                'payment_status' => $validated['payment_status'],
-                'payment_method' => $validated['payment_method'],
-                'notes' => $validated['notes'] ?? null,
-                'type' => 'service',
-                'appointment_status' => null,
-                'total_price' => 0,
-                'total_duration' => 0,
-                'status' => 'completed'
-            ]);
-
-            Log::info('OrderController@storeDirect - ordem criada, anexando itens', [
-                'order_id' => $order->id ?? null,
-                'items' => $validated['items'],
-            ]);
-
-            $order->attachItems($validated['items']);
-
-            $total = 0;
-
-            foreach ($order->items as $it) {
-                $total += $it->subtotal;
-
-                foreach ($it->modifiers as $m) {
-                    $modifierItem = \App\Models\Item::find($m->modifier_id);
-                    if ($modifierItem) {
-                        $mult = $m->quantity ?? 1;
-                        $total += ($modifierItem->price * $mult);
-                    }
-                }
-            }
-
-            Log::info('OrderController@storeDirect - total calculado', [
-                'order_id' => $order->id ?? null,
-                'total' => $total,
-            ]);
-
-            $order->update(['total_price' => $total]);
-
-            Log::info('OrderController@storeDirect - pedido direto concluído com sucesso', [
-                'order_id' => $order->id ?? null,
-            ]);
-
-            return response()->json([
-                'message' => 'Pedido criado com sucesso.',
-                'order' => $order->load('items.item', 'items.modifiers.modifier')
-            ], 201);
-
-        } catch (\Throwable $e) {
-            \Log::error('OrderController@storeDirect - erro ao criar pedido direto', [
-                'err' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-                'trace' => $e->getTraceAsString(),
-                'user_id' => auth()->id(),
-                'payload' => $request->all(),
-            ]);
-
-            return response()->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    public function view($id)
-    {
-        try {
-            $authUser = Auth::user();
-
-            // ?? Carrega o pedido completo com todas as relações relevantes
-            $order = \App\Models\Order::with([
-                'items.item:id,name,slug,price,image,type',
-                'items.modifiers.modifier:id,name,type',
-                'creator:id,first_name,last_name,user_name,avatar,email',
-                'client:id,first_name,last_name,user_name,avatar,email',
-                'attendant.user:id,first_name,last_name,user_name,avatar,email',
-                'entity:id,name,slug,logo,background,app_id'
-            ])->findOrFail($id);
-
-            // ?? Registra a visualização
-            \App\Models\Interaction::registerView($order, $authUser);
-
-            // ?? Limpa cache de métricas (se existir)
-            Cache::forget("order_{$order->id}_metrics");
-            Cache::forget("order_{$order->id}_summary");
-
-            // ?? Obtém métricas e interações diretamente do model
-            $metrics = $order->metrics();
-            $interactionSummary = $order->fullInteractionsSummary();
-
-            // ?? Retorno padronizado igual aos outros controllers
-            return response()->json([
-                'order' => $order,
-                'entity' => $order->entity,
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $order->uniqueViewers()->get()->map(function ($view) {
-                    $u = $view->user;
-                    return [
-                        'user_id' => $u?->id,
-                        'user_name' => $u?->user_name,
-                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                        'avatar' => $u?->avatar,
-                        'email' => $u?->email,
-                    ];
-                }),
-                'attendant' => $order->attendant?->user,
-                'client' => $order->client,
-                'establishment' => $order->establishment,
-            ], 200);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            \Log::warning('[OrderController::view] Pedido não encontrado', ['order_id' => $id]);
-            return response()->json(['error' => 'Pedido não encontrado.'], 404);
-
-        } catch (\Throwable $e) {
-            \Log::error('[OrderController::view] Erro ao carregar pedido', [
-                'order_id' => $id,
+            Log::error('Employer.detach:exception', [
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return response()->json(['error' => 'Erro ao carregar pedido.'], 500);
-        }
-    }
-
-    private function validateOrder(Request $request)
-    {
-        return $request->validate([
-            'app_id' => 'required|exists:applications,id',
-            'entity_name' => 'required|string|max:255',
-            'entity_id' => 'required|integer',
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required',
-            'items.*.item_id.*' => 'integer|exists:items,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'customer_name' => 'required|string|max:255',
-            'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-            'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-            'payment_status' => 'required|string|in:pending,paid,failed',
-            'payment_method' => 'required|string|max:255',
-            'notes' => 'nullable|string|max:500',
-            'customer_phone' => 'nullable|string|max:20',
-            'customer_cpf' => 'nullable|string|max:20',
-            'order_datetime' => 'required|date',
-            'attendant_id' => 'required|integer|exists:employers,id',
-            'client_id' => 'nullable|integer|exists:users,id',
-        ]);
-    }
-
-    private function resolveOrderTiming(array $data)
-    {
-        $orderDate = Carbon::parse($data['order_datetime'])
-            ->tz('America/Sao_Paulo') // força converter para o horário local do servidor
-            ->startOfMinute();
-
-
-        $now = Carbon::now('America/Sao_Paulo')->startOfMinute();
-
-        $isScheduled = $orderDate->gt($now);
-        $type = $isScheduled ? 'appointment' : 'service';
-        $appointmentStatus = $isScheduled ? 'pending' : null;
-
-        return [$orderDate, $isScheduled, $type, $appointmentStatus];
-    }
-
-
-    private function sendAppointmentEmails($order, $employer, $user)
-    {
-        try {
-            $establishment = Establishment::with('user')->find($order->entity_id);
-            $owner = $establishment?->user;
-            $attendant = $employer->user;
-            $clientEmail = $user?->email;
-
-            if ($clientEmail) {
-                Mail::to($clientEmail)
-                    ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $attendant));
-            }
-
-            if ($attendant?->email) {
-                Mail::to($attendant->email)
-                    ->queue(new NewAppointmentNotification($order, $establishment, $user));
-            }
-
-            if ($owner?->email) {
-                $ownerName = trim("{$owner->first_name} {$owner->last_name}");
-                Mail::to($owner->email)
-                    ->queue(new OwnerAppointmentNotification($order, $ownerName, $user));
-            }
-
-            Log::info('?? E-mails de agendamento enfileirados com sucesso.', [
-                'order_id' => $order->id,
-                'owner_email' => $owner?->email,
-                'attendant_email' => $attendant?->email,
-                'client_email' => $clientEmail,
-            ]);
-        } catch (\Throwable $ex) {
-            Log::error(?? Falha ao enviar e-mails de agendamento.', [
-                'message' => $ex->getMessage(),
-                'file' => $ex->getFile(),
-                'line' => $ex->getLine(),
-            ]);
-        }
-    }
-
-
-
-
-    /**
-     * Exibe um único pedido para impressão.
-     */
-    public function show($id)
-    {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Usuário não autenticado tentou ver pedido.', ['order_id' => $id]);
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $order = Order::with([
-                'items.item',
-                'items.modifiers.modifier'
-            ])->findOrFail($id);
-
-            // Nome do estabelecimento ou entidade
-            $est = Establishment::find($order->entity_id);
-            $ename = $est ? $est->name : strtoupper($order->entity_name);
-
-            // Monta receipt igual ao store
-            $WIDTH = 42;
-            $pad = fn($l, $r) => $l . str_repeat('.', max($WIDTH - (strlen($l) + strlen($r)), 0)) . $r;
-            $fmt = fn($v) => 'R$' . number_format($v, 2, ',', '');
-
-            $lines = [];
-            $lines[] = str_repeat('¦', $WIDTH);
-            $lines[] = str_pad($ename, $WIDTH, ' ', STR_PAD_BOTH);
-            $lines[] = str_repeat('¦', $WIDTH);
-            $lines[] = '';
-            $lines[] = str_pad('ITENS DO PEDIDO', $WIDTH, ' ', STR_PAD_BOTH);
-            $lines[] = str_repeat('-', $WIDTH);
-
-            foreach ($order->items as $oi) {
-                $lines[] = $pad($oi->quantity . 'x ' . $oi->item->name, $fmt($oi->subtotal));
-                foreach ($oi->modifiers as $mod) {
-                    $pref = $mod->type === 'addition' ? '+ ' : '- ';
-                    $lines[] = $pref . $mod->modifier->name;
-                }
-            }
-
-            $lines[] = str_repeat('-', $WIDTH);
-            $lines[] = $pad('TOTAL', $fmt($order->total_price));
-            $lines[] = '';
-            $lines[] = 'Origem: ' . $order->origin . ' | Consumo: ' . $order->fulfillment;
-            $lines[] = 'Data: ' . $order->order_datetime->format('d/m/Y H:i:s');
-            $receipt = implode("\n", $lines);
 
             return response()->json([
-                'order' => $order,
-                'receipt' => $receipt,
-            ], 200);
-
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::warning('Pedido não encontrado para impressão.', ['order_id' => $id]);
-            return response()->json(['error' => 'Pedido não encontrado.'], 404);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao buscar pedido para impressão: ' . $e->getMessage());
-            return response()->json(['error' => 'Erro ao recuperar pedido.'], 500);
+                'error' => 'Erro inesperado ao desvincular colaborador.',
+            ], 500);
         }
     }
-    public function update(Request $request, $id)
+
+    public function checkUpdates(Request $request)
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-            $user = Auth::user();
-
-            $data = $request->validate([
-                'app_id' => 'required|exists:applications,id',
-                'entity_name' => 'required|string|max:255',
-                'entity_id' => 'required|integer',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-                'items.*.additions' => 'nullable|array',
-                'items.*.additions.*' => 'integer|exists:items,id',
-                'items.*.removals' => 'nullable|array',
-                'items.*.removals.*' => 'integer|exists:items,id',
-                'customer_name' => 'required|string|max:255',
-                'origin' => 'required|string|in:WhatsApp,Balcão,Telefone,App',
-                'fulfillment' => 'required|string|in:dine-in,take-away,delivery',
-                'payment_status' => 'required|string|in:pending,paid,failed,cancelled,refunded,partially_refunded',
-                'payment_method' => 'required|string|in:Pix,Débito,Crédito,Dinheiro,Fiado,Cortesia,Transferência bancária,Vale-refeição,Cheque,PayPal',
-                'notes' => 'nullable|string|max:500',
-            ], $this->getValidationMessages());
-
-            $order = Order::where('app_id', $data['app_id'])
-                ->where('entity_name', $data['entity_name'])
-                ->where('entity_id', $data['entity_id'])
-                ->findOrFail($id);
-
-            foreach ($order->items as $oi) {
-                $oi->modifiers()->delete();
-            }
-            $order->items()->delete();
-
-            $total = 0;
-            foreach ($data['items'] as $entry) {
-                $item = Item::findOrFail($entry['item_id']);
-                $qty = $entry['quantity'];
-                $unitPrice = $item->price;
-                $subtotal = $unitPrice * $qty;
-
-                $orderItem = $order->items()->create([
-                    'item_id' => $item->id,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'subtotal' => $subtotal,
-                ]);
-
-                if (!empty($entry['additions'])) {
-                    foreach ($entry['additions'] as $addId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $addId,
-                            'type' => 'addition',
-                        ]);
-                    }
-                }
-                if (!empty($entry['removals'])) {
-                    foreach ($entry['removals'] as $remId) {
-                        $orderItem->modifiers()->create([
-                            'modifier_id' => $remId,
-                            'type' => 'removal',
-                        ]);
-                    }
-                }
-
-                $total += $subtotal;
-            }
-
-            $order->update([
-                'customer_name' => $data['customer_name'],
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'notes' => $data['notes'] ?? null,
-                'total_price' => $total,
-                'status' => 'approved',
-            ]);
-
-            $order->load('items.item', 'items.modifiers.modifier');
-
-            return response()->json([
-                'message' => 'Pedido atualizado com sucesso!',
-                'order' => $order,
-            ], 200);
-        } catch (ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar o pedido.'], 500);
-        }
-    }
-    public function listByEmployer(Request $request)
-    {
-        try {
-            Log::info('?? Iniciando listagem de pedidos por colaborador', [
-                'request_data' => $request->all(),
-                'user_id' => Auth::id(),
-            ]);
-
-            if (!Auth::check()) {
-                Log::warning('?? Usuário não autenticado tentou listar pedidos do colaborador.');
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
-            Log::info('?? Usuário autenticado', ['user' => $user->only(['id', 'first_name', 'email'])]);
 
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
-                'app_id' => 'required|integer|exists:applications,id',
-                'include_scheduled' => 'sometimes|boolean',
+                'last_check' => 'nullable|date',
             ], [
-                'employer_id.required' => 'O ID do colaborador é obrigatório.',
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
                 'employer_id.exists' => 'O colaborador informado não existe.',
-                'app_id.required' => 'O ID do aplicativo é obrigatório.',
-                'app_id.exists' => 'O aplicativo informado não existe.',
+                'last_check.date' => 'O campo last_check deve ser uma data válida.',
             ]);
 
-            Log::info('? Dados validados com sucesso', ['data' => $data]);
-
-            $employer = \App\Models\Employer::with('user')->find($data['employer_id']);
-            Log::info('?? Colaborador encontrado', ['employer' => $employer]);
-
+            $employer = \App\Models\Employer::with('establishment')->find($data['employer_id']);
             if (!$employer) {
-                Log::warning('? Colaborador não encontrado', ['employer_id' => $data['employer_id']]);
                 return response()->json(['error' => 'Colaborador não encontrado.'], 404);
             }
 
-            $isOwner = Establishment::where('user_id', $user->id)
+            $isOwner = \App\Models\Establishment::where('user_id', $user->id)
                 ->where('id', $employer->establishment_id)
                 ->exists();
 
             $isSelf = $user->id === $employer->user_id;
 
-            Log::info('?? Verificação de acesso', [
-                'is_owner' => $isOwner,
-                'is_self' => $isSelf,
-                'establishment_id' => $employer->establishment_id,
-            ]);
-
             if (!$isOwner && !$isSelf) {
-                Log::warning('?? Acesso negado ao listar pedidos do colaborador.', [
-                    'auth_user_id' => $user->id,
-                    'employer_user_id' => $employer->user_id,
-                    'establishment_id' => $employer->establishment_id,
-                ]);
-                return response()->json(['error' => 'Acesso negado. Você não tem permissão para visualizar os pedidos deste colaborador.'], 403);
+                return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            Log::info('?? Consultando pedidos do colaborador', [
-                'app_id' => $data['app_id'],
-                'employer_id' => $data['employer_id'],
-            ]);
+            $lastCheck = isset($data['last_check'])
+                ? \Carbon\Carbon::parse($data['last_check'])
+                : now()->subMinutes(10);
 
-            $query = Order::with([
-                'items.item',
-                'items.modifiers.modifier',
-                'creator:id,first_name,email,cpf',
-                'attendant.user:id,first_name,email,cpf',
-                'client:id,first_name,email,cpf',
-            ])
-                ->where('app_id', $data['app_id'])
-                ->where('attendant_id', $data['employer_id']);
+            $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed', 'cancelled', 'attended', 'not_attended']);
 
-            if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
-                $query->where('status', 'scheduled');
+            $totalAppointments = (clone $appointmentsQuery)->count();
+            $todayAppointments = (clone $appointmentsQuery)
+                ->whereDate('order_datetime', now()->toDateString())
+                ->count();
+            $tomorrowAppointments = (clone $appointmentsQuery)
+                ->whereDate('order_datetime', now()->addDay()->toDateString())
+                ->count();
+            $totalValue = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['confirmed', 'attended'])
+                ->sum('total_price');
+
+            $newAppointments = (clone $appointmentsQuery)
+                ->where('created_at', '>', $lastCheck)
+                ->orderBy('created_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $updatedAppointments = (clone $appointmentsQuery)
+                ->where('updated_at', '>', $lastCheck)
+                ->where('created_at', '<', $lastCheck)
+                ->orderBy('updated_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $cancelledAppointments = (clone $appointmentsQuery)
+                ->where('appointment_status', 'cancelled')
+                ->where('updated_at', '>', $lastCheck)
+                ->orderBy('updated_at', 'desc')
+                ->take(5)
+                ->get(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $nextAppointment = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->where('order_datetime', '>=', now())
+                ->orderBy('order_datetime', 'asc')
+                ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            $lastAppointment = (clone $appointmentsQuery)
+                ->where('order_datetime', '<', now())
+                ->orderBy('order_datetime', 'desc')
+                ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
+
+            // --- Identifica atendimentos finalizados que precisam ser marcados como atendidos ou não ---
+            $finalizableAppointments = (clone $appointmentsQuery)
+                ->whereIn('appointment_status', ['confirmed'])
+                ->get()
+                ->filter(function ($appt) {
+                    $duration = 0;
+                    if ($appt->items && count($appt->items) > 0) {
+                        foreach ($appt->items as $item) {
+                            $duration += $item->duration ?? 0;
+                        }
+                    }
+                    $duration = $duration > 0 ? $duration : 15;
+                    $endTime = \Carbon\Carbon::parse($appt->order_datetime)->addMinutes($duration);
+                    return now()->greaterThanOrEqualTo($endTime);
+                })
+                ->sortBy('order_datetime')
+                ->values()
+                ->map(function ($appt) {
+                    return [
+                        'id' => $appt->id,
+                        'order_number' => $appt->order_number,
+                        'customer_name' => $appt->customer_name,
+                        'order_datetime' => $appt->order_datetime,
+                        'appointment_status' => $appt->appointment_status,
+                        'total_price' => $appt->total_price,
+                    ];
+                })
+                ->take(1);
+
+            $notifications = [];
+
+            if ($newAppointments->isNotEmpty()) {
+                foreach ($newAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'new',
+                        'message' => "Novo agendamento de {$appt->customer_name} para " .
+                            \Carbon\Carbon::parse($appt->order_datetime)->format('d/m H:i'),
+                    ];
+                }
             }
 
-            $orders = $query->orderBy('order_datetime', 'desc')->get();
-
-            Log::info('?? Total de pedidos encontrados', ['count' => $orders->count()]);
-
-            if ($orders->isEmpty()) {
-                Log::info('?? Nenhum pedido encontrado para este colaborador.', ['employer_id' => $data['employer_id']]);
-                return response()->json(['message' => 'Nenhum pedido encontrado para este colaborador.'], 404);
+            if ($updatedAppointments->isNotEmpty()) {
+                foreach ($updatedAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'update',
+                        'message' => "Agendamento de {$appt->customer_name} foi atualizado. Status: {$appt->appointment_status}.",
+                    ];
+                }
             }
 
-            $response = [
-                'message' => 'Pedidos listados com sucesso.',
-                'employer' => [
-                    'id' => $employer->id,
-                    'name' => $employer->user ? $employer->user->first_name . ' ' . $employer->user->last_name : null,
-                    'email' => $employer->user->email ?? null,
-                    'role' => $employer->role ?? 'Barbeiro',
-                    'establishment_id' => $employer->establishment_id,
+            if ($cancelledAppointments->isNotEmpty()) {
+                foreach ($cancelledAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'cancel',
+                        'message' => "Agendamento de {$appt->customer_name} foi cancelado.",
+                    ];
+                }
+            }
+
+            if ($finalizableAppointments->isNotEmpty()) {
+                foreach ($finalizableAppointments as $appt) {
+                    $notifications[] = [
+                        'type' => 'finalize',
+                        'message' => "O atendimento de {$appt['customer_name']} está finalizado. Marque como atendido ou não atendido.",
+                    ];
+                }
+            }
+
+            return response()->json([
+                'checked_at' => now()->toDateTimeString(),
+                'kpis' => [
+                    'total' => $totalAppointments,
+                    'today' => $todayAppointments,
+                    'tomorrow' => $tomorrowAppointments,
+                    'value' => $totalValue,
                 ],
-                'orders' => $orders,
-            ];
+                'new_appointments' => $newAppointments,
+                'updated_appointments' => $updatedAppointments,
+                'cancelled_appointments' => $cancelledAppointments,
+                'next_appointment' => $nextAppointment,
+                'last_appointment' => $lastAppointment,
+                'finalizable_appointment' => $finalizableAppointments->first(),
+                'notifications' => $notifications,
+            ], 200);
 
-            Log::info('? Resposta pronta para envio', [
-                'response_summary' => [
-                    'employer_id' => $employer->id,
-                    'orders_count' => count($orders),
-                ]
-            ]);
-
-            return response()->json($response, 200);
-
-        } catch (ValidationException $e) {
-            Log::warning('?? Erro de validação ao listar pedidos do colaborador.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
         } catch (\Exception $e) {
-            Log::error('?? Erro ao listar pedidos do colaborador', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+            \Log::error('Erro ao verificar atualizações do colaborador.', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'error' => 'Ocorreu um erro ao listar os pedidos do colaborador.',
+                'error' => 'Falha ao verificar atualizações.',
                 'details' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
             ], 500);
         }
     }
 
-
-    public function updateAppointmentStatus(Request $request, $id)
+    public function listAppointments(Request $request)
     {
         try {
             if (!Auth::check()) {
-                Log::warning('?? Tentativa de atualizar agendamento sem autenticação.', ['order_id' => $id]);
                 return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
-            $ip = $request->ip();
-            $userAgent = $request->header('User-Agent');
-
-            Log::info('?? Iniciando atualização de status de agendamento.', [
-                'order_id' => $id,
-                'user_id' => $user->id,
-                'ip' => $ip,
-                'user_agent' => $userAgent,
-                'payload' => $request->all(),
-            ]);
 
             $data = $request->validate([
-                'action' => 'required|string|in:confirm,cancel,attended,not_attended',
-                'reason' => 'nullable|string|max:255',
+                'employer_id' => 'nullable|integer|exists:employers,id',
             ], [
-                'action.required' => 'A ação é obrigatória.',
-                'action.in' => 'A ação deve ser confirm, cancel, attended ou not_attended.',
+                'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
             ]);
 
-            $order = Order::with(['attendant', 'creator'])->findOrFail($id);
+            $employer = isset($data['employer_id'])
+                ? \App\Models\Employer::find($data['employer_id'])
+                : \App\Models\Employer::where('user_id', $user->id)->first();
 
-            Log::info('?? Pedido localizado.', [
-                'order_id' => $order->id,
-                'appointment_status' => $order->appointment_status,
-                'status' => $order->status,
-                'type' => $order->type,
-            ]);
-
-            $isOwner = Establishment::where('id', $order->entity_id)
-                ->where('user_id', $user->id)
-                ->exists();
-
-            $isAttendant = $order->attendant && $order->attendant->user_id === $user->id;
-            $isClient = $order->created_by === $user->id;
-
-            Log::info('?? Verificando permissões.', [
-                'isOwner' => $isOwner,
-                'isAttendant' => $isAttendant,
-                'isClient' => $isClient,
-            ]);
-
-            if (!$isOwner && !$isAttendant && !$isClient) {
-                Log::warning('?? Acesso negado ao atualizar status de agendamento.', [
-                    'user_id' => $user->id,
-                    'order_id' => $id,
-                    'ip' => $ip,
-                ]);
-                return response()->json(['error' => 'Acesso negado.'], 403);
+            if (!$employer) {
+                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
             }
 
-            if ($order->type !== 'appointment') {
-                Log::warning('?? Tentativa de atualizar um pedido que não é agendamento.', ['order_id' => $id]);
-                return response()->json(['error' => 'Somente agendamentos podem ser alterados por este método.'], 422);
-            }
+            $appointments = \App\Models\Order::with([
+                'items.item:id,name,price,duration',
+                'items.modifiers.modifier:id,name,type',
+                'client:id,first_name,last_name,email,phone',
+                'attendant.user:id,first_name,last_name,email'
+            ])
+                ->where('type', 'appointment')
+                ->where('attendant_id', $employer->id)
+                ->whereIn('appointment_status', [
+                    'pending',
+                    'confirmed',
+                    'attended',
+                    'not_attended',
+                    'cancelled'
+                ])
+                ->orderBy('order_datetime', 'desc')
+                ->get();
 
-            $now = Carbon::now('America/Sao_Paulo');
-            $orderDate = Carbon::parse($order->order_datetime);
+            // ?? Garante cálculo do total e estrutura dos serviços solicitados
+            foreach ($appointments as $order) {
+                if (!$order->total_price || $order->total_price == 0) {
+                    $order->total_price = $order->items->sum(function ($item) {
+                        return ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1);
+                    });
+                }
 
-            if (in_array($data['action'], ['attended', 'not_attended']) && $orderDate->gt($now)) {
-                Log::warning('?? Tentativa de finalizar agendamento futuro.', [
-                    'order_id' => $id,
-                    'order_datetime' => $order->order_datetime,
-                    'now' => $now,
-                ]);
-                return response()->json(['error' => 'Não é possível finalizar um atendimento futuro.'], 422);
-            }
-
-            switch ($data['action']) {
-                case 'confirm':
-                    if (!$isOwner && !$isAttendant) {
-                        Log::warning('?? Cliente tentou confirmar agendamento.', ['order_id' => $id]);
-                        return response()->json(['error' => 'Somente o colaborador ou o dono podem confirmar agendamentos.'], 403);
-                    }
-                    if ($order->appointment_status === 'cancelled') {
-                        return response()->json(['error' => 'Não é possível confirmar um agendamento cancelado.'], 422);
-                    }
-                    $order->appointment_status = 'confirmed';
-                    $order->status = 'scheduled';
-                    $order->confirmed_by = $user->id;
-                    $interactionType = 'ConfirmAppointment';
-                    $interactionComment = 'Agendamento confirmado.';
-                    break;
-
-                case 'cancel':
-                    $order->appointment_status = 'cancelled';
-                    $order->status = 'cancelled';
-                    $order->cancelled_by = $user->id;
-                    $order->cancelled_reason = $data['reason'] ?? null;
-                    $interactionType = 'CancelAppointment';
-                    $interactionComment = 'Agendamento cancelado. Motivo: ' . ($data['reason'] ?? 'Não informado.');
-                    break;
-
-                case 'attended':
-                    if ($order->appointment_status !== 'confirmed') {
-                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser finalizados.'], 422);
-                    }
-                    $order->appointment_status = 'attended';
-                    $order->status = 'completed';
-                    $order->attended_by = $user->id;
-                    $order->attended_at = $now;
-                    $interactionType = 'FinishAppointment';
-                    $interactionComment = 'Atendimento concluído com sucesso.';
-                    break;
-
-                case 'not_attended':
-                    if ($order->appointment_status !== 'confirmed') {
-                        return response()->json(['error' => 'Apenas agendamentos confirmados podem ser marcados como não atendidos.'], 422);
-                    }
-                    $order->appointment_status = 'not_attended';
-                    $order->status = 'completed';
-                    $order->attended_by = $user->id;
-                    $order->attended_at = $now;
-                    $interactionType = 'NotAttendedAppointment';
-                    $interactionComment = 'Agendamento marcado como não atendido.';
-                    break;
-            }
-
-            $order->save();
-
-            // ?? Registrar histórico detalhado na tabela interactions
-            try {
-                $interaction = new \App\Models\Interaction();
-                $interaction->user_id = $user->id;
-                $interaction->entity_id = $order->id;
-                $interaction->entity_type = 'order';
-                $interaction->interaction_type = isset($interactionType)
-                    ? $interactionType
-                    : 'AppointmentAction';
-
-                $interaction->comment = isset($interactionComment)
-                    ? $interactionComment
-                    : null;
-
-                $interaction->name = !empty($user->first_name)
-                    ? $user->first_name
-                    : 'Usuário';
-
-                $interaction->content = json_encode([
-                    'action' => $data['action'],
-                    'reason' => $data['reason'] ?? null,
-                    'previous_status' => $order->getOriginal('appointment_status'),
-                    'new_status' => $order->appointment_status,
-                    'ip' => $ip,
-                    'user_agent' => $userAgent,
-                    'timestamp' => now()->toDateTimeString(),
-                ], JSON_UNESCAPED_UNICODE);
-                $interaction->save();
-
-                Log::info('??? Interação registrada com sucesso.', [
-                    'interaction_id' => $interaction->id,
-                    'interaction_type' => $interactionType,
-                    'order_id' => $order->id,
-                    'user_id' => $user->id,
-                    'ip' => $ip,
-                ]);
-            } catch (\Throwable $ex) {
-                Log::error('?? Falha ao registrar interação.', [
-                    'message' => $ex->getMessage(),
-                    'file' => $ex->getFile(),
-                    'line' => $ex->getLine(),
-                ]);
+                $order->services = $order->items->map(function ($item) {
+                    return [
+                        'name' => $item->item->name ?? 'Serviço não identificado',
+                        'price' => $item->unit_price ?? $item->item->price ?? 0,
+                        'quantity' => $item->quantity ?? 1,
+                        'subtotal' => ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1),
+                        'duration' => $item->item->duration ?? 0,
+                        'modifiers' => $item->modifiers->map(function ($mod) {
+                            return [
+                                'name' => $mod->modifier->name ?? '',
+                                'type' => $mod->type ?? ''
+                            ];
+                        }),
+                    ];
+                });
             }
 
             return response()->json([
-                'message' => 'Status do agendamento atualizado com sucesso.',
-                'order' => $order->fresh(['attendant.user', 'creator', 'items.item']),
+                'appointments' => $appointments,
+                'count' => $appointments->count(),
             ], 200);
 
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::warning('? Agendamento não encontrado para atualização.', ['order_id' => $id]);
-            return response()->json(['error' => 'Agendamento não encontrado.'], 404);
-
-        } catch (ValidationException $e) {
-            Log::warning('?? Erro de validação ao atualizar status de agendamento.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Throwable $e) {
-            Log::error('?? Erro inesperado ao atualizar status de agendamento.', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
+        } catch (\Exception $e) {
+            \Log::error('Erro ao listar agendamentos do colaborador.', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
             return response()->json([
-                'error' => 'Erro interno ao atualizar o agendamento.',
+                'error' => 'Falha ao listar agendamentos.',
                 'details' => $e->getMessage(),
             ], 500);
         }
+
     }
-    public function listByEntitySlug(Request $request, $slug)
+
+
+
+    public function listSchedules(Request $request)
     {
         try {
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+            ], $this->getValidationMessages());
+
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $data['employer_id'])
+                ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
+                ->orderBy('start_time')
+                ->get();
+
+            return response()->json($schedules, 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.listSchedules error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+    public function saveSchedules(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'schedules' => 'required|array|min:1',
+                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required|date_format:H:i',
+                'schedules.*.end_time' => 'required|date_format:H:i',
+            ], $this->getValidationMessages());
+
+            // ?? Validação manual: end_time deve ser maior que start_time
+            foreach ($data['schedules'] as $schedule) {
+                if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
+                    return response()->json([
+                        'errors' => [
+                            'schedules' => ['O horário de término deve ser posterior ao horário de início.']
+                        ]
+                    ], 422, [], JSON_UNESCAPED_UNICODE);
+                }
             }
 
+            foreach ($data['schedules'] as $schedule) {
+                \App\Models\EmployerSchedule::updateOrCreate(
+                    [
+                        'employer_id' => $data['employer_id'],
+                        'day_of_week' => $schedule['day_of_week'],
+                        'start_time' => $schedule['start_time'],
+                        'end_time' => $schedule['end_time'],
+                    ],
+                    ['is_active' => true, 'type' => 'work']
+                );
+            }
+
+            return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.saveSchedules error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function deleteSchedule($id)
+    {
+        try {
+            $schedule = \App\Models\EmployerSchedule::findOrFail($id);
+            $schedule->delete();
+
+            return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+    public function availableTimes(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'date' => 'required', // pode vir com hora, será ignorada
+                'duration' => 'required|integer|min:5',
+            ]);
+
+            $employerId = (int) $data['employer_id'];
+            $duration = (int) $data['duration'];
+
+            // ?? Horário atual verdadeiro (do servidor)
+            $now = \Carbon\Carbon::now('America/Sao_Paulo');
+            $today = $now->format('Y-m-d');
+
+            // ?? Extrai apenas o dia e ignora completamente a hora enviada
+            $raw = (string) $data['date'];
+            $dateStr = preg_replace('/T.*/', '', $raw);
+            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
+            $dayOfWeek = strtolower($date->format('l'));
+
+            // ?? Se o dia for passado, retorna vazio
+            if ($date->lt($now->copy()->startOfDay())) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // ?? Folga ou feriado
+            $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'holiday')
+                ->whereDate('reserved_date', $date->toDateString())
+                ->exists();
+
+            if ($isHoliday) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // ??? Horários de expediente
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('day_of_week', $dayOfWeek)
+                ->where('is_active', true)
+                ->where('type', 'work')
+                ->get();
+
+            if ($schedules->isEmpty()) {
+                return response()->json(['available_times' => []]);
+            }
+
+            // ?? Agendamentos do dia
+            $appointments = \App\Models\Order::where('attendant_id', $employerId)
+                ->where('type', 'appointment')
+                ->whereBetween('order_datetime', [
+                    $date->copy()->startOfDay()->setTimezone('UTC'),
+                    $date->copy()->endOfDay()->setTimezone('UTC'),
+                ])
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->get(['order_datetime', 'total_duration']);
+
+            $occupied = [];
+            foreach ($appointments as $a) {
+                $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+                $end = $start->copy()->addMinutes($a->total_duration ?? 30);
+                $occupied[] = [$start, $end];
+            }
+
+            // ? Pausas
+            $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'break')
+                ->whereDate('reserved_date', $date->toDateString())
+                ->get();
+
+            foreach ($breaks as $b) {
+                $start = \Carbon\Carbon::parse("{$date->toDateString()} {$b->start_time}", 'America/Sao_Paulo');
+                $end = \Carbon\Carbon::parse("{$date->toDateString()} {$b->end_time}", 'America/Sao_Paulo');
+                $occupied[] = [$start, $end];
+            }
+
+            usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
+
+            // ?? Geração de horários disponíveis
+            $availableTimes = [];
+            $step = 15;
+            $limitFuture = $now->copy()->addMinutes(30); // tolerância mínima
+
+            foreach ($schedules as $schedule) {
+                $workStart = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
+                $workEnd = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->end_time}", 'America/Sao_Paulo');
+
+                $pointer = $workStart->copy();
+
+                while ($pointer->copy()->addMinutes($duration)->lte($workEnd)) {
+                    $slotStart = $pointer->copy();
+                    $slotEnd = $slotStart->copy()->addMinutes($duration);
+
+                    // ?? Se o dia for hoje, só horários depois de agora + 30 min
+                    if ($date->isSameDay($now) && $slotStart->lte($limitFuture)) {
+                        $pointer->addMinutes($step);
+                        continue;
+                    }
+
+                    // ?? Verifica conflito
+                    $hasConflict = false;
+                    foreach ($occupied as [$occStart, $occEnd]) {
+                        if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
+                            $hasConflict = true;
+                            break;
+                        }
+                    }
+
+                    // ? Adiciona se estiver livre
+                    if (!$hasConflict) {
+                        $availableTimes[] = $slotStart->format('H:i');
+                    }
+
+                    $pointer->addMinutes($step);
+                }
+            }
+
+            sort($availableTimes);
+            return response()->json(['available_times' => $availableTimes]);
+        } catch (\Throwable $e) {
+            \Log::error('? Erro em availableTimes', [
+                'message' => $e->getMessage(),
+                'line' => $e->getLine(),
+            ]);
+            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
+        }
+    }
+
+
+
+    public function reserveSchedule(Request $request)
+    {
+        try {
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'date' => 'required|date',
+                'type' => 'required|in:break,holiday',
+                'start_time' => 'nullable|date_format:H:i|required_if:type,break',
+                'end_time' => 'nullable|date_format:H:i|after:start_time|required_if:type,break',
+            ], [
+                'employer_id.required' => 'O campo employer_id é obrigatório.',
+                'date.required' => 'O campo data é obrigatório.',
+                'type.required' => 'O campo tipo é obrigatório.',
+                'type.in' => 'O tipo deve ser break (pausa) ou holiday (feriado).',
+                'start_time.required_if' => 'O campo horário de início é obrigatório para pausas.',
+                'end_time.required_if' => 'O campo horário de término é obrigatório para pausas.',
+            ]);
+
+            $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'])->format('l'));
+
+            \App\Models\EmployerSchedule::create([
+                'employer_id' => $data['employer_id'],
+                'day_of_week' => $dayOfWeek,
+                'reserved_date' => $data['date'],
+                'start_time' => $data['start_time'] ?? '00:00',
+                'end_time' => $data['end_time'] ?? '23:59',
+                'is_active' => false,
+                'type' => $data['type'],
+            ]);
+
+            return response()->json(['message' => 'Horário reservado com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+        } catch (\Exception $e) {
+            \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
+            return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+        }
+    }
+
+    public function view($user_name)
+    {
+        $authUser = Auth::user();
+
+        $employer = Employer::with([
+            'user:id,first_name,last_name,user_name,phone,avatar,about,email,city,uf',
+            'establishment.items:id,entity_id,name,slug,price,type,image',
+            'establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            'files' => fn($q) => $q->where('entity_name', 'employer'),
+        ])
+            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
+            ->firstOrFail();
+
+        Interaction::registerView($employer, $authUser);
+
+        if ($employer->establishment) {
+            Interaction::registerView($employer->establishment, $authUser);
+        }
+
+        $employer->refreshViewMetrics($authUser);
+
+        $u = $employer->user;
+
+        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+        $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
+
+        return response()->json([
+            'employer' => [
+                'id' => $employer->id,
+                'type' => 'employer',
+                'name' => trim($u->first_name . ' ' . $u->last_name),
+                'slug' => $u->user_name,
+                'about' => $u->about,
+                'city' => $u->city,
+                'uf' => $u->uf,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery
+                ]
+            ],
+            'establishment' => $employer->establishment,
+            'items' => $employer->establishment?->items ?? [],
+            'metrics' => $employer->metrics,
+            'interaction_summary' => $employer->interactionSummary(),
+            'user_interactions' => $employer->userInteractions(),
+            'orders_summary' => $employer->ordersSummary(),
+            'colleagues' => $employer->colleagues()['list'] ?? [],
+            'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
+            'top_item_and_client' => $employer->topItemAndClient(),
+            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
+            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
+            'other_items' => $employer->establishment?->otherItems() ?? [],
+        ]);
+    }
+
+    public function home(Request $request, $app_id)
+    {
+        $authUser = Auth::user();
+
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+
+        $establishmentIds = Establishment::where('app_id', $app_id)
+            ->when(
+                $city && $uf,
+                fn($q) => $q->where('city', $city)->where('uf', $uf)
+            )
+            ->pluck('id');
+
+        $employers = Employer::whereIn('establishment_id', $establishmentIds)
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                'establishment:id,name,slug,city,uf',
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
+            ])
+            ->withCount([
+                'views as total_views' => fn($q) =>
+                    $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) =>
+                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as completed_appointments' => fn($q) =>
+                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
+            ])
+            ->orderByDesc('completed_appointments')
+            ->get()
+            ->map(function ($emp) use ($authUser) {
+                Interaction::registerView($emp, $authUser);
+
+                $u = $emp->user;
+
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+                $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
+
+                return [
+                    'id' => $emp->id,
+                    'type' => 'employer',
+                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
+                    'slug' => $u->user_name,
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $gallery,
+                    ],
+                    'city' => $emp->establishment?->city,
+                    'uf' => $emp->establishment?->uf,
+                    'total_views' => $emp->total_views,
+                    'unique_users' => $emp->unique_users,
+                    'total_completed_appointments' => $emp->completed_appointments,
+                    'establishment' => [
+                        'name' => $emp->establishment?->name,
+                        'slug' => $emp->establishment?->slug,
+                    ],
+                ];
+            });
+
+        return response()->json(['employers' => $employers]);
+    }
+
+    public function listByEntitySlug($slug)
+    {
+        try {
             if (!$slug || !is_string($slug)) {
                 return response()->json(['error' => 'Slug inválido.'], 422);
             }
-
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'include_scheduled' => 'sometimes|boolean',
-            ], $this->getValidationMessages());
 
             $authUser = Auth::user();
 
             $establishment = Establishment::where('slug', $slug)
                 ->with([
-                    'files' => function ($q) {
+                    'files' => fn($q) =>
                         $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo');
-                    },
+                            ->where('type', 'logo'),
+                    'employers' => fn($q) =>
+                        $q->orderByDesc('updated_at')
+                            ->with([
+                                'user:id,first_name,last_name,user_name,avatar,city,uf',
+                                'files' => fn($fq) =>
+                                    $fq->where('entity_name', 'employer'),
+                            ]),
                 ])
                 ->first();
 
@@ -1046,25 +1047,12 @@ class OrderController extends Controller
                 return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
             }
 
-            $isOwner = ((int) $establishment->user_id === (int) $authUser->id);
+            Interaction::registerView($establishment, $authUser);
 
-            $isStaff = Employer::where('establishment_id', $establishment->id)
-                ->where('user_id', $authUser->id)
-                ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
-                ->exists();
-
-            if (!$isOwner && !$isStaff) {
-                return response()->json(['error' => 'Acesso negado.'], 403);
-            }
-
-            $logoFile = $establishment->files->first();
-            $logo = null;
-
-            if ($logoFile && !empty($logoFile->public_url)) {
-                $logo = $logoFile->public_url;
-            } elseif (!empty($establishment->logo)) {
-                $logo = $establishment->logo;
-            }
+            $logo =
+                $establishment->files->first()?->public_url
+                ?: $establishment->logo
+                ?: null;
 
             $mappedEstablishment = [
                 'id' => $establishment->id,
@@ -1076,94 +1064,40 @@ class OrderController extends Controller
                 'logo' => $logo,
             ];
 
-            $query = Order::with([
-                'items.item:id,name,slug,price,type',
-                'items.modifiers.modifier:id,name,type',
-                'creator:id,first_name,last_name,user_name,avatar,email',
-                'client:id,first_name,last_name,user_name,avatar,email',
-                'attendant.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-                ->where('app_id', $data['app_id'])
-                ->where('entity_name', 'establishment')
-                ->where('entity_id', $establishment->id);
+            $employers = $establishment->employers->map(function ($emp) {
+                $u = $emp->user;
 
-            if (!empty($data['include_scheduled']) && $data['include_scheduled'] === true) {
-                $query->where('status', 'scheduled');
-            }
+                $avatar =
+                    $emp->files->firstWhere('type', 'avatar')?->public_url
+                    ?: $u?->avatar
+                    ?: null;
 
-            $orders = $query
-                ->orderBy('order_datetime', 'desc')
-                ->get()
-                ->map(function ($order) {
-
-                    $attendantUser = null;
-                    if ($order->attendant && $order->attendant->user) {
-                        $attendantUser = $order->attendant->user;
-                    }
-
-                    return [
-                        'id' => $order->id,
-                        'order_number' => $order->order_number,
-                        'type' => $order->type,
-                        'status' => $order->status,
-                        'appointment_status' => $order->appointment_status,
-                        'order_datetime' => $order->order_datetime,
-                        'total_price' => $order->total_price,
-                        'origin' => $order->origin,
-                        'fulfillment' => $order->fulfillment,
-                        'payment_status' => $order->payment_status,
-                        'payment_method' => $order->payment_method,
-                        'customer_name' => $order->customer_name,
-                        'attendant' => $attendantUser ? [
-                            'id' => $order->attendant->id,
-                            'name' => trim($attendantUser->first_name . ' ' . $attendantUser->last_name),
-                            'slug' => $attendantUser->user_name,
-                            'avatar' => $attendantUser->avatar,
-                        ] : null,
-                        'items' => $order->items->map(function ($oi) {
-                            return [
-                                'id' => $oi->item->id,
-                                'name' => $oi->item->name,
-                                'slug' => $oi->item->slug,
-                                'type' => $oi->item->type,
-                                'quantity' => $oi->quantity,
-                                'unit_price' => $oi->unit_price,
-                                'subtotal' => $oi->subtotal,
-                                'modifiers' => $oi->modifiers->map(function ($m) {
-                                    return [
-                                        'id' => $m->modifier_id,
-                                        'name' => $m->modifier ? $m->modifier->name : null,
-                                        'type' => $m->type,
-                                        'quantity' => $m->quantity ? $m->quantity : 1,
-                                    ];
-                                })->values(),
-                            ];
-                        })->values(),
-                        'updated_at' => $order->updated_at,
-                    ];
-                })
-                ->values();
-
-            if ($orders->isEmpty()) {
-                return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-            }
+                return [
+                    'id' => $emp->id,
+                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                    'slug' => $u?->user_name,
+                    'role' => $emp->role,
+                    'city' => $u?->city,
+                    'uf' => $u?->uf,
+                    'total_views' => $emp->metrics['total_views'] ?? 0,
+                    'image' => $avatar,
+                    'updated_at' => $emp->updated_at,
+                ];
+            })->values();
 
             return response()->json([
-                'message' => 'Pedidos listados com sucesso.',
+                'message' => 'Colaboradores listados com sucesso.',
                 'establishment' => $mappedEstablishment,
-                'orders' => $orders,
+                'employers' => $employers,
             ], 200);
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Throwable $e) {
-            Log::error('[OrderController::listByEntitySlug]', [
+        } catch (\Exception $e) {
+            \Log::error('[EmployerController::listByEntitySlug]', [
                 'slug' => $slug,
                 'error' => $e->getMessage(),
             ]);
-            return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
+
+            return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
         }
     }
-
-
 }

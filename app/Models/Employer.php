@@ -70,7 +70,7 @@ protected $entity_name = 'employer';
     }
 
     /* ==========================
-       MÃ‰TRICAS E INTERAÃ‡Ã•ES
+       MÉTRICAS E INTERAÇÕES
        ========================== */
 
     public function getMetricsAttribute()
@@ -374,7 +374,7 @@ protected $entity_name = 'employer';
     public function topItemAndClient()
     {
         return Cache::remember("employer_{$this->id}_top_item_client", 120, function () {
-            // Pega apenas pedidos concluÃ­dos/atendidos
+            // Pega apenas pedidos concluídos/atendidos
             $orders = $this->orders()
                 ->whereIn('appointment_status', ['confirmed', 'attended'])
                 ->with([
@@ -422,7 +422,7 @@ protected $entity_name = 'employer';
                 ];
             }
 
-            // Agora, conta qual cliente mais fez esse item especÃ­fico
+            // Agora, conta qual cliente mais fez esse item específico
             $clientCount = [];
             foreach ($orders as $order) {
                 foreach ($order->items as $orderItem) {
@@ -464,11 +464,20 @@ protected $entity_name = 'employer';
         });
     }
     protected static function booted()
-    {
-        static::creating(function ($model) {
-            $model->entity_name = 'employer';
-        });
-    }
+{
+    static::created(function ($model) {
+        if (!$model->slug && $model->user) {
+            $model->slug = Str::slug(
+                $model->user->user_name
+                ?? $model->user->first_name
+                ?? "colaborador-{$model->id}"
+            );
+
+            $model->saveQuietly();
+        }
+    });
+}
+
 
     public function files()
     {
@@ -477,7 +486,7 @@ protected $entity_name = 'employer';
             ->orderBy('position');
     }
 /* ============================================================================
-   OTHERS â€” PADRÃƒO PARA Establishment, Employer e Item
+   OTHERS — PADRÃO PARA Establishment, Employer e Item
    ============================================================================
 */
 
@@ -567,7 +576,7 @@ public function otherEmployers()
 
                 $u = $emp->user;
 
-                // ğŸ”¥ EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+                // ?? EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
                 $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
                     ?? $u?->avatar;
 

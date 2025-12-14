@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use App\Mail\NewAppointmentNotification;
 use App\Mail\OwnerAppointmentNotification;
@@ -73,7 +72,9 @@ class OrderController extends Controller
                 return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
             }
 
-            $employer = Employer::with('user')->find($data['attendant_id']);
+            $employer = Employer::with('user:id,first_name,last_name,user_name,avatar,email')
+                ->find($data['attendant_id']);
+
             if (!$employer) {
                 DB::rollBack();
                 return response()->json(['error' => 'Colaborador não encontrado.'], 422);
@@ -105,12 +106,18 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
+                'order' => $order->load([
+                    'items.item',
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                ]),
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Erro ao criar agendamento', ['error' => $e->getMessage()]);
+            Log::error('Order.storeAppointment', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
         }
     }
@@ -128,7 +135,7 @@ class OrderController extends Controller
                 'app_id' => 'required|integer|exists:applications,id',
                 'entity_name' => 'required|string',
                 'entity_id' => 'required|integer',
-                'attendant_id' => 'required|integer|exists:employers,id',
+                'attendant_id' => 'required|integer',
                 'customer_name' => 'required|string',
                 'origin' => 'required|string',
                 'fulfillment' => 'required|string',
@@ -137,7 +144,7 @@ class OrderController extends Controller
                 'items' => 'required|array|min:1',
                 'items.*.item_id' => 'required|integer|exists:items,id',
                 'items.*.quantity' => 'required|integer|min:1',
-            ]);
+            ], $this->getValidationMessages());
 
             $order = Order::create([
                 'app_id' => $data['app_id'],
@@ -165,6 +172,7 @@ class OrderController extends Controller
 
             foreach ($order->items as $item) {
                 $total += $item->subtotal;
+
                 foreach ($item->modifiers as $modifier) {
                     $modifierItem = Item::find($modifier->modifier_id);
                     if ($modifierItem) {
@@ -179,12 +187,19 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Pedido criado com sucesso.',
-                'order' => $order->load('items.item', 'items.modifiers.modifier'),
+                'order' => $order->load([
+                    'items.item',
+                    'items.modifiers.modifier',
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                ]),
             ], 201);
-
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Erro ao criar pedido direto', ['error' => $e->getMessage()]);
+            Log::error('Order.storeDirect', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
         }
     }
@@ -217,7 +232,7 @@ class OrderController extends Controller
                 case 'cancel':
                     $order->appointment_status = 'cancelled';
                     $order->status = 'cancelled';
-                    $order->cancelled_reason = isset($data['reason']) ? $data['reason'] : null;
+                    $order->cancelled_reason = $data['reason'] ?? null;
                     break;
 
                 case 'attended':
@@ -245,11 +260,17 @@ class OrderController extends Controller
 
             return response()->json([
                 'message' => 'Status do agendamento atualizado com sucesso.',
-                'order' => $order,
+                'order' => $order->load([
+                    'items.item',
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                ]),
             ], 200);
-
         } catch (\Throwable $e) {
-            Log::error('Erro ao atualizar status do agendamento', ['error' => $e->getMessage()]);
+            Log::error('Order.updateAppointmentStatus', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['error' => 'Erro interno.'], 500);
         }
     }
@@ -269,7 +290,7 @@ class OrderController extends Controller
             'payment_status' => 'required|string',
             'payment_method' => 'required|string',
             'order_datetime' => 'required|date',
-            'attendant_id' => 'required|integer|exists:employers,id',
+            'attendant_id' => 'required|integer',
         ], $this->getValidationMessages());
     }
 
@@ -292,130 +313,91 @@ class OrderController extends Controller
                 Mail::to($establishment->user->email)
                     ->queue(new OwnerAppointmentNotification(
                         $order,
-                        trim($establishment->user->first_name . ' ' . $establishment->user->last_name),
+                        trim(($establishment->user->first_name ?? '') . ' ' . ($establishment->user->last_name ?? '')),
                         $user
                     ));
             }
-
         } catch (\Throwable $e) {
-            Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
-        }
-    }
-
-    public function listByEntitySlug(Request $request, $slug)
-{
-    try {
-        Log::info('OrderController@listByEntitySlug - início', [
-            'slug' => $slug,
-            'payload' => $request->all(),
-            'user_id' => Auth::id(),
-        ]);
-
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        if (!$slug || !is_string($slug)) {
-            return response()->json(['error' => 'Slug inválido.'], 422);
-        }
-
-        // ?? NORMALIZA BOOLEAN
-        if ($request->has('include_scheduled')) {
-            $request->merge([
-                'include_scheduled' => filter_var(
-                    $request->include_scheduled,
-                    FILTER_VALIDATE_BOOLEAN,
-                    FILTER_NULL_ON_FAILURE
-                ),
+            Log::error('Order.sendAppointmentEmails', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
         }
-
-        Log::info('OrderController@listByEntitySlug - include_scheduled normalizado', [
-            'include_scheduled' => $request->include_scheduled,
-        ]);
-
-        $data = $request->validate(
-            [
-                'app_id' => 'required|integer|exists:applications,id',
-                'include_scheduled' => 'sometimes|boolean',
-            ],
-            $this->getValidationMessages()
-        );
-
-        $authUser = Auth::user();
-
-        $establishment = Establishment::where('slug', $slug)
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')
-                      ->where('type', 'logo'),
-            ])
-            ->first();
-
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        $isOwner = (int) $establishment->user_id === (int) $authUser->id;
-        $isStaff = Employer::where('establishment_id', $establishment->id)
-            ->where('user_id', $authUser->id)
-            ->exists();
-
-        if (!$isOwner && !$isStaff) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        $query = Order::with([
-            'items.item:id,name,slug,price,type,duration',
-            'items.modifiers.modifier:id,name,type,price',
-            'attendant.user:id,first_name,last_name,user_name,avatar',
-        ])
-            ->where('app_id', $data['app_id'])
-            ->where('entity_name', 'establishment')
-            ->where('entity_id', $establishment->id);
-
-        if (!empty($data['include_scheduled'])) {
-            $query->where('status', 'scheduled');
-        }
-
-        $orders = $query->orderBy('order_datetime', 'desc')->get();
-
-        Log::info('OrderController@listByEntitySlug - pedidos encontrados', [
-            'count' => $orders->count(),
-        ]);
-
-        if ($orders->isEmpty()) {
-            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-        }
-
-      // app/Http/Controllers/OrderController.php (trecho atualizado do retorno)
-return response()->json([
-    'message' => 'Pedidos listados com sucesso.',
-    'establishment' => [
-        'id' => $establishment->id,
-        'name' => $establishment->name,
-        'fantasy' => $establishment->fantasy,
-        'city' => $establishment->city,
-        'uf' => $establishment->uf,
-        'logo' => $establishment->files->first()?->public_url,
-    ],
-    'orders' => $orders,
-], 200);
-
-
-    } catch (ValidationException $e) {
-        Log::warning('OrderController@listByEntitySlug - erro de validação', [
-            'errors' => $e->errors(),
-        ]);
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Throwable $e) {
-        Log::error('OrderController@listByEntitySlug - erro inesperado', [
-            'slug' => $slug,
-            'error' => $e->getMessage(),
-        ]);
-        return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
     }
-}
 
+    public function listByEntitySlug(string $slug)
+    {
+        try {
+            $establishment = Establishment::where('slug', $slug)->first();
+
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            $orders = Order::where('entity_name', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->with([
+                    'items.item',
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'attendant.user:id,first_name,last_name,user_name,avatar,email',
+                ])
+                ->orderByDesc('order_datetime')
+                ->get();
+
+            $mappedOrders = $orders->map(function ($order) {
+                $employer = $order->attendant;
+
+                if (!$employer && $order->attendant_id) {
+                    $employer = Employer::with('user:id,first_name,last_name,user_name,avatar,email')
+                        ->find($order->attendant_id);
+
+                    if (!$employer) {
+                        $employer = Employer::with('user:id,first_name,last_name,user_name,avatar,email')
+                            ->where('user_id', $order->attendant_id)
+                            ->first();
+                    }
+
+                    if ($employer) {
+                        $order->setRelation('attendant', $employer);
+                    }
+                }
+
+                $u = $employer?->user;
+
+                $attendantUser = $u ? [
+                    'id' => $u->id,
+                    'first_name' => $u->first_name,
+                    'last_name' => $u->last_name,
+                    'user_name' => $u->user_name,
+                    'avatar' => $u->avatar,
+                    'email' => $u->email,
+                ] : null;
+
+                $arr = $order->toArray();
+                $arr['attendant_user'] = $attendantUser;
+
+                return $arr;
+            })->values();
+
+            return response()->json([
+                'message' => 'Pedidos listados com sucesso.',
+                'establishment' => [
+                    'id' => $establishment->id,
+                    'name' => $establishment->name,
+                    'fantasy' => $establishment->fantasy,
+                    'city' => $establishment->city,
+                    'uf' => $establishment->uf,
+                ],
+                'orders' => $mappedOrders,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Order.listByEntitySlug', [
+                'slug' => $slug,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
+        }
+    }
 }
