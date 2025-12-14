@@ -529,101 +529,9 @@ public function storeDirect(Request $request)
             ]);
         }
     }
-public function listByEntity(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            Log::warning('Usuário não autenticado tentou listar pedidos por entidade.');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $user = Auth::user();
-
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-            'entity_name' => 'required|string|max:255',
-            'entity_id' => 'required|integer',
-            'include_scheduled' => 'sometimes|in:0,1,true,false',
-        ], $this->getValidationMessages());
-
-        $includeScheduled = filter_var(
-            $request->query('include_scheduled', false),
-            FILTER_VALIDATE_BOOLEAN
-        );
-
-        $tableName = strtolower($data['entity_name']);
-        if (!str_ends_with($tableName, 's')) {
-            $tableName .= 's';
-        }
-
-        $entityExists = DB::table($tableName)
-            ->where('id', $data['entity_id'])
-            ->exists();
-
-        if (!$entityExists) {
-            return response()->json(['error' => ucfirst($data['entity_name']) . ' não encontrada.'], 404);
-        }
-
-        $isOwner = DB::table($tableName)
-            ->where('id', $data['entity_id'])
-            ->where('user_id', $user->id)
-            ->exists();
-
-        $isStaff = DB::table('employers')
-            ->where('establishment_id', $data['entity_id'])
-            ->where('user_id', $user->id)
-            ->whereIn('role', ['owner', 'gerente', 'Barbeiro', 'Barbeiro / Gerente'])
-            ->exists();
-
-        if (!$isOwner && !$isStaff) {
-            return response()->json(['error' => 'Acesso negado.'], 403);
-        }
-
-        $query = Order::with([
-            'items.item',
-            'items.modifiers.modifier',
-            'creator:id,first_name,last_name,email,cpf',
-            'attendant.user:id,first_name,last_name,email,cpf',
-            'client:id,first_name,last_name,email,cpf',
-        ])
-            ->where('app_id', $data['app_id'])
-            ->where('entity_name', $data['entity_name'])
-            ->where('entity_id', $data['entity_id']);
-
-        if ($includeScheduled === true) {
-            $query->where('status', 'scheduled');
-        }
-
-        $orders = $query
-            ->orderByDesc('order_datetime')
-            ->get();
-
-        if ($orders->isEmpty()) {
-            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
-        }
-
-        return response()->json([
-            'message' => 'Pedidos listados com sucesso.',
-            'orders' => $orders,
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        Log::warning('Erro de validação ao listar pedidos por entidade.', [
-            'errors' => $e->errors(),
-        ]);
-        return response()->json(['errors' => $e->errors()], 422);
-
-    } catch (\Throwable $e) {
-        Log::error('Erro ao listar pedidos por entidade.', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-        return response()->json(['error' => 'Ocorreu um erro ao listar os pedidos.'], 500);
-    }
-}
 
 
+    
 
     /**
      * Exibe um único pedido para impressão.
@@ -1098,7 +1006,6 @@ public function listByEntity(Request $request)
             ], 500);
         }
     }
-
 public function listByEntitySlug(Request $request, $slug)
 {
     try {
@@ -1119,9 +1026,10 @@ public function listByEntitySlug(Request $request, $slug)
 
         $establishment = Establishment::where('slug', $slug)
             ->with([
-                'files' => fn ($q) =>
+                'files' => function ($q) {
                     $q->where('entity_name', 'establishment')
-                      ->where('type', 'logo'),
+                      ->where('type', 'logo');
+                },
             ])
             ->first();
 
@@ -1129,7 +1037,7 @@ public function listByEntitySlug(Request $request, $slug)
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        $isOwner = $establishment->user_id === $authUser->id;
+        $isOwner = ((int) $establishment->user_id === (int) $authUser->id);
 
         $isStaff = Employer::where('establishment_id', $establishment->id)
             ->where('user_id', $authUser->id)
@@ -1140,10 +1048,8 @@ public function listByEntitySlug(Request $request, $slug)
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        $logo =
-            $establishment->files->first()?->public_url
-            ?: $establishment->logo
-            ?: null;
+        $logoFile = $establishment->files->first();
+        $logo = $logoFile ? $logoFile->public_url : ($establishment->logo ?: null);
 
         $mappedEstablishment = [
             'id' => $establishment->id,
@@ -1174,6 +1080,10 @@ public function listByEntitySlug(Request $request, $slug)
             ->orderByDesc('order_datetime')
             ->get()
             ->map(function ($order) {
+                $attendantUser = ($order->attendant && $order->attendant->user)
+                    ? $order->attendant->user
+                    : null;
+
                 return [
                     'id' => $order->id,
                     'order_number' => $order->order_number,
@@ -1187,11 +1097,11 @@ public function listByEntitySlug(Request $request, $slug)
                     'payment_status' => $order->payment_status,
                     'payment_method' => $order->payment_method,
                     'customer_name' => $order->customer_name,
-                    'attendant' => $order->attendant?->user ? [
+                    'attendant' => $attendantUser ? [
                         'id' => $order->attendant->id,
-                        'name' => trim(($order->attendant->user->first_name ?? '') . ' ' . ($order->attendant->user->last_name ?? '')),
-                        'slug' => $order->attendant->user->user_name,
-                        'avatar' => $order->attendant->user->avatar,
+                        'name' => trim(($attendantUser->first_name ?: '') . ' ' . ($attendantUser->last_name ?: '')),
+                        'slug' => $attendantUser->user_name,
+                        'avatar' => $attendantUser->avatar,
                     ] : null,
                     'items' => $order->items->map(function ($oi) {
                         return [
@@ -1205,9 +1115,9 @@ public function listByEntitySlug(Request $request, $slug)
                             'modifiers' => $oi->modifiers->map(function ($m) {
                                 return [
                                     'id' => $m->modifier_id,
-                                    'name' => $m->modifier?->name,
+                                    'name' => $m->modifier ? $m->modifier->name : null,
                                     'type' => $m->type,
-                                    'quantity' => $m->quantity ?? 1,
+                                    'quantity' => $m->quantity ?: 1,
                                 ];
                             })->values(),
                         ];
@@ -1229,16 +1139,17 @@ public function listByEntitySlug(Request $request, $slug)
 
     } catch (\Illuminate\Validation\ValidationException $e) {
         return response()->json(['errors' => $e->errors()], 422);
-
     } catch (\Throwable $e) {
-        \Log::error('[OrderController::listByEntitySlug]', [
+        Log::error('[OrderController::listByEntitySlug]', [
             'slug' => $slug,
             'error' => $e->getMessage(),
+            'file' => $e->getFile(),
+            'line' => $e->getLine(),
         ]);
-
         return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
     }
 }
+
 
     
 
