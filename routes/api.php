@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 
 /*
 |--------------------------------------------------------------------------
-| HOME (P√öBLICA)
+| HOME (P⁄BLICA)
 |--------------------------------------------------------------------------
 */
 
@@ -35,7 +35,7 @@ Route::prefix('home')->middleware(['api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| AUTHENTICA√á√ÉO (PROTEGIDAS)
+| AUTHENTICA«√O (PROTEGIDAS)
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->middleware('api')->group(function () {
@@ -56,7 +56,7 @@ Route::prefix('auth')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| ROTAS P√öBLICAS
+| ROTAS P⁄BLICAS
 |--------------------------------------------------------------------------
 */
 
@@ -67,7 +67,7 @@ Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 /*
 |--------------------------------------------------------------------------
-| USU√ÅRIOS
+| USU¡RIOS
 |--------------------------------------------------------------------------
 */
 Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
@@ -96,7 +96,7 @@ Route::prefix('profile')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| PRODU√á√ÉO
+| PRODU«√O
 |--------------------------------------------------------------------------
 */
 Route::prefix('production')->middleware('api')->group(function () {
@@ -144,7 +144,7 @@ Route::prefix('ticket')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| NOT√çCIAS
+| NOTÕCIAS
 |--------------------------------------------------------------------------
 */
 Route::prefix('news')->middleware('api')->group(function () {
@@ -159,7 +159,7 @@ Route::prefix('news')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| RELAT√ìRIOS / SERVICE RECORDS
+| RELAT”RIOS / SERVICE RECORDS
 |--------------------------------------------------------------------------
 */
 Route::prefix('report')->middleware('api')->group(function () {
@@ -256,7 +256,7 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
 });
 Route::prefix('item')->middleware(['api'])->group(function () {
 
-    // üîπ NOVA ROTA ‚Äî LISTAGEM FULL FLEX
+    // ?? NOVA ROTA ó LISTAGEM FULL FLEX
     Route::get('/index', [ItemController::class, 'index'])->name('item.index');
 
         Route::get('/listbyentityslug/{slug}', [ItemController::class, 'listByEntitySlug'])
@@ -331,7 +331,7 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| FILES (ARQUIVOS / M√çDIA)
+| FILES (ARQUIVOS / MÕDIA)
 |--------------------------------------------------------------------------
 */
 // PUBLIC
