@@ -49,6 +49,8 @@ class Order extends Model
         'updated_at' => 'datetime',
     ];
 
+    protected $appends = ['attendant_user'];
+
     /* ===============================
        RELACIONAMENTOS DIRETOS
     ================================ */
@@ -91,6 +93,37 @@ class Order extends Model
     public function getEstablishmentAttribute()
     {
         return $this->entity;
+    }
+
+    /* ===============================
+       ATTENDANT USER (EMPLOYER -> USER)
+    ================================ */
+
+    public function getAttendantUserAttribute()
+    {
+        if (empty($this->attendant_id)) {
+            return null;
+        }
+
+        $this->loadMissing([
+            'attendant' => function ($q) {
+                $q->select([
+                    'id',
+                    'user_id',
+                    'establishment_id',
+                    'role',
+                    'permissions',
+                    'created_by',
+                    'updated_by',
+                    'created_at',
+                    'updated_at',
+                ])->with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                ]);
+            },
+        ]);
+
+        return $this->attendant?->user;
     }
 
     /* ===============================
@@ -150,53 +183,53 @@ class Order extends Model
             'total_duration' => $totalDuration,
         ]);
     }
- public function attachItems(array $items)
-{
-    foreach ($items as $entry) {
 
-        $itemId    = (int) $entry['item_id'];
-        $quantity  = (int) ($entry['quantity'] ?? 1);
-        $additions = $entry['additions'] ?? [];
-        $removals  = $entry['removals'] ?? [];
+    public function attachItems(array $items)
+    {
+        foreach ($items as $entry) {
+            $itemId = (int) $entry['item_id'];
+            $quantity = (int) ($entry['quantity'] ?? 1);
+            $additions = $entry['additions'] ?? [];
+            $removals = $entry['removals'] ?? [];
 
-        $item = \App\Models\Item::findOrFail($itemId);
+            $item = \App\Models\Item::findOrFail($itemId);
 
-        $orderEntityName = strtolower(trim($this->entity_name));
-        $itemEntityName  = strtolower(trim($item->entity_name));
+            $orderEntityName = strtolower(trim($this->entity_name));
+            $itemEntityName = strtolower(trim($item->entity_name));
 
-        if (
-            $itemEntityName !== $orderEntityName ||
-            (int) $item->entity_id !== (int) $this->entity_id
-        ) {
-            throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
-        }
+            if (
+                $itemEntityName !== $orderEntityName ||
+                (int) $item->entity_id !== (int) $this->entity_id
+            ) {
+                throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
+            }
 
-        $unitPrice = (float) $item->price;
-        $subtotal  = $unitPrice * $quantity;
+            $unitPrice = (float) $item->price;
+            $subtotal = $unitPrice * $quantity;
 
-        $orderItem = $this->items()->create([
-            'item_id'    => $item->id,
-            'quantity'   => $quantity,
-            'unit_price' => $unitPrice,
-            'subtotal'   => $subtotal,
-        ]);
-
-        foreach ($additions as $add) {
-            $orderItem->modifiers()->create([
-                'modifier_id' => $add['id'],
-                'quantity'    => $add['quantity'] ?? 1,
-                'type'        => 'addition',
+            $orderItem = $this->items()->create([
+                'item_id' => $item->id,
+                'quantity' => $quantity,
+                'unit_price' => $unitPrice,
+                'subtotal' => $subtotal,
             ]);
-        }
 
-        foreach ($removals as $remId) {
-            $orderItem->modifiers()->create([
-                'modifier_id' => $remId,
-                'type'        => 'removal',
-            ]);
+            foreach ($additions as $add) {
+                $orderItem->modifiers()->create([
+                    'modifier_id' => $add['id'],
+                    'quantity' => $add['quantity'] ?? 1,
+                    'type' => 'addition',
+                ]);
+            }
+
+            foreach ($removals as $remId) {
+                $orderItem->modifiers()->create([
+                    'modifier_id' => $remId,
+                    'type' => 'removal',
+                ]);
+            }
         }
     }
-}
 
     /* ===============================
        INTERAÇÕES E MÉTRICAS

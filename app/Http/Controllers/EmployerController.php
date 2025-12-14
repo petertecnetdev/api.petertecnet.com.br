@@ -652,83 +652,175 @@ private function sanitizeEntity($model)
 
     }
 
+    private function resolveEmployerForSchedules(Request $request, \App\Models\User $authUser): \App\Models\Employer
+{
+    $rawId = $request->input('employer_id');
 
-
-    public function listSchedules(Request $request)
-    {
-        try {
-            $data = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-            ], $this->getValidationMessages());
-
-            $schedules = \App\Models\EmployerSchedule::where('employer_id', $data['employer_id'])
-                ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
-                ->orderBy('start_time')
-                ->get();
-
-            return response()->json($schedules, 200, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            \Log::error('Employer.listSchedules error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+    $id = null;
+    if ($rawId !== null && $rawId !== '') {
+        if (!is_numeric($rawId)) {
+            throw new \Illuminate\Http\Exceptions\HttpResponseException(
+                response()->json(['error' => 'O campo employer_id deve ser um número inteiro.'], 422, [], JSON_UNESCAPED_UNICODE)
+            );
         }
+        $id = (int) $rawId;
     }
-    public function saveSchedules(Request $request)
-    {
-        try {
-            $data = $request->validate([
-                'employer_id' => 'required|integer|exists:employers,id',
-                'schedules' => 'required|array|min:1',
-                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
-                'schedules.*.start_time' => 'required|date_format:H:i',
-                'schedules.*.end_time' => 'required|date_format:H:i',
-            ], $this->getValidationMessages());
 
-            // 🕒 Validação manual: end_time deve ser maior que start_time
-            foreach ($data['schedules'] as $schedule) {
-                if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
-                    return response()->json([
-                        'errors' => [
-                            'schedules' => ['O horário de término deve ser posterior ao horário de início.']
-                        ]
-                    ], 422, [], JSON_UNESCAPED_UNICODE);
-                }
-            }
+    $employer = null;
 
-            foreach ($data['schedules'] as $schedule) {
-                \App\Models\EmployerSchedule::updateOrCreate(
-                    [
-                        'employer_id' => $data['employer_id'],
-                        'day_of_week' => $schedule['day_of_week'],
-                        'start_time' => $schedule['start_time'],
-                        'end_time' => $schedule['end_time'],
+    if ($id) {
+        $employer = \App\Models\Employer::with('establishment')->find($id);
+
+        if (!$employer) {
+            $employer = \App\Models\Employer::with('establishment')
+                ->where('user_id', $id)
+                ->first();
+        }
+    } else {
+        $employer = \App\Models\Employer::with('establishment')
+            ->where('user_id', $authUser->id)
+            ->first();
+    }
+
+    if (!$employer) {
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['error' => 'Colaborador não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    $isOwner = \App\Models\Establishment::where('id', $employer->establishment_id)
+        ->where('user_id', $authUser->id)
+        ->exists();
+
+    $isSelf = (int) $employer->user_id === (int) $authUser->id;
+
+    if (!$isOwner && !$isSelf) {
+        throw new \Illuminate\Http\Exceptions\HttpResponseException(
+            response()->json(['error' => 'Acesso negado.'], 403, [], JSON_UNESCAPED_UNICODE)
+        );
+    }
+
+    return $employer;
+}
+
+public function listSchedules(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $authUser = Auth::user();
+        $employer = $this->resolveEmployerForSchedules($request, $authUser);
+
+        $schedules = \App\Models\EmployerSchedule::where('employer_id', $employer->id)
+            ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
+            ->orderBy('start_time')
+            ->get();
+
+        return response()->json($schedules, 200, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+        return $e->getResponse();
+    } catch (\Throwable $e) {
+        \Log::error('Employer.listSchedules error', ['exception' => $e]);
+        return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
+    }
+}
+
+public function saveSchedules(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $authUser = Auth::user();
+        $employer = $this->resolveEmployerForSchedules($request, $authUser);
+
+        $data = $request->validate([
+            'schedules' => 'required|array|min:1',
+            'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+            'schedules.*.start_time' => 'required|date_format:H:i',
+            'schedules.*.end_time' => 'required|date_format:H:i',
+        ], $this->getValidationMessages());
+
+        foreach ($data['schedules'] as $schedule) {
+            if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
+                return response()->json([
+                    'errors' => [
+                        'schedules' => ['O horário de término deve ser posterior ao horário de início.'],
                     ],
-                    ['is_active' => true, 'type' => 'work']
-                );
+                ], 422, [], JSON_UNESCAPED_UNICODE);
             }
-
-            return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            \Log::error('Employer.saveSchedules error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
         }
-    }
 
-    public function deleteSchedule($id)
-    {
-        try {
-            $schedule = \App\Models\EmployerSchedule::findOrFail($id);
-            $schedule->delete();
-
-            return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+        foreach ($data['schedules'] as $schedule) {
+            \App\Models\EmployerSchedule::updateOrCreate(
+                [
+                    'employer_id' => $employer->id,
+                    'day_of_week' => $schedule['day_of_week'],
+                    'start_time' => $schedule['start_time'],
+                    'end_time' => $schedule['end_time'],
+                    'type' => 'work',
+                ],
+                [
+                    'is_active' => true,
+                ]
+            );
         }
+
+        return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+        return $e->getResponse();
+    } catch (\Throwable $e) {
+        \Log::error('Employer.saveSchedules error', ['exception' => $e]);
+        return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
+}
+
+public function deleteSchedule($id)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $authUser = Auth::user();
+
+        $schedule = \App\Models\EmployerSchedule::findOrFail($id);
+
+        $employer = \App\Models\Employer::with('establishment')->find($schedule->employer_id);
+        if (!$employer) {
+            return response()->json(['error' => 'Colaborador não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $isOwner = \App\Models\Establishment::where('id', $employer->establishment_id)
+            ->where('user_id', $authUser->id)
+            ->exists();
+
+        $isSelf = (int) $employer->user_id === (int) $authUser->id;
+
+        if (!$isOwner && !$isSelf) {
+            return response()->json(['error' => 'Acesso negado.'], 403, [], JSON_UNESCAPED_UNICODE);
+        }
+
+        $schedule->delete();
+
+        return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
+
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json(['error' => 'Horário não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE);
+    } catch (\Throwable $e) {
+        \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
+        return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+    }
+}
+
+
     public function availableTimes(Request $request)
     {
         try {
