@@ -303,12 +303,6 @@ class OrderController extends Controller
     }public function listByEntitySlug(Request $request, $slug)
 {
     try {
-        Log::info('OrderController@listByEntitySlug - início', [
-            'slug' => $slug,
-            'payload' => $request->all(),
-            'user_id' => Auth::id(),
-        ]);
-
         if (!Auth::check()) {
             return response()->json(['error' => 'Usuário não autenticado.'], 401);
         }
@@ -357,22 +351,78 @@ class OrderController extends Controller
             return response()->json(['error' => 'Acesso negado.'], 403);
         }
 
-        $query = Order::with([
+        $orders = Order::with([
             'items.item:id,name,slug,price,type,duration',
             'items.modifiers.modifier:id,name,type,price',
-            'attendant.user:id,first_name,last_name,user_name,avatar',
+            'attendant:id,user_id,name,title',
+            'attendant.user:id,first_name,last_name,user_name',
         ])
             ->where('app_id', $data['app_id'])
             ->where('entity_name', 'establishment')
-            ->where('entity_id', $establishment->id);
-
-        if (!empty($data['include_scheduled'])) {
-            $query->where('status', 'scheduled');
-        }
-
-        $orders = $query
+            ->where('entity_id', $establishment->id)
+            ->when(
+                !empty($data['include_scheduled']),
+                fn ($q) => $q->where('status', 'scheduled')
+            )
             ->orderBy('order_datetime', 'desc')
-            ->get();
+            ->get()
+            ->map(function ($order) {
+
+                $attendantName = null;
+
+                if ($order->attendant) {
+                    if ($order->attendant->user) {
+                        $attendantName = trim(
+                            ($order->attendant->user->first_name ?? '') . ' ' .
+                            ($order->attendant->user->last_name ?? '')
+                        );
+                    }
+
+                    if (!$attendantName) {
+                        $attendantName =
+                            $order->attendant->name ??
+                            $order->attendant->title ??
+                            null;
+                    }
+                }
+
+                return [
+                    'id' => $order->id,
+                    'order_number' => $order->order_number,
+                    'order_datetime' => $order->order_datetime,
+                    'scheduled_for' => $order->type === 'appointment'
+                        ? $order->order_datetime
+                        : null,
+
+                    'customer_name' => $order->customer_name,
+
+                    'type' => $order->type,
+                    'status' => $order->status,
+                    'appointment_status' => $order->appointment_status,
+
+                    'total_price' => $order->total_price,
+                    'total_duration' => $order->total_duration,
+
+                    'attendant_id' => $order->attendant_id,
+                    'attendant_name' => $attendantName,
+
+                    'items' => $order->items->map(function ($it) {
+                        return [
+                            'id' => $it->id,
+                            'quantity' => $it->quantity,
+                            'unit_price' => $it->unit_price,
+                            'subtotal' => $it->subtotal,
+                            'item' => [
+                                'id' => $it->item?->id,
+                                'name' => $it->item?->name,
+                                'type' => $it->item?->type,
+                                'duration' => $it->item?->duration,
+                                'price' => $it->item?->price,
+                            ],
+                        ];
+                    }),
+                ];
+            });
 
         return response()->json([
             'message' => 'Pedidos listados com sucesso.',
