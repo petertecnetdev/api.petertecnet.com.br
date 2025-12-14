@@ -300,35 +300,43 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
+
+
 /*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
 */
 
-// PUBLIC
+// 🔓 PUBLIC
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
     Route::get('/list-by-entity/{slug}', [EmployerController::class, 'listByEntitySlug'])->name('employer.listByEntitySlug');
 });
 
-// PRIVATE
+// 🔐 PRIVATE (AUTH)
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
-    Route::post('/', [EmployerController::class, 'store'])->name('employer.store');
-    Route::get('/list', [EmployerController::class, 'listByEstablishment'])->name('employer.list');
+
+    // 🔗 COLABORADORES
+    Route::post('/store', [EmployerController::class, 'store'])->name('employer.store');
+    Route::post('/list-by-establishment', [EmployerController::class, 'listByEstablishment'])->name('employer.listByEstablishment');
     Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
-    Route::get('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
-    Route::get('/appointments', [EmployerController::class, 'listAppointments'])->name('employer.appointments');
 
-    Route::get('/schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
-    Route::post('/schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
-    Route::delete('/schedules/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
+    // 📅 HORÁRIOS
+    Route::post('/list-schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
+    Route::post('/save-schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
+    Route::delete('/delete-schedule/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
 
-    Route::get('/available', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
-    Route::post('/reserve', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
+    Route::post('/available-times', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
+    Route::post('/reserve-schedule', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
+
+    // 📋 AGENDAMENTOS
+    Route::post('/list-appointments', [EmployerController::class, 'listAppointments'])->name('employer.listAppointments');
+
+    // 🔔 DASHBOARD / ATUALIZAÇÕES
+    Route::post('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
-
 /*
 |--------------------------------------------------------------------------
 | FILES (ARQUIVOS / MÍDIA)
