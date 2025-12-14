@@ -897,4 +897,75 @@ class EstablishmentController extends Controller
 
         return response()->json(['establishments' => $establishments]);
     }
+
+
+    public function listMyByApp(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+        ], $this->getValidationMessages());
+
+        $user = Auth::user();
+
+        $establishments = Establishment::where('app_id', $data['app_id'])
+            ->where('user_id', $user->id)
+            ->with([
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+            ])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($e) {
+                $logo = $e->files->firstWhere('type', 'logo')?->public_url;
+                $background = $e->files->firstWhere('type', 'background')?->public_url;
+                $gallery = $e->files
+                    ->whereNotIn('type', ['logo', 'background'])
+                    ->pluck('public_url')
+                    ->values();
+
+                return [
+                    'id' => $e->id,
+                    'name' => $e->name,
+                    'fantasy' => $e->fantasy,
+                    'slug' => $e->slug,
+                    'category' => $e->category,
+                    'city' => $e->city,
+                    'uf' => $e->uf,
+                    'logo' => $logo,
+                    'background' => $background,
+                    'images' => [
+                        'logo' => $logo,
+                        'background' => $background,
+                        'gallery' => $gallery,
+                    ],
+                    'created_at' => $e->created_at,
+                ];
+            });
+
+        return response()->json([
+            'message' => 'Estabelecimentos do usuário listados com sucesso.',
+            'establishments' => $establishments,
+        ], 200);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Exception $e) {
+        Log::error('Erro ao listar estabelecimentos do usuário por app', [
+            'error' => $e->getMessage(),
+            'user_id' => Auth::id(),
+            'payload' => $request->all(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao listar seus estabelecimentos.'
+        ], 500);
+    }
+}
+
 }
