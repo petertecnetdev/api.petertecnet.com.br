@@ -301,4 +301,111 @@ class OrderController extends Controller
             Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
         }
     }
+
+    public function listByEntitySlug(Request $request, $slug)
+{
+    try {
+        Log::info('OrderController@listByEntitySlug - início', [
+            'slug' => $slug,
+            'payload' => $request->all(),
+            'user_id' => Auth::id(),
+        ]);
+
+        if (!Auth::check()) {
+            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        if (!$slug || !is_string($slug)) {
+            return response()->json(['error' => 'Slug inválido.'], 422);
+        }
+
+        // ?? NORMALIZA BOOLEAN
+        if ($request->has('include_scheduled')) {
+            $request->merge([
+                'include_scheduled' => filter_var(
+                    $request->include_scheduled,
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                ),
+            ]);
+        }
+
+        Log::info('OrderController@listByEntitySlug - include_scheduled normalizado', [
+            'include_scheduled' => $request->include_scheduled,
+        ]);
+
+        $data = $request->validate(
+            [
+                'app_id' => 'required|integer|exists:applications,id',
+                'include_scheduled' => 'sometimes|boolean',
+            ],
+            $this->getValidationMessages()
+        );
+
+        $authUser = Auth::user();
+
+        $establishment = Establishment::where('slug', $slug)
+            ->with([
+                'files' => fn ($q) =>
+                    $q->where('entity_name', 'establishment')
+                      ->where('type', 'logo'),
+            ])
+            ->first();
+
+        if (!$establishment) {
+            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        $isOwner = (int) $establishment->user_id === (int) $authUser->id;
+        $isStaff = Employer::where('establishment_id', $establishment->id)
+            ->where('user_id', $authUser->id)
+            ->exists();
+
+        if (!$isOwner && !$isStaff) {
+            return response()->json(['error' => 'Acesso negado.'], 403);
+        }
+
+        $query = Order::with([
+            'items.item:id,name,slug,price,type,duration',
+            'items.modifiers.modifier:id,name,type,price',
+            'attendant.user:id,first_name,last_name,user_name,avatar',
+        ])
+            ->where('app_id', $data['app_id'])
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id);
+
+        if (!empty($data['include_scheduled'])) {
+            $query->where('status', 'scheduled');
+        }
+
+        $orders = $query->orderBy('order_datetime', 'desc')->get();
+
+        Log::info('OrderController@listByEntitySlug - pedidos encontrados', [
+            'count' => $orders->count(),
+        ]);
+
+        if ($orders->isEmpty()) {
+            return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
+        }
+
+        return response()->json([
+            'message' => 'Pedidos listados com sucesso.',
+            'orders' => $orders,
+        ], 200);
+
+    } catch (ValidationException $e) {
+        Log::warning('OrderController@listByEntitySlug - erro de validação', [
+            'errors' => $e->errors(),
+        ]);
+        return response()->json(['errors' => $e->errors()], 422);
+
+    } catch (\Throwable $e) {
+        Log::error('OrderController@listByEntitySlug - erro inesperado', [
+            'slug' => $slug,
+            'error' => $e->getMessage(),
+        ]);
+        return response()->json(['error' => 'Erro ao buscar pedidos.'], 500);
+    }
+}
+
 }
