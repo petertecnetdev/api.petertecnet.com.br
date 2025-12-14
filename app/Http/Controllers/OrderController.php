@@ -388,10 +388,20 @@ class OrderController extends Controller
             return response()->json(['message' => 'Nenhum pedido encontrado.'], 404);
         }
 
-        return response()->json([
-            'message' => 'Pedidos listados com sucesso.',
-            'orders' => $orders,
-        ], 200);
+      // app/Http/Controllers/OrderController.php (trecho atualizado do retorno)
+return response()->json([
+    'message' => 'Pedidos listados com sucesso.',
+    'establishment' => [
+        'id' => $establishment->id,
+        'name' => $establishment->name,
+        'fantasy' => $establishment->fantasy,
+        'city' => $establishment->city,
+        'uf' => $establishment->uf,
+        'logo' => $establishment->files->first()?->public_url,
+    ],
+    'orders' => $orders,
+], 200);
+
 
     } catch (ValidationException $e) {
         Log::warning('OrderController@listByEntitySlug - erro de validação', [
