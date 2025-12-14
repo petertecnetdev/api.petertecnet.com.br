@@ -209,7 +209,6 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
     Route::post('/my/app', [EstablishmentController::class, 'listMyByApp'])->name('establishment.listMyByApp');
 });
 
-
 /*
 |--------------------------------------------------------------------------
 | ORDERS
@@ -218,13 +217,29 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
 Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [OrderController::class, 'store'])->name('order.store');
-    Route::get('/listbyentity', [OrderController::class, 'listByEntity'])->name('order.listByEntity');
-    Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])->name('order.listByEmployer');
 
-    Route::get('/view/{id}', [OrderController::class, 'view'])->whereNumber('id')->name('order.view');
-    Route::get('/{id}', [OrderController::class, 'show'])->whereNumber('id')->name('order.show');
+    Route::get('/listbyentity', [OrderController::class, 'listByEntity'])
+        ->name('order.listByEntity');
 
-    Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
+    Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
+        ->name('order.listByEmployer');
+
+    Route::get('/entity/{slug}', [OrderController::class, 'listByEntitySlug'])
+        ->where('slug', '[A-Za-z0-9\-]+')
+        ->name('order.listByEntitySlug');
+
+    Route::get('/view/{id}', [OrderController::class, 'view'])
+        ->whereNumber('id')
+        ->name('order.view');
+
+    Route::get('/{id}', [OrderController::class, 'show'])
+        ->whereNumber('id')
+        ->name('order.show');
+
+    Route::put('/{id}', [OrderController::class, 'update'])
+        ->whereNumber('id')
+        ->name('order.update');
+
     Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])
         ->whereNumber('id')
         ->name('order.updateAppointmentStatus');
