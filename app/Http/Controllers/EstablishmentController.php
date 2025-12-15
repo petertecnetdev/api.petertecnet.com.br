@@ -968,4 +968,5 @@ class EstablishmentController extends Controller
     }
 }
 
+
 }

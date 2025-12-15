@@ -240,143 +240,74 @@ class EmployerController extends Controller
         }
     }
 
-    public function listByEstablishment(Request $request)
-    {
-        try {
-            Log::info('Employer.listByEstablishment start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
-
-            if (!Auth::check()) {
-                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
-            }
-
-            $validatedData = $request->validate([
-                'establishment_id' => 'required|integer|exists:establishments,id',
-            ], [
-                'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
-                'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro válido.',
-                'establishment_id.exists' => 'O estabelecimento informado não existe.',
-            ]);
-
-            $user = Auth::user();
-            $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
-
-            if (!$establishment) {
-                return $this->jsonUtf8(['error' => 'O estabelecimento informado não existe ou foi removido.'], 404);
-            }
-
-            if ((int) $establishment->user_id !== (int) $user->id) {
-                return $this->jsonUtf8(['error' => 'Apenas o dono do estabelecimento pode visualizar a lista de colaboradores.'], 403);
-            }
-
-            $employers = Employer::with([
-                'user:id,first_name,last_name,email,user_name,avatar',
-                'creator:id,first_name,last_name,email',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
-            ])
-                ->where('establishment_id', $establishment->id)
-                ->orderByDesc('created_at')
-                ->get();
-
-            if ($employers->isEmpty()) {
-                return $this->jsonUtf8(['message' => 'Nenhum colaborador encontrado para este estabelecimento.'], 200);
-            }
-
-            Log::info('Employer.listByEstablishment success', [
-                'establishment_id' => $establishment->id,
-                'count' => $employers->count()
-            ]);
-
-            return $this->jsonUtf8([
-                'message' => 'Lista de colaboradores carregada com sucesso.',
-                'establishment' => [
-                    'id' => $establishment->id,
-                    'name' => $establishment->name,
-                ],
-                'employers' => $employers
-            ], 200);
-
-        } catch (ValidationException $e) {
-            Log::warning('Employer.listByEstablishment validation failed', ['errors' => $e->errors()]);
-            return $this->jsonUtf8([
-                'message' => 'Erro de validação nos dados enviados.',
-                'errors' => $e->errors()
-            ], 422);
-
-        } catch (\Throwable $e) {
-            Log::error('Employer.listByEstablishment failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
-            return $this->jsonUtf8([
-                'error' => 'Ocorreu um erro inesperado ao listar os colaboradores.',
-                'details' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
     public function listByEntitySlug(string $slug)
-    {
-        try {
-            $establishment = Establishment::where('slug', $slug)->first();
+{
+    try {
+        $establishment = Establishment::with([
+            'employers.user',
+            'employers.files',
+        ])->where('slug', $slug)->first();
 
-            if (!$establishment) {
-                return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
-            }
-
-            $employers = Employer::where('establishment_id', $establishment->id)
-                ->with([
-                    'user:id,first_name,last_name,user_name,avatar,email,city,uf',
-                    'files' => fn($q) => $q->where('entity_name', 'employer'),
-                ])
-                ->orderByDesc('created_at')
-                ->get()
-                ->map(function ($emp) {
-                    $u = $emp->user;
-
-                    $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? ($u->avatar ?? null);
-                    $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
-
-                    return [
-                        'id' => $emp->id,
-                        'role' => $emp->role,
-                        'permissions' => $emp->permissions,
-                        'created_at' => $emp->created_at,
-                        'updated_at' => $emp->updated_at,
-                        'user' => [
-                            'id' => $u?->id,
-                            'first_name' => $u?->first_name,
-                            'last_name' => $u?->last_name,
-                            'user_name' => $u?->user_name,
-                            'email' => $u?->email,
-                            'city' => $u?->city,
-                            'uf' => $u?->uf,
-                            'images' => [
-                                'avatar' => $avatar,
-                                'gallery' => $gallery,
-                            ],
-                        ],
-                    ];
-                });
-
-            return $this->jsonUtf8([
-                'message' => 'Colaboradores listados com sucesso.',
-                'establishment' => [
-                    'id' => $establishment->id,
-                    'name' => $establishment->name,
-                    'fantasy' => $establishment->fantasy,
-                    'slug' => $establishment->slug,
-                    'city' => $establishment->city,
-                    'uf' => $establishment->uf,
-                ],
-                'employers' => $employers,
-                'count' => $employers->count(),
-            ], 200);
-
-        } catch (\Throwable $e) {
-            Log::error('Employer.listByEntitySlug failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
-            return $this->jsonUtf8([
-                'error' => 'Ocorreu um erro inesperado ao listar os colaboradores.',
-                'details' => $e->getMessage(),
-            ], 500);
+        if (!$establishment) {
+            return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
         }
+
+        $employers = $establishment->employers->map(function ($emp) {
+            $user = $emp->user;
+
+            $avatar =
+                $emp->files->firstWhere('type', 'avatar')?->public_url
+                ?? $user?->avatar
+                ?? null;
+
+            $gallery = $emp->files
+                ->whereNotIn('type', ['avatar'])
+                ->pluck('public_url')
+                ->values();
+
+            return [
+                'id' => $emp->id,
+                'role' => $emp->role,
+                'permissions' => $emp->permissions,
+                'status' => $emp->status ?? null,
+                'metrics' => $emp->metrics ?? null,
+                'created_at' => $emp->created_at,
+                'updated_at' => $emp->updated_at,
+                'user' => $user,
+                'images' => [
+                    'avatar' => $avatar,
+                    'gallery' => $gallery,
+                ],
+            ];
+        });
+
+        return $this->jsonUtf8([
+            'message' => 'Colaboradores listados com sucesso.',
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+            ],
+            'total' => $employers->count(),
+            'employers' => $employers,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        Log::error('Employer.listByEntitySlug error', [
+            'error' => $e->getMessage(),
+            'slug' => $slug,
+        ]);
+
+        return $this->jsonUtf8([
+            'error' => 'Erro ao listar colaboradores do estabelecimento.',
+            'details' => $e->getMessage(),
+        ], 500);
     }
+}
+
 
     public function detach(Request $request)
     {
@@ -1228,4 +1159,5 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
 }
