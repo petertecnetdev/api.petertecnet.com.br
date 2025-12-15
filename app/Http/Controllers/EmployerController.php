@@ -239,8 +239,7 @@ class EmployerController extends Controller
             ], 500);
         }
     }
-
-    public function listByEntitySlug(string $slug)
+public function listByEntitySlug(string $slug)
 {
     try {
         $establishment = Establishment::with([
@@ -249,14 +248,16 @@ class EmployerController extends Controller
         ])->where('slug', $slug)->first();
 
         if (!$establishment) {
-            return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
+            return response()->json([
+                'error' => 'Estabelecimento não encontrado.',
+            ], 404);
         }
 
         $employers = $establishment->employers->map(function ($emp) {
             $user = $emp->user;
 
             $avatar =
-                $emp->files->firstWhere('type', 'avatar')?->public_url
+                optional($emp->files->firstWhere('type', 'avatar'))->public_url
                 ?? $user?->avatar
                 ?? null;
 
@@ -269,19 +270,26 @@ class EmployerController extends Controller
                 'id' => $emp->id,
                 'role' => $emp->role,
                 'permissions' => $emp->permissions,
-                'status' => $emp->status ?? null,
-                'metrics' => $emp->metrics ?? null,
+                'status' => $emp->status,
+                'metrics' => $emp->metrics,
                 'created_at' => $emp->created_at,
                 'updated_at' => $emp->updated_at,
-                'user' => $user,
+                'user' => [
+                    'id' => $user?->id,
+                    'first_name' => $user?->first_name,
+                    'last_name' => $user?->last_name,
+                    'email' => $user?->email,
+                    'phone' => $user?->phone,
+                    'avatar' => $user?->avatar,
+                ],
                 'images' => [
                     'avatar' => $avatar,
                     'gallery' => $gallery,
                 ],
             ];
-        });
+        })->values();
 
-        return $this->jsonUtf8([
+        return response()->json([
             'message' => 'Colaboradores listados com sucesso.',
             'establishment' => [
                 'id' => $establishment->id,
@@ -294,16 +302,14 @@ class EmployerController extends Controller
             'total' => $employers->count(),
             'employers' => $employers,
         ], 200);
-
     } catch (\Throwable $e) {
         Log::error('Employer.listByEntitySlug error', [
-            'error' => $e->getMessage(),
             'slug' => $slug,
+            'error' => $e->getMessage(),
         ]);
 
-        return $this->jsonUtf8([
+        return response()->json([
             'error' => 'Erro ao listar colaboradores do estabelecimento.',
-            'details' => $e->getMessage(),
         ], 500);
     }
 }
