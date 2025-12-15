@@ -2,46 +2,112 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Employer;
-use App\Models\Establishment;
-use App\Models\Interaction;
-use App\Models\User;
+use App\Models\{Employer, Establishment, Interaction, User};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use App\Mail\NewEmployerCollaborator;
-use App\Mail\OwnerNotifiedNewCollaborator;
+use App\Mail\CreatePasswordMail;
+use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class EmployerController extends Controller
 {
+    private function sanitizeForJson($value)
+    {
+        if (is_null($value) || is_bool($value) || is_int($value) || is_float($value)) {
+            return $value;
+        }
+
+        if (is_string($value)) {
+            if (!mb_check_encoding($value, 'UTF-8')) {
+                $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+            }
+            $value = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+            return $value;
+        }
+
+        if ($value instanceof \Illuminate\Support\Collection) {
+            return $this->sanitizeForJson($value->toArray());
+        }
+
+        if ($value instanceof \JsonSerializable) {
+            return $this->sanitizeForJson($value->jsonSerialize());
+        }
+
+        if ($value instanceof \Illuminate\Database\Eloquent\Model) {
+            return $this->sanitizeForJson($value->toArray());
+        }
+
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $k => $v) {
+                $out[$k] = $this->sanitizeForJson($v);
+            }
+            return $out;
+        }
+
+        if (is_object($value)) {
+            return $this->sanitizeForJson((array) $value);
+        }
+
+        return $value;
+    }
+
+    private function jsonUtf8($data, int $status = 200, array $headers = [])
+    {
+        $clean = $this->sanitizeForJson($data);
+
+        return response()->json(
+            $clean,
+            $status,
+            $headers,
+            JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+    }
+
     protected function getValidationMessages()
     {
         return [
-            'user_id.required' => 'Usuário é obrigatório.',
-            'user_id.exists' => 'Usuário não encontrado.',
+            'first_name.required' => 'O nome é obrigatório.',
+            'first_name.string' => 'O nome deve ser um texto válido.',
+            'first_name.max' => 'O nome deve ter no máximo 255 caracteres.',
 
-            'establishment_id.required' => 'Estabelecimento é obrigatório.',
-            'establishment_id.exists' => 'Estabelecimento inválido.',
+            'email.required' => 'O e-mail é obrigatório.',
+            'email.email' => 'O e-mail informado é inválido.',
+            'email.max' => 'O e-mail deve ter no máximo 255 caracteres.',
 
-            'role.required' => 'A função do colaborador é obrigatória.',
-            'role.string' => 'A função deve ser um texto válido.',
+            'establishment_id.required' => 'O estabelecimento é obrigatório.',
+            'establishment_id.integer' => 'O estabelecimento deve ser um número inteiro.',
+            'establishment_id.exists' => 'O estabelecimento informado não existe.',
 
             'link.required' => 'O link é obrigatório.',
             'link.url' => 'O link informado é inválido.',
 
+            'role.required' => 'A função do colaborador é obrigatória.',
+            'role.string' => 'A função deve ser um texto válido.',
+            'role.max' => 'A função deve ter no máximo 255 caracteres.',
+
+            'permissions.required' => 'As permissões são obrigatórias.',
+            'permissions.array' => 'As permissões devem ser uma lista válida.',
+        ];
+    }
+
+    protected function getScheduleValidationMessages()
+    {
+        return [
             'employer_id.required' => 'O campo employer_id é obrigatório.',
             'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
             'employer_id.exists' => 'O colaborador informado não existe.',
 
-            'schedules.required' => 'A lista de horários é obrigatória.',
             'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
-            'schedules.min' => 'É necessário informar pelo menos um horário.',
 
             'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
-            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido.',
+            'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido (monday a sunday).',
 
             'schedules.*.start_time.required' => 'O campo horário de início é obrigatório.',
             'schedules.*.start_time.date_format' => 'O horário de início deve estar no formato HH:mm.',
@@ -51,163 +117,136 @@ class EmployerController extends Controller
             'schedules.*.end_time.after' => 'O horário de término deve ser posterior ao horário de início.',
         ];
     }
-   public function store(Request $request)
-{
-    Log::info('Employer.store:start', [
-        'auth_user_id' => Auth::id(),
-        'payload' => $request->all(),
-    ]);
 
-    try {
-        if (!Auth::check()) {
-            Log::warning('Employer.store:not_authenticated');
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    public function store(Request $request)
+    {
+        try {
+            Log::info('Employer.store start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
 
-        $owner = Auth::user();
+            if (!Auth::check()) {
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $validated = $request->validate(
-            [
-                'user_id' => 'required|integer|exists:users,id',
+            $user = Auth::user();
+
+            $validatedData = $request->validate([
+                'first_name' => 'required|string|max:255',
+                'email' => 'required|email|max:255',
                 'establishment_id' => 'required|integer|exists:establishments,id',
-                'role' => 'required|string|max:255',
-                'permissions' => 'nullable|array',
                 'link' => 'required|url',
-            ],
-            $this->getValidationMessages()
-        );
+                'role' => 'required|string|max:255',
+                'permissions' => 'required|array',
+            ], $this->getValidationMessages());
 
-        Log::info('Employer.store:validated', $validated);
-
-        $establishment = Establishment::find($validated['establishment_id']);
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        if ((int) $establishment->user_id !== (int) $owner->id) {
-            return response()->json([
-                'error' => 'Apenas o dono do estabelecimento pode associar colaboradores.',
-            ], 403);
-        }
-
-        if (
-            Employer::where('user_id', $validated['user_id'])
-                ->where('establishment_id', $establishment->id)
-                ->exists()
-        ) {
-            return response()->json([
-                'error' => 'Este usuário já é colaborador deste estabelecimento.',
-            ], 409);
-        }
-
-        DB::beginTransaction();
-        Log::info('Employer.store:transaction_started');
-
-        $employer = Employer::withoutEvents(function () use ($validated, $establishment, $owner) {
-            return Employer::create([
-                'user_id' => $validated['user_id'],
-                'establishment_id' => $establishment->id,
-                'role' => $validated['role'],
-                'permissions' => $validated['permissions'] ?? [],
-                'created_by' => $owner->id,
-                'updated_by' => $owner->id,
-            ]);
-        });
-
-        Log::info('Employer.store:employer_created', [
-            'employer_id' => $employer->id,
-        ]);
-
-        DB::commit();
-
-        $user = User::find($validated['user_id']);
-
-        if ($user && !empty($user->email)) {
-            try {
-                Mail::to($user->email)
-                    ->send(new NewEmployerCollaborator(
-                        $this->sanitizeEntity($establishment),
-                        $this->sanitizeEntity($employer)
-                    ));
-            } catch (\Throwable $e) {
-                Log::error('Employer.store:email_collaborator_failed', [
-                    'message' => $e->getMessage(),
-                ]);
+            $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
+            if (!$establishment) {
+                return $this->jsonUtf8(['error' => 'O estabelecimento informado não existe ou foi removido.'], 404);
             }
-        }
 
-        if ($establishment->user && !empty($establishment->user->email)) {
-            try {
-                Mail::to($establishment->user->email)
-                    ->send(new OwnerNotifiedNewCollaborator(
-                        $this->sanitizeEntity($establishment),
-                        $this->sanitizeEntity($employer)
-                    ));
-            } catch (\Throwable $e) {
-                Log::error('Employer.store:email_owner_failed', [
-                    'message' => $e->getMessage(),
-                ]);
+            if ((int) $establishment->user_id !== (int) $user->id) {
+                return $this->jsonUtf8(['error' => 'Apenas o dono do estabelecimento pode adicionar novos colaboradores.'], 403);
             }
+
+            $existingUser = User::where('email', $validatedData['email'])->first();
+
+            if (
+                $existingUser &&
+                Employer::where('user_id', $existingUser->id)
+                    ->where('establishment_id', $establishment->id)
+                    ->exists()
+            ) {
+                return $this->jsonUtf8(['error' => 'Este usuário já está vinculado a este estabelecimento.'], 409);
+            }
+
+            if (!$existingUser) {
+                $usernameBase = Str::slug($validatedData['first_name']);
+                $username = $usernameBase . '-' . Str::random(4);
+
+                while (User::where('user_name', $username)->exists()) {
+                    $username = $usernameBase . '-' . Str::random(4);
+                }
+
+                $password = Str::random(10);
+
+                $newUser = User::create([
+                    'first_name' => $validatedData['first_name'],
+                    'name' => $validatedData['first_name'],
+                    'email' => $validatedData['email'],
+                    'user_name' => $username,
+                    'password' => Hash::make($password),
+                ]);
+
+                $employer = Employer::create([
+                    'user_id' => $newUser->id,
+                    'establishment_id' => $establishment->id,
+                    'role' => $validatedData['role'],
+                    'permissions' => $validatedData['permissions'],
+                    'created_by' => $user->id,
+                    'updated_by' => $user->id,
+                ]);
+
+                $createCode = Str::random(8);
+                $newUser->reset_password_code = $createCode;
+                $newUser->reset_password_expires_at = now()->addMinutes(10);
+                $newUser->save();
+
+                Mail::to($newUser->email)->send(new CreatePasswordMail($createCode, $newUser, $validatedData['link']));
+                Mail::to($newUser->email)->send(new NewEmployerCollaborator($establishment, $employer));
+
+                if ($establishment->user_id && $establishment->user) {
+                    Mail::to($establishment->user->email)->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+                }
+
+                $message = 'Novo colaborador criado com sucesso. Um e-mail foi enviado para o colaborador finalizar o cadastro.';
+            } else {
+                $employer = Employer::create([
+                    'user_id' => $existingUser->id,
+                    'establishment_id' => $establishment->id,
+                    'role' => $validatedData['role'],
+                    'permissions' => $validatedData['permissions'],
+                    'created_by' => $user->id,
+                    'updated_by' => $user->id,
+                ]);
+
+                Mail::to($existingUser->email)->send(new NewEmployerCollaborator($establishment, $employer));
+
+                if ($establishment->user_id && $establishment->user) {
+                    Mail::to($establishment->user->email)->send(new OwnerNotifiedNewCollaborator($establishment, $employer));
+                }
+
+                $message = 'Usuário já existente vinculado como colaborador com sucesso.';
+            }
+
+            Log::info('Employer.store success', ['employer_id' => $employer->id]);
+
+            return $this->jsonUtf8([
+                'message' => $message,
+                'employer' => $employer,
+            ], 201);
+
+        } catch (ValidationException $e) {
+            Log::warning('Employer.store validation failed', ['errors' => $e->errors()]);
+            return $this->jsonUtf8([
+                'message' => 'Erro de validação nos dados enviados.',
+                'errors' => $e->errors()
+            ], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('Employer.store failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+            return $this->jsonUtf8([
+                'error' => 'Ocorreu um erro inesperado ao adicionar o colaborador.',
+                'details' => $e->getMessage(),
+            ], 500);
         }
-
-        Log::info('Employer.store:success', [
-            'employer_id' => $employer->id,
-        ]);
-
-        return response()->json([
-            'message' => 'Colaborador associado com sucesso.',
-            'employer' => $employer,
-        ], 201);
-
-    } catch (ValidationException $e) {
-        Log::warning('Employer.store:validation_failed', [
-            'errors' => $e->errors(),
-        ]);
-
-        return response()->json([
-            'errors' => $e->errors(),
-        ], 422);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        Log::error('Employer.store:exception', [
-            'message' => $e->getMessage(),
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro inesperado ao associar colaborador.',
-        ], 500);
     }
-}
-
-private function sanitizeEntity($model)
-{
-    $array = $model->toArray();
-
-    array_walk_recursive($array, function (&$value) {
-        if (is_string($value)) {
-            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8');
-        }
-    });
-
-    return (object) $array;
-}
-
-
 
     public function listByEstablishment(Request $request)
     {
         try {
-            Log::info('Employer.list start', [
-                'user_id' => Auth::id(),
-                'payload' => $request->all()
-            ]);
+            Log::info('Employer.listByEstablishment start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
 
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $validatedData = $request->validate([
@@ -222,34 +261,32 @@ private function sanitizeEntity($model)
             $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
 
             if (!$establishment) {
-                return response()->json([
-                    'error' => 'O estabelecimento informado não existe ou foi removido.'
-                ], 404);
+                return $this->jsonUtf8(['error' => 'O estabelecimento informado não existe ou foi removido.'], 404);
             }
 
-            if ($establishment->user_id !== $user->id) {
-                return response()->json([
-                    'error' => 'Apenas o dono do estabelecimento pode visualizar a lista de colaboradores.'
-                ], 403);
+            if ((int) $establishment->user_id !== (int) $user->id) {
+                return $this->jsonUtf8(['error' => 'Apenas o dono do estabelecimento pode visualizar a lista de colaboradores.'], 403);
             }
 
-            $employers = Employer::with(['user:id,first_name,email,user_name', 'creator:id,first_name,email'])
+            $employers = Employer::with([
+                'user:id,first_name,last_name,email,user_name,avatar',
+                'creator:id,first_name,last_name,email',
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
+            ])
                 ->where('establishment_id', $establishment->id)
                 ->orderByDesc('created_at')
                 ->get();
 
             if ($employers->isEmpty()) {
-                return response()->json([
-                    'message' => 'Nenhum colaborador encontrado para este estabelecimento.'
-                ], 200);
+                return $this->jsonUtf8(['message' => 'Nenhum colaborador encontrado para este estabelecimento.'], 200);
             }
 
-            Log::info('Employer.list success', [
+            Log::info('Employer.listByEstablishment success', [
                 'establishment_id' => $establishment->id,
                 'count' => $employers->count()
             ]);
 
-            return response()->json([
+            return $this->jsonUtf8([
                 'message' => 'Lista de colaboradores carregada com sucesso.',
                 'establishment' => [
                     'id' => $establishment->id,
@@ -259,85 +296,142 @@ private function sanitizeEntity($model)
             ], 200);
 
         } catch (ValidationException $e) {
-            Log::warning('Employer.list validation failed', ['errors' => $e->errors()]);
-            return response()->json([
+            Log::warning('Employer.listByEstablishment validation failed', ['errors' => $e->errors()]);
+            return $this->jsonUtf8([
                 'message' => 'Erro de validação nos dados enviados.',
                 'errors' => $e->errors()
             ], 422);
 
-        } catch (\Exception $e) {
-            Log::error('Employer.list failed', [
-                'error' => $e->getMessage(),
-                'stack' => $e->getTraceAsString()
-            ]);
-            return response()->json([
+        } catch (\Throwable $e) {
+            Log::error('Employer.listByEstablishment failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+            return $this->jsonUtf8([
                 'error' => 'Ocorreu um erro inesperado ao listar os colaboradores.',
                 'details' => $e->getMessage(),
             ], 500);
         }
     }
 
+    public function listByEntitySlug(string $slug)
+    {
+        try {
+            $establishment = Establishment::where('slug', $slug)->first();
+
+            if (!$establishment) {
+                return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
+
+            $employers = Employer::where('establishment_id', $establishment->id)
+                ->with([
+                    'user:id,first_name,last_name,user_name,avatar,email,city,uf',
+                    'files' => fn($q) => $q->where('entity_name', 'employer'),
+                ])
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(function ($emp) {
+                    $u = $emp->user;
+
+                    $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? ($u->avatar ?? null);
+                    $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
+
+                    return [
+                        'id' => $emp->id,
+                        'role' => $emp->role,
+                        'permissions' => $emp->permissions,
+                        'created_at' => $emp->created_at,
+                        'updated_at' => $emp->updated_at,
+                        'user' => [
+                            'id' => $u?->id,
+                            'first_name' => $u?->first_name,
+                            'last_name' => $u?->last_name,
+                            'user_name' => $u?->user_name,
+                            'email' => $u?->email,
+                            'city' => $u?->city,
+                            'uf' => $u?->uf,
+                            'images' => [
+                                'avatar' => $avatar,
+                                'gallery' => $gallery,
+                            ],
+                        ],
+                    ];
+                });
+
+            return $this->jsonUtf8([
+                'message' => 'Colaboradores listados com sucesso.',
+                'establishment' => [
+                    'id' => $establishment->id,
+                    'name' => $establishment->name,
+                    'fantasy' => $establishment->fantasy,
+                    'slug' => $establishment->slug,
+                    'city' => $establishment->city,
+                    'uf' => $establishment->uf,
+                ],
+                'employers' => $employers,
+                'count' => $employers->count(),
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Employer.listByEntitySlug failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+            return $this->jsonUtf8([
+                'error' => 'Ocorreu um erro inesperado ao listar os colaboradores.',
+                'details' => $e->getMessage(),
+            ], 500);
+        }
+    }
 
     public function detach(Request $request)
     {
-        Log::info('Employer.detach:start', [
-            'auth_user_id' => Auth::id(),
-            'payload' => $request->all(),
-        ]);
-
         try {
+            Log::info('Employer.detach start', ['user_id' => Auth::id(), 'payload' => $request->all()]);
+
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
             }
 
-            $validated = $request->validate(
-                [
-                    'employer_id' => 'required|integer',
-                    'establishment_id' => 'required|integer|exists:establishments,id',
-                ],
-                $this->getValidationMessages()
-            );
+            $validatedData = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'establishment_id' => 'required|integer|exists:establishments,id',
+            ], [
+                'employer_id.required' => 'O ID do colaborador é obrigatório.',
+                'employer_id.integer' => 'O ID do colaborador deve ser um número inteiro.',
+                'employer_id.exists' => 'O colaborador informado não existe.',
+                'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
+                'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
+                'establishment_id.exists' => 'O estabelecimento informado não existe.',
+            ]);
 
-            $owner = Auth::user();
+            $user = Auth::user();
+            $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
 
-            $establishment = Establishment::with('user')->find($validated['establishment_id']);
             if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+                return $this->jsonUtf8(['error' => 'O estabelecimento informado não existe.'], 404);
             }
 
-            if ((int) $establishment->user_id !== (int) $owner->id) {
-                return response()->json([
-                    'error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.',
-                ], 403);
+            if ((int) $establishment->user_id !== (int) $user->id) {
+                return $this->jsonUtf8(['error' => 'Apenas o dono do estabelecimento pode desvincular colaboradores.'], 403);
             }
 
             $employer = Employer::with('user')
-                ->where('id', $validated['employer_id'])
+                ->where('id', $validatedData['employer_id'])
                 ->where('establishment_id', $establishment->id)
                 ->first();
 
             if (!$employer) {
-                return response()->json([
-                    'error' => 'O colaborador não está vinculado a este estabelecimento.',
-                ], 404);
+                return $this->jsonUtf8(['error' => 'O colaborador não está vinculado a este estabelecimento.'], 404);
             }
-
-            DB::beginTransaction();
 
             $collaboratorUser = $employer->user;
             $ownerUser = $establishment->user;
 
             $employer->delete();
 
-            DB::commit();
-
             if ($collaboratorUser && !empty($collaboratorUser->email)) {
                 try {
                     Mail::to($collaboratorUser->email)
                         ->send(new \App\Mail\EmployerRemoved($establishment, $collaboratorUser));
                 } catch (\Throwable $e) {
-                    Log::warning('Employer.detach:email_collaborator_failed', [
-                        'message' => $e->getMessage(),
+                    Log::warning('Failed to send EmployerRemoved email', [
+                        'error' => $e->getMessage(),
+                        'employer_id' => $validatedData['employer_id']
                     ]);
                 }
             }
@@ -345,43 +439,34 @@ private function sanitizeEntity($model)
             if ($ownerUser && !empty($ownerUser->email)) {
                 try {
                     Mail::to($ownerUser->email)
-                        ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser));
+                        ->send(new \App\Mail\OwnerNotifiedEmployerDetached($establishment, $collaboratorUser ?? null));
                 } catch (\Throwable $e) {
-                    Log::warning('Employer.detach:email_owner_failed', [
-                        'message' => $e->getMessage(),
+                    Log::warning('Failed to send OwnerNotifiedEmployerDetached email', [
+                        'error' => $e->getMessage(),
+                        'employer_id' => $validatedData['employer_id']
                     ]);
                 }
             }
 
-            Log::info('Employer.detach:success', [
-                'employer_id' => $validated['employer_id'],
-                'establishment_id' => $establishment->id,
+            Log::info('Employer.detach success', [
+                'employer_id' => $validatedData['employer_id'],
+                'establishment_id' => $establishment->id
             ]);
 
-            return response()->json([
-                'message' => 'Colaborador desvinculado com sucesso.',
-            ], 200);
+            return $this->jsonUtf8(['message' => 'Colaborador desvinculado com sucesso e notificações enviadas.'], 200);
 
         } catch (ValidationException $e) {
-            Log::warning('Employer.detach:validation_failed', [
-                'errors' => $e->errors(),
-            ]);
-
-            return response()->json([
-                'errors' => $e->errors(),
+            Log::warning('Employer.detach validation failed', ['errors' => $e->errors()]);
+            return $this->jsonUtf8([
+                'message' => 'Erro nos dados enviados.',
+                'errors' => $e->errors()
             ], 422);
 
         } catch (\Throwable $e) {
-            DB::rollBack();
-
-            Log::error('Employer.detach:exception', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile(),
-                'line' => $e->getLine(),
-            ]);
-
-            return response()->json([
-                'error' => 'Erro inesperado ao desvincular colaborador.',
+            Log::error('Employer.detach failed', ['error' => $e->getMessage(), 'stack' => $e->getTraceAsString()]);
+            return $this->jsonUtf8([
+                'error' => 'Ocorreu um erro inesperado ao desvincular o colaborador.',
+                'details' => $e->getMessage()
             ], 500);
         }
     }
@@ -390,7 +475,7 @@ private function sanitizeEntity($model)
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -404,23 +489,23 @@ private function sanitizeEntity($model)
                 'last_check.date' => 'O campo last_check deve ser uma data válida.',
             ]);
 
-            $employer = \App\Models\Employer::with('establishment')->find($data['employer_id']);
+            $employer = Employer::with('establishment')->find($data['employer_id']);
             if (!$employer) {
-                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+                return $this->jsonUtf8(['error' => 'Colaborador não encontrado.'], 404);
             }
 
-            $isOwner = \App\Models\Establishment::where('user_id', $user->id)
+            $isOwner = Establishment::where('user_id', $user->id)
                 ->where('id', $employer->establishment_id)
                 ->exists();
 
-            $isSelf = $user->id === $employer->user_id;
+            $isSelf = (int) $user->id === (int) $employer->user_id;
 
             if (!$isOwner && !$isSelf) {
-                return response()->json(['error' => 'Acesso negado.'], 403);
+                return $this->jsonUtf8(['error' => 'Acesso negado.'], 403);
             }
 
             $lastCheck = isset($data['last_check'])
-                ? \Carbon\Carbon::parse($data['last_check'])
+                ? Carbon::parse($data['last_check'])
                 : now()->subMinutes(10);
 
             $appointmentsQuery = \App\Models\Order::where('attendant_id', $employer->id)
@@ -428,12 +513,9 @@ private function sanitizeEntity($model)
                 ->whereIn('appointment_status', ['pending', 'confirmed', 'cancelled', 'attended', 'not_attended']);
 
             $totalAppointments = (clone $appointmentsQuery)->count();
-            $todayAppointments = (clone $appointmentsQuery)
-                ->whereDate('order_datetime', now()->toDateString())
-                ->count();
-            $tomorrowAppointments = (clone $appointmentsQuery)
-                ->whereDate('order_datetime', now()->addDay()->toDateString())
-                ->count();
+            $todayAppointments = (clone $appointmentsQuery)->whereDate('order_datetime', now()->toDateString())->count();
+            $tomorrowAppointments = (clone $appointmentsQuery)->whereDate('order_datetime', now()->addDay()->toDateString())->count();
+
             $totalValue = (clone $appointmentsQuery)
                 ->whereIn('appointment_status', ['confirmed', 'attended'])
                 ->sum('total_price');
@@ -469,9 +551,9 @@ private function sanitizeEntity($model)
                 ->orderBy('order_datetime', 'desc')
                 ->first(['id', 'order_number', 'customer_name', 'order_datetime', 'appointment_status', 'total_price']);
 
-            // --- Identifica atendimentos finalizados que precisam ser marcados como atendidos ou não ---
             $finalizableAppointments = (clone $appointmentsQuery)
                 ->whereIn('appointment_status', ['confirmed'])
+                ->with(['items'])
                 ->get()
                 ->filter(function ($appt) {
                     $duration = 0;
@@ -481,7 +563,7 @@ private function sanitizeEntity($model)
                         }
                     }
                     $duration = $duration > 0 ? $duration : 15;
-                    $endTime = \Carbon\Carbon::parse($appt->order_datetime)->addMinutes($duration);
+                    $endTime = Carbon::parse($appt->order_datetime)->addMinutes($duration);
                     return now()->greaterThanOrEqualTo($endTime);
                 })
                 ->sortBy('order_datetime')
@@ -504,8 +586,7 @@ private function sanitizeEntity($model)
                 foreach ($newAppointments as $appt) {
                     $notifications[] = [
                         'type' => 'new',
-                        'message' => "Novo agendamento de {$appt->customer_name} para " .
-                            \Carbon\Carbon::parse($appt->order_datetime)->format('d/m H:i'),
+                        'message' => "Novo agendamento de {$appt->customer_name} para " . Carbon::parse($appt->order_datetime)->format('d/m H:i'),
                     ];
                 }
             }
@@ -529,15 +610,14 @@ private function sanitizeEntity($model)
             }
 
             if ($finalizableAppointments->isNotEmpty()) {
-                foreach ($finalizableAppointments as $appt) {
-                    $notifications[] = [
-                        'type' => 'finalize',
-                        'message' => "O atendimento de {$appt['customer_name']} está finalizado. Marque como atendido ou não atendido.",
-                    ];
-                }
+                $appt = $finalizableAppointments->first();
+                $notifications[] = [
+                    'type' => 'finalize',
+                    'message' => "O atendimento de {$appt['customer_name']} está finalizado. Marque como atendido ou não atendido.",
+                ];
             }
 
-            return response()->json([
+            return $this->jsonUtf8([
                 'checked_at' => now()->toDateTimeString(),
                 'kpis' => [
                     'total' => $totalAppointments,
@@ -554,13 +634,19 @@ private function sanitizeEntity($model)
                 'notifications' => $notifications,
             ], 200);
 
-        } catch (\Exception $e) {
-            \Log::error('Erro ao verificar atualizações do colaborador.', [
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8([
+                'message' => 'Erro de validação nos dados enviados.',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('Erro ao verificar atualizações do colaborador.', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
+            return $this->jsonUtf8([
                 'error' => 'Falha ao verificar atualizações.',
                 'details' => $e->getMessage(),
             ], 500);
@@ -571,7 +657,7 @@ private function sanitizeEntity($model)
     {
         try {
             if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
             }
 
             $user = Auth::user();
@@ -584,11 +670,11 @@ private function sanitizeEntity($model)
             ]);
 
             $employer = isset($data['employer_id'])
-                ? \App\Models\Employer::find($data['employer_id'])
-                : \App\Models\Employer::where('user_id', $user->id)->first();
+                ? Employer::find($data['employer_id'])
+                : Employer::where('user_id', $user->id)->first();
 
             if (!$employer) {
-                return response()->json(['error' => 'Colaborador não encontrado.'], 404);
+                return $this->jsonUtf8(['error' => 'Colaborador não encontrado.'], 404);
             }
 
             $appointments = \App\Models\Order::with([
@@ -609,9 +695,8 @@ private function sanitizeEntity($model)
                 ->orderBy('order_datetime', 'desc')
                 ->get();
 
-            // ?? Garante cálculo do total e estrutura dos serviços solicitados
             foreach ($appointments as $order) {
-                if (!$order->total_price || $order->total_price == 0) {
+                if (!$order->total_price || (float) $order->total_price == 0.0) {
                     $order->total_price = $order->items->sum(function ($item) {
                         return ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1);
                     });
@@ -634,231 +719,159 @@ private function sanitizeEntity($model)
                 });
             }
 
-            return response()->json([
+            return $this->jsonUtf8([
                 'appointments' => $appointments,
                 'count' => $appointments->count(),
             ], 200);
 
-        } catch (\Exception $e) {
-            \Log::error('Erro ao listar agendamentos do colaborador.', [
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8([
+                'message' => 'Erro de validação nos dados enviados.',
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('Erro ao listar agendamentos do colaborador.', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json([
+
+            return $this->jsonUtf8([
                 'error' => 'Falha ao listar agendamentos.',
                 'details' => $e->getMessage(),
             ], 500);
         }
-
     }
 
-    private function resolveEmployerForSchedules(Request $request, \App\Models\User $authUser): \App\Models\Employer
-{
-    $rawId = $request->input('employer_id');
-
-    $id = null;
-    if ($rawId !== null && $rawId !== '') {
-        if (!is_numeric($rawId)) {
-            throw new \Illuminate\Http\Exceptions\HttpResponseException(
-                response()->json(['error' => 'O campo employer_id deve ser um número inteiro.'], 422, [], JSON_UNESCAPED_UNICODE)
-            );
-        }
-        $id = (int) $rawId;
-    }
-
-    $employer = null;
-
-    if ($id) {
-        $employer = \App\Models\Employer::with('establishment')->find($id);
-
-        if (!$employer) {
-            $employer = \App\Models\Employer::with('establishment')
-                ->where('user_id', $id)
-                ->first();
-        }
-    } else {
-        $employer = \App\Models\Employer::with('establishment')
-            ->where('user_id', $authUser->id)
-            ->first();
-    }
-
-    if (!$employer) {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json(['error' => 'Colaborador não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE)
-        );
-    }
-
-    $isOwner = \App\Models\Establishment::where('id', $employer->establishment_id)
-        ->where('user_id', $authUser->id)
-        ->exists();
-
-    $isSelf = (int) $employer->user_id === (int) $authUser->id;
-
-    if (!$isOwner && !$isSelf) {
-        throw new \Illuminate\Http\Exceptions\HttpResponseException(
-            response()->json(['error' => 'Acesso negado.'], 403, [], JSON_UNESCAPED_UNICODE)
-        );
-    }
-
-    return $employer;
-}
-
-public function listSchedules(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
-        }
-
-        $authUser = Auth::user();
-        $employer = $this->resolveEmployerForSchedules($request, $authUser);
-
-        $schedules = \App\Models\EmployerSchedule::where('employer_id', $employer->id)
-            ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
-            ->orderBy('start_time')
-            ->get();
-
-        return response()->json($schedules, 200, [], JSON_UNESCAPED_UNICODE);
-
-    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
-        return $e->getResponse();
-    } catch (\Throwable $e) {
-        \Log::error('Employer.listSchedules error', ['exception' => $e]);
-        return response()->json(['error' => 'Erro ao listar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
-    }
-}
-
-public function saveSchedules(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
-        }
-
-        $authUser = Auth::user();
-        $employer = $this->resolveEmployerForSchedules($request, $authUser);
-
-        $data = $request->validate([
-            'schedules' => 'required|array|min:1',
-            'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
-            'schedules.*.start_time' => 'required|date_format:H:i',
-            'schedules.*.end_time' => 'required|date_format:H:i',
-        ], $this->getValidationMessages());
-
-        foreach ($data['schedules'] as $schedule) {
-            if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
-                return response()->json([
-                    'errors' => [
-                        'schedules' => ['O horário de término deve ser posterior ao horário de início.'],
-                    ],
-                ], 422, [], JSON_UNESCAPED_UNICODE);
+    public function listSchedules(Request $request)
+    {
+        try {
+            if (!Auth::check()) {
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
             }
-        }
 
-        foreach ($data['schedules'] as $schedule) {
-            \App\Models\EmployerSchedule::updateOrCreate(
-                [
-                    'employer_id' => $employer->id,
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+            ], $this->getScheduleValidationMessages());
+
+            $schedules = \App\Models\EmployerSchedule::where('employer_id', $data['employer_id'])
+                ->orderByRaw("FIELD(day_of_week, 'monday','tuesday','wednesday','thursday','friday','saturday','sunday')")
+                ->orderBy('start_time')
+                ->get();
+
+            return $this->jsonUtf8($schedules, 200);
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            Log::error('Employer.listSchedules error', ['exception' => $e]);
+            return $this->jsonUtf8(['error' => 'Erro ao listar horários.'], 500);
+        }
+    }
+
+    public function saveSchedules(Request $request)
+    {
+        try {
+            if (!Auth::check()) {
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $data = $request->validate([
+                'employer_id' => 'required|integer|exists:employers,id',
+                'schedules' => 'nullable|array',
+                'schedules.*.day_of_week' => 'required_with:schedules|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required_with:schedules|date_format:H:i',
+                'schedules.*.end_time' => 'required_with:schedules|date_format:H:i|after:schedules.*.start_time',
+            ], $this->getScheduleValidationMessages());
+
+            $employerId = (int) $data['employer_id'];
+            $schedules = $data['schedules'] ?? [];
+
+            \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'work')
+                ->delete();
+
+            if (empty($schedules)) {
+                return $this->jsonUtf8(['message' => 'Horários removidos com sucesso.'], 200);
+            }
+
+            foreach ($schedules as $schedule) {
+                if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
+                    return $this->jsonUtf8([
+                        'errors' => [
+                            'schedules' => ['O horário de término deve ser posterior ao horário de início.']
+                        ]
+                    ], 422);
+                }
+
+                \App\Models\EmployerSchedule::create([
+                    'employer_id' => $employerId,
                     'day_of_week' => $schedule['day_of_week'],
                     'start_time' => $schedule['start_time'],
                     'end_time' => $schedule['end_time'],
-                    'type' => 'work',
-                ],
-                [
                     'is_active' => true,
-                ]
-            );
+                    'type' => 'work',
+                ]);
+            }
+
+            return $this->jsonUtf8(['message' => 'Horários salvos com sucesso.'], 201);
+
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            Log::error('Employer.saveSchedules error', ['exception' => $e]);
+            return $this->jsonUtf8(['error' => 'Erro ao salvar horários.'], 500);
         }
-
-        return response()->json(['message' => 'Horários cadastrados com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-    } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
-        return $e->getResponse();
-    } catch (\Throwable $e) {
-        \Log::error('Employer.saveSchedules error', ['exception' => $e]);
-        return response()->json(['error' => 'Erro ao salvar horários.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
-}
 
-public function deleteSchedule($id)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401, [], JSON_UNESCAPED_UNICODE);
+    public function deleteSchedule($id)
+    {
+        try {
+            if (!Auth::check()) {
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            }
+
+            $schedule = \App\Models\EmployerSchedule::findOrFail($id);
+            $schedule->delete();
+
+            return $this->jsonUtf8(['message' => 'Horário removido com sucesso.'], 200);
+        } catch (\Throwable $e) {
+            Log::error('Employer.deleteSchedule error', ['exception' => $e]);
+            return $this->jsonUtf8(['error' => 'Erro ao remover horário.'], 500);
         }
-
-        $authUser = Auth::user();
-
-        $schedule = \App\Models\EmployerSchedule::findOrFail($id);
-
-        $employer = \App\Models\Employer::with('establishment')->find($schedule->employer_id);
-        if (!$employer) {
-            return response()->json(['error' => 'Colaborador não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE);
-        }
-
-        $isOwner = \App\Models\Establishment::where('id', $employer->establishment_id)
-            ->where('user_id', $authUser->id)
-            ->exists();
-
-        $isSelf = (int) $employer->user_id === (int) $authUser->id;
-
-        if (!$isOwner && !$isSelf) {
-            return response()->json(['error' => 'Acesso negado.'], 403, [], JSON_UNESCAPED_UNICODE);
-        }
-
-        $schedule->delete();
-
-        return response()->json(['message' => 'Horário removido com sucesso.'], 200, [], JSON_UNESCAPED_UNICODE);
-
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['error' => 'Horário não encontrado.'], 404, [], JSON_UNESCAPED_UNICODE);
-    } catch (\Throwable $e) {
-        \Log::error('Employer.deleteSchedule error', ['exception' => $e]);
-        return response()->json(['error' => 'Erro ao remover horário.'], 500, [], JSON_UNESCAPED_UNICODE);
     }
-}
-
 
     public function availableTimes(Request $request)
     {
         try {
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
-                'date' => 'required', // pode vir com hora, será ignorada
+                'date' => 'required',
                 'duration' => 'required|integer|min:5',
             ]);
 
             $employerId = (int) $data['employer_id'];
             $duration = (int) $data['duration'];
 
-            // ?? Horário atual verdadeiro (do servidor)
-            $now = \Carbon\Carbon::now('America/Sao_Paulo');
-            $today = $now->format('Y-m-d');
+            $now = Carbon::now('America/Sao_Paulo');
 
-            // ?? Extrai apenas o dia e ignora completamente a hora enviada
             $raw = (string) $data['date'];
             $dateStr = preg_replace('/T.*/', '', $raw);
-            $date = \Carbon\Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
+            $date = Carbon::createFromFormat('Y-m-d', $dateStr, 'America/Sao_Paulo');
             $dayOfWeek = strtolower($date->format('l'));
 
-            // ?? Se o dia for passado, retorna vazio
             if ($date->lt($now->copy()->startOfDay())) {
-                return response()->json(['available_times' => []]);
+                return $this->jsonUtf8(['available_times' => []], 200);
             }
 
-            // ?? Folga ou feriado
             $isHoliday = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('type', 'holiday')
                 ->whereDate('reserved_date', $date->toDateString())
                 ->exists();
 
             if ($isHoliday) {
-                return response()->json(['available_times' => []]);
+                return $this->jsonUtf8(['available_times' => []], 200);
             }
 
-            // ??? Horários de expediente
             $schedules = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('day_of_week', $dayOfWeek)
                 ->where('is_active', true)
@@ -866,10 +879,9 @@ public function deleteSchedule($id)
                 ->get();
 
             if ($schedules->isEmpty()) {
-                return response()->json(['available_times' => []]);
+                return $this->jsonUtf8(['available_times' => []], 200);
             }
 
-            // ?? Agendamentos do dia
             $appointments = \App\Models\Order::where('attendant_id', $employerId)
                 ->where('type', 'appointment')
                 ->whereBetween('order_datetime', [
@@ -881,33 +893,31 @@ public function deleteSchedule($id)
 
             $occupied = [];
             foreach ($appointments as $a) {
-                $start = \Carbon\Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
+                $start = Carbon::parse($a->order_datetime)->setTimezone('America/Sao_Paulo');
                 $end = $start->copy()->addMinutes($a->total_duration ?? 30);
                 $occupied[] = [$start, $end];
             }
 
-            // ? Pausas
             $breaks = \App\Models\EmployerSchedule::where('employer_id', $employerId)
                 ->where('type', 'break')
                 ->whereDate('reserved_date', $date->toDateString())
                 ->get();
 
             foreach ($breaks as $b) {
-                $start = \Carbon\Carbon::parse("{$date->toDateString()} {$b->start_time}", 'America/Sao_Paulo');
-                $end = \Carbon\Carbon::parse("{$date->toDateString()} {$b->end_time}", 'America/Sao_Paulo');
+                $start = Carbon::parse("{$date->toDateString()} {$b->start_time}", 'America/Sao_Paulo');
+                $end = Carbon::parse("{$date->toDateString()} {$b->end_time}", 'America/Sao_Paulo');
                 $occupied[] = [$start, $end];
             }
 
             usort($occupied, fn($a, $b) => $a[0]->lt($b[0]) ? -1 : 1);
 
-            // ?? Geração de horários disponíveis
             $availableTimes = [];
             $step = 15;
-            $limitFuture = $now->copy()->addMinutes(30); // tolerância mínima
+            $limitFuture = $now->copy()->addMinutes(30);
 
             foreach ($schedules as $schedule) {
-                $workStart = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
-                $workEnd = \Carbon\Carbon::parse("{$date->toDateString()} {$schedule->end_time}", 'America/Sao_Paulo');
+                $workStart = Carbon::parse("{$date->toDateString()} {$schedule->start_time}", 'America/Sao_Paulo');
+                $workEnd = Carbon::parse("{$date->toDateString()} {$schedule->end_time}", 'America/Sao_Paulo');
 
                 $pointer = $workStart->copy();
 
@@ -915,13 +925,11 @@ public function deleteSchedule($id)
                     $slotStart = $pointer->copy();
                     $slotEnd = $slotStart->copy()->addMinutes($duration);
 
-                    // ?? Se o dia for hoje, só horários depois de agora + 30 min
                     if ($date->isSameDay($now) && $slotStart->lte($limitFuture)) {
                         $pointer->addMinutes($step);
                         continue;
                     }
 
-                    // ?? Verifica conflito
                     $hasConflict = false;
                     foreach ($occupied as [$occStart, $occEnd]) {
                         if ($slotStart->lt($occEnd) && $slotEnd->gt($occStart)) {
@@ -930,7 +938,6 @@ public function deleteSchedule($id)
                         }
                     }
 
-                    // ? Adiciona se estiver livre
                     if (!$hasConflict) {
                         $availableTimes[] = $slotStart->format('H:i');
                     }
@@ -940,21 +947,27 @@ public function deleteSchedule($id)
             }
 
             sort($availableTimes);
-            return response()->json(['available_times' => $availableTimes]);
+            return $this->jsonUtf8(['available_times' => $availableTimes], 200);
+
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8(['errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
-            \Log::error('? Erro em availableTimes', [
+            Log::error('? Erro em availableTimes', [
                 'message' => $e->getMessage(),
                 'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Erro ao listar horários disponíveis.'], 500);
+            return $this->jsonUtf8(['error' => 'Erro ao listar horários disponíveis.'], 500);
         }
     }
-
-
 
     public function reserveSchedule(Request $request)
     {
         try {
+            if (!Auth::check()) {
+                return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            }
+
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
                 'date' => 'required|date',
@@ -970,7 +983,7 @@ public function deleteSchedule($id)
                 'end_time.required_if' => 'O campo horário de término é obrigatório para pausas.',
             ]);
 
-            $dayOfWeek = strtolower(\Carbon\Carbon::parse($data['date'])->format('l'));
+            $dayOfWeek = strtolower(Carbon::parse($data['date'])->format('l'));
 
             \App\Models\EmployerSchedule::create([
                 'employer_id' => $data['employer_id'],
@@ -982,12 +995,13 @@ public function deleteSchedule($id)
                 'type' => $data['type'],
             ]);
 
-            return response()->json(['message' => 'Horário reservado com sucesso.'], 201, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            return response()->json(['errors' => $e->errors()], 422, [], JSON_UNESCAPED_UNICODE);
-        } catch (\Exception $e) {
-            \Log::error('Employer.reserveSchedule error', ['exception' => $e]);
-            return response()->json(['error' => 'Erro ao reservar horário.'], 500, [], JSON_UNESCAPED_UNICODE);
+            return $this->jsonUtf8(['message' => 'Horário reservado com sucesso.'], 201);
+
+        } catch (ValidationException $e) {
+            return $this->jsonUtf8(['errors' => $e->errors()], 422);
+        } catch (\Throwable $e) {
+            Log::error('Employer.reserveSchedule error', ['exception' => $e]);
+            return $this->jsonUtf8(['error' => 'Erro ao reservar horário.'], 500);
         }
     }
 
@@ -1007,24 +1021,24 @@ public function deleteSchedule($id)
             ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
             ->firstOrFail();
 
-        Interaction::registerView($employer, $authUser);
-
-        if ($employer->establishment) {
-            Interaction::registerView($employer->establishment, $authUser);
+        try {
+            if (method_exists($employer, 'refreshViewMetrics')) {
+                $employer->refreshViewMetrics($authUser);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Employer.view refreshViewMetrics failed', ['error' => $e->getMessage()]);
         }
-
-        $employer->refreshViewMetrics($authUser);
 
         $u = $employer->user;
 
-        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+        $avatar = $employer->files->firstWhere('type', 'avatar')?->public_url ?? ($u->avatar ?? null);
         $gallery = $employer->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
-        return response()->json([
+        return $this->jsonUtf8([
             'employer' => [
                 'id' => $employer->id,
                 'type' => 'employer',
-                'name' => trim($u->first_name . ' ' . $u->last_name),
+                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
                 'slug' => $u->user_name,
                 'about' => $u->about,
                 'city' => $u->city,
@@ -1036,31 +1050,26 @@ public function deleteSchedule($id)
             ],
             'establishment' => $employer->establishment,
             'items' => $employer->establishment?->items ?? [],
-            'metrics' => $employer->metrics,
-            'interaction_summary' => $employer->interactionSummary(),
-            'user_interactions' => $employer->userInteractions(),
-            'orders_summary' => $employer->ordersSummary(),
-            'colleagues' => $employer->colleagues()['list'] ?? [],
-            'average_engagement_score' => $employer->colleagues()['average_engagement_score'] ?? 0,
-            'top_item_and_client' => $employer->topItemAndClient(),
-            'other_establishments' => $employer->establishment?->otherEstablishments() ?? [],
-            'other_employers' => $employer->establishment?->otherEmployers() ?? [],
-            'other_items' => $employer->establishment?->otherItems() ?? [],
+            'metrics' => $employer->metrics ?? null,
+            'interaction_summary' => method_exists($employer, 'interactionSummary') ? $employer->interactionSummary() : null,
+            'user_interactions' => method_exists($employer, 'userInteractions') ? $employer->userInteractions() : null,
+            'orders_summary' => method_exists($employer, 'ordersSummary') ? $employer->ordersSummary() : null,
+            'colleagues' => method_exists($employer, 'colleagues') ? ($employer->colleagues()['list'] ?? []) : [],
+            'average_engagement_score' => method_exists($employer, 'colleagues') ? ($employer->colleagues()['average_engagement_score'] ?? 0) : 0,
+            'top_item_and_client' => method_exists($employer, 'topItemAndClient') ? $employer->topItemAndClient() : null,
+            'other_establishments' => $employer->establishment && method_exists($employer->establishment, 'otherEstablishments') ? ($employer->establishment->otherEstablishments() ?? []) : [],
+            'other_employers' => $employer->establishment && method_exists($employer->establishment, 'otherEmployers') ? ($employer->establishment->otherEmployers() ?? []) : [],
+            'other_items' => $employer->establishment && method_exists($employer->establishment, 'otherItems') ? ($employer->establishment->otherItems() ?? []) : [],
         ]);
     }
 
     public function home(Request $request, $app_id)
     {
-        $authUser = Auth::user();
-
         $city = $request->query('city');
         $uf = $request->query('uf');
 
         $establishmentIds = Establishment::where('app_id', $app_id)
-            ->when(
-                $city && $uf,
-                fn($q) => $q->where('city', $city)->where('uf', $uf)
-            )
+            ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
             ->pluck('id');
 
         $employers = Employer::whereIn('establishment_id', $establishmentIds)
@@ -1070,21 +1079,16 @@ public function deleteSchedule($id)
                 'files' => fn($q) => $q->where('entity_name', 'employer'),
             ])
             ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                'orders as completed_appointments' => fn($q) =>
-                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) => $q->select(DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                'orders as completed_appointments' => fn($q) => $q->whereIn('appointment_status', ['confirmed', 'attended']),
             ])
             ->orderByDesc('completed_appointments')
             ->get()
-            ->map(function ($emp) use ($authUser) {
-                Interaction::registerView($emp, $authUser);
-
+            ->map(function ($emp) {
                 $u = $emp->user;
 
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? $u->avatar;
+                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url ?? ($u->avatar ?? null);
                 $gallery = $emp->files->whereNotIn('type', ['avatar'])->pluck('public_url')->values();
 
                 return [
@@ -1108,88 +1112,120 @@ public function deleteSchedule($id)
                 ];
             });
 
-        return response()->json(['employers' => $employers]);
+        return $this->jsonUtf8(['employers' => $employers], 200);
     }
 
-    public function listByEntitySlug($slug)
-    {
-        try {
-            if (!$slug || !is_string($slug)) {
-                return response()->json(['error' => 'Slug inválido.'], 422);
-            }
 
-            $authUser = Auth::user();
+    public function listMyOrders(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+        }
 
-            $establishment = Establishment::where('slug', $slug)
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo'),
-                    'employers' => fn($q) =>
-                        $q->orderByDesc('updated_at')
-                            ->with([
-                                'user:id,first_name,last_name,user_name,avatar,city,uf',
-                                'files' => fn($fq) =>
-                                    $fq->where('entity_name', 'employer'),
-                            ]),
-                ])
-                ->first();
+        $user = Auth::user();
 
-            if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-            }
+        $employer = Employer::where('user_id', $user->id)->first();
 
-            Interaction::registerView($establishment, $authUser);
+        if (!$employer) {
+            return $this->jsonUtf8([
+                'error' => 'Colaborador não encontrado ou não vinculado.'
+            ], 404);
+        }
 
-            $logo =
-                $establishment->files->first()?->public_url
-                ?: $establishment->logo
-                ?: null;
+        $orders = \App\Models\Order::with([
+            'items.item:id,name,type,price,duration',
+            'items.modifiers.modifier:id,name,type',
+            'client:id,first_name,last_name,user_name,avatar,email',
+        ])
+            ->where('attendant_id', $employer->id)
+            ->orderByDesc('order_datetime')
+            ->get();
 
-            $mappedEstablishment = [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'fantasy' => $establishment->fantasy,
-                'slug' => $establishment->slug,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
-                'logo' => $logo,
-            ];
+        $orders = $orders->map(function ($order) {
 
-            $employers = $establishment->employers->map(function ($emp) {
-                $u = $emp->user;
+            $start = $order->order_datetime;
+            $end = $order->type === 'appointment' && $order->total_duration
+                ? $start->copy()->addMinutes($order->total_duration)
+                : null;
 
-                $avatar =
-                    $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?: $u?->avatar
-                    ?: null;
+            $items = $order->items->map(function ($oi) {
+                $price = $oi->unit_price ?? $oi->item?->price ?? 0;
+                $qty = $oi->quantity ?? 1;
 
                 return [
-                    'id' => $emp->id,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'slug' => $u?->user_name,
-                    'role' => $emp->role,
-                    'city' => $u?->city,
-                    'uf' => $u?->uf,
-                    'total_views' => $emp->metrics['total_views'] ?? 0,
-                    'image' => $avatar,
-                    'updated_at' => $emp->updated_at,
+                    'id' => $oi->item_id,
+                    'name' => $oi->item?->name,
+                    'type' => $oi->item?->type,
+                    'quantity' => $qty,
+                    'unit_price' => $price,
+                    'subtotal' => $price * $qty,
+                    'duration' => $oi->item?->duration ?? 0,
+                    'modifiers' => $oi->modifiers->map(function ($m) {
+                        return [
+                            'name' => $m->modifier?->name,
+                            'type' => $m->type,
+                        ];
+                    })->values(),
                 ];
             })->values();
 
-            return response()->json([
-                'message' => 'Colaboradores listados com sucesso.',
-                'establishment' => $mappedEstablishment,
-                'employers' => $employers,
-            ], 200);
+            $totalPrice = $order->total_price && $order->total_price > 0
+                ? $order->total_price
+                : $items->sum('subtotal');
 
-        } catch (\Exception $e) {
-            \Log::error('[EmployerController::listByEntitySlug]', [
-                'slug' => $slug,
-                'error' => $e->getMessage(),
-            ]);
+            return [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'type' => $order->type,
+                'appointment_status' => $order->appointment_status,
+                'payment_status' => $order->payment_status,
 
-            return response()->json(['error' => 'Erro ao buscar colaboradores.'], 500);
-        }
+                'scheduled_start' => $start?->timezone('America/Sao_Paulo')->format('Y-m-d H:i'),
+                'scheduled_end' => $end?->timezone('America/Sao_Paulo')->format('Y-m-d H:i'),
+
+                'customer' => [
+                    'id' => $order->client?->id,
+                    'name' => $order->customer_name
+                        ?? trim(($order->client?->first_name ?? '') . ' ' . ($order->client?->last_name ?? '')),
+                    'user_name' => $order->client?->user_name,
+                    'avatar' => $order->client?->avatar,
+                    'profile_link' => $order->client?->user_name
+                        ? url("/user/{$order->client->user_name}")
+                        : null,
+                ],
+
+                'items' => $items,
+                'total_items' => $items->sum('quantity'),
+                'total_duration' => $order->total_duration,
+                'total_price' => $totalPrice,
+
+                'created_at' => $order->created_at?->timezone('America/Sao_Paulo')->format('d/m/Y H:i'),
+                'notes' => $order->notes,
+            ];
+        });
+
+        return $this->jsonUtf8([
+            'message' => 'Pedidos do colaborador listados com sucesso.',
+            'employer' => [
+                'id' => $employer->id,
+                'user_id' => $employer->user_id,
+                'role' => $employer->role,
+            ],
+            'orders' => $orders,
+            'count' => $orders->count(),
+        ], 200);
+
+    } catch (\Throwable $e) {
+        Log::error('Employer.listMyOrders error', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return $this->jsonUtf8([
+            'error' => 'Erro ao listar os pedidos do colaborador.',
+            'details' => $e->getMessage(),
+        ], 500);
     }
+}
 }
