@@ -208,7 +208,6 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
 
     Route::post('/my/app', [EstablishmentController::class, 'listMyByApp'])->name('establishment.listMyByApp');
 });
-
 /*
 |--------------------------------------------------------------------------
 | ORDERS
@@ -216,7 +215,8 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
 */
 Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
 
-    Route::post('/', [OrderController::class, 'store'])->name('order.store');
+    Route::post('/', [OrderController::class, 'store'])
+        ->name('order.store');
 
     Route::get('/listbyentity', [OrderController::class, 'listByEntity'])
         ->name('order.listByEntity');
@@ -240,9 +240,10 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
         ->whereNumber('id')
         ->name('order.update');
 
-    Route::put('/{id}/update-appointment-status', [OrderController::class, 'updateAppointmentStatus'])
+    Route::put('/{id}/update-status', [OrderController::class, 'updateOrderStatus'])
         ->whereNumber('id')
-        ->name('order.updateAppointmentStatus');
+        ->name('order.updateOrderStatus');
+
 });
 
 /*
@@ -300,8 +301,6 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
 });
-
-
 /*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
@@ -312,7 +311,8 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
-    Route::get('/list-by-entity/{slug}', [EmployerController::class, 'listByEntitySlug'])->name('employer.listByEntitySlug');
+    Route::get('/list-by-entity/{slug}', [EmployerController::class, 'listByEntitySlug'])
+        ->name('employer.listByEntitySlug');
 });
 
 // ?? PRIVATE (AUTH)
@@ -320,7 +320,6 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
 
     // ?? COLABORADORES
     Route::post('/store', [EmployerController::class, 'store'])->name('employer.store');
-    Route::post('/list-by-establishment', [EmployerController::class, 'listByEstablishment'])->name('employer.listByEstablishment');
     Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
 
     // ?? HORÁRIOS
@@ -331,13 +330,14 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/available-times', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
     Route::post('/reserve-schedule', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
 
-    // ?? AGENDAMENTOS
+    // ?? AGENDAMENTOS / PEDIDOS
     Route::post('/list-appointments', [EmployerController::class, 'listAppointments'])->name('employer.listAppointments');
-    Route::post('/list-my-orders', [EmployerController::class, 'listMyOrders'])
-        ->name('employer.listMyOrders');
+    Route::post('/list-my-orders', [EmployerController::class, 'listMyOrders'])->name('employer.listMyOrders');
+
     // ?? DASHBOARD / ATUALIZAÇÕES
     Route::post('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
+
 /*
 |--------------------------------------------------------------------------
 | FILES (ARQUIVOS / MÍDIA)
