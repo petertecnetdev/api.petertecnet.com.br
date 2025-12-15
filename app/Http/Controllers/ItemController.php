@@ -317,7 +317,7 @@ public function listByEntitySlug($slug)
                 'expiration_date' => 'nullable|date',
                 'notes' => 'nullable|string|max:2500',
                 'is_featured' => 'nullable|boolean',
-
+ 'duration' => 'nullable|integer|min:1', // ✅ AQUI
                 // imagens
                 'image' => 'nullable|image|max:4096',
                 'remove_image' => 'nullable|integer|in:0,1',
