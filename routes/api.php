@@ -259,7 +259,7 @@ Route::prefix('item')->middleware(['api'])->group(function () {
     // 🔹 NOVA ROTA — LISTAGEM FULL FLEX
     Route::get('/index', [ItemController::class, 'index'])->name('item.index');
 
-        Route::get('/listbyentityslug/{slug}', [ItemController::class, 'listByEntitySlug'])
+    Route::get('/listbyentityslug/{slug}', [ItemController::class, 'listByEntitySlug'])
         ->name('item.listByEntitySlug');
 
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
@@ -333,7 +333,8 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
 
     // 📋 AGENDAMENTOS
     Route::post('/list-appointments', [EmployerController::class, 'listAppointments'])->name('employer.listAppointments');
-
+    Route::post('/list-my-orders', [EmployerController::class, 'listMyOrders'])
+        ->name('employer.listMyOrders');
     // 🔔 DASHBOARD / ATUALIZAÇÕES
     Route::post('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });

@@ -12,7 +12,6 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use App\Mail\CreatePasswordMail;
 use App\Mail\{NewEmployerCollaborator, OwnerNotifiedNewCollaborator};
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
@@ -105,9 +104,7 @@ class EmployerController extends Controller
             'employer_id.integer' => 'O campo employer_id deve ser um número inteiro.',
             'employer_id.exists' => 'O colaborador informado não existe.',
 
-            'schedules.required' => 'A lista de horários é obrigatória.',
             'schedules.array' => 'Os horários devem ser enviados em formato de lista.',
-            'schedules.min' => 'É necessário informar pelo menos um horário.',
 
             'schedules.*.day_of_week.required' => 'O campo dia da semana é obrigatório.',
             'schedules.*.day_of_week.in' => 'O campo dia da semana deve conter um valor válido (monday a sunday).',
@@ -780,13 +777,24 @@ class EmployerController extends Controller
 
             $data = $request->validate([
                 'employer_id' => 'required|integer|exists:employers,id',
-                'schedules' => 'required|array|min:1',
-                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
-                'schedules.*.start_time' => 'required|date_format:H:i',
-                'schedules.*.end_time' => 'required|date_format:H:i',
+                'schedules' => 'nullable|array',
+                'schedules.*.day_of_week' => 'required_with:schedules|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required_with:schedules|date_format:H:i',
+                'schedules.*.end_time' => 'required_with:schedules|date_format:H:i|after:schedules.*.start_time',
             ], $this->getScheduleValidationMessages());
 
-            foreach ($data['schedules'] as $schedule) {
+            $employerId = (int) $data['employer_id'];
+            $schedules = $data['schedules'] ?? [];
+
+            \App\Models\EmployerSchedule::where('employer_id', $employerId)
+                ->where('type', 'work')
+                ->delete();
+
+            if (empty($schedules)) {
+                return $this->jsonUtf8(['message' => 'Horários removidos com sucesso.'], 200);
+            }
+
+            foreach ($schedules as $schedule) {
                 if (strtotime($schedule['end_time']) <= strtotime($schedule['start_time'])) {
                     return $this->jsonUtf8([
                         'errors' => [
@@ -794,21 +802,19 @@ class EmployerController extends Controller
                         ]
                     ], 422);
                 }
+
+                \App\Models\EmployerSchedule::create([
+                    'employer_id' => $employerId,
+                    'day_of_week' => $schedule['day_of_week'],
+                    'start_time' => $schedule['start_time'],
+                    'end_time' => $schedule['end_time'],
+                    'is_active' => true,
+                    'type' => 'work',
+                ]);
             }
 
-            foreach ($data['schedules'] as $schedule) {
-                \App\Models\EmployerSchedule::updateOrCreate(
-                    [
-                        'employer_id' => $data['employer_id'],
-                        'day_of_week' => $schedule['day_of_week'],
-                        'start_time' => $schedule['start_time'],
-                        'end_time' => $schedule['end_time'],
-                    ],
-                    ['is_active' => true, 'type' => 'work']
-                );
-            }
+            return $this->jsonUtf8(['message' => 'Horários salvos com sucesso.'], 201);
 
-            return $this->jsonUtf8(['message' => 'Horários cadastrados com sucesso.'], 201);
         } catch (ValidationException $e) {
             return $this->jsonUtf8(['errors' => $e->errors()], 422);
         } catch (\Throwable $e) {
@@ -1108,4 +1114,86 @@ class EmployerController extends Controller
 
         return $this->jsonUtf8(['employers' => $employers], 200);
     }
+
+
+    public function listMyOrders(Request $request)
+{
+    try {
+        if (!Auth::check()) {
+            return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+        }
+
+        $user = Auth::user();
+
+        $employer = Employer::where('user_id', $user->id)->first();
+
+        if (!$employer) {
+            return $this->jsonUtf8(['error' => 'Colaborador não encontrado para este usuário.'], 404);
+        }
+
+        $orders = \App\Models\Order::with([
+            'items.item:id,name,price,duration,type',
+            'items.modifiers.modifier:id,name,type',
+            'client:id,first_name,last_name,user_name,email,phone,avatar',
+            'attendant.user:id,first_name,last_name,user_name,email,avatar',
+            'establishment:id,name,slug,city,uf',
+        ])
+            ->where('attendant_id', $employer->id)
+            ->orderByDesc('order_datetime')
+            ->get();
+
+        foreach ($orders as $order) {
+            if (!$order->total_price || (float) $order->total_price == 0.0) {
+                $order->total_price = $order->items->sum(function ($item) {
+                    return ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1);
+                });
+            }
+
+            $order->services = $order->items->map(function ($item) {
+                return [
+                    'name' => $item->item->name ?? 'Item não identificado',
+                    'type' => $item->item->type ?? null,
+                    'price' => $item->unit_price ?? $item->item->price ?? 0,
+                    'quantity' => $item->quantity ?? 1,
+                    'subtotal' => ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1),
+                    'duration' => $item->item->duration ?? 0,
+                    'modifiers' => $item->modifiers->map(function ($mod) {
+                        return [
+                            'name' => $mod->modifier->name ?? '',
+                            'type' => $mod->type ?? '',
+                        ];
+                    }),
+                ];
+            });
+        }
+
+        return $this->jsonUtf8([
+            'employer' => [
+                'id' => $employer->id,
+                'user_id' => $employer->user_id,
+                'role' => $employer->role,
+            ],
+            'orders' => $orders,
+            'count' => $orders->count(),
+        ], 200);
+
+    } catch (ValidationException $e) {
+        return $this->jsonUtf8([
+            'message' => 'Erro de validação.',
+            'errors' => $e->errors(),
+        ], 422);
+
+    } catch (\Throwable $e) {
+        Log::error('Employer.listMyOrders error', [
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return $this->jsonUtf8([
+            'error' => 'Erro ao listar os pedidos do colaborador.',
+            'details' => $e->getMessage(),
+        ], 500);
+    }
+}
+
 }
