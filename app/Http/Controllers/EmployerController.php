@@ -118,12 +118,12 @@ class EmployerController extends Controller
         ];
     }
 
-    public function store(Request $request)
+public function store(Request $request)
 {
     try {
         Log::info('Employer.store start', [
             'user_id' => Auth::id(),
-            'payload' => $request->all()
+            'payload' => $request->all(),
         ]);
 
         if (!Auth::check()) {
@@ -144,13 +144,13 @@ class EmployerController extends Controller
         $establishment = Establishment::with('user')->find($validatedData['establishment_id']);
         if (!$establishment) {
             return $this->jsonUtf8([
-                'error' => 'O estabelecimento informado não existe ou foi removido.'
+                'error' => 'O estabelecimento informado não existe ou foi removido.',
             ], 404);
         }
 
         if ((int) $establishment->user_id !== (int) $user->id) {
             return $this->jsonUtf8([
-                'error' => 'Apenas o dono do estabelecimento pode adicionar novos colaboradores.'
+                'error' => 'Apenas o dono do estabelecimento pode adicionar novos colaboradores.',
             ], 403);
         }
 
@@ -163,7 +163,7 @@ class EmployerController extends Controller
                 ->exists()
         ) {
             return $this->jsonUtf8([
-                'error' => 'Este usuário já está vinculado a este estabelecimento.'
+                'error' => 'Este usuário já está vinculado a este estabelecimento.',
             ], 409);
         }
 
@@ -248,7 +248,7 @@ class EmployerController extends Controller
 
     } catch (ValidationException $e) {
         Log::warning('Employer.store validation failed', [
-            'errors' => $e->errors()
+            'errors' => $e->errors(),
         ]);
 
         return $this->jsonUtf8([
@@ -268,6 +268,7 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
 
 public function listByEntitySlug(string $slug)
 {
