@@ -1128,50 +1128,82 @@ class EmployerController extends Controller
         $employer = Employer::where('user_id', $user->id)->first();
 
         if (!$employer) {
-            return $this->jsonUtf8(['error' => 'Colaborador não encontrado ou não vinculado.'], 404);
+            return $this->jsonUtf8([
+                'error' => 'Colaborador não encontrado ou não vinculado.'
+            ], 404);
         }
 
         $orders = \App\Models\Order::with([
-            'items.item:id,name,price,duration,type',
+            'items.item:id,name,type,price,duration',
             'items.modifiers.modifier:id,name,type',
-            'client:id,first_name,last_name,user_name,email,phone,avatar',
-            'attendant.user:id,first_name,last_name,user_name,email,avatar',
+            'client:id,first_name,last_name,user_name,avatar,email',
         ])
             ->where('attendant_id', $employer->id)
             ->orderByDesc('order_datetime')
             ->get();
 
-        foreach ($orders as $order) {
-            if (!$order->total_price || (float) $order->total_price === 0.0) {
-                $order->total_price = $order->items->sum(function ($item) {
-                    $price = $item->unit_price ?? $item->item->price ?? 0;
-                    $qty = $item->quantity ?? 1;
-                    return $price * $qty;
-                });
-            }
+        $orders = $orders->map(function ($order) {
 
-            $order->services = $order->items->map(function ($item) {
-                $price = $item->unit_price ?? $item->item->price ?? 0;
-                $qty = $item->quantity ?? 1;
+            $start = $order->order_datetime;
+            $end = $order->type === 'appointment' && $order->total_duration
+                ? $start->copy()->addMinutes($order->total_duration)
+                : null;
+
+            $items = $order->items->map(function ($oi) {
+                $price = $oi->unit_price ?? $oi->item?->price ?? 0;
+                $qty = $oi->quantity ?? 1;
 
                 return [
-                    'name' => $item->item->name ?? 'Item não identificado',
-                    'type' => $item->item->type ?? null,
-                    'price' => $price,
+                    'id' => $oi->item_id,
+                    'name' => $oi->item?->name,
+                    'type' => $oi->item?->type,
                     'quantity' => $qty,
+                    'unit_price' => $price,
                     'subtotal' => $price * $qty,
-                    'duration' => $item->item->duration ?? 0,
-                    'modifiers' => $item->modifiers->map(function ($mod) {
+                    'duration' => $oi->item?->duration ?? 0,
+                    'modifiers' => $oi->modifiers->map(function ($m) {
                         return [
-                            'name' => $mod->modifier->name ?? '',
-                            'type' => $mod->type ?? '',
+                            'name' => $m->modifier?->name,
+                            'type' => $m->type,
                         ];
                     })->values(),
                 ];
             })->values();
 
-            $order->establishment = $order->entity;
-        }
+            $totalPrice = $order->total_price && $order->total_price > 0
+                ? $order->total_price
+                : $items->sum('subtotal');
+
+            return [
+                'id' => $order->id,
+                'order_number' => $order->order_number,
+                'type' => $order->type,
+                'appointment_status' => $order->appointment_status,
+                'payment_status' => $order->payment_status,
+
+                'scheduled_start' => $start?->timezone('America/Sao_Paulo')->format('Y-m-d H:i'),
+                'scheduled_end' => $end?->timezone('America/Sao_Paulo')->format('Y-m-d H:i'),
+
+                'customer' => [
+                    'id' => $order->client?->id,
+                    'name' => $order->customer_name
+                        ?? trim(($order->client?->first_name ?? '') . ' ' . ($order->client?->last_name ?? '')),
+                    'user_name' => $order->client?->user_name,
+                    'avatar' => $order->client?->avatar,
+                    'profile_link' => $order->client?->user_name
+                        ? url("/user/{$order->client->user_name}")
+                        : null,
+                ],
+
+                'items' => $items,
+                'total_items' => $items->sum('quantity'),
+                'total_duration' => $order->total_duration,
+                'total_price' => $totalPrice,
+
+                'created_at' => $order->created_at?->timezone('America/Sao_Paulo')->format('d/m/Y H:i'),
+                'notes' => $order->notes,
+            ];
+        });
 
         return $this->jsonUtf8([
             'message' => 'Pedidos do colaborador listados com sucesso.',
@@ -1183,12 +1215,6 @@ class EmployerController extends Controller
             'orders' => $orders,
             'count' => $orders->count(),
         ], 200);
-
-    } catch (ValidationException $e) {
-        return $this->jsonUtf8([
-            'message' => 'Erro de validação.',
-            'errors' => $e->errors(),
-        ], 422);
 
     } catch (\Throwable $e) {
         Log::error('Employer.listMyOrders error', [
@@ -1202,6 +1228,4 @@ class EmployerController extends Controller
         ], 500);
     }
 }
-
-
 }
