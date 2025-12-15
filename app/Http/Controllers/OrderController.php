@@ -348,4 +348,136 @@ class OrderController extends Controller
     }
 }
 
+public function updateOrderStatus(Request $request, int $id)
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    }
+
+    $data = $request->validate([
+        'action' => 'required|in:confirm,cancel,attended,not_attended',
+        'reason' => 'nullable|string|max:255',
+    ]);
+
+    DB::beginTransaction();
+
+    try {
+        $order = Order::lockForUpdate()->findOrFail($id);
+
+        if ($order->type !== 'appointment') {
+            DB::rollBack();
+            return response()->json(['error' => 'Ação permitida apenas para agendamentos.'], 422);
+        }
+
+        $now = Carbon::now('America/Sao_Paulo');
+        $start = Carbon::parse($order->order_datetime)->tz('America/Sao_Paulo');
+        $end = $start->copy()->addMinutes((int) $order->total_duration);
+
+        switch ($data['action']) {
+
+            case 'confirm':
+                if ($order->appointment_status !== 'pending') {
+                    DB::rollBack();
+                    return response()->json(['error' => 'Apenas agendamentos pendentes podem ser confirmados.'], 422);
+                }
+
+                if ($now->gte($start)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Não é possível confirmar um agendamento após o horário de início.'
+                    ], 422);
+                }
+
+                $order->appointment_status = 'confirmed';
+                $order->status = 'scheduled';
+                break;
+
+            case 'cancel':
+                if (!in_array($order->appointment_status, ['pending', 'confirmed'])) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Este agendamento não pode mais ser cancelado.'
+                    ], 422);
+                }
+
+                $order->appointment_status = 'cancelled';
+                $order->status = 'cancelled';
+                $order->cancelled_reason = $data['reason'] ?? null;
+                break;
+
+            case 'attended':
+                if ($order->appointment_status !== 'confirmed') {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Somente agendamentos confirmados podem ser finalizados.'
+                    ], 422);
+                }
+
+                if ($now->lt($end)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'O atendimento só pode ser finalizado após o horário de término.'
+                    ], 422);
+                }
+
+                $order->appointment_status = 'attended';
+                $order->status = 'completed';
+                $order->attended_at = $now;
+                break;
+
+            case 'not_attended':
+                if ($order->appointment_status !== 'confirmed') {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Somente agendamentos confirmados podem ser finalizados.'
+                    ], 422);
+                }
+
+                if ($now->lt($start)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Não é possível finalizar um atendimento antes do horário agendado.'
+                    ], 422);
+                }
+
+                $order->appointment_status = 'not_attended';
+                $order->status = 'completed';
+                $order->attended_at = $now;
+                break;
+        }
+
+        $order->save();
+
+        Interaction::create([
+            'user_id' => Auth::id(),
+            'entity_id' => $order->id,
+            'entity_type' => 'order',
+            'interaction_type' => 'AppointmentStatusUpdate',
+            'content' => json_encode([
+                'action' => $data['action'],
+                'reason' => $data['reason'] ?? null,
+            ]),
+        ]);
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Status do pedido atualizado com sucesso.',
+            'order' => $order->fresh(),
+        ], 200);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
+        Log::error('Order.updateOrderStatus error', [
+            'order_id' => $id,
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro ao atualizar o status do pedido.',
+        ], 500);
+    }
+}
+
 }
