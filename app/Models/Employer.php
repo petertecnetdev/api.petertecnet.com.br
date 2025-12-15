@@ -29,15 +29,6 @@ class Employer extends Model
     protected $appends = ['metrics'];
 
 protected $entity_name = 'employer';      
-    protected static function boot()
-    {
-        parent::boot();
-        static::saving(function ($model) {
-            if (empty($model->slug) && $model->user) {
-                $model->slug = Str::slug($model->user->user_name ?? $model->user->first_name ?? 'colaborador-' . $model->id);
-            }
-        });
-    }
 
     /* ==========================
        RELACIONAMENTOS
@@ -463,20 +454,6 @@ protected $entity_name = 'employer';
             ];
         });
     }
-    protected static function booted()
-{
-    static::created(function ($model) {
-        if (!$model->slug && $model->user) {
-            $model->slug = Str::slug(
-                $model->user->user_name
-                ?? $model->user->first_name
-                ?? "colaborador-{$model->id}"
-            );
-
-            $model->saveQuietly();
-        }
-    });
-}
 
 
     public function files()
