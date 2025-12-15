@@ -1128,7 +1128,7 @@ class EmployerController extends Controller
         $employer = Employer::where('user_id', $user->id)->first();
 
         if (!$employer) {
-            return $this->jsonUtf8(['error' => 'Colaborador não encontrado para este usuário.'], 404);
+            return $this->jsonUtf8(['error' => 'Colaborador não encontrado ou não vinculado.'], 404);
         }
 
         $orders = \App\Models\Order::with([
@@ -1136,38 +1136,45 @@ class EmployerController extends Controller
             'items.modifiers.modifier:id,name,type',
             'client:id,first_name,last_name,user_name,email,phone,avatar',
             'attendant.user:id,first_name,last_name,user_name,email,avatar',
-            'establishment:id,name,slug,city,uf',
         ])
             ->where('attendant_id', $employer->id)
             ->orderByDesc('order_datetime')
             ->get();
 
         foreach ($orders as $order) {
-            if (!$order->total_price || (float) $order->total_price == 0.0) {
+            if (!$order->total_price || (float) $order->total_price === 0.0) {
                 $order->total_price = $order->items->sum(function ($item) {
-                    return ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1);
+                    $price = $item->unit_price ?? $item->item->price ?? 0;
+                    $qty = $item->quantity ?? 1;
+                    return $price * $qty;
                 });
             }
 
             $order->services = $order->items->map(function ($item) {
+                $price = $item->unit_price ?? $item->item->price ?? 0;
+                $qty = $item->quantity ?? 1;
+
                 return [
                     'name' => $item->item->name ?? 'Item não identificado',
                     'type' => $item->item->type ?? null,
-                    'price' => $item->unit_price ?? $item->item->price ?? 0,
-                    'quantity' => $item->quantity ?? 1,
-                    'subtotal' => ($item->unit_price ?? $item->item->price ?? 0) * ($item->quantity ?? 1),
+                    'price' => $price,
+                    'quantity' => $qty,
+                    'subtotal' => $price * $qty,
                     'duration' => $item->item->duration ?? 0,
                     'modifiers' => $item->modifiers->map(function ($mod) {
                         return [
                             'name' => $mod->modifier->name ?? '',
                             'type' => $mod->type ?? '',
                         ];
-                    }),
+                    })->values(),
                 ];
-            });
+            })->values();
+
+            $order->establishment = $order->entity;
         }
 
         return $this->jsonUtf8([
+            'message' => 'Pedidos do colaborador listados com sucesso.',
             'employer' => [
                 'id' => $employer->id,
                 'user_id' => $employer->user_id,
@@ -1195,5 +1202,6 @@ class EmployerController extends Controller
         ], 500);
     }
 }
+
 
 }
