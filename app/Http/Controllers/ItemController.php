@@ -1040,4 +1040,6 @@ public function destroy($id)
         return response()->json(['items' => $items]);
     }
 
+
+    
 }
