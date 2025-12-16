@@ -260,7 +260,7 @@ Route::prefix('item')->middleware(['api'])->group(function () {
     // 🔹 NOVA ROTA — LISTAGEM FULL FLEX
     Route::get('/index', [ItemController::class, 'index'])->name('item.index');
 
-    Route::get('/listbyentityslug/{slug}', [ItemController::class, 'listByEntitySlug'])
+    Route::get('/list-by-entity/{slug}', [ItemController::class, 'listByEntitySlug'])
         ->name('item.listByEntitySlug');
 
     Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
