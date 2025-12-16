@@ -463,7 +463,11 @@ class Employer extends Model
             ->orderBy('position');
     }
     /* ============================================================================
+<<<<<<< HEAD
        OTHERS — PADRÃO PARA Establishment, Employer e Item
+=======
+       OTHERS â€” PADRÃƒO PARA Establishment, Employer e Item
+>>>>>>> develop
        ============================================================================
     */
 
@@ -554,7 +558,11 @@ class Employer extends Model
 
                     $u = $emp->user;
 
+<<<<<<< HEAD
                     // ?? EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+=======
+                    // ðŸ”¥ EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+>>>>>>> develop
                     $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
                         ?? $u?->avatar;
 
