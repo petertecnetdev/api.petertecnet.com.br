@@ -49,7 +49,7 @@ class Order extends Model
         'updated_at' => 'datetime',
     ];
 
-    protected $appends = ['attendant_user'];
+    protected $appends = ['attendant_user', 'client_user'];
 
     /* ===============================
        RELACIONAMENTOS DIRETOS
@@ -118,13 +118,51 @@ class Order extends Model
                     'created_at',
                     'updated_at',
                 ])->with([
-                    'user:id,first_name,last_name,user_name,avatar,email',
-                ]);
+                            'user:id,first_name,last_name,user_name,avatar,email',
+                        ]);
             },
         ]);
 
         return $this->attendant?->user;
     }
+
+    public function getClientUserAttribute()
+    {
+        if (empty($this->client_id)) {
+            return null;
+        }
+
+        $this->loadMissing([
+            'client' => function ($q) {
+                $q->select([
+                    'id',
+                    'first_name',
+                    'last_name',
+                    'user_name',
+                    'email',
+                    'avatar',
+                ])->with([
+                            'avatarFile:id,entity_id,path',
+                        ]);
+            },
+        ]);
+
+        $user = $this->client;
+
+        if (!$user) {
+            return null;
+        }
+
+        return [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'user_name' => $user->user_name,
+            'email' => $user->email,
+            'avatar' => $user->avatarFile?->path ?? $user->avatar,
+        ];
+    }
+
 
     /* ===============================
        MÉTODOS ESTÁTICOS AUXILIARES
