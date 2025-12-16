@@ -1138,13 +1138,9 @@ public function listByEntitySlug(string $slug)
         ], 500);
     }
 }
-public function listByEntity($identifier)
+public function listByEntity(string $identifier)
 {
     try {
-        if (!$identifier) {
-            return $this->jsonUtf8(['error' => 'Identificador inválido.'], 422);
-        }
-
         $establishment = Establishment::query()
             ->when(
                 is_numeric($identifier),
@@ -1158,7 +1154,9 @@ public function listByEntity($identifier)
             ->first();
 
         if (!$establishment) {
-            return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
+            return $this->jsonUtf8([
+                'error' => 'Estabelecimento não encontrado.',
+            ], 404);
         }
 
         $employers = $establishment->employers
@@ -1185,11 +1183,11 @@ public function listByEntity($identifier)
 
                     'user' => [
                         'id' => $user->id,
+                        'user_name' => $user->user_name,
                         'first_name' => $user->first_name,
                         'last_name' => $user->last_name,
                         'email' => $user->email,
                         'phone' => $user->phone,
-                        'user_name' => $user->user_name,
                         'avatar' => $avatar,
                     ],
 
@@ -1224,8 +1222,10 @@ public function listByEntity($identifier)
 
         return $this->jsonUtf8([
             'error' => 'Erro ao listar colaboradores do estabelecimento.',
+            'details' => $e->getMessage(),
         ], 500);
     }
 }
+
 
 }
