@@ -8,11 +8,9 @@ use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\Interaction;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use App\Mail\NewAppointmentNotification;
 use App\Mail\OwnerAppointmentNotification;
@@ -20,7 +18,10 @@ use App\Mail\AppointmentAwaitingConfirmation;
 
 class OrderController extends ApiController
 {
-    protected function getValidationMessages()
+    /* ======================================================
+     | VALIDATION
+     ====================================================== */
+    protected function messages(): array
     {
         return [
             'app_id.required' => 'O ID do aplicativo é obrigatório.',
@@ -33,180 +34,132 @@ class OrderController extends ApiController
         ];
     }
 
-    public function store(Request $request)
+    protected function appointmentRules(): array
     {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        $mode = $request->input('mode');
-
-        if ($mode === 'appointment') {
-            return $this->storeAppointment($request);
-        }
-
-        if ($mode === 'direct') {
-            return $this->storeDirect($request);
-        }
-
-        return response()->json(['error' => 'Modo de criação inválido.'], 422);
+        return [
+            'app_id' => 'required|integer|exists:applications,id',
+            'entity_name' => 'required|string',
+            'entity_id' => 'required|integer',
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+            'origin' => 'required|string',
+            'fulfillment' => 'required|string',
+            'payment_status' => 'required|string',
+            'payment_method' => 'required|string',
+            'order_datetime' => 'required|date',
+            'attendant_id' => 'required|integer|exists:employers,id',
+            'notes' => 'nullable|string',
+        ];
     }
 
-<<<<<<< HEAD
-   public function storeAppointment(Request $request)
-{
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
-
-    DB::beginTransaction();
-
-    try {
-        $user = Auth::user();
-
-        $data = $this->validateOrder($request);
-
-        $orderDate = Carbon::parse($data['order_datetime'])
+    /* ======================================================
+     | CORE HELPERS
+     ====================================================== */
+    protected function normalizeDate(string $datetime): Carbon
+    {
+        return Carbon::parse($datetime)
             ->tz('America/Sao_Paulo')
             ->startOfMinute();
-
-        if ($orderDate->lte(Carbon::now('America/Sao_Paulo')->startOfMinute())) {
-            DB::rollBack();
-            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
-        }
-
-        $employer = Employer::with('user')->find($data['attendant_id']);
-        if (!$employer) {
-            DB::rollBack();
-            return response()->json(['error' => 'Colaborador não encontrado.'], 422);
-        }
-
-        $totalDuration = Item::totalDurationForItems($data['items']);
-        $orderEnd = (clone $orderDate)->addMinutes($totalDuration);
-
-        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderEnd)) {
-            DB::rollBack();
-            return response()->json(['error' => 'Conflito de agenda.'], 422);
-        }
-
-        $order = Order::create([
-            'app_id' => $data['app_id'],
-            'entity_name' => $data['entity_name'],
-            'entity_id' => $data['entity_id'],
-            'order_number' => Order::nextOrderNumber($data['app_id']),
-            'order_datetime' => $orderDate,
-            'created_by' => $user->id,
-            'client_id' => $user->id,
-            'attendant_id' => $data['attendant_id'],
-            'customer_name' => trim($user->first_name . ' ' . ($user->last_name ?? '')),
-            'origin' => $data['origin'],
-            'fulfillment' => $data['fulfillment'],
-            'payment_status' => $data['payment_status'],
-            'payment_method' => $data['payment_method'],
-            'status' => 'scheduled',
-            'type' => 'appointment',
-            'appointment_status' => 'pending',
-            'total_price' => 0,
-            'total_duration' => $totalDuration,
-            'notes' => $data['notes'] ?? null,
-        ]);
-
-        $order->attachItems($data['items']);
-
-        DB::commit();
-
-        $this->sendAppointmentEmails($order, $employer, $user);
-
-        return response()->json([
-            'message' => 'Agendamento registrado com sucesso!',
-            'order' => $order->load([
-                'items.item',
-                'client:id,first_name,last_name,user_name,avatar,email',
-                'attendant.user:id,first_name,last_name,user_name,avatar,email',
-            ]),
-        ], 201);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        Log::error('Erro ao criar agendamento', [
-            'error' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro interno ao criar o agendamento.',
-        ], 500);
     }
-}
 
-=======
-    public function storeAppointment(Request $request)
+    protected function calculateDuration(array $items): int
     {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+        return Item::totalDurationForItems($items);
+    }
+
+    protected function calculateTotalPrice(Order $order): float
+    {
+        $order->load('items.modifiers');
+
+        $total = 0;
+        foreach ($order->items as $item) {
+            $total += $item->subtotal;
+            foreach ($item->modifiers as $modifier) {
+                if ($mod = Item::find($modifier->modifier_id)) {
+                    $total += $mod->price * ($modifier->quantity ?: 1);
+                }
+            }
         }
 
+        return $total;
+    }
+
+    protected function validateSchedule(
+        int $attendantId,
+        Carbon $start,
+        Carbon $end,
+        ?int $ignoreOrderId = null
+    ): void {
+        if (Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
+            abort(422, 'Conflito de agenda.');
+        }
+    }
+
+    /* ======================================================
+     | STORE
+     ====================================================== */
+    public function store(Request $request)
+    {
+        return match ($request->input('mode')) {
+            'appointment' => $this->storeAppointment($request),
+            'direct' => $this->storeDirect($request),
+            default => response()->json(['error' => 'Modo de criação inválido.'], 422),
+        };
+    }
+
+    protected function storeAppointment(Request $request)
+    {
         DB::beginTransaction();
 
         try {
-            $user = Auth::user();
+            $user = $request->user();
+            $data = $request->validate($this->appointmentRules(), $this->messages());
 
-            $data = $this->validateOrder($request);
-
-            $orderDate = Carbon::parse($data['order_datetime'])
-                ->tz('America/Sao_Paulo')
-                ->startOfMinute();
-
-            if ($orderDate->lte(Carbon::now('America/Sao_Paulo')->startOfMinute())) {
-                DB::rollBack();
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+            $start = $this->normalizeDate($data['order_datetime']);
+            if ($start->lte(now('America/Sao_Paulo')->startOfMinute())) {
+                abort(422, 'A data do agendamento deve ser futura.');
             }
 
-            $employer = Employer::with('user')->find($data['attendant_id']);
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'Colaborador nÃ£o encontrado.'], 422);
-            }
+            $employer = Employer::with('user')->findOrFail($data['attendant_id']);
 
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderEnd = (clone $orderDate)->addMinutes($totalDuration);
+            $duration = $this->calculateDuration($data['items']);
+            $end = $start->copy()->addMinutes($duration);
 
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderEnd)) {
-                DB::rollBack();
-                return response()->json(['error' => 'Conflito de agenda.'], 422);
-            }
+            $this->validateSchedule($employer->id, $start, $end);
 
             $order = Order::create([
                 'app_id' => $data['app_id'],
                 'entity_name' => $data['entity_name'],
                 'entity_id' => $data['entity_id'],
                 'order_number' => Order::nextOrderNumber($data['app_id']),
-                'order_datetime' => $orderDate,
+                'order_datetime' => $start,
                 'created_by' => $user->id,
                 'client_id' => $user->id,
-                'attendant_id' => $data['attendant_id'],
+                'attendant_id' => $employer->id,
                 'customer_name' => trim($user->first_name . ' ' . ($user->last_name ?? '')),
                 'origin' => $data['origin'],
                 'fulfillment' => $data['fulfillment'],
                 'payment_status' => $data['payment_status'],
                 'payment_method' => $data['payment_method'],
-                'status' => 'scheduled',
                 'type' => 'appointment',
+                'status' => 'scheduled',
                 'appointment_status' => 'pending',
                 'total_price' => 0,
-                'total_duration' => $totalDuration,
+                'total_duration' => $duration,
                 'notes' => $data['notes'] ?? null,
             ]);
 
             $order->attachItems($data['items']);
+            $order->update(['total_price' => $this->calculateTotalPrice($order)]);
 
             DB::commit();
 
             $this->sendAppointmentEmails($order, $employer, $user);
 
             return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load([
+                'message' => 'Agendamento registrado com sucesso.',
+                'order' => $order->fresh()->load([
                     'items.item',
                     'client:id,first_name,last_name,user_name,avatar,email',
                     'attendant.user:id,first_name,last_name,user_name,avatar,email',
@@ -215,25 +168,13 @@ class OrderController extends ApiController
 
         } catch (\Throwable $e) {
             DB::rollBack();
-
-            Log::error('Erro ao criar agendamento', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'error' => 'Erro interno ao criar o agendamento.',
-            ], 500);
+            Log::error('Order.storeAppointment', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao criar agendamento.'], 500);
         }
     }
 
->>>>>>> develop
-
-    public function storeDirect(Request $request)
+    protected function storeDirect(Request $request)
     {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
         DB::beginTransaction();
 
         try {
@@ -250,7 +191,7 @@ class OrderController extends ApiController
                 'items' => 'required|array|min:1',
                 'items.*.item_id' => 'required|integer|exists:items,id',
                 'items.*.quantity' => 'required|integer|min:1',
-            ]);
+            ], $this->messages());
 
             $order = Order::create([
                 'app_id' => $data['app_id'],
@@ -258,55 +199,107 @@ class OrderController extends ApiController
                 'entity_id' => $data['entity_id'],
                 'order_number' => Order::nextOrderNumber($data['app_id']),
                 'order_datetime' => now(),
-                'created_by' => Auth::id(),
+                'created_by' => $request->user()->id,
                 'attendant_id' => $data['attendant_id'],
                 'customer_name' => $data['customer_name'],
                 'origin' => $data['origin'],
                 'fulfillment' => $data['fulfillment'],
                 'payment_status' => $data['payment_status'],
                 'payment_method' => $data['payment_method'],
-                'type' => 'service',
+                'type' => 'direct',
                 'status' => 'completed',
                 'total_price' => 0,
                 'total_duration' => 0,
             ]);
 
             $order->attachItems($data['items']);
-
-            $total = 0;
-            $order->load('items.modifiers');
-
-            foreach ($order->items as $item) {
-                $total += $item->subtotal;
-                foreach ($item->modifiers as $modifier) {
-                    $modifierItem = Item::find($modifier->modifier_id);
-                    if ($modifierItem) {
-                        $total += $modifierItem->price * ($modifier->quantity ?: 1);
-                    }
-                }
-            }
-
-            $order->update(['total_price' => $total]);
+            $order->update(['total_price' => $this->calculateTotalPrice($order)]);
 
             DB::commit();
 
             return response()->json([
                 'message' => 'Pedido criado com sucesso.',
-                'order' => $order->load('items.item', 'items.modifiers.modifier'),
+                'order' => $order->fresh()->load('items.item', 'items.modifiers.modifier'),
             ], 201);
 
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Erro ao criar pedido direto', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro interno ao criar o pedido.'], 500);
+            Log::error('Order.storeDirect', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao criar pedido.'], 500);
         }
     }
 
-    public function updateAppointmentStatus(Request $request, $id)
+    /* ======================================================
+     | UPDATE
+     ====================================================== */
+    public function update(Request $request, int $id)
     {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        DB::beginTransaction();
+
+        try {
+            $order = Order::lockForUpdate()->findOrFail($id);
+
+            if (in_array($order->status, ['completed', 'cancelled'])) {
+                abort(422, 'Pedido não pode mais ser alterado.');
+            }
+
+            $data = $request->validate([
+                'customer_name' => 'nullable|string',
+                'origin' => 'nullable|string',
+                'fulfillment' => 'nullable|string',
+                'payment_status' => 'nullable|string',
+                'payment_method' => 'nullable|string',
+                'notes' => 'nullable|string',
+                'order_datetime' => 'nullable|date',
+                'attendant_id' => 'nullable|integer|exists:employers,id',
+            ]);
+
+            if ($order->type === 'appointment') {
+                $start = isset($data['order_datetime'])
+                    ? $this->normalizeDate($data['order_datetime'])
+                    : $this->normalizeDate($order->order_datetime);
+
+                if ($start->lte(now('America/Sao_Paulo')->startOfMinute())) {
+                    abort(422, 'A nova data deve ser futura.');
+                }
+
+                $attendantId = $data['attendant_id'] ?? $order->attendant_id;
+                $end = $start->copy()->addMinutes((int) $order->total_duration);
+
+                $this->validateSchedule($attendantId, $start, $end, $order->id);
+
+                $order->order_datetime = $start;
+                $order->attendant_id = $attendantId;
+            }
+
+            foreach ($data as $field => $value) {
+                if (!in_array($field, ['order_datetime', 'attendant_id'])) {
+                    $order->$field = $value;
+                }
+            }
+
+            $order->save();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Pedido atualizado com sucesso.',
+                'order' => $order->fresh(),
+            ]);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('Order.update', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao atualizar pedido.'], 500);
         }
+    }
+
+    /* ======================================================
+     | STATUS
+     ====================================================== */
+    public function updateOrderStatus(Request $request, int $id)
+    {
+        DB::beginTransaction();
 
         try {
             $data = $request->validate([
@@ -314,425 +307,101 @@ class OrderController extends ApiController
                 'reason' => 'nullable|string|max:255',
             ]);
 
-            $order = Order::findOrFail($id);
-            $now = Carbon::now('America/Sao_Paulo');
-
-            if ($order->type !== 'appointment') {
-                return response()->json(['error' => 'Pedido não é um agendamento.'], 422);
-            }
-
-            switch ($data['action']) {
-                case 'confirm':
-                    $order->appointment_status = 'confirmed';
-                    $order->status = 'scheduled';
-                    break;
-
-                case 'cancel':
-                    $order->appointment_status = 'cancelled';
-                    $order->status = 'cancelled';
-                    $order->cancelled_reason = isset($data['reason']) ? $data['reason'] : null;
-                    break;
-
-                case 'attended':
-                    $order->appointment_status = 'attended';
-                    $order->status = 'completed';
-                    $order->attended_at = $now;
-                    break;
-
-                case 'not_attended':
-                    $order->appointment_status = 'not_attended';
-                    $order->status = 'completed';
-                    $order->attended_at = $now;
-                    break;
-            }
-
-            $order->save();
-
-            Interaction::create([
-                'user_id' => Auth::id(),
-                'entity_id' => $order->id,
-                'entity_type' => 'order',
-                'interaction_type' => 'AppointmentAction',
-                'content' => json_encode($data),
-            ]);
-
-            return response()->json([
-                'message' => 'Status do agendamento atualizado com sucesso.',
-                'order' => $order,
-            ], 200);
-
-        } catch (\Throwable $e) {
-            Log::error('Erro ao atualizar status do agendamento', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro interno.'], 500);
-        }
-    }
-
-    private function validateOrder(Request $request)
-    {
-        return $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-            'entity_name' => 'required|string',
-            'entity_id' => 'required|integer',
-            'items' => 'required|array|min:1',
-            'items.*.item_id' => 'required|integer|exists:items,id',
-            'items.*.quantity' => 'required|integer|min:1',
-            'customer_name' => 'required|string',
-            'origin' => 'required|string',
-            'fulfillment' => 'required|string',
-            'payment_status' => 'required|string',
-            'payment_method' => 'required|string',
-            'order_datetime' => 'required|date',
-            'attendant_id' => 'required|integer|exists:employers,id',
-        ], $this->getValidationMessages());
-    }
-
-    private function sendAppointmentEmails($order, $employer, $user)
-    {
-        try {
-            $establishment = Establishment::with('user')->find($order->entity_id);
-
-            if ($user && $user->email) {
-                Mail::to($user->email)
-                    ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $employer->user));
-            }
-
-            if ($employer && $employer->user && $employer->user->email) {
-                Mail::to($employer->user->email)
-                    ->queue(new NewAppointmentNotification($order, $establishment, $user));
-            }
-
-            if ($establishment && $establishment->user && $establishment->user->email) {
-                Mail::to($establishment->user->email)
-                    ->queue(new OwnerAppointmentNotification(
-                        $order,
-                        trim($establishment->user->first_name . ' ' . $establishment->user->last_name),
-                        $user
-                    ));
-            }
-
-        } catch (\Throwable $e) {
-            Log::error('Erro ao enviar e-mails de agendamento', ['error' => $e->getMessage()]);
-        }
-    }
-<<<<<<< HEAD
-    
-    
-    
-<<<<<<< HEAD
-    
-    public function listByEntitySlug(string $slug)
-{
-    try {
-        $establishment = Establishment::where('slug', $slug)->first();
-
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
-
-        $orders = Order::where('entity_name', 'establishment')
-            ->where('entity_id', $establishment->id)
-            ->with([
-                'items.item',
-            ])
-            ->orderBy('order_datetime', 'asc')
-            ->get();
-
-        return response()->json([
-            'message' => 'Pedidos listados com sucesso.',
-            'establishment' => [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'fantasy' => $establishment->fantasy,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
-            ],
-            'orders' => $orders,
-        ]);
-    } catch (\Throwable $e) {
-        Log::error('Order.listByEntitySlug', [
-            'slug' => $slug,
-            'error' => $e->getMessage(),
-        ]);
-
-        return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
-    }
-}
-
-=======
->>>>>>> develop
-
-public function updateOrderStatus(Request $request, int $id)
-{
-    if (!Auth::check()) {
-        return response()->json(['error' => 'Usuário não autenticado.'], 401);
-    }
-=======
-
-    public function updateOrderStatus(Request $request, int $id)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
-        }
->>>>>>> develop
-
-        $data = $request->validate([
-            'action' => 'required|in:confirm,cancel,attended,not_attended',
-            'reason' => 'nullable|string|max:255',
-        ]);
-
-        DB::beginTransaction();
-
-        try {
             $order = Order::lockForUpdate()->findOrFail($id);
 
             if ($order->type !== 'appointment') {
-                DB::rollBack();
-                return response()->json(['error' => 'AÃ§Ã£o permitida apenas para agendamentos.'], 422);
+                abort(422, 'Ação permitida apenas para agendamentos.');
             }
 
-            $now = Carbon::now('America/Sao_Paulo');
-            $start = Carbon::parse($order->order_datetime)->tz('America/Sao_Paulo');
+            $now = now('America/Sao_Paulo');
+            $start = $this->normalizeDate($order->order_datetime);
             $end = $start->copy()->addMinutes((int) $order->total_duration);
 
-            switch ($data['action']) {
-
-                case 'confirm':
-                    if ($order->appointment_status !== 'pending') {
-                        DB::rollBack();
-                        return response()->json(['error' => 'Apenas agendamentos pendentes podem ser confirmados.'], 422);
-                    }
-
-                    if ($now->gte($start)) {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'NÃ£o Ã© possÃ­vel confirmar um agendamento apÃ³s o horÃ¡rio de inÃ­cio.'
-                        ], 422);
-                    }
-
-                    $order->appointment_status = 'confirmed';
-                    $order->status = 'scheduled';
-                    break;
-
-                case 'cancel':
-                    if (!in_array($order->appointment_status, ['pending', 'confirmed'])) {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'Este agendamento nÃ£o pode mais ser cancelado.'
-                        ], 422);
-                    }
-
-                    $order->appointment_status = 'cancelled';
-                    $order->status = 'cancelled';
-                    $order->cancelled_reason = $data['reason'] ?? null;
-                    break;
-
-                case 'attended':
-                    if ($order->appointment_status !== 'confirmed') {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'Somente agendamentos confirmados podem ser finalizados.'
-                        ], 422);
-                    }
-
-                    if ($now->lt($end)) {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'O atendimento sÃ³ pode ser finalizado apÃ³s o horÃ¡rio de tÃ©rmino.'
-                        ], 422);
-                    }
-
-                    $order->appointment_status = 'attended';
-                    $order->status = 'completed';
-                    $order->attended_at = $now;
-                    break;
-
-                case 'not_attended':
-                    if ($order->appointment_status !== 'confirmed') {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'Somente agendamentos confirmados podem ser finalizados.'
-                        ], 422);
-                    }
-
-                    if ($now->lt($start)) {
-                        DB::rollBack();
-                        return response()->json([
-                            'error' => 'NÃ£o Ã© possÃ­vel finalizar um atendimento antes do horÃ¡rio agendado.'
-                        ], 422);
-                    }
-
-                    $order->appointment_status = 'not_attended';
-                    $order->status = 'completed';
-                    $order->attended_at = $now;
-                    break;
-            }
+            match ($data['action']) {
+                'confirm' => $this->confirmAppointment($order, $now, $start),
+                'cancel' => $this->cancelAppointment($order, $data),
+                'attended' => $this->attendAppointment($order, $now, $end),
+                'not_attended' => $this->notAttendAppointment($order, $now, $start),
+            };
 
             $order->save();
 
             Interaction::create([
-                'user_id' => Auth::id(),
+                'user_id' => $request->user()->id,
                 'entity_id' => $order->id,
-                'entity_type' => 'order',
+                'entity_name' => 'order',
                 'interaction_type' => 'AppointmentStatusUpdate',
-                'content' => json_encode([
-                    'action' => $data['action'],
-                    'reason' => $data['reason'] ?? null,
-                ]),
+                'content' => json_encode($data),
             ]);
 
             DB::commit();
 
             return response()->json([
-                'message' => 'Status do pedido atualizado com sucesso.',
+                'message' => 'Status atualizado com sucesso.',
                 'order' => $order->fresh(),
-            ], 200);
+            ]);
 
         } catch (\Throwable $e) {
             DB::rollBack();
-<<<<<<< HEAD
-            return response()->json(['error' => 'Ação permitida apenas para agendamentos.'], 422);
+            Log::error('Order.updateOrderStatus', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao atualizar status.'], 500);
         }
-
-        $now = Carbon::now('America/Sao_Paulo');
-        $start = Carbon::parse($order->order_datetime)->tz('America/Sao_Paulo');
-        $end = $start->copy()->addMinutes((int) $order->total_duration);
-
-        switch ($data['action']) {
-
-            case 'confirm':
-                if ($order->appointment_status !== 'pending') {
-                    DB::rollBack();
-                    return response()->json(['error' => 'Apenas agendamentos pendentes podem ser confirmados.'], 422);
-                }
-
-                if ($now->gte($start)) {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'Não é possível confirmar um agendamento após o horário de início.'
-                    ], 422);
-                }
-
-                $order->appointment_status = 'confirmed';
-                $order->status = 'scheduled';
-                break;
-
-            case 'cancel':
-                if (!in_array($order->appointment_status, ['pending', 'confirmed'])) {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'Este agendamento não pode mais ser cancelado.'
-                    ], 422);
-                }
-
-                $order->appointment_status = 'cancelled';
-                $order->status = 'cancelled';
-                $order->cancelled_reason = $data['reason'] ?? null;
-                break;
-
-            case 'attended':
-                if ($order->appointment_status !== 'confirmed') {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'Somente agendamentos confirmados podem ser finalizados.'
-                    ], 422);
-                }
-
-                if ($now->lt($end)) {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'O atendimento só pode ser finalizado após o horário de término.'
-                    ], 422);
-                }
-
-                $order->appointment_status = 'attended';
-                $order->status = 'completed';
-                $order->attended_at = $now;
-                break;
-
-            case 'not_attended':
-                if ($order->appointment_status !== 'confirmed') {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'Somente agendamentos confirmados podem ser finalizados.'
-                    ], 422);
-                }
-
-                if ($now->lt($start)) {
-                    DB::rollBack();
-                    return response()->json([
-                        'error' => 'Não é possível finalizar um atendimento antes do horário agendado.'
-                    ], 422);
-                }
-
-                $order->appointment_status = 'not_attended';
-                $order->status = 'completed';
-                $order->attended_at = $now;
-                break;
-        }
-
-        $order->save();
-
-        Interaction::create([
-            'user_id' => Auth::id(),
-            'entity_id' => $order->id,
-            'entity_type' => 'order',
-            'interaction_type' => 'AppointmentStatusUpdate',
-            'content' => json_encode([
-                'action' => $data['action'],
-                'reason' => $data['reason'] ?? null,
-            ]),
-        ]);
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Status do pedido atualizado com sucesso.',
-            'order' => $order->fresh(),
-        ], 200);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        Log::error('Order.updateOrderStatus error', [
-            'order_id' => $id,
-            'error' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro ao atualizar o status do pedido.',
-        ], 500);
-=======
-
-            Log::error('Order.updateOrderStatus error', [
-                'order_id' => $id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'error' => 'Erro ao atualizar o status do pedido.',
-            ], 500);
-        }
->>>>>>> develop
     }
 
+    /* ======================================================
+     | STATUS HELPERS
+     ====================================================== */
+    protected function confirmAppointment(Order $order, Carbon $now, Carbon $start): void
+    {
+        if ($order->appointment_status !== 'pending' || $now->gte($start)) {
+            abort(422, 'Agendamento não pode ser confirmado.');
+        }
+        $order->appointment_status = 'confirmed';
+        $order->status = 'scheduled';
+    }
 
+    protected function cancelAppointment(Order $order, array $data): void
+    {
+        if (!in_array($order->appointment_status, ['pending', 'confirmed'])) {
+            abort(422, 'Este agendamento não pode ser cancelado.');
+        }
+        $order->appointment_status = 'cancelled';
+        $order->status = 'cancelled';
+        $order->cancelled_reason = $data['reason'] ?? null;
+    }
 
+    protected function attendAppointment(Order $order, Carbon $now, Carbon $end): void
+    {
+        if ($order->appointment_status !== 'confirmed' || $now->lt($end)) {
+            abort(422, 'Atendimento ainda não pode ser finalizado.');
+        }
+        $order->appointment_status = 'attended';
+        $order->status = 'completed';
+        $order->attended_at = $now;
+    }
 
+    protected function notAttendAppointment(Order $order, Carbon $now, Carbon $start): void
+    {
+        if ($order->appointment_status !== 'confirmed' || $now->lt($start)) {
+            abort(422, 'Atendimento ainda não ocorreu.');
+        }
+        $order->appointment_status = 'not_attended';
+        $order->status = 'completed';
+        $order->attended_at = $now;
+    }
+
+    /* ======================================================
+     | LIST & VIEW
+     ====================================================== */
     public function listByEntitySlug(string $slug)
     {
         try {
-            $establishment = Establishment::where('slug', $slug)->first();
-
-            if (!$establishment) {
-                return response()->json(['error' => 'Estabelecimento nÃ£o encontrado.'], 404);
-            }
+            $establishment = Establishment::where('slug', $slug)->firstOrFail();
 
             $orders = Order::where('entity_name', 'establishment')
                 ->where('entity_id', $establishment->id)
-                ->with([
-                    'items.item',
-                ])
-                ->orderBy('order_datetime', 'asc')
+                ->with('items.item')
+                ->orderBy('order_datetime')
                 ->get();
 
             return response()->json([
@@ -746,16 +415,89 @@ public function updateOrderStatus(Request $request, int $id)
                 ],
                 'orders' => $orders,
             ]);
-        } catch (\Throwable $e) {
-            Log::error('Order.listByEntitySlug', [
-                'slug' => $slug,
-                'error' => $e->getMessage(),
-            ]);
 
+        } catch (\Throwable $e) {
+            Log::error('Order.listByEntitySlug', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
         }
     }
 
+    public function listByEmployer(Request $request)
+    {
+        try {
+            $employer = Employer::where('user_id', $request->user()->id)->firstOrFail();
 
+            $orders = Order::where('attendant_id', $employer->id)
+                ->with([
+                    'items.item',
+                    'client:id,first_name,last_name,user_name,avatar,email',
+                ])
+                ->orderBy('order_datetime')
+                ->get();
 
+            return response()->json([
+                'message' => 'Pedidos do colaborador listados com sucesso.',
+                'employer' => [
+                    'id' => $employer->id,
+                    'role' => $employer->role,
+                ],
+                'orders' => $orders,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Order.listByEmployer', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
+        }
+    }
+
+    public function show(int $id)
+    {
+        try {
+            $order = Order::with([
+                'items.item',
+                'items.modifiers.modifier',
+                'client:id,first_name,last_name,user_name,avatar,email',
+                'attendant.user:id,first_name,last_name,user_name,avatar,email',
+            ])->findOrFail($id);
+
+            return response()->json([
+                'message' => 'Pedido carregado com sucesso.',
+                'order' => $order,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('Order.show', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Pedido não encontrado.'], 404);
+        }
+    }
+
+    public function view(int $id)
+    {
+        return $this->show($id);
+    }
+
+    /* ======================================================
+     | EMAILS
+     ====================================================== */
+    protected function sendAppointmentEmails(Order $order, Employer $employer, $user): void
+    {
+        try {
+            $establishment = Establishment::with('user')->find($order->entity_id);
+
+            $user?->email && Mail::to($user->email)
+                ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $employer->user));
+
+            $employer->user?->email && Mail::to($employer->user->email)
+                ->queue(new NewAppointmentNotification($order, $establishment, $user));
+
+            $establishment?->user?->email && Mail::to($establishment->user->email)
+                ->queue(new OwnerAppointmentNotification(
+                    $order,
+                    trim($establishment->user->first_name . ' ' . $establishment->user->last_name),
+                    $user
+                ));
+        } catch (\Throwable $e) {
+            Log::error('Order.sendAppointmentEmails', ['error' => $e->getMessage()]);
+        }
+    }
 }

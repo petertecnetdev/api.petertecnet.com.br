@@ -28,7 +28,7 @@ class Employer extends Model
 
     protected $appends = ['metrics'];
 
-protected $entity_name = 'employer';      
+    protected $entity_name = 'employer';
 
     /* ==========================
        RELACIONAMENTOS
@@ -462,170 +462,171 @@ protected $entity_name = 'employer';
             ->where('entity_name', 'employer')
             ->orderBy('position');
     }
-/* ============================================================================
-   OTHERS — PADRÃO PARA Establishment, Employer e Item
-   ============================================================================
-*/
+    /* ============================================================================
+       OTHERS — PADRÃO PARA Establishment, Employer e Item
+       ============================================================================
+    */
 
-/**
- * Outros estabelecimentos do mesmo app.
- */
-public function otherEstablishments()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+    /**
+     * Outros estabelecimentos do mesmo app.
+     */
+    public function otherEstablishments()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-    if (!$appId) {
-        return collect();
-    }
+        if (!$appId) {
+            return collect();
+        }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
-        return \App\Models\Establishment::where('app_id', $appId)
-            ->where('id', '!=', $this->id)
-            ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
-            ->withCount(['views as total_views' => fn($q) =>
-                $q->where('interaction_type', 'view')
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($est) {
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_establishments", 120, function () use ($appId) {
+            return \App\Models\Establishment::where('app_id', $appId)
+                ->where('id', '!=', $this->id)
+                ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view')
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($est) {
 
-                $logo = $est->files->firstWhere('type', 'logo')?->public_url;
-                $background = $est->files->firstWhere('type', 'background')?->public_url;
+                    $logo = $est->files->firstWhere('type', 'logo')?->public_url;
+                    $background = $est->files->firstWhere('type', 'background')?->public_url;
 
-                return [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'city' => $est->city,
-                    'category' => $est->category,
+                    return [
+                        'id' => $est->id,
+                        'name' => $est->name,
+                        'slug' => $est->slug,
+                        'city' => $est->city,
+                        'category' => $est->category,
 
-                    'logo' => $logo,
-                    'background' => $background,
-
-                    'images' => [
                         'logo' => $logo,
                         'background' => $background,
-                        'gallery' => $est->files
-                            ->whereNotIn('type', ['logo', 'background'])
-                            ->pluck('public_url')
-                            ->values()
-                    ],
 
-                    'total_views' => $est->total_views ?? 0,
-                ];
-            });
-    });
-}
+                        'images' => [
+                            'logo' => $logo,
+                            'background' => $background,
+                            'gallery' => $est->files
+                                ->whereNotIn('type', ['logo', 'background'])
+                                ->pluck('public_url')
+                                ->values()
+                        ],
 
-/**
- * Outros colaboradores (employers) do mesmo app.
- */
-public function otherEmployers()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
-    $establishmentId = $this->establishment_id ?? null;
-
-    if (!$appId) {
-        return collect();
+                        'total_views' => $est->total_views ?? 0,
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
+    /**
+     * Outros colaboradores (employers) do mesmo app.
+     */
+    public function otherEmployers()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+        $establishmentId = $this->establishment_id ?? null;
 
-        // Estabelecimentos do mesmo app
-        $estIds = \App\Models\Establishment::where('app_id', $appId)
-            ->pluck('id');
+        if (!$appId) {
+            return collect();
+        }
 
-        return \App\Models\Employer::whereIn('establishment_id', $estIds)
-            ->where('id', '!=', $this->id)
-            ->with([
-                'user:id,first_name,last_name,user_name,avatar,email',
-                'establishment:id,name,slug,city,uf',
-                'files' => fn($q) =>
-                    $q->where('entity_name', 'employer'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($emp) {
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_employers", 120, function () use ($appId, $establishmentId) {
 
-                $u = $emp->user;
+            // Estabelecimentos do mesmo app
+            $estIds = \App\Models\Establishment::where('app_id', $appId)
+                ->pluck('id');
 
-                // ?? EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
-                $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $u?->avatar;
+            return \App\Models\Employer::whereIn('establishment_id', $estIds)
+                ->where('id', '!=', $this->id)
+                ->with([
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                    'establishment:id,name,slug,city,uf',
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'employer'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($emp) {
 
-                return [
-                    'id' => $emp->id,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'user_name' => $u?->user_name,
+                    $u = $emp->user;
 
-                    'avatar' => $avatar,
+                    // ?? EXATAMENTE IGUAL AO EMPLOYERCONTROLLER::HOME
+                    $avatar = $emp->files->firstWhere('type', 'avatar')?->public_url
+                        ?? $u?->avatar;
 
-                    'city' => $emp->establishment?->city,
-                    'uf' => $emp->establishment?->uf,
+                    return [
+                        'id' => $emp->id,
+                        'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
+                        'user_name' => $u?->user_name,
 
-                    'total_views' => $emp->total_views ?? 0,
-
-                    // Mesmo formato da home
-                    'images' => [
                         'avatar' => $avatar,
-                        'gallery' => $emp->files
-                            ->whereNotIn('type', ['avatar'])
-                            ->pluck('public_url')
-                            ->values(),
-                    ],
 
-                    'establishment' => [
-                        'name' => $emp->establishment?->name,
-                        'slug' => $emp->establishment?->slug,
-                    ]
-                ];
-            });
-    });
-}
+                        'city' => $emp->establishment?->city,
+                        'uf' => $emp->establishment?->uf,
 
-/**
- * Outros itens do mesmo app.
- */
-public function otherItems()
-{
-    $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
+                        'total_views' => $emp->total_views ?? 0,
 
-    if (!$appId) {
-        return collect();
+                        // Mesmo formato da home
+                        'images' => [
+                            'avatar' => $avatar,
+                            'gallery' => $emp->files
+                                ->whereNotIn('type', ['avatar'])
+                                ->pluck('public_url')
+                                ->values(),
+                        ],
+
+                        'establishment' => [
+                            'name' => $emp->establishment?->name,
+                            'slug' => $emp->establishment?->slug,
+                        ]
+                    ];
+                });
+        });
     }
 
-    return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
-        return \App\Models\Item::where('id', '!=', $this->id)
-            ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'item'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-            ])
-            ->limit(6)
-            ->get()
-            ->map(function ($item) {
+    /**
+     * Outros itens do mesmo app.
+     */
+    public function otherItems()
+    {
+        $appId = $this->app_id ?? $this->establishment?->app_id ?? null;
 
-                $image = $item->files->firstWhere('type', 'image')?->public_url
-                    ?? $item->image;
+        if (!$appId) {
+            return collect();
+        }
 
-                return [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'image' => $image,
-                    'total_views' => $item->total_views ?? 0,
-                ];
-            });
-    });
-}
+        return Cache::remember("{$this->entity_name}_{$this->id}_other_items", 120, function () use ($appId) {
+            return \App\Models\Item::where('id', '!=', $this->id)
+                ->whereHas('entity', fn($q) => $q->where('app_id', $appId))
+                ->with([
+                    'files' => fn($q) => $q->where('entity_name', 'item'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                ])
+                ->limit(6)
+                ->get()
+                ->map(function ($item) {
+
+                    $image = $item->files->firstWhere('type', 'image')?->public_url
+                        ?? $item->image;
+
+                    return [
+                        'id' => $item->id,
+                        'name' => $item->name,
+                        'slug' => $item->slug,
+                        'price' => $item->price,
+                        'type' => $item->type,
+                        'image' => $image,
+                        'total_views' => $item->total_views ?? 0,
+                    ];
+                });
+        });
+    }
 
 }
