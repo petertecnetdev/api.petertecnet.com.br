@@ -219,14 +219,12 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
         ->name('order.store');
 
     Route::get('/list-by-entity/{slug}', [OrderController::class, 'listByEntity'])
+    ->where('slug', '[A-Za-z0-9\-]+')
         ->name('order.listByEntity');
 
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
         ->name('order.listByEmployer');
 
-    Route::get('/entity/{slug}', [OrderController::class, 'listByEntitySlug'])
-        ->where('slug', '[A-Za-z0-9\-]+')
-        ->name('order.listByEntitySlug');
 
     Route::get('/view/{id}', [OrderController::class, 'view'])
         ->whereNumber('id')
@@ -337,8 +335,7 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [MenuController::class, 'store'])->name('menu.store');
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
-});
-/*
+});/*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
@@ -348,8 +345,10 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
-    Route::get('/list-by-entity/{slug}', [EmployerController::class, 'listByEntitySlug'])
-        ->name('employer.listByEntitySlug');
+
+    // ? LISTAR COLABORADORES POR ESTABELECIMENTO (ID ou SLUG)
+    Route::get('/list-by-entity/{identifier}', [EmployerController::class, 'listByEntity'])
+        ->name('employer.listByEntity');
 });
 
 // ?? PRIVATE (AUTH)
