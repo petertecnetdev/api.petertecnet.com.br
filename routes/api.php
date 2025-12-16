@@ -241,7 +241,7 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}/update-status', [OrderController::class, 'updateOrderStatus'])
         ->whereNumber('id')
         ->name('order.updateOrderStatus');
-        
+
 });
 
 /*
@@ -275,7 +275,8 @@ Route::prefix('item')->middleware(['api'])->group(function () {
     Route::get('/index', [ItemController::class, 'index'])
         ->name('item.index');
 
-    Route::get('/listbyapp', [ItemController::class, 'listByApp'])
+    Route::get('/listbyapp/{app_id}', [ItemController::class, 'listByApp'])
+        ->whereNumber('app_id')
         ->name('item.listByApp');
 
     Route::get('/listall', [ItemController::class, 'listAll'])
@@ -302,6 +303,10 @@ Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [ItemController::class, 'store'])
         ->name('item.store');
+
+    Route::get('/listbyapp/{app_id}', [ItemController::class, 'listByApp'])
+        ->whereNumber('app_id')
+        ->name('item.listByApp');
 
     Route::post('/bulk', [ItemController::class, 'storeBulk'])
         ->name('item.storeBulk');
@@ -335,7 +340,9 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [MenuController::class, 'store'])->name('menu.store');
     Route::put('/{id}', [MenuController::class, 'update'])->name('menu.update');
     Route::delete('/{id}', [MenuController::class, 'destroy'])->name('menu.destroy');
-});/*
+});
+
+/*
 |--------------------------------------------------------------------------
 | EMPLOYER (COLABORADORES)
 |--------------------------------------------------------------------------
