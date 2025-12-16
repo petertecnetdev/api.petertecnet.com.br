@@ -329,7 +329,6 @@ class OrderController extends Controller
     
     
     
-    
     public function listByEntitySlug(string $slug)
 {
     try {
@@ -339,15 +338,13 @@ class OrderController extends Controller
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-     $orders = Order::where('entity_name', 'establishment')
-    ->where('entity_id', $establishment->id)
-    ->with([
-        'items.item',
-    ])
-    ->orderByDesc('order_datetime')
-    ->get();
-
-
+        $orders = Order::where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id)
+            ->with([
+                'items.item',
+            ])
+            ->orderBy('order_datetime', 'asc')
+            ->get();
 
         return response()->json([
             'message' => 'Pedidos listados com sucesso.',
@@ -360,7 +357,6 @@ class OrderController extends Controller
             ],
             'orders' => $orders,
         ]);
-
     } catch (\Throwable $e) {
         Log::error('Order.listByEntitySlug', [
             'slug' => $slug,
@@ -370,6 +366,7 @@ class OrderController extends Controller
         return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
     }
 }
+
 
 public function updateOrderStatus(Request $request, int $id)
 {
