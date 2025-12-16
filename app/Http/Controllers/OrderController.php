@@ -53,67 +53,90 @@ class OrderController extends Controller
     }
 
     public function storeAppointment(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            $user = Auth::user();
-            $data = $this->validateOrder($request);
-
-            $orderDate = Carbon::parse($data['order_datetime'])
-                ->tz('America/Sao_Paulo')
-                ->startOfMinute();
-
-            if ($orderDate->lte(Carbon::now('America/Sao_Paulo')->startOfMinute())) {
-                DB::rollBack();
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
-            }
-
-            $employer = Employer::with('user')->find($data['attendant_id']);
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'Colaborador não encontrado.'], 422);
-            }
-
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderEnd = (clone $orderDate)->addMinutes($totalDuration);
-
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderEnd)) {
-                DB::rollBack();
-                return response()->json(['error' => 'Conflito de agenda.'], 422);
-            }
-
-            $order = Order::createOrder(
-                $data,
-                $user,
-                $orderDate,
-                $totalDuration,
-                true,
-                'appointment',
-                'pending'
-            );
-
-            $order->attachItems($data['items']);
-
-            DB::commit();
-
-            $this->sendAppointmentEmails($order, $employer, $user);
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Erro ao criar agendamento', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
-        }
+{
+    if (!Auth::check()) {
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
+
+    DB::beginTransaction();
+
+    try {
+        $user = Auth::user();
+
+        $data = $this->validateOrder($request);
+
+        $orderDate = Carbon::parse($data['order_datetime'])
+            ->tz('America/Sao_Paulo')
+            ->startOfMinute();
+
+        if ($orderDate->lte(Carbon::now('America/Sao_Paulo')->startOfMinute())) {
+            DB::rollBack();
+            return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
+        }
+
+        $employer = Employer::with('user')->find($data['attendant_id']);
+        if (!$employer) {
+            DB::rollBack();
+            return response()->json(['error' => 'Colaborador não encontrado.'], 422);
+        }
+
+        $totalDuration = Item::totalDurationForItems($data['items']);
+        $orderEnd = (clone $orderDate)->addMinutes($totalDuration);
+
+        if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderEnd)) {
+            DB::rollBack();
+            return response()->json(['error' => 'Conflito de agenda.'], 422);
+        }
+
+        $order = Order::create([
+            'app_id' => $data['app_id'],
+            'entity_name' => $data['entity_name'],
+            'entity_id' => $data['entity_id'],
+            'order_number' => Order::nextOrderNumber($data['app_id']),
+            'order_datetime' => $orderDate,
+            'created_by' => $user->id,
+            'client_id' => $user->id,
+            'attendant_id' => $data['attendant_id'],
+            'customer_name' => trim($user->first_name . ' ' . ($user->last_name ?? '')),
+            'origin' => $data['origin'],
+            'fulfillment' => $data['fulfillment'],
+            'payment_status' => $data['payment_status'],
+            'payment_method' => $data['payment_method'],
+            'status' => 'scheduled',
+            'type' => 'appointment',
+            'appointment_status' => 'pending',
+            'total_price' => 0,
+            'total_duration' => $totalDuration,
+            'notes' => $data['notes'] ?? null,
+        ]);
+
+        $order->attachItems($data['items']);
+
+        DB::commit();
+
+        $this->sendAppointmentEmails($order, $employer, $user);
+
+        return response()->json([
+            'message' => 'Agendamento registrado com sucesso!',
+            'order' => $order->load([
+                'items.item',
+                'client:id,first_name,last_name,user_name,avatar,email',
+                'attendant.user:id,first_name,last_name,user_name,avatar,email',
+            ]),
+        ], 201);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
+        Log::error('Erro ao criar agendamento', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'Erro interno ao criar o agendamento.',
+        ], 500);
+    }
+}
 
     public function storeDirect(Request $request)
     {
