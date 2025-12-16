@@ -499,7 +499,7 @@ public function updateOrderStatus(Request $request, int $id)
         ], 500);
     }
 }
-public function listByEntity(string $identifier)
+public function listOrdersByEntity(string $identifier)
 {
     try {
         $establishment = Establishment::query()
@@ -508,93 +508,45 @@ public function listByEntity(string $identifier)
                 fn ($q) => $q->where('id', (int) $identifier),
                 fn ($q) => $q->where('slug', $identifier)
             )
-            ->with([
-                'items.files' => fn ($q) =>
-                    $q->where('entity_name', 'item'),
-                'employers.user.files' => fn ($q) =>
-                    $q->where('entity_name', 'user'),
-            ])
             ->first();
 
         if (!$establishment) {
-            return $this->jsonUtf8([
-                'error' => 'Estabelecimento não encontrado.',
-            ], 404);
+            return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-        $items = $establishment->items->map(function ($item) {
-            $image =
-                $item->files->firstWhere('type', 'image')?->public_url
-                ?? $item->image
-                ?? null;
-
-            return [
-                'id' => $item->id,
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
-                'duration' => $item->duration,
-                'type' => $item->type,
-                'image' => $image,
-            ];
-        })->values();
-
-        $employers = $establishment->employers
-            ->filter(fn ($emp) => $emp->user)
-            ->map(function ($emp) {
-                $user = $emp->user;
-
-                $avatar =
-                    $user->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $user->avatar
-                    ?? null;
-
-                return [
-                    'id' => $emp->id,
-                    'role' => $emp->role,
-                    'permissions' => $emp->permissions,
-                    'metrics' => $emp->metrics,
-                    'user' => [
-                        'id' => $user->id,
-                        'user_name' => $user->user_name,
-                        'first_name' => $user->first_name,
-                        'last_name' => $user->last_name,
-                        'email' => $user->email,
-                        'avatar' => $avatar,
-                    ],
-                    'images' => [
-                        'avatar' => $avatar,
-                    ],
-                ];
-            })
-            ->values();
+        $orders = Order::where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id)
+            ->with([
+                'items.item',
+                'attendant.user',
+                'client',
+            ])
+            ->orderByDesc('order_datetime')
+            ->get();
 
         return $this->jsonUtf8([
-            'message' => 'Dados para criação de pedido carregados com sucesso.',
+            'message' => 'Pedidos listados com sucesso.',
             'establishment' => [
                 'id' => $establishment->id,
                 'name' => $establishment->name,
                 'fantasy' => $establishment->fantasy,
                 'slug' => $establishment->slug,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
             ],
-            'items' => $items,
-            'employers' => $employers,
-        ], 200);
+            'orders' => $orders,
+            'total' => $orders->count(),
+        ]);
 
     } catch (\Throwable $e) {
-        Log::error('Order.listByEntity error', [
+        Log::error('Order.listOrdersByEntity error', [
             'identifier' => $identifier,
             'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
         ]);
 
         return $this->jsonUtf8([
-            'error' => 'Erro ao carregar dados para criação do pedido.',
-            'details' => $e->getMessage(),
+            'error' => 'Erro ao listar pedidos.',
         ], 500);
     }
 }
+
 
 }
