@@ -18,7 +18,7 @@ use App\Mail\NewAppointmentNotification;
 use App\Mail\OwnerAppointmentNotification;
 use App\Mail\AppointmentAwaitingConfirmation;
 
-class OrderController extends Controller
+class OrderController extends ApiController
 {
     protected function getValidationMessages()
     {
