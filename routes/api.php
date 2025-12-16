@@ -218,15 +218,8 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [OrderController::class, 'store'])
         ->name('order.store');
 
-    Route::get('/list-by-entity/{identifier}', [OrderController::class, 'listByEntity'])
-        ->name('order.listByEntity');
-
-        
-
-    Route::get(
-    '/order/list-orders-by-entity/{identifier}',
-    [OrderController::class, 'listOrdersByEntity']
-);
+    Route::get('/list-by-entity-slug/{identifier}', [OrderController::class, 'listByEntitySlug'])
+        ->name('order.listByEntitySlug');
 
 
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
