@@ -315,15 +315,14 @@ class OrderController extends Controller
             return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
         }
 
-      $orders = Order::where('entity_name', 'establishment')
+     $orders = Order::where('entity_name', 'establishment')
     ->where('entity_id', $establishment->id)
     ->with([
         'items.item',
-        'client:id,first_name,last_name,user_name,avatar,email',
-        'attendant.user:id,first_name,last_name,user_name,avatar,email'
     ])
     ->orderByDesc('order_datetime')
     ->get();
+
 
 
         return response()->json([
