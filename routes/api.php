@@ -221,6 +221,11 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/list-by-entity/{identifier}', [OrderController::class, 'listByEntity'])
         ->name('order.listByEntity');
 
+        
+
+    Route::get('/list-by-entity-slug/{identifier}', [OrderController::class, 'listByEntity'])
+        ->name('order.listByEntity');
+
 
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
         ->name('order.listByEmployer');
