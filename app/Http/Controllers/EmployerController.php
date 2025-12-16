@@ -1138,5 +1138,94 @@ public function listByEntitySlug(string $slug)
         ], 500);
     }
 }
+public function listByEntity($identifier)
+{
+    try {
+        if (!$identifier) {
+            return $this->jsonUtf8(['error' => 'Identificador inválido.'], 422);
+        }
+
+        $establishment = Establishment::query()
+            ->when(
+                is_numeric($identifier),
+                fn ($q) => $q->where('id', (int) $identifier),
+                fn ($q) => $q->where('slug', $identifier)
+            )
+            ->with([
+                'employers.user.files' => fn ($q) =>
+                    $q->where('entity_name', 'user'),
+            ])
+            ->first();
+
+        if (!$establishment) {
+            return $this->jsonUtf8(['error' => 'Estabelecimento não encontrado.'], 404);
+        }
+
+        $employers = $establishment->employers
+            ->filter(fn ($emp) => $emp->user)
+            ->map(function ($emp) {
+                $user = $emp->user;
+
+                $avatar =
+                    $user->files->firstWhere('type', 'avatar')?->public_url
+                    ?? $user->avatar
+                    ?? null;
+
+                $gallery = $user->files
+                    ->whereNotIn('type', ['avatar'])
+                    ->pluck('public_url')
+                    ->values();
+
+                return [
+                    'id' => $emp->id,
+                    'role' => $emp->role,
+                    'permissions' => $emp->permissions,
+                    'status' => $emp->status,
+                    'metrics' => $emp->metrics,
+
+                    'user' => [
+                        'id' => $user->id,
+                        'first_name' => $user->first_name,
+                        'last_name' => $user->last_name,
+                        'email' => $user->email,
+                        'phone' => $user->phone,
+                        'user_name' => $user->user_name,
+                        'avatar' => $avatar,
+                    ],
+
+                    'images' => [
+                        'avatar' => $avatar,
+                        'gallery' => $gallery,
+                    ],
+                ];
+            })
+            ->values();
+
+        return $this->jsonUtf8([
+            'message' => 'Colaboradores listados com sucesso.',
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+            ],
+            'total' => $employers->count(),
+            'employers' => $employers,
+        ], 200);
+
+    } catch (\Throwable $e) {
+        Log::error('Employer.listByEntity error', [
+            'identifier' => $identifier,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return $this->jsonUtf8([
+            'error' => 'Erro ao listar colaboradores do estabelecimento.',
+        ], 500);
+    }
+}
 
 }
