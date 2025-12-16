@@ -218,7 +218,7 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [OrderController::class, 'store'])
         ->name('order.store');
 
-    Route::get('/listbyentity', [OrderController::class, 'listByEntity'])
+    Route::get('/list-by-entity/{slug}', [OrderController::class, 'listByEntity'])
         ->name('order.listByEntity');
 
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
