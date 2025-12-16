@@ -52,73 +52,10 @@ class OrderController extends Controller
         return response()->json(['error' => 'Modo de criação inválido.'], 422);
     }
 
-    public function storeAppointment(Request $request)
-<<<<<<< HEAD
-    {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        DB::beginTransaction();
-
-        try {
-            $user = Auth::user();
-            $data = $this->validateOrder($request);
-
-            $orderDate = Carbon::parse($data['order_datetime'])
-                ->tz('America/Sao_Paulo')
-                ->startOfMinute();
-
-            if ($orderDate->lte(Carbon::now('America/Sao_Paulo')->startOfMinute())) {
-                DB::rollBack();
-                return response()->json(['error' => 'A data do agendamento deve ser futura.'], 422);
-            }
-
-            $employer = Employer::with('user')->find($data['attendant_id']);
-            if (!$employer) {
-                DB::rollBack();
-                return response()->json(['error' => 'Colaborador não encontrado.'], 422);
-            }
-
-            $totalDuration = Item::totalDurationForItems($data['items']);
-            $orderEnd = (clone $orderDate)->addMinutes($totalDuration);
-
-            if (Order::hasScheduleConflict($data['attendant_id'], $orderDate, $orderEnd)) {
-                DB::rollBack();
-                return response()->json(['error' => 'Conflito de agenda.'], 422);
-            }
-
-            $order = Order::createOrder(
-                $data,
-                $user,
-                $orderDate,
-                $totalDuration,
-                true,
-                'appointment',
-                'pending'
-            );
-
-            $order->attachItems($data['items']);
-
-            DB::commit();
-
-            $this->sendAppointmentEmails($order, $employer, $user);
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso!',
-                'order' => $order->load('items.item'),
-            ], 201);
-
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Erro ao criar agendamento', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro interno ao criar o agendamento.'], 500);
-        }
-=======
+   public function storeAppointment(Request $request)
 {
     if (!Auth::check()) {
-        return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
->>>>>>> develop
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
 
     DB::beginTransaction();
@@ -140,7 +77,7 @@ class OrderController extends Controller
         $employer = Employer::with('user')->find($data['attendant_id']);
         if (!$employer) {
             DB::rollBack();
-            return response()->json(['error' => 'Colaborador nÃ£o encontrado.'], 422);
+            return response()->json(['error' => 'Colaborador não encontrado.'], 422);
         }
 
         $totalDuration = Item::totalDurationForItems($data['items']);
@@ -200,6 +137,7 @@ class OrderController extends Controller
         ], 500);
     }
 }
+
 
     public function storeDirect(Request $request)
     {
@@ -436,7 +374,7 @@ class OrderController extends Controller
 public function updateOrderStatus(Request $request, int $id)
 {
     if (!Auth::check()) {
-        return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
+        return response()->json(['error' => 'Usuário não autenticado.'], 401);
     }
 
     $data = $request->validate([
@@ -451,7 +389,7 @@ public function updateOrderStatus(Request $request, int $id)
 
         if ($order->type !== 'appointment') {
             DB::rollBack();
-            return response()->json(['error' => 'AÃ§Ã£o permitida apenas para agendamentos.'], 422);
+            return response()->json(['error' => 'Ação permitida apenas para agendamentos.'], 422);
         }
 
         $now = Carbon::now('America/Sao_Paulo');
@@ -469,7 +407,7 @@ public function updateOrderStatus(Request $request, int $id)
                 if ($now->gte($start)) {
                     DB::rollBack();
                     return response()->json([
-                        'error' => 'NÃ£o Ã© possÃ­vel confirmar um agendamento apÃ³s o horÃ¡rio de inÃ­cio.'
+                        'error' => 'Não é possível confirmar um agendamento após o horário de início.'
                     ], 422);
                 }
 
@@ -481,7 +419,7 @@ public function updateOrderStatus(Request $request, int $id)
                 if (!in_array($order->appointment_status, ['pending', 'confirmed'])) {
                     DB::rollBack();
                     return response()->json([
-                        'error' => 'Este agendamento nÃ£o pode mais ser cancelado.'
+                        'error' => 'Este agendamento não pode mais ser cancelado.'
                     ], 422);
                 }
 
@@ -501,7 +439,7 @@ public function updateOrderStatus(Request $request, int $id)
                 if ($now->lt($end)) {
                     DB::rollBack();
                     return response()->json([
-                        'error' => 'O atendimento sÃ³ pode ser finalizado apÃ³s o horÃ¡rio de tÃ©rmino.'
+                        'error' => 'O atendimento só pode ser finalizado após o horário de término.'
                     ], 422);
                 }
 
@@ -521,7 +459,7 @@ public function updateOrderStatus(Request $request, int $id)
                 if ($now->lt($start)) {
                     DB::rollBack();
                     return response()->json([
-                        'error' => 'NÃ£o Ã© possÃ­vel finalizar um atendimento antes do horÃ¡rio agendado.'
+                        'error' => 'Não é possível finalizar um atendimento antes do horário agendado.'
                     ], 422);
                 }
 
