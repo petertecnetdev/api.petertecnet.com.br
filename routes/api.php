@@ -243,7 +243,7 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::put('/{id}/update-status', [OrderController::class, 'updateOrderStatus'])
         ->whereNumber('id')
         ->name('order.updateOrderStatus');
-
+        
 });
 
 /*
@@ -255,37 +255,74 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
     Route::get('/', [OrderForecastController::class, 'index'])->name('orderForecast.index');
     Route::post('/generate', [OrderForecastController::class, 'generate'])->name('orderForecast.generate');
 });
+
+
+
+
+/*
+|--------------------------------------------------------------------------
+| ITEMS
+|--------------------------------------------------------------------------
+*/
 Route::prefix('item')->middleware(['api'])->group(function () {
 
-    // 🔹 NOVA ROTA — LISTAGEM FULL FLEX
-    Route::get('/index', [ItemController::class, 'index'])->name('item.index');
+    // 🔹 LISTAGEM FULL FLEX (slug OU id)
+    Route::get('/list-by-entity/{identifier}', [ItemController::class, 'listByEntity'])
+        ->name('item.listByEntity');
 
-    Route::get('/list-by-entity/{slug}', [ItemController::class, 'listByEntitySlug'])
+    // 🔹 SLUG ONLY (mantido por compatibilidade)
+    Route::get('/list-by-entity-slug/{slug}', [ItemController::class, 'listByEntitySlug'])
         ->name('item.listByEntitySlug');
 
-    Route::get('/', [ItemController::class, 'listByEntity'])->name('item.listByEntity');
-    Route::get('/listbyapp', [ItemController::class, 'listByApp'])->name('item.listByApp');
-    Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
-    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])->name('item.listServicesByEntity');
+    Route::get('/index', [ItemController::class, 'index'])
+        ->name('item.index');
 
-    Route::get('/{id}', [ItemController::class, 'show'])->name('item.show');
-    Route::get('/view/{slug}', [ItemController::class, 'view'])->name('item.view');
+    Route::get('/listbyapp', [ItemController::class, 'listByApp'])
+        ->name('item.listByApp');
 
-    Route::get('/home/{app_id}', [ItemController::class, 'home'])->name('item.home');
+    Route::get('/listall', [ItemController::class, 'listAll'])
+        ->name('item.listAll');
+
+    Route::get('/listservicesbyentity', [ItemController::class, 'listServicesByEntity'])
+        ->name('item.listServicesByEntity');
+
+    Route::get('/view/{slug}', [ItemController::class, 'view'])
+        ->where('slug', '[A-Za-z0-9\-]+')
+        ->name('item.view');
+
+    Route::get('/{id}', [ItemController::class, 'show'])
+        ->whereNumber('id')
+        ->name('item.show');
+
+    Route::get('/home/{app_id}', [ItemController::class, 'home'])
+        ->whereNumber('app_id')
+        ->name('item.home');
 });
 
-// PRIVATE (auth required)
+// 🔐 PRIVATE (auth required)
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
 
-    Route::post('/', [ItemController::class, 'store'])->name('item.store');
-    Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
+    Route::post('/', [ItemController::class, 'store'])
+        ->name('item.store');
 
-    Route::post('/{id}', [ItemController::class, 'update'])->name('item.update');
-    Route::delete('/{id}', [ItemController::class, 'destroy'])->name('item.destroy');
+    Route::post('/bulk', [ItemController::class, 'storeBulk'])
+        ->name('item.storeBulk');
 
-    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])->name('item.increasePricesByPercentage');
-    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])->name('item.decreasePricesByPercentage');
+    Route::post('/{id}', [ItemController::class, 'update'])
+        ->whereNumber('id')
+        ->name('item.update');
+
+    Route::delete('/{id}', [ItemController::class, 'destroy'])
+        ->whereNumber('id')
+        ->name('item.destroy');
+
+    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])
+        ->name('item.increasePricesByPercentage');
+
+    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])
+        ->name('item.decreasePricesByPercentage');
 });
+
 /*
 |--------------------------------------------------------------------------
 | MENU
