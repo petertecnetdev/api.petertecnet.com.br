@@ -159,83 +159,84 @@ class ItemController extends Controller
         }
     }
 
-public function listByEntitySlug($slug)
-{
-    try {
-        if (!$slug || !is_string($slug)) {
-            return response()->json(['error' => 'Slug inválido.'], 422);
-        }
+    public function listByEntitySlug($slug)
+    {
+        try {
+            if (!$slug || !is_string($slug)) {
+                return response()->json(['error' => 'Slug inválido.'], 422);
+            }
 
-        $establishment = Establishment::where('slug', $slug)
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')
-                      ->where('type', 'logo'),
+            $establishment = Establishment::where('slug', $slug)
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                            ->where('type', 'logo'),
 
-                'items' => fn ($q) =>
-                    $q->orderByDesc('updated_at')
-                      ->with(['files' => fn ($fq) =>
-                          $fq->where('entity_name', 'item')
-                      ]),
-            ])
-            ->first();
+                    'items' => fn($q) =>
+                        $q->orderByDesc('updated_at')
+                            ->with([
+                                'files' => fn($fq) =>
+                                    $fq->where('entity_name', 'item')
+                            ]),
+                ])
+                ->first();
 
-        if (!$establishment) {
-            return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
-        }
+            if (!$establishment) {
+                return response()->json(['error' => 'Estabelecimento não encontrado.'], 404);
+            }
 
-        $logo =
-            $establishment->files->first()?->public_url
-            ?: $establishment->logo
-            ?: null;
-
-        $mappedEstablishment = [
-            'id' => $establishment->id,
-            'name' => $establishment->name,
-            'fantasy' => $establishment->fantasy,
-            'slug' => $establishment->slug,
-            'city' => $establishment->city,
-            'uf' => $establishment->uf,
-            'logo' => $logo,
-        ];
-
-        $items = $establishment->items->map(function ($item) {
-            $image =
-                $item->files->firstWhere('type', 'avatar')?->public_url
-                ?: $item->files->first()?->public_url
-                ?: $item->image
+            $logo =
+                $establishment->files->first()?->public_url
+                ?: $establishment->logo
                 ?: null;
 
-            return [
-                'id' => $item->id,
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
-                'type' => $item->type,
-                'category' => $item->category,
-                'duration' => $item->duration,
-                'description' => $item->description,
-                'total_views' => $item->total_views ?? 0,
-                'image' => $image,
-                'updated_at' => $item->updated_at,
+            $mappedEstablishment = [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'fantasy' => $establishment->fantasy,
+                'slug' => $establishment->slug,
+                'city' => $establishment->city,
+                'uf' => $establishment->uf,
+                'logo' => $logo,
             ];
-        })->values();
 
-        return response()->json([
-            'message' => 'Itens listados com sucesso.',
-            'establishment' => $mappedEstablishment,
-            'items' => $items,
-        ], 200);
+            $items = $establishment->items->map(function ($item) {
+                $image =
+                    $item->files->firstWhere('type', 'avatar')?->public_url
+                    ?: $item->files->first()?->public_url
+                    ?: $item->image
+                    ?: null;
 
-    } catch (\Exception $e) {
-        \Log::error('[ItemController::listByEntitySlug]', [
-            'slug' => $slug,
-            'error' => $e->getMessage(),
-        ]);
+                return [
+                    'id' => $item->id,
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'type' => $item->type,
+                    'category' => $item->category,
+                    'duration' => $item->duration,
+                    'description' => $item->description,
+                    'total_views' => $item->total_views ?? 0,
+                    'image' => $image,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values();
 
-        return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+            return response()->json([
+                'message' => 'Itens listados com sucesso.',
+                'establishment' => $mappedEstablishment,
+                'items' => $items,
+            ], 200);
+
+        } catch (\Exception $e) {
+            \Log::error('[ItemController::listByEntitySlug]', [
+                'slug' => $slug,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['error' => 'Erro ao buscar itens.'], 500);
+        }
     }
-}
 
 
     public function show($id)
@@ -276,7 +277,6 @@ public function listByEntitySlug($slug)
             return response()->json(['error' => 'Ocorreu um erro ao buscar o item.'], 500);
         }
     }
-
     public function update(Request $request, $id)
     {
         try {
@@ -291,22 +291,18 @@ public function listByEntitySlug($slug)
                 return response()->json(['error' => 'Item não encontrado.'], 404);
             }
 
-            // Permissão (igual ao padrão do Establishment)
             if (!$user->hasPermission('item_update')) {
                 return response()->json(['error' => 'Acesso negado.'], 403);
             }
 
-            // ============================
-            // 🔍 VALIDAÇÃO
-            // ============================
             $validated = $request->validate([
                 'name' => 'nullable|string|max:255',
                 'type' => 'nullable|string|max:100',
                 'description' => 'nullable|string|max:2500',
                 'price' => 'nullable|numeric|min:0',
                 'stock' => 'nullable|integer|min:0',
-                'status' => 'nullable|boolean',
-                'limited_by_user' => 'nullable|boolean',
+                'status' => 'nullable|string',
+                'limited_by_user' => 'nullable|string',
                 'category' => 'nullable|string|max:255',
                 'subcategory' => 'nullable|string|max:255',
                 'brand' => 'nullable|string|max:255',
@@ -317,104 +313,104 @@ public function listByEntitySlug($slug)
                 'expiration_date' => 'nullable|date',
                 'notes' => 'nullable|string|max:2500',
                 'is_featured' => 'nullable|boolean',
- 'duration' => 'nullable|integer|min:1', // ✅ AQUI
-                // imagens
+                'duration' => 'nullable|integer|min:1',
+
                 'image' => 'nullable|image|max:4096',
                 'remove_image' => 'nullable|integer|in:0,1',
             ]);
 
-            // CAPTURA DADOS ANTES DA ALTERAÇÃO
             $oldData = $item->getOriginal();
             $changes = [];
 
             foreach ($validated as $key => $value) {
-                if (($oldData[$key] ?? null) != $value && $key !== "image") {
+                if (!in_array($key, ['image', 'remove_image']) && (($oldData[$key] ?? null) != $value)) {
                     $changes[$key] = [
                         'old' => $oldData[$key] ?? null,
-                        'new' => $value
+                        'new' => $value,
                     ];
                 }
             }
 
-            // ============================
-            // 🔥 ✔ REMOVER IMAGEM
-            // ============================
-            if ($request->remove_image == 1 && $item->image) {
-
-                $item->deleteImage($item->image); // ← Usa o trait HandlesImages
-                $changes['image'] = [
-                    'old' => $item->image,
-                    'new' => null
-                ];
-
-                $item->image = null;
-            }
-
-            // ============================
-            // 🔥 ✔ UPLOAD NOVA IMAGEM
-            // ============================
-            if ($request->hasFile('image')) {
-
-                // Remove imagem antiga
-                if ($item->image) {
-                    $item->deleteImage($item->image);
-                }
-
-                // Upload pelo trait HandlesImages
-                $newPath = $item->uploadImage($request->file('image'), 'item_', 250);
-
-                $changes['image'] = [
-                    'old' => $oldData['image'] ?? null,
-                    'new' => $newPath
-                ];
-
-                $validated['image'] = $newPath;
-            }
-
-            // ============================
-            // 🔠 SLUG SE NOME MUDAR
-            // ============================
             if (!empty($validated['name']) && $validated['name'] !== $oldData['name']) {
                 $base = \Illuminate\Support\Str::slug($validated['name']);
-                $count = Item::where('slug', 'LIKE', "$base%")
+                $count = Item::where('slug', 'LIKE', "{$base}%")
                     ->where('id', '!=', $item->id)
                     ->count();
 
                 $newSlug = $count ? "{$base}-" . ($count + 1) : $base;
 
+                $validated['slug'] = $newSlug;
+
                 $changes['slug'] = [
                     'old' => $item->slug,
-                    'new' => $newSlug
+                    'new' => $newSlug,
                 ];
-
-                $validated['slug'] = $newSlug;
             }
 
-            // ============================
-            // 💾 SALVAR ALTERAÇÕES
-            // ============================
-            $item->fill($validated);
-            $item->updated_by = $user->id;
-            $item->save();
+            \DB::transaction(function () use ($request, $item, $user, &$changes, $validated) {
 
-            // SALVA INTERAÇÃO SE TIVER CHANGES
+                if ((int) $request->input('remove_image') === 1) {
+                    \App\Models\File::where('entity_name', 'item')
+                        ->where('entity_id', $item->id)
+                        ->where('type', 'image')
+                        ->update(['is_primary' => false]);
+
+                    $changes['image'] = [
+                        'old' => 'primary_image',
+                        'new' => null,
+                    ];
+                }
+
+                if ($request->hasFile('image')) {
+                    \App\Models\File::where('entity_name', 'item')
+                        ->where('entity_id', $item->id)
+                        ->where('type', 'image')
+                        ->update(['is_primary' => false]);
+
+                    $file = \App\Models\File::storeOne(
+                        $request->file('image'),
+                        'item',
+                        $item->id,
+                        'image',
+                        $item->app_id,
+                        $user->id
+                    );
+
+                    $file->update([
+                        'is_primary' => true,
+                        'updated_by' => $user->id,
+                    ]);
+
+                    $changes['image'] = [
+                        'old' => 'previous_primary',
+                        'new' => $file->public_url,
+                    ];
+                }
+
+                unset($validated['image'], $validated['remove_image']);
+
+                $item->fill($validated);
+                $item->updated_by = $user->id;
+                $item->save();
+            });
+
             if (!empty($changes)) {
                 Interaction::registerUpdate($item, $user, $changes);
             }
 
             return response()->json([
                 'message' => 'Item atualizado com sucesso.',
-                'item' => $item,
-                'changes' => $changes
+                'item' => $item->load(['files' => fn($q) => $q->where('entity_name', 'item')]),
+                'changes' => $changes,
             ], 200);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json(['errors' => $e->errors()], 422);
 
         } catch (\Exception $e) {
-            \Log::error('Erro ao atualizar item', [
+            \Log::error('[ItemController::update]', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json(['error' => 'Erro ao atualizar item.'], 500);
@@ -422,65 +418,66 @@ public function listByEntitySlug($slug)
     }
 
 
-public function destroy($id)
-{
-    try {
-        \Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
+    public function destroy($id)
+    {
+        try {
+            \Log::info('Iniciando a exclusão do item com ID: ' . $id);
 
-        $user = Auth::user();
-        \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
-
-        $item = Item::with(['orderItems', 'files'])->find($id);
-
-        if (!$item) {
-            return response()->json(['error' => 'Item não encontrado.'], 404);
-        }
-
-        if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
-            return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
-        }
-
-        DB::beginTransaction();
-
-        if ($item->orderItems()->exists()) {
-            $item->orderItems()->delete();
-        }
-
-        if ($item->files()->exists()) {
-            foreach ($item->files as $file) {
-                if ($file->storage === 'public' && $file->path) {
-                    Storage::disk('public')->delete($file->path);
-                }
-                $file->delete();
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
             }
+
+            $user = Auth::user();
+            \Log::info('Usuário autenticado:', ['id' => $user->id, 'name' => $user->name]);
+
+            $item = Item::with(['orderItems', 'files'])->find($id);
+
+            if (!$item) {
+                return response()->json(['error' => 'Item não encontrado.'], 404);
+            }
+
+            if (!$user->hasPermission('item_delete') && $user->id !== $item->user_id) {
+                return response()->json(['error' => 'Você não tem permissão para excluir este item.'], 403);
+            }
+
+            DB::beginTransaction();
+
+            if ($item->orderItems()->exists()) {
+                $item->orderItems()->delete();
+            }
+
+            if ($item->files()->exists()) {
+                foreach ($item->files as $file) {
+                    if ($file->storage === 'public' && $file->path) {
+                        Storage::disk('public')->delete($file->path);
+                    }
+                    $file->delete();
+                }
+            }
+
+            $item->delete();
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Item deletado com sucesso.'
+            ], 200);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            \Log::error('[ItemController::destroy]', [
+                'item_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'error' => 'Ocorreu um erro ao deletar o item.'
+            ], 500);
         }
-
-        $item->delete();
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Item deletado com sucesso.'
-        ], 200);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-
-        \Log::error('[ItemController::destroy]', [
-            'item_id' => $id,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'error' => 'Ocorreu um erro ao deletar o item.'
-        ], 500);
     }
-}
 
     public function listByApp(Request $request)
     {
@@ -1041,5 +1038,5 @@ public function destroy($id)
     }
 
 
-    
+
 }
