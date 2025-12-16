@@ -52,7 +52,7 @@ class OrderController extends Controller
         return response()->json(['error' => 'Modo de criação inválido.'], 422);
     }
 
-    public function storeAppointment(Request $request)
+   public function storeAppointment(Request $request)
 {
     if (!Auth::check()) {
         return response()->json(['error' => 'Usuário não autenticado.'], 401);
@@ -137,6 +137,7 @@ class OrderController extends Controller
         ], 500);
     }
 }
+
 
     public function storeDirect(Request $request)
     {
