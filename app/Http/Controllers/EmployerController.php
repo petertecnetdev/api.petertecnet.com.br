@@ -76,10 +76,10 @@ class EmployerController extends Controller
     {
         $employer = Employer::with([
             'user:id,first_name,last_name,user_name,about,avatar,email,city,uf',
-            'files' => fn ($q) => $q->where('entity_name', 'employer'),
+            'files' => fn($q) => $q->where('entity_name', 'employer'),
             'establishment:id,name,slug,city,uf'
         ])
-            ->whereHas('user', fn ($q) => $q->where('user_name', $user_name))
+            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
             ->firstOrFail();
 
         $u = $employer->user;
@@ -109,14 +109,14 @@ class EmployerController extends Controller
         $uf = $request->query('uf');
 
         $establishmentIds = Establishment::where('app_id', $app_id)
-            ->when($city && $uf, fn ($q) => $q->where('city', $city)->where('uf', $uf))
+            ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
             ->pluck('id');
 
         $employers = Employer::whereIn('establishment_id', $establishmentIds)
             ->with([
                 'user:id,first_name,last_name,user_name,avatar,city,uf',
                 'establishment:id,name,slug,city,uf',
-                'files' => fn ($q) => $q->where('entity_name', 'employer'),
+                'files' => fn($q) => $q->where('entity_name', 'employer'),
             ])
             ->get()
             ->map(function ($e) {
@@ -238,16 +238,20 @@ class EmployerController extends Controller
         $establishment = Establishment::query()
             ->when(
                 is_numeric($identifier),
-                fn ($q) => $q->where('id', (int) $identifier),
-                fn ($q) => $q->where('slug', $identifier)
+                fn($q) => $q->where('id', (int) $identifier),
+                fn($q) => $q->where('slug', $identifier)
             )
             ->with([
-                'employers.user.files' => fn ($q) => $q->where('entity_name', 'user'),
+                'files' => fn($q) =>
+                    $q->where('entity_name', 'establishment'),
+
+                'employers.user.files' => fn($q) =>
+                    $q->where('entity_name', 'user'),
             ])
             ->firstOrFail();
 
         $employers = $establishment->employers
-            ->filter(fn ($e) => $e->user)
+            ->filter(fn($e) => $e->user)
             ->map(function ($e) {
                 $u = $e->user;
 
@@ -283,11 +287,18 @@ class EmployerController extends Controller
                 'slug' => $establishment->slug,
                 'city' => $establishment->city,
                 'uf' => $establishment->uf,
+                'images' => [
+                    'logo' => $establishment->files
+                        ->firstWhere('type', 'logo')?->public_url,
+                    'background' => $establishment->files
+                        ->firstWhere('type', 'background')?->public_url,
+                ],
             ],
             'total' => $employers->count(),
             'employers' => $employers,
         ]);
     }
+
 
     /* =======================================================
      | SCHEDULES

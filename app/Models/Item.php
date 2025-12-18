@@ -51,9 +51,9 @@ class Item extends Model
         'is_featured' => 'boolean',
     ];
 
-    protected $appends = ['metrics'];
+    protected $appends = ['metrics', 'image_resolved'];
 
-    protected static function boot()    
+    protected static function boot()
     {
         parent::boot();
         static::saving(function ($model) {
@@ -546,16 +546,16 @@ class Item extends Model
         return $total;
     }
 
-   public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
-{
-    return self::whereIn('id', $itemIds)
-        ->where(function ($q) use ($entityName, $entityId) {
-            $q->where('entity_name', '!=', $entityName)
-              ->orWhere('entity_id', '!=', $entityId);
-        })
-        ->pluck('id')
-        ->toArray();
-}
+    public static function invalidForEntity(array $itemIds, string $entityName, int $entityId): array
+    {
+        return self::whereIn('id', $itemIds)
+            ->where(function ($q) use ($entityName, $entityId) {
+                $q->where('entity_name', '!=', $entityName)
+                    ->orWhere('entity_id', '!=', $entityId);
+            })
+            ->pluck('id')
+            ->toArray();
+    }
 
     public function fillFromRequest($request)
     {
@@ -608,6 +608,24 @@ class Item extends Model
         $this->save();
 
         return $this;
+    }
+
+    public function files()
+    {
+        return $this->hasMany(\App\Models\File::class, 'entity_id')
+            ->where('entity_name', 'item')
+            ->orderBy('position');
+    }
+
+    public function getImageResolvedAttribute(): ?string
+    {
+        $files = $this->files ?? collect();
+
+        return
+            $files->firstWhere('is_primary', true)?->public_url
+            ?? $files->firstWhere('type', 'image')?->public_url
+            ?? $files->first()?->public_url
+            ?? $this->image;
     }
 
 }

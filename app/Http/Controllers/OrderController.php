@@ -396,7 +396,19 @@ class OrderController extends ApiController
     public function listByEntitySlug(string $slug)
     {
         try {
-            $establishment = Establishment::where('slug', $slug)->firstOrFail();
+            $establishment = Establishment::with([
+                'files' => fn($q) => $q->where('entity_name', 'establishment'),
+            ])->where('slug', $slug)->firstOrFail();
+
+            $logo =
+                $establishment->files->firstWhere('type', 'logo')?->public_url
+                ?? $establishment->logo
+                ?? null;
+
+            $background =
+                $establishment->files->firstWhere('type', 'background')?->public_url
+                ?? $establishment->background
+                ?? null;
 
             $orders = Order::where('entity_name', 'establishment')
                 ->where('entity_id', $establishment->id)
@@ -410,36 +422,74 @@ class OrderController extends ApiController
                     'id' => $establishment->id,
                     'name' => $establishment->name,
                     'fantasy' => $establishment->fantasy,
+                    'slug' => $establishment->slug,
                     'city' => $establishment->city,
                     'uf' => $establishment->uf,
+                    'logo' => $logo,
+                    'background' => $background,
                 ],
                 'orders' => $orders,
             ]);
-
         } catch (\Throwable $e) {
             Log::error('Order.listByEntitySlug', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
         }
     }
 
+
     public function listByEmployer(Request $request)
     {
         try {
-            $employer = Employer::where('user_id', $request->user()->id)->firstOrFail();
+            $employer = Employer::with([
+                'user:id,first_name,last_name,user_name,avatar,email'
+            ])
+                ->where('user_id', $request->user()->id)
+                ->firstOrFail();
 
             $orders = Order::where('attendant_id', $employer->id)
                 ->with([
-                    'items.item',
-                    'client:id,first_name,last_name,user_name,avatar,email',
+                    'items.item:id,name',
+                    'client:id,first_name,last_name,user_name,avatar,email'
                 ])
                 ->orderBy('order_datetime')
-                ->get();
+                ->get()
+                ->map(function ($order) {
+                    return [
+                        'id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'type' => $order->type,
+                        'appointment_status' => $order->appointment_status,
+                        'scheduled_start' => $order->scheduled_start,
+                        'scheduled_end' => $order->scheduled_end,
+                        'created_at' => $order->created_at,
+                        'total_price' => $order->total_price,
+
+                        'customer' => $order->client ? [
+                            'id' => $order->client->id,
+                            'name' => trim($order->client->first_name . ' ' . $order->client->last_name),
+                            'user_name' => $order->client->user_name,
+                            'avatar' => $order->client->avatar,
+                            'email' => $order->client->email,
+                        ] : null,
+
+                        'items' => $order->items->map(function ($item) {
+                            return [
+                                'id' => $item->id,
+                                'name' => $item->item?->name,
+                                'quantity' => $item->quantity,
+                                'unit_price' => $item->unit_price,
+                                'subtotal' => $item->subtotal,
+                            ];
+                        }),
+                    ];
+                });
 
             return response()->json([
                 'message' => 'Pedidos do colaborador listados com sucesso.',
                 'employer' => [
                     'id' => $employer->id,
                     'role' => $employer->role,
+                    'user' => $employer->user,
                 ],
                 'orders' => $orders,
             ]);
@@ -449,6 +499,7 @@ class OrderController extends ApiController
             return response()->json(['error' => 'Erro ao listar pedidos.'], 500);
         }
     }
+
 
     public function show(int $id)
     {

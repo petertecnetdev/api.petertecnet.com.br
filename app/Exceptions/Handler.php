@@ -8,13 +8,9 @@ use Throwable;
 
 class Handler extends ExceptionHandler
 {
-    protected $levels = [
-        //
-    ];
+    protected $levels = [];
 
-    protected $dontReport = [
-        //
-    ];
+    protected $dontReport = [];
 
     protected $dontFlash = [
         'current_password',
@@ -22,21 +18,33 @@ class Handler extends ExceptionHandler
         'password_confirmation',
     ];
 
-    /**
-     * Register the exception handling callbacks for the application.
-     */
     public function register()
     {
         //
     }
 
-    /**
-     * Customize the response for unauthenticated users.
-     */
     protected function unauthenticated($request, AuthenticationException $exception)
     {
         return $request->expectsJson()
-            ? response()->json(['message' => 'Unauthenticated.'], 401)
+            ? response()->json(['error' => 'Não autenticado.'], 401)
             : redirect()->guest(route('login'));
+    }
+
+    public function render($request, Throwable $e)
+    {
+        try {
+            return parent::render($request, $e);
+        } catch (Throwable $jsonError) {
+            return response()->json([
+                'error' => 'Erro interno.',
+            ], 500);
+        }
+    }
+
+    protected function prepareJsonResponse($request, Throwable $e)
+    {
+        return response()->json([
+            'error' => 'Erro interno.',
+        ], 500);
     }
 }

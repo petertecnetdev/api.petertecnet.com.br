@@ -2,20 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Controller;
 use App\Models\{
     Item,
     Establishment,
     File,
     Interaction
 };
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{
     Auth,
     DB,
     Cache,
-    Storage
+    Storage,
+    Validator
 };
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
+
+
 
 class ItemController extends Controller
 {
@@ -23,7 +29,7 @@ class ItemController extends Controller
      | HELPERS
      ======================================================= */
 
-    protected function messages(): array
+    protected function validationMessages(): array
     {
         return [
             'app_id.required' => 'O campo app_id é obrigatório.',
@@ -37,6 +43,7 @@ class ItemController extends Controller
             'entity_name.required' => 'O nome da entidade é obrigatório.',
         ];
     }
+
 
     private function ensureAuth(string $permission): void
     {
@@ -69,7 +76,11 @@ class ItemController extends Controller
 
     private function clearItemCache(): void
     {
-        Cache::tags(['items'])->flush();
+        try {
+            Cache::tags(['items'])->flush();
+        } catch (\BadMethodCallException $e) {
+            Cache::flush();
+        }
     }
 
     /* =======================================================
@@ -108,7 +119,7 @@ class ItemController extends Controller
 
     public function listByEntity(string $identifier)
     {
-        return Cache::tags(['items'])->remember("entity_{$identifier}", 300, function () use ($identifier) {
+        return Cache::remember("items_entity_{$identifier}", 300, function () use ($identifier) {
 
             $establishment = Establishment::query()
                 ->when(
@@ -118,10 +129,15 @@ class ItemController extends Controller
                 )
                 ->with([
                     'files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')->where('type', 'logo'),
+                        $q->where('entity_name', 'establishment')
+                            ->where('type', 'logo'),
+
                     'items' => fn($q) =>
                         $q->where('entity_name', 'establishment')
-                            ->with(['files' => fn($fq) => $fq->where('entity_name', 'item')])
+                            ->with([
+                                'files' => fn($fq) =>
+                                    $fq->where('entity_name', 'item')
+                            ])
                             ->orderByDesc('updated_at'),
                 ])
                 ->firstOrFail();
@@ -135,7 +151,9 @@ class ItemController extends Controller
                     'slug' => $establishment->slug,
                     'city' => $establishment->city,
                     'uf' => $establishment->uf,
-                    'logo' => $establishment->files->first()?->public_url ?? $establishment->logo,
+                    'logo' =>
+                        $establishment->files->first()?->public_url
+                        ?? $establishment->logo,
                 ],
                 'items' => $establishment->items->map(fn($item) => [
                     'id' => $item->id,
@@ -144,26 +162,43 @@ class ItemController extends Controller
                     'price' => $item->price,
                     'type' => $item->type,
                     'duration' => $item->duration,
-                    'image' =>
-                        $item->files->firstWhere('is_primary', true)?->public_url
-                        ?? $item->files->first()?->public_url
-                        ?? $item->image,
+                    'image' => $item->image_resolved,
                     'updated_at' => $item->updated_at,
                 ])->values(),
+
             ];
         });
     }
-
     public function home(int $app_id)
     {
         return Cache::tags(['items'])->remember("home_{$app_id}", 300, function () use ($app_id) {
             return Item::where('app_id', $app_id)
                 ->where('entity_name', 'establishment')
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'item')->orderBy('position'),
+                ])
                 ->latest()
                 ->limit(20)
-                ->get();
+                ->get()
+                ->map(function ($item) {
+                    return [
+                        'id' => $item->id,
+                        'entity_id' => $item->entity_id,
+                        'type' => 'item',
+                        'name' => $item->name,
+                        'slug' => $item->slug,
+                        'price' => $item->price,
+                        'item_type' => $item->type,
+                        'image' => $item->image_resolved,
+                        'updated_at' => $item->updated_at,
+                    ];
+                })
+
+                ->values();
         });
     }
+
 
     /* =======================================================
      | SHOW / VIEW
@@ -171,12 +206,42 @@ class ItemController extends Controller
 
     public function show(int $id)
     {
-        $this->ensureAuth('item_view');
 
-        return response()->json(
-            Item::with('files')->findOrFail($id)
-        );
+        $item = Item::with('files')->findOrFail($id);
+
+        return response()->json([
+            'id' => $item->id,
+            'name' => $item->name,
+            'slug' => $item->slug,
+            'type' => $item->type,
+            'price' => $item->price,
+            'stock' => $item->stock,
+            'status' => $item->status,
+            'duration' => $item->duration,
+            'description' => $item->description,
+            'category' => $item->category,
+            'subcategory' => $item->subcategory,
+            'brand' => $item->brand,
+            'availability_start' => $item->availability_start,
+            'availability_end' => $item->availability_end,
+            'discount' => $item->discount,
+            'expiration_date' => $item->expiration_date,
+            'limited_by_user' => $item->limited_by_user,
+            'is_featured' => $item->is_featured,
+            'notes' => $item->notes,
+
+            'image' => $item->image_resolved,
+
+            'files' => $item->files->map(fn($file) => [
+                'id' => $file->id,
+                'type' => $file->type,
+                'public_url' => $file->public_url,
+                'is_primary' => $file->is_primary ?? false,
+            ])->values(),
+        ]);
     }
+
+
 
     public function view(string $slug)
     {
@@ -227,7 +292,7 @@ class ItemController extends Controller
         $this->ensureAuth('item_create');
         $user = Auth::user();
 
-        $data = $request->validate([
+        $validator = Validator::make($request->all(), [
             'app_id' => 'required|exists:applications,id',
             'name' => 'required|string|max:255',
             'type' => 'required|string|max:100',
@@ -235,26 +300,51 @@ class ItemController extends Controller
             'status' => 'required|boolean',
             'entity_id' => 'required|integer',
             'entity_name' => 'required|string|max:100',
-        ], $this->messages());
 
-        return DB::transaction(function () use ($data, $user) {
+            'duration' => 'nullable|integer|min:0',
+            'description' => 'nullable|string',
+            'category' => 'nullable|string|max:255',
+            'subcategory' => 'nullable|string|max:255',
+            'brand' => 'nullable|string|max:255',
+            'notes' => 'nullable|string',
+
+            'image' => 'nullable|image|max:5120',
+        ], $this->validationMessages());
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        return DB::transaction(function () use ($request, $user) {
 
             $item = Item::create([
-                ...$data,
-                'slug' => $this->generateSlug($data['name']),
+                ...$request->except(['image']),
+                'slug' => $this->generateSlug($request->name),
                 'user_id' => $user->id,
                 'created_by' => $user->id,
                 'updated_by' => $user->id,
             ]);
 
+            if ($request->hasFile('image')) {
+                File::storeOne(
+                    $request->file('image'),
+                    'item',
+                    $item->id,
+                    'image',
+                    $item->app_id,
+                    $user->id
+                );
+            }
+
             $this->clearItemCache();
 
             return response()->json([
                 'message' => 'Item cadastrado com sucesso.',
-                'item' => $item,
+                'item' => $item->load('files'),
             ], 201);
         });
     }
+
 
     public function storeBulk(Request $request)
     {
@@ -291,36 +381,143 @@ class ItemController extends Controller
             ], 201);
         });
     }
-
-    /* =======================================================
-     | UPDATE / DELETE
-     ======================================================= */
-
     public function update(Request $request, int $id)
     {
         $this->ensureAuth('item_update');
-        $item = Item::findOrFail($id);
 
-        $data = $request->validate([
-            'name' => 'nullable|string|max:255',
-            'price' => 'nullable|numeric|min:0',
-            'status' => 'nullable|boolean',
-        ]);
+        $item = \App\Models\Item::with('files')->findOrFail($id);
 
-        if (!empty($data['name'])) {
-            $data['slug'] = $this->generateSlug($data['name'], $item->id);
+        $validator = \Illuminate\Support\Facades\Validator::make(
+            $request->all(),
+            [
+                'name' => 'nullable|string|max:255',
+                'type' => 'nullable|string|max:50',
+                'price' => 'nullable|numeric|min:0',
+                'stock' => 'nullable|integer|min:0',
+                'status' => 'nullable|boolean',
+                'duration' => 'nullable|integer|min:0',
+                'description' => 'nullable|string',
+                'category' => 'nullable|string|max:255',
+                'subcategory' => 'nullable|string|max:255',
+                'brand' => 'nullable|string|max:255',
+                'availability_start' => 'nullable|date',
+                'availability_end' => 'nullable|date',
+                'is_featured' => 'nullable|boolean',
+                'discount' => 'nullable|numeric|min:0',
+                'expiration_date' => 'nullable|date',
+                'limited_by_user' => 'nullable|boolean',
+                'notes' => 'nullable|string',
+                'image' => 'nullable|image|max:5120',
+                'remove_image' => 'nullable|boolean',
+            ],
+            $this->validationMessages()
+        );
+
+        if ($validator->fails()) {
+            return response()->json([
+                'error' => 'Erro de validação.',
+                'errors' => $validator->errors(),
+            ], 422);
         }
 
-        $item->update($data);
+        try {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $item) {
 
-        Interaction::registerUpdate($item, Auth::user(), $data);
-        $this->clearItemCache();
+                $data = $request->only([
+                    'name',
+                    'type',
+                    'price',
+                    'stock',
+                    'duration',
+                    'description',
+                    'category',
+                    'subcategory',
+                    'brand',
+                    'availability_start',
+                    'availability_end',
+                    'discount',
+                    'expiration_date',
+                    'notes',
+                ]);
 
-        return response()->json([
-            'message' => 'Item atualizado com sucesso.',
-            'item' => $item,
-        ]);
+                if ($request->has('status')) {
+                    $parsed = filter_var($request->input('status'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $data['status'] = $parsed ?? (bool) $item->status;
+                }
+
+                if ($request->has('is_featured')) {
+                    $parsed = filter_var($request->input('is_featured'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $data['is_featured'] = $parsed ?? (bool) $item->is_featured;
+                }
+
+                if ($request->has('limited_by_user')) {
+                    $parsed = filter_var($request->input('limited_by_user'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                    $data['limited_by_user'] = $parsed ?? (bool) $item->limited_by_user;
+                }
+
+                $item->fill($data);
+
+                if ($request->filled('name')) {
+                    $item->slug = $this->generateSlug($request->input('name'), $item->id);
+                }
+
+                $item->updated_by = \Illuminate\Support\Facades\Auth::id();
+                $item->save();
+
+                $removeImage = filter_var($request->input('remove_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+
+                if ($removeImage) {
+                    $item->files()
+                        ->where('entity_name', 'item')
+                        ->where('type', 'image')
+                        ->delete();
+
+                    $item->image = null;
+                    $item->save();
+                }
+
+                if ($request->hasFile('image')) {
+                    $item->files()
+                        ->where('entity_name', 'item')
+                        ->where('type', 'image')
+                        ->delete();
+
+                    \App\Models\File::storeOne(
+                        $request->file('image'),
+                        'item',
+                        $item->id,
+                        'image',
+                        $item->app_id,
+                        \Illuminate\Support\Facades\Auth::id()
+                    );
+                }
+
+                $this->clearItemCache();
+
+                return response()->json([
+                    'message' => 'Item atualizado com sucesso.',
+                    'item' => $item->load('files'),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('[ITEM UPDATE] ERRO FINAL', [
+                'item_id' => $id,
+                'user_id' => \Illuminate\Support\Facades\Auth::id(),
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+
+            return response()->json([
+                'error' => 'Erro interno.',
+            ], 500);
+        }
     }
+
+
+
+
+
 
     public function destroy(int $id)
     {
