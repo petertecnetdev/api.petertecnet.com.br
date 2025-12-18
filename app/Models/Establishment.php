@@ -279,7 +279,7 @@ class Establishment extends Model
                 'user_id' => $lastView->id,
                 'user_name' => $lastView->user_name,
                 'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-// avatar aqui ainda Ã© coluna antiga; pode ser migrado depois para files
+// avatar aqui ainda é coluna antiga; pode ser migrado depois para files
                 'avatar' => $lastView->avatar,
                 'email' => $lastView->email,
             ] : null;
@@ -741,42 +741,52 @@ class Establishment extends Model
     }
 
     public static function findForView(string $slug): self
-    {
-        return self::where('slug', $slug)
-            ->with([
-                'files',
-                'logoFile',
-                'backgroundFile',
-                'user' => function ($q) {
-                    $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                        ->with([
-                            'avatarFile:id,entity_id,entity_name,type,public_url',
-                            'files',
-                        ]);
-                },
-                'employers' => function ($q) {
-                    $q->with([
-                        'user' => function ($uq) {
-                            $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                                ->with([
-                                    'avatarFile:id,entity_id,entity_name,type,public_url',
-                                    'files',
-                                ]);
-                        },
-                        'files',
-                    ]);
-                },
-                'items' => function ($q) {
-                    $q->select('id', 'entity_id', 'name', 'slug', 'price', 'type')
-                        ->with([
-                            'files',
-                        ]);
-                },
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-            ->firstOrFail();
-    }
+{
+    return self::where('slug', $slug)
+        ->with([
+            'files',
+            'logoFile',
+            'backgroundFile',
+
+            'user' => function ($q) {
+                $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                  ->with([
+                      'avatarFile:id,entity_id,entity_name,type,public_url',
+                      'files',
+                  ]);
+            },
+
+            'employers' => function ($q) {
+                $q->with([
+                    'user' => function ($uq) {
+                        $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                           ->with([
+                               'avatarFile:id,entity_id,entity_name,type,public_url',
+                               'files',
+                           ]);
+                    },
+                    'files' => fn ($fq) =>
+                        $fq->where('entity_name', 'employer')
+                           ->orderBy('position'),
+                ]);
+            },
+
+            // ? ÚNICA CORREÇÃO REAL
+            'items' => function ($q) {
+                $q->where('entity_name', 'establishment')
+                  ->with([
+                      'files' => fn ($fq) =>
+                          $fq->where('entity_name', 'item')
+                             ->orderBy('position'),
+                  ])
+                  ->orderByDesc('updated_at');
+            },
+
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+        ->firstOrFail();
+}
 
     public function toViewPayload(): array
     {

@@ -73,13 +73,20 @@ Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.go
 Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/', [UserController::class, 'list'])->name('user.list');
     Route::get('/search', [UserController::class, 'search'])->name('user.search');
-    Route::post('/find-for-employer', [UserController::class, 'findForEmployer'])->name('user.findForEmployer');
+
+    Route::post('/find-for-employer', [UserController::class, 'findForEmployer'])
+        ->name('user.findForEmployer');
+
+    Route::post('/find-for-order', [UserController::class, 'findForOrder'])
+        ->name('user.findForOrder');
+
     Route::get('/show/{id}', [UserController::class, 'show'])->name('user.show');
     Route::get('/{userName}', [UserController::class, 'view'])->name('user.view');
     Route::post('/new', [UserController::class, 'store'])->name('user.store');
     Route::post('/{user}', [UserController::class, 'update'])->name('user.update');
     Route::delete('/{id}', [UserController::class, 'destroy'])->name('user.destroy');
 });
+
 
 /*
 |--------------------------------------------------------------------------
@@ -256,19 +263,18 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
 
 
 
-
 /*
 |--------------------------------------------------------------------------
 | ITEMS
 |--------------------------------------------------------------------------
 */
+
+// ?? ROTAS PÚBLICAS (leitura)
 Route::prefix('item')->middleware(['api'])->group(function () {
 
-    // ?? LISTAGEM FULL FLEX (slug OU id)
     Route::get('/list-by-entity/{identifier}', [ItemController::class, 'listByEntity'])
         ->name('item.listByEntity');
 
-    // ?? SLUG ONLY (mantido por compatibilidade)
     Route::get('/list-by-entity-slug/{slug}', [ItemController::class, 'listByEntitySlug'])
         ->name('item.listByEntitySlug');
 
@@ -289,13 +295,37 @@ Route::prefix('item')->middleware(['api'])->group(function () {
         ->where('slug', '[A-Za-z0-9\-]+')
         ->name('item.view');
 
-    Route::get('/{id}', [ItemController::class, 'show'])
-        ->whereNumber('id')
-        ->name('item.show');
-
     Route::get('/home/{app_id}', [ItemController::class, 'home'])
         ->whereNumber('app_id')
         ->name('item.home');
+
+    Route::get('/{id}', [ItemController::class, 'show'])
+        ->whereNumber('id')
+        ->name('item.show');
+});
+
+// ?? ROTAS PROTEGIDAS (escrita)
+Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
+
+    Route::post('/', [ItemController::class, 'store'])
+        ->name('item.store');
+
+    Route::post('/bulk', [ItemController::class, 'storeBulk'])
+        ->name('item.storeBulk');
+
+    Route::post('/{id}', [ItemController::class, 'update'])
+        ->whereNumber('id')
+        ->name('item.update');
+
+    Route::delete('/{id}', [ItemController::class, 'destroy'])
+        ->whereNumber('id')
+        ->name('item.destroy');
+
+    Route::post('/increase-prices', [ItemController::class, 'increasePricesByPercentage'])
+        ->name('item.increasePricesByPercentage');
+
+    Route::post('/decrease-prices', [ItemController::class, 'decreasePricesByPercentage'])
+        ->name('item.decreasePricesByPercentage');
 });
 
 // ?? PRIVATE (auth required)

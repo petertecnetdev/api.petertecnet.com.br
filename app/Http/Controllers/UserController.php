@@ -2,684 +2,492 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
-use App\Models\{User, Interaction, File, Profile};
+use App\Models\{
+    User,
+    Profile,
+    Interaction,
+    File
+};
 use App\Mail\WelcomeMail;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\{
+    Auth,
+    Log,
+    Validator,
+    Mail,
+    DB
+};
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Mail;
-use Intervention\Image\Facades\Image;
-use Illuminate\Support\Facades\DB;
 
-
-class UserController extends Controller
+class UserController extends ApiController
 {
-    /**
-     * Retorna mensagens de validação personalizadas.
-     *
-     * @return array
-     */
-    protected function getValidationMessages()
+    /* =======================================================
+     | HELPERS
+     ======================================================= */
+
+    protected function validationMessages(): array
     {
         return [
-            'first_name.required' => 'O campo primeiro nome é obrigatório.',
-            'first_name.string' => 'O campo primeiro nome deve conter texto válido.',
-            'first_name.max' => 'O campo primeiro nome pode ter no máximo 255 caracteres.',
-
-            'last_name.string' => 'O campo sobrenome deve conter texto válido.',
-            'last_name.max' => 'O campo sobrenome pode ter no máximo 255 caracteres.',
-
-            'user_name.required' => 'O campo nome de usuário é obrigatório.',
-            'user_name.string' => 'O campo nome de usuário deve conter texto válido.',
-            'user_name.max' => 'O nome de usuário pode ter no máximo 255 caracteres.',
-            'user_name.unique' => 'Este nome de usuário já está sendo utilizado por outro usuário.',
-
-            'email.required' => 'O campo e-mail é obrigatório.',
-            'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
-            'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário.',
-
-            'avatar.image' => 'O arquivo enviado deve ser uma imagem.',
-            'avatar.mimes' => 'O avatar deve ter um formato de imagem válido (jpeg, png, jpg ou gif).',
-            'avatar.max' => 'O tamanho máximo do arquivo de avatar é de 2MB.',
-
-            'cpf.string' => 'O campo CPF deve conter texto válido.',
-            'cpf.max' => 'O CPF pode ter no máximo 20 caracteres.',
-
-            'address.string' => 'O campo endereço deve conter texto válido.',
-            'address.max' => 'O campo endereço pode ter no máximo 255 caracteres.',
-
-            'phone.string' => 'O campo telefone deve conter texto válido.',
-            'phone.max' => 'O telefone pode ter no máximo 20 caracteres.',
-
-            'city.string' => 'O campo cidade deve conter texto válido.',
-            'city.max' => 'O campo cidade pode ter no máximo 255 caracteres.',
-
-            'uf.string' => 'O campo UF deve conter texto válido.',
-            'uf.max' => 'O campo UF deve ter no máximo 2 caracteres.',
-
-            'postal_code.string' => 'O campo CEP deve conter texto válido.',
-            'postal_code.max' => 'O campo CEP pode ter no máximo 20 caracteres.',
-
-            'birthdate.date' => 'O campo data de nascimento deve ser uma data válida.',
-
-            'gender.string' => 'O campo gênero deve conter texto válido.',
-            'gender.max' => 'O campo gênero pode ter no máximo 20 caracteres.',
-
-            'occupation.string' => 'O campo ocupação deve conter texto válido.',
-            'occupation.max' => 'O campo ocupação pode ter no máximo 255 caracteres.',
-
-            'about.string' => 'O campo sobre deve conter texto válido.',
-            'about.max' => 'O campo sobre pode ter no máximo 500 caracteres.',
-
-            'is_barber.boolean' => 'O campo barbeiro deve ser verdadeiro ou falso.',
-
-            'password.required' => 'O campo senha é obrigatório.',
-            'password.min' => 'A senha deve ter no mínimo 6 caracteres.',
-            'password.confirmed' => 'A confirmação da senha não coincide.',
-
-            'reset_password_code.string' => 'O código de redefinição deve conter texto válido.',
-            'reset_password_expires_at.date' => 'A data de expiração do código deve ser uma data válida.',
-
-            'profile_id.numeric' => 'O campo perfil deve ser um número válido.',
-
-            'newsletter_subscription.boolean' => 'O campo de inscrição na newsletter deve ser verdadeiro ou falso.',
-
-            'ticket_purchases.numeric' => 'O campo de compras de ingressos deve ser um número.',
-            'account_balance.numeric' => 'O campo saldo da conta deve ser um número.',
-
-            'is_producer.boolean' => 'O campo produtor deve ser verdadeiro ou falso.',
-            'is_participant.boolean' => 'O campo participante deve ser verdadeiro ou falso.',
-            'is_promoter.boolean' => 'O campo promotor deve ser verdadeiro ou falso.',
-            'is_barbershoper.boolean' => 'O campo barbearia deve ser verdadeiro ou falso.',
-            'is_partner.boolean' => 'O campo parceiro deve ser verdadeiro ou falso.',
-            'is_ticket_seller.boolean' => 'O campo vendedor de ingressos deve ser verdadeiro ou falso.',
-
-            'extra_info.string' => 'O campo informações extras deve conter texto válido.',
+            'first_name.required' => 'O campo primeiro nome � obrigat�rio.',
+            'first_name.string' => 'O campo primeiro nome deve conter texto v�lido.',
+            'first_name.max' => 'O campo primeiro nome pode ter no m�ximo 255 caracteres.',
+            'last_name.string' => 'O campo sobrenome deve conter texto v�lido.',
+            'last_name.max' => 'O campo sobrenome pode ter no m�ximo 255 caracteres.',
+            'user_name.required' => 'O campo nome de usu�rio � obrigat�rio.',
+            'user_name.string' => 'O campo nome de usu�rio deve conter texto v�lido.',
+            'user_name.max' => 'O nome de usu�rio pode ter no m�ximo 255 caracteres.',
+            'user_name.unique' => 'Este nome de usu�rio j� est� em uso.',
+            'email.required' => 'O campo e-mail � obrigat�rio.',
+            'email.email' => 'O e-mail informado � inv�lido.',
+            'email.unique' => 'Este e-mail j� est� em uso.',
+            'avatar.image' => 'O avatar deve ser uma imagem v�lida.',
+            'avatar.max' => 'O avatar pode ter no m�ximo 4MB.',
+            'q.required' => 'Voc� precisa informar algo para buscar.',
+            'q.string' => 'O termo de busca deve ser texto.',
+            'q.max' => 'O termo de busca pode ter no m�ximo 255 caracteres.',
         ];
     }
 
-
-    /**
-     * Obtém o usuário autenticado ou retorna erro.
-     *
-     * @return User|\Illuminate\Http\JsonResponse
-     */
-    protected function getAuthenticatedUser()
+    protected function authUser(): User
     {
-        $user = Auth::user();
-        if (!$user) {
-            Log::error('Usuário não autenticado.');
-            abort(response()->json(['error' => 'Usuário não autenticado.'], 401));
+        if (!Auth::check()) {
+            abort(401, 'Usu�rio n�o autenticado.');
         }
-        return $user;
+
+        return Auth::user();
     }
 
-    /**
-     * Atualiza os detalhes do usuário.
-     *
-     * @param Request $request
-     * @param int $userId
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function update(Request $request, $userId)
+    /* =======================================================
+     | CRUD
+     ======================================================= */
+
+    public function list()
     {
         try {
-            Log::info('Iniciando atualização do usuário.', ['userId' => $userId]);
+            $user = $this->authUser();
 
-            $currentUser = Auth::user();
-            if (!$currentUser) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            if (!$user->hasPermission('user_list')) {
+                return response()->json(['error' => 'Sem permiss�o para listar usu�rios.'], 403);
             }
 
-            // Permissão
-            if ((int) $currentUser->id !== (int) $userId) {
-                if (!method_exists($currentUser, 'hasPermission') || !$currentUser->hasPermission('user_edit')) {
-                    return response()->json(['error' => 'Você não tem permissão para atualizar este usuário.'], 403);
-                }
-            }
+            Interaction::register('list', $user, $user);
 
-            // Validação
-            $validator = Validator::make($request->all(), [
-                'first_name' => 'nullable|string|max:255',
-                'last_name' => 'nullable|string|max:255',
-                'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $userId,
-                'email' => 'nullable|email',
-                'cpf' => 'nullable|string|max:20',
-                'address' => 'nullable|string|max:255',
-                'phone' => 'nullable|string|max:20',
-                'city' => 'nullable|string|max:255',
-                'uf' => 'nullable|string|max:2',
-                'postal_code' => 'nullable|string|max:20',
-                'birthdate' => 'nullable|date',
-                'gender' => 'nullable|string|max:20',
-                'occupation' => 'nullable|string|max:255',
-                'about' => 'nullable|string|max:500',
-                'is_barber' => 'nullable|boolean',
-                'avatar' => 'nullable|image|max:4096',
+            return response()->json([
+                'users' => User::with('profile')->paginate(20),
+                'profiles' => Profile::all(),
             ]);
+
+        } catch (\Throwable $e) {
+            Log::error('User.list', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao listar usu�rios.'], 500);
+        }
+    }
+
+    public function show($id)
+    {
+        try {
+            $auth = $this->authUser();
+            $user = User::with(['profile', 'files'])->findOrFail($id);
+
+            Interaction::registerView($user, $auth);
+
+            return response()->json(['user' => $user]);
+
+        } catch (\Throwable $e) {
+            Log::error('User.show', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao carregar usu�rio.'], 500);
+        }
+    }
+
+    public function store(Request $request)
+    {
+        try {
+            $validator = Validator::make($request->all(), [
+                'first_name' => 'required|string|max:255',
+                'email' => 'required|email|unique:users,email',
+            ], $this->validationMessages());
 
             if ($validator->fails()) {
                 return response()->json(['errors' => $validator->errors()], 422);
             }
 
-            DB::beginTransaction();
-
-            $userToUpdate = User::findOrFail($userId);
-            $validated = $validator->validated();
-
-            // UPDATE dos campos normais
-            foreach ($validated as $key => $value) {
-                if ($key !== 'avatar') {
-                    $userToUpdate->{$key} = $value;
-                }
-            }
-
-            // ============================
-            // AVATAR (COMO ESTAMOS FAZENDO EM ESTABLISHMENT)
-            // ============================
-            if ($request->hasFile('avatar')) {
-
-                $file = File::storeOne(
-                    file: $request->file('avatar'),
-                    entityName: 'user',
-                    entityId: $userToUpdate->id,
-                    type: 'avatar',
-                    appId: null,
-                    createdBy: $currentUser->id
-                );
-
-                $userToUpdate->avatar = $file->public_url;
-            }
-
-            $userToUpdate->save();
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Usuário atualizado com sucesso.',
-                'user' => $userToUpdate->refresh()
-            ], 200);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            Log::error('Erro inesperado ao atualizar usuário.', [
-                'userId' => $userId,
-                'exception' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro inesperado ao atualizar usuário.'], 500);
-        }
-    }
-
-
-    /**
-     * Processa e armazena o avatar do usuário.
-     *
-     * @param \Illuminate\Http\UploadedFile $avatar
-     * @param User $user
-     * @return void
-     */
-    protected function processAvatar($avatar, $user)
-    {
-        $userId = $user->id;
-        $extension = $avatar->getClientOriginalExtension();
-        $avatarName = $userId . '-' . time() . '.' . $extension;
-        $destinationPath = public_path('images');
-
-        // Salva a imagem original
-        $avatar->move($destinationPath, $avatarName);
-
-        // Redimensiona a imagem para 512x512 mantendo a proporção
-        $image = Image::make($destinationPath . '/' . $avatarName);
-        $image->resize(512, 512, function ($constraint) {
-            $constraint->aspectRatio();
-        });
-        $image->save();
-
-        // Exclui avatar anterior se existir
-        if ($user->avatar) {
-            File::delete(public_path($user->avatar));
-        }
-
-        // Atualiza o caminho do avatar no banco de dados
-        $user->avatar = 'images/' . $avatarName;
-    }
-
-    /**
-     * Cria um novo usuário.
-     *
-     * @param Request $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function store(Request $request)
-    {
-        try {
-            $validator = Validator::make($request->all(), [
-                'first_name' => 'required',
-                'email' => 'required|email|unique:users',
-            ], $this->getValidationMessages());
-
-            if ($validator->fails()) {
-                return response()->json(['error' => $validator->errors()->first()], 400);
-            }
-
-            $verificationCode = Str::random(6);
             $password = Str::random(10);
-            $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
+            $verificationCode = Str::random(6);
 
+            $username = Str::slug($request->first_name) . '-' . Str::random(4);
             while (User::where('user_name', $username)->exists()) {
-                $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
+                $username = Str::slug($request->first_name) . '-' . Str::random(4);
             }
 
-            $newUser = User::create([
-                'first_name' => $request->input('first_name'),
-                'email' => $request->input('email'),
-                'password' => bcrypt($password),
+            $user = User::create([
+                'first_name' => $request->first_name,
+                'email' => $request->email,
                 'user_name' => $username,
+                'password' => bcrypt($password),
                 'verification_code' => $verificationCode,
             ]);
 
-            Mail::to($newUser->email)->send(new WelcomeMail($verificationCode, $newUser, $password));
-            return response()->json(['message' => 'Novo usuário cadastrado com sucesso.'], 201);
+            Interaction::register('create', $user, $user);
 
-        } catch (\Exception $e) {
-            Log::error('Erro ao cadastrar novo usuário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao cadastrar o novo usuário.'], 500);
-        }
-    }
-
-    /**
-     * Lista todos os usuários e perfis.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function list()
-    {
-        try {
-            $this->getAuthenticatedUser();
-
-            $currentUser = Auth::user();
-            if (!$currentUser->hasPermission('user_list')) {
-                Log::error('Usuário não tem permissão para listar usuários.');
-                return response()->json(['error' => 'Você não tem permissão para listar usuários.'], 403);
-            }
-
-            $users = User::all();
-            $profiles = Profile::all();
-            return response()->json(['users' => $users, 'profiles' => $profiles], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao listar usuários: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao listar usuários.'], 500);
-        }
-    }
-
-    /**
-     * Exibe os detalhes de um usuário pelo ID.
-     *
-     * @param int $id
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function show($id)
-    {
-        try {
-            $this->getAuthenticatedUser();
-            $userToShow = User::findOrFail($id);
-            return response()->json(['user' => $userToShow], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Erro ao mostrar o perfil do usuário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao mostrar o perfil do usuário.'], 500);
-        }
-    }
-
-    /**
-     * Exibe o perfil do usuário pelo user_name, incluindo produções ordenadas.
-     *
-     * @param string $userName
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function view($userName)
-    {
-        try {
-            $authUser = Auth::user();
-
-            $user = User::with([
-                'employer.establishment.items:id,entity_id,name,slug,price,type',
-                'employer.establishment.orders.client:id,first_name,last_name,user_name,avatar,email',
-                'employer.establishment.interactions.user:id,first_name,last_name,user_name,avatar,email',
-                'employer.orders.client:id,first_name,last_name,user_name,avatar,email',
-                'employer.interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-                ->where('user_name', $userName)
-                ->firstOrFail();
-
-            // ============================================
-            // REGISTRA VIEW EM USER (como entidade isolada)
-            // ============================================
-            Interaction::registerView($user, $authUser);
-
-            // ============================================
-            // MÉTRICAS DO USER
-            // ============================================
-            $views = $user->views();
-            $totalViews = $views->count();
-            $uniqueUsers = $views->distinct('user_id')->count('user_id');
-
-            $interactionSummary = [
-                'total_views' => $totalViews,
-                'unique_users' => $uniqueUsers,
-                'last_view_user' => $views->latest()->first()?->user,
-            ];
-
-            // ============================================
-            // USER COMO EMPLOYER? → carrega tudo igual EmployerView
-            // ============================================
-            $employer = $user->employer;
-
-            $metrics = null;
-            $colleagues = [];
-            $ordersSummary = null;
-            $topItemAndClient = null;
-            $userInteractions = [];
-
-            if ($employer) {
-                $employer->refreshViewMetrics($authUser);
-
-                $metrics = $employer->metrics;
-                $colleaguesData = $employer->colleagues();
-                $colleagues = $colleaguesData['list'] ?? [];
-                $ordersSummary = $employer->ordersSummary();
-                $userInteractions = $employer->userInteractions();
-                $topItemAndClient = $employer->topItemAndClient();
-            }
+            Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $password));
 
             return response()->json([
+                'message' => 'Usu�rio criado com sucesso.',
                 'user' => $user,
-
-                // employer vinculado
-                'employer' => $employer,
-
-                // dados da barbearia (se existir)
-                'establishment' => $employer?->establishment,
-
-                // itens do estabelecimento vinculado
-                'items' => $employer?->establishment?->items ?? [],
-
-                // métricas completíssimas (se for employer)
-                'metrics' => $metrics,
-
-                // colegas (somente se employer)
-                'colleagues' => $colleagues,
-                'average_engagement_score' => $colleaguesData['average_engagement_score'] ?? 0,
-
-                // resumo de interações
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-
-                // resumo dos pedidos (se employer)
-                'orders_summary' => $ordersSummary,
-
-                // item mais atendido e melhor cliente
-                'top_item_and_client' => $topItemAndClient,
-
-                // outras categorias
-                'other_establishments' => $employer?->establishment?->otherEstablishments() ?? [],
-                'other_employers' => $employer?->establishment?->otherEmployers() ?? [],
-                'other_items' => $employer?->establishment?->otherItems() ?? [],
-
-            ], 200);
+            ], 201);
 
         } catch (\Throwable $e) {
-            \Log::error('[UserController::view] Erro ao carregar usuário', [
-                'user_name' => $userName,
-                'message' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Erro ao carregar usuário.'], 500);
+            Log::error('User.store', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao criar usu�rio.'], 500);
         }
     }
 
-    /**
-     * Deleta um usuário.
-     *
-     * @param int $userId
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function destroy($userId)
+    public function update(Request $request, User $user)
     {
         try {
-            $currentUser = $this->getAuthenticatedUser();
+            $current = $this->authUser();
 
-            if (!$currentUser->hasPermission('user_delete')) {
-                Log::error('Usuário não tem permissão para deletar este usuário.');
-                return response()->json(['error' => 'Você não tem permissão para deletar este usuário.'], 403);
+            if ($current->id !== $user->id && !$current->hasPermission('user_edit')) {
+                return response()->json(
+                    ['error' => 'Sem permiss�o para atualizar usu�rio.'],
+                    403,
+                    [],
+                    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+                );
             }
 
-            if ($currentUser->id == $userId) {
-                Log::error('Tentativa de auto-deleção detectada.');
-                return response()->json(['error' => 'Você não pode se auto-deletar.'], 403);
+            $validator = Validator::make($request->all(), [
+                'first_name' => 'nullable|string|max:255',
+                'last_name' => 'nullable|string|max:255',
+                'user_name' => 'nullable|string|max:255|unique:users,user_name,' . $user->id,
+                'email' => 'nullable|email|unique:users,email,' . $user->id,
+                'avatar' => 'nullable|image|max:4096',
+            ], $this->validationMessages());
+
+            if ($validator->fails()) {
+                return response()->json(
+                    ['errors' => $validator->errors()],
+                    422,
+                    [],
+                    JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+                );
             }
 
-            $userToDelete = User::findOrFail($userId);
-            $userToDelete->delete();
+            DB::beginTransaction();
 
-            Log::info('Usuário deletado com sucesso: ' . $userId);
-            return response()->json(['message' => 'Usuário deletado com sucesso.'], 200);
+            $changes = [];
 
-        } catch (\Exception $e) {
-            Log::error('Erro ao deletar o usuário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao deletar o usuário.'], 500);
+            foreach ($validator->validated() as $key => $value) {
+                if ($key !== 'avatar' && $user->{$key} !== $value) {
+                    $changes[$key] = [
+                        'from' => $user->{$key},
+                        'to' => $value,
+                    ];
+                    $user->{$key} = $value;
+                }
+            }
+
+            if ($request->hasFile('avatar')) {
+                $file = File::storeOne(
+                    file: $request->file('avatar'),
+                    entityName: 'user',
+                    entityId: $user->id,
+                    type: 'avatar',
+                    appId: null,
+                    createdBy: $current->id
+                );
+
+                $changes['avatar'] = [
+                    'from' => $user->avatar,
+                    'to' => $file->public_url,
+                ];
+
+                $user->avatar = $file->public_url;
+            }
+
+            $user->save();
+
+            Interaction::registerUpdate($user, $current, $changes);
+
+            DB::commit();
+
+            $fresh = $user->refresh()->toArray();
+            $fresh = $this->sanitizeUtf8Recursive($fresh);
+
+            return response()->json(
+                [
+                    'message' => 'Usu�rio atualizado com sucesso.',
+                    'user' => $fresh,
+                ],
+                200,
+                [],
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+            );
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Log::error('User.update', ['error' => $e->getMessage()]);
+
+            return response()->json(
+                ['error' => 'Erro ao atualizar usu�rio.'],
+                500,
+                [],
+                JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
+            );
         }
     }
 
+    private function sanitizeUtf8Recursive($value)
+    {
+        if (is_array($value)) {
+            $out = [];
+            foreach ($value as $k => $v) {
+                $kk = is_string($k) ? $this->sanitizeUtf8String($k) : $k;
+                $out[$kk] = $this->sanitizeUtf8Recursive($v);
+            }
+            return $out;
+        }
+
+        if (is_string($value)) {
+            return $this->sanitizeUtf8String($value);
+        }
+
+        return $value;
+    }
+
+    private function sanitizeUtf8String(string $value): string
+    {
+        if (!mb_check_encoding($value, 'UTF-8')) {
+            $value = mb_convert_encoding($value, 'UTF-8', 'UTF-8, ISO-8859-1, Windows-1252');
+        }
+
+        $clean = iconv('UTF-8', 'UTF-8//IGNORE', $value);
+        return $clean !== false ? $clean : $value;
+    }
+    public function destroy($id)
+    {
+        try {
+            $current = $this->authUser();
+
+            if (!$current->hasPermission('user_delete')) {
+                return response()->json(['error' => 'Sem permiss�o para excluir usu�rio.'], 403);
+            }
+
+            if ($current->id == $id) {
+                return response()->json(['error' => 'Voc� n�o pode se auto-excluir.'], 403);
+            }
+
+            $user = User::findOrFail($id);
+
+            Interaction::register('delete', $user, $current);
+
+            $user->delete();
+
+            return response()->json(['message' => 'Usu�rio exclu�do com sucesso.']);
+
+        } catch (\Throwable $e) {
+            Log::error('User.destroy', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao excluir usu�rio.'], 500);
+        }
+    }
+
+    /* =======================================================
+     | SEARCH
+     ======================================================= */
 
     public function search(Request $request)
     {
-        Log::info('User.search start', [
-            'user_id' => Auth::id(),
-            'query' => $request->all(),
-        ]);
-
         try {
-            // Autenticação
-            $this->getAuthenticatedUser();
+            $auth = $this->authUser();
 
-            // validação — parâmetro único "q"
             $request->validate([
                 'q' => 'required|string|max:255',
-            ], [
-                'q.required' => 'Você precisa informar algo para buscar.',
-                'q.string' => 'O termo de busca deve ser uma string.',
-                'q.max' => 'O termo de busca pode ter no máximo 255 caracteres.',
-            ]);
+            ], $this->validationMessages());
 
-            $q = $request->input('q');
-            Log::debug('User.search: termo de busca', ['q' => $q]);
+            $q = $request->q;
 
-            // Monta a query dinâmica
-            $users = User::query()
-                ->where(function ($builder) use ($q) {
-                    // busca exata por ID
-                    if (ctype_digit($q)) {
-                        $builder->orWhere('id', (int) $q);
-                    }
-                    // busca parcial por email, cpf, nome
-                    $builder->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('cpf', 'like', "%{$q}%")
-                        ->orWhere('first_name', 'like', "%{$q}%")
-                        ->orWhere('last_name', 'like', "%{$q}%");
-                })
-                ->with('profile') // se quiser trazer relacionamento
+            $users = User::where(function ($query) use ($q) {
+                if (ctype_digit($q)) {
+                    $query->orWhere('id', (int) $q);
+                }
+
+                $query->orWhere('email', 'like', "%{$q}%")
+                    ->orWhere('cpf', 'like', "%{$q}%")
+                    ->orWhere('first_name', 'like', "%{$q}%")
+                    ->orWhere('last_name', 'like', "%{$q}%");
+            })
+                ->with('profile')
                 ->orderBy('first_name')
                 ->paginate(15);
 
-            Log::info('User.search success', [
-                'q' => $q,
-                'count' => $users->total(),
-                'pages' => $users->lastPage(),
-            ]);
+            Interaction::register('search', $auth, $auth, ['query' => $q]);
 
             return response()->json([
-                'message' => 'Busca concluída com sucesso.',
-                'query' => $q,
+                'message' => 'Busca conclu�da.',
                 'results' => $users,
-            ], 200);
-
-        } catch (ValidationException $ve) {
-            Log::warning('ValidationException em User.search', [
-                'errors' => $ve->errors(),
-                'query' => $request->all(),
             ]);
-            return response()->json(['errors' => $ve->errors()], 422);
 
-        } catch (\Exception $e) {
-            Log::error('Exception em User.search', [
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+        } catch (ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('User.search', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao buscar usu�rios.'], 500);
+        }
+    }
+
+    /* =======================================================
+     | VIEW (PROFILE + CONTEXTO)
+     ======================================================= */
+
+    public function view(string $userName)
+    {
+        try {
+            $auth = Auth::user();
+
+            $user = User::with([
+                'profile',
+                'files',
+                'employer.establishment.items.files',
+                'employer.establishment.files',
+            ])->where('user_name', $userName)->first();
+
+            if (!$user) {
+                return response()->json([
+                    'error' => 'Usu�rio n�o encontrado.',
+                ], 404);
+            }
+
+            Interaction::registerView($user, $auth);
+
             return response()->json([
-                'error' => 'Ocorreu um erro ao buscar usuários.',
-                'details' => $e->getMessage(),
+                'user' => $user,
+                'employer' => $user->employer,
+                'establishment' => $user->employer?->establishment,
+                'items' => $user->employer?->establishment?->items ?? [],
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('User.view', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'error' => 'Erro ao carregar perfil.',
             ], 500);
         }
     }
-public function findForEmployer(Request $request)
-{
-    Log::info('User.findForEmployer start', [
-        'auth_user_id' => Auth::id(),
-        'payload' => $request->all(),
-    ]);
 
-    try {
-        $this->getAuthenticatedUser();
+    /* =======================================================
+     | FIND FOR EMPLOYER
+     ======================================================= */
 
-        $validated = $request->validate([
-            'first_name' => 'nullable|string|max:255',
-            'email' => 'nullable|string|max:255',
-            'cpf' => 'nullable|string|max:20',
-            'phone' => 'nullable|string|max:20',
-            'user_name' => 'nullable|string|max:255',
-        ]);
+    public function findForEmployer(Request $request)
+    {
+        try {
+            $auth = $this->authUser();
 
-        if (
-            empty($validated['first_name']) &&
-            empty($validated['email']) &&
-            empty($validated['cpf']) &&
-            empty($validated['phone']) &&
-            empty($validated['user_name'])
-        ) {
-            return response()->json([
-                'error' => 'Informe ao menos um critério para buscar o usuário.'
-            ], 422);
-        }
-
-        $query = User::query()
-            ->with([
-                'profile',
-                'avatarFile',
-                'files',
-                'employer.establishment.files',
+            $validated = $request->validate([
+                'first_name' => 'nullable|string|max:255',
+                'email' => 'nullable|string|max:255',
+                'cpf' => 'nullable|string|max:20',
+                'phone' => 'nullable|string|max:20',
+                'user_name' => 'nullable|string|max:255',
             ]);
 
-        if (!empty($validated['first_name'])) {
-            $query->where('first_name', 'like', '%' . $validated['first_name'] . '%');
+            if (collect($validated)->filter()->isEmpty()) {
+                return response()->json(['error' => 'Informe ao menos um crit�rio.'], 422);
+            }
+
+            $users = User::with([
+                'profile',
+                'avatarFile',
+                'employer.establishment.files',
+            ])
+                ->when($validated['first_name'] ?? null, fn($q, $v) => $q->where('first_name', 'like', "%{$v}%"))
+                ->when($validated['email'] ?? null, fn($q, $v) => $q->where('email', 'like', "%{$v}%"))
+                ->when($validated['cpf'] ?? null, fn($q, $v) => $q->where('cpf', 'like', '%' . preg_replace('/\D/', '', $v) . '%'))
+                ->when($validated['phone'] ?? null, fn($q, $v) => $q->where('phone', 'like', '%' . preg_replace('/\D/', '', $v) . '%'))
+                ->when($validated['user_name'] ?? null, fn($q, $v) => $q->where('user_name', 'like', "%{$v}%"))
+                ->orderBy('first_name')
+                ->get();
+
+            Interaction::register('find_for_employer', $auth, $auth, $validated);
+
+            return response()->json([
+                'message' => 'Busca realizada com sucesso.',
+                'count' => $users->count(),
+                'users' => $users,
+            ]);
+
+        } catch (\Throwable $e) {
+            Log::error('User.findForEmployer', ['error' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro ao buscar usu�rio.'], 500);
         }
-
-        if (!empty($validated['email'])) {
-            $query->where('email', 'like', '%' . $validated['email'] . '%');
-        }
-
-        if (!empty($validated['cpf'])) {
-            $cpf = preg_replace('/[^0-9]/', '', $validated['cpf']);
-            $query->where('cpf', 'like', '%' . $cpf . '%');
-        }
-
-        if (!empty($validated['phone'])) {
-            $phone = preg_replace('/[^0-9]/', '', $validated['phone']);
-            $query->where('phone', 'like', '%' . $phone . '%');
-        }
-
-        if (!empty($validated['user_name'])) {
-            $query->where('user_name', 'like', '%' . $validated['user_name'] . '%');
-        }
-
-        $users = $query
-            ->orderBy('first_name')
-            ->get()
-            ->map(function (User $user) {
-
-                $avatar = $user->avatarFile?->public_url ?? $user->avatar;
-
-                $establishments = \App\Models\Employer::where('user_id', $user->id)
-                    ->with(['establishment.files'])
-                    ->get()
-                    ->map(function ($emp) {
-                        $est = $emp->establishment;
-                        if (!$est) return null;
-
-                        $logo = $est->files->firstWhere('type', 'logo')?->public_url;
-
-                        return [
-                            'employer_id' => $emp->id,
-                            'establishment_id' => $est->id,
-                            'name' => $est->name,
-                            'fantasy' => $est->fantasy,
-                            'slug' => $est->slug,
-                            'city' => $est->city,
-                            'uf' => $est->uf,
-                            'logo' => $logo,
-                            'role' => $emp->role,
-                        ];
-                    })
-                    ->filter()
-                    ->values();
-
-                return [
-                    'id' => $user->id,
-                    'first_name' => $user->first_name,
-                    'last_name' => $user->last_name,
-                    'user_name' => $user->user_name,
-                    'email' => $user->email,
-                    'cpf' => $user->cpf,
-                    'phone' => $user->phone,
-                    'city' => $user->city,
-                    'uf' => $user->uf,
-                    'avatar' => $avatar,
-                    'profile' => $user->profile,
-                    'is_employer' => $establishments->isNotEmpty(),
-                    'establishments' => $establishments,
-                    'created_at' => $user->created_at,
-                    'updated_at' => $user->updated_at,
-                ];
-            })
-            ->values();
-
-        return response()->json([
-            'message' => 'Busca realizada com sucesso.',
-            'count' => $users->count(),
-            'users' => $users,
-        ], 200);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json([
-            'errors' => $e->errors(),
-        ], 422);
-
-    } catch (\Throwable $e) {
-        Log::error('User.findForEmployer failed', [
-            'message' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'error' => 'Erro ao buscar usuário para associação.',
-        ], 500);
     }
-}
 
+    public function findForOrder(Request $request)
+    {
+        try {
+            $auth = $this->authUser();
 
+            $validated = $request->validate([
+                'q' => 'required|string|max:255',
+            ], [
+                'q.required' => 'Informe um termo para buscar o cliente.',
+                'q.string' => 'O termo de busca deve ser texto.',
+                'q.max' => 'O termo de busca pode ter no m�ximo 255 caracteres.',
+            ]);
+
+            $q = $validated['q'];
+
+            $users = User::query()
+                ->where(function ($query) use ($q) {
+                    if (ctype_digit($q)) {
+                        $query->orWhere('id', (int) $q);
+                    }
+
+                    $query->orWhere('email', 'like', "%{$q}%")
+                        ->orWhere('cpf', 'like', "%{$q}%")
+                        ->orWhere('phone', 'like', "%{$q}%")
+                        ->orWhere('first_name', 'like', "%{$q}%")
+                        ->orWhere('last_name', 'like', "%{$q}%")
+                        ->orWhere('user_name', 'like', "%{$q}%");
+                })
+                ->select([
+                    'id',
+                    'first_name',
+                    'last_name',
+                    'user_name',
+                    'email',
+                    'phone',
+                    'cpf',
+                    'avatar',
+                ])
+                ->orderBy('first_name')
+                ->limit(20)
+                ->get();
+
+            Interaction::register('find_for_order', $auth, $auth, [
+                'query' => $q,
+                'results' => $users->count(),
+            ]);
+
+            return response()->json([
+                'message' => 'Busca de clientes realizada com sucesso.',
+                'count' => $users->count(),
+                'users' => $users,
+            ], 200);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
+
+        } catch (\Throwable $e) {
+            Log::error('User.findForOrder', ['error' => $e->getMessage()]);
+
+            return response()->json([
+                'error' => 'Erro ao buscar usu�rio para o pedido.',
+            ], 500);
+        }
+    }
 
 }
