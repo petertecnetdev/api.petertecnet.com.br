@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\{
     Item,
     Establishment,
+    Employer,
     File,
     Interaction
 };
@@ -116,12 +117,11 @@ class ItemController extends Controller
     {
         return $this->listByEntity($slug);
     }
-
     public function listByEntity(string $identifier)
     {
         return Cache::remember("items_entity_{$identifier}", 300, function () use ($identifier) {
 
-            $establishment = Establishment::query()
+            $establishment = $establishment = Establishment::query()
                 ->when(
                     is_numeric($identifier),
                     fn($q) => $q->where('id', (int) $identifier),
@@ -130,17 +130,32 @@ class ItemController extends Controller
                 ->with([
                     'files' => fn($q) =>
                         $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo'),
+                            ->where('type', 'logo')
+                            ->orderBy('position'),
 
                     'items' => fn($q) =>
-                        $q->where('entity_name', 'establishment')
-                            ->with([
-                                'files' => fn($fq) =>
-                                    $fq->where('entity_name', 'item')
-                            ])
-                            ->orderByDesc('updated_at'),
+                        $q->with([
+                            'files' => fn($fq) =>
+                                $fq->where('entity_name', 'item')
+                                    ->orderBy('position'),
+                        ])->orderByDesc('updated_at'),
                 ])
                 ->firstOrFail();
+
+            // Map para o formato igual à home
+            $items = $establishment->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'entity_id' => $item->entity_id,
+                    'type' => 'item',
+                    'name' => $item->name,
+                    'slug' => $item->slug,
+                    'price' => $item->price,
+                    'item_type' => $item->type,
+                    'image' => $item->files->first()?->path_resolved ?? null,
+                    'updated_at' => $item->updated_at,
+                ];
+            })->values();
 
             return [
                 'message' => 'Itens listados com sucesso.',
@@ -151,9 +166,7 @@ class ItemController extends Controller
                     'slug' => $establishment->slug,
                     'city' => $establishment->city,
                     'uf' => $establishment->uf,
-                    'logo' =>
-                        $establishment->files->first()?->public_url
-                        ?? $establishment->logo,
+                    'logo' => $establishment->files->first()?->public_url ?? $establishment->logo,
                 ],
                 'items' => $establishment->items->map(fn($item) => [
                     'id' => $item->id,
@@ -162,16 +175,18 @@ class ItemController extends Controller
                     'price' => $item->price,
                     'type' => $item->type,
                     'duration' => $item->duration,
-                    'image' => $item->image_resolved,
+                    'image' => $item->image_url, // usa o accessor da model
                     'updated_at' => $item->updated_at,
                 ])->values(),
-
             ];
         });
     }
+
+
+
     public function home(int $app_id)
     {
-        return Cache::tags(['items'])->remember("home_{$app_id}", 300, function () use ($app_id) {
+        return Cache::remember("items:home:{$app_id}", 300, function () use ($app_id) {
             return Item::where('app_id', $app_id)
                 ->where('entity_name', 'establishment')
                 ->with([
@@ -194,10 +209,10 @@ class ItemController extends Controller
                         'updated_at' => $item->updated_at,
                     ];
                 })
-
                 ->values();
         });
     }
+
 
 
     /* =======================================================
@@ -245,22 +260,118 @@ class ItemController extends Controller
 
     public function view(string $slug)
     {
-        return Cache::tags(['items'])->remember("view_{$slug}", 300, function () use ($slug) {
+        $cacheKey = "view_item_{$slug}";
+        $ttl = 300;
 
+        $remember = function () use ($slug) {
             $item = Item::with([
-                'entity:id,name,slug,logo',
-                'files' => fn($q) => $q->where('entity_name', 'item'),
+                'entity:id,name,slug,logo,city,uf,background',
+                'files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position'),
             ])->where('slug', $slug)->firstOrFail();
 
             Interaction::registerView($item, Auth::user());
 
-            return [
-                'item' => $item,
-                'entity' => $item->entity,
-                'metrics' => $item->metrics,
+            $metrics = $item->metrics ?? [];
+
+            $interactionSummary = [
+                'views' => $metrics['views'] ?? 0,
+                'likes' => $metrics['likes'] ?? 0,
+                'favorites' => $metrics['favorites'] ?? 0,
             ];
-        });
+
+            $userInteractions = Auth::check()
+                ? Interaction::where('user_id', Auth::id())
+                    ->where('entity_type', 'Item')
+                    ->where('entity_id', $item->id)
+                    ->get()
+                : collect();
+
+            $ordersSummary = DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->join('items', 'items.id', '=', 'order_items.item_id')
+                ->where('order_items.item_id', $item->id)
+                ->selectRaw('COUNT(DISTINCT orders.id) as total_orders, COALESCE(SUM(items.price * order_items.quantity), 0) as total_amount')
+                ->first() ?? (object) ['total_orders' => 0, 'total_amount' => 0];
+
+            $otherItems = Item::where('entity_id', $item->entity_id)
+                ->where('id', '!=', $item->id)
+                ->with(['files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position')])
+                ->latest()
+                ->limit(10)
+                ->get()
+                ->map(fn($i) => [
+                    'id' => $i->id,
+                    'entity_id' => $i->entity_id,
+                    'type' => 'item',
+                    'name' => $i->name,
+                    'slug' => $i->slug,
+                    'price' => $i->price,
+                    'item_type' => $i->type,
+                    'image' => $i->files->first()?->path_resolved ?? null,
+                    'updated_at' => $i->updated_at,
+                ])
+                ->values();
+
+            $otherEstablishments = Establishment::where('id', '!=', $item->entity_id)
+                ->where('city', $item->entity->city)
+                ->where('uf', $item->entity->uf)
+                ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')->where('type', 'logo')->orderBy('position')])
+                ->latest()
+                ->limit(6)
+                ->get()
+                ->map(fn($est) => [
+                    'id' => $est->id,
+                    'name' => $est->name,
+                    'slug' => $est->slug,
+                    'logo' => $est->files->first()?->path_resolved ?? $est->logo ?? null,
+                    'city' => $est->city,
+                    'uf' => $est->uf,
+                    'updated_at' => $est->updated_at,
+                ]);
+
+            $itemEmployersQuery = Employer::with([
+                'user.files' => fn($q) => $q->where('entity_name', 'user')->where('type', 'avatar')
+            ])->where('establishment_id', $item->entity_id);
+
+            if ($item->type === 'service') {
+                $itemEmployersQuery->whereHas('services', fn($q) => $q->where('item_id', $item->id));
+            }
+
+            $otherEmployers = $itemEmployersQuery->limit(6)
+                ->get()
+                ->map(fn($employer) => [
+                    'employer_id' => $employer->id,
+                    'user_id' => $employer->user->id ?? null,
+                    'first_name' => $employer->user->first_name ?? null,
+                    'last_name' => $employer->user->last_name ?? null,
+                    'user_name' => $employer->user->user_name ?? null,
+                    'email' => $employer->user->email ?? null,
+                    'avatar' => $employer->user->files->first()?->path_resolved ?? $employer->user->avatar ?? null,
+                ]);
+
+            return response()->json([
+                'item' => $item,
+                'establishment' => $item->entity,
+                'metrics' => $metrics,
+                'interaction_summary' => $interactionSummary,
+                'user_interactions' => $userInteractions,
+                'orders_summary' => $ordersSummary,
+                'other_establishments' => $otherEstablishments,
+                'other_employers' => $otherEmployers,
+                'other_items' => $otherItems,
+                'top_employer' => null,
+            ]);
+        };
+
+        try {
+            return Cache::tags(['items'])->remember($cacheKey, $ttl, $remember);
+        } catch (\BadMethodCallException $e) {
+            return Cache::remember($cacheKey, $ttl, $remember);
+        }
     }
+
+
+
 
     /* =======================================================
      | SERVICES
@@ -381,11 +492,24 @@ class ItemController extends Controller
             ], 201);
         });
     }
-    public function update(Request $request, int $id)
+    public function update(\Illuminate\Http\Request $request, int $id)
     {
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INÍCIO', [
+            'item_id' => $id,
+            'user_id' => \Illuminate\Support\Facades\Auth::id(),
+            'payload_keys' => array_keys($request->all()),
+            'has_image' => $request->hasFile('image'),
+            'remove_image' => $request->input('remove_image'),
+        ]);
+
         $this->ensureAuth('item_update');
 
         $item = \App\Models\Item::with('files')->findOrFail($id);
+
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] ITEM CARREGADO', [
+            'item_id' => $item->id,
+            'app_id' => $item->app_id,
+        ]);
 
         $validator = \Illuminate\Support\Facades\Validator::make(
             $request->all(),
@@ -414,14 +538,45 @@ class ItemController extends Controller
         );
 
         if ($validator->fails()) {
+            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAÇÃO', [
+                'errors' => $validator->errors()->toArray(),
+            ]);
+
             return response()->json([
                 'error' => 'Erro de validação.',
                 'errors' => $validator->errors(),
             ], 422);
         }
 
+        $toMysqlDateTime = function ($value) {
+            if ($value === null)
+                return null;
+            $s = trim((string) $value);
+            if ($s === '')
+                return null;
+            $s = str_replace('T', ' ', $s);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/', $s)) {
+                $s .= ':00';
+            }
+            return $s;
+        };
+
         try {
-            return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $item) {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $item, $toMysqlDateTime, $id) {
+
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] TRANSACTION INICIADA', [
+                    'item_id' => $id,
+                ]);
+
+                static $allowedColumns = null;
+                if ($allowedColumns === null) {
+                    $cols = \Illuminate\Support\Facades\Schema::getColumnListing('items');
+                    $allowedColumns = array_fill_keys($cols, true);
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] COLUNAS PERMITIDAS CARREGADAS', [
+                        'columns' => $cols,
+                    ]);
+                }
 
                 $data = $request->only([
                     'name',
@@ -440,40 +595,64 @@ class ItemController extends Controller
                     'notes',
                 ]);
 
-                if ($request->has('status')) {
-                    $parsed = filter_var($request->input('status'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['status'] = $parsed ?? (bool) $item->status;
+                $data = array_intersect_key($data, $allowedColumns);
+
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] DADOS FILTRADOS', [
+                    'data' => $data,
+                ]);
+
+                if (isset($data['availability_start'])) {
+                    $data['availability_start'] = $toMysqlDateTime($data['availability_start']);
+                }
+                if (isset($data['availability_end'])) {
+                    $data['availability_end'] = $toMysqlDateTime($data['availability_end']);
                 }
 
-                if ($request->has('is_featured')) {
-                    $parsed = filter_var($request->input('is_featured'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['is_featured'] = $parsed ?? (bool) $item->is_featured;
+                if (isset($allowedColumns['status']) && $request->has('status')) {
+                    $data['status'] = $request->boolean('status', (bool) $item->status);
+                }
+                if (isset($allowedColumns['is_featured']) && $request->has('is_featured')) {
+                    $data['is_featured'] = $request->boolean('is_featured', (bool) $item->is_featured);
+                }
+                if (isset($allowedColumns['limited_by_user']) && $request->has('limited_by_user')) {
+                    $data['limited_by_user'] = $request->boolean('limited_by_user', (bool) $item->limited_by_user);
                 }
 
-                if ($request->has('limited_by_user')) {
-                    $parsed = filter_var($request->input('limited_by_user'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['limited_by_user'] = $parsed ?? (bool) $item->limited_by_user;
-                }
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] DADOS FINAIS PARA FILL', [
+                    'data' => $data,
+                ]);
 
                 $item->fill($data);
 
-                if ($request->filled('name')) {
+                if (isset($allowedColumns['slug']) && $request->filled('name')) {
                     $item->slug = $this->generateSlug($request->input('name'), $item->id);
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] SLUG GERADO', [
+                        'slug' => $item->slug,
+                    ]);
                 }
 
-                $item->updated_by = \Illuminate\Support\Facades\Auth::id();
+                if (isset($allowedColumns['updated_by'])) {
+                    $item->updated_by = \Illuminate\Support\Facades\Auth::id();
+                }
+
                 $item->save();
 
-                $removeImage = filter_var($request->input('remove_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] ITEM SALVO', [
+                    'item_id' => $item->id,
+                ]);
+
+                $removeImage = $request->boolean('remove_image', false);
 
                 if ($removeImage) {
-                    $item->files()
+                    $deleted = $item->files()
                         ->where('entity_name', 'item')
                         ->where('type', 'image')
                         ->delete();
 
-                    $item->image = null;
-                    $item->save();
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] IMAGEM REMOVIDA', [
+                        'deleted_count' => $deleted,
+                    ]);
                 }
 
                 if ($request->hasFile('image')) {
@@ -481,6 +660,11 @@ class ItemController extends Controller
                         ->where('entity_name', 'item')
                         ->where('type', 'image')
                         ->delete();
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] NOVA IMAGEM RECEBIDA', [
+                        'original_name' => $request->file('image')->getClientOriginalName(),
+                        'size' => $request->file('image')->getSize(),
+                    ]);
 
                     \App\Models\File::storeOne(
                         $request->file('image'),
@@ -494,9 +678,11 @@ class ItemController extends Controller
 
                 $this->clearItemCache();
 
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] CACHE LIMPO');
+
                 return response()->json([
                     'message' => 'Item atualizado com sucesso.',
-                    'item' => $item->load('files'),
+                    'item' => $item->fresh()->load('files'),
                 ]);
             });
         } catch (\Throwable $e) {
@@ -506,6 +692,7 @@ class ItemController extends Controller
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -513,9 +700,6 @@ class ItemController extends Controller
             ], 500);
         }
     }
-
-
-
 
 
 

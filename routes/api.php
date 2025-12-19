@@ -215,23 +215,19 @@ Route::prefix('establishment')->middleware(['api', 'auth:api'])->group(function 
 
     Route::post('/my/app', [EstablishmentController::class, 'listMyByApp'])->name('establishment.listMyByApp');
 });
-/*
-|--------------------------------------------------------------------------
-| ORDERS
-|--------------------------------------------------------------------------
-*/
 Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [OrderController::class, 'store'])
         ->name('order.store');
 
+    Route::post('/direct', [OrderController::class, 'storeDirect'])
+        ->name('order.storeDirect');
+
     Route::get('/list-by-entity-slug/{slug}', [OrderController::class, 'listByEntitySlug'])
         ->name('order.listByEntitySlug');
 
-
     Route::get('/listbyemployer', [OrderController::class, 'listByEmployer'])
         ->name('order.listByEmployer');
-
 
     Route::get('/view/{id}', [OrderController::class, 'view'])
         ->whereNumber('id')
@@ -250,6 +246,7 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
         ->name('order.updateOrderStatus');
 
 });
+
 
 /*
 |--------------------------------------------------------------------------

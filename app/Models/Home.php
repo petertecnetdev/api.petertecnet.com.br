@@ -302,21 +302,20 @@ class Home
 
     private static function getItems($establishmentIds)
     {
+        $establishments = \App\Models\Establishment::whereIn('id', $establishmentIds)
+            ->get(['id', 'name', 'slug', 'city', 'uf'])
+            ->keyBy('id');
+
         return Item::where('entity_name', 'establishment')
-            ->whereHas('establishment', function ($q) use ($establishmentIds) {
-                $q->whereIn('id', $establishmentIds);
-            })
+            ->whereIn('entity_id', $establishmentIds)
             ->with([
-                'establishment:id,name,slug,city,uf',
                 'files' => fn($q) => $q->where('entity_name', 'item'),
             ])
             ->withCount([
-                'views as total_views' =>
-                    fn($q) => $q->where('interaction_type', 'view'),
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
             ])
             ->get()
-            ->map(function ($i) {
-
+            ->map(function ($i) use ($establishments) {
                 $avatar =
                     $i->files->firstWhere('is_primary', true)?->public_url
                     ?? $i->files->firstWhere('type', 'image')?->public_url
@@ -328,25 +327,24 @@ class Home
                     ->pluck('public_url')
                     ->values();
 
+                $est = $establishments->get($i->entity_id);
+
                 return [
                     'id' => $i->id,
                     'type' => $i->type,
                     'name' => $i->name,
                     'slug' => $i->slug,
                     'price' => $i->price,
-
                     'images' => [
                         'avatar' => $avatar,
                         'gallery' => $gallery,
                     ],
-
                     'establishment' => [
-                        'name' => $i->establishment?->name,
-                        'slug' => $i->establishment?->slug,
-                        'city' => $i->establishment?->city,
-                        'uf' => $i->establishment?->uf,
+                        'name' => $est?->name,
+                        'slug' => $est?->slug,
+                        'city' => $est?->city,
+                        'uf' => $est?->uf,
                     ],
-
                     'total_views' => $i->total_views,
                 ];
             })
