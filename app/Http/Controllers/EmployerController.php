@@ -133,10 +133,9 @@ class EmployerController extends Controller
         // Se city ou uf não forem fornecidos, tenta obter pelo IP
         if (!$city || !$uf) {
             $ip = $request->ip();
-         $location = GeoIP::getLocation($request->ip());
-$city = $city ?? $location->city;
-$uf = $uf ?? $location->state;
-
+            $location = geoip($ip); // Assumindo que você tenha um pacote GeoIP configurado
+            $city = $city ?? $location->city;
+            $uf = $uf ?? $location->state;
         }
 
         $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
@@ -614,7 +613,7 @@ $uf = $uf ?? $location->state;
                     ?? null;
 
                 // Contando quantas vezes o employer atendeu este item
-                $attendedCount = \App\Models\Order::where('attendant_id', $e->id)
+                $attendedCount = Order::where('attendant_id', $e->id)
                     ->where('type', 'appointment')
                     ->whereHas('items', fn($q) => $q->where('item_id', $item->id))
                     ->count();

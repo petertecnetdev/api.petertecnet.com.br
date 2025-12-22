@@ -60,12 +60,6 @@ class Employer extends Model
         return $this->interactions()->where('interaction_type', 'view');
     }
 
-    public function services()
-    {
-        return $this->hasMany(Item::class, 'user_id', 'user_id')->where('type', 'service');
-    }
-
-
     /* ==========================
        MÉTRICAS E INTERAÇÕES
        ========================== */

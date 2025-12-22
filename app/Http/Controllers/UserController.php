@@ -29,30 +29,30 @@ class UserController extends ApiController
     protected function validationMessages(): array
     {
         return [
-            'first_name.required' => 'O campo primeiro nome Ã© obrigatÃ³rio.',
-            'first_name.string' => 'O campo primeiro nome deve conter texto vÃ¡lido.',
-            'first_name.max' => 'O campo primeiro nome pode ter no mÃ¡ximo 255 caracteres.',
-            'last_name.string' => 'O campo sobrenome deve conter texto vÃ¡lido.',
-            'last_name.max' => 'O campo sobrenome pode ter no mÃ¡ximo 255 caracteres.',
-            'user_name.required' => 'O campo nome de usuÃ¡rio Ã© obrigatÃ³rio.',
-            'user_name.string' => 'O campo nome de usuÃ¡rio deve conter texto vÃ¡lido.',
-            'user_name.max' => 'O nome de usuÃ¡rio pode ter no mÃ¡ximo 255 caracteres.',
-            'user_name.unique' => 'Este nome de usuÃ¡rio jÃ¡ estÃ¡ em uso.',
-            'email.required' => 'O campo e-mail Ã© obrigatÃ³rio.',
-            'email.email' => 'O e-mail informado Ã© invÃ¡lido.',
-            'email.unique' => 'Este e-mail jÃ¡ estÃ¡ em uso.',
-            'avatar.image' => 'O avatar deve ser uma imagem vÃ¡lida.',
-            'avatar.max' => 'O avatar pode ter no mÃ¡ximo 4MB.',
-            'q.required' => 'VocÃª precisa informar algo para buscar.',
+            'first_name.required' => 'O campo primeiro nome é obrigatório.',
+            'first_name.string' => 'O campo primeiro nome deve conter texto válido.',
+            'first_name.max' => 'O campo primeiro nome pode ter no máximo 255 caracteres.',
+            'last_name.string' => 'O campo sobrenome deve conter texto válido.',
+            'last_name.max' => 'O campo sobrenome pode ter no máximo 255 caracteres.',
+            'user_name.required' => 'O campo nome de usuário é obrigatório.',
+            'user_name.string' => 'O campo nome de usuário deve conter texto válido.',
+            'user_name.max' => 'O nome de usuário pode ter no máximo 255 caracteres.',
+            'user_name.unique' => 'Este nome de usuário já está em uso.',
+            'email.required' => 'O campo e-mail é obrigatório.',
+            'email.email' => 'O e-mail informado é inválido.',
+            'email.unique' => 'Este e-mail já está em uso.',
+            'avatar.image' => 'O avatar deve ser uma imagem válida.',
+            'avatar.max' => 'O avatar pode ter no máximo 4MB.',
+            'q.required' => 'Você precisa informar algo para buscar.',
             'q.string' => 'O termo de busca deve ser texto.',
-            'q.max' => 'O termo de busca pode ter no mÃ¡ximo 255 caracteres.',
+            'q.max' => 'O termo de busca pode ter no máximo 255 caracteres.',
         ];
     }
 
     protected function authUser(): User
     {
         if (!Auth::check()) {
-            abort(401, 'UsuÃ¡rio nÃ£o autenticado.');
+            abort(401, 'Usuário não autenticado.');
         }
 
         return Auth::user();
@@ -68,7 +68,7 @@ class UserController extends ApiController
             $user = $this->authUser();
 
             if (!$user->hasPermission('user_list')) {
-                return response()->json(['error' => 'Sem permissÃ£o para listar usuÃ¡rios.'], 403);
+                return response()->json(['error' => 'Sem permissão para listar usuários.'], 403);
             }
 
             Interaction::register('list', $user, $user);
@@ -80,7 +80,7 @@ class UserController extends ApiController
 
         } catch (\Throwable $e) {
             Log::error('User.list', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao listar usuÃ¡rios.'], 500);
+            return response()->json(['error' => 'Erro ao listar usuários.'], 500);
         }
     }
 
@@ -96,7 +96,7 @@ class UserController extends ApiController
 
         } catch (\Throwable $e) {
             Log::error('User.show', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao carregar usuÃ¡rio.'], 500);
+            return response()->json(['error' => 'Erro ao carregar usuário.'], 500);
         }
     }
 
@@ -133,13 +133,13 @@ class UserController extends ApiController
             Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $password));
 
             return response()->json([
-                'message' => 'UsuÃ¡rio criado com sucesso.',
+                'message' => 'Usuário criado com sucesso.',
                 'user' => $user,
             ], 201);
 
         } catch (\Throwable $e) {
             Log::error('User.store', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao criar usuÃ¡rio.'], 500);
+            return response()->json(['error' => 'Erro ao criar usuário.'], 500);
         }
     }
 
@@ -150,7 +150,7 @@ class UserController extends ApiController
 
             if ($current->id !== $user->id && !$current->hasPermission('user_edit')) {
                 return response()->json(
-                    ['error' => 'Sem permissÃ£o para atualizar usuÃ¡rio.'],
+                    ['error' => 'Sem permissão para atualizar usuário.'],
                     403,
                     [],
                     JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
@@ -217,7 +217,7 @@ class UserController extends ApiController
 
             return response()->json(
                 [
-                    'message' => 'UsuÃ¡rio atualizado com sucesso.',
+                    'message' => 'Usuário atualizado com sucesso.',
                     'user' => $fresh,
                 ],
                 200,
@@ -230,7 +230,7 @@ class UserController extends ApiController
             Log::error('User.update', ['error' => $e->getMessage()]);
 
             return response()->json(
-                ['error' => 'Erro ao atualizar usuÃ¡rio.'],
+                ['error' => 'Erro ao atualizar usuário.'],
                 500,
                 [],
                 JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE
@@ -271,11 +271,11 @@ class UserController extends ApiController
             $current = $this->authUser();
 
             if (!$current->hasPermission('user_delete')) {
-                return response()->json(['error' => 'Sem permissÃ£o para excluir usuÃ¡rio.'], 403);
+                return response()->json(['error' => 'Sem permissão para excluir usuário.'], 403);
             }
 
             if ($current->id == $id) {
-                return response()->json(['error' => 'VocÃª nÃ£o pode se auto-excluir.'], 403);
+                return response()->json(['error' => 'Você não pode se auto-excluir.'], 403);
             }
 
             $user = User::findOrFail($id);
@@ -284,11 +284,11 @@ class UserController extends ApiController
 
             $user->delete();
 
-            return response()->json(['message' => 'UsuÃ¡rio excluÃ­do com sucesso.']);
+            return response()->json(['message' => 'Usuário excluído com sucesso.']);
 
         } catch (\Throwable $e) {
             Log::error('User.destroy', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao excluir usuÃ¡rio.'], 500);
+            return response()->json(['error' => 'Erro ao excluir usuário.'], 500);
         }
     }
 
@@ -324,7 +324,7 @@ class UserController extends ApiController
             Interaction::register('search', $auth, $auth, ['query' => $q]);
 
             return response()->json([
-                'message' => 'Busca concluÃ­da.',
+                'message' => 'Busca concluída.',
                 'results' => $users,
             ]);
 
@@ -333,7 +333,7 @@ class UserController extends ApiController
 
         } catch (\Throwable $e) {
             Log::error('User.search', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao buscar usuÃ¡rios.'], 500);
+            return response()->json(['error' => 'Erro ao buscar usuários.'], 500);
         }
     }
 
@@ -355,7 +355,7 @@ class UserController extends ApiController
 
             if (!$user) {
                 return response()->json([
-                    'error' => 'UsuÃ¡rio nÃ£o encontrado.',
+                    'error' => 'Usuário não encontrado.',
                 ], 404);
             }
 
@@ -395,7 +395,7 @@ class UserController extends ApiController
             ]);
 
             if (collect($validated)->filter()->isEmpty()) {
-                return response()->json(['error' => 'Informe ao menos um critÃ©rio.'], 422);
+                return response()->json(['error' => 'Informe ao menos um critério.'], 422);
             }
 
             $users = User::with([
@@ -421,7 +421,7 @@ class UserController extends ApiController
 
         } catch (\Throwable $e) {
             Log::error('User.findForEmployer', ['error' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro ao buscar usuÃ¡rio.'], 500);
+            return response()->json(['error' => 'Erro ao buscar usuário.'], 500);
         }
     }
 
@@ -435,7 +435,7 @@ class UserController extends ApiController
             ], [
                 'q.required' => 'Informe um termo para buscar o cliente.',
                 'q.string' => 'O termo de busca deve ser texto.',
-                'q.max' => 'O termo de busca pode ter no mÃ¡ximo 255 caracteres.',
+                'q.max' => 'O termo de busca pode ter no máximo 255 caracteres.',
             ]);
 
             $q = $validated['q'];
@@ -485,7 +485,7 @@ class UserController extends ApiController
             Log::error('User.findForOrder', ['error' => $e->getMessage()]);
 
             return response()->json([
-                'error' => 'Erro ao buscar usuÃ¡rio para o pedido.',
+                'error' => 'Erro ao buscar usuário para o pedido.',
             ], 500);
         }
     }

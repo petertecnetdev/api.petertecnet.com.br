@@ -165,7 +165,7 @@ class Order extends Model
 
 
     /* ===============================
-       M√âTODOS EST√ÅTICOS AUXILIARES
+       M…TODOS EST¡TICOS AUXILIARES
     ================================ */
 
     public static function hasScheduleConflict($attendantId, $start, $end): bool
@@ -239,7 +239,7 @@ class Order extends Model
                 $itemEntityName !== $orderEntityName ||
                 (int) $item->entity_id !== (int) $this->entity_id
             ) {
-                throw new \Exception("O item '{$item->name}' n√£o pertence ao estabelecimento desta ordem.");
+                throw new \Exception("O item '{$item->name}' n„o pertence ao estabelecimento desta ordem.");
             }
 
             $unitPrice = (float) $item->price;
@@ -270,7 +270,7 @@ class Order extends Model
     }
 
     /* ===============================
-       INTERA√á√ïES E M√âTRICAS
+       INTERA«’ES E M…TRICAS
     ================================ */
 
     public function interactions(): HasMany
@@ -353,7 +353,7 @@ class Order extends Model
     }
 
     /* ===============================
-       STATUS E UTILIT√ÅRIOS
+       STATUS E UTILIT¡RIOS
     ================================ */
 
     public function isPaid(): bool

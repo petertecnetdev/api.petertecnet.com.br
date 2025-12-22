@@ -23,13 +23,13 @@ class OrderController extends ApiController
     protected function messages(): array
     {
         return [
-            'app_id.required' => 'O ID do aplicativo Ã© obrigatÃ³rio.',
+            'app_id.required' => 'O ID do aplicativo é obrigatório.',
             'app_id.exists' => 'O ID do aplicativo deve existir.',
-            'entity_name.required' => 'O nome da entidade Ã© obrigatÃ³rio.',
-            'entity_id.required' => 'O ID da entidade Ã© obrigatÃ³rio.',
-            'items.required' => 'A lista de itens Ã© obrigatÃ³ria.',
-            'items.*.item_id.required' => 'O ID do item Ã© obrigatÃ³rio.',
-            'items.*.quantity.required' => 'A quantidade Ã© obrigatÃ³ria.',
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_id.required' => 'O ID da entidade é obrigatório.',
+            'items.required' => 'A lista de itens é obrigatória.',
+            'items.*.item_id.required' => 'O ID do item é obrigatório.',
+            'items.*.quantity.required' => 'A quantidade é obrigatória.',
         ];
     }
 
@@ -117,7 +117,7 @@ class OrderController extends ApiController
     protected function validateClientIsNotEmployer(int $clientUserId, Employer $employer): void
     {
         if ((int) $employer->user_id === (int) $clientUserId) {
-            abort(422, 'VocÃª nÃ£o pode agendar um atendimento consigo mesmo.');
+            abort(422, 'Você não pode agendar um atendimento consigo mesmo.');
         }
     }
 
@@ -134,13 +134,13 @@ class OrderController extends ApiController
 
                 if (!$employer) {
                     return response()->json([
-                        'message' => 'Colaborador informado nÃ£o foi encontrado.'
+                        'message' => 'Colaborador informado não foi encontrado.'
                     ], 422);
                 }
 
                 if ((int) $employer->user_id === (int) $request->input('client_id')) {
                     return response()->json([
-                        'message' => 'NÃ£o Ã© possÃ­vel realizar um agendamento onde o cliente e o colaborador sÃ£o a mesma pessoa.'
+                        'message' => 'Não é possível realizar um agendamento onde o cliente e o colaborador são a mesma pessoa.'
                     ], 422);
                 }
             }
@@ -149,17 +149,17 @@ class OrderController extends ApiController
                 'appointment' => $this->storeAppointment($request),
                 'direct' => $this->storeDirect($request),
                 default => response()->json([
-                    'message' => 'Modo de criaÃ§Ã£o invÃ¡lido.'
+                    'message' => 'Modo de criação inválido.'
                 ], 422),
             };
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
-                'message' => 'Erro de validaÃ§Ã£o.',
+                'message' => 'Erro de validação.',
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'NÃ£o foi possÃ­vel concluir o agendamento devido a uma regra de negÃ³cio ou erro interno.',
+                'message' => 'Não foi possível concluir o agendamento devido a uma regra de negócio ou erro interno.',
                 'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }

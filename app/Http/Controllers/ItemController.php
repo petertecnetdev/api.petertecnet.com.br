@@ -31,15 +31,15 @@ class ItemController extends Controller
     protected function validationMessages(): array
     {
         return [
-            'app_id.required' => 'O campo app_id Ã© obrigatÃ³rio.',
-            'app_id.exists' => 'O aplicativo informado nÃ£o existe.',
-            'name.required' => 'O nome Ã© obrigatÃ³rio.',
-            'type.required' => 'O tipo Ã© obrigatÃ³rio.',
-            'price.required' => 'O preÃ§o Ã© obrigatÃ³rio.',
-            'price.numeric' => 'O preÃ§o deve ser numÃ©rico.',
+            'app_id.required' => 'O campo app_id é obrigatório.',
+            'app_id.exists' => 'O aplicativo informado não existe.',
+            'name.required' => 'O nome é obrigatório.',
+            'type.required' => 'O tipo é obrigatório.',
+            'price.required' => 'O preço é obrigatório.',
+            'price.numeric' => 'O preço deve ser numérico.',
             'status.boolean' => 'O status deve ser booleano.',
-            'entity_id.required' => 'A entidade Ã© obrigatÃ³ria.',
-            'entity_name.required' => 'O nome da entidade Ã© obrigatÃ³rio.',
+            'entity_id.required' => 'A entidade é obrigatória.',
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
         ];
     }
 
@@ -47,11 +47,11 @@ class ItemController extends Controller
     private function ensureAuth(string $permission): void
     {
         if (!Auth::check()) {
-            abort(401, 'UsuÃ¡rio nÃ£o autenticado.');
+            abort(401, 'Usuário não autenticado.');
         }
 
         if (!Auth::user()->hasPermission($permission)) {
-            abort(403, 'PermissÃ£o negada.');
+            abort(403, 'Permissão negada.');
         }
     }
 
@@ -455,7 +455,7 @@ class ItemController extends Controller
     }
     public function update(\Illuminate\Http\Request $request, int $id)
     {
-        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INÃCIO', [
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INÍCIO', [
             'item_id' => $id,
             'user_id' => \Illuminate\Support\Facades\Auth::id(),
             'payload_keys' => array_keys($request->all()),
@@ -499,12 +499,12 @@ class ItemController extends Controller
         );
 
         if ($validator->fails()) {
-            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAÃ‡ÃƒO', [
+            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAÇÃO', [
                 'errors' => $validator->errors()->toArray(),
             ]);
 
             return response()->json([
-                'error' => 'Erro de validaÃ§Ã£o.',
+                'error' => 'Erro de validação.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -706,7 +706,7 @@ class ItemController extends Controller
 
         $this->clearItemCache();
 
-        return response()->json(['message' => 'PreÃ§os aumentados com sucesso.']);
+        return response()->json(['message' => 'Preços aumentados com sucesso.']);
     }
 
     public function decreasePricesByPercentage(Request $request)
@@ -726,6 +726,6 @@ class ItemController extends Controller
 
         $this->clearItemCache();
 
-        return response()->json(['message' => 'PreÃ§os reduzidos com sucesso.']);
+        return response()->json(['message' => 'Preços reduzidos com sucesso.']);
     }
 }

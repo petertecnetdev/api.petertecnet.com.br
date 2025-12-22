@@ -127,7 +127,7 @@ class Item extends Model
             ->get()
             ->groupBy('entity_id');
 
-        // Embaralha os grupos para nÃ£o comeÃ§ar sempre pelo mesmo estabelecimento
+        // Embaralha os grupos para não começar sempre pelo mesmo estabelecimento
         $groups = $groups->shuffle();
 
         $result = collect();

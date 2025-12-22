@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 
 /*
 |--------------------------------------------------------------------------
-| HOME (P√öBLICA)
+| HOME (P⁄BLICA)
 |--------------------------------------------------------------------------
 */
 
@@ -35,7 +35,7 @@ Route::prefix('home')->middleware(['api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| AUTHENTICA√á√ÉO (PROTEGIDAS)
+| AUTHENTICA«√O (PROTEGIDAS)
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->middleware('api')->group(function () {
@@ -56,7 +56,7 @@ Route::prefix('auth')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| ROTAS P√öBLICAS
+| ROTAS P⁄BLICAS
 |--------------------------------------------------------------------------
 */
 
@@ -67,7 +67,7 @@ Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 /*
 |--------------------------------------------------------------------------
-| USU√ÅRIOS
+| USU¡RIOS
 |--------------------------------------------------------------------------
 */
 Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
@@ -103,7 +103,7 @@ Route::prefix('profile')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| PRODU√á√ÉO
+| PRODU«√O
 |--------------------------------------------------------------------------
 */
 Route::prefix('production')->middleware('api')->group(function () {
@@ -151,7 +151,7 @@ Route::prefix('ticket')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| NOT√çCIAS
+| NOTÕCIAS
 |--------------------------------------------------------------------------
 */
 Route::prefix('news')->middleware('api')->group(function () {
@@ -166,7 +166,7 @@ Route::prefix('news')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| RELAT√ìRIOS / SERVICE RECORDS
+| RELAT”RIOS / SERVICE RECORDS
 |--------------------------------------------------------------------------
 */
 Route::prefix('report')->middleware('api')->group(function () {
@@ -268,7 +268,7 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
 |--------------------------------------------------------------------------
 */
 
-// üîì ROTAS P√öBLICAS (leitura)
+// ?? ROTAS P⁄BLICAS (leitura)
 Route::prefix('item')->middleware(['api'])->group(function () {
 
     Route::get('/list-by-entity/{identifier}', [ItemController::class, 'listByEntity'])
@@ -304,7 +304,7 @@ Route::prefix('item')->middleware(['api'])->group(function () {
         ->name('item.show');
 });
 
-// üîí ROTAS PROTEGIDAS (escrita)
+// ?? ROTAS PROTEGIDAS (escrita)
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [ItemController::class, 'store'])
@@ -328,7 +328,7 @@ Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
         ->name('item.decreasePricesByPercentage');
 });
 
-// üîê PRIVATE (auth required)
+// ?? PRIVATE (auth required)
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::post('/', [ItemController::class, 'store'])
@@ -378,7 +378,7 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 |--------------------------------------------------------------------------
 */
 
-// üîì PUBLIC
+// ?? PUBLIC
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
@@ -393,14 +393,14 @@ Route::prefix('employer')->middleware(['api'])->group(function () {
 
 });
 
-// üîê PRIVATE (AUTH)
+// ?? PRIVATE (AUTH)
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
 
-    // üîó COLABORADORES
+    // ?? COLABORADORES
     Route::post('/store', [EmployerController::class, 'store'])->name('employer.store');
     Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
 
-    // üìÖ HOR√ÅRIOS
+    // ?? HOR¡RIOS
     Route::post('/list-schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
     Route::post('/save-schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
     Route::delete('/delete-schedule/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
@@ -408,17 +408,17 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/available-times', [EmployerController::class, 'availableTimes'])->name('employer.availableTimes');
     Route::post('/reserve-schedule', [EmployerController::class, 'reserveSchedule'])->name('employer.reserveSchedule');
 
-    // üìã AGENDAMENTOS / PEDIDOS
+    // ?? AGENDAMENTOS / PEDIDOS
     Route::post('/list-appointments', [EmployerController::class, 'listAppointments'])->name('employer.listAppointments');
     Route::post('/list-my-orders', [EmployerController::class, 'listMyOrders'])->name('employer.listMyOrders');
 
-    // üîî DASHBOARD / ATUALIZA√á√ïES
+    // ?? DASHBOARD / ATUALIZA«’ES
     Route::post('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
 
 /*
 |--------------------------------------------------------------------------
-| FILES (ARQUIVOS / M√çDIA)
+| FILES (ARQUIVOS / MÕDIA)
 |--------------------------------------------------------------------------
 */
 // PUBLIC
