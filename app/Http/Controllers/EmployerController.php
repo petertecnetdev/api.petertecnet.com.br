@@ -147,11 +147,11 @@ class EmployerController extends Controller
                     'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
                     'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
                 ])
-                ->withCount([
-                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
-                    'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                ])
-                ->get();
+                ->get()
+                ->map(function ($employer) {
+                    return json_decode(json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE), true);
+                })
+                ->values();
 
             return response()->json([
                 'success' => true,
@@ -172,6 +172,7 @@ class EmployerController extends Controller
             ], 500);
         }
     }
+
 
 
     /* =======================================================
