@@ -6,16 +6,15 @@ use App\Models\{
     Employer,
     Establishment,
     EmployerSchedule,
-    Order
+    Order,
+    Interaction
 };
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{
     Auth,
     Mail,
-    Log,
-    DB
+    Cache,
 };
-use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 use App\Mail\{
     NewEmployerCollaborator,
@@ -23,6 +22,7 @@ use App\Mail\{
     EmployerRemoved,
     OwnerNotifiedEmployerDetached
 };
+use GeoIP; // facade do pacote torann/geoip
 
 class EmployerController extends Controller
 {
@@ -71,78 +71,108 @@ class EmployerController extends Controller
     /* =======================================================
      | PUBLIC
      ======================================================= */
-
-    public function view(string $user_name)
+    public function view(string $identifier)
     {
-        $employer = Employer::with([
-            'user:id,first_name,last_name,user_name,about,avatar,email,city,uf',
-            'files' => fn($q) => $q->where('entity_name', 'employer'),
-            'establishment:id,name,slug,city,uf'
-        ])
-            ->whereHas('user', fn($q) => $q->where('user_name', $user_name))
-            ->firstOrFail();
+        try {
+            $employer = Employer::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn($q) => $q->where('id', (int) $identifier),
+                    fn($q) => $q->whereHas('user', fn($uq) => $uq->where('user_name', $identifier))
+                )
+                ->with([
+                    'user',
+                    'establishment',
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'employer')
+                            ->orderBy('position'),
+                ])
+                ->first();
 
-        $u = $employer->user;
+            if (!$employer) {
+                \Log::warning('Employer.view not found', [
+                    'identifier' => $identifier,
+                ]);
 
-        $avatar =
-            $employer->files->firstWhere('type', 'avatar')?->public_url
-            ?? $u->avatar
-            ?? null;
+                return response()->json([
+                    'success' => false,
+                    'employer' => null,
+                ], 404);
+            }
 
-        return $this->jsonUtf8([
-            'employer' => [
-                'id' => $employer->id,
-                'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                'slug' => $u->user_name,
-                'about' => $u->about,
-                'city' => $u->city,
-                'uf' => $u->uf,
-                'avatar' => $avatar,
-            ],
-            'establishment' => $employer->establishment,
-        ]);
-    }
+            Interaction::registerView($employer, auth()->user() ?? null);
 
-    public function home(Request $request, int $app_id)
-    {
+            $employerArray = json_decode(
+                json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                true
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'employer encontrado com sucesso',
+                'employer' => $employerArray,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Employer.view error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar employer',
+            ], 500);
+        }
+    }public function home(Request $request, $app_id)
+{
+    try {
         $city = $request->query('city');
         $uf = $request->query('uf');
 
-        $establishmentIds = Establishment::where('app_id', $app_id)
-            ->when($city && $uf, fn($q) => $q->where('city', $city)->where('uf', $uf))
-            ->pluck('id');
+        // Se city ou uf não forem fornecidos, tenta obter pelo IP
+        if (!$city || !$uf) {
+            $ip = $request->ip();
+            $location = geoip($ip); // Assumindo que você tenha um pacote GeoIP configurado
+            $city = $city ?? $location->city;
+            $uf = $uf ?? $location->state;
+        }
 
-        $employers = Employer::whereIn('establishment_id', $establishmentIds)
+        $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+                $q->where('app_id', $app_id)
+                  ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+            })
             ->with([
-                'user:id,first_name,last_name,user_name,avatar,city,uf',
-                'establishment:id,name,slug,city,uf',
-                'files' => fn($q) => $q->where('entity_name', 'employer'),
+                'files' => fn($q) => $q->where('entity_name', 'employer')->orderBy('position'),
+                'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
+                'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
             ])
-            ->get()
-            ->map(function ($e) {
-                $u = $e->user;
+            ->withCount([
+                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+            ])
+            ->get();
 
-                $avatar =
-                    $e->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $u->avatar
-                    ?? null;
+        return response()->json([
+            'success' => true,
+            'employers' => $employers,
+        ]);
+    } catch (\Throwable $e) {
+        \Log::error('Employer.home error', [
+            'app_id' => $app_id,
+            'city' => $city,
+            'uf' => $uf,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
 
-                return [
-                    'id' => $e->id,
-                    'name' => trim(($u->first_name ?? '') . ' ' . ($u->last_name ?? '')),
-                    'slug' => $u->user_name,
-                    'avatar' => $avatar,
-                    'city' => $e->establishment?->city,
-                    'uf' => $e->establishment?->uf,
-                    'establishment' => [
-                        'name' => $e->establishment?->name,
-                        'slug' => $e->establishment?->slug,
-                    ],
-                ];
-            });
-
-        return $this->jsonUtf8(['employers' => $employers]);
+        return response()->json([
+            'success' => false,
+            'message' => 'Erro ao carregar colaboradores',
+        ], 500);
     }
+}
+
 
     /* =======================================================
      | COLLABORATORS
@@ -232,72 +262,118 @@ class EmployerController extends Controller
 
         return $this->jsonUtf8(['message' => 'Colaborador removido com sucesso.']);
     }
+    public function listOthers(string $identifier)
+    {
+        try {
+            return Cache::remember("establishments_others_{$identifier}", 300, function () use ($identifier) {
+
+                $establishment = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    )
+                    ->firstOrFail();
+
+                $establishments = Establishment::query()
+                    ->where('app_id', $establishment->app_id)
+                    ->where('uf', $establishment->uf)
+                    ->where('city', $establishment->city)
+                    ->where('id', '!=', $establishment->id)
+                    ->with([
+                        'files' => fn($q) =>
+                            $q->where('entity_name', 'establishment')
+                                ->orderBy('position'),
+                    ])
+                    ->orderByDesc('updated_at')
+                    ->get()
+                    ->map(function ($est) {
+                        return json_decode(
+                            json_encode($est->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                            true
+                        );
+                    })
+                    ->values();
+
+                return [
+                    'success' => true,
+                    'message' => 'Estabelecimentos listados com sucesso.',
+                    'establishments' => $establishments,
+                ];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Establishment.listOthers error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar outros estabelecimentos',
+            ], 500);
+        }
+    }
+
+
 
     public function listByEntity(string $identifier)
     {
-        $establishment = Establishment::query()
-            ->when(
-                is_numeric($identifier),
-                fn($q) => $q->where('id', (int) $identifier),
-                fn($q) => $q->where('slug', $identifier)
-            )
-            ->with([
-                'files' => fn($q) =>
-                    $q->where('entity_name', 'establishment'),
+        try {
+            return Cache::remember("employers_entity_{$identifier}", 300, function () use ($identifier) {
 
-                'employers.user.files' => fn($q) =>
-                    $q->where('entity_name', 'user'),
-            ])
-            ->firstOrFail();
+                $establishment = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    )
+                    ->firstOrFail();
 
-        $employers = $establishment->employers
-            ->filter(fn($e) => $e->user)
-            ->map(function ($e) {
-                $u = $e->user;
+                $employers = Employer::query()
+                    ->where('establishment_id', $establishment->id)
+                    ->with([
+                        'files' => fn($q) =>
+                            $q->where('entity_name', 'employer')
+                                ->orderBy('position'),
 
-                $avatar =
-                    $u->files->firstWhere('type', 'avatar')?->public_url
-                    ?? $u->avatar
-                    ?? null;
+                        'user.files' => fn($q) =>
+                            $q->where('entity_name', 'user')
+                                ->orderBy('position'),
+
+                        'establishment.files' => fn($q) =>
+                            $q->where('entity_name', 'establishment')
+                                ->orderBy('position'),
+                    ])
+                    ->get()
+                    ->map(function ($employer) {
+                        return json_decode(
+                            json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                            true
+                        );
+                    })
+                    ->values();
 
                 return [
-                    'id' => $e->id,
-                    'role' => $e->role,
-                    'permissions' => $e->permissions,
-                    'metrics' => $e->metrics,
-                    'user' => [
-                        'id' => $u->id,
-                        'user_name' => $u->user_name,
-                        'first_name' => $u->first_name,
-                        'last_name' => $u->last_name,
-                        'email' => $u->email,
-                        'phone' => $u->phone,
-                        'avatar' => $avatar,
-                    ],
+                    'success' => true,
+                    'message' => 'Colaboradores listados com sucesso.',
+                    'employers' => $employers,
                 ];
-            })
-            ->values();
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Employer.listByEntity error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return $this->jsonUtf8([
-            'message' => 'Colaboradores listados com sucesso.',
-            'establishment' => [
-                'id' => $establishment->id,
-                'name' => $establishment->name,
-                'fantasy' => $establishment->fantasy,
-                'slug' => $establishment->slug,
-                'city' => $establishment->city,
-                'uf' => $establishment->uf,
-                'images' => [
-                    'logo' => $establishment->files
-                        ->firstWhere('type', 'logo')?->public_url,
-                    'background' => $establishment->files
-                        ->firstWhere('type', 'background')?->public_url,
-                ],
-            ],
-            'total' => $employers->count(),
-            'employers' => $employers,
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar colaboradores',
+            ], 500);
+        }
     }
+
 
 
     /* =======================================================
@@ -511,4 +587,69 @@ class EmployerController extends Controller
             'count' => $orders->count(),
         ]);
     }
+
+
+    public function listByItem(string $identifier)
+    {
+        // Buscando o item pelo ID ou slug
+        $item = \App\Models\Item::query()
+            ->when(is_numeric($identifier), fn($q) => $q->where('id', $identifier), fn($q) => $q->where('slug', $identifier))
+            ->with('establishment')
+            ->firstOrFail();
+
+        $establishment = $item->establishment;
+
+        if (!$establishment) {
+            return $this->jsonUtf8(['message' => 'Estabelecimento não encontrado para este item.'], 404);
+        }
+
+        $employers = $establishment->employers
+            ->filter(fn($e) => $e->user) // garante que o employer tenha usuário
+            ->map(function ($e) use ($item) {
+                $u = $e->user;
+                $avatar =
+                    $u->files->firstWhere('type', 'avatar')?->public_url
+                    ?? $u->avatar
+                    ?? null;
+
+                // Contando quantas vezes o employer atendeu este item
+                $attendedCount = \App\Models\Order::where('attendant_id', $e->id)
+                    ->where('type', 'appointment')
+                    ->whereHas('items', fn($q) => $q->where('item_id', $item->id))
+                    ->count();
+
+                return [
+                    'id' => $e->id,
+                    'role' => $e->role,
+                    'permissions' => $e->permissions,
+                    'attended_count' => $attendedCount,
+                    'user' => [
+                        'id' => $u->id,
+                        'user_name' => $u->user_name,
+                        'first_name' => $u->first_name,
+                        'last_name' => $u->last_name,
+                        'avatar' => $avatar,
+                        'city' => $u->city,
+                        'uf' => $u->uf,
+                    ],
+                ];
+            })
+            ->values();
+
+        return $this->jsonUtf8([
+            'item' => [
+                'id' => $item->id,
+                'name' => $item->name,
+                'slug' => $item->slug,
+            ],
+            'establishment' => [
+                'id' => $establishment->id,
+                'name' => $establishment->name,
+                'slug' => $establishment->slug,
+            ],
+            'employers' => $employers,
+            'total' => $employers->count(),
+        ]);
+    }
+
 }

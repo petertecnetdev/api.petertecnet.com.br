@@ -198,7 +198,9 @@ Route::prefix('establishment')->middleware(['api'])->group(function () {
 
     Route::get('/view/{slug}', [EstablishmentController::class, 'view'])->name('establishment.view');
     Route::get('/{slug}/menu/pdf', [EstablishmentController::class, 'generatePdf'])->name('establishment.generatePdf');
-
+    Route::get('/list-others/{slug}', [EstablishmentController::class, 'listOthers'])
+        ->where('slug', '[A-Za-z0-9\-]+')
+        ->name('item.listOthers');
     Route::get('/home/{app_id}', [EstablishmentController::class, 'home'])->name('establishment.home');
 });
 
@@ -272,8 +274,9 @@ Route::prefix('item')->middleware(['api'])->group(function () {
     Route::get('/list-by-entity/{identifier}', [ItemController::class, 'listByEntity'])
         ->name('item.listByEntity');
 
-    Route::get('/list-by-entity-slug/{slug}', [ItemController::class, 'listByEntitySlug'])
-        ->name('item.listByEntitySlug');
+    Route::get('/list-others/{slug}', [ItemController::class, 'listOthers'])
+        ->where('slug', '[A-Za-z0-9\-]+')
+        ->name('item.listOthers');
 
     Route::get('/index', [ItemController::class, 'index'])
         ->name('item.index');
@@ -371,7 +374,7 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| EMPLOYER (COLABORADORES)
+| EMPLOYERS (COLABORADORES)
 |--------------------------------------------------------------------------
 */
 
@@ -379,10 +382,15 @@ Route::prefix('menu')->middleware(['api', 'auth:api'])->group(function () {
 Route::prefix('employer')->middleware(['api'])->group(function () {
     Route::get('/view/{user_name}', [EmployerController::class, 'view'])->name('employer.view');
     Route::get('/home/{app_id}', [EmployerController::class, 'home'])->name('employer.home');
-
-    // ✅ LISTAR COLABORADORES POR ESTABELECIMENTO (ID ou SLUG)
     Route::get('/list-by-entity/{identifier}', [EmployerController::class, 'listByEntity'])
         ->name('employer.listByEntity');
+
+    Route::get('/list-by-item/{identifier}', [EmployerController::class, 'listByItem'])
+        ->name('employer.listByItem');
+
+    Route::get('/list-others/{identifier}', [EmployerController::class, 'listOthers'])
+        ->name('employer.listOthers');
+
 });
 
 // 🔐 PRIVATE (AUTH)

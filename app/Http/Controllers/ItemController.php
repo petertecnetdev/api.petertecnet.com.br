@@ -6,11 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Models\{
     Item,
     Establishment,
-    Employer,
     File,
     Interaction
 };
-use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{
     Auth,
@@ -121,7 +119,7 @@ class ItemController extends Controller
     {
         return Cache::remember("items_entity_{$identifier}", 300, function () use ($identifier) {
 
-            $establishment = $establishment = Establishment::query()
+            $establishment = Establishment::query()
                 ->when(
                     is_numeric($identifier),
                     fn($q) => $q->where('id', (int) $identifier),
@@ -133,85 +131,114 @@ class ItemController extends Controller
                             ->where('type', 'logo')
                             ->orderBy('position'),
 
-                    'items' => fn($q) =>
-                        $q->with([
-                            'files' => fn($fq) =>
-                                $fq->where('entity_name', 'item')
-                                    ->orderBy('position'),
-                        ])->orderByDesc('updated_at'),
+                    'items.files' => fn($q) =>
+                        $q->where('entity_name', 'item')
+                            ->orderBy('position'),
                 ])
                 ->firstOrFail();
 
-            // Map para o formato igual à home
-            $items = $establishment->items->map(function ($item) {
-                return [
-                    'id' => $item->id,
-                    'entity_id' => $item->entity_id,
-                    'type' => 'item',
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'item_type' => $item->type,
-                    'image' => $item->files->first()?->path_resolved ?? null,
-                    'updated_at' => $item->updated_at,
-                ];
-            })->values();
-
             return [
                 'message' => 'Itens listados com sucesso.',
-                'establishment' => [
-                    'id' => $establishment->id,
-                    'name' => $establishment->name,
-                    'fantasy' => $establishment->fantasy,
-                    'slug' => $establishment->slug,
-                    'city' => $establishment->city,
-                    'uf' => $establishment->uf,
-                    'logo' => $establishment->files->first()?->public_url ?? $establishment->logo,
-                ],
-                'items' => $establishment->items->map(fn($item) => [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'duration' => $item->duration,
-                    'image' => $item->image_url, // usa o accessor da model
-                    'updated_at' => $item->updated_at,
-                ])->values(),
+                'establishment' => json_decode(
+                    json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                ),
+                'items' => json_decode(
+                    json_encode($establishment->items()->get()->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                ),
             ];
         });
     }
 
-
-
-    public function home(int $app_id)
+    public function listOthers(string $identifier)
     {
-        return Cache::remember("items:home:{$app_id}", 300, function () use ($app_id) {
-            return Item::where('app_id', $app_id)
-                ->where('entity_name', 'establishment')
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'item')->orderBy('position'),
-                ])
-                ->latest()
-                ->limit(20)
-                ->get()
-                ->map(function ($item) {
-                    return [
-                        'id' => $item->id,
-                        'entity_id' => $item->entity_id,
-                        'type' => 'item',
-                        'name' => $item->name,
-                        'slug' => $item->slug,
-                        'price' => $item->price,
-                        'item_type' => $item->type,
-                        'image' => $item->image_resolved,
-                        'updated_at' => $item->updated_at,
-                    ];
-                })
-                ->values();
-        });
+        try {
+            return Cache::remember("items_others_establishment_{$identifier}", 300, function () use ($identifier) {
+
+                $establishment = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    )
+                    ->firstOrFail();
+
+                $items = Item::query()
+                    ->whereHas('establishment', function ($q) use ($establishment) {
+                        $q->where('uf', $establishment->uf)
+                            ->where('city', $establishment->city)
+                            ->where('id', '!=', $establishment->id);
+                    })
+                    ->with([
+                        'files' => fn($q) =>
+                            $q->where('entity_name', 'item')
+                                ->orderBy('position'),
+                        'establishment',
+                    ])
+                    ->orderByDesc('updated_at')
+                    ->get();
+
+                return json_decode(
+                    json_encode($items->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                );
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Item.listOthers error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar itens de outros estabelecimentos',
+            ], 500);
+        }
     }
+
+    public function home(Request $request, $app_id)
+    {
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+
+            $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+                $q->where('app_id', $app_id)
+                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+            })
+                ->with([
+                    'files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position'),
+                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                ])
+                ->orderByDesc('updated_at')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'items' => $items,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Item.home error', [
+                'app_id' => $app_id,
+                'city' => $city,
+                'uf' => $uf,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar itens',
+            ], 500);
+        }
+    }
+
 
 
 
@@ -255,118 +282,52 @@ class ItemController extends Controller
             ])->values(),
         ]);
     }
-
-
-
-    public function view(string $slug)
+    public function view(string $identifier)
     {
-        $cacheKey = "view_item_{$slug}";
-        $ttl = 300;
+        try {
+            $item = Item::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn($q) => $q->where('id', (int) $identifier),
+                    fn($q) => $q->where('slug', $identifier)
+                )
+                ->first();
 
-        $remember = function () use ($slug) {
-            $item = Item::with([
-                'entity:id,name,slug,logo,city,uf,background',
-                'files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position'),
-            ])->where('slug', $slug)->firstOrFail();
-
-            Interaction::registerView($item, Auth::user());
-
-            $metrics = $item->metrics ?? [];
-
-            $interactionSummary = [
-                'views' => $metrics['views'] ?? 0,
-                'likes' => $metrics['likes'] ?? 0,
-                'favorites' => $metrics['favorites'] ?? 0,
-            ];
-
-            $userInteractions = Auth::check()
-                ? Interaction::where('user_id', Auth::id())
-                    ->where('entity_type', 'Item')
-                    ->where('entity_id', $item->id)
-                    ->get()
-                : collect();
-
-            $ordersSummary = DB::table('order_items')
-                ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                ->join('items', 'items.id', '=', 'order_items.item_id')
-                ->where('order_items.item_id', $item->id)
-                ->selectRaw('COUNT(DISTINCT orders.id) as total_orders, COALESCE(SUM(items.price * order_items.quantity), 0) as total_amount')
-                ->first() ?? (object) ['total_orders' => 0, 'total_amount' => 0];
-
-            $otherItems = Item::where('entity_id', $item->entity_id)
-                ->where('id', '!=', $item->id)
-                ->with(['files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position')])
-                ->latest()
-                ->limit(10)
-                ->get()
-                ->map(fn($i) => [
-                    'id' => $i->id,
-                    'entity_id' => $i->entity_id,
-                    'type' => 'item',
-                    'name' => $i->name,
-                    'slug' => $i->slug,
-                    'price' => $i->price,
-                    'item_type' => $i->type,
-                    'image' => $i->files->first()?->path_resolved ?? null,
-                    'updated_at' => $i->updated_at,
-                ])
-                ->values();
-
-            $otherEstablishments = Establishment::where('id', '!=', $item->entity_id)
-                ->where('city', $item->entity->city)
-                ->where('uf', $item->entity->uf)
-                ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')->where('type', 'logo')->orderBy('position')])
-                ->latest()
-                ->limit(6)
-                ->get()
-                ->map(fn($est) => [
-                    'id' => $est->id,
-                    'name' => $est->name,
-                    'slug' => $est->slug,
-                    'logo' => $est->files->first()?->path_resolved ?? $est->logo ?? null,
-                    'city' => $est->city,
-                    'uf' => $est->uf,
-                    'updated_at' => $est->updated_at,
+            if (!$item) {
+                \Log::warning('Item.view not found', [
+                    'identifier' => $identifier,
                 ]);
 
-            $itemEmployersQuery = Employer::with([
-                'user.files' => fn($q) => $q->where('entity_name', 'user')->where('type', 'avatar')
-            ])->where('establishment_id', $item->entity_id);
-
-            if ($item->type === 'service') {
-                $itemEmployersQuery->whereHas('services', fn($q) => $q->where('item_id', $item->id));
+                return response()->json([
+                    'success' => false,
+                    'item' => null,
+                ], 404);
             }
 
-            $otherEmployers = $itemEmployersQuery->limit(6)
-                ->get()
-                ->map(fn($employer) => [
-                    'employer_id' => $employer->id,
-                    'user_id' => $employer->user->id ?? null,
-                    'first_name' => $employer->user->first_name ?? null,
-                    'last_name' => $employer->user->last_name ?? null,
-                    'user_name' => $employer->user->user_name ?? null,
-                    'email' => $employer->user->email ?? null,
-                    'avatar' => $employer->user->files->first()?->path_resolved ?? $employer->user->avatar ?? null,
-                ]);
+            Interaction::registerView($item, auth()->user() ?? null);
+
+            $itemArray = json_decode(
+                json_encode($item->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                true
+            );
 
             return response()->json([
-                'item' => $item,
-                'establishment' => $item->entity,
-                'metrics' => $metrics,
-                'interaction_summary' => $interactionSummary,
-                'user_interactions' => $userInteractions,
-                'orders_summary' => $ordersSummary,
-                'other_establishments' => $otherEstablishments,
-                'other_employers' => $otherEmployers,
-                'other_items' => $otherItems,
-                'top_employer' => null,
+                'success' => true,
+                'message' => 'item encontrado com sucesso',
+                'item' => $itemArray,
+                'establishment' => Establishment::where('id', $item->entity_id)->first(),
             ]);
-        };
+        } catch (\Throwable $e) {
+            \Log::error('Item.view error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        try {
-            return Cache::tags(['items'])->remember($cacheKey, $ttl, $remember);
-        } catch (\BadMethodCallException $e) {
-            return Cache::remember($cacheKey, $ttl, $remember);
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar item',
+            ], 500);
         }
     }
 

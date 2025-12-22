@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
+use Illuminate\Support\Collection;
 
 class Item extends Model
 {
@@ -81,10 +82,6 @@ class Item extends Model
         });
     }
 
-    public function entity(): MorphTo
-    {
-        return $this->morphTo(__FUNCTION__, 'entity_name', 'entity_id');
-    }
 
     public function files(): HasMany
     {
@@ -99,9 +96,55 @@ class Item extends Model
             ->where('entity_type', 'Item');
     }
 
-    public function orderItems(): HasMany
+    public function employers()
     {
-        return $this->hasMany(OrderItem::class, 'item_id');
+        return $this->hasMany(Employer::class, 'entity_id', 'entity_id')
+            ->with('user');
+    }
+
+    public function entity()
+    {
+        return $this->morphTo(null, 'entity_name', 'entity_id');
+    }
+
+
+    public function establishment()
+    {
+        return $this->belongsTo(Establishment::class, 'entity_id', 'id');
+    }
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class);
+    }
+
+
+
+    public static function otherItems(int $limit = 20): Collection
+    {
+        // Pega itens ativos agrupados por estabelecimento
+        $groups = Item::with('establishment')
+            ->where('status', 'active')
+            ->get()
+            ->groupBy('entity_id');
+
+        // Embaralha os grupos para não começar sempre pelo mesmo estabelecimento
+        $groups = $groups->shuffle();
+
+        $result = collect();
+
+        while ($groups->isNotEmpty() && $result->count() < $limit) {
+            foreach ($groups as $key => $group) {
+                if ($group->isNotEmpty()) {
+                    $result->push($group->shift()); // pega 1 item do grupo
+                    if ($result->count() >= $limit)
+                        break 2;
+                } else {
+                    $groups->forget($key); // remove grupo vazio
+                }
+            }
+        }
+
+        return $result;
     }
 
     public function views(): HasMany
@@ -134,37 +177,131 @@ class Item extends Model
     {
         return Cache::remember("item_{$this->id}_metrics", 120, function () {
             $viewsQuery = $this->views();
-            $ordersQuery = $this->orderItems();
+            $likesQuery = $this->likes();
+            $favoritesQuery = $this->favorites();
 
-            $views = $viewsQuery->count();
-            $unique_users = $viewsQuery
+            $orderItems = \App\Models\OrderItem::where('item_id', $this->id);
+            $orders = \App\Models\Order::whereIn('id', $orderItems->pluck('order_id'));
+
+            $totalViews = $viewsQuery->count();
+            $uniqueUsers = (clone $viewsQuery)
                 ->whereNotNull('user_id')
                 ->distinct('user_id')
                 ->count('user_id');
 
-            $total_orders = $ordersQuery->count();
+            $totalLikes = $likesQuery->count();
+            $totalFavorites = $favoritesQuery->count();
 
-            $completed_orders = $ordersQuery
-                ->whereHas('order', function ($q) {
-                    $q->whereIn('appointment_status', ['confirmed', 'attended']);
-                })
-                ->count();
+            $totalOrders = $orders->count();
+            $completedOrders = (clone $orders)->whereIn('appointment_status', ['confirmed', 'attended'])->count();
+            $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
+            $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
 
-            $cancelled_orders = $ordersQuery
-                ->whereHas('order', function ($q) {
-                    $q->whereIn('appointment_status', ['cancelled', 'rejected']);
-                })
-                ->count();
+            $totalRevenue = (clone $orderItems)->sum('total_price');
+            $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
+
+            $firstView = $viewsQuery->min('created_at');
+            if ($firstView && !($firstView instanceof \Carbon\Carbon)) {
+                $firstView = \Carbon\Carbon::parse($firstView);
+            }
+
+            $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
+            $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
+            $avgViewsPerUser = $uniqueUsers > 0 ? round($totalViews / $uniqueUsers, 2) : 0;
+
+            $conversionRate = $totalViews > 0
+                ? round(($totalOrders / $totalViews) * 100, 2)
+                : 0;
+
+            $completionRate = $totalOrders > 0
+                ? round(($completedOrders / $totalOrders) * 100, 2)
+                : 0;
+
+            $cancellationRate = $totalOrders > 0
+                ? round(($cancelledOrders / $totalOrders) * 100, 2)
+                : 0;
+
+            $clientsCount = (clone $orders)
+                ->selectRaw('client_id, COUNT(*) as total')
+                ->groupBy('client_id')
+                ->pluck('total', 'client_id');
+
+            $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+            $returnRate = $clientsCount->count() > 0
+                ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
+                : 0;
+
+            // Trocar employer_id por attendant_id
+            $employerStats = (clone $orders)
+                ->selectRaw('attendant_id, COUNT(*) as total')
+                ->whereNotNull('attendant_id')
+                ->groupBy('attendant_id')
+                ->orderByDesc('total')
+                ->get();
+
+            $topEmployer = $employerStats->first();
+            if ($topEmployer) {
+                $topEmployerData = [
+                    'employer_id' => $topEmployer->attendant_id,
+                    'total_orders' => $topEmployer->total,
+                    'employer' => \App\Models\Employer::find($topEmployer->attendant_id),
+                ];
+            } else {
+                $topEmployerData = null;
+            }
+
+            $engagementScore = round(
+                ($uniqueUsers * 1.2) +
+                ($totalViews * 0.3) +
+                ($totalLikes * 0.5) +
+                ($totalFavorites * 0.7) +
+                ($completedOrders * 1.5),
+                2
+            );
 
             return [
-                'views' => $views,
-                'unique_users' => $unique_users,
-                'likes' => $this->likes()->count(),
-                'favorites' => $this->favorites()->count(),
-                'total_orders' => $total_orders,
-                'completed_orders' => $completed_orders,
-                'cancelled_orders' => $cancelled_orders,
+                'total_views' => $totalViews,
+                'unique_users' => $uniqueUsers,
+                'avg_views_per_user' => $avgViewsPerUser,
+                'avg_views_per_day' => $avgViewsPerDay,
+                'days_active' => $daysActive,
+
+                'likes' => $totalLikes,
+                'favorites' => $totalFavorites,
+
+                'total_orders' => $totalOrders,
+                'completed_orders' => $completedOrders,
+                'cancelled_orders' => $cancelledOrders,
+                'pending_orders' => $pendingOrders,
+
+                'total_revenue' => $totalRevenue,
+                'average_ticket' => $averageTicket,
+
+                'conversion_rate' => $conversionRate,
+                'completion_rate' => $completionRate,
+                'cancellation_rate' => $cancellationRate,
+                'return_rate' => $returnRate,
+
+                'top_employer' => $topEmployerData,
+
+                'engagement_score' => $engagementScore,
             ];
         });
+    }
+
+
+    public static function totalDurationForItems(array $items): int
+    {
+        $total = 0;
+
+        foreach ($items as $itemData) {
+            $item = self::find($itemData['item_id']);
+            if ($item) {
+                $quantity = $itemData['quantity'] ?? 1;
+                $total += ($item->duration ?? 0) * $quantity;
+            }
+        }
+
+        return $total;
     }
 }
