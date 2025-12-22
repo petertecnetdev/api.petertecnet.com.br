@@ -7,14 +7,14 @@ return [
     | Default GeoIP Service
     |--------------------------------------------------------------------------
     |
-    | O serviÃ§o que o GeoIP usarÃ¡ para determinar a localizaÃ§Ã£o do IP.
+    | O serviço que o GeoIP usará para determinar a localização do IP.
     |
     */
     'service' => 'ip-api',
 
     /*
     |--------------------------------------------------------------------------
-    | ServiÃ§os GeoIP
+    | Serviços GeoIP
     |--------------------------------------------------------------------------
     */
     'services' => [
@@ -34,7 +34,7 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | LocalizaÃ§Ã£o padrÃ£o
+    | Localização padrão
     |--------------------------------------------------------------------------
     */
     'default_location' => [
