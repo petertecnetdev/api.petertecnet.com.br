@@ -124,54 +124,54 @@ class EmployerController extends Controller
                 'message' => 'Erro ao buscar employer',
             ], 500);
         }
-    }public function home(Request $request, $app_id)
-{
-    try {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
-
-        // Se city ou uf não forem fornecidos, tenta obter pelo IP
-        if (!$city || !$uf) {
-            $ip = $request->ip();
-            $location = geoip($ip); // Assumindo que você tenha um pacote GeoIP configurado
-            $city = $city ?? $location->city;
-            $uf = $uf ?? $location->state;
-        }
-
-        $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
-                $q->where('app_id', $app_id)
-                  ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
-            })
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'employer')->orderBy('position'),
-                'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
-                'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-            ])
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'employers' => $employers,
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('Employer.home error', [
-            'app_id' => $app_id,
-            'city' => $city,
-            'uf' => $uf,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao carregar colaboradores',
-        ], 500);
     }
-}
+    public function home(Request $request, $app_id)
+    {
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+
+            // Se city ou uf não forem fornecidos, tenta obter pelo IP
+            if (!$city || !$uf) {
+                $ip = $request->ip();
+                $location = geoip($ip);
+                $city = $city ?? $location->city;
+                $uf = $uf ?? $location->state;
+            }
+
+            $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+                $q->where('app_id', $app_id)
+                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+            })
+                ->with([
+                    'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
+                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                ])
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'employers' => $employers,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Employer.home error', [
+                'app_id' => $app_id,
+                'city' => $city,
+                'uf' => $uf,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar colaboradores',
+            ], 500);
+        }
+    }
 
 
     /* =======================================================
