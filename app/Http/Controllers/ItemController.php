@@ -9,7 +9,6 @@ use App\Models\{
     File,
     Interaction
 };
-use Illuminate\Support\Facades\Log;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{
     Auth,
@@ -116,7 +115,6 @@ class ItemController extends Controller
     {
         return $this->listByEntity($slug);
     }
-
     public function listByEntity(string $identifier)
     {
         return Cache::remember("items_entity_{$identifier}", 300, function () use ($identifier) {
@@ -130,74 +128,118 @@ class ItemController extends Controller
                 ->with([
                     'files' => fn($q) =>
                         $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo'),
+                            ->where('type', 'logo')
+                            ->orderBy('position'),
 
-                    'items' => fn($q) =>
-                        $q->where('entity_name', 'establishment')
-                            ->with([
-                                'files' => fn($fq) =>
-                                    $fq->where('entity_name', 'item')
-                            ])
-                            ->orderByDesc('updated_at'),
+                    'items.files' => fn($q) =>
+                        $q->where('entity_name', 'item')
+                            ->orderBy('position'),
                 ])
                 ->firstOrFail();
 
             return [
                 'message' => 'Itens listados com sucesso.',
-                'establishment' => [
-                    'id' => $establishment->id,
-                    'name' => $establishment->name,
-                    'fantasy' => $establishment->fantasy,
-                    'slug' => $establishment->slug,
-                    'city' => $establishment->city,
-                    'uf' => $establishment->uf,
-                    'logo' =>
-                        $establishment->files->first()?->public_url
-                        ?? $establishment->logo,
-                ],
-                'items' => $establishment->items->map(fn($item) => [
-                    'id' => $item->id,
-                    'name' => $item->name,
-                    'slug' => $item->slug,
-                    'price' => $item->price,
-                    'type' => $item->type,
-                    'duration' => $item->duration,
-                    'image' => $item->image_resolved,
-                    'updated_at' => $item->updated_at,
-                ])->values(),
-
+                'establishment' => json_decode(
+                    json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                ),
+                'items' => json_decode(
+                    json_encode($establishment->items()->get()->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                ),
             ];
         });
     }
-    public function home(int $app_id)
-    {
-        return Cache::tags(['items'])->remember("home_{$app_id}", 300, function () use ($app_id) {
-            return Item::where('app_id', $app_id)
-                ->where('entity_name', 'establishment')
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'item')->orderBy('position'),
-                ])
-                ->latest()
-                ->limit(20)
-                ->get()
-                ->map(function ($item) {
-                    return [
-                        'id' => $item->id,
-                        'entity_id' => $item->entity_id,
-                        'type' => 'item',
-                        'name' => $item->name,
-                        'slug' => $item->slug,
-                        'price' => $item->price,
-                        'item_type' => $item->type,
-                        'image' => $item->image_resolved,
-                        'updated_at' => $item->updated_at,
-                    ];
-                })
 
-                ->values();
-        });
+    public function listOthers(string $identifier)
+    {
+        try {
+            return Cache::remember("items_others_establishment_{$identifier}", 300, function () use ($identifier) {
+
+                $establishment = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    )
+                    ->firstOrFail();
+
+                $items = Item::query()
+                    ->whereHas('establishment', function ($q) use ($establishment) {
+                        $q->where('uf', $establishment->uf)
+                            ->where('city', $establishment->city)
+                            ->where('id', '!=', $establishment->id);
+                    })
+                    ->with([
+                        'files' => fn($q) =>
+                            $q->where('entity_name', 'item')
+                                ->orderBy('position'),
+                        'establishment',
+                    ])
+                    ->orderByDesc('updated_at')
+                    ->get();
+
+                return json_decode(
+                    json_encode($items->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                );
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Item.listOthers error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar itens de outros estabelecimentos',
+            ], 500);
+        }
     }
+
+    public function home(Request $request, $app_id)
+    {
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+
+            $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+                $q->where('app_id', $app_id)
+                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+            })
+                ->with([
+                    'files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position'),
+                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                ])
+                ->orderByDesc('updated_at')
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'items' => $items,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Item.home error', [
+                'app_id' => $app_id,
+                'city' => $city,
+                'uf' => $uf,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar itens',
+            ], 500);
+        }
+    }
+
+
 
 
     /* =======================================================
@@ -240,27 +282,57 @@ class ItemController extends Controller
             ])->values(),
         ]);
     }
-
-
-
-    public function view(string $slug)
+    public function view(string $identifier)
     {
-        return Cache::tags(['items'])->remember("view_{$slug}", 300, function () use ($slug) {
+        try {
+            $item = Item::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn($q) => $q->where('id', (int) $identifier),
+                    fn($q) => $q->where('slug', $identifier)
+                )
+                ->first();
 
-            $item = Item::with([
-                'entity:id,name,slug,logo',
-                'files' => fn($q) => $q->where('entity_name', 'item'),
-            ])->where('slug', $slug)->firstOrFail();
+            if (!$item) {
+                \Log::warning('Item.view not found', [
+                    'identifier' => $identifier,
+                ]);
 
-            Interaction::registerView($item, Auth::user());
+                return response()->json([
+                    'success' => false,
+                    'item' => null,
+                ], 404);
+            }
 
-            return [
-                'item' => $item,
-                'entity' => $item->entity,
-                'metrics' => $item->metrics,
-            ];
-        });
+            Interaction::registerView($item, auth()->user() ?? null);
+
+            $itemArray = json_decode(
+                json_encode($item->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                true
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'item encontrado com sucesso',
+                'item' => $itemArray,
+                'establishment' => Establishment::where('id', $item->entity_id)->first(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Item.view error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar item',
+            ], 500);
+        }
     }
+
+
+
 
     /* =======================================================
      | SERVICES
@@ -381,11 +453,24 @@ class ItemController extends Controller
             ], 201);
         });
     }
-    public function update(Request $request, int $id)
+    public function update(\Illuminate\Http\Request $request, int $id)
     {
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INÍCIO', [
+            'item_id' => $id,
+            'user_id' => \Illuminate\Support\Facades\Auth::id(),
+            'payload_keys' => array_keys($request->all()),
+            'has_image' => $request->hasFile('image'),
+            'remove_image' => $request->input('remove_image'),
+        ]);
+
         $this->ensureAuth('item_update');
 
         $item = \App\Models\Item::with('files')->findOrFail($id);
+
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] ITEM CARREGADO', [
+            'item_id' => $item->id,
+            'app_id' => $item->app_id,
+        ]);
 
         $validator = \Illuminate\Support\Facades\Validator::make(
             $request->all(),
@@ -414,14 +499,45 @@ class ItemController extends Controller
         );
 
         if ($validator->fails()) {
+            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAÇÃO', [
+                'errors' => $validator->errors()->toArray(),
+            ]);
+
             return response()->json([
                 'error' => 'Erro de validação.',
                 'errors' => $validator->errors(),
             ], 422);
         }
 
+        $toMysqlDateTime = function ($value) {
+            if ($value === null)
+                return null;
+            $s = trim((string) $value);
+            if ($s === '')
+                return null;
+            $s = str_replace('T', ' ', $s);
+            if (preg_match('/^\d{4}-\d{2}-\d{2}\s\d{2}:\d{2}$/', $s)) {
+                $s .= ':00';
+            }
+            return $s;
+        };
+
         try {
-            return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $item) {
+            return \Illuminate\Support\Facades\DB::transaction(function () use ($request, $item, $toMysqlDateTime, $id) {
+
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] TRANSACTION INICIADA', [
+                    'item_id' => $id,
+                ]);
+
+                static $allowedColumns = null;
+                if ($allowedColumns === null) {
+                    $cols = \Illuminate\Support\Facades\Schema::getColumnListing('items');
+                    $allowedColumns = array_fill_keys($cols, true);
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] COLUNAS PERMITIDAS CARREGADAS', [
+                        'columns' => $cols,
+                    ]);
+                }
 
                 $data = $request->only([
                     'name',
@@ -440,40 +556,64 @@ class ItemController extends Controller
                     'notes',
                 ]);
 
-                if ($request->has('status')) {
-                    $parsed = filter_var($request->input('status'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['status'] = $parsed ?? (bool) $item->status;
+                $data = array_intersect_key($data, $allowedColumns);
+
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] DADOS FILTRADOS', [
+                    'data' => $data,
+                ]);
+
+                if (isset($data['availability_start'])) {
+                    $data['availability_start'] = $toMysqlDateTime($data['availability_start']);
+                }
+                if (isset($data['availability_end'])) {
+                    $data['availability_end'] = $toMysqlDateTime($data['availability_end']);
                 }
 
-                if ($request->has('is_featured')) {
-                    $parsed = filter_var($request->input('is_featured'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['is_featured'] = $parsed ?? (bool) $item->is_featured;
+                if (isset($allowedColumns['status']) && $request->has('status')) {
+                    $data['status'] = $request->boolean('status', (bool) $item->status);
+                }
+                if (isset($allowedColumns['is_featured']) && $request->has('is_featured')) {
+                    $data['is_featured'] = $request->boolean('is_featured', (bool) $item->is_featured);
+                }
+                if (isset($allowedColumns['limited_by_user']) && $request->has('limited_by_user')) {
+                    $data['limited_by_user'] = $request->boolean('limited_by_user', (bool) $item->limited_by_user);
                 }
 
-                if ($request->has('limited_by_user')) {
-                    $parsed = filter_var($request->input('limited_by_user'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
-                    $data['limited_by_user'] = $parsed ?? (bool) $item->limited_by_user;
-                }
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] DADOS FINAIS PARA FILL', [
+                    'data' => $data,
+                ]);
 
                 $item->fill($data);
 
-                if ($request->filled('name')) {
+                if (isset($allowedColumns['slug']) && $request->filled('name')) {
                     $item->slug = $this->generateSlug($request->input('name'), $item->id);
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] SLUG GERADO', [
+                        'slug' => $item->slug,
+                    ]);
                 }
 
-                $item->updated_by = \Illuminate\Support\Facades\Auth::id();
+                if (isset($allowedColumns['updated_by'])) {
+                    $item->updated_by = \Illuminate\Support\Facades\Auth::id();
+                }
+
                 $item->save();
 
-                $removeImage = filter_var($request->input('remove_image'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? false;
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] ITEM SALVO', [
+                    'item_id' => $item->id,
+                ]);
+
+                $removeImage = $request->boolean('remove_image', false);
 
                 if ($removeImage) {
-                    $item->files()
+                    $deleted = $item->files()
                         ->where('entity_name', 'item')
                         ->where('type', 'image')
                         ->delete();
 
-                    $item->image = null;
-                    $item->save();
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] IMAGEM REMOVIDA', [
+                        'deleted_count' => $deleted,
+                    ]);
                 }
 
                 if ($request->hasFile('image')) {
@@ -481,6 +621,11 @@ class ItemController extends Controller
                         ->where('entity_name', 'item')
                         ->where('type', 'image')
                         ->delete();
+
+                    \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] NOVA IMAGEM RECEBIDA', [
+                        'original_name' => $request->file('image')->getClientOriginalName(),
+                        'size' => $request->file('image')->getSize(),
+                    ]);
 
                     \App\Models\File::storeOne(
                         $request->file('image'),
@@ -494,9 +639,11 @@ class ItemController extends Controller
 
                 $this->clearItemCache();
 
+                \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] CACHE LIMPO');
+
                 return response()->json([
                     'message' => 'Item atualizado com sucesso.',
-                    'item' => $item->load('files'),
+                    'item' => $item->fresh()->load('files'),
                 ]);
             });
         } catch (\Throwable $e) {
@@ -506,6 +653,7 @@ class ItemController extends Controller
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -513,9 +661,6 @@ class ItemController extends Controller
             ], 500);
         }
     }
-
-
-
 
 
 

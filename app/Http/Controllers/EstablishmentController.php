@@ -16,7 +16,7 @@ class EstablishmentController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('auth:api')->except(['view', 'home', 'listCities', 'listByCategory', 'show', 'list', 'generatePdf']);
+        $this->middleware('auth:api')->except(['view', 'home', 'listOthers', 'listCities', 'listByCategory', 'show', 'list', 'generatePdf']);
     }
 
     protected function getValidationMessages()
@@ -827,146 +827,238 @@ class EstablishmentController extends Controller
             ], 500);
         }
     }
-
-
-   public function view($slug)
+    public function view(string $identifier)
     {
-        $authUser = Auth::user();
+        try {
+            $establishment = Establishment::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn($q) => $q->where('id', (int) $identifier),
+                    fn($q) => $q->where('slug', $identifier)
+                )
+                ->first();
 
-        $establishment = Establishment::findForView($slug);
+            if (!$establishment) {
+                \Log::warning('Establishment.view not found', [
+                    'identifier' => $identifier,
+                ]);
 
-        $establishment = $this->resolveEstablishmentLocation($establishment);
+                return response()->json([
+                    'success' => false,
+                    'establishment' => null,
+                ], 404);
+            }
 
-        Interaction::registerView($establishment, $authUser);
-        Cache::forget("establishment_{$establishment->id}_metrics");
-        Cache::forget("establishment_{$establishment->id}_summary");
+            Interaction::registerView($establishment, auth()->user() ?? null);
 
-        return response()->json(
-            $establishment->toViewPayload(),
-            200
-        );
+            $establishmentArray = json_decode(
+                json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                true
+            );
+
+            return response()->json([
+                'success' => true,
+                'message' => 'establishment encontrado com sucesso',
+                'establishment' => $establishmentArray,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Establishment.view error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao buscar establishment',
+            ], 500);
+        }
     }
-
     public function home(Request $request, $app_id)
     {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
 
-        $establishments = Establishment::where('app_id', $app_id)
-            ->when(
-                $city && $uf,
-                fn($q) =>
-                $q->where('city', $city)->where('uf', $uf)
-            )
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'establishment')
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                'orders as completed_appointments' => fn($q) =>
-                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
-            ])
-            ->get()
-            ->map(function ($e) {
-                $logo = $e->files->firstWhere('type', 'logo')?->public_url;
-                $background = $e->files->firstWhere('type', 'background')?->public_url;
-                $gallery = $e->files->whereNotIn('type', ['logo', 'background'])->pluck('public_url')->values();
+            if (!$city || !$uf) {
+                $ip = $request->ip();
 
-                return [
-                    'id' => $e->id,
-                    'type' => 'establishment',
-                    'name' => $e->name,
-                    'slug' => $e->slug,
-                    'city' => $e->city,
-                    'uf' => $e->uf,
-                    'logo' => $logo,
-                    'background' => $background,
-                    'images' => [
-                        'logo' => $logo,
-                        'background' => $background,
-                        'gallery' => $gallery
-                    ],
-                    'total_views' => $e->total_views,
-                    'unique_users' => $e->unique_users,
-                    'total_completed_appointments' => $e->completed_appointments
-                ];
-            });
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
 
-        return response()->json(['establishments' => $establishments]);
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+                        }
+                    } catch (\Throwable $e) {
+                    }
+                }
+            }
+
+            $establishments = \App\Models\Establishment::where('app_id', $app_id)
+                ->when($city, fn($q) => $q->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
+                ->when($uf, fn($q) => $q->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]))
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                            ->orderBy('position')
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    'orders as completed_appointments' => fn($q) =>
+                        $q->whereIn('appointment_status', ['confirmed', 'attended']),
+                ])
+                ->get();
+
+            return response()->json([
+                'success' => true,
+                'city' => $city,
+                'uf' => $uf,
+                'establishments' => $establishments, // todos os campos do establishment e de suas files já vêm aqui
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Establishment.home error', [
+                'app_id' => $app_id,
+                'city' => $city ?? null,
+                'uf' => $uf ?? null,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar estabelecimentos',
+            ], 500);
+        }
+    }
+
+
+
+
+    public function listOthers(string $identifier)
+    {
+        try {
+            $establishment = Establishment::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn($q) => $q->where('id', (int) $identifier),
+                    fn($q) => $q->where('slug', $identifier)
+                )
+                ->firstOrFail();
+
+            return Cache::remember(
+                "establishments_others_app_{$establishment->app_id}_{$establishment->id}",
+                300,
+                function () use ($establishment) {
+
+                    $establishments = Establishment::query()
+                        ->where('app_id', $establishment->app_id)
+                        ->where('id', '!=', $establishment->id)
+                        ->where('city', $establishment->city)
+                        ->where('uf', $establishment->uf)
+                        ->with([
+                            'files' => fn($q) =>
+                                $q->where('entity_name', 'establishment')
+                                    ->orderBy('position'),
+                        ])
+                        ->orderByDesc('updated_at')
+                        ->get();
+
+                    return [
+                        'success' => true,
+                        'message' => 'Estabelecimentos listados com sucesso.',
+                        'establishments' => json_decode(
+                            json_encode($establishments->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                            true
+                        ),
+                    ];
+                }
+            );
+        } catch (\Throwable $e) {
+            \Log::error('Establishment.listOthers error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar outros estabelecimentos',
+            ], 500);
+        }
     }
 
 
     public function listMyByApp(Request $request)
-{
-    try {
-        if (!Auth::check()) {
-            return response()->json(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
-        }
+    {
+        try {
+            if (!Auth::check()) {
+                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+            }
 
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ], $this->getValidationMessages());
+            $data = $request->validate([
+                'app_id' => 'required|integer|exists:applications,id',
+            ], $this->getValidationMessages());
 
-        $user = Auth::user();
+            $user = Auth::user();
 
-        $establishments = Establishment::where('app_id', $data['app_id'])
-            ->where('user_id', $user->id)
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')
-            ])
-            ->orderBy('created_at', 'desc')
-            ->get()
-            ->map(function ($e) {
-                $logo = $e->files->firstWhere('type', 'logo')?->public_url;
-                $background = $e->files->firstWhere('type', 'background')?->public_url;
-                $gallery = $e->files
-                    ->whereNotIn('type', ['logo', 'background'])
-                    ->pluck('public_url')
-                    ->values();
+            $establishments = Establishment::where('app_id', $data['app_id'])
+                ->where('user_id', $user->id)
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                ])
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($e) {
+                    $logo = $e->files->firstWhere('type', 'logo')?->public_url;
+                    $background = $e->files->firstWhere('type', 'background')?->public_url;
+                    $gallery = $e->files
+                        ->whereNotIn('type', ['logo', 'background'])
+                        ->pluck('public_url')
+                        ->values();
 
-                return [
-                    'id' => $e->id,
-                    'name' => $e->name,
-                    'fantasy' => $e->fantasy,
-                    'slug' => $e->slug,
-                    'category' => $e->category,
-                    'city' => $e->city,
-                    'uf' => $e->uf,
-                    'logo' => $logo,
-                    'background' => $background,
-                    'images' => [
+                    return [
+                        'id' => $e->id,
+                        'name' => $e->name,
+                        'fantasy' => $e->fantasy,
+                        'slug' => $e->slug,
+                        'category' => $e->category,
+                        'city' => $e->city,
+                        'uf' => $e->uf,
                         'logo' => $logo,
                         'background' => $background,
-                        'gallery' => $gallery,
-                    ],
-                    'created_at' => $e->created_at,
-                ];
-            });
+                        'images' => [
+                            'logo' => $logo,
+                            'background' => $background,
+                            'gallery' => $gallery,
+                        ],
+                        'created_at' => $e->created_at,
+                    ];
+                });
 
-        return response()->json([
-            'message' => 'Estabelecimentos do usuÃ¡rio listados com sucesso.',
-            'establishments' => $establishments,
-        ], 200);
+            return response()->json([
+                'message' => 'Estabelecimentos do usuário listados com sucesso.',
+                'establishments' => $establishments,
+            ], 200);
 
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        return response()->json(['errors' => $e->errors()], 422);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json(['errors' => $e->errors()], 422);
 
-    } catch (\Exception $e) {
-        Log::error('Erro ao listar estabelecimentos do usuÃ¡rio por app', [
-            'error' => $e->getMessage(),
-            'user_id' => Auth::id(),
-            'payload' => $request->all(),
-        ]);
+        } catch (\Exception $e) {
+            Log::error('Erro ao listar estabelecimentos do usuário por app', [
+                'error' => $e->getMessage(),
+                'user_id' => Auth::id(),
+                'payload' => $request->all(),
+            ]);
 
-        return response()->json([
-            'error' => 'Ocorreu um erro ao listar seus estabelecimentos.'
-        ], 500);
+            return response()->json([
+                'error' => 'Ocorreu um erro ao listar seus estabelecimentos.'
+            ], 500);
+        }
     }
-}
 
 
 }
