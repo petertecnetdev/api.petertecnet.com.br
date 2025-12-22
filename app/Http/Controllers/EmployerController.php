@@ -22,6 +22,7 @@ use App\Mail\{
     EmployerRemoved,
     OwnerNotifiedEmployerDetached
 };
+use GeoIP; // facade do pacote torann/geoip
 
 class EmployerController extends Controller
 {
