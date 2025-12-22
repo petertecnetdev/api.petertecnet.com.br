@@ -16,7 +16,7 @@
         "laravel/sanctum": "^2.14.1",
         "laravel/tinker": "^2.7",
         "mpdf/mpdf": "^8.2",
-        "torann/geoip": "*",
+        "torann/geoip": "^3.0",
         "tymon/jwt-auth": "*"
     },
     "require-dev": {
