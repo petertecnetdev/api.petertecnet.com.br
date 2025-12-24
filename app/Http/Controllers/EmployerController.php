@@ -124,54 +124,55 @@ class EmployerController extends Controller
                 'message' => 'Erro ao buscar employer',
             ], 500);
         }
-    }public function home(Request $request, $app_id)
-{
-    try {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
-
-        // Se city ou uf não forem fornecidos, tenta obter pelo IP
-        if (!$city || !$uf) {
-            $ip = $request->ip();
-            $location = geoip($ip); // Assumindo que você tenha um pacote GeoIP configurado
-            $city = $city ?? $location->city;
-            $uf = $uf ?? $location->state;
-        }
-
-        $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
-                $q->where('app_id', $app_id)
-                  ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
-            })
-            ->with([
-                'files' => fn($q) => $q->where('entity_name', 'employer')->orderBy('position'),
-                'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
-                'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-            ])
-            ->get();
-
-        return response()->json([
-            'success' => true,
-            'employers' => $employers,
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('Employer.home error', [
-            'app_id' => $app_id,
-            'city' => $city,
-            'uf' => $uf,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao carregar colaboradores',
-        ], 500);
     }
-}
+    public function home(Request $request, $app_id)
+    {
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+
+            // Se city ou uf nÃ£o forem fornecidos, tenta obter pelo IP
+            if (!$city || !$uf) {
+                $ip = $request->ip();
+                $location = geoip($ip);
+                $city = $city ?? $location->city;
+                $uf = $uf ?? $location->state;
+            }
+
+            $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
+                $q->where('app_id', $app_id)
+                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+            })
+                ->with([
+                    'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
+                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->get()
+                ->map(function ($employer) {
+                    return json_decode(json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE), true);
+                })
+                ->values();
+
+            return response()->json([
+                'success' => true,
+                'employers' => $employers,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Employer.home error', [
+                'app_id' => $app_id,
+                'city' => $city,
+                'uf' => $uf,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar colaboradores',
+            ], 500);
+        }
+    }
+
 
 
     /* =======================================================
@@ -181,7 +182,7 @@ class EmployerController extends Controller
     public function store(Request $request)
     {
         if (!Auth::check()) {
-            return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            return $this->jsonUtf8(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
         }
 
         $data = $request->validate([
@@ -203,7 +204,7 @@ class EmployerController extends Controller
                 ->where('establishment_id', $data['establishment_id'])
                 ->exists()
         ) {
-            return $this->jsonUtf8(['error' => 'Usuário já vinculado ao estabelecimento.'], 409);
+            return $this->jsonUtf8(['error' => 'UsuÃ¡rio jÃ¡ vinculado ao estabelecimento.'], 409);
         }
 
         $employer = Employer::create([
@@ -230,7 +231,7 @@ class EmployerController extends Controller
     public function detach(Request $request)
     {
         if (!Auth::check()) {
-            return $this->jsonUtf8(['error' => 'Usuário não autenticado.'], 401);
+            return $this->jsonUtf8(['error' => 'UsuÃ¡rio nÃ£o autenticado.'], 401);
         }
 
         $data = $request->validate([
@@ -419,13 +420,13 @@ class EmployerController extends Controller
             ]);
         }
 
-        return $this->jsonUtf8(['message' => 'Horários salvos com sucesso.'], 201);
+        return $this->jsonUtf8(['message' => 'HorÃ¡rios salvos com sucesso.'], 201);
     }
 
     public function deleteSchedule(int $id)
     {
         EmployerSchedule::findOrFail($id)->delete();
-        return $this->jsonUtf8(['message' => 'Horário removido com sucesso.']);
+        return $this->jsonUtf8(['message' => 'HorÃ¡rio removido com sucesso.']);
     }
 
     /* =======================================================
@@ -523,7 +524,7 @@ class EmployerController extends Controller
             'is_active' => false,
         ]);
 
-        return $this->jsonUtf8(['message' => 'Horário reservado com sucesso.'], 201);
+        return $this->jsonUtf8(['message' => 'HorÃ¡rio reservado com sucesso.'], 201);
     }
 
     public function listAppointments(Request $request)
@@ -600,11 +601,11 @@ class EmployerController extends Controller
         $establishment = $item->establishment;
 
         if (!$establishment) {
-            return $this->jsonUtf8(['message' => 'Estabelecimento não encontrado para este item.'], 404);
+            return $this->jsonUtf8(['message' => 'Estabelecimento nÃ£o encontrado para este item.'], 404);
         }
 
         $employers = $establishment->employers
-            ->filter(fn($e) => $e->user) // garante que o employer tenha usuário
+            ->filter(fn($e) => $e->user) // garante que o employer tenha usuÃ¡rio
             ->map(function ($e) use ($item) {
                 $u = $e->user;
                 $avatar =
@@ -613,7 +614,7 @@ class EmployerController extends Controller
                     ?? null;
 
                 // Contando quantas vezes o employer atendeu este item
-                $attendedCount = \App\Models\Order::where('attendant_id', $e->id)
+                $attendedCount = Order::where('attendant_id', $e->id)
                     ->where('type', 'appointment')
                     ->whereHas('items', fn($q) => $q->where('item_id', $item->id))
                     ->count();
