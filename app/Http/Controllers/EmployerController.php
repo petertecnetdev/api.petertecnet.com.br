@@ -131,21 +131,33 @@ class EmployerController extends Controller
             $city = $request->query('city');
             $uf = $request->query('uf');
 
-            // Se city ou uf não forem fornecidos, tenta obter pelo IP
             if (!$city || !$uf) {
                 $ip = $request->ip();
-                $location = geoip($ip);
-                $city = $city ?? $location->city;
-                $uf = $uf ?? $location->state;
+
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+                        }
+                    } catch (\Throwable $e) {
+                    }
+                }
             }
 
             $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
                 $q->where('app_id', $app_id)
-                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+                    ->when($city, fn($qq) => $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
+                    ->when($uf, fn($qq) => $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]));
             })
                 ->with([
-                    'user.files' => fn($q) => $q->where('entity_name', 'user')->orderBy('position'),
-                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                    'user.files' => fn($q) =>
+                        $q->where('entity_name', 'user')->orderBy('position'),
+                    'establishment.files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')->orderBy('position'),
                 ])
                 ->get()
                 ->map(function ($employer) {
@@ -155,15 +167,16 @@ class EmployerController extends Controller
 
             return response()->json([
                 'success' => true,
+                'city' => $city,
+                'uf' => $uf,
                 'employers' => $employers,
             ]);
         } catch (\Throwable $e) {
             \Log::error('Employer.home error', [
                 'app_id' => $app_id,
-                'city' => $city,
-                'uf' => $uf,
+                'city' => $city ?? null,
+                'uf' => $uf ?? null,
                 'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -172,7 +185,6 @@ class EmployerController extends Controller
             ], 500);
         }
     }
-
 
 
     /* =======================================================
