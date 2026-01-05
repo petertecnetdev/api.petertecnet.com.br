@@ -18,7 +18,6 @@ class User extends Authenticatable implements JWTSubject
         'last_name',
         'email',
         'verification_code',
-        'avatar',
         'password',
         'reset_password_code',
         'reset_password_expires_at',
@@ -225,12 +224,11 @@ class User extends Authenticatable implements JWTSubject
 
         return ['cpf' => preg_replace('/[^0-9]/', '', $username), 'password' => $password];
     }
-    public function avatarFile()
+
+    public function files()
     {
-        return $this->hasOne(File::class, 'entity_id')
-            ->where('entity_name', 'user')
-            ->where('type', 'avatar')
-            ->orderByDesc('id');
+        return $this->hasMany(File::class, 'created_by');
     }
+
 
 }
