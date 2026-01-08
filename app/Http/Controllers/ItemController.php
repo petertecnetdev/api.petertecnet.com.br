@@ -31,15 +31,15 @@ class ItemController extends Controller
     protected function validationMessages(): array
     {
         return [
-            'app_id.required' => 'O campo app_id é obrigatório.',
-            'app_id.exists' => 'O aplicativo informado não existe.',
-            'name.required' => 'O nome é obrigatório.',
-            'type.required' => 'O tipo é obrigatório.',
-            'price.required' => 'O preço é obrigatório.',
-            'price.numeric' => 'O preço deve ser numérico.',
+            'app_id.required' => 'O campo app_id ï¿½ obrigatï¿½rio.',
+            'app_id.exists' => 'O aplicativo informado nï¿½o existe.',
+            'name.required' => 'O nome ï¿½ obrigatï¿½rio.',
+            'type.required' => 'O tipo ï¿½ obrigatï¿½rio.',
+            'price.required' => 'O preï¿½o ï¿½ obrigatï¿½rio.',
+            'price.numeric' => 'O preï¿½o deve ser numï¿½rico.',
             'status.boolean' => 'O status deve ser booleano.',
-            'entity_id.required' => 'A entidade é obrigatória.',
-            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_id.required' => 'A entidade ï¿½ obrigatï¿½ria.',
+            'entity_name.required' => 'O nome da entidade ï¿½ obrigatï¿½rio.',
         ];
     }
 
@@ -47,11 +47,11 @@ class ItemController extends Controller
     private function ensureAuth(string $permission): void
     {
         if (!Auth::check()) {
-            abort(401, 'Usuário não autenticado.');
+            abort(401, 'Usuï¿½rio nï¿½o autenticado.');
         }
 
         if (!Auth::user()->hasPermission($permission)) {
-            abort(403, 'Permissão negada.');
+            abort(403, 'Permissï¿½o negada.');
         }
     }
 
@@ -115,41 +115,101 @@ class ItemController extends Controller
     {
         return $this->listByEntity($slug);
     }
-    public function listByEntity(string $identifier)
+    public function listByEntity(Request $request, string $identifier)
     {
-        return Cache::remember("items_entity_{$identifier}", 300, function () use ($identifier) {
+        try {
+            \Log::info('listByEntity:start', [
+                'identifier' => $identifier,
+                'query' => $request->query(),
+            ]);
 
-            $establishment = Establishment::query()
-                ->when(
-                    is_numeric($identifier),
-                    fn($q) => $q->where('id', (int) $identifier),
-                    fn($q) => $q->where('slug', $identifier)
-                )
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')
-                            ->where('type', 'logo')
-                            ->orderBy('position'),
+            $type = $request->query('type');
 
-                    'items.files' => fn($q) =>
-                        $q->where('entity_name', 'item')
-                            ->orderBy('position'),
-                ])
-                ->firstOrFail();
+            \Log::info('listByEntity:resolved_type', [
+                'type' => $type ?? 'all',
+            ]);
 
-            return [
-                'message' => 'Itens listados com sucesso.',
-                'establishment' => json_decode(
-                    json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                    true
-                ),
-                'items' => json_decode(
-                    json_encode($establishment->items()->get()->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                    true
-                ),
-            ];
-        });
+            $cacheKey = "items_entity_{$identifier}_" . ($type ?: 'all');
+
+            \Log::info('listByEntity:cache_key', [
+                'cache_key' => $cacheKey,
+            ]);
+
+            return Cache::remember($cacheKey, 300, function () use ($identifier, $type) {
+                \Log::info('listByEntity:cache_miss', [
+                    'identifier' => $identifier,
+                    'type' => $type ?? 'all',
+                ]);
+
+                $establishmentQuery = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    );
+
+                \Log::info('listByEntity:establishment_query_built');
+
+                $establishment = $establishmentQuery
+                    ->with([
+                        'files' => fn($q) =>
+                            $q->where('entity_name', 'establishment')
+                                ->where('type', 'logo')
+                                ->orderBy('position'),
+
+                        'items.files' => fn($q) =>
+                            $q->where('entity_name', 'item')
+                                ->orderBy('position'),
+                    ])
+                    ->firstOrFail();
+
+                \Log::info('listByEntity:establishment_loaded', [
+                    'establishment_id' => $establishment->id,
+                    'slug' => $establishment->slug,
+                ]);
+
+                $itemsQuery = $establishment->items();
+
+                if ($type) {
+                    \Log::info('listByEntity:filtering_items_by_type', [
+                        'type' => $type,
+                    ]);
+                    $itemsQuery->where('type', $type);
+                } else {
+                    \Log::info('listByEntity:listing_all_items');
+                }
+
+                $items = $itemsQuery->get();
+
+                \Log::info('listByEntity:items_loaded', [
+                    'items_count' => $items->count(),
+                ]);
+
+                return [
+                    'message' => 'Itens listados com sucesso.',
+                    'establishment' => json_decode(
+                        json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                        true
+                    ),
+                    'items' => json_decode(
+                        json_encode($items->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                        true
+                    ),
+                ];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('listByEntity:error', [
+                'identifier' => $identifier,
+                'exception' => $e,
+            ]);
+
+            return response()->json([
+                'message' => 'Erro ao listar itens.',
+                'error' => $e->getMessage(),
+            ], 500);
+        }
     }
+
 
     public function listOthers(string $identifier)
     {
@@ -455,7 +515,7 @@ class ItemController extends Controller
     }
     public function update(\Illuminate\Http\Request $request, int $id)
     {
-        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INÍCIO', [
+        \Illuminate\Support\Facades\Log::info('[ITEM UPDATE] INï¿½CIO', [
             'item_id' => $id,
             'user_id' => \Illuminate\Support\Facades\Auth::id(),
             'payload_keys' => array_keys($request->all()),
@@ -499,12 +559,12 @@ class ItemController extends Controller
         );
 
         if ($validator->fails()) {
-            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAÇÃO', [
+            \Illuminate\Support\Facades\Log::warning('[ITEM UPDATE] FALHA DE VALIDAï¿½ï¿½O', [
                 'errors' => $validator->errors()->toArray(),
             ]);
 
             return response()->json([
-                'error' => 'Erro de validação.',
+                'error' => 'Erro de validaï¿½ï¿½o.',
                 'errors' => $validator->errors(),
             ], 422);
         }
@@ -706,7 +766,7 @@ class ItemController extends Controller
 
         $this->clearItemCache();
 
-        return response()->json(['message' => 'Preços aumentados com sucesso.']);
+        return response()->json(['message' => 'Preï¿½os aumentados com sucesso.']);
     }
 
     public function decreasePricesByPercentage(Request $request)
@@ -726,6 +786,6 @@ class ItemController extends Controller
 
         $this->clearItemCache();
 
-        return response()->json(['message' => 'Preços reduzidos com sucesso.']);
+        return response()->json(['message' => 'Preï¿½os reduzidos com sucesso.']);
     }
 }
