@@ -302,7 +302,7 @@ class Home
 
     private static function getItems($establishmentIds)
     {
-        $establishments = \App\Models\Establishment::whereIn('id', $establishmentIds)
+        $establishments = Establishment::whereIn('id', $establishmentIds)
             ->get(['id', 'name', 'slug', 'city', 'uf'])
             ->keyBy('id');
 
