@@ -260,34 +260,110 @@ class ItemController extends Controller
 
     public function home(Request $request, $app_id)
     {
+        \Log::info('Item.home start', [
+            'app_id' => $app_id,
+            'query' => $request->query(),
+            'ip' => $request->ip(),
+        ]);
+
         try {
             $city = $request->query('city');
             $uf = $request->query('uf');
+            $type = $request->query('type');
+
+            \Log::info('Item.home initial filters', [
+                'city' => $city,
+                'uf' => $uf,
+                'type' => $type,
+            ]);
+
+            if ($city === 'Todas') {
+                $city = null;
+                \Log::info('Item.home city reset (Todas)');
+            }
+
+            if ($uf === 'ALL') {
+                $uf = null;
+                \Log::info('Item.home uf reset (ALL)');
+            }
+
+            if (!$city || !$uf) {
+                $ip = $request->ip();
+
+                \Log::info('Item.home trying IP location', [
+                    'ip' => $ip,
+                ]);
+
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+
+                        \Log::info('Item.home IP API response', [
+                            'status' => $response->status(),
+                            'body' => $response->json(),
+                        ]);
+
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+
+                            \Log::info('Item.home location resolved by IP', [
+                                'city' => $city,
+                                'uf' => $uf,
+                            ]);
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Item.home IP lookup error', [
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            \Log::info('Item.home final filters', [
+                'city' => $city,
+                'uf' => $uf,
+                'type' => $type,
+            ]);
 
             $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
                 $q->where('app_id', $app_id)
-                    ->when($city && $uf, fn($qq) => $qq->where('city', $city)->where('uf', $uf));
+                    ->when($city, fn($qq) => $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
+                    ->when($uf, fn($qq) => $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]));
             })
+                ->when($type, fn($q) => $q->where('type', $type))
                 ->with([
-                    'files' => fn($q) => $q->where('entity_name', 'item')->orderBy('position'),
-                    'establishment.files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'item')->orderBy('position'),
+                    'establishment.files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')->orderBy('position'),
                 ])
                 ->withCount([
                     'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
-                    'views as unique_users' => fn($q) => $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
                 ])
                 ->orderByDesc('updated_at')
                 ->get();
 
+            \Log::info('Item.home query executed', [
+                'count' => $items->count(),
+            ]);
+
             return response()->json([
                 'success' => true,
+                'city' => $city,
+                'uf' => $uf,
+                'type' => $type,
                 'items' => $items,
             ]);
         } catch (\Throwable $e) {
-            \Log::error('Item.home error', [
+            \Log::error('Item.home fatal error', [
                 'app_id' => $app_id,
-                'city' => $city,
-                'uf' => $uf,
+                'city' => $city ?? null,
+                'uf' => $uf ?? null,
+                'type' => $type ?? null,
                 'message' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);

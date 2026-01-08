@@ -127,26 +127,69 @@ class EmployerController extends Controller
     }
     public function home(Request $request, $app_id)
     {
+        \Log::info('Employer.home start', [
+            'app_id' => $app_id,
+            'query' => $request->query(),
+            'ip' => $request->ip(),
+        ]);
+
         try {
             $city = $request->query('city');
             $uf = $request->query('uf');
 
+            \Log::info('Employer.home initial filters', [
+                'city' => $city,
+                'uf' => $uf,
+            ]);
+
+            if ($city === 'Todas') {
+                $city = null;
+                \Log::info('Employer.home city reset (Todas)');
+            }
+
+            if ($uf === 'ALL') {
+                $uf = null;
+                \Log::info('Employer.home uf reset (ALL)');
+            }
+
             if (!$city || !$uf) {
                 $ip = $request->ip();
+
+                \Log::info('Employer.home trying IP location', [
+                    'ip' => $ip,
+                ]);
 
                 if ($ip && $ip !== '127.0.0.1') {
                     try {
                         $response = \Illuminate\Support\Facades\Http::timeout(3)
                             ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
 
+                        \Log::info('Employer.home IP API response', [
+                            'status' => $response->status(),
+                            'body' => $response->json(),
+                        ]);
+
                         if ($response->ok() && $response->json('status') === 'success') {
                             $uf = $uf ?: strtoupper($response->json('region'));
                             $city = $city ?: $response->json('city');
+
+                            \Log::info('Employer.home location resolved by IP', [
+                                'city' => $city,
+                                'uf' => $uf,
+                            ]);
                         }
                     } catch (\Throwable $e) {
+                        \Log::error('Employer.home IP lookup error', [
+                            'message' => $e->getMessage(),
+                        ]);
                     }
                 }
             }
+
+            \Log::info('Employer.home final filters', [
+                'city' => $city,
+                'uf' => $uf,
+            ]);
 
             $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
                 $q->where('app_id', $app_id)
@@ -161,9 +204,16 @@ class EmployerController extends Controller
                 ])
                 ->get()
                 ->map(function ($employer) {
-                    return json_decode(json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE), true);
+                    return json_decode(
+                        json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                        true
+                    );
                 })
                 ->values();
+
+            \Log::info('Employer.home query executed', [
+                'count' => $employers->count(),
+            ]);
 
             return response()->json([
                 'success' => true,
@@ -172,11 +222,12 @@ class EmployerController extends Controller
                 'employers' => $employers,
             ]);
         } catch (\Throwable $e) {
-            \Log::error('Employer.home error', [
+            \Log::error('Employer.home fatal error', [
                 'app_id' => $app_id,
                 'city' => $city ?? null,
                 'uf' => $uf ?? null,
                 'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
@@ -185,6 +236,7 @@ class EmployerController extends Controller
             ], 500);
         }
     }
+
 
 
     /* =======================================================
