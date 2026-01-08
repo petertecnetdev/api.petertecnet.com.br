@@ -126,116 +126,125 @@ class EmployerController extends Controller
         }
     }
     public function home(Request $request, $app_id)
-    {
-        \Log::info('Employer.home start', [
-            'app_id' => $app_id,
-            'query' => $request->query(),
-            'ip' => $request->ip(),
+{
+    \Log::info('Employer.home start', [
+        'app_id' => $app_id,
+        'query' => $request->query(),
+        'ip' => $request->ip(),
+    ]);
+
+    try {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+        $showAll = false;
+
+        \Log::info('Employer.home initial filters', [
+            'city' => $city,
+            'uf' => $uf,
         ]);
 
-        try {
-            $city = $request->query('city');
-            $uf = $request->query('uf');
+        if ($city === 'Todas') {
+            $city = null;
+            $showAll = true;
+            \Log::info('Employer.home city reset (Todas)');
+        }
 
-            \Log::info('Employer.home initial filters', [
-                'city' => $city,
-                'uf' => $uf,
+        if ($uf === 'ALL') {
+            $uf = null;
+            $showAll = true;
+            \Log::info('Employer.home uf reset (ALL)');
+        }
+
+        if (!$showAll && (!$city || !$uf)) {
+            $ip = $request->ip();
+
+            \Log::info('Employer.home trying IP location', [
+                'ip' => $ip,
             ]);
 
-            if ($city === 'Todas') {
-                $city = null;
-                \Log::info('Employer.home city reset (Todas)');
-            }
+            if ($ip && $ip !== '127.0.0.1') {
+                try {
+                    $response = \Illuminate\Support\Facades\Http::timeout(3)
+                        ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
 
-            if ($uf === 'ALL') {
-                $uf = null;
-                \Log::info('Employer.home uf reset (ALL)');
-            }
+                    \Log::info('Employer.home IP API response', [
+                        'status' => $response->status(),
+                        'body' => $response->json(),
+                    ]);
 
-            if (!$city || !$uf) {
-                $ip = $request->ip();
+                    if ($response->ok() && $response->json('status') === 'success') {
+                        $uf = $uf ?: strtoupper($response->json('region'));
+                        $city = $city ?: $response->json('city');
 
-                \Log::info('Employer.home trying IP location', [
-                    'ip' => $ip,
-                ]);
-
-                if ($ip && $ip !== '127.0.0.1') {
-                    try {
-                        $response = \Illuminate\Support\Facades\Http::timeout(3)
-                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
-
-                        \Log::info('Employer.home IP API response', [
-                            'status' => $response->status(),
-                            'body' => $response->json(),
-                        ]);
-
-                        if ($response->ok() && $response->json('status') === 'success') {
-                            $uf = $uf ?: strtoupper($response->json('region'));
-                            $city = $city ?: $response->json('city');
-
-                            \Log::info('Employer.home location resolved by IP', [
-                                'city' => $city,
-                                'uf' => $uf,
-                            ]);
-                        }
-                    } catch (\Throwable $e) {
-                        \Log::error('Employer.home IP lookup error', [
-                            'message' => $e->getMessage(),
+                        \Log::info('Employer.home location resolved by IP', [
+                            'city' => $city,
+                            'uf' => $uf,
                         ]);
                     }
+                } catch (\Throwable $e) {
+                    \Log::error('Employer.home IP lookup error', [
+                        'message' => $e->getMessage(),
+                    ]);
                 }
             }
-
-            \Log::info('Employer.home final filters', [
-                'city' => $city,
-                'uf' => $uf,
-            ]);
-
-            $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf) {
-                $q->where('app_id', $app_id)
-                    ->when($city, fn($qq) => $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
-                    ->when($uf, fn($qq) => $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]));
-            })
-                ->with([
-                    'user.files' => fn($q) =>
-                        $q->where('entity_name', 'user')->orderBy('position'),
-                    'establishment.files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')->orderBy('position'),
-                ])
-                ->get()
-                ->map(function ($employer) {
-                    return json_decode(
-                        json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                        true
-                    );
-                })
-                ->values();
-
-            \Log::info('Employer.home query executed', [
-                'count' => $employers->count(),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'city' => $city,
-                'uf' => $uf,
-                'employers' => $employers,
-            ]);
-        } catch (\Throwable $e) {
-            \Log::error('Employer.home fatal error', [
-                'app_id' => $app_id,
-                'city' => $city ?? null,
-                'uf' => $uf ?? null,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao carregar colaboradores',
-            ], 500);
         }
+
+        \Log::info('Employer.home final filters', [
+            'city' => $city,
+            'uf' => $uf,
+            'showAll' => $showAll,
+        ]);
+
+        $employers = Employer::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
+            $q->where('app_id', $app_id)
+                ->when(!$showAll && $city, fn($qq) =>
+                    $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
+                )
+                ->when(!$showAll && $uf, fn($qq) =>
+                    $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
+                );
+        })
+            ->with([
+                'user.files' => fn($q) =>
+                    $q->where('entity_name', 'user')->orderBy('position'),
+                'establishment.files' => fn($q) =>
+                    $q->where('entity_name', 'establishment')->orderBy('position'),
+            ])
+            ->get()
+            ->map(function ($employer) {
+                return json_decode(
+                    json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                    true
+                );
+            })
+            ->values();
+
+        \Log::info('Employer.home query executed', [
+            'count' => $employers->count(),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'city' => $city,
+            'uf' => $uf,
+            'employers' => $employers,
+        ]);
+    } catch (\Throwable $e) {
+        \Log::error('Employer.home fatal error', [
+            'app_id' => $app_id,
+            'city' => $city ?? null,
+            'uf' => $uf ?? null,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Erro ao carregar colaboradores',
+        ], 500);
     }
+}
+
 
 
 
