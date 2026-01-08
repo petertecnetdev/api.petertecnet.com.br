@@ -259,135 +259,133 @@ class ItemController extends Controller
     }
 
     public function home(Request $request, $app_id)
-{
-    \Log::info('Item.home start', [
-        'app_id' => $app_id,
-        'query' => $request->query(),
-        'ip' => $request->ip(),
-    ]);
+    {
+        \Log::info('Item.home start', [
+            'app_id' => $app_id,
+            'query' => $request->query(),
+            'ip' => $request->ip(),
+        ]);
 
-    try {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
-        $type = $request->query('type');
-        $showAll = false;
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+            $type = $request->query('type');
+            $showAll = false;
 
-        \Log::info('Item.home initial filters', compact('city', 'uf', 'type'));
+            if ($city === 'Todas') {
+                $city = null;
+                $showAll = true;
+            }
 
-        if ($city === 'Todas') {
-            $city = null;
-            $showAll = true;
-        }
+            if ($uf === 'ALL') {
+                $uf = null;
+                $showAll = true;
+            }
 
-        if ($uf === 'ALL') {
-            $uf = null;
-            $showAll = true;
-        }
+            if (!$showAll && (!$city || !$uf)) {
+                $ip = $request->ip();
 
-        if (!$showAll && (!$city || !$uf)) {
-            $ip = $request->ip();
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
 
-            \Log::info('Item.home trying IP location', [
-                'ip' => $ip,
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Item.home IP lookup error', [
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
+                $q->where('app_id', $app_id)
+                    ->when(
+                        !$showAll && $city,
+                        fn($qq) =>
+                        $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
+                    )
+                    ->when(
+                        !$showAll && $uf,
+                        fn($qq) =>
+                        $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
+                    );
+            })
+                ->when($type, fn($q) => $q->where('type', $type))
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'item')->orderBy('position'),
+                    'establishment.files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
+                            ->where('interaction_type', 'view'),
+                ])
+                ->get()
+                ->shuffle();
+
+            \Log::info('Item.home items loaded', [
+                'count' => $items->count(),
             ]);
 
-            if ($ip && $ip !== '127.0.0.1') {
-                try {
-                    $response = \Illuminate\Support\Facades\Http::timeout(3)
-                        ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+            $final = collect();
+            $lastEstablishmentId = null;
 
-                    \Log::info('Item.home IP API response', [
-                        'status' => $response->status(),
-                        'body' => $response->json(),
-                    ]);
+            $pool = $items->groupBy('establishment_id')->map(fn($g) => $g->values());
 
-                    if ($response->ok() && $response->json('status') === 'success') {
-                        $uf = $uf ?: strtoupper($response->json('region'));
-                        $city = $city ?: $response->json('city');
+            while ($pool->isNotEmpty()) {
+                $candidates = $pool->filter(fn($g, $estId) => $estId !== $lastEstablishmentId);
 
-                        \Log::info('Item.home location resolved by IP', compact('city', 'uf'));
-                    }
-                } catch (\Throwable $e) {
-                    \Log::error('Item.home IP lookup error', [
-                        'message' => $e->getMessage(),
-                    ]);
+                if ($candidates->isEmpty()) {
+                    $candidates = $pool;
+                }
+
+                $selectedGroup = $candidates->random();
+                $item = $selectedGroup->shift();
+
+                $final->push($item);
+                $lastEstablishmentId = $item->establishment_id;
+
+                if ($selectedGroup->isEmpty()) {
+                    $pool = $pool->reject(fn($g) => $g->isEmpty());
                 }
             }
+
+            \Log::info('Item.home items reordered to avoid same establishment sequence', [
+                'final_count' => $final->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'city' => $city,
+                'uf' => $uf,
+                'type' => $type,
+                'items' => $final->values(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Item.home fatal error', [
+                'app_id' => $app_id,
+                'city' => $city ?? null,
+                'uf' => $uf ?? null,
+                'type' => $type ?? null,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar itens',
+            ], 500);
         }
-
-        \Log::info('Item.home final filters', compact('city', 'uf', 'type', 'showAll'));
-
-        $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
-            $q->where('app_id', $app_id)
-                ->when(!$showAll && $city, fn ($qq) =>
-                    $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
-                )
-                ->when(!$showAll && $uf, fn ($qq) =>
-                    $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
-                );
-        })
-            ->when($type, fn ($q) => $q->where('type', $type))
-            ->with([
-                'files' => fn ($q) =>
-                    $q->where('entity_name', 'item')->orderBy('position'),
-                'establishment.files' => fn ($q) =>
-                    $q->where('entity_name', 'establishment')->orderBy('position'),
-            ])
-            ->withCount([
-                'views as total_views' => fn ($q) =>
-                    $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn ($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                        ->where('interaction_type', 'view'),
-            ])
-            ->get();
-
-        \Log::info('Item.home items loaded', [
-            'count' => $items->count(),
-        ]);
-
-        $grouped = $items->groupBy('establishment_id')->map(fn ($group) =>
-            $group->shuffle()->values()
-        );
-
-        $final = collect();
-        $max = $grouped->max(fn ($g) => $g->count());
-
-        for ($i = 0; $i < $max; $i++) {
-            foreach ($grouped as $group) {
-                if (isset($group[$i])) {
-                    $final->push($group[$i]);
-                }
-            }
-        }
-
-        \Log::info('Item.home items shuffled without repetition', [
-            'final_count' => $final->count(),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'city' => $city,
-            'uf' => $uf,
-            'type' => $type,
-            'items' => $final->values(),
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('Item.home fatal error', [
-            'app_id' => $app_id,
-            'city' => $city ?? null,
-            'uf' => $uf ?? null,
-            'type' => $type ?? null,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao carregar itens',
-        ], 500);
     }
-}
 
 
 
