@@ -874,114 +874,114 @@ class EstablishmentController extends Controller
             ], 500);
         }
     }
-   public function home(Request $request, $app_id)
-{
-    \Log::info('Establishment.home start', [
-        'app_id' => $app_id,
-        'query' => $request->query(),
-        'ip' => $request->ip(),
-    ]);
-
-    try {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
-
-        \Log::info('Establishment.home initial filters', [
-            'city' => $city,
-            'uf' => $uf,
+    public function home(Request $request, $app_id)
+    {
+        \Log::info('Establishment.home start', [
+            'app_id' => $app_id,
+            'query' => $request->query(),
+            'ip' => $request->ip(),
         ]);
 
-        if ($city === 'Todas') {
-            $city = null;
-            \Log::info('Establishment.home city reset (Todas)');
-        }
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
 
-        if ($uf === 'ALL') {
-            $uf = null;
-            \Log::info('Establishment.home uf reset (ALL)');
-        }
-
-        if (!$city || !$uf) {
-            $ip = $request->ip();
-
-            \Log::info('Establishment.home trying IP location', [
-                'ip' => $ip,
+            \Log::info('Establishment.home initial filters', [
+                'city' => $city,
+                'uf' => $uf,
             ]);
 
-            if ($ip && $ip !== '127.0.0.1') {
-                try {
-                    $response = \Illuminate\Support\Facades\Http::timeout(3)
-                        ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+            if ($city === 'Todas') {
+                $city = null;
+                \Log::info('Establishment.home city reset (Todas)');
+            }
 
-                    \Log::info('Establishment.home IP API response', [
-                        'status' => $response->status(),
-                        'body' => $response->json(),
-                    ]);
+            if ($uf === 'ALL') {
+                $uf = null;
+                \Log::info('Establishment.home uf reset (ALL)');
+            }
 
-                    if ($response->ok() && $response->json('status') === 'success') {
-                        $uf = $uf ?: strtoupper($response->json('region'));
-                        $city = $city ?: $response->json('city');
+            if (!$city || !$uf) {
+                $ip = $request->ip();
 
-                        \Log::info('Establishment.home location resolved by IP', [
-                            'city' => $city,
-                            'uf' => $uf,
+                \Log::info('Establishment.home trying IP location', [
+                    'ip' => $ip,
+                ]);
+
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+
+                        \Log::info('Establishment.home IP API response', [
+                            'status' => $response->status(),
+                            'body' => $response->json(),
+                        ]);
+
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+
+                            \Log::info('Establishment.home location resolved by IP', [
+                                'city' => $city,
+                                'uf' => $uf,
+                            ]);
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Establishment.home IP lookup error', [
+                            'message' => $e->getMessage(),
                         ]);
                     }
-                } catch (\Throwable $e) {
-                    \Log::error('Establishment.home IP lookup error', [
-                        'message' => $e->getMessage(),
-                    ]);
                 }
             }
+
+            \Log::info('Establishment.home final filters', [
+                'city' => $city,
+                'uf' => $uf,
+            ]);
+
+            $establishments = Establishment::where('app_id', $app_id)
+                ->when($city, fn($q) => $q->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
+                ->when($uf, fn($q) => $q->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]))
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')
+                            ->orderBy('position')
+                ])
+                ->withCount([
+                    'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
+                    'views as unique_users' => fn($q) =>
+                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
+                    'orders as completed_appointments' => fn($q) =>
+                        $q->whereIn('appointment_status', ['confirmed', 'attended']),
+                ])
+                ->get();
+
+            \Log::info('Establishment.home query executed', [
+                'count' => $establishments->count(),
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'city' => $city,
+                'uf' => $uf,
+                'establishments' => $establishments,
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Establishment.home fatal error', [
+                'app_id' => $app_id,
+                'city' => $city ?? null,
+                'uf' => $uf ?? null,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar estabelecimentos',
+            ], 500);
         }
-
-        \Log::info('Establishment.home final filters', [
-            'city' => $city,
-            'uf' => $uf,
-        ]);
-
-        $establishments = Establishment::where('app_id', $app_id)
-            ->when($city, fn($q) => $q->whereRaw('LOWER(city) = ?', [mb_strtolower($city)]))
-            ->when($uf, fn($q) => $q->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)]))
-            ->with([
-                'files' => fn($q) =>
-                    $q->where('entity_name', 'establishment')
-                        ->orderBy('position')
-            ])
-            ->withCount([
-                'views as total_views' => fn($q) => $q->where('interaction_type', 'view'),
-                'views as unique_users' => fn($q) =>
-                    $q->select(\DB::raw('COUNT(DISTINCT user_id)'))->where('interaction_type', 'view'),
-                'orders as completed_appointments' => fn($q) =>
-                    $q->whereIn('appointment_status', ['confirmed', 'attended']),
-            ])
-            ->get();
-
-        \Log::info('Establishment.home query executed', [
-            'count' => $establishments->count(),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'city' => $city,
-            'uf' => $uf,
-            'establishments' => $establishments,
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('Establishment.home fatal error', [
-            'app_id' => $app_id,
-            'city' => $city ?? null,
-            'uf' => $uf ?? null,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao carregar estabelecimentos',
-        ], 500);
     }
-}
 
 
 
