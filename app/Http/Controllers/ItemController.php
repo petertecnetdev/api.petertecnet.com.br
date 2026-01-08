@@ -258,137 +258,124 @@ class ItemController extends Controller
         }
     }
 
-    public function home(Request $request, $app_id)
-    {
-        \Log::info('Item.home start', [
-            'app_id' => $app_id,
-            'query' => $request->query(),
-            'ip' => $request->ip(),
+   public function home(Request $request, $app_id)
+{
+    \Log::info('Item.home start', [
+        'app_id' => $app_id,
+        'query' => $request->query(),
+    ]);
+
+    try {
+        $city = $request->query('city');
+        $uf = $request->query('uf');
+        $type = $request->query('type');
+        $showAll = false;
+
+        if ($city === 'Todas') {
+            $city = null;
+            $showAll = true;
+        }
+
+        if ($uf === 'ALL') {
+            $uf = null;
+            $showAll = true;
+        }
+
+        if (!$showAll && (!$city || !$uf)) {
+            $ip = $request->ip();
+
+            if ($ip && $ip !== '127.0.0.1') {
+                try {
+                    $response = \Illuminate\Support\Facades\Http::timeout(3)
+                        ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+
+                    if ($response->ok() && $response->json('status') === 'success') {
+                        $uf = $uf ?: strtoupper($response->json('region'));
+                        $city = $city ?: $response->json('city');
+                    }
+                } catch (\Throwable $e) {
+                    \Log::error('Item.home IP lookup error', [
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
+            $q->where('app_id', $app_id)
+                ->when(!$showAll && $city, fn($qq) =>
+                    $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
+                )
+                ->when(!$showAll && $uf, fn($qq) =>
+                    $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
+                );
+        })
+            ->when($type, fn($q) => $q->where('type', $type))
+            ->with([
+                'files' => fn($q) =>
+                    $q->where('entity_name', 'item')->orderBy('position'),
+                'establishment.files' => fn($q) =>
+                    $q->where('entity_name', 'establishment')->orderBy('position'),
+            ])
+            ->get();
+
+        \Log::info('Item.home loaded', ['count' => $items->count()]);
+
+        $groups = $items
+            ->groupBy('establishment_id')
+            ->map(fn($g) => $g->shuffle()->values());
+
+        $result = collect();
+        $lastEstablishment = null;
+
+        while ($groups->isNotEmpty()) {
+            $candidates = $groups->filter(
+                fn($g, $estId) => $estId !== $lastEstablishment && $g->isNotEmpty()
+            );
+
+            if ($candidates->isEmpty()) {
+                break;
+            }
+
+            $estId = $candidates->keys()->random();
+            $item = $groups[$estId]->shift();
+
+            $result->push($item);
+            $lastEstablishment = $estId;
+
+            if ($groups[$estId]->isEmpty()) {
+                $groups->forget($estId);
+            }
+        }
+
+        // Sobras inevitáveis vão para o final
+        $tail = $groups->flatten(1)->values();
+        $final = $result->merge($tail);
+
+        \Log::info('Item.home reordered', [
+            'final_count' => $final->count(),
+            'tail_count' => $tail->count(),
         ]);
 
-        try {
-            $city = $request->query('city');
-            $uf = $request->query('uf');
-            $type = $request->query('type');
-            $showAll = false;
+        return response()->json([
+            'success' => true,
+            'city' => $city,
+            'uf' => $uf,
+            'type' => $type,
+            'items' => $final->values(),
+        ]);
+    } catch (\Throwable $e) {
+        \Log::error('Item.home fatal error', [
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
 
-            if ($city === 'Todas') {
-                $city = null;
-                $showAll = true;
-            }
-
-            if ($uf === 'ALL') {
-                $uf = null;
-                $showAll = true;
-            }
-
-            if (!$showAll && (!$city || !$uf)) {
-                $ip = $request->ip();
-
-                if ($ip && $ip !== '127.0.0.1') {
-                    try {
-                        $response = \Illuminate\Support\Facades\Http::timeout(3)
-                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
-
-                        if ($response->ok() && $response->json('status') === 'success') {
-                            $uf = $uf ?: strtoupper($response->json('region'));
-                            $city = $city ?: $response->json('city');
-                        }
-                    } catch (\Throwable $e) {
-                        \Log::error('Item.home IP lookup error', [
-                            'message' => $e->getMessage(),
-                        ]);
-                    }
-                }
-            }
-
-            $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
-                $q->where('app_id', $app_id)
-                    ->when(
-                        !$showAll && $city,
-                        fn($qq) =>
-                        $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
-                    )
-                    ->when(
-                        !$showAll && $uf,
-                        fn($qq) =>
-                        $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
-                    );
-            })
-                ->when($type, fn($q) => $q->where('type', $type))
-                ->with([
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'item')->orderBy('position'),
-                    'establishment.files' => fn($q) =>
-                        $q->where('entity_name', 'establishment')->orderBy('position'),
-                ])
-                ->withCount([
-                    'views as total_views' => fn($q) =>
-                        $q->where('interaction_type', 'view'),
-                    'views as unique_users' => fn($q) =>
-                        $q->select(\DB::raw('COUNT(DISTINCT user_id)'))
-                            ->where('interaction_type', 'view'),
-                ])
-                ->get()
-                ->shuffle();
-
-            \Log::info('Item.home items loaded', [
-                'count' => $items->count(),
-            ]);
-
-            $final = collect();
-            $lastEstablishmentId = null;
-
-            $pool = $items->groupBy('establishment_id')->map(fn($g) => $g->values());
-
-            while ($pool->isNotEmpty()) {
-                $candidates = $pool->filter(fn($g, $estId) => $estId !== $lastEstablishmentId);
-
-                if ($candidates->isEmpty()) {
-                    $candidates = $pool;
-                }
-
-                $selectedGroup = $candidates->random();
-                $item = $selectedGroup->shift();
-
-                $final->push($item);
-                $lastEstablishmentId = $item->establishment_id;
-
-                if ($selectedGroup->isEmpty()) {
-                    $pool = $pool->reject(fn($g) => $g->isEmpty());
-                }
-            }
-
-            \Log::info('Item.home items reordered to avoid same establishment sequence', [
-                'final_count' => $final->count(),
-            ]);
-
-            return response()->json([
-                'success' => true,
-                'city' => $city,
-                'uf' => $uf,
-                'type' => $type,
-                'items' => $final->values(),
-            ]);
-        } catch (\Throwable $e) {
-            \Log::error('Item.home fatal error', [
-                'app_id' => $app_id,
-                'city' => $city ?? null,
-                'uf' => $uf ?? null,
-                'type' => $type ?? null,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao carregar itens',
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Erro ao carregar itens',
+        ], 500);
     }
-
-
-
+}
 
 
 
