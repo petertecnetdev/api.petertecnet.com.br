@@ -340,7 +340,8 @@ class OrderController extends ApiController
     }
 
 
-   public function listByClient(Request $request)
+   
+public function listByClient(Request $request)
 {
     try {
         $authUserId = $request->user()->id;
