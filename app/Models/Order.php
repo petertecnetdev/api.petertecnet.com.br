@@ -165,7 +165,7 @@ class Order extends Model
 
 
     /* ===============================
-       MÉTODOS ESTÁTICOS AUXILIARES
+       Mï¿½TODOS ESTï¿½TICOS AUXILIARES
     ================================ */
 
     public static function hasScheduleConflict($attendantId, $start, $end): bool
@@ -239,7 +239,7 @@ class Order extends Model
                 $itemEntityName !== $orderEntityName ||
                 (int) $item->entity_id !== (int) $this->entity_id
             ) {
-                throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
+                throw new \Exception("O item '{$item->name}' nï¿½o pertence ao estabelecimento desta ordem.");
             }
 
             $unitPrice = (float) $item->price;
@@ -270,7 +270,7 @@ class Order extends Model
     }
 
     /* ===============================
-       INTERAÇÕES E MÉTRICAS
+       INTERAï¿½ï¿½ES E Mï¿½TRICAS
     ================================ */
 
     public function interactions(): HasMany
@@ -353,7 +353,7 @@ class Order extends Model
     }
 
     /* ===============================
-       STATUS E UTILITÁRIOS
+       STATUS E UTILITï¿½RIOS
     ================================ */
 
     public function isPaid(): bool
@@ -390,4 +390,10 @@ class Order extends Model
     {
         return $this->payment_status === 'refunded';
     }
+
+    public function establishment()
+{
+    return $this->belongsTo(Establishment::class, 'entity_id')
+        ->where('entity_name', 'establishment');
+}
 }

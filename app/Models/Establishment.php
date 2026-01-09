@@ -279,7 +279,7 @@ class Establishment extends Model
                 'user_id' => $lastView->id,
                 'user_name' => $lastView->user_name,
                 'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-// avatar aqui ainda é coluna antiga; pode ser migrado depois para files
+// avatar aqui ainda ï¿½ coluna antiga; pode ser migrado depois para files
                 'avatar' => $lastView->avatar,
                 'email' => $lastView->email,
             ] : null;
@@ -359,7 +359,7 @@ class Establishment extends Model
             : ($this->segments ?? []);
 
         if (empty($segmentsArray)) {
-            return '<i>Nenhum seguimento atribuído</i>';
+            return '<i>Nenhum seguimento atribuï¿½do</i>';
         }
 
         $names = [];
@@ -771,7 +771,7 @@ class Establishment extends Model
                 ]);
             },
 
-            // ? ÚNICA CORREÇÃO REAL
+            // ? ï¿½NICA CORREï¿½ï¿½O REAL
             'items' => function ($q) {
                 $q->where('entity_name', 'establishment')
                   ->with([
@@ -913,4 +913,6 @@ class Establishment extends Model
             'other_items' => $this->otherItems(),
         ];
     }
+
+    
 }
