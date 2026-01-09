@@ -359,12 +359,6 @@ class OrderController extends ApiController
             ], 403);
         }
 
-        if ($request->filled('user_name') && $request->user_name !== $authUser->user_name) {
-            return response()->json([
-                'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-            ], 403);
-        }
-
         $query = Order::where('client_id', $clientId)
             ->where('app_id', $app_id);
 
@@ -384,48 +378,8 @@ class OrderController extends ApiController
             $query->where('payment_status', $request->payment_status);
         }
 
-        $orders = $query
-            ->with([
-                'items.item.files',
-                'items.modifiers.modifier.files',
-                'attendant.user.files',
-                'client.files',
-            ])
-            ->orderByDesc('order_datetime')
-            ->get();
-
-        // Carrega establishments com files
-        $establishmentIds = $orders->pluck('entity_id')->unique()->values();
-        $establishments = Establishment::whereIn('id', $establishmentIds)
-            ->with('files') // garante carregar files
-            ->get()
-            ->keyBy('id');
-
-        // Substitui o establishment correto em cada order
-        $orders->transform(function ($order) use ($establishments) {
-            if (isset($establishments[$order->entity_id])) {
-                $order->establishment = $establishments[$order->entity_id];
-            }
-
-            $order->items->transform(function ($itemOrder) {
-                if ($itemOrder->item) {
-                    unset($itemOrder->item->logo, $itemOrder->item->background);
-                }
-                $itemOrder->modifiers->transform(function ($modifierOrder) {
-                    if ($modifierOrder->modifier) {
-                        unset($modifierOrder->modifier->logo, $modifierOrder->modifier->background);
-                    }
-                    return $modifierOrder;
-                });
-                return $itemOrder;
-            });
-
-            if ($order->establishment) {
-                unset($order->establishment->logo, $order->establishment->background);
-            }
-
-            return $order;
-        });
+        // Retorna apenas os campos da própria Order
+        $orders = $query->orderByDesc('order_datetime')->get();
 
         return response()->json([
             'message' => 'Pedidos do cliente listados com sucesso.',
