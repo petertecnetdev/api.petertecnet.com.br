@@ -770,52 +770,9 @@ class Establishment extends Model
 }
 
 
-    public function toViewPayload(): array
+   
+public function toViewPayload(): array
 {
-    $estFiles = $this->files ?? collect();
-
-    $itemsPayload = $this->items->map(function ($item) {
-        $files = $item->files ?? collect();
-
-        return [
-            'id' => $item->id,
-            'entity_id' => $item->entity_id,
-            'type' => 'item',
-            'name' => $item->name,
-            'slug' => $item->slug,
-            'price' => $item->price,
-            'item_type' => $item->type,
-            'files' => $files->map(function ($file) {
-                return [
-                    'id' => $file->id,
-                    'type' => $file->type,
-                    'public_url' => $file->public_url,
-                ];
-            })->values(),
-        ];
-    })->values();
-
-    $employersPayload = $this->employers->map(function ($emp) {
-        $empFiles = $emp->files ?? collect();
-        $uFiles = $emp->user?->files ?? collect();
-
-        $allFiles = $empFiles->merge($uFiles);
-
-        return [
-            'id' => $emp->id,
-            'type' => 'employer',
-            'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
-            'slug' => $emp->user?->user_name,
-            'files' => $allFiles->map(function ($file) {
-                return [
-                    'id' => $file->id,
-                    'type' => $file->type,
-                    'public_url' => $file->public_url,
-                ];
-            })->values(),
-        ];
-    })->values();
-
     return [
         'establishment' => [
             'id' => $this->id,
@@ -824,82 +781,45 @@ class Establishment extends Model
             'slug' => $this->slug,
             'city' => $this->city,
             'uf' => $this->uf,
-            'files' => $estFiles->map(function ($file) {
-                return [
-                    'id' => $file->id,
-                    'type' => $file->type,
-                    'public_url' => $file->public_url,
-                ];
-            })->values(),
+            'files' => ($this->files ?? collect())->map(fn($file) => [
+                'id' => $file->id,
+                'type' => $file->type,
+                'public_url' => $file->public_url,
+            ])->values(),
         ],
-        'items' => $itemsPayload,
-        'employers' => $employersPayload,
+        'items' => $this->items->map(fn($item) => [
+            'id' => $item->id,
+            'entity_id' => $item->entity_id,
+            'type' => 'item',
+            'name' => $item->name,
+            'slug' => $item->slug,
+            'price' => $item->price,
+            'item_type' => $item->type,
+            'files' => ($item->files ?? collect())->map(fn($file) => [
+                'id' => $file->id,
+                'type' => $file->type,
+                'public_url' => $file->public_url,
+            ])->values(),
+        ])->values(),
+        'employers' => $this->employers->map(fn($emp) => [
+            'id' => $emp->id,
+            'type' => 'employer',
+            'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
+            'slug' => $emp->user?->user_name,
+            'files' => ($emp->files ?? collect())->merge($emp->user?->files ?? collect())->map(fn($file) => [
+                'id' => $file->id,
+                'type' => $file->type,
+                'public_url' => $file->public_url,
+            ])->values(),
+        ])->values(),
         'metrics' => $this->metrics,
         'interaction_summary' => $this->interactionSummary(),
         'user_interactions' => $this->userInteractions(),
         'orders_summary' => $this->ordersSummary(),
         'completed_appointments' => $this->completedAppointments(),
-        'other_establishments' => $this->otherEstablishments()->map(function ($est) {
-            $estFiles = $est->files ?? collect();
-            return [
-                'id' => $est->id,
-                'name' => $est->name,
-                'slug' => $est->slug,
-                'city' => $est->city,
-                'category' => $est->category,
-                'files' => $estFiles->map(function ($file) {
-                    return [
-                        'id' => $file->id,
-                        'type' => $file->type,
-                        'public_url' => $file->public_url,
-                    ];
-                })->values(),
-                'total_views' => $est->total_views ?? 0,
-            ];
-        })->values(),
-        'other_employers' => $this->otherEmployers()->map(function ($emp) {
-            $allFiles = ($emp->files ?? collect())->merge($emp->user?->files ?? collect());
-
-            return [
-                'id' => $emp->id,
-                'name' => trim(($emp->user?->first_name ?? '') . ' ' . ($emp->user?->last_name ?? '')),
-                'user_name' => $emp->user?->user_name,
-                'files' => $allFiles->map(function ($file) {
-                    return [
-                        'id' => $file->id,
-                        'type' => $file->type,
-                        'public_url' => $file->public_url,
-                    ];
-                })->values(),
-                'total_views' => $emp->total_views ?? 0,
-                'establishment' => [
-                    'id' => $emp->establishment?->id,
-                    'name' => $emp->establishment?->name,
-                    'slug' => $emp->establishment?->slug,
-                ],
-            ];
-        })->values(),
-        'other_items' => $this->otherItems()->map(function ($item) {
-            $files = $item->files ?? collect();
-            return [
-                'id' => $item->id,
-                'name' => $item->name,
-                'slug' => $item->slug,
-                'price' => $item->price,
-                'type' => $item->type,
-                'files' => $files->map(function ($file) {
-                    return [
-                        'id' => $file->id,
-                        'type' => $file->type,
-                        'public_url' => $file->public_url,
-                    ];
-                })->values(),
-                'total_views' => $item->total_views ?? 0,
-            ];
-        })->values(),
+        'other_establishments' => $this->otherEstablishments()->values(),
+        'other_employers' => $this->otherEmployers()->values(),
+        'other_items' => $this->otherItems()->values(),
     ];
 }
-
-
-
 }
