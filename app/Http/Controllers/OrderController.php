@@ -340,16 +340,19 @@ class OrderController extends ApiController
     }
 
 
-   
-public function listByClient(Request $request)
+   public function listByClient(Request $request)
 {
     try {
         $authUserId = $request->user()->id;
         $appId = $request->input('app_id');
 
-        $orders = Order::where('app_id', $appId)
-            ->where('client_id', $authUserId)
-            ->get(); // só os campos da tabela orders
+        // busca todos do app primeiro
+        $allOrders = Order::where('app_id', $appId)->get();
+
+        // filtra manualmente pelo client_id para evitar problema de comparação
+        $orders = $allOrders->filter(function ($order) use ($authUserId) {
+            return $order->client_id == $authUserId;
+        })->values(); // reseta as chaves
 
         return response()->json($orders);
     } catch (\Exception $e) {
