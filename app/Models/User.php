@@ -225,10 +225,13 @@ class User extends Authenticatable implements JWTSubject
         return ['cpf' => preg_replace('/[^0-9]/', '', $username), 'password' => $password];
     }
 
-    public function files()
-    {
-        return $this->hasMany(File::class, 'created_by');
-    }
+   public function files()
+{
+    return $this->hasMany(File::class, 'entity_id')
+        ->where('entity_name', 'user');
+}
+
+
 
 
 }
