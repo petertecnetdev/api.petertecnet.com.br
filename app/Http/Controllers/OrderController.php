@@ -351,83 +351,20 @@ class OrderController extends ApiController
                 ], 401);
             }
 
-            $query = Order::where('client_id', $authUser->id)
+            $orders = Order::where('client_id', $authUser->id)
                 ->where('app_id', $authUser->app_id)
-                ->where('entity_name', 'establishment');
-
-            if ($request->filled('start_date')) {
-                $query->where(
-                    'order_datetime',
-                    '>=',
-                    Carbon::parse($request->start_date)->startOfDay()
-                );
-            }
-
-            if ($request->filled('end_date')) {
-                $query->where(
-                    'order_datetime',
-                    '<=',
-                    Carbon::parse($request->end_date)->endOfDay()
-                );
-            }
-
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
-            }
-
-            if ($request->filled('payment_status')) {
-                $query->where('payment_status', $request->payment_status);
-            }
-
-            if ($request->filled('type')) {
-                $query->where('type', $request->type);
-            }
-
-            $orders = $query
                 ->with([
-                    'client' => function ($q) {
-                        $q->select('id', 'first_name', 'last_name', 'user_name', 'email')
-                            ->with([
-                                'files' => function ($f) {
-                                    $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
-                                }
-                            ]);
-                    },
-                    'attendant' => function ($q) {
-                        $q->select('id', 'user_id')
-                            ->with([
-                                'user' => function ($u) {
-                                    $u->select('id', 'first_name', 'last_name', 'user_name', 'email')
-                                        ->with([
-                                            'files' => function ($f) {
-                                                $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
-                                            }
-                                        ]);
-                                }
-                            ]);
-                    },
-                    'items' => function ($q) {
-                        $q->select('id', 'order_id', 'item_id', 'quantity', 'price', 'subtotal')
-                            ->with([
-                                'item' => function ($i) {
-                                    $i->select('id', 'name', 'price', 'duration')
-                                        ->with([
-                                            'files' => function ($f) {
-                                                $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
-                                            }
-                                        ]);
-                                },
-                                'modifiers.modifier'
-                            ]);
-                    },
-                    'establishment' => function ($q) {
-                        $q->select('id', 'name', 'slug')
-                            ->with([
-                                'files' => function ($f) {
-                                    $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
-                                }
-                            ]);
-                    },
+                    'client:id,first_name,last_name,user_name,email',
+                    'client.files',
+                    'attendant:id,user_id',
+                    'attendant.user:id,first_name,last_name,user_name,email',
+                    'attendant.user.files',
+                    'items:id,order_id,item_id,quantity,price,subtotal',
+                    'items.item:id,name,price,duration',
+                    'items.item.files',
+                    'items.modifiers.modifier',
+                    'entity',
+                    'entity.files',
                 ])
                 ->orderByDesc('order_datetime')
                 ->get();
@@ -440,7 +377,6 @@ class OrderController extends ApiController
         } catch (\Throwable $e) {
             Log::error('Order.listByClient', [
                 'auth_user_id' => $request->user()?->id,
-                'params' => $request->all(),
                 'exception' => $e,
             ]);
 
@@ -449,6 +385,7 @@ class OrderController extends ApiController
             ], 500);
         }
     }
+
 
     public function show(int $id)
     {
