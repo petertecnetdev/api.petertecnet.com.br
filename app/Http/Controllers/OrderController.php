@@ -366,8 +366,7 @@ class OrderController extends ApiController
         }
 
         $query = Order::where('client_id', $clientId)
-            ->where('app_id', $app_id)
-            ->where('entity_name', 'establishment');
+            ->where('app_id', $app_id);
 
         if ($request->filled('start_date')) {
             $query->where('order_datetime', '>=', Carbon::parse($request->start_date)->startOfDay());
@@ -390,12 +389,23 @@ class OrderController extends ApiController
                 'items.item.files',
                 'items.modifiers.modifier.files',
                 'attendant.user.files',
-                'attendant.files',
                 'client.files',
-                'establishment.files', // Agora diretamente via relacionamento
             ])
             ->orderByDesc('order_datetime')
             ->get();
+
+        /** 🔹 Carrega establishments manualmente (padrão Peter Tecnet) */
+        $establishmentIds = $orders->pluck('entity_id')->unique()->values();
+
+        $establishments = Establishment::whereIn('id', $establishmentIds)
+            ->with(['files'])
+            ->get()
+            ->keyBy('id');
+
+        $orders->transform(function ($order) use ($establishments) {
+            $order->establishment = $establishments[$order->entity_id] ?? null;
+            return $order;
+        });
 
         return response()->json([
             'message' => 'Pedidos do cliente listados com sucesso.',
