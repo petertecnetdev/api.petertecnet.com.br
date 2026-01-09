@@ -223,7 +223,7 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
         ->name('order.store');
 
 
-    Route::get('/list-by-client', [OrderController::class, 'listByClient'])
+    Route::get('/list-by-client/{app_id}', [OrderController::class, 'listByClient'])
         ->name('order.listByClient');
 
     Route::post('/direct', [OrderController::class, 'storeDirect'])
