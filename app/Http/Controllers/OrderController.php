@@ -340,65 +340,29 @@ class OrderController extends ApiController
     }
 
 
-   public function listByClient(Request $request, int $app_id)
+   public function listByClient(Request $request)
 {
     try {
-        $authUser = $request->user();
+        $authUserId = $request->user()->id;
+        $appId = $request->input('app_id');
 
-        if (!$authUser) {
-            return response()->json([
-                'message' => 'Usuário não autenticado.',
-            ], 401);
-        }
+        $orders = Order::where('app_id', $appId)
+            ->where('client_id', $authUserId)
+            ->get(); // só os campos da tabela orders
 
-        $clientId = $authUser->id;
-
-        if ($request->filled('client_id') && (int)$request->client_id !== $authUser->id) {
-            return response()->json([
-                'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-            ], 403);
-        }
-
-        $query = Order::where('client_id', $clientId)
-            ->where('app_id', $app_id);
-
-        if ($request->filled('start_date')) {
-            $query->where('order_datetime', '>=', Carbon::parse($request->start_date)->startOfDay());
-        }
-
-        if ($request->filled('end_date')) {
-            $query->where('order_datetime', '<=', Carbon::parse($request->end_date)->endOfDay());
-        }
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-
-        if ($request->filled('payment_status')) {
-            $query->where('payment_status', $request->payment_status);
-        }
-
-        // Retorna apenas os campos da própria Order
-        $orders = $query->orderByDesc('order_datetime')->get();
-
-        return response()->json([
-            'message' => 'Pedidos do cliente listados com sucesso.',
-            'orders' => $orders,
-        ]);
-
-    } catch (\Throwable $e) {
+        return response()->json($orders);
+    } catch (\Exception $e) {
         Log::error('Order.listByClient', [
-            'auth_user_id' => $request->user()?->id,
-            'app_id' => $app_id,
-            'exception' => $e,
+            'auth_user_id' => $request->user()->id ?? null,
+            'app_id' => $request->input('app_id') ?? null,
+            'exception' => $e->getMessage(),
         ]);
 
         return response()->json([
-            'message' => 'Erro ao listar os pedidos do cliente.',
+            'error' => 'Erro ao listar pedidos do cliente'
         ], 500);
     }
 }
-
 
     public function show(int $id)
     {
