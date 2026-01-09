@@ -2,10 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Order;
-use App\Models\Item;
-use App\Models\Employer;
-use App\Models\Establishment;
+use App\Models\{Order, User, Item, Employer, Establishment};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -354,7 +351,7 @@ class OrderController extends ApiController
                 ], 401);
             }
 
-            $clientId = null;
+            $clientId = $authUser->id;
 
             if ($request->filled('client_id')) {
                 if ((int) $request->client_id !== (int) $authUser->id) {
@@ -373,18 +370,14 @@ class OrderController extends ApiController
                     ], 403);
                 }
 
-                $client = \App\Models\User::where('user_name', $request->user_name)->firstOrFail();
+                $client = User::where('user_name', $request->user_name)->firstOrFail();
                 $clientId = $client->id;
-            }
-
-            if (!$clientId) {
-                $clientId = $authUser->id;
             }
 
             $query = Order::where('client_id', $clientId);
 
             if ($request->filled('start_date')) {
-                $query->whereDate(
+                $query->where(
                     'order_datetime',
                     '>=',
                     Carbon::parse($request->start_date)->startOfDay()
@@ -392,7 +385,7 @@ class OrderController extends ApiController
             }
 
             if ($request->filled('end_date')) {
-                $query->whereDate(
+                $query->where(
                     'order_datetime',
                     '<=',
                     Carbon::parse($request->end_date)->endOfDay()
@@ -426,22 +419,23 @@ class OrderController extends ApiController
 
             $orders = $query
                 ->with([
-                    'items.item',
+                    'items.item.files',
                     'items.modifiers.modifier',
-                    'attendant.user',
+                    'attendant.user.files',
+                    'client.files',
                 ])
                 ->orderByDesc('order_datetime')
                 ->get();
 
             return response()->json([
                 'message' => 'Pedidos do cliente listados com sucesso.',
-                'orders' => $this->utf8ize($orders->toArray()),
+                'orders' => $orders,
             ]);
         } catch (\Throwable $e) {
             Log::error('Order.listByClient', [
                 'auth_user_id' => $request->user()?->id,
                 'params' => $request->all(),
-                'error' => $e->getMessage(),
+                'exception' => $e,
             ]);
 
             return response()->json([
@@ -449,7 +443,6 @@ class OrderController extends ApiController
             ], 500);
         }
     }
-
 
     public function show(int $id)
     {
