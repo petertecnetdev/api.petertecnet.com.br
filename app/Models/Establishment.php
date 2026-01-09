@@ -31,8 +31,6 @@ class Establishment extends Model
         'user_id',
         'updated_by',
         'created_by',
-        'logo',
-        'background',
         'is_featured',
         'is_published',
         'is_approved',
@@ -279,7 +277,7 @@ class Establishment extends Model
                 'user_id' => $lastView->id,
                 'user_name' => $lastView->user_name,
                 'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
-// avatar aqui ainda � coluna antiga; pode ser migrado depois para files
+                // avatar aqui ainda � coluna antiga; pode ser migrado depois para files
                 'avatar' => $lastView->avatar,
                 'email' => $lastView->email,
             ] : null;
@@ -540,8 +538,9 @@ class Establishment extends Model
             return \App\Models\Establishment::where('app_id', $appId)
                 ->where('id', '!=', $this->id)
                 ->with(['files' => fn($q) => $q->where('entity_name', 'establishment')])
-                ->withCount(['views as total_views' => fn($q) =>
-                    $q->where('interaction_type', 'view')
+                ->withCount([
+                    'views as total_views' => fn($q) =>
+                        $q->where('interaction_type', 'view')
                 ])
                 ->limit(6)
                 ->get()
@@ -741,52 +740,52 @@ class Establishment extends Model
     }
 
     public static function findForView(string $slug): self
-{
-    return self::where('slug', $slug)
-        ->with([
-            'files',
-            'logoFile',
-            'backgroundFile',
+    {
+        return self::where('slug', $slug)
+            ->with([
+                'files',
+                'logoFile',
+                'backgroundFile',
 
-            'user' => function ($q) {
-                $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                  ->with([
-                      'avatarFile:id,entity_id,entity_name,type,public_url',
-                      'files',
-                  ]);
-            },
+                'user' => function ($q) {
+                    $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                        ->with([
+                            'avatarFile:id,entity_id,entity_name,type,public_url',
+                            'files',
+                        ]);
+                },
 
-            'employers' => function ($q) {
-                $q->with([
-                    'user' => function ($uq) {
-                        $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                           ->with([
-                               'avatarFile:id,entity_id,entity_name,type,public_url',
-                               'files',
-                           ]);
-                    },
-                    'files' => fn ($fq) =>
-                        $fq->where('entity_name', 'employer')
-                           ->orderBy('position'),
-                ]);
-            },
+                'employers' => function ($q) {
+                    $q->with([
+                        'user' => function ($uq) {
+                            $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                                ->with([
+                                    'avatarFile:id,entity_id,entity_name,type,public_url',
+                                    'files',
+                                ]);
+                        },
+                        'files' => fn($fq) =>
+                            $fq->where('entity_name', 'employer')
+                                ->orderBy('position'),
+                    ]);
+                },
 
-            // ? �NICA CORRE��O REAL
-            'items' => function ($q) {
-                $q->where('entity_name', 'establishment')
-                  ->with([
-                      'files' => fn ($fq) =>
-                          $fq->where('entity_name', 'item')
-                             ->orderBy('position'),
-                  ])
-                  ->orderByDesc('updated_at');
-            },
+                // ? �NICA CORRE��O REAL
+                'items' => function ($q) {
+                    $q->where('entity_name', 'establishment')
+                        ->with([
+                            'files' => fn($fq) =>
+                                $fq->where('entity_name', 'item')
+                                    ->orderBy('position'),
+                        ])
+                        ->orderByDesc('updated_at');
+                },
 
-            'orders.client:id,first_name,last_name,user_name,avatar,email',
-            'interactions.user:id,first_name,last_name,user_name,avatar,email',
-        ])
-        ->firstOrFail();
-}
+                'orders.client:id,first_name,last_name,user_name,avatar,email',
+                'interactions.user:id,first_name,last_name,user_name,avatar,email',
+            ])
+            ->firstOrFail();
+    }
 
     public function toViewPayload(): array
     {
@@ -872,6 +871,8 @@ class Establishment extends Model
             ];
         })->values();
 
+        $estFiles = $this->files ?? collect();
+
         return [
             'establishment' => [
                 'id' => $this->id,
@@ -880,26 +881,13 @@ class Establishment extends Model
                 'slug' => $this->slug,
                 'city' => $this->city,
                 'uf' => $this->uf,
-                'logo' => $logo,
-                'background' => $background,
-                'images' => [
-                    'logo' => $logo,
-                    'background' => $background,
-                    'gallery' => $galleryFiles->map(function ($file) {
-                        return [
-                            'id' => $file->id,
-                            'type' => $file->type,
-                            'public_url' => $file->public_url,
-                        ];
-                    })->values(),
-                    'files' => $estFiles->map(function ($file) {
-                        return [
-                            'id' => $file->id,
-                            'type' => $file->type,
-                            'public_url' => $file->public_url,
-                        ];
-                    })->values(),
-                ],
+                'files' => $estFiles->map(function ($file) {
+                    return [
+                        'id' => $file->id,
+                        'type' => $file->type,
+                        'public_url' => $file->public_url,
+                    ];
+                })->values(),
             ],
             'items' => $itemsPayload,
             'employers' => $employersPayload,
@@ -914,5 +902,5 @@ class Establishment extends Model
         ];
     }
 
-    
+
 }
