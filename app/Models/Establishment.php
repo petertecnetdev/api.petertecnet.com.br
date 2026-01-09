@@ -724,68 +724,51 @@ class Establishment extends Model
             ->where('entity_name', 'establishment')
             ->orderBy('position');
     }
+   public static function findForView(string $slug): self
+{
+    return self::where('slug', $slug)
+        ->with([
+            'files' => fn($q) => $q->where('entity_name', 'establishment')->orderBy('position'),
 
-    public function logoFile()
-    {
-        return $this->hasOne(File::class, 'entity_id')
-            ->where('entity_name', 'establishment')
-            ->where('type', 'logo');
-    }
-
-    public function backgroundFile()
-    {
-        return $this->hasOne(File::class, 'entity_id')
-            ->where('entity_name', 'establishment')
-            ->where('type', 'background');
-    }
-
-    public static function findForView(string $slug): self
-    {
-        return self::where('slug', $slug)
-            ->with([
-                'files',
-                'logoFile',
-                'backgroundFile',
-
-                'user' => function ($q) {
-                    $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                        ->with([
-                            'avatarFile:id,entity_id,entity_name,type,public_url',
-                            'files',
-                        ]);
-                },
-
-                'employers' => function ($q) {
-                    $q->with([
-                        'user' => function ($uq) {
-                            $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
-                                ->with([
-                                    'avatarFile:id,entity_id,entity_name,type,public_url',
-                                    'files',
-                                ]);
-                        },
-                        'files' => fn($fq) =>
-                            $fq->where('entity_name', 'employer')
-                                ->orderBy('position'),
+            'user' => function ($q) {
+                $q->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                    ->with([
+                        'avatarFile:id,entity_id,entity_name,type,public_url',
+                        'files',
                     ]);
-                },
+            },
 
-                // ? �NICA CORRE��O REAL
-                'items' => function ($q) {
-                    $q->where('entity_name', 'establishment')
-                        ->with([
-                            'files' => fn($fq) =>
-                                $fq->where('entity_name', 'item')
-                                    ->orderBy('position'),
-                        ])
-                        ->orderByDesc('updated_at');
-                },
+            'employers' => function ($q) {
+                $q->with([
+                    'user' => function ($uq) {
+                        $uq->select('id', 'first_name', 'last_name', 'user_name', 'email', 'city', 'uf')
+                            ->with([
+                                'avatarFile:id,entity_id,entity_name,type,public_url',
+                                'files',
+                            ]);
+                    },
+                    'files' => fn($fq) =>
+                        $fq->where('entity_name', 'employer')
+                            ->orderBy('position'),
+                ]);
+            },
 
-                'orders.client:id,first_name,last_name,user_name,avatar,email',
-                'interactions.user:id,first_name,last_name,user_name,avatar,email',
-            ])
-            ->firstOrFail();
-    }
+            'items' => function ($q) {
+                $q->where('entity_name', 'establishment')
+                    ->with([
+                        'files' => fn($fq) =>
+                            $fq->where('entity_name', 'item')
+                                ->orderBy('position'),
+                    ])
+                    ->orderByDesc('updated_at');
+            },
+
+            'orders.client:id,first_name,last_name,user_name,avatar,email',
+            'interactions.user:id,first_name,last_name,user_name,avatar,email',
+        ])
+        ->firstOrFail();
+}
+
 
     public function toViewPayload(): array
     {
