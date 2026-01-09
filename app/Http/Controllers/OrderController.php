@@ -388,25 +388,14 @@ class OrderController extends ApiController
         $orders = $query
             ->with([
                 'items.item.files',
-                'items.modifiers.modifier',
+                'items.modifiers.modifier.files',
                 'attendant.user.files',
+                'attendant.files',
                 'client.files',
+                'establishment.files', // Agora diretamente via relacionamento
             ])
             ->orderByDesc('order_datetime')
             ->get();
-
-        /** 🔹 Carrega establishment manualmente (padrão Peter Tecnet) */
-        $establishmentIds = $orders->pluck('entity_id')->unique()->values();
-
-        $establishments = Establishment::whereIn('id', $establishmentIds)
-            ->with(['files'])
-            ->get()
-            ->keyBy('id');
-
-        $orders->transform(function ($order) use ($establishments) {
-            $order->establishment = $establishments[$order->entity_id] ?? null;
-            return $order;
-        });
 
         return response()->json([
             'message' => 'Pedidos do cliente listados com sucesso.',
@@ -424,7 +413,6 @@ class OrderController extends ApiController
         ], 500);
     }
 }
-
 
 
     public function show(int $id)
