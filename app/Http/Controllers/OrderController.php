@@ -375,7 +375,8 @@ class OrderController extends ApiController
         }
 
         $query = Order::where('client_id', $clientId)
-            ->where('app_id', $app_id);
+            ->where('app_id', $app_id)
+            ->where('entity_name', 'establishment');
 
         if ($request->filled('start_date')) {
             $query->where(
@@ -394,8 +395,7 @@ class OrderController extends ApiController
         }
 
         if ($request->filled('establishment_id')) {
-            $query->where('entity_name', 'establishment')
-                ->where('entity_id', (int) $request->establishment_id);
+            $query->where('entity_id', (int) $request->establishment_id);
         }
 
         if ($request->filled('status')) {
@@ -446,6 +446,7 @@ class OrderController extends ApiController
         ], 500);
     }
 }
+
 
 
 
