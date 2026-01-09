@@ -24,7 +24,7 @@ use App\Http\Controllers\{
 
 /*
 |--------------------------------------------------------------------------
-| HOME (PÚBLICA)
+| HOME (Pï¿½BLICA)
 |--------------------------------------------------------------------------
 */
 
@@ -35,7 +35,7 @@ Route::prefix('home')->middleware(['api'])->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| AUTHENTICAÇÃO (PROTEGIDAS)
+| AUTHENTICAï¿½ï¿½O (PROTEGIDAS)
 |--------------------------------------------------------------------------
 */
 Route::prefix('auth')->middleware('api')->group(function () {
@@ -56,7 +56,7 @@ Route::prefix('auth')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| ROTAS PÚBLICAS
+| ROTAS Pï¿½BLICAS
 |--------------------------------------------------------------------------
 */
 
@@ -67,7 +67,7 @@ Route::post('/invite-complete', [AuthController::class, 'completeInvite'])->name
 Route::post('auth/google', [AuthController::class, 'googleAuth'])->name('auth.google');
 /*
 |--------------------------------------------------------------------------
-| USUÁRIOS
+| USUï¿½RIOS
 |--------------------------------------------------------------------------
 */
 Route::prefix('user')->middleware(['api', 'auth:api'])->group(function () {
@@ -103,7 +103,7 @@ Route::prefix('profile')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| PRODUÇÃO
+| PRODUï¿½ï¿½O
 |--------------------------------------------------------------------------
 */
 Route::prefix('production')->middleware('api')->group(function () {
@@ -151,7 +151,7 @@ Route::prefix('ticket')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| NOTÍCIAS
+| NOTï¿½CIAS
 |--------------------------------------------------------------------------
 */
 Route::prefix('news')->middleware('api')->group(function () {
@@ -166,7 +166,7 @@ Route::prefix('news')->middleware('api')->group(function () {
 
 /*
 |--------------------------------------------------------------------------
-| RELATÓRIOS / SERVICE RECORDS
+| RELATï¿½RIOS / SERVICE RECORDS
 |--------------------------------------------------------------------------
 */
 Route::prefix('report')->middleware('api')->group(function () {
@@ -222,6 +222,10 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [OrderController::class, 'store'])
         ->name('order.store');
 
+
+    Route::get('/list-by-client', [OrderController::class, 'listByClient'])
+        ->name('order.listByClient');
+
     Route::post('/direct', [OrderController::class, 'storeDirect'])
         ->name('order.storeDirect');
 
@@ -268,7 +272,7 @@ Route::prefix('order-forecast')->middleware(['api', 'auth:api'])->group(function
 |--------------------------------------------------------------------------
 */
 
-// ?? ROTAS PÚBLICAS (leitura)
+// ?? ROTAS Pï¿½BLICAS (leitura)
 Route::prefix('item')->middleware(['api'])->group(function () {
 
     Route::get('/list-by-entity/{identifier}', [ItemController::class, 'listByEntity'])
@@ -400,7 +404,7 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/store', [EmployerController::class, 'store'])->name('employer.store');
     Route::post('/detach', [EmployerController::class, 'detach'])->name('employer.detach');
 
-    // ?? HORÁRIOS
+    // ?? HORï¿½RIOS
     Route::post('/list-schedules', [EmployerController::class, 'listSchedules'])->name('employer.schedules.list');
     Route::post('/save-schedules', [EmployerController::class, 'saveSchedules'])->name('employer.schedules.save');
     Route::delete('/delete-schedule/{id}', [EmployerController::class, 'deleteSchedule'])->name('employer.schedules.delete');
@@ -412,13 +416,13 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/list-appointments', [EmployerController::class, 'listAppointments'])->name('employer.listAppointments');
     Route::post('/list-my-orders', [EmployerController::class, 'listMyOrders'])->name('employer.listMyOrders');
 
-    // ?? DASHBOARD / ATUALIZAÇÕES
+    // ?? DASHBOARD / ATUALIZAï¿½ï¿½ES
     Route::post('/check-updates', [EmployerController::class, 'checkUpdates'])->name('employer.checkUpdates');
 });
 
 /*
 |--------------------------------------------------------------------------
-| FILES (ARQUIVOS / MÍDIA)
+| FILES (ARQUIVOS / Mï¿½DIA)
 |--------------------------------------------------------------------------
 */
 // PUBLIC
