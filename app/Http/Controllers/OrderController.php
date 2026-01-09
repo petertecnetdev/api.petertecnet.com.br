@@ -384,7 +384,7 @@ class OrderController extends ApiController
             $query->where('payment_status', $request->payment_status);
         }
 
-        // Carrega os relacionamentos completos
+        // Carrega orders com relacionamentos completos
         $orders = $query
             ->with([
                 'items.item.files',                  // Files de cada item
@@ -402,9 +402,47 @@ class OrderController extends ApiController
             ->get()
             ->keyBy('id');
 
-        // Atribui establishment completo em cada order
+        // Substitui cada order com establishment e files corretos
         $orders->transform(function ($order) use ($establishments) {
+
+            // Substitui establishment
             $order->establishment = $establishments[$order->entity_id] ?? null;
+
+            // Substitui os items com suas files corretas
+            $order->items->transform(function ($itemOrder) {
+                if ($itemOrder->item) {
+                    $itemOrder->item_files = $itemOrder->item->files ?? [];
+                    unset($itemOrder->item->logo, $itemOrder->item->background); // remove campos antigos
+                }
+                // Modifiers files
+                $itemOrder->modifiers->transform(function ($modifierOrder) {
+                    if ($modifierOrder->modifier) {
+                        $modifierOrder->modifier_files = $modifierOrder->modifier->files ?? [];
+                        unset($modifierOrder->modifier->logo, $modifierOrder->modifier->background);
+                    }
+                    return $modifierOrder;
+                });
+                return $itemOrder;
+            });
+
+            // Substitui files do attendant user
+            if ($order->attendant && $order->attendant->user) {
+                $order->attendant_user_files = $order->attendant->user->files ?? [];
+                unset($order->attendant->user->logo, $order->attendant->user->background);
+            }
+
+            // Substitui files do client
+            if ($order->client) {
+                $order->client_files = $order->client->files ?? [];
+                unset($order->client->logo, $order->client->background);
+            }
+
+            // Substitui files do establishment
+            if ($order->establishment) {
+                $order->establishment_files = $order->establishment->files ?? [];
+                unset($order->establishment->logo, $order->establishment->background);
+            }
+
             return $order;
         });
 
@@ -412,6 +450,7 @@ class OrderController extends ApiController
             'message' => 'Pedidos do cliente listados com sucesso.',
             'orders' => $orders,
         ]);
+
     } catch (\Throwable $e) {
         Log::error('Order.listByClient', [
             'auth_user_id' => $request->user()?->id,
