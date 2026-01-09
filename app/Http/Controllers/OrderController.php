@@ -22,15 +22,15 @@ class OrderController extends ApiController
      ====================================================== */
     protected function messages(): array
     {
-       return [
-    'app_id.required' => 'O ID do aplicativo é obrigatório.',
-    'app_id.exists' => 'O ID do aplicativo deve existir.',
-    'entity_name.required' => 'O nome da entidade é obrigatório.',
-    'entity_id.required' => 'O ID da entidade é obrigatório.',
-    'items.required' => 'A lista de itens é obrigatória.',
-    'items.*.item_id.required' => 'O ID do item é obrigatório.',
-    'items.*.quantity.required' => 'A quantidade é obrigatória.',
-];
+        return [
+            'app_id.required' => 'O ID do aplicativo é obrigatório.',
+            'app_id.exists' => 'O ID do aplicativo deve existir.',
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_id.required' => 'O ID da entidade é obrigatório.',
+            'items.required' => 'A lista de itens é obrigatória.',
+            'items.*.item_id.required' => 'O ID do item é obrigatório.',
+            'items.*.quantity.required' => 'A quantidade é obrigatória.',
+        ];
 
     }
 
@@ -341,6 +341,115 @@ class OrderController extends ApiController
             'orders' => $orders,
         ]);
     }
+
+
+    public function listByClient(Request $request)
+    {
+        try {
+            $authUser = $request->user();
+
+            if (!$authUser) {
+                return response()->json([
+                    'message' => 'Usuário não autenticado.',
+                ], 401);
+            }
+
+            $clientId = null;
+
+            if ($request->filled('client_id')) {
+                if ((int) $request->client_id !== (int) $authUser->id) {
+                    return response()->json([
+                        'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
+                    ], 403);
+                }
+
+                $clientId = (int) $request->client_id;
+            }
+
+            if ($request->filled('user_name')) {
+                if ($request->user_name !== $authUser->user_name) {
+                    return response()->json([
+                        'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
+                    ], 403);
+                }
+
+                $client = \App\Models\User::where('user_name', $request->user_name)->firstOrFail();
+                $clientId = $client->id;
+            }
+
+            if (!$clientId) {
+                $clientId = $authUser->id;
+            }
+
+            $query = Order::where('client_id', $clientId);
+
+            if ($request->filled('start_date')) {
+                $query->whereDate(
+                    'order_datetime',
+                    '>=',
+                    Carbon::parse($request->start_date)->startOfDay()
+                );
+            }
+
+            if ($request->filled('end_date')) {
+                $query->whereDate(
+                    'order_datetime',
+                    '<=',
+                    Carbon::parse($request->end_date)->endOfDay()
+                );
+            }
+
+            if ($request->filled('establishment_id')) {
+                $query->where('entity_name', 'establishment')
+                    ->where('entity_id', (int) $request->establishment_id);
+            }
+
+            if ($request->filled('status')) {
+                $query->where('status', $request->status);
+            }
+
+            if ($request->filled('appointment_status')) {
+                $query->where('appointment_status', $request->appointment_status);
+            }
+
+            if ($request->filled('type')) {
+                $query->where('type', $request->type);
+            }
+
+            if ($request->filled('payment_status')) {
+                $query->where('payment_status', $request->payment_status);
+            }
+
+            if ($request->filled('attendant_id')) {
+                $query->where('attendant_id', (int) $request->attendant_id);
+            }
+
+            $orders = $query
+                ->with([
+                    'items.item',
+                    'items.modifiers.modifier',
+                    'attendant.user',
+                ])
+                ->orderByDesc('order_datetime')
+                ->get();
+
+            return response()->json([
+                'message' => 'Pedidos do cliente listados com sucesso.',
+                'orders' => $this->utf8ize($orders->toArray()),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Order.listByClient', [
+                'auth_user_id' => $request->user()?->id,
+                'params' => $request->all(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Erro ao listar os pedidos do cliente.',
+            ], 500);
+        }
+    }
+
 
     public function show(int $id)
     {
