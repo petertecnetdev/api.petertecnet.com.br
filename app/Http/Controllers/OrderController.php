@@ -384,24 +384,25 @@ class OrderController extends ApiController
             $query->where('payment_status', $request->payment_status);
         }
 
+        // Carrega os relacionamentos completos
         $orders = $query
             ->with([
-                'items.item.files',
-                'items.modifiers.modifier.files',
-                'attendant.user.files',
-                'client.files',
+                'items.item.files',                  // Files de cada item
+                'items.modifiers.modifier.files',    // Files dos modifiers
+                'attendant.user.files',              // Files do usuário atendente
+                'client.files',                      // Files do cliente
             ])
             ->orderByDesc('order_datetime')
             ->get();
 
-        /** 🔹 Carrega establishments manualmente (padrão Peter Tecnet) */
+        // Carrega establishments com files
         $establishmentIds = $orders->pluck('entity_id')->unique()->values();
-
         $establishments = Establishment::whereIn('id', $establishmentIds)
-            ->with(['files'])
+            ->with('files') // Files do estabelecimento
             ->get()
             ->keyBy('id');
 
+        // Atribui establishment completo em cada order
         $orders->transform(function ($order) use ($establishments) {
             $order->establishment = $establishments[$order->entity_id] ?? null;
             return $order;
