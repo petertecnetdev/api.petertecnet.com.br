@@ -340,33 +340,32 @@ class OrderController extends ApiController
     }
 
 
-   public function listByClient(Request $request)
-{
-    try {
-        $authUserId = $request->user()->id;
-        $appId = $request->input('app_id');
+    public function listByClient(Request $request)
+    {
+        try {
+            $authUserId = $request->user()->id;
+            $appId = $request->input('app_id');
 
-        // busca todos do app primeiro
-        $allOrders = Order::where('app_id', $appId)->get();
+            // desativa os appends para não carregar atributos que quebram
+            Order::flushEventListeners(); // evita triggers de append
+            $orders = Order::where('app_id', $appId)
+                ->where('client_id', $authUserId)
+                ->get(['id', 'app_id', 'entity_name', 'entity_id', 'order_number', 'order_datetime', 'created_by', 'attendant_id', 'client_id', 'customer_name', 'customer_phone', 'customer_email', 'customer_cpf', 'access_code', 'origin', 'fulfillment', 'payment_status', 'payment_method', 'total_price', 'total_duration', 'status', 'notes', 'type', 'appointment_status', 'confirmed_by', 'cancelled_by', 'cancelled_reason', 'attended_at', 'created_at', 'updated_at']);
 
-        // filtra manualmente pelo client_id para evitar problema de comparação
-        $orders = $allOrders->filter(function ($order) use ($authUserId) {
-            return $order->client_id == $authUserId;
-        })->values(); // reseta as chaves
+            return response()->json($orders);
 
-        return response()->json($orders);
-    } catch (\Exception $e) {
-        Log::error('Order.listByClient', [
-            'auth_user_id' => $request->user()->id ?? null,
-            'app_id' => $request->input('app_id') ?? null,
-            'exception' => $e->getMessage(),
-        ]);
+        } catch (\Exception $e) {
+            Log::error('Order.listByClient', [
+                'auth_user_id' => $request->user()->id ?? null,
+                'app_id' => $request->input('app_id') ?? null,
+                'exception' => $e->getMessage(),
+            ]);
 
-        return response()->json([
-            'error' => 'Erro ao listar pedidos do cliente'
-        ], 500);
+            return response()->json([
+                'error' => 'Erro ao listar pedidos do cliente'
+            ], 500);
+        }
     }
-}
 
     public function show(int $id)
     {
