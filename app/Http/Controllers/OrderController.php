@@ -351,30 +351,9 @@ class OrderController extends ApiController
                 ], 401);
             }
 
-            $clientId = $authUser->id;
-
-            if ($request->filled('client_id')) {
-                if ((int) $request->client_id !== (int) $authUser->id) {
-                    return response()->json([
-                        'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-                    ], 403);
-                }
-
-                $clientId = (int) $request->client_id;
-            }
-
-            if ($request->filled('user_name')) {
-                if ($request->user_name !== $authUser->user_name) {
-                    return response()->json([
-                        'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-                    ], 403);
-                }
-
-                $client = User::where('user_name', $request->user_name)->firstOrFail();
-                $clientId = $client->id;
-            }
-
-            $query = Order::where('client_id', $clientId);
+            $query = Order::where('client_id', $authUser->id)
+                ->where('app_id', $authUser->app_id)
+                ->where('entity_name', 'establishment');
 
             if ($request->filled('start_date')) {
                 $query->where(
@@ -392,45 +371,72 @@ class OrderController extends ApiController
                 );
             }
 
-            if ($request->filled('establishment_id')) {
-                $query->where('entity_name', 'establishment')
-                    ->where('entity_id', (int) $request->establishment_id);
-            }
-
             if ($request->filled('status')) {
                 $query->where('status', $request->status);
-            }
-
-            if ($request->filled('appointment_status')) {
-                $query->where('appointment_status', $request->appointment_status);
-            }
-
-            if ($request->filled('type')) {
-                $query->where('type', $request->type);
             }
 
             if ($request->filled('payment_status')) {
                 $query->where('payment_status', $request->payment_status);
             }
 
-            if ($request->filled('attendant_id')) {
-                $query->where('attendant_id', (int) $request->attendant_id);
+            if ($request->filled('type')) {
+                $query->where('type', $request->type);
             }
 
             $orders = $query
                 ->with([
-                    'items.item.files',
-                    'items.modifiers.modifier',
-                    'attendant.user.files',
-                    'client.files',
+                    'client' => function ($q) {
+                        $q->select('id', 'first_name', 'last_name', 'user_name', 'email')
+                            ->with([
+                                'files' => function ($f) {
+                                    $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
+                                }
+                            ]);
+                    },
+                    'attendant' => function ($q) {
+                        $q->select('id', 'user_id')
+                            ->with([
+                                'user' => function ($u) {
+                                    $u->select('id', 'first_name', 'last_name', 'user_name', 'email')
+                                        ->with([
+                                            'files' => function ($f) {
+                                                $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
+                                            }
+                                        ]);
+                                }
+                            ]);
+                    },
+                    'items' => function ($q) {
+                        $q->select('id', 'order_id', 'item_id', 'quantity', 'price', 'subtotal')
+                            ->with([
+                                'item' => function ($i) {
+                                    $i->select('id', 'name', 'price', 'duration')
+                                        ->with([
+                                            'files' => function ($f) {
+                                                $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
+                                            }
+                                        ]);
+                                },
+                                'modifiers.modifier'
+                            ]);
+                    },
+                    'establishment' => function ($q) {
+                        $q->select('id', 'name', 'slug')
+                            ->with([
+                                'files' => function ($f) {
+                                    $f->select('id', 'fileable_id', 'fileable_type', 'type', 'public_url', 'is_primary');
+                                }
+                            ]);
+                    },
                 ])
                 ->orderByDesc('order_datetime')
                 ->get();
 
             return response()->json([
                 'message' => 'Pedidos do cliente listados com sucesso.',
-                'orders' => $orders,
+                'orders' => $this->utf8ize($orders->toArray()),
             ]);
+
         } catch (\Throwable $e) {
             Log::error('Order.listByClient', [
                 'auth_user_id' => $request->user()?->id,
