@@ -353,25 +353,16 @@ class OrderController extends ApiController
 
         $clientId = $authUser->id;
 
-        if ($request->filled('client_id')) {
-            if ((int) $request->client_id !== (int) $authUser->id) {
-                return response()->json([
-                    'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-                ], 403);
-            }
-
-            $clientId = (int) $request->client_id;
+        if ($request->filled('client_id') && (int)$request->client_id !== $authUser->id) {
+            return response()->json([
+                'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
+            ], 403);
         }
 
-        if ($request->filled('user_name')) {
-            if ($request->user_name !== $authUser->user_name) {
-                return response()->json([
-                    'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
-                ], 403);
-            }
-
-            $client = User::where('user_name', $request->user_name)->firstOrFail();
-            $clientId = $client->id;
+        if ($request->filled('user_name') && $request->user_name !== $authUser->user_name) {
+            return response()->json([
+                'message' => 'Você não tem permissão para visualizar pedidos de outro cliente.',
+            ], 403);
         }
 
         $query = Order::where('client_id', $clientId)
@@ -379,43 +370,19 @@ class OrderController extends ApiController
             ->where('entity_name', 'establishment');
 
         if ($request->filled('start_date')) {
-            $query->where(
-                'order_datetime',
-                '>=',
-                Carbon::parse($request->start_date)->startOfDay()
-            );
+            $query->where('order_datetime', '>=', Carbon::parse($request->start_date)->startOfDay());
         }
 
         if ($request->filled('end_date')) {
-            $query->where(
-                'order_datetime',
-                '<=',
-                Carbon::parse($request->end_date)->endOfDay()
-            );
-        }
-
-        if ($request->filled('establishment_id')) {
-            $query->where('entity_id', (int) $request->establishment_id);
+            $query->where('order_datetime', '<=', Carbon::parse($request->end_date)->endOfDay());
         }
 
         if ($request->filled('status')) {
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('appointment_status')) {
-            $query->where('appointment_status', $request->appointment_status);
-        }
-
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
-        }
-
         if ($request->filled('payment_status')) {
             $query->where('payment_status', $request->payment_status);
-        }
-
-        if ($request->filled('attendant_id')) {
-            $query->where('attendant_id', (int) $request->attendant_id);
         }
 
         $orders = $query
@@ -424,10 +391,22 @@ class OrderController extends ApiController
                 'items.modifiers.modifier',
                 'attendant.user.files',
                 'client.files',
-                'establishment.files',
             ])
             ->orderByDesc('order_datetime')
             ->get();
+
+        /** 🔹 Carrega establishment manualmente (padrão Peter Tecnet) */
+        $establishmentIds = $orders->pluck('entity_id')->unique()->values();
+
+        $establishments = Establishment::whereIn('id', $establishmentIds)
+            ->with(['files'])
+            ->get()
+            ->keyBy('id');
+
+        $orders->transform(function ($order) use ($establishments) {
+            $order->establishment = $establishments[$order->entity_id] ?? null;
+            return $order;
+        });
 
         return response()->json([
             'message' => 'Pedidos do cliente listados com sucesso.',
@@ -437,7 +416,6 @@ class OrderController extends ApiController
         Log::error('Order.listByClient', [
             'auth_user_id' => $request->user()?->id,
             'app_id' => $app_id,
-            'params' => $request->all(),
             'exception' => $e,
         ]);
 
@@ -446,7 +424,6 @@ class OrderController extends ApiController
         ], 500);
     }
 }
-
 
 
 
