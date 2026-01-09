@@ -386,10 +386,10 @@ class OrderController extends ApiController
 
         $orders = $query
             ->with([
-                'items.item.files',                  // Files de cada item
-                'items.modifiers.modifier.files',    // Files dos modifiers
-                'attendant.user.files',              // User do atendente com files
-                'client.files',                      // User cliente com files
+                'items.item.files',
+                'items.modifiers.modifier.files',
+                'attendant.user.files',
+                'client.files',
             ])
             ->orderByDesc('order_datetime')
             ->get();
@@ -397,18 +397,19 @@ class OrderController extends ApiController
         // Carrega establishments com files
         $establishmentIds = $orders->pluck('entity_id')->unique()->values();
         $establishments = Establishment::whereIn('id', $establishmentIds)
-            ->with('files') // Files do estabelecimento
+            ->with('files') // garante carregar files
             ->get()
             ->keyBy('id');
 
         // Substitui o establishment correto em cada order
         $orders->transform(function ($order) use ($establishments) {
-            $order->establishment = $establishments[$order->entity_id] ?? null;
+            if (isset($establishments[$order->entity_id])) {
+                $order->establishment = $establishments[$order->entity_id];
+            }
 
-            // Substitui items para incluir files do item e dos modifiers
             $order->items->transform(function ($itemOrder) {
                 if ($itemOrder->item) {
-                    unset($itemOrder->item->logo, $itemOrder->item->background); // remove campos antigos
+                    unset($itemOrder->item->logo, $itemOrder->item->background);
                 }
                 $itemOrder->modifiers->transform(function ($modifierOrder) {
                     if ($modifierOrder->modifier) {
@@ -419,7 +420,6 @@ class OrderController extends ApiController
                 return $itemOrder;
             });
 
-            // Remove campos antigos do establishment
             if ($order->establishment) {
                 unset($order->establishment->logo, $order->establishment->background);
             }
