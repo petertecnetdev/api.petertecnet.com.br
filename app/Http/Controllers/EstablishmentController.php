@@ -56,216 +56,239 @@ class EstablishmentController extends Controller
     }
 
     public function store(Request $request)
-    {
-        try {
-            $user = Auth::user();
+{
+    DB::beginTransaction();
 
-            Log::info('[EstablishmentController::store] Iniciando cria��o de estabelecimento.', [
-                'user_id' => $user->id ?? null,
-                'payload' => $request->all()
-            ]);
+    try {
+        $user = Auth::user();
 
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'name' => 'required|string|max:255',
-                'fantasy' => 'nullable|string|max:255',
-                'cnpj' => 'nullable|string|max:20',
-                'type' => 'nullable|string|max:100',
-                'category' => 'nullable|string|max:100',
-                'phone' => 'nullable|string|max:20',
-                'email' => 'nullable|email|max:255',
-                'description' => 'nullable|string|max:2500',
-                'additional_info' => 'nullable|string|max:2500',
-                'city' => 'nullable|string|max:100',
-                'uf' => 'nullable|string|max:2',
-                'location' => 'nullable|string',
-                'cep' => 'nullable|string|max:10',
-                'address' => 'nullable|string|max:255',
-                'latitude' => 'nullable|numeric',
-                'longitude' => 'nullable|numeric',
-                'logo' => 'nullable|image|max:4096',
-                'background' => 'nullable|image|max:8192',
-                'website_url' => 'nullable|url|max:255',
-                'facebook_url' => 'nullable|url|max:255',
-                'instagram_url' => 'nullable|url|max:255',
-                'twitter_url' => 'nullable|url|max:255',
-                'youtube_url' => 'nullable|url|max:255',
-                'segments' => 'nullable|array',
-                'segments.*' => 'string',
-                'is_featured' => 'boolean',
-                'is_published' => 'boolean',
-                'is_approved' => 'boolean',
-                'is_cancelled' => 'boolean',
-            ], $this->getValidationMessages());
+        Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
+            'user_id' => $user?->id,
+            'payload' => $request->all(),
+        ]);
 
-            DB::beginTransaction();
+        $data = $request->validate([
+            'app_id'           => 'required|integer|exists:applications,id',
+            'name'             => 'required|string|max:255',
+            'fantasy'          => 'nullable|string|max:255',
+            'cnpj'             => 'nullable|string|max:20',
+            'type'             => 'nullable|string|max:100',
+            'category'         => 'nullable|string|max:100',
+            'phone'            => 'nullable|string|max:20',
+            'email'            => 'nullable|email|max:255',
+            'description'      => 'nullable|string|max:2500',
+            'additional_info'  => 'nullable|string|max:2500',
+            'city'             => 'nullable|string|max:100',
+            'uf'               => 'nullable|string|size:2',
+            'location'         => 'nullable|string',
+            'cep'              => 'nullable|string|max:10',
+            'address'          => 'nullable|string|max:255',
+            'latitude'         => 'nullable|numeric',
+            'longitude'        => 'nullable|numeric',
+            'logo'             => 'nullable|image|max:4096',
+            'background'       => 'nullable|image|max:8192',
+            'website_url'      => 'nullable|url|max:255',
+            'facebook_url'     => 'nullable|url|max:255',
+            'instagram_url'    => 'nullable|url|max:255',
+            'twitter_url'      => 'nullable|url|max:255',
+            'youtube_url'      => 'nullable|url|max:255',
+            'segments'         => 'nullable|array',
+            'segments.*'       => 'string',
+            'is_featured'      => 'nullable|boolean',
+            'is_published'     => 'nullable|boolean',
+            'is_approved'      => 'nullable|boolean',
+            'is_cancelled'     => 'nullable|boolean',
+        ], $this->getValidationMessages());
 
-            // ============================
-            // SLUG SEGURO
-            // ============================
-            $baseSlug = Str::slug($data['fantasy'] ?: $data['name']);
-            $slug = $baseSlug ?: Str::slug($data['name']);
+        // ============================
+        // SLUG SEGURO
+        // ============================
+        $baseSlug = Str::slug($data['fantasy'] ?? $data['name']);
+        $slug = $baseSlug;
 
-            if (Establishment::where('slug', $slug)->exists()) {
-                $slug .= '-' . uniqid();
-            }
-
-            // ============================
-            // HERDAR CITY/UF DO USER
-            // ============================
-            if (empty($data['city']) && $user->city) {
-                $data['city'] = $user->city;
-            }
-
-            if (empty($data['uf']) && $user->uf) {
-                $data['uf'] = $user->uf;
-            }
-
-            // ============================
-            // GEO / REVERSE GEO
-            // ============================
-            $latitude = $data['latitude'] ?? null;
-            $longitude = $data['longitude'] ?? null;
-
-            if ($latitude && $longitude && (!($data['city']) || !($data['uf']))) {
-                try {
-                    $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
-                    $geo = json_decode(file_get_contents($url), true);
-
-                    $data['city'] = $geo['address']['city']
-                        ?? $geo['address']['town']
-                        ?? $geo['address']['village']
-                        ?? $data['city'];
-
-                    $ufText = $geo['address']['state'] ?? null;
-
-                    if ($ufText) {
-                        $mapping = [
-                            'Acre' => 'AC',
-                            'Alagoas' => 'AL',
-                            'Amap�' => 'AP',
-                            'Amazonas' => 'AM',
-                            'Bahia' => 'BA',
-                            'Cear�' => 'CE',
-                            'Distrito Federal' => 'DF',
-                            'Esp�rito Santo' => 'ES',
-                            'Goi�s' => 'GO',
-                            'Maranh�o' => 'MA',
-                            'Mato Grosso' => 'MT',
-                            'Mato Grosso do Sul' => 'MS',
-                            'Minas Gerais' => 'MG',
-                            'Par�' => 'PA',
-                            'Para�ba' => 'PB',
-                            'Paran�' => 'PR',
-                            'Pernambuco' => 'PE',
-                            'Piau�' => 'PI',
-                            'Rio de Janeiro' => 'RJ',
-                            'Rio Grande do Norte' => 'RN',
-                            'Rio Grande do Sul' => 'RS',
-                            'Rond�nia' => 'RO',
-                            'Roraima' => 'RR',
-                            'Santa Catarina' => 'SC',
-                            'S�o Paulo' => 'SP',
-                            'Sergipe' => 'SE',
-                            'Tocantins' => 'TO'
-                        ];
-
-                        $data['uf'] = $mapping[$ufText] ?? $data['uf'];
-                    }
-
-                } catch (\Throwable $e) {
-                    Log::warning("Erro reverse geocode: {$e->getMessage()}");
-                }
-            }
-
-            if ($latitude && $longitude) {
-                $data['location'] = "{$latitude},{$longitude}";
-            }
-
-            // ============================
-            // CRIA O ESTABELECIMENTO
-            // ============================
-            $establishment = Establishment::create([
-                'app_id' => $data['app_id'],
-                'name' => $data['name'],
-                'fantasy' => $data['fantasy'] ?? null,
-                'slug' => $slug,
-                'cnpj' => $data['cnpj'] ?? null,
-                'type' => $data['type'] ?? null,
-                'category' => $data['category'] ?? null,
-                'phone' => $data['phone'] ?? null,
-                'email' => $data['email'] ?? null,
-                'description' => $data['description'] ?? null,
-                'additional_info' => $data['additional_info'] ?? null,
-                'city' => $data['city'] ?? null,
-                'uf' => $data['uf'] ?? null,
-                'location' => $data['location'] ?? null,
-                'cep' => $data['cep'] ?? null,
-                'address' => $data['address'] ?? null,
-                'website_url' => $data['website_url'] ?? null,
-                'facebook_url' => $data['facebook_url'] ?? null,
-                'instagram_url' => $data['instagram_url'] ?? null,
-                'twitter_url' => $data['twitter_url'] ?? null,
-                'youtube_url' => $data['youtube_url'] ?? null,
-                'segments' => $data['segments'] ?? [],
-                'is_featured' => $data['is_featured'] ?? false,
-                'is_published' => $data['is_published'] ?? false,
-                'is_approved' => $data['is_approved'] ?? false,
-                'is_cancelled' => $data['is_cancelled'] ?? false,
-                'user_id' => $user->id,
-                'created_by' => $user->id,
-                'updated_by' => $user->id,
-            ]);
-
-            // ============================
-            // FILES � LOGO
-            // ============================
-            if ($request->hasFile('logo')) {
-                $file = File::storeOne(
-                    file: $request->file('logo'),
-                    entityName: 'establishment',
-                    entityId: $establishment->id,
-                    type: 'logo',
-                    createdBy: $user->id
-                );
-
-                $establishment->update(['logo' => $file->public_url]);
-            }
-
-            // ============================
-            // FILES � BACKGROUND
-            // ============================
-            if ($request->hasFile('background')) {
-                $file = File::storeOne(
-                    file: $request->file('background'),
-                    entityName: 'establishment',
-                    entityId: $establishment->id,
-                    type: 'background',
-                    createdBy: $user->id
-                );
-
-                $establishment->update(['background' => $file->public_url]);
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Estabelecimento criado com sucesso!',
-                'establishment' => $establishment->refresh()
-            ], 201);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            DB::rollBack();
-            return response()->json(['errors' => $e->errors()], 422);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'error' => 'Ocorreu um erro ao criar o estabelecimento.',
-                'message' => $e->getMessage()
-            ], 500);
+        if (Establishment::where('slug', $slug)->exists()) {
+            $slug .= '-' . uniqid();
         }
+
+        // ============================
+        // HERDAR CITY / UF DO USUÁRIO
+        // ============================
+        if (empty($data['city']) && !empty($user->city)) {
+            $data['city'] = $user->city;
+        }
+
+        if (empty($data['uf']) && !empty($user->uf)) {
+            $data['uf'] = $user->uf;
+        }
+
+        // ============================
+        // GEO / REVERSE GEO
+        // ============================
+        $latitude  = $data['latitude']  ?? null;
+        $longitude = $data['longitude'] ?? null;
+
+        if ($latitude && $longitude && (empty($data['city']) || empty($data['uf']))) {
+            try {
+                $context = stream_context_create([
+                    'http' => [
+                        'method'  => 'GET',
+                        'header'  => "User-Agent: InkapApp/1.0\r\n",
+                        'timeout' => 5,
+                    ],
+                ]);
+
+                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
+                $geo = json_decode(file_get_contents($url, false, $context), true);
+
+                $data['city'] = $data['city']
+                    ?? $geo['address']['city']
+                    ?? $geo['address']['town']
+                    ?? $geo['address']['village']
+                    ?? null;
+
+                $ufText = $geo['address']['state'] ?? null;
+
+                if ($ufText) {
+                    $mapping = [
+                        'Acre' => 'AC',
+                        'Alagoas' => 'AL',
+                        'Amapá' => 'AP',
+                        'Amazonas' => 'AM',
+                        'Bahia' => 'BA',
+                        'Ceará' => 'CE',
+                        'Distrito Federal' => 'DF',
+                        'Espírito Santo' => 'ES',
+                        'Goiás' => 'GO',
+                        'Maranhão' => 'MA',
+                        'Mato Grosso' => 'MT',
+                        'Mato Grosso do Sul' => 'MS',
+                        'Minas Gerais' => 'MG',
+                        'Pará' => 'PA',
+                        'Paraíba' => 'PB',
+                        'Paraná' => 'PR',
+                        'Pernambuco' => 'PE',
+                        'Piauí' => 'PI',
+                        'Rio de Janeiro' => 'RJ',
+                        'Rio Grande do Norte' => 'RN',
+                        'Rio Grande do Sul' => 'RS',
+                        'Rondônia' => 'RO',
+                        'Roraima' => 'RR',
+                        'Santa Catarina' => 'SC',
+                        'São Paulo' => 'SP',
+                        'Sergipe' => 'SE',
+                        'Tocantins' => 'TO',
+                    ];
+
+                    $data['uf'] = $data['uf'] ?? ($mapping[$ufText] ?? null);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[EstablishmentController::store] Erro reverse geocode', [
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if ($latitude && $longitude) {
+            $data['location'] = "{$latitude},{$longitude}";
+        }
+
+        // ============================
+        // CRIA O ESTABELECIMENTO
+        // ============================
+        $establishment = Establishment::create([
+            'app_id'          => $data['app_id'],
+            'name'            => $data['name'],
+            'fantasy'         => $data['fantasy'] ?? null,
+            'slug'            => $slug,
+            'cnpj'            => $data['cnpj'] ?? null,
+            'type'            => $data['type'] ?? null,
+            'category'        => $data['category'] ?? null,
+            'phone'           => $data['phone'] ?? null,
+            'email'           => $data['email'] ?? null,
+            'description'     => $data['description'] ?? null,
+            'additional_info' => $data['additional_info'] ?? null,
+            'city'            => $data['city'] ?? null,
+            'uf'              => $data['uf'] ?? null,
+            'location'        => $data['location'] ?? null,
+            'cep'             => $data['cep'] ?? null,
+            'address'         => $data['address'] ?? null,
+            'website_url'     => $data['website_url'] ?? null,
+            'facebook_url'    => $data['facebook_url'] ?? null,
+            'instagram_url'   => $data['instagram_url'] ?? null,
+            'twitter_url'     => $data['twitter_url'] ?? null,
+            'youtube_url'     => $data['youtube_url'] ?? null,
+            'segments'        => $data['segments'] ?? [],
+            'is_featured'     => (bool)($data['is_featured'] ?? false),
+            'is_published'    => (bool)($data['is_published'] ?? false),
+            'is_approved'     => (bool)($data['is_approved'] ?? false),
+            'is_cancelled'    => (bool)($data['is_cancelled'] ?? false),
+            'user_id'         => $user->id,
+            'created_by'      => $user->id,
+            'updated_by'      => $user->id,
+        ]);
+
+        // ============================
+        // FILE - LOGO
+        // ============================
+        if ($request->hasFile('logo')) {
+            $file = File::storeOne(
+                file: $request->file('logo'),
+                entityName: 'establishment',
+                entityId: $establishment->id,
+                type: 'logo',
+                createdBy: $user->id
+            );
+
+            $establishment->update([
+                'logo' => $file->public_url,
+            ]);
+        }
+
+        // ============================
+        // FILE - BACKGROUND
+        // ============================
+        if ($request->hasFile('background')) {
+            $file = File::storeOne(
+                file: $request->file('background'),
+                entityName: 'establishment',
+                entityId: $establishment->id,
+                type: 'background',
+                createdBy: $user->id
+            );
+
+            $establishment->update([
+                'background' => $file->public_url,
+            ]);
+        }
+
+        DB::commit();
+
+        return response()->json([
+            'message' => 'Estabelecimento criado com sucesso!',
+            'establishment' => $establishment->refresh(),
+        ], 201);
+
+    } catch (\Illuminate\Validation\ValidationException $e) {
+        DB::rollBack();
+
+        return response()->json([
+            'errors' => $e->errors(),
+        ], 422);
+
+    } catch (\Throwable $e) {
+        DB::rollBack();
+
+        Log::error('[EstablishmentController::store] Erro inesperado', [
+            'error' => $e->getMessage(),
+        ]);
+
+        return response()->json([
+            'error' => 'Ocorreu um erro ao criar o estabelecimento.',
+            'message' => $e->getMessage(),
+        ], 500);
     }
+}
+
 
     public function update(Request $request, $id)
     {
