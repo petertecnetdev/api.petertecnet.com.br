@@ -67,8 +67,7 @@ class EstablishmentController extends Controller
 ];
 
     }
-
-    public function store(Request $request)
+public function store(Request $request)
 {
     DB::beginTransaction();
 
@@ -113,9 +112,9 @@ class EstablishmentController extends Controller
             'is_cancelled'     => 'nullable|boolean',
         ], $this->getValidationMessages());
 
-        // ============================
-        // SLUG SEGURO
-        // ============================
+        /* ============================
+           SLUG
+        ============================ */
         $baseSlug = Str::slug($data['fantasy'] ?? $data['name']);
         $slug = $baseSlug;
 
@@ -123,9 +122,9 @@ class EstablishmentController extends Controller
             $slug .= '-' . uniqid();
         }
 
-        // ============================
-        // HERDAR CITY / UF DO USUÁRIO
-        // ============================
+        /* ============================
+           CITY / UF DEFAULT
+        ============================ */
         if (empty($data['city']) && !empty($user->city)) {
             $data['city'] = $user->city;
         }
@@ -134,80 +133,19 @@ class EstablishmentController extends Controller
             $data['uf'] = $user->uf;
         }
 
-        // ============================
-        // GEO / REVERSE GEO
-        // ============================
-        $latitude  = $data['latitude']  ?? null;
+        /* ============================
+           GEO
+        ============================ */
+        $latitude  = $data['latitude'] ?? null;
         $longitude = $data['longitude'] ?? null;
-
-        if ($latitude && $longitude && (empty($data['city']) || empty($data['uf']))) {
-            try {
-                $context = stream_context_create([
-                    'http' => [
-                        'method'  => 'GET',
-                        'header'  => "User-Agent: InkapApp/1.0\r\n",
-                        'timeout' => 5,
-                    ],
-                ]);
-
-                $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
-                $geo = json_decode(file_get_contents($url, false, $context), true);
-
-                $data['city'] = $data['city']
-                    ?? $geo['address']['city']
-                    ?? $geo['address']['town']
-                    ?? $geo['address']['village']
-                    ?? null;
-
-                $ufText = $geo['address']['state'] ?? null;
-
-                if ($ufText) {
-                    $mapping = [
-                        'Acre' => 'AC',
-                        'Alagoas' => 'AL',
-                        'Amapá' => 'AP',
-                        'Amazonas' => 'AM',
-                        'Bahia' => 'BA',
-                        'Ceará' => 'CE',
-                        'Distrito Federal' => 'DF',
-                        'Espírito Santo' => 'ES',
-                        'Goiás' => 'GO',
-                        'Maranhão' => 'MA',
-                        'Mato Grosso' => 'MT',
-                        'Mato Grosso do Sul' => 'MS',
-                        'Minas Gerais' => 'MG',
-                        'Pará' => 'PA',
-                        'Paraíba' => 'PB',
-                        'Paraná' => 'PR',
-                        'Pernambuco' => 'PE',
-                        'Piauí' => 'PI',
-                        'Rio de Janeiro' => 'RJ',
-                        'Rio Grande do Norte' => 'RN',
-                        'Rio Grande do Sul' => 'RS',
-                        'Rondônia' => 'RO',
-                        'Roraima' => 'RR',
-                        'Santa Catarina' => 'SC',
-                        'São Paulo' => 'SP',
-                        'Sergipe' => 'SE',
-                        'Tocantins' => 'TO',
-                    ];
-
-                    $data['uf'] = $data['uf'] ?? ($mapping[$ufText] ?? null);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('[EstablishmentController::store] Erro reverse geocode', [
-                    'error' => $e->getMessage(),
-                ]);
-            }
-        }
 
         if ($latitude && $longitude) {
             $data['location'] = "{$latitude},{$longitude}";
         }
 
-        // ============================
-        // CRIA O ESTABELECIMENTO
-        // ============================
+        /* ============================
+           CREATE ESTABLISHMENT
+        ============================ */
         $establishment = Establishment::create([
             'app_id'          => $data['app_id'],
             'name'            => $data['name'],
@@ -231,45 +169,41 @@ class EstablishmentController extends Controller
             'twitter_url'     => $data['twitter_url'] ?? null,
             'youtube_url'     => $data['youtube_url'] ?? null,
             'segments'        => $data['segments'] ?? [],
-            'is_featured'     => (bool)($data['is_featured'] ?? false),
-            'is_published'    => (bool)($data['is_published'] ?? false),
-            'is_approved'     => (bool)($data['is_approved'] ?? false),
-            'is_cancelled'    => (bool)($data['is_cancelled'] ?? false),
+            'is_featured'     => (bool) ($data['is_featured'] ?? false),
+            'is_published'    => (bool) ($data['is_published'] ?? false),
+            'is_approved'     => (bool) ($data['is_approved'] ?? false),
+            'is_cancelled'    => (bool) ($data['is_cancelled'] ?? false),
             'user_id'         => $user->id,
+            'created_by'      => $user->id,
+            'updated_by'      => $user->id,
         ]);
 
-        // ============================
-        // FILE - LOGO
-        // ============================
+        /* ============================
+           FILE - LOGO
+        ============================ */
         if ($request->hasFile('logo')) {
             $file = File::storeOne(
                 file: $request->file('logo'),
                 entityName: 'establishment',
                 entityId: $establishment->id,
                 type: 'logo',
+                appId: $establishment->app_id,
                 createdBy: $user->id
             );
-
-            $establishment->update([
-                'logo' => $file->public_url,
-            ]);
         }
 
-        // ============================
-        // FILE - BACKGROUND
-        // ============================
+        /* ============================
+           FILE - BACKGROUND
+        ============================ */
         if ($request->hasFile('background')) {
-            $file = File::storeOne(
+            File::storeOne(
                 file: $request->file('background'),
                 entityName: 'establishment',
                 entityId: $establishment->id,
                 type: 'background',
+                appId: $establishment->app_id,
                 createdBy: $user->id
             );
-
-            $establishment->update([
-                'background' => $file->public_url,
-            ]);
         }
 
         DB::commit();
@@ -299,6 +233,7 @@ class EstablishmentController extends Controller
         ], 500);
     }
 }
+
 
 
     public function update(Request $request, $id)
