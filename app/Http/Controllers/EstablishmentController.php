@@ -174,8 +174,6 @@ public function store(Request $request)
             'is_approved'     => (bool) ($data['is_approved'] ?? false),
             'is_cancelled'    => (bool) ($data['is_cancelled'] ?? false),
             'user_id'         => $user->id,
-            'created_by'      => $user->id,
-            'updated_by'      => $user->id,
         ]);
 
         /* ============================
