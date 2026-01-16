@@ -21,38 +21,51 @@ class EstablishmentController extends Controller
 
     protected function getValidationMessages()
     {
-        return [
-            'app_id.required' => 'O campo app_id � obrigat�rio.',
-            'app_id.integer' => 'O campo app_id deve ser um n�mero inteiro v�lido.',
-            'app_id.exists' => 'O aplicativo selecionado n�o � v�lido.',
-            'name.required' => 'O nome do estabelecimento � obrigat�rio.',
-            'name.string' => 'O nome deve ser uma string v�lida.',
-            'name.max' => 'O nome deve ter no m�ximo 255 caracteres.',
-            'email.email' => 'O email fornecido n�o � v�lido.',
-            'email.max' => 'O email deve ter no m�ximo 255 caracteres.',
-            'phone.string' => 'O telefone deve ser uma string v�lida.',
-            'phone.max' => 'O telefone deve ter no m�ximo 20 caracteres.',
-            'description.string' => 'A descri��o deve ser uma string v�lida.',
-            'description.max' => 'A descri��o deve ter no m�ximo 2500 caracteres.',
-            'address.string' => 'O endere�o deve ser uma string v�lida.',
-            'address.max' => 'O endere�o deve ter no m�ximo 255 caracteres.',
-            'city.string' => 'A cidade deve ser uma string v�lida.',
-            'city.max' => 'A cidade deve ter no m�ximo 100 caracteres.',
-            'cep.string' => 'O CEP deve ser uma string v�lida.',
-            'cep.max' => 'O CEP deve ter no m�ximo 10 caracteres.',
-            'website_url.url' => 'O website deve ser um URL v�lido.',
-            'location.string' => 'A localiza��o deve ser uma string v�lida.',
-            'instagram_url.url' => 'O link do Instagram deve ser um URL v�lido.',
-            'facebook_url.url' => 'O link do Facebook deve ser um URL v�lido.',
-            'twitter_url.url' => 'O link do Twitter deve ser um URL v�lido.',
-            'youtube_url.url' => 'O link do YouTube deve ser um URL v�lido.',
-            'segments.array' => 'Os segmentos devem ser enviados como array.',
-            'segments.*.string' => 'Cada segmento deve ser uma string.',
-            'logo.required' => 'A logo � obrigat�ria.',
-            'logo.image' => 'A logo deve ser uma imagem v�lida.',
-            'logo.max' => 'A logo deve ter no m�ximo 2048 KB.',
-            'background.image' => 'A imagem de fundo deve ser uma imagem v�lida.',
-        ];
+       return [
+    'app_id.required' => 'O campo app_id é obrigatório.',
+    'app_id.integer' => 'O campo app_id deve ser um número inteiro válido.',
+    'app_id.exists' => 'O aplicativo selecionado não é válido.',
+
+    'name.required' => 'O nome do estabelecimento é obrigatório.',
+    'name.string' => 'O nome deve ser uma string válida.',
+    'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+
+    'email.email' => 'O email fornecido não é válido.',
+    'email.max' => 'O email deve ter no máximo 255 caracteres.',
+
+    'phone.string' => 'O telefone deve ser uma string válida.',
+    'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+
+    'description.string' => 'A descrição deve ser uma string válida.',
+    'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+
+    'address.string' => 'O endereço deve ser uma string válida.',
+    'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+
+    'city.string' => 'A cidade deve ser uma string válida.',
+    'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+
+    'cep.string' => 'O CEP deve ser uma string válida.',
+    'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+
+    'website_url.url' => 'O website deve ser um URL válido.',
+    'location.string' => 'A localização deve ser uma string válida.',
+
+    'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
+    'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+    'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+    'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
+
+    'segments.array' => 'Os segmentos devem ser enviados como array.',
+    'segments.*.string' => 'Cada segmento deve ser uma string.',
+
+    'logo.required' => 'A logo é obrigatória.',
+    'logo.image' => 'A logo deve ser uma imagem válida.',
+    'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+
+    'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
+];
+
     }
 
     public function store(Request $request)
