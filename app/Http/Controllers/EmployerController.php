@@ -386,62 +386,92 @@ class EmployerController extends Controller
 
 
 
-    public function listByEntity(string $identifier)
-    {
-        try {
-            return Cache::remember("employers_entity_{$identifier}", 300, function () use ($identifier) {
+   public function listByEntity(string $identifier)
+{
+    try {
+        // ✅ Troque a key pra não reutilizar cache antigo com establishment/files
+        $cacheKey = "employers_entity_{$identifier}_only_user";
 
-                $establishment = Establishment::query()
-                    ->when(
-                        is_numeric($identifier),
-                        fn($q) => $q->where('id', (int) $identifier),
-                        fn($q) => $q->where('slug', $identifier)
-                    )
-                    ->firstOrFail();
+        return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
-                $employers = Employer::query()
-                    ->where('establishment_id', $establishment->id)
-                    ->with([
-                        'files' => fn($q) =>
-                            $q->where('entity_name', 'employer')
+            $establishment = Establishment::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn ($q) => $q->where('id', (int) $identifier),
+                    fn ($q) => $q->where('slug', $identifier)
+                )
+                ->firstOrFail();
+
+            // ✅ Apenas Employer + seu User (opcional: user.files)
+            $employers = Employer::query()
+                ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
+                ->where('establishment_id', $establishment->id)
+                ->with([
+                    'user' => function ($q) {
+                        $q->select([
+                            'id',
+                            'first_name',
+                            'last_name',
+                            'user_name',
+                            'avatar',
+                            'email',
+                            'created_at',
+                            'updated_at',
+                        ])->with([
+                            'files' => fn ($fq) => $fq
+                                ->where('entity_name', 'user')
                                 ->orderBy('position'),
+                        ]);
+                    },
+                ])
+                ->get()
+                ->map(function ($employer) {
+                    // ✅ Esconde tudo que não é Employer + User
+                    $employer->makeHidden([
+                        'metrics',          // vem do $appends do model
+                        'files',
+                        'establishment',
+                        'orders',
+                        'interactions',
+                        'views',
+                        'services',
+                    ]);
 
-                        'user.files' => fn($q) =>
-                            $q->where('entity_name', 'user')
-                                ->orderBy('position'),
+                    // Se o User tiver appends/relacionamentos que você não quer, ajuste aqui:
+                    if ($employer->relationLoaded('user') && $employer->user) {
+                        $employer->user->makeHidden([
+                            'password',
+                            'remember_token',
+                            // adicione aqui outros campos/relacionamentos do user que não quer retornar
+                        ]);
+                    }
 
-                        'establishment.files' => fn($q) =>
-                            $q->where('entity_name', 'establishment')
-                                ->orderBy('position'),
-                    ])
-                    ->get()
-                    ->map(function ($employer) {
-                        return json_decode(
-                            json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                            true
-                        );
-                    })
-                    ->values();
+                    return json_decode(
+                        json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                        true
+                    );
+                })
+                ->values();
 
-                return [
-                    'success' => true,
-                    'message' => 'Colaboradores listados com sucesso.',
-                    'employers' => $employers,
-                ];
-            });
-        } catch (\Throwable $e) {
-            \Log::error('Employer.listByEntity error', [
-                'identifier' => $identifier,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            return [
+                'success' => true,
+                'message' => 'Colaboradores listados com sucesso.',
+                'employers' => $employers,
+            ];
+        });
+    } catch (\Throwable $e) {
+        \Log::error('Employer.listByEntity error', [
+            'identifier' => $identifier,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao listar colaboradores',
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Erro ao listar colaboradores',
+        ], 500);
     }
+}
 
 
 
