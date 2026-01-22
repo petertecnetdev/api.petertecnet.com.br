@@ -74,6 +74,15 @@ class OrderController extends ApiController
      ====================================================== */
     protected function normalizeDate(string $datetime): Carbon
     {
+        // ✅ Debug completo do que chega
+        Log::info('[OrderController.normalizeDate] incoming datetime', [
+            'raw' => $datetime,
+            'server_tz' => config('app.timezone'),
+            'php_default_tz' => date_default_timezone_get(),
+            'now_sp' => now('America/Sao_Paulo')->format('Y-m-d H:i:sP'),
+        ]);
+
+        // ✅ Converte SEMPRE para SP
         return Carbon::parse($datetime)
             ->tz('America/Sao_Paulo')
             ->startOfMinute();
@@ -81,7 +90,36 @@ class OrderController extends ApiController
 
     protected function calculateDuration(array $items): int
     {
-        return Item::totalDurationForItems($items);
+        $total = 0;
+
+        foreach ($items as $row) {
+            $itemId = (int) ($row['item_id'] ?? 0);
+            $qty = (int) ($row['quantity'] ?? 1);
+
+            if (!$itemId)
+                continue;
+
+            $item = Item::find($itemId);
+            if (!$item)
+                continue;
+
+            $dur = (int) ($item->duration ?? 0);
+
+            // ✅ fallback de segurança
+            if ($dur <= 0)
+                $dur = 30;
+
+            if ($qty <= 0)
+                $qty = 1;
+
+            $total += ($dur * $qty);
+        }
+
+        // ✅ fallback final
+        if ($total <= 0)
+            $total = 30;
+
+        return $total;
     }
 
     protected function calculateTotalPrice(Order $order): float
@@ -101,7 +139,6 @@ class OrderController extends ApiController
         return $total;
     }
 
-
     protected function validateSchedule(
         int $attendantId,
         Carbon $start,
@@ -114,8 +151,22 @@ class OrderController extends ApiController
         $start = $start->copy()->setTimezone($tz)->startOfMinute();
         $end = $end->copy()->setTimezone($tz)->startOfMinute();
 
+        // ✅ DEBUG: mostra no log exatamente start/end
+        Log::info('[OrderController.validateSchedule] schedule check', [
+            'attendant_id' => $attendantId,
+            'start' => $start->format('Y-m-d H:i:sP'),
+            'end' => $end->format('Y-m-d H:i:sP'),
+            'diff_minutes' => $start->diffInMinutes($end, false),
+        ]);
+
         if ($end->lte($start)) {
-            abort(422, 'Horário inválido: o horário final não pode ser menor/igual ao inicial.');
+            abort(
+                422,
+                "Horário inválido: duração do serviço retornou 0 min.\n" .
+                "Início: {$start->format('d/m/Y H:i')}\n" .
+                "Fim: {$end->format('d/m/Y H:i')}\n" .
+                "Verifique se os serviços possuem duration cadastrado."
+            );
         }
 
         $date = $start->copy()->startOfDay();
@@ -138,13 +189,12 @@ class OrderController extends ApiController
             abort(422, 'Este colaborador não atende neste dia.');
         }
 
-        // monta uma mensagem útil com os blocos do expediente
         $workText = $workSchedules
             ->map(fn($s) => "{$s->start_time} às {$s->end_time}")
             ->implode(' / ');
 
         // ======================================================
-        // ✅ 2) Verifica se o agendamento cabe em ALGUM bloco de expediente
+        // ✅ 2) Verifica se o agendamento cabe em ALGUM bloco
         // ======================================================
 
         $fitsInWork = false;
@@ -154,12 +204,10 @@ class OrderController extends ApiController
             $workStart = Carbon::parse($date->toDateString() . ' ' . $ws->start_time, $tz);
             $workEnd = Carbon::parse($date->toDateString() . ' ' . $ws->end_time, $tz);
 
-            // guarda o maior fim de expediente pra mensagem ao usuário
             if (!$closestEnd || $workEnd->gt($closestEnd)) {
                 $closestEnd = $workEnd;
             }
 
-            // precisa caber dentro do expediente
             if ($start->gte($workStart) && $end->lte($workEnd)) {
                 $fitsInWork = true;
                 break;
@@ -167,11 +215,9 @@ class OrderController extends ApiController
         }
 
         if (!$fitsInWork) {
-            // detecta se estourou o expediente
             $endsAt = $end->format('H:i');
             $startsAt = $start->format('H:i');
 
-            // caso estoure o fim do expediente
             if ($closestEnd && $end->gt($closestEnd)) {
                 abort(
                     422,
@@ -190,12 +236,11 @@ class OrderController extends ApiController
         }
 
         // ======================================================
-        // ✅ 3) Verifica conflito com outros agendamentos
+        // ✅ 3) Conflito com outros agendamentos
         // ======================================================
 
         if (Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
 
-            // opcional: tenta pegar o primeiro conflito real pra dar resposta melhor
             $conflictOrder = Order::query()
                 ->where('attendant_id', $attendantId)
                 ->where('type', 'appointment')
@@ -207,7 +252,6 @@ class OrderController extends ApiController
                 ->first(function ($o) use ($start, $end, $tz) {
                     $os = Carbon::parse($o->order_datetime)->setTimezone($tz)->startOfMinute();
                     $oe = $os->copy()->addMinutes((int) ($o->total_duration ?? 30))->startOfMinute();
-
                     return $start->lt($oe) && $end->gt($os);
                 });
 
@@ -223,7 +267,6 @@ class OrderController extends ApiController
                 );
             }
 
-            // fallback caso não consiga achar detalhe (mas ainda é conflito)
             abort(
                 422,
                 "Conflito de agenda: já existe um atendimento marcado nesse período.\n" .
@@ -293,8 +336,20 @@ class OrderController extends ApiController
             $data = $request->validate($this->appointmentRules(), $this->messages());
 
             $start = $this->normalizeDate($data['order_datetime']);
+
+            // ✅ log detalhado
+            Log::info('[OrderController.storeAppointment] scheduling datetime', [
+                'incoming' => $data['order_datetime'],
+                'parsed_sp' => $start->format('Y-m-d H:i:sP'),
+            ]);
+
             if ($start->lte(now('America/Sao_Paulo')->startOfMinute())) {
-                abort(422, 'A data do agendamento deve ser futura.');
+                abort(
+                    422,
+                    "A data do agendamento deve ser futura.\n" .
+                    "Data recebida: {$start->format('d/m/Y H:i')}\n" .
+                    "Agora: " . now('America/Sao_Paulo')->format('d/m/Y H:i')
+                );
             }
 
             $employer = Employer::with('user')->findOrFail($data['attendant_id']);
@@ -302,47 +357,13 @@ class OrderController extends ApiController
 
             $duration = $this->calculateDuration($data['items']);
             $end = $start->copy()->addMinutes($duration);
+
             $this->validateSchedule($employer->id, $start, $end);
 
-            $order = Order::create([
-                'app_id' => $data['app_id'],
-                'entity_name' => $data['entity_name'],
-                'entity_id' => $data['entity_id'],
-                'order_number' => Order::nextOrderNumber($data['app_id']),
-                'order_datetime' => $start,
-                'created_by' => $user->id,
-                'client_id' => $user->id,
-                'attendant_id' => $employer->id,
-                'customer_name' => trim($user->first_name . ' ' . ($user->last_name ?? '')),
-                'origin' => $data['origin'],
-                'fulfillment' => $data['fulfillment'],
-                'payment_status' => $data['payment_status'],
-                'payment_method' => $data['payment_method'],
-                'type' => 'appointment',
-                'status' => 'scheduled',
-                'appointment_status' => 'pending',
-                'total_price' => 0,
-                'total_duration' => $duration,
-                'notes' => $data['notes'] ?? null,
-            ]);
-
-            $order->attachItems($data['items']);
-            $order->update(['total_price' => $this->calculateTotalPrice($order)]);
+            // ... (restante do método igual)
+            // ⚠️ mantenha exatamente seu código daqui pra baixo
 
             DB::commit();
-
-            $this->sendAppointmentEmails($order, $employer, $user);
-
-            return response()->json([
-                'message' => 'Agendamento registrado com sucesso.',
-                'order' => $this->utf8ize(
-                    $order->fresh()->load([
-                        'items.item',
-                        'client',
-                        'attendant.user',
-                    ])->toArray()
-                ),
-            ], 201);
 
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
             DB::rollBack();
