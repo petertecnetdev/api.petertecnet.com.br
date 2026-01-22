@@ -81,11 +81,41 @@ class EmployerController extends Controller
                     fn($q) => $q->whereHas('user', fn($uq) => $uq->where('user_name', $identifier))
                 )
                 ->with([
-                    'user',
+                    // ✅ user + user.files (igual listByEntity)
+                    'user' => function ($q) {
+                        $q->with([
+                            'files' => function ($fq) {
+                                $fq->select([
+                                    'id',
+                                    'app_id',
+                                    'type',
+                                    'entity_name',
+                                    'entity_id',
+                                    'public_url',
+                                    'created_at',
+                                ])
+                                    ->where('entity_name', 'user')
+                                    ->orderBy('position');
+                            },
+                        ]);
+                    },
+
                     'establishment',
-                    'files' => fn($q) =>
-                        $q->where('entity_name', 'employer')
-                            ->orderBy('position'),
+
+                    // ✅ employer.files (entity_name=employer)
+                    'files' => function ($q) {
+                        $q->select([
+                            'id',
+                            'app_id',
+                            'type',
+                            'entity_name',
+                            'entity_id',
+                            'public_url',
+                            'created_at',
+                        ])
+                            ->where('entity_name', 'employer')
+                            ->orderBy('position');
+                    },
                 ])
                 ->first();
 
@@ -101,6 +131,35 @@ class EmployerController extends Controller
             }
 
             Interaction::registerView($employer, auth()->user() ?? null);
+
+            // ✅ remove appends do Employer (se quiser manter metrics, comente a linha abaixo)
+            // $employer->setAppends([]);
+
+            // ✅ sanitize user sensível
+            if ($employer->relationLoaded('user') && $employer->user) {
+                $employer->user->makeHidden([
+                    'password',
+                    'remember_token',
+                ]);
+
+                // opcional: se você não usa user.avatar (e usa somente files), pode esconder
+                // $employer->user->makeHidden(['avatar']);
+
+                if ($employer->user->relationLoaded('files') && $employer->user->files) {
+                    $employer->user->files->each(function ($file) {
+                        $file->setAppends([]);
+                        $file->makeHidden(['metrics', 'interaction_summary']);
+                    });
+                }
+            }
+
+            // ✅ remove appends das files do employer
+            if ($employer->relationLoaded('files') && $employer->files) {
+                $employer->files->each(function ($file) {
+                    $file->setAppends([]);
+                    $file->makeHidden(['metrics', 'interaction_summary']);
+                });
+            }
 
             $employerArray = json_decode(
                 json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
@@ -125,6 +184,7 @@ class EmployerController extends Controller
             ], 500);
         }
     }
+
     public function home(Request $request, $app_id)
     {
         \Log::info('Employer.home start', [
@@ -384,109 +444,109 @@ class EmployerController extends Controller
         }
     }
 
-public function listByEntity(string $identifier)
-{
-    try {
-        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal_no_metrics_any";
+    public function listByEntity(string $identifier)
+    {
+        try {
+            $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal_no_metrics_any";
 
-        return Cache::remember($cacheKey, 300, function () use ($identifier) {
+            return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
-            $establishment = Establishment::query()
-                ->when(
-                    is_numeric($identifier),
-                    fn ($q) => $q->where('id', (int) $identifier),
-                    fn ($q) => $q->where('slug', $identifier)
-                )
-                ->firstOrFail();
+                $establishment = Establishment::query()
+                    ->when(
+                        is_numeric($identifier),
+                        fn($q) => $q->where('id', (int) $identifier),
+                        fn($q) => $q->where('slug', $identifier)
+                    )
+                    ->firstOrFail();
 
-            $employers = Employer::query()
-                ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
-                ->where('establishment_id', $establishment->id)
-                ->with([
-                    'user' => function ($q) {
-                        $q->select([
-                            'id',
-                            'first_name',
-                            'last_name',
-                            'user_name',
-                            'email',
-                            'created_at',
-                            'updated_at',
-                        ])->with([
-                            'files' => function ($fq) {
-                                $fq->select([
-                                    'id',
-                                    'app_id',
-                                    'type',
-                                    'entity_name',
-                                    'entity_id',
-                                    'public_url',
-                                    'created_at',
-                                ])
-                                    ->where('entity_name', 'user')
-                                    ->orderBy('position');
-                            },
-                        ]);
-                    },
-                ])
-                ->get()
-                ->map(function ($employer) {
+                $employers = Employer::query()
+                    ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
+                    ->where('establishment_id', $establishment->id)
+                    ->with([
+                        'user' => function ($q) {
+                            $q->select([
+                                'id',
+                                'first_name',
+                                'last_name',
+                                'user_name',
+                                'email',
+                                'created_at',
+                                'updated_at',
+                            ])->with([
+                                        'files' => function ($fq) {
+                                            $fq->select([
+                                                'id',
+                                                'app_id',
+                                                'type',
+                                                'entity_name',
+                                                'entity_id',
+                                                'public_url',
+                                                'created_at',
+                                            ])
+                                                ->where('entity_name', 'user')
+                                                ->orderBy('position');
+                                        },
+                                    ]);
+                        },
+                    ])
+                    ->get()
+                    ->map(function ($employer) {
 
-                    // ✅ remove appends do Employer (metrics)
-                    $employer->setAppends([]);
+                        // ✅ remove appends do Employer (metrics)
+                        $employer->setAppends([]);
 
-                    $employer->makeHidden([
-                        'metrics',
-                        'files',
-                        'establishment',
-                        'orders',
-                        'interactions',
-                        'views',
-                        'services',
-                    ]);
-
-                    if ($employer->relationLoaded('user') && $employer->user) {
-                        $employer->user->makeHidden([
-                            'password',
-                            'remember_token',
-                            'avatar',
+                        $employer->makeHidden([
+                            'metrics',
+                            'files',
+                            'establishment',
+                            'orders',
+                            'interactions',
+                            'views',
+                            'services',
                         ]);
 
-                        // ✅ remove appends das files (metrics / interaction_summary)
-                        if ($employer->user->relationLoaded('files') && $employer->user->files) {
-                            $employer->user->files->each(function ($file) {
-                                $file->setAppends([]);
-                                $file->makeHidden(['metrics', 'interaction_summary']);
-                            });
+                        if ($employer->relationLoaded('user') && $employer->user) {
+                            $employer->user->makeHidden([
+                                'password',
+                                'remember_token',
+                                'avatar',
+                            ]);
+
+                            // ✅ remove appends das files (metrics / interaction_summary)
+                            if ($employer->user->relationLoaded('files') && $employer->user->files) {
+                                $employer->user->files->each(function ($file) {
+                                    $file->setAppends([]);
+                                    $file->makeHidden(['metrics', 'interaction_summary']);
+                                });
+                            }
                         }
-                    }
 
-                    return json_decode(
-                        json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                        true
-                    );
-                })
-                ->values();
+                        return json_decode(
+                            json_encode($employer->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                            true
+                        );
+                    })
+                    ->values();
 
-            return [
-                'success' => true,
-                'message' => 'Colaboradores listados com sucesso.',
-                'employers' => $employers,
-            ];
-        });
-    } catch (\Throwable $e) {
-        \Log::error('Employer.listByEntity error', [
-            'identifier' => $identifier,
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
+                return [
+                    'success' => true,
+                    'message' => 'Colaboradores listados com sucesso.',
+                    'employers' => $employers,
+                ];
+            });
+        } catch (\Throwable $e) {
+            \Log::error('Employer.listByEntity error', [
+                'identifier' => $identifier,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
 
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao listar colaboradores',
-        ], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar colaboradores',
+            ], 500);
+        }
     }
-}
 
 
     /* =======================================================
