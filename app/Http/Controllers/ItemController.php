@@ -112,105 +112,111 @@ class ItemController extends Controller
     }
 
     public function listByEntity(string $identifier)
-    {
-        try {
-            $cacheKey = "items_entity_{$identifier}_with_files_minimal_no_metrics_any";
+{
+    try {
+        $cacheKey = "items_entity_{$identifier}_with_files_minimal_no_metrics_any_v2";
 
-            return Cache::remember($cacheKey, 300, function () use ($identifier) {
+        return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
-                $establishment = \App\Models\Establishment::query()
-                    ->when(
-                        is_numeric($identifier),
-                        fn($q) => $q->where('id', (int) $identifier),
-                        fn($q) => $q->where('slug', $identifier)
-                    )
-                    ->firstOrFail();
+            $establishment = Establishment::query()
+                ->when(
+                    is_numeric($identifier),
+                    fn ($q) => $q->where('id', (int) $identifier),
+                    fn ($q) => $q->where('slug', $identifier)
+                )
+                ->firstOrFail();
 
-                $items = \App\Models\Item::query()
-                    ->select([
-                        'id',
-                        'establishment_id',
-                        'name',
-                        'slug',
-                        'type',
-                        'price',
-                        'duration',
-                        'description',
-                        'created_at',
-                        'updated_at',
-                    ])
-                    ->where('establishment_id', $establishment->id)
-                    ->with([
-                        'files' => function ($fq) {
-                            $fq->select([
-                                'id',
-                                'app_id',
-                                'type',
-                                'entity_name',
-                                'entity_id',
-                                'public_url',
-                                'created_at',
-                            ])
-                                ->where('entity_name', 'item')
-                                ->orderBy('position');
-                        },
-                    ])
-                    ->get()
-                    ->map(function ($item) {
+            // ✅ SEU ITEM NÃO TEM establishment_id
+            // ✅ No seu projeto, o vínculo é por entity_id/entity_name
+            $items = Item::query()
+                ->select([
+                    'id',
+                    'app_id',
+                    'entity_name',
+                    'entity_id',
+                    'name',
+                    'slug',
+                    'type',
+                    'price',
+                    'duration',
+                    'description',
+                    'created_at',
+                    'updated_at',
+                ])
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->with([
+                    'files' => function ($fq) {
+                        $fq->select([
+                            'id',
+                            'app_id',
+                            'type',
+                            'entity_name',
+                            'entity_id',
+                            'public_url',
+                            'created_at',
+                        ])
+                            ->where('entity_name', 'item')
+                            ->orderBy('position');
+                    },
+                ])
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(function ($item) {
 
-                        // ✅ remove appends do Item (se existir)
-                        if (method_exists($item, 'setAppends')) {
-                            $item->setAppends([]);
-                        }
+                    // ✅ remove appends do Item (se existir)
+                    if (method_exists($item, 'setAppends')) {
+                        $item->setAppends([]);
+                    }
 
-                        // ✅ esconde relações/campos que não quer mandar
-                        if (method_exists($item, 'makeHidden')) {
-                            $item->makeHidden([
-                                'metrics',
-                                'interaction_summary',
-                                'interactions',
-                                'views',
-                                'orders',
-                                'establishment',
-                                'user',
-                                'entity',
-                            ]);
-                        }
+                    // ✅ esconde campos/relacionamentos extras
+                    if (method_exists($item, 'makeHidden')) {
+                        $item->makeHidden([
+                            'metrics',
+                            'interaction_summary',
+                            'interactions',
+                            'views',
+                            'orders',
+                            'establishment',
+                            'user',
+                            'entity',
+                        ]);
+                    }
 
-                        // ✅ remove appends das files (metrics / interaction_summary)
-                        if ($item->relationLoaded('files') && $item->files) {
-                            $item->files->each(function ($file) {
-                                $file->setAppends([]);
-                                $file->makeHidden(['metrics', 'interaction_summary']);
-                            });
-                        }
+                    // ✅ remove appends das files (metrics / interaction_summary)
+                    if ($item->relationLoaded('files') && $item->files) {
+                        $item->files->each(function ($file) {
+                            $file->setAppends([]);
+                            $file->makeHidden(['metrics', 'interaction_summary']);
+                        });
+                    }
 
-                        return json_decode(
-                            json_encode($item->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                            true
-                        );
-                    })
-                    ->values();
+                    return json_decode(
+                        json_encode($item->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                        true
+                    );
+                })
+                ->values();
 
-                return [
-                    'success' => true,
-                    'message' => 'Itens listados com sucesso.',
-                    'items' => $items,
-                ];
-            });
-        } catch (\Throwable $e) {
-            \Log::error('Item.listByEntity error', [
-                'identifier' => $identifier,
-                'message' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
+            return [
+                'success' => true,
+                'message' => 'Itens listados com sucesso.',
+                'items' => $items,
+            ];
+        });
+    } catch (\Throwable $e) {
+        \Log::error('Item.listByEntity error', [
+            'identifier' => $identifier,
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Erro ao listar itens',
-            ], 500);
-        }
+        return response()->json([
+            'success' => false,
+            'message' => 'Erro ao listar itens',
+        ], 500);
     }
+}
 
 
 
