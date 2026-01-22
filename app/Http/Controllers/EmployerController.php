@@ -386,11 +386,11 @@ class EmployerController extends Controller
 
 
 
- public function listByEntity(string $identifier)
+public function listByEntity(string $identifier)
 {
     try {
         // ✅ nova key pra não reaproveitar cache antigo
-        $cacheKey = "employers_entity_{$identifier}_only_user_no_files";
+        $cacheKey = "employers_entity_{$identifier}_only_user_no_files_no_avatar";
 
         return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
@@ -402,19 +402,20 @@ class EmployerController extends Controller
                 )
                 ->firstOrFail();
 
-            // ✅ Apenas Employer + User (SEM user.files)
+            // ✅ Apenas Employer + User (SEM user.files) e SEM avatar
             $employers = Employer::query()
                 ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
                 ->where('establishment_id', $establishment->id)
                 ->with([
-                    'user:id,first_name,last_name,user_name,avatar,email,created_at,updated_at',
+                    // ✅ NÃO selecione avatar aqui
+                    'user:id,first_name,last_name,user_name,email,created_at,updated_at',
                 ])
                 ->get()
                 ->map(function ($employer) {
 
                     // ✅ Esconde tudo que não é Employer + User
                     $employer->makeHidden([
-                        'metrics',          // vem do $appends do model
+                        'metrics',
                         'files',
                         'establishment',
                         'orders',
@@ -423,12 +424,13 @@ class EmployerController extends Controller
                         'services',
                     ]);
 
-                    // ✅ Garante que o user NÃO leve files (mesmo se vier por default/trait)
+                    // ✅ Garante que o user NÃO leve files e NÃO leve avatar (caso apareça por accessor/append)
                     if ($employer->relationLoaded('user') && $employer->user) {
                         $employer->user->makeHidden([
                             'password',
                             'remember_token',
-                            'files', // <- remove da resposta mesmo se tiver sido carregado
+                            'files',
+                            'avatar', // <- remove se vier por accessor / cast / algo do tipo
                         ]);
 
                         // Se por algum motivo foi eager-loaded, remove também:
