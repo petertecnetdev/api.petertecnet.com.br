@@ -101,17 +101,136 @@ class OrderController extends ApiController
         return $total;
     }
 
+
     protected function validateSchedule(
         int $attendantId,
         Carbon $start,
         Carbon $end,
         ?int $ignoreOrderId = null
     ): void {
+
+        $tz = 'America/Sao_Paulo';
+
+        $start = $start->copy()->setTimezone($tz)->startOfMinute();
+        $end = $end->copy()->setTimezone($tz)->startOfMinute();
+
+        if ($end->lte($start)) {
+            abort(422, 'Horário inválido: o horário final não pode ser menor/igual ao inicial.');
+        }
+
+        $date = $start->copy()->startOfDay();
+        $dayOfWeek = strtolower($start->format('l')); // monday..sunday
+        $duration = $start->diffInMinutes($end);
+
+        // ======================================================
+        // ✅ 1) Valida se o colaborador tem expediente nesse dia
+        // ======================================================
+
+        $workSchedules = EmployerSchedule::query()
+            ->where('employer_id', $attendantId)
+            ->where('type', 'work')
+            ->where('day_of_week', $dayOfWeek)
+            ->where('is_active', true)
+            ->orderBy('start_time')
+            ->get(['start_time', 'end_time']);
+
+        if ($workSchedules->isEmpty()) {
+            abort(422, 'Este colaborador não atende neste dia.');
+        }
+
+        // monta uma mensagem útil com os blocos do expediente
+        $workText = $workSchedules
+            ->map(fn($s) => "{$s->start_time} às {$s->end_time}")
+            ->implode(' / ');
+
+        // ======================================================
+        // ✅ 2) Verifica se o agendamento cabe em ALGUM bloco de expediente
+        // ======================================================
+
+        $fitsInWork = false;
+        $closestEnd = null;
+
+        foreach ($workSchedules as $ws) {
+            $workStart = Carbon::parse($date->toDateString() . ' ' . $ws->start_time, $tz);
+            $workEnd = Carbon::parse($date->toDateString() . ' ' . $ws->end_time, $tz);
+
+            // guarda o maior fim de expediente pra mensagem ao usuário
+            if (!$closestEnd || $workEnd->gt($closestEnd)) {
+                $closestEnd = $workEnd;
+            }
+
+            // precisa caber dentro do expediente
+            if ($start->gte($workStart) && $end->lte($workEnd)) {
+                $fitsInWork = true;
+                break;
+            }
+        }
+
+        if (!$fitsInWork) {
+            // detecta se estourou o expediente
+            $endsAt = $end->format('H:i');
+            $startsAt = $start->format('H:i');
+
+            // caso estoure o fim do expediente
+            if ($closestEnd && $end->gt($closestEnd)) {
+                abort(
+                    422,
+                    "Horário inválido: o tempo do serviço estoura o expediente do colaborador.\n" .
+                    "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
+                    "Expediente do colaborador: {$workText}."
+                );
+            }
+
+            abort(
+                422,
+                "Horário inválido: este colaborador não atende neste horário.\n" .
+                "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
+                "Expediente do colaborador: {$workText}."
+            );
+        }
+
+        // ======================================================
+        // ✅ 3) Verifica conflito com outros agendamentos
+        // ======================================================
+
         if (Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
-            abort(422, 'Conflito de agenda.');
+
+            // opcional: tenta pegar o primeiro conflito real pra dar resposta melhor
+            $conflictOrder = Order::query()
+                ->where('attendant_id', $attendantId)
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->whereDate('order_datetime', $date->toDateString())
+                ->when($ignoreOrderId, fn($q) => $q->where('id', '!=', $ignoreOrderId))
+                ->orderBy('order_datetime')
+                ->get(['id', 'order_datetime', 'total_duration'])
+                ->first(function ($o) use ($start, $end, $tz) {
+                    $os = Carbon::parse($o->order_datetime)->setTimezone($tz)->startOfMinute();
+                    $oe = $os->copy()->addMinutes((int) ($o->total_duration ?? 30))->startOfMinute();
+
+                    return $start->lt($oe) && $end->gt($os);
+                });
+
+            if ($conflictOrder) {
+                $os = Carbon::parse($conflictOrder->order_datetime)->setTimezone($tz)->startOfMinute();
+                $oe = $os->copy()->addMinutes((int) ($conflictOrder->total_duration ?? 30))->startOfMinute();
+
+                abort(
+                    422,
+                    "Conflito de agenda: já existe um agendamento nesse horário.\n" .
+                    "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}.\n" .
+                    "Agendamento em conflito: {$os->format('H:i')} até {$oe->format('H:i')}."
+                );
+            }
+
+            // fallback caso não consiga achar detalhe (mas ainda é conflito)
+            abort(
+                422,
+                "Conflito de agenda: já existe um atendimento marcado nesse período.\n" .
+                "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}."
+            );
         }
     }
-
     protected function validateClientIsNotEmployer(int $clientUserId, Employer $employer): void
     {
         if ((int) $employer->user_id === (int) $clientUserId) {
