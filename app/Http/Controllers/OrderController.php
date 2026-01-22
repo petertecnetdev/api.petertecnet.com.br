@@ -161,30 +161,34 @@ class OrderController extends ApiController
          | 2) Verifica reservas (BREAK / HOLIDAY)
          ====================================================== */
 
+        /* ======================================================
+  | 2) Verifica reservas (BREAK / HOLIDAY)
+  ====================================================== */
+
         $reservedSchedules = EmployerSchedule::query()
             ->where('employer_id', $attendantId)
             ->whereIn('type', ['break', 'holiday'])
             ->where(function ($q) use ($dayOfWeek, $date) {
-                $q->where('day_of_week', $dayOfWeek)
-                  ->orWhereDate('reserved_date', $date->toDateString());
+
+                // ✅ reservas por DATA (ex: feriado / pausa em um dia específico)
+                $q->whereDate('reserved_date', $date->toDateString())
+
+                    // ✅ reservas por DIA DA SEMANA (somente quando NÃO tem reserved_date)
+                    ->orWhere(function ($qq) use ($dayOfWeek) {
+                    $qq->whereNull('reserved_date')
+                        ->where('day_of_week', $dayOfWeek);
+                });
             })
             ->get(['id', 'type', 'reserved_date', 'start_time', 'end_time', 'day_of_week', 'is_active']);
 
         foreach ($reservedSchedules as $rs) {
 
-            // holiday bloqueia o dia todo
+            // ✅ holiday bloqueia o dia todo
             if ($rs->type === 'holiday') {
-                // se reserved_date bater com o dia do agendamento
-                if ($rs->reserved_date && Carbon::parse($rs->reserved_date)->toDateString() === $date->toDateString()) {
-                    abort(422, 'Não é possível agendar nesta data. O colaborador está indisponível.');
-                }
-
-                // se não tiver reserved_date e for por dia_of_week (ex: todo domingo)
-                if (!$rs->reserved_date && $rs->day_of_week === $dayOfWeek) {
-                    abort(422, 'Não é possível agendar neste dia. O colaborador está indisponível.');
-                }
+                abort(422, 'Não é possível agendar nesta data. O colaborador está indisponível.');
             }
 
+            // ✅ break bloqueia intervalo
             if ($rs->type === 'break') {
                 $breakStart = Carbon::parse($date->toDateString() . ' ' . ($rs->start_time ?? '00:00'), $tz);
                 $breakEnd = Carbon::parse($date->toDateString() . ' ' . ($rs->end_time ?? '23:59'), $tz);
@@ -443,12 +447,36 @@ class OrderController extends ApiController
             $orders = Order::where('app_id', $appId)
                 ->where('client_id', $authUserId)
                 ->get([
-                    'id', 'app_id', 'entity_name', 'entity_id', 'order_number', 'order_datetime',
-                    'created_by', 'attendant_id', 'client_id', 'customer_name', 'customer_phone',
-                    'customer_email', 'customer_cpf', 'access_code', 'origin', 'fulfillment',
-                    'payment_status', 'payment_method', 'total_price', 'total_duration', 'status',
-                    'notes', 'type', 'appointment_status', 'confirmed_by', 'cancelled_by',
-                    'cancelled_reason', 'attended_at', 'created_at', 'updated_at'
+                    'id',
+                    'app_id',
+                    'entity_name',
+                    'entity_id',
+                    'order_number',
+                    'order_datetime',
+                    'created_by',
+                    'attendant_id',
+                    'client_id',
+                    'customer_name',
+                    'customer_phone',
+                    'customer_email',
+                    'customer_cpf',
+                    'access_code',
+                    'origin',
+                    'fulfillment',
+                    'payment_status',
+                    'payment_method',
+                    'total_price',
+                    'total_duration',
+                    'status',
+                    'notes',
+                    'type',
+                    'appointment_status',
+                    'confirmed_by',
+                    'cancelled_by',
+                    'cancelled_reason',
+                    'attended_at',
+                    'created_at',
+                    'updated_at'
                 ]);
 
             return response()->json($orders);
