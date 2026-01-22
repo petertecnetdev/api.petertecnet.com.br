@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Order, User, Item, Employer, Establishment, EmployerSchedule};
+use App\Models\{Order, User, Item, Employer, Establishment};
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -28,6 +28,7 @@ class OrderController extends ApiController
             'items.*.item_id.required' => 'O ID do item é obrigatório.',
             'items.*.quantity.required' => 'A quantidade é obrigatória.',
         ];
+
     }
 
     protected function appointmentRules(): array
@@ -100,110 +101,12 @@ class OrderController extends ApiController
         return $total;
     }
 
-    /**
-     * ✅ Agora valida:
-     * - conflito com outros agendamentos
-     * - se o horário está dentro do horário de trabalho configurado do employer
-     * - se existe reserva do tipo break/holiday bloqueando
-     */
     protected function validateSchedule(
         int $attendantId,
         Carbon $start,
         Carbon $end,
         ?int $ignoreOrderId = null
     ): void {
-
-        $tz = 'America/Sao_Paulo';
-
-        $start = $start->copy()->setTimezone($tz)->startOfMinute();
-        $end = $end->copy()->setTimezone($tz)->startOfMinute();
-
-        if ($end->lte($start)) {
-            abort(422, 'Horário inválido para o agendamento.');
-        }
-
-        $date = $start->copy()->startOfDay();
-        $dayOfWeek = strtolower($start->format('l')); // monday..sunday
-
-        /* ======================================================
-         | 1) Verifica se o employer atende no dia/horário (WORK)
-         ====================================================== */
-
-        $workSchedules = EmployerSchedule::query()
-            ->where('employer_id', $attendantId)
-            ->where('type', 'work')
-            ->where('day_of_week', $dayOfWeek)
-            ->where('is_active', true)
-            ->get(['id', 'start_time', 'end_time', 'day_of_week', 'type', 'is_active']);
-
-        if ($workSchedules->isEmpty()) {
-            abort(422, 'Este colaborador não atende neste dia.');
-        }
-
-        $fitsInSomeWorkSchedule = false;
-
-        foreach ($workSchedules as $ws) {
-            $workStart = Carbon::parse($date->toDateString() . ' ' . $ws->start_time, $tz);
-            $workEnd = Carbon::parse($date->toDateString() . ' ' . $ws->end_time, $tz);
-
-            // start >= workStart && end <= workEnd
-            if ($start->gte($workStart) && $end->lte($workEnd)) {
-                $fitsInSomeWorkSchedule = true;
-                break;
-            }
-        }
-
-        if (!$fitsInSomeWorkSchedule) {
-            abort(422, 'Horário inválido. Este colaborador não atende neste horário.');
-        }
-
-        /* ======================================================
-         | 2) Verifica reservas (BREAK / HOLIDAY)
-         ====================================================== */
-
-        /* ======================================================
-  | 2) Verifica reservas (BREAK / HOLIDAY)
-  ====================================================== */
-
-        $reservedSchedules = EmployerSchedule::query()
-            ->where('employer_id', $attendantId)
-            ->whereIn('type', ['break', 'holiday'])
-            ->where(function ($q) use ($dayOfWeek, $date) {
-
-                // ✅ reservas por DATA (ex: feriado / pausa em um dia específico)
-                $q->whereDate('reserved_date', $date->toDateString())
-
-                    // ✅ reservas por DIA DA SEMANA (somente quando NÃO tem reserved_date)
-                    ->orWhere(function ($qq) use ($dayOfWeek) {
-                    $qq->whereNull('reserved_date')
-                        ->where('day_of_week', $dayOfWeek);
-                });
-            })
-            ->get(['id', 'type', 'reserved_date', 'start_time', 'end_time', 'day_of_week', 'is_active']);
-
-        foreach ($reservedSchedules as $rs) {
-
-            // ✅ holiday bloqueia o dia todo
-            if ($rs->type === 'holiday') {
-                abort(422, 'Não é possível agendar nesta data. O colaborador está indisponível.');
-            }
-
-            // ✅ break bloqueia intervalo
-            if ($rs->type === 'break') {
-                $breakStart = Carbon::parse($date->toDateString() . ' ' . ($rs->start_time ?? '00:00'), $tz);
-                $breakEnd = Carbon::parse($date->toDateString() . ' ' . ($rs->end_time ?? '23:59'), $tz);
-
-                // conflito com break: start < breakEnd && end > breakStart
-                if ($start->lt($breakEnd) && $end->gt($breakStart)) {
-                    abort(422, 'Não é possível agendar neste horário. O colaborador possui um intervalo/reserva.');
-                }
-            }
-        }
-
-        /* ======================================================
-         | 3) Verifica conflito com outros agendamentos
-         ====================================================== */
-
         if (Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
             abort(422, 'Conflito de agenda.');
         }
@@ -260,6 +163,8 @@ class OrderController extends ApiController
         }
     }
 
+
+
     protected function storeAppointment(Request $request)
     {
         DB::beginTransaction();
@@ -278,8 +183,6 @@ class OrderController extends ApiController
 
             $duration = $this->calculateDuration($data['items']);
             $end = $start->copy()->addMinutes($duration);
-
-            // ✅ agora valida conflito + expediente + reservas
             $this->validateSchedule($employer->id, $start, $end);
 
             $order = Order::create([
@@ -436,48 +339,18 @@ class OrderController extends ApiController
         ]);
     }
 
+
     public function listByClient(Request $request)
     {
         try {
             $authUserId = $request->user()->id;
             $appId = $request->input('app_id');
 
-            Order::flushEventListeners();
-
+            // desativa os appends para não carregar atributos que quebram
+            Order::flushEventListeners(); // evita triggers de append
             $orders = Order::where('app_id', $appId)
                 ->where('client_id', $authUserId)
-                ->get([
-                    'id',
-                    'app_id',
-                    'entity_name',
-                    'entity_id',
-                    'order_number',
-                    'order_datetime',
-                    'created_by',
-                    'attendant_id',
-                    'client_id',
-                    'customer_name',
-                    'customer_phone',
-                    'customer_email',
-                    'customer_cpf',
-                    'access_code',
-                    'origin',
-                    'fulfillment',
-                    'payment_status',
-                    'payment_method',
-                    'total_price',
-                    'total_duration',
-                    'status',
-                    'notes',
-                    'type',
-                    'appointment_status',
-                    'confirmed_by',
-                    'cancelled_by',
-                    'cancelled_reason',
-                    'attended_at',
-                    'created_at',
-                    'updated_at'
-                ]);
+                ->get(['id', 'app_id', 'entity_name', 'entity_id', 'order_number', 'order_datetime', 'created_by', 'attendant_id', 'client_id', 'customer_name', 'customer_phone', 'customer_email', 'customer_cpf', 'access_code', 'origin', 'fulfillment', 'payment_status', 'payment_method', 'total_price', 'total_duration', 'status', 'notes', 'type', 'appointment_status', 'confirmed_by', 'cancelled_by', 'cancelled_reason', 'attended_at', 'created_at', 'updated_at']);
 
             return response()->json($orders);
 
