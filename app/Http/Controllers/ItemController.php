@@ -111,104 +111,107 @@ class ItemController extends Controller
         );
     }
 
-    public function listByEntitySlug(string $slug)
-    {
-        return $this->listByEntity($slug);
-    }
-    public function listByEntity(Request $request, string $identifier)
+    public function listByEntity(string $identifier)
     {
         try {
-            \Log::info('listByEntity:start', [
-                'identifier' => $identifier,
-                'query' => $request->query(),
-            ]);
+            $cacheKey = "items_entity_{$identifier}_with_files_minimal_no_metrics_any";
 
-            $type = $request->query('type');
+            return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
-            \Log::info('listByEntity:resolved_type', [
-                'type' => $type ?? 'all',
-            ]);
-
-            $cacheKey = "items_entity_{$identifier}_" . ($type ?: 'all');
-
-            \Log::info('listByEntity:cache_key', [
-                'cache_key' => $cacheKey,
-            ]);
-
-            return Cache::remember($cacheKey, 300, function () use ($identifier, $type) {
-                \Log::info('listByEntity:cache_miss', [
-                    'identifier' => $identifier,
-                    'type' => $type ?? 'all',
-                ]);
-
-                $establishmentQuery = Establishment::query()
+                $establishment = \App\Models\Establishment::query()
                     ->when(
                         is_numeric($identifier),
                         fn($q) => $q->where('id', (int) $identifier),
                         fn($q) => $q->where('slug', $identifier)
-                    );
-
-                \Log::info('listByEntity:establishment_query_built');
-
-                $establishment = $establishmentQuery
-                    ->with([
-                        'files' => fn($q) =>
-                            $q->where('entity_name', 'establishment')
-                                ->where('type', 'logo')
-                                ->orderBy('position'),
-
-                        'items.files' => fn($q) =>
-                            $q->where('entity_name', 'item')
-                                ->orderBy('position'),
-                    ])
+                    )
                     ->firstOrFail();
 
-                \Log::info('listByEntity:establishment_loaded', [
-                    'establishment_id' => $establishment->id,
-                    'slug' => $establishment->slug,
-                ]);
+                $items = \App\Models\Item::query()
+                    ->select([
+                        'id',
+                        'establishment_id',
+                        'name',
+                        'slug',
+                        'type',
+                        'price',
+                        'duration',
+                        'description',
+                        'created_at',
+                        'updated_at',
+                    ])
+                    ->where('establishment_id', $establishment->id)
+                    ->with([
+                        'files' => function ($fq) {
+                            $fq->select([
+                                'id',
+                                'app_id',
+                                'type',
+                                'entity_name',
+                                'entity_id',
+                                'public_url',
+                                'created_at',
+                            ])
+                                ->where('entity_name', 'item')
+                                ->orderBy('position');
+                        },
+                    ])
+                    ->get()
+                    ->map(function ($item) {
 
-                $itemsQuery = $establishment->items();
+                        // ✅ remove appends do Item (se existir)
+                        if (method_exists($item, 'setAppends')) {
+                            $item->setAppends([]);
+                        }
 
-                if ($type) {
-                    \Log::info('listByEntity:filtering_items_by_type', [
-                        'type' => $type,
-                    ]);
-                    $itemsQuery->where('type', $type);
-                } else {
-                    \Log::info('listByEntity:listing_all_items');
-                }
+                        // ✅ esconde relações/campos que não quer mandar
+                        if (method_exists($item, 'makeHidden')) {
+                            $item->makeHidden([
+                                'metrics',
+                                'interaction_summary',
+                                'interactions',
+                                'views',
+                                'orders',
+                                'establishment',
+                                'user',
+                                'entity',
+                            ]);
+                        }
 
-                $items = $itemsQuery->get();
+                        // ✅ remove appends das files (metrics / interaction_summary)
+                        if ($item->relationLoaded('files') && $item->files) {
+                            $item->files->each(function ($file) {
+                                $file->setAppends([]);
+                                $file->makeHidden(['metrics', 'interaction_summary']);
+                            });
+                        }
 
-                \Log::info('listByEntity:items_loaded', [
-                    'items_count' => $items->count(),
-                ]);
+                        return json_decode(
+                            json_encode($item->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
+                            true
+                        );
+                    })
+                    ->values();
 
                 return [
+                    'success' => true,
                     'message' => 'Itens listados com sucesso.',
-                    'establishment' => json_decode(
-                        json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                        true
-                    ),
-                    'items' => json_decode(
-                        json_encode($items->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
-                        true
-                    ),
+                    'items' => $items,
                 ];
             });
         } catch (\Throwable $e) {
-            \Log::error('listByEntity:error', [
+            \Log::error('Item.listByEntity error', [
                 'identifier' => $identifier,
-                'exception' => $e,
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return response()->json([
-                'message' => 'Erro ao listar itens.',
-                'error' => $e->getMessage(),
+                'success' => false,
+                'message' => 'Erro ao listar itens',
             ], 500);
         }
     }
+
 
 
     public function listOthers(string $identifier)
@@ -258,124 +261,128 @@ class ItemController extends Controller
         }
     }
 
-   public function home(Request $request, $app_id)
-{
-    \Log::info('Item.home start', [
-        'app_id' => $app_id,
-        'query' => $request->query(),
-    ]);
+    public function home(Request $request, $app_id)
+    {
+        \Log::info('Item.home start', [
+            'app_id' => $app_id,
+            'query' => $request->query(),
+        ]);
 
-    try {
-        $city = $request->query('city');
-        $uf = $request->query('uf');
-        $type = $request->query('type');
-        $showAll = false;
+        try {
+            $city = $request->query('city');
+            $uf = $request->query('uf');
+            $type = $request->query('type');
+            $showAll = false;
 
-        if ($city === 'Todas') {
-            $city = null;
-            $showAll = true;
-        }
+            if ($city === 'Todas') {
+                $city = null;
+                $showAll = true;
+            }
 
-        if ($uf === 'ALL') {
-            $uf = null;
-            $showAll = true;
-        }
+            if ($uf === 'ALL') {
+                $uf = null;
+                $showAll = true;
+            }
 
-        if (!$showAll && (!$city || !$uf)) {
-            $ip = $request->ip();
+            if (!$showAll && (!$city || !$uf)) {
+                $ip = $request->ip();
 
-            if ($ip && $ip !== '127.0.0.1') {
-                try {
-                    $response = \Illuminate\Support\Facades\Http::timeout(3)
-                        ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
+                if ($ip && $ip !== '127.0.0.1') {
+                    try {
+                        $response = \Illuminate\Support\Facades\Http::timeout(3)
+                            ->get("http://ip-api.com/json/{$ip}?fields=status,region,city");
 
-                    if ($response->ok() && $response->json('status') === 'success') {
-                        $uf = $uf ?: strtoupper($response->json('region'));
-                        $city = $city ?: $response->json('city');
+                        if ($response->ok() && $response->json('status') === 'success') {
+                            $uf = $uf ?: strtoupper($response->json('region'));
+                            $city = $city ?: $response->json('city');
+                        }
+                    } catch (\Throwable $e) {
+                        \Log::error('Item.home IP lookup error', [
+                            'message' => $e->getMessage(),
+                        ]);
                     }
-                } catch (\Throwable $e) {
-                    \Log::error('Item.home IP lookup error', [
-                        'message' => $e->getMessage(),
-                    ]);
                 }
             }
-        }
 
-        $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
-            $q->where('app_id', $app_id)
-                ->when(!$showAll && $city, fn($qq) =>
-                    $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
-                )
-                ->when(!$showAll && $uf, fn($qq) =>
-                    $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
+            $items = Item::whereHas('establishment', function ($q) use ($app_id, $city, $uf, $showAll) {
+                $q->where('app_id', $app_id)
+                    ->when(
+                        !$showAll && $city,
+                        fn($qq) =>
+                        $qq->whereRaw('LOWER(city) = ?', [mb_strtolower($city)])
+                    )
+                    ->when(
+                        !$showAll && $uf,
+                        fn($qq) =>
+                        $qq->whereRaw('LOWER(uf) = ?', [mb_strtolower($uf)])
+                    );
+            })
+                ->when($type, fn($q) => $q->where('type', $type))
+                ->with([
+                    'files' => fn($q) =>
+                        $q->where('entity_name', 'item')->orderBy('position'),
+                    'establishment.files' => fn($q) =>
+                        $q->where('entity_name', 'establishment')->orderBy('position'),
+                ])
+                ->get();
+
+            \Log::info('Item.home loaded', ['count' => $items->count()]);
+
+            $groups = $items
+                ->groupBy('establishment_id')
+                ->map(fn($g) => $g->shuffle()->values());
+
+            $result = collect();
+            $lastEstablishment = null;
+
+            while ($groups->isNotEmpty()) {
+                $candidates = $groups->filter(
+                    fn($g, $estId) => $estId !== $lastEstablishment && $g->isNotEmpty()
                 );
-        })
-            ->when($type, fn($q) => $q->where('type', $type))
-            ->with([
-                'files' => fn($q) =>
-                    $q->where('entity_name', 'item')->orderBy('position'),
-                'establishment.files' => fn($q) =>
-                    $q->where('entity_name', 'establishment')->orderBy('position'),
-            ])
-            ->get();
 
-        \Log::info('Item.home loaded', ['count' => $items->count()]);
+                if ($candidates->isEmpty()) {
+                    break;
+                }
 
-        $groups = $items
-            ->groupBy('establishment_id')
-            ->map(fn($g) => $g->shuffle()->values());
+                $estId = $candidates->keys()->random();
+                $item = $groups[$estId]->shift();
 
-        $result = collect();
-        $lastEstablishment = null;
+                $result->push($item);
+                $lastEstablishment = $estId;
 
-        while ($groups->isNotEmpty()) {
-            $candidates = $groups->filter(
-                fn($g, $estId) => $estId !== $lastEstablishment && $g->isNotEmpty()
-            );
-
-            if ($candidates->isEmpty()) {
-                break;
+                if ($groups[$estId]->isEmpty()) {
+                    $groups->forget($estId);
+                }
             }
 
-            $estId = $candidates->keys()->random();
-            $item = $groups[$estId]->shift();
+            // Sobras inevitáveis vão para o final
+            $tail = $groups->flatten(1)->values();
+            $final = $result->merge($tail);
 
-            $result->push($item);
-            $lastEstablishment = $estId;
+            \Log::info('Item.home reordered', [
+                'final_count' => $final->count(),
+                'tail_count' => $tail->count(),
+            ]);
 
-            if ($groups[$estId]->isEmpty()) {
-                $groups->forget($estId);
-            }
+            return response()->json([
+                'success' => true,
+                'city' => $city,
+                'uf' => $uf,
+                'type' => $type,
+                'items' => $final->values(),
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('Item.home fatal error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao carregar itens',
+            ], 500);
         }
-
-        // Sobras inevitáveis vão para o final
-        $tail = $groups->flatten(1)->values();
-        $final = $result->merge($tail);
-
-        \Log::info('Item.home reordered', [
-            'final_count' => $final->count(),
-            'tail_count' => $tail->count(),
-        ]);
-
-        return response()->json([
-            'success' => true,
-            'city' => $city,
-            'uf' => $uf,
-            'type' => $type,
-            'items' => $final->values(),
-        ]);
-    } catch (\Throwable $e) {
-        \Log::error('Item.home fatal error', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Erro ao carregar itens',
-        ], 500);
     }
-}
 
 
 
