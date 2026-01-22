@@ -385,12 +385,10 @@ class EmployerController extends Controller
     }
 
 
-
 public function listByEntity(string $identifier)
 {
     try {
-        // ✅ nova key pra não reaproveitar cache antigo
-        $cacheKey = "employers_entity_{$identifier}_only_user_no_files_no_avatar";
+        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal";
 
         return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
@@ -402,18 +400,39 @@ public function listByEntity(string $identifier)
                 )
                 ->firstOrFail();
 
-            // ✅ Apenas Employer + User (SEM user.files) e SEM avatar
             $employers = Employer::query()
                 ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
                 ->where('establishment_id', $establishment->id)
                 ->with([
-                    // ✅ NÃO selecione avatar aqui
-                    'user:id,first_name,last_name,user_name,email,created_at,updated_at',
+                    // ✅ user sem avatar (campo não existe no model)
+                    'user' => function ($q) {
+                        $q->select([
+                            'id',
+                            'first_name',
+                            'last_name',
+                            'user_name',
+                            'email',
+                            'created_at',
+                            'updated_at',
+                        ])->with([
+                            // ✅ files do user APENAS com os campos solicitados
+                            'files' => function ($fq) {
+                                $fq->select([
+                                    'id',
+                                    'app_id',
+                                    'entity_name',
+                                    'entity_id',
+                                    'public_url',
+                                    'created_at',
+                                ])->where('entity_name', 'user')
+                                  ->orderBy('position');
+                            }
+                        ]);
+                    },
                 ])
                 ->get()
                 ->map(function ($employer) {
 
-                    // ✅ Esconde tudo que não é Employer + User
                     $employer->makeHidden([
                         'metrics',
                         'files',
@@ -424,19 +443,12 @@ public function listByEntity(string $identifier)
                         'services',
                     ]);
 
-                    // ✅ Garante que o user NÃO leve files e NÃO leve avatar (caso apareça por accessor/append)
                     if ($employer->relationLoaded('user') && $employer->user) {
                         $employer->user->makeHidden([
                             'password',
                             'remember_token',
-                            'files',
-                            'avatar', // <- remove se vier por accessor / cast / algo do tipo
+                            'avatar', // ✅ garante que não apareça por accessor/appends
                         ]);
-
-                        // Se por algum motivo foi eager-loaded, remove também:
-                        if (method_exists($employer->user, 'unsetRelation')) {
-                            $employer->user->unsetRelation('files');
-                        }
                     }
 
                     return json_decode(
