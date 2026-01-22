@@ -384,11 +384,10 @@ class EmployerController extends Controller
         }
     }
 
-
 public function listByEntity(string $identifier)
 {
     try {
-        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal_no_metrics";
+        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal_no_metrics_any";
 
         return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
@@ -422,17 +421,19 @@ public function listByEntity(string $identifier)
                                     'entity_id',
                                     'public_url',
                                     'created_at',
-                                ])->where('entity_name', 'user')
-                                  ->orderBy('position');
-                            }
+                                ])
+                                    ->where('entity_name', 'user')
+                                    ->orderBy('position');
+                            },
                         ]);
                     },
                 ])
                 ->get()
                 ->map(function ($employer) {
 
-                    // ✅ remove métricas (appends) e qualquer coisa extra
-                    $employer->setAppends([]); // remove appends do Employer (metrics)
+                    // ✅ remove appends do Employer (metrics)
+                    $employer->setAppends([]);
+
                     $employer->makeHidden([
                         'metrics',
                         'files',
@@ -449,6 +450,14 @@ public function listByEntity(string $identifier)
                             'remember_token',
                             'avatar',
                         ]);
+
+                        // ✅ remove appends das files (metrics / interaction_summary)
+                        if ($employer->user->relationLoaded('files') && $employer->user->files) {
+                            $employer->user->files->each(function ($file) {
+                                $file->setAppends([]);
+                                $file->makeHidden(['metrics', 'interaction_summary']);
+                            });
+                        }
                     }
 
                     return json_decode(
@@ -477,7 +486,6 @@ public function listByEntity(string $identifier)
         ], 500);
     }
 }
-
 
 
     /* =======================================================
