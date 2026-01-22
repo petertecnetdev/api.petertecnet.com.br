@@ -417,6 +417,7 @@ public function listByEntity(string $identifier)
                                 $fq->select([
                                     'id',
                                     'app_id',
+                                    'type',
                                     'entity_name',
                                     'entity_id',
                                     'public_url',
