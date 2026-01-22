@@ -386,11 +386,11 @@ class EmployerController extends Controller
 
 
 
-   public function listByEntity(string $identifier)
+ public function listByEntity(string $identifier)
 {
     try {
-        // ✅ Troque a key pra não reutilizar cache antigo com establishment/files
-        $cacheKey = "employers_entity_{$identifier}_only_user";
+        // ✅ nova key pra não reaproveitar cache antigo
+        $cacheKey = "employers_entity_{$identifier}_only_user_no_files";
 
         return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
@@ -402,30 +402,16 @@ class EmployerController extends Controller
                 )
                 ->firstOrFail();
 
-            // ✅ Apenas Employer + seu User (opcional: user.files)
+            // ✅ Apenas Employer + User (SEM user.files)
             $employers = Employer::query()
                 ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
                 ->where('establishment_id', $establishment->id)
                 ->with([
-                    'user' => function ($q) {
-                        $q->select([
-                            'id',
-                            'first_name',
-                            'last_name',
-                            'user_name',
-                            'avatar',
-                            'email',
-                            'created_at',
-                            'updated_at',
-                        ])->with([
-                            'files' => fn ($fq) => $fq
-                                ->where('entity_name', 'user')
-                                ->orderBy('position'),
-                        ]);
-                    },
+                    'user:id,first_name,last_name,user_name,avatar,email,created_at,updated_at',
                 ])
                 ->get()
                 ->map(function ($employer) {
+
                     // ✅ Esconde tudo que não é Employer + User
                     $employer->makeHidden([
                         'metrics',          // vem do $appends do model
@@ -437,13 +423,18 @@ class EmployerController extends Controller
                         'services',
                     ]);
 
-                    // Se o User tiver appends/relacionamentos que você não quer, ajuste aqui:
+                    // ✅ Garante que o user NÃO leve files (mesmo se vier por default/trait)
                     if ($employer->relationLoaded('user') && $employer->user) {
                         $employer->user->makeHidden([
                             'password',
                             'remember_token',
-                            // adicione aqui outros campos/relacionamentos do user que não quer retornar
+                            'files', // <- remove da resposta mesmo se tiver sido carregado
                         ]);
+
+                        // Se por algum motivo foi eager-loaded, remove também:
+                        if (method_exists($employer->user, 'unsetRelation')) {
+                            $employer->user->unsetRelation('files');
+                        }
                     }
 
                     return json_decode(
