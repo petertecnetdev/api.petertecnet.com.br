@@ -21,216 +21,216 @@ class EstablishmentController extends Controller
 
     protected function getValidationMessages()
     {
-       return [
-    'app_id.required' => 'O campo app_id é obrigatório.',
-    'app_id.integer' => 'O campo app_id deve ser um número inteiro válido.',
-    'app_id.exists' => 'O aplicativo selecionado não é válido.',
+        return [
+            'app_id.required' => 'O campo app_id é obrigatório.',
+            'app_id.integer' => 'O campo app_id deve ser um número inteiro válido.',
+            'app_id.exists' => 'O aplicativo selecionado não é válido.',
 
-    'name.required' => 'O nome do estabelecimento é obrigatório.',
-    'name.string' => 'O nome deve ser uma string válida.',
-    'name.max' => 'O nome deve ter no máximo 255 caracteres.',
+            'name.required' => 'O nome do estabelecimento é obrigatório.',
+            'name.string' => 'O nome deve ser uma string válida.',
+            'name.max' => 'O nome deve ter no máximo 255 caracteres.',
 
-    'email.email' => 'O email fornecido não é válido.',
-    'email.max' => 'O email deve ter no máximo 255 caracteres.',
+            'email.email' => 'O email fornecido não é válido.',
+            'email.max' => 'O email deve ter no máximo 255 caracteres.',
 
-    'phone.string' => 'O telefone deve ser uma string válida.',
-    'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
+            'phone.string' => 'O telefone deve ser uma string válida.',
+            'phone.max' => 'O telefone deve ter no máximo 20 caracteres.',
 
-    'description.string' => 'A descrição deve ser uma string válida.',
-    'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
+            'description.string' => 'A descrição deve ser uma string válida.',
+            'description.max' => 'A descrição deve ter no máximo 2500 caracteres.',
 
-    'address.string' => 'O endereço deve ser uma string válida.',
-    'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
+            'address.string' => 'O endereço deve ser uma string válida.',
+            'address.max' => 'O endereço deve ter no máximo 255 caracteres.',
 
-    'city.string' => 'A cidade deve ser uma string válida.',
-    'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
+            'city.string' => 'A cidade deve ser uma string válida.',
+            'city.max' => 'A cidade deve ter no máximo 100 caracteres.',
 
-    'cep.string' => 'O CEP deve ser uma string válida.',
-    'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
+            'cep.string' => 'O CEP deve ser uma string válida.',
+            'cep.max' => 'O CEP deve ter no máximo 10 caracteres.',
 
-    'website_url.url' => 'O website deve ser um URL válido.',
-    'location.string' => 'A localização deve ser uma string válida.',
+            'website_url.url' => 'O website deve ser um URL válido.',
+            'location.string' => 'A localização deve ser uma string válida.',
 
-    'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
-    'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
-    'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
-    'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
+            'instagram_url.url' => 'O link do Instagram deve ser um URL válido.',
+            'facebook_url.url' => 'O link do Facebook deve ser um URL válido.',
+            'twitter_url.url' => 'O link do Twitter deve ser um URL válido.',
+            'youtube_url.url' => 'O link do YouTube deve ser um URL válido.',
 
-    'segments.array' => 'Os segmentos devem ser enviados como array.',
-    'segments.*.string' => 'Cada segmento deve ser uma string.',
+            'segments.array' => 'Os segmentos devem ser enviados como array.',
+            'segments.*.string' => 'Cada segmento deve ser uma string.',
 
-    'logo.required' => 'A logo é obrigatória.',
-    'logo.image' => 'A logo deve ser uma imagem válida.',
-    'logo.max' => 'A logo deve ter no máximo 2048 KB.',
+            'logo.required' => 'A logo é obrigatória.',
+            'logo.image' => 'A logo deve ser uma imagem válida.',
+            'logo.max' => 'A logo deve ter no máximo 2048 KB.',
 
-    'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
-];
+            'background.image' => 'A imagem de fundo deve ser uma imagem válida.',
+        ];
 
     }
-public function store(Request $request)
-{
-    DB::beginTransaction();
+    public function store(Request $request)
+    {
+        DB::beginTransaction();
 
-    try {
-        $user = Auth::user();
+        try {
+            $user = Auth::user();
 
-        Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
-            'user_id' => $user?->id,
-            'payload' => $request->all(),
-        ]);
+            Log::info('[EstablishmentController::store] Iniciando criação de estabelecimento.', [
+                'user_id' => $user?->id,
+                'payload' => $request->all(),
+            ]);
 
-        $data = $request->validate([
-            'app_id'           => 'required|integer|exists:applications,id',
-            'name'             => 'required|string|max:255',
-            'fantasy'          => 'nullable|string|max:255',
-            'cnpj'             => 'nullable|string|max:20',
-            'type'             => 'nullable|string|max:100',
-            'category'         => 'nullable|string|max:100',
-            'phone'            => 'nullable|string|max:20',
-            'email'            => 'nullable|email|max:255',
-            'description'      => 'nullable|string|max:2500',
-            'additional_info'  => 'nullable|string|max:2500',
-            'city'             => 'nullable|string|max:100',
-            'uf'               => 'nullable|string|size:2',
-            'location'         => 'nullable|string',
-            'cep'              => 'nullable|string|max:10',
-            'address'          => 'nullable|string|max:255',
-            'latitude'         => 'nullable|numeric',
-            'longitude'        => 'nullable|numeric',
-            'logo'             => 'nullable|image|max:4096',
-            'background'       => 'nullable|image|max:8192',
-            'website_url'      => 'nullable|url|max:255',
-            'facebook_url'     => 'nullable|url|max:255',
-            'instagram_url'    => 'nullable|url|max:255',
-            'twitter_url'      => 'nullable|url|max:255',
-            'youtube_url'      => 'nullable|url|max:255',
-            'segments'         => 'nullable|array',
-            'segments.*'       => 'string',
-            'is_featured'      => 'nullable|boolean',
-            'is_published'     => 'nullable|boolean',
-            'is_approved'      => 'nullable|boolean',
-            'is_cancelled'     => 'nullable|boolean',
-        ], $this->getValidationMessages());
+            $data = $request->validate([
+                'app_id' => 'required|integer|exists:applications,id',
+                'name' => 'required|string|max:255',
+                'fantasy' => 'nullable|string|max:255',
+                'cnpj' => 'nullable|string|max:20',
+                'type' => 'nullable|string|max:100',
+                'category' => 'nullable|string|max:100',
+                'phone' => 'nullable|string|max:20',
+                'email' => 'nullable|email|max:255',
+                'description' => 'nullable|string|max:2500',
+                'additional_info' => 'nullable|string|max:2500',
+                'city' => 'nullable|string|max:100',
+                'uf' => 'nullable|string|size:2',
+                'location' => 'nullable|string',
+                'cep' => 'nullable|string|max:10',
+                'address' => 'nullable|string|max:255',
+                'latitude' => 'nullable|numeric',
+                'longitude' => 'nullable|numeric',
+                'logo' => 'nullable|image|max:4096',
+                'background' => 'nullable|image|max:8192',
+                'website_url' => 'nullable|url|max:255',
+                'facebook_url' => 'nullable|url|max:255',
+                'instagram_url' => 'nullable|url|max:255',
+                'twitter_url' => 'nullable|url|max:255',
+                'youtube_url' => 'nullable|url|max:255',
+                'segments' => 'nullable|array',
+                'segments.*' => 'string',
+                'is_featured' => 'nullable|boolean',
+                'is_published' => 'nullable|boolean',
+                'is_approved' => 'nullable|boolean',
+                'is_cancelled' => 'nullable|boolean',
+            ], $this->getValidationMessages());
 
-        /* ============================
-           SLUG
-        ============================ */
-        $baseSlug = Str::slug($data['fantasy'] ?? $data['name']);
-        $slug = $baseSlug;
+            /* ============================
+               SLUG
+            ============================ */
+            $baseSlug = Str::slug($data['fantasy'] ?? $data['name']);
+            $slug = $baseSlug;
 
-        if (Establishment::where('slug', $slug)->exists()) {
-            $slug .= '-' . uniqid();
+            if (Establishment::where('slug', $slug)->exists()) {
+                $slug .= '-' . uniqid();
+            }
+
+            /* ============================
+               CITY / UF DEFAULT
+            ============================ */
+            if (empty($data['city']) && !empty($user->city)) {
+                $data['city'] = $user->city;
+            }
+
+            if (empty($data['uf']) && !empty($user->uf)) {
+                $data['uf'] = $user->uf;
+            }
+
+            /* ============================
+               GEO
+            ============================ */
+            $latitude = $data['latitude'] ?? null;
+            $longitude = $data['longitude'] ?? null;
+
+            if ($latitude && $longitude) {
+                $data['location'] = "{$latitude},{$longitude}";
+            }
+
+            /* ============================
+               CREATE ESTABLISHMENT
+            ============================ */
+            $establishment = Establishment::create([
+                'app_id' => $data['app_id'],
+                'name' => $data['name'],
+                'fantasy' => $data['fantasy'] ?? null,
+                'slug' => $slug,
+                'cnpj' => $data['cnpj'] ?? null,
+                'type' => $data['type'] ?? null,
+                'category' => $data['category'] ?? null,
+                'phone' => $data['phone'] ?? null,
+                'email' => $data['email'] ?? null,
+                'description' => $data['description'] ?? null,
+                'additional_info' => $data['additional_info'] ?? null,
+                'city' => $data['city'] ?? null,
+                'uf' => $data['uf'] ?? null,
+                'location' => $data['location'] ?? null,
+                'cep' => $data['cep'] ?? null,
+                'address' => $data['address'] ?? null,
+                'website_url' => $data['website_url'] ?? null,
+                'facebook_url' => $data['facebook_url'] ?? null,
+                'instagram_url' => $data['instagram_url'] ?? null,
+                'twitter_url' => $data['twitter_url'] ?? null,
+                'youtube_url' => $data['youtube_url'] ?? null,
+                'segments' => $data['segments'] ?? [],
+                'is_featured' => (bool) ($data['is_featured'] ?? false),
+                'is_published' => (bool) ($data['is_published'] ?? false),
+                'is_approved' => (bool) ($data['is_approved'] ?? false),
+                'is_cancelled' => (bool) ($data['is_cancelled'] ?? false),
+                'user_id' => $user->id,
+            ]);
+
+            /* ============================
+               FILE - LOGO
+            ============================ */
+            if ($request->hasFile('logo')) {
+                $file = File::storeOne(
+                    file: $request->file('logo'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'logo',
+                    appId: $establishment->app_id,
+                    createdBy: $user->id
+                );
+            }
+
+            /* ============================
+               FILE - BACKGROUND
+            ============================ */
+            if ($request->hasFile('background')) {
+                File::storeOne(
+                    file: $request->file('background'),
+                    entityName: 'establishment',
+                    entityId: $establishment->id,
+                    type: 'background',
+                    appId: $establishment->app_id,
+                    createdBy: $user->id
+                );
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'message' => 'Estabelecimento criado com sucesso!',
+                'establishment' => $establishment->refresh(),
+            ], 201);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'errors' => $e->errors(),
+            ], 422);
+
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('[EstablishmentController::store] Erro inesperado', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'error' => 'Ocorreu um erro ao criar o estabelecimento.',
+                'message' => $e->getMessage(),
+            ], 500);
         }
-
-        /* ============================
-           CITY / UF DEFAULT
-        ============================ */
-        if (empty($data['city']) && !empty($user->city)) {
-            $data['city'] = $user->city;
-        }
-
-        if (empty($data['uf']) && !empty($user->uf)) {
-            $data['uf'] = $user->uf;
-        }
-
-        /* ============================
-           GEO
-        ============================ */
-        $latitude  = $data['latitude'] ?? null;
-        $longitude = $data['longitude'] ?? null;
-
-        if ($latitude && $longitude) {
-            $data['location'] = "{$latitude},{$longitude}";
-        }
-
-        /* ============================
-           CREATE ESTABLISHMENT
-        ============================ */
-        $establishment = Establishment::create([
-            'app_id'          => $data['app_id'],
-            'name'            => $data['name'],
-            'fantasy'         => $data['fantasy'] ?? null,
-            'slug'            => $slug,
-            'cnpj'            => $data['cnpj'] ?? null,
-            'type'            => $data['type'] ?? null,
-            'category'        => $data['category'] ?? null,
-            'phone'           => $data['phone'] ?? null,
-            'email'           => $data['email'] ?? null,
-            'description'     => $data['description'] ?? null,
-            'additional_info' => $data['additional_info'] ?? null,
-            'city'            => $data['city'] ?? null,
-            'uf'              => $data['uf'] ?? null,
-            'location'        => $data['location'] ?? null,
-            'cep'             => $data['cep'] ?? null,
-            'address'         => $data['address'] ?? null,
-            'website_url'     => $data['website_url'] ?? null,
-            'facebook_url'    => $data['facebook_url'] ?? null,
-            'instagram_url'   => $data['instagram_url'] ?? null,
-            'twitter_url'     => $data['twitter_url'] ?? null,
-            'youtube_url'     => $data['youtube_url'] ?? null,
-            'segments'        => $data['segments'] ?? [],
-            'is_featured'     => (bool) ($data['is_featured'] ?? false),
-            'is_published'    => (bool) ($data['is_published'] ?? false),
-            'is_approved'     => (bool) ($data['is_approved'] ?? false),
-            'is_cancelled'    => (bool) ($data['is_cancelled'] ?? false),
-            'user_id'         => $user->id,
-        ]);
-
-        /* ============================
-           FILE - LOGO
-        ============================ */
-        if ($request->hasFile('logo')) {
-            $file = File::storeOne(
-                file: $request->file('logo'),
-                entityName: 'establishment',
-                entityId: $establishment->id,
-                type: 'logo',
-                appId: $establishment->app_id,
-                createdBy: $user->id
-            );
-        }
-
-        /* ============================
-           FILE - BACKGROUND
-        ============================ */
-        if ($request->hasFile('background')) {
-            File::storeOne(
-                file: $request->file('background'),
-                entityName: 'establishment',
-                entityId: $establishment->id,
-                type: 'background',
-                appId: $establishment->app_id,
-                createdBy: $user->id
-            );
-        }
-
-        DB::commit();
-
-        return response()->json([
-            'message' => 'Estabelecimento criado com sucesso!',
-            'establishment' => $establishment->refresh(),
-        ], 201);
-
-    } catch (\Illuminate\Validation\ValidationException $e) {
-        DB::rollBack();
-
-        return response()->json([
-            'errors' => $e->errors(),
-        ], 422);
-
-    } catch (\Throwable $e) {
-        DB::rollBack();
-
-        Log::error('[EstablishmentController::store] Erro inesperado', [
-            'error' => $e->getMessage(),
-        ]);
-
-        return response()->json([
-            'error' => 'Ocorreu um erro ao criar o estabelecimento.',
-            'message' => $e->getMessage(),
-        ], 500);
     }
-}
 
 
 
@@ -803,6 +803,22 @@ public function store(Request $request)
                     fn($q) => $q->where('id', (int) $identifier),
                     fn($q) => $q->where('slug', $identifier)
                 )
+                ->with([
+                    // ✅ establishment.files (igual padrão do employer view)
+                    'files' => function ($q) {
+                        $q->select([
+                            'id',
+                            'app_id',
+                            'type',
+                            'entity_name',
+                            'entity_id',
+                            'public_url',
+                            'created_at',
+                        ])
+                            ->where('entity_name', 'establishment')
+                            ->orderBy('position');
+                    },
+                ])
                 ->first();
 
             if (!$establishment) {
@@ -817,6 +833,14 @@ public function store(Request $request)
             }
 
             Interaction::registerView($establishment, auth()->user() ?? null);
+
+            // ✅ remove appends das files do establishment (mesmo padrão do employer view)
+            if ($establishment->relationLoaded('files') && $establishment->files) {
+                $establishment->files->each(function ($file) {
+                    $file->setAppends([]);
+                    $file->makeHidden(['metrics', 'interaction_summary']);
+                });
+            }
 
             $establishmentArray = json_decode(
                 json_encode($establishment->toArray(), JSON_INVALID_UTF8_SUBSTITUTE),
@@ -841,6 +865,7 @@ public function store(Request $request)
             ], 500);
         }
     }
+
     public function home(Request $request, $app_id)
     {
         \Log::info('Establishment.home start', [
