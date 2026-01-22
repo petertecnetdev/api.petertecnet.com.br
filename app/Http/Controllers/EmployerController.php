@@ -388,7 +388,7 @@ class EmployerController extends Controller
 public function listByEntity(string $identifier)
 {
     try {
-        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal";
+        $cacheKey = "employers_entity_{$identifier}_only_user_with_files_minimal_no_metrics";
 
         return Cache::remember($cacheKey, 300, function () use ($identifier) {
 
@@ -404,7 +404,6 @@ public function listByEntity(string $identifier)
                 ->select(['id', 'user_id', 'establishment_id', 'role', 'permissions', 'created_at', 'updated_at'])
                 ->where('establishment_id', $establishment->id)
                 ->with([
-                    // ✅ user sem avatar (campo não existe no model)
                     'user' => function ($q) {
                         $q->select([
                             'id',
@@ -415,7 +414,6 @@ public function listByEntity(string $identifier)
                             'created_at',
                             'updated_at',
                         ])->with([
-                            // ✅ files do user APENAS com os campos solicitados
                             'files' => function ($fq) {
                                 $fq->select([
                                     'id',
@@ -433,6 +431,8 @@ public function listByEntity(string $identifier)
                 ->get()
                 ->map(function ($employer) {
 
+                    // ✅ remove métricas (appends) e qualquer coisa extra
+                    $employer->setAppends([]); // remove appends do Employer (metrics)
                     $employer->makeHidden([
                         'metrics',
                         'files',
@@ -447,7 +447,7 @@ public function listByEntity(string $identifier)
                         $employer->user->makeHidden([
                             'password',
                             'remember_token',
-                            'avatar', // ✅ garante que não apareça por accessor/appends
+                            'avatar',
                         ]);
                     }
 
