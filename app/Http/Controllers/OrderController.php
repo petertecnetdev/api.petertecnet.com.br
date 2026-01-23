@@ -597,7 +597,6 @@ class OrderController extends ApiController
         try {
             $authUserId = $request->user()->id;
 
-            // ✅ SOMENTE agendamentos do cliente logado
             $orders = Order::query()
                 ->where('app_id', $app_id)
                 ->where('client_id', $authUserId)
@@ -610,36 +609,42 @@ class OrderController extends ApiController
                     'entity_id',
                     'order_number',
                     'order_datetime',
-                    'created_by',
                     'attendant_id',
                     'client_id',
-                    'customer_name',
-                    'customer_phone',
-                    'customer_email',
-                    'customer_cpf',
-                    'access_code',
-                    'origin',
-                    'fulfillment',
-                    'payment_status',
-                    'payment_method',
                     'total_price',
                     'total_duration',
                     'status',
                     'notes',
                     'type',
                     'appointment_status',
-                    'confirmed_by',
-                    'cancelled_by',
-                    'cancelled_reason',
-                    'attended_at',
                     'created_at',
                     'updated_at',
                 ]);
 
+            // ✅ evita qualquer append/acessor do model
+            $payload = $orders->map(fn($o) => [
+                'id' => $o->id,
+                'app_id' => $o->app_id,
+                'entity_name' => $o->entity_name,
+                'entity_id' => $o->entity_id,
+                'order_number' => $o->order_number,
+                'order_datetime' => $o->order_datetime,
+                'attendant_id' => $o->attendant_id,
+                'client_id' => $o->client_id,
+                'total_price' => $o->total_price,
+                'total_duration' => $o->total_duration,
+                'status' => $o->status,
+                'notes' => $o->notes,
+                'type' => $o->type,
+                'appointment_status' => $o->appointment_status,
+                'created_at' => $o->created_at,
+                'updated_at' => $o->updated_at,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'message' => 'Agendamentos listados com sucesso.',
-                'orders' => $orders,
+                'orders' => $payload,
             ], 200);
 
         } catch (\Throwable $e) {
