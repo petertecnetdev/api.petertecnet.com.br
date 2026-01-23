@@ -602,6 +602,34 @@ class OrderController extends ApiController
                 ->where('client_id', $authUserId)
                 ->where('type', 'appointment')
                 ->orderBy('order_datetime', 'desc')
+                ->with([
+                    'attendant' => function ($q) {
+                        $q->select([
+                            'id',
+                            'user_id',
+                            'establishment_id',
+                            'role',
+                            'created_at',
+                            'updated_at',
+                        ]);
+                    },
+                    'attendant.user' => function ($q) {
+                        $q->select([
+                            'id',
+                            'first_name',
+                            'last_name',
+                            'user_name',
+                            'email',
+                            'phone',
+                            'created_at',
+                            'updated_at',
+                        ]);
+                    },
+                    'attendant.user.files' => function ($q) {
+                        $q->where('type', 'avatar')
+                            ->orderByDesc('id');
+                    },
+                ])
                 ->get([
                     'id',
                     'app_id',
@@ -621,25 +649,115 @@ class OrderController extends ApiController
                     'updated_at',
                 ]);
 
-            // ✅ evita qualquer append/acessor do model
-            $payload = $orders->map(fn($o) => [
-                'id' => $o->id,
-                'app_id' => $o->app_id,
-                'entity_name' => $o->entity_name,
-                'entity_id' => $o->entity_id,
-                'order_number' => $o->order_number,
-                'order_datetime' => $o->order_datetime,
-                'attendant_id' => $o->attendant_id,
-                'client_id' => $o->client_id,
-                'total_price' => $o->total_price,
-                'total_duration' => $o->total_duration,
-                'status' => $o->status,
-                'notes' => $o->notes,
-                'type' => $o->type,
-                'appointment_status' => $o->appointment_status,
-                'created_at' => $o->created_at,
-                'updated_at' => $o->updated_at,
-            ]);
+            // ✅ establishments do tipo establishment
+            $establishmentIds = $orders
+                ->filter(fn($o) => $o->entity_name === 'establishment' && !empty($o->entity_id))
+                ->pluck('entity_id')
+                ->unique()
+                ->values()
+                ->all();
+
+            $establishmentsMap = collect();
+
+            if (!empty($establishmentIds)) {
+                $establishments = Establishment::query()
+                    ->whereIn('id', $establishmentIds)
+                    ->with([
+                        'files' => function ($q) {
+                            $q->whereIn('type', ['logo', 'background'])
+                                ->orderByDesc('id');
+                        }
+                    ])
+                    ->get(['id', 'slug', 'name', 'city', 'uf', 'created_at', 'updated_at']);
+
+                $establishmentsMap = $establishments->keyBy('id');
+            }
+
+            $payload = $orders->map(function ($o) use ($establishmentsMap) {
+
+                $employer = $o->attendant;
+                $employerUser = $employer?->user;
+
+                $avatarFile = $employerUser?->files
+                    ? $employerUser->files->firstWhere('type', 'avatar') ?? $employerUser->files->first()
+                    : null;
+
+                $establishment = $establishmentsMap->get((int) $o->entity_id);
+
+                $logoFile = $establishment?->files?->firstWhere('type', 'logo');
+                $bgFile = $establishment?->files?->firstWhere('type', 'background');
+
+                return [
+                    'id' => $o->id,
+                    'app_id' => $o->app_id,
+                    'order_number' => $o->order_number,
+                    'type' => $o->type,
+
+                    'order_datetime' => $o->order_datetime,
+                    'total_price' => $o->total_price,
+                    'total_duration' => $o->total_duration,
+
+                    'status' => $o->status,
+                    'appointment_status' => $o->appointment_status,
+                    'notes' => $o->notes,
+
+                    'entity_name' => $o->entity_name,
+                    'entity_id' => $o->entity_id,
+
+                    'establishment' => $establishment ? [
+                        'id' => $establishment->id,
+                        'slug' => $establishment->slug,
+                        'name' => $establishment->name,
+                        'city' => $establishment->city ?? null,
+                        'uf' => $establishment->uf ?? null,
+
+                        'files' => [
+                            'logo' => $logoFile ? [
+                                'id' => $logoFile->id ?? null,
+                                'type' => $logoFile->type ?? null,
+                                'path' => $logoFile->path ?? ($logoFile->file_path ?? null),
+                                'url' => $logoFile->url ?? null,
+                                'created_at' => $logoFile->created_at ?? null,
+                            ] : null,
+
+                            'background' => $bgFile ? [
+                                'id' => $bgFile->id ?? null,
+                                'type' => $bgFile->type ?? null,
+                                'path' => $bgFile->path ?? ($bgFile->file_path ?? null),
+                                'url' => $bgFile->url ?? null,
+                                'created_at' => $bgFile->created_at ?? null,
+                            ] : null,
+                        ],
+                    ] : null,
+
+                    'employer' => $employer ? [
+                        'id' => $employer->id,
+                        'user_id' => $employer->user_id,
+                        'establishment_id' => $employer->establishment_id,
+                        'role' => $employer->role ?? null,
+
+                        'user' => $employerUser ? [
+                            'id' => $employerUser->id,
+                            'user_name' => $employerUser->user_name ?? null,
+                            'first_name' => $employerUser->first_name ?? null,
+                            'last_name' => $employerUser->last_name ?? null,
+
+                            'files' => [
+                                'avatar' => $avatarFile ? [
+                                    'id' => $avatarFile->id ?? null,
+                                    'type' => $avatarFile->type ?? null,
+                                    'path' => $avatarFile->path ?? ($avatarFile->file_path ?? null),
+                                    'url' => $avatarFile->url ?? null,
+                                    'created_at' => $avatarFile->created_at ?? null,
+                                ] : null,
+                            ],
+                        ] : null,
+                    ] : null,
+
+                    'created_at' => $o->created_at,
+                    'updated_at' => $o->updated_at,
+                ];
+            });
 
             return response()->json([
                 'success' => true,
@@ -657,6 +775,7 @@ class OrderController extends ApiController
             return response()->json([
                 'success' => false,
                 'message' => 'Erro ao listar seus agendamentos.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
