@@ -594,6 +594,8 @@ class OrderController extends ApiController
     {
         try {
             $authUserId = $request->user()->id;
+            $tz = 'America/Sao_Paulo';
+            $now = now($tz)->format('Y-m-d H:i:s');
 
             // ==========================================================
             // Helpers
@@ -603,7 +605,6 @@ class OrderController extends ApiController
                     return null;
                 }
 
-                // garante que vai pegar o mais recente mesmo (created_at ou id)
                 return $files
                     ->where('type', $type)
                     ->sortByDesc(function ($f) {
@@ -623,10 +624,8 @@ class OrderController extends ApiController
                     'type' => $file->type ?? null,
                     'path' => $file->path ?? ($file->file_path ?? null),
 
-                    // ✅ fonte correta SEMPRE
+                    // ✅ SEMPRE public_url
                     'public_url' => $file->public_url ?? null,
-
-                    // ✅ compatibilidade com front antigo
                     'url' => $file->public_url ?? ($file->url ?? null),
 
                     'created_at' => $file->created_at ?? null,
@@ -634,16 +633,35 @@ class OrderController extends ApiController
             };
 
             // ==========================================================
-            // Orders - TODOS os tipos
+            // Orders - TODOS os pedidos do cliente
+            // Ordenação UX PERFEITA:
+            // 1) FUTUROS (order_datetime >= agora) primeiro, por ordem do mais próximo (ASC)
+            // 2) PASSADOS depois, do mais recente passado (DESC)
+            // 3) tipo/direct etc entra junto naturalmente pelo order_datetime
             // ==========================================================
             $orders = Order::query()
                 ->where('app_id', $app_id)
                 ->where('client_id', $authUserId)
-                // ✅ NÃO filtra mais por type=appointment
-                ->orderBy('order_datetime', 'desc')
+                ->orderByRaw("
+                CASE
+                    WHEN order_datetime >= ? THEN 0
+                    ELSE 1
+                END ASC
+            ", [$now])
+                ->orderByRaw("
+                CASE
+                    WHEN order_datetime >= ? THEN order_datetime
+                    ELSE NULL
+                END ASC
+            ", [$now])
+                ->orderByRaw("
+                CASE
+                    WHEN order_datetime < ? THEN order_datetime
+                    ELSE NULL
+                END DESC
+            ", [$now])
                 ->orderByDesc('id')
                 ->with([
-                    // ✅ Employer + User + Files (avatar mais recente)
                     'attendant' => function ($q) {
                         $q->select([
                             'id',
@@ -733,15 +751,14 @@ class OrderController extends ApiController
             // ==========================================================
             // Payload
             // ==========================================================
-            $payload = $orders->map(function ($o) use ($establishmentsMap, $latestFileFromCollection, $mapFilePayload) {
-                // ✅ attendant
+            $payload = $orders->map(function ($o) use ($establishmentsMap, $latestFileFromCollection, $mapFilePayload, $tz) {
                 $employer = $o->attendant;
                 $employerUser = $employer?->user;
 
-                // ✅ avatar do employer.user: sempre o último
+                // ✅ Avatar mais recente do user do employer
                 $avatarFile = $latestFileFromCollection($employerUser?->files, 'avatar');
 
-                // ✅ establishment
+                // ✅ establishment e imagens mais recentes
                 $establishment = null;
                 $logoFile = null;
                 $bgFile = null;
@@ -753,11 +770,21 @@ class OrderController extends ApiController
                     $bgFile = $latestFileFromCollection($establishment?->files, 'background');
                 }
 
+                // ✅ flag útil pro front
+                $isFuture = false;
+                if (!empty($o->order_datetime)) {
+                    try {
+                        $isFuture = Carbon::parse($o->order_datetime)->tz($tz)->gte(now($tz));
+                    } catch (\Throwable $e) {
+                        $isFuture = false;
+                    }
+                }
+
                 return [
                     'id' => $o->id,
                     'app_id' => $o->app_id,
                     'order_number' => $o->order_number,
-                    'type' => $o->type, // ✅ agora vem qualquer type
+                    'type' => $o->type,
                     'order_datetime' => $o->order_datetime,
                     'total_price' => $o->total_price,
                     'total_duration' => $o->total_duration,
@@ -773,7 +800,9 @@ class OrderController extends ApiController
                     'created_at' => $o->created_at,
                     'updated_at' => $o->updated_at,
 
-                    // ✅ establishment + imagens SEMPRE atualizadas (files latest)
+                    // ✅ ajuda o front a separar "próximos" e "passados"
+                    'is_future' => $isFuture,
+
                     'establishment' => $establishment ? [
                         'id' => $establishment->id,
                         'slug' => $establishment->slug,
@@ -786,7 +815,6 @@ class OrderController extends ApiController
                         ],
                     ] : null,
 
-                    // ✅ employer + avatar SEMPRE atualizado (files latest)
                     'employer' => $employer ? [
                         'id' => $employer->id,
                         'user_id' => $employer->user_id,
