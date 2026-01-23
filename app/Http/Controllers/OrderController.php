@@ -603,6 +603,7 @@ class OrderController extends ApiController
                 ->where('type', 'appointment')
                 ->orderBy('order_datetime', 'desc')
                 ->with([
+                    // ✅ Employer + User + Avatar
                     'attendant' => function ($q) {
                         $q->select([
                             'id',
@@ -626,8 +627,7 @@ class OrderController extends ApiController
                         ]);
                     },
                     'attendant.user.files' => function ($q) {
-                        $q->where('type', 'avatar')
-                            ->orderByDesc('id');
+                        $q->where('type', 'avatar')->orderByDesc('id');
                     },
                 ])
                 ->get([
@@ -649,7 +649,7 @@ class OrderController extends ApiController
                     'updated_at',
                 ]);
 
-            // ✅ establishments do tipo establishment
+            // ✅ pega establishments usados nesses pedidos
             $establishmentIds = $orders
                 ->filter(fn($o) => $o->entity_name === 'establishment' && !empty($o->entity_id))
                 ->pluck('entity_id')
@@ -668,20 +668,29 @@ class OrderController extends ApiController
                                 ->orderByDesc('id');
                         }
                     ])
-                    ->get(['id', 'slug', 'name', 'city', 'uf', 'created_at', 'updated_at']);
+                    ->get([
+                        'id',
+                        'slug',
+                        'name',
+                        'city',
+                        'uf',
+                        'created_at',
+                        'updated_at'
+                    ]);
 
                 $establishmentsMap = $establishments->keyBy('id');
             }
 
             $payload = $orders->map(function ($o) use ($establishmentsMap) {
 
+                // ✅ attendant
                 $employer = $o->attendant;
                 $employerUser = $employer?->user;
 
-                $avatarFile = $employerUser?->files
-                    ? $employerUser->files->firstWhere('type', 'avatar') ?? $employerUser->files->first()
-                    : null;
+                // ✅ avatar do employer.user
+                $avatarFile = $employerUser?->files?->firstWhere('type', 'avatar') ?? $employerUser?->files?->first();
 
+                // ✅ establishment
                 $establishment = $establishmentsMap->get((int) $o->entity_id);
 
                 $logoFile = $establishment?->files?->firstWhere('type', 'logo');
@@ -692,17 +701,16 @@ class OrderController extends ApiController
                     'app_id' => $o->app_id,
                     'order_number' => $o->order_number,
                     'type' => $o->type,
-
                     'order_datetime' => $o->order_datetime,
                     'total_price' => $o->total_price,
                     'total_duration' => $o->total_duration,
-
                     'status' => $o->status,
                     'appointment_status' => $o->appointment_status,
                     'notes' => $o->notes,
-
                     'entity_name' => $o->entity_name,
                     'entity_id' => $o->entity_id,
+                    'created_at' => $o->created_at,
+                    'updated_at' => $o->updated_at,
 
                     'establishment' => $establishment ? [
                         'id' => $establishment->id,
@@ -710,7 +718,6 @@ class OrderController extends ApiController
                         'name' => $establishment->name,
                         'city' => $establishment->city ?? null,
                         'uf' => $establishment->uf ?? null,
-
                         'files' => [
                             'logo' => $logoFile ? [
                                 'id' => $logoFile->id ?? null,
@@ -719,7 +726,6 @@ class OrderController extends ApiController
                                 'url' => $logoFile->url ?? null,
                                 'created_at' => $logoFile->created_at ?? null,
                             ] : null,
-
                             'background' => $bgFile ? [
                                 'id' => $bgFile->id ?? null,
                                 'type' => $bgFile->type ?? null,
@@ -735,13 +741,11 @@ class OrderController extends ApiController
                         'user_id' => $employer->user_id,
                         'establishment_id' => $employer->establishment_id,
                         'role' => $employer->role ?? null,
-
                         'user' => $employerUser ? [
                             'id' => $employerUser->id,
                             'user_name' => $employerUser->user_name ?? null,
                             'first_name' => $employerUser->first_name ?? null,
                             'last_name' => $employerUser->last_name ?? null,
-
                             'files' => [
                                 'avatar' => $avatarFile ? [
                                     'id' => $avatarFile->id ?? null,
@@ -753,9 +757,6 @@ class OrderController extends ApiController
                             ],
                         ] : null,
                     ] : null,
-
-                    'created_at' => $o->created_at,
-                    'updated_at' => $o->updated_at,
                 ];
             });
 
@@ -770,6 +771,7 @@ class OrderController extends ApiController
                 'auth_user_id' => $request->user()->id ?? null,
                 'app_id' => $app_id ?? null,
                 'exception' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
             ]);
 
             return response()->json([
