@@ -591,19 +591,56 @@ class OrderController extends ApiController
         }
     }
 
-
     public function listMy(Request $request, int $app_id)
     {
         try {
             $authUserId = $request->user()->id;
 
+            // ==========================================================
+            // Helpers
+            // ==========================================================
+            $getLatestFileByType = function ($files, string $type) {
+                if (!$files || !($files instanceof \Illuminate\Support\Collection)) {
+                    return null;
+                }
+
+                return $files
+                    ->where('type', $type)
+                    ->sortByDesc(function ($f) {
+                        // prioridade para created_at, depois id
+                        $createdAt = $f->created_at ? strtotime($f->created_at) : 0;
+                        $id = (int) ($f->id ?? 0);
+                        return ($createdAt * 1000000) + $id;
+                    })
+                    ->first();
+            };
+
+            $mapFilePayload = function ($file) {
+                if (!$file)
+                    return null;
+
+                return [
+                    'id' => $file->id ?? null,
+                    'type' => $file->type ?? null,
+                    'path' => $file->path ?? ($file->file_path ?? null),
+                    // ✅ SEMPRE prioriza public_url (fonte correta)
+                    'public_url' => $file->public_url ?? null,
+                    // (mantém compatibilidade caso exista no front antigo)
+                    'url' => $file->public_url ?? ($file->url ?? null),
+                    'created_at' => $file->created_at ?? null,
+                ];
+            };
+
+            // ==========================================================
+            // Orders
+            // ==========================================================
             $orders = Order::query()
                 ->where('app_id', $app_id)
                 ->where('client_id', $authUserId)
                 ->where('type', 'appointment')
                 ->orderBy('order_datetime', 'desc')
                 ->with([
-                    // ✅ Employer + User + Avatar
+                    // ✅ Employer + User + Files (pegar sempre o último avatar)
                     'attendant' => function ($q) {
                         $q->select([
                             'id',
@@ -627,7 +664,10 @@ class OrderController extends ApiController
                         ]);
                     },
                     'attendant.user.files' => function ($q) {
-                        $q->where('type', 'avatar')->orderByDesc('id');
+                        // ✅ puxar tudo do tipo avatar e ordenar para pegar o mais recente
+                        $q->where('type', 'avatar')
+                            ->orderByDesc('created_at')
+                            ->orderByDesc('id');
                     },
                 ])
                 ->get([
@@ -649,7 +689,9 @@ class OrderController extends ApiController
                     'updated_at',
                 ]);
 
-            // ✅ pega establishments usados nesses pedidos
+            // ==========================================================
+            // Establishments usados nesses pedidos
+            // ==========================================================
             $establishmentIds = $orders
                 ->filter(fn($o) => $o->entity_name === 'establishment' && !empty($o->entity_id))
                 ->pluck('entity_id')
@@ -664,7 +706,10 @@ class OrderController extends ApiController
                     ->whereIn('id', $establishmentIds)
                     ->with([
                         'files' => function ($q) {
+                            // ✅ IMPORTANTE:
+                            // sempre buscar os mais recentes pelo created_at/id
                             $q->whereIn('type', ['logo', 'background'])
+                                ->orderByDesc('created_at')
                                 ->orderByDesc('id');
                         }
                     ])
@@ -681,20 +726,29 @@ class OrderController extends ApiController
                 $establishmentsMap = $establishments->keyBy('id');
             }
 
-            $payload = $orders->map(function ($o) use ($establishmentsMap) {
-
+            // ==========================================================
+            // Payload
+            // ==========================================================
+            $payload = $orders->map(function ($o) use ($establishmentsMap, $getLatestFileByType, $mapFilePayload) {
                 // ✅ attendant
                 $employer = $o->attendant;
                 $employerUser = $employer?->user;
 
-                // ✅ avatar do employer.user
-                $avatarFile = $employerUser?->files?->firstWhere('type', 'avatar') ?? $employerUser?->files?->first();
+                // ✅ avatar: sempre o último avatar criado (type=avatar)
+                $avatarFile = $getLatestFileByType($employerUser?->files, 'avatar');
 
-                // ✅ establishment
-                $establishment = $establishmentsMap->get((int) $o->entity_id);
+                // ✅ establishment (somente quando entity_name for establishment)
+                $establishment = null;
+                $logoFile = null;
+                $bgFile = null;
 
-                $logoFile = $establishment?->files?->firstWhere('type', 'logo');
-                $bgFile = $establishment?->files?->firstWhere('type', 'background');
+                if ($o->entity_name === 'establishment' && !empty($o->entity_id)) {
+                    $establishment = $establishmentsMap->get((int) $o->entity_id);
+
+                    // ✅ logo/background: sempre o último criado do type correto
+                    $logoFile = $getLatestFileByType($establishment?->files, 'logo');
+                    $bgFile = $getLatestFileByType($establishment?->files, 'background');
+                }
 
                 return [
                     'id' => $o->id,
@@ -719,20 +773,10 @@ class OrderController extends ApiController
                         'city' => $establishment->city ?? null,
                         'uf' => $establishment->uf ?? null,
                         'files' => [
-                            'logo' => $logoFile ? [
-                                'id' => $logoFile->id ?? null,
-                                'type' => $logoFile->type ?? null,
-                                'path' => $logoFile->path ?? ($logoFile->file_path ?? null),
-                                'url' => $logoFile->url ?? null,
-                                'created_at' => $logoFile->created_at ?? null,
-                            ] : null,
-                            'background' => $bgFile ? [
-                                'id' => $bgFile->id ?? null,
-                                'type' => $bgFile->type ?? null,
-                                'path' => $bgFile->path ?? ($bgFile->file_path ?? null),
-                                'url' => $bgFile->url ?? null,
-                                'created_at' => $bgFile->created_at ?? null,
-                            ] : null,
+                            // ✅ CORRETO: logo mais recente do type=logo usando public_url
+                            'logo' => $mapFilePayload($logoFile),
+                            // ✅ CORRETO: background mais recente do type=background usando public_url
+                            'background' => $mapFilePayload($bgFile),
                         ],
                     ] : null,
 
@@ -747,13 +791,8 @@ class OrderController extends ApiController
                             'first_name' => $employerUser->first_name ?? null,
                             'last_name' => $employerUser->last_name ?? null,
                             'files' => [
-                                'avatar' => $avatarFile ? [
-                                    'id' => $avatarFile->id ?? null,
-                                    'type' => $avatarFile->type ?? null,
-                                    'path' => $avatarFile->path ?? ($avatarFile->file_path ?? null),
-                                    'url' => $avatarFile->url ?? null,
-                                    'created_at' => $avatarFile->created_at ?? null,
-                                ] : null,
+                                // ✅ CORRETO: avatar mais recente do type=avatar usando public_url
+                                'avatar' => $mapFilePayload($avatarFile),
                             ],
                         ] : null,
                     ] : null,
