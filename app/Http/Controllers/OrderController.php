@@ -2,12 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\{Order, EmployerSchedule, Item, Employer, Establishment};
+use App\Models\{
+    Order,
+    EmployerSchedule,
+    Item,
+    Employer,
+    Establishment
+};
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\{
+    DB,
+    Log,
+    Mail
+};
 use Carbon\Carbon;
+
 use App\Mail\NewAppointmentNotification;
 use App\Mail\OwnerAppointmentNotification;
 use App\Mail\AppointmentAwaitingConfirmation;
@@ -21,31 +30,94 @@ class OrderController extends ApiController
     {
         return [
             'app_id.required' => 'O ID do aplicativo é obrigatório.',
+            'app_id.integer' => 'O ID do aplicativo deve ser um número.',
             'app_id.exists' => 'O ID do aplicativo deve existir.',
-            'entity_name.required' => 'O nome da entidade é obrigatório.',
-            'entity_id.required' => 'O ID da entidade é obrigatório.',
-            'items.required' => 'A lista de itens é obrigatória.',
-            'items.*.item_id.required' => 'O ID do item é obrigatório.',
-            'items.*.quantity.required' => 'A quantidade é obrigatória.',
-        ];
 
+            'entity_name.required' => 'O nome da entidade é obrigatório.',
+            'entity_name.string' => 'O nome da entidade deve ser um texto.',
+
+            'entity_id.required' => 'O ID da entidade é obrigatório.',
+            'entity_id.integer' => 'O ID da entidade deve ser um número.',
+
+            'items.required' => 'A lista de itens é obrigatória.',
+            'items.array' => 'A lista de itens deve ser um array.',
+            'items.min' => 'A lista de itens deve conter pelo menos 1 item.',
+
+            'items.*.item_id.required' => 'O ID do item é obrigatório.',
+            'items.*.item_id.integer' => 'O ID do item deve ser um número.',
+            'items.*.item_id.exists' => 'O item informado não existe.',
+
+            'items.*.quantity.required' => 'A quantidade é obrigatória.',
+            'items.*.quantity.integer' => 'A quantidade deve ser um número.',
+            'items.*.quantity.min' => 'A quantidade deve ser pelo menos 1.',
+
+            'origin.required' => 'A origem é obrigatória.',
+            'fulfillment.required' => 'O fulfillment é obrigatório.',
+            'payment_status.required' => 'O status do pagamento é obrigatório.',
+            'payment_method.required' => 'O método de pagamento é obrigatório.',
+
+            'order_datetime.required' => 'A data/hora do agendamento é obrigatória.',
+            'order_datetime.date' => 'A data/hora do agendamento é inválida.',
+
+            'attendant_id.required' => 'O atendente é obrigatório.',
+            'attendant_id.integer' => 'O atendente deve ser um número.',
+            'attendant_id.exists' => 'O colaborador informado não existe.',
+
+            'notes.string' => 'As observações devem ser um texto.',
+        ];
+    }
+
+    protected function storeRules(): array
+    {
+        return [
+            'mode' => 'required|string|in:appointment,direct',
+        ];
     }
 
     protected function appointmentRules(): array
     {
         return [
             'app_id' => 'required|integer|exists:applications,id',
-            'entity_name' => 'required|string',
+            'entity_name' => 'required|string|in:establishment',
             'entity_id' => 'required|integer',
+
             'items' => 'required|array|min:1',
             'items.*.item_id' => 'required|integer|exists:items,id',
             'items.*.quantity' => 'required|integer|min:1',
+
             'origin' => 'required|string',
             'fulfillment' => 'required|string',
             'payment_status' => 'required|string',
             'payment_method' => 'required|string',
+
             'order_datetime' => 'required|date',
             'attendant_id' => 'required|integer|exists:employers,id',
+
+            'notes' => 'nullable|string',
+        ];
+    }
+
+    protected function directRules(): array
+    {
+        return [
+            'app_id' => 'required|integer|exists:applications,id',
+            'entity_name' => 'required|string|in:establishment',
+            'entity_id' => 'required|integer',
+
+            'attendant_id' => 'required|integer|exists:employers,id',
+            'client_id' => 'required|integer|exists:users,id',
+
+            'customer_name' => 'required|string',
+
+            'origin' => 'required|string',
+            'fulfillment' => 'required|string',
+            'payment_status' => 'required|string',
+            'payment_method' => 'required|string',
+
+            'items' => 'required|array|min:1',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.quantity' => 'required|integer|min:1',
+
             'notes' => 'nullable|string',
         ];
     }
@@ -74,7 +146,6 @@ class OrderController extends ApiController
      ====================================================== */
     protected function normalizeDate(string $datetime): Carbon
     {
-        // ✅ Debug completo do que chega
         Log::info('[OrderController.normalizeDate] incoming datetime', [
             'raw' => $datetime,
             'server_tz' => config('app.timezone'),
@@ -82,7 +153,6 @@ class OrderController extends ApiController
             'now_sp' => now('America/Sao_Paulo')->format('Y-m-d H:i:sP'),
         ]);
 
-        // ✅ Converte SEMPRE para SP
         return Carbon::parse($datetime)
             ->tz('America/Sao_Paulo')
             ->startOfMinute();
@@ -93,50 +163,65 @@ class OrderController extends ApiController
         $total = 0;
 
         foreach ($items as $row) {
-            $itemId = (int) ($row['item_id'] ?? 0);
-            $qty = (int) ($row['quantity'] ?? 1);
+            $itemId = (int)($row['item_id'] ?? 0);
+            $qty = (int)($row['quantity'] ?? 1);
 
-            if (!$itemId)
+            if ($itemId <= 0) {
                 continue;
+            }
 
             $item = Item::find($itemId);
-            if (!$item)
+            if (!$item) {
                 continue;
+            }
 
-            $dur = (int) ($item->duration ?? 0);
+            $dur = (int)($item->duration ?? 0);
 
-            // ✅ fallback de segurança
-            if ($dur <= 0)
+            if ($dur <= 0) {
                 $dur = 30;
+            }
 
-            if ($qty <= 0)
+            if ($qty <= 0) {
                 $qty = 1;
+            }
 
             $total += ($dur * $qty);
         }
 
-        // ✅ fallback final
-        if ($total <= 0)
+        if ($total <= 0) {
             $total = 30;
+        }
 
         return $total;
     }
 
     protected function calculateTotalPrice(Order $order): float
     {
+        // precisa existir: items (pivot com subtotal) + modifiers
         $order->load('items.modifiers');
 
         $total = 0;
+
         foreach ($order->items as $item) {
-            $total += $item->subtotal;
+            $total += (float)($item->subtotal ?? 0);
+
             foreach ($item->modifiers as $modifier) {
-                if ($mod = Item::find($modifier->modifier_id)) {
-                    $total += $mod->price * ($modifier->quantity ?: 1);
+                $modifierItem = Item::find($modifier->modifier_id);
+                if ($modifierItem) {
+                    $q = (int)($modifier->quantity ?: 1);
+                    $total += (float)($modifierItem->price ?? 0) * $q;
                 }
             }
         }
 
-        return $total;
+        return (float)$total;
+    }
+
+    protected function validateClientIsNotEmployer(int $clientUserId, Employer $employer): void
+    {
+        if ((int)$employer->user_id === (int)$clientUserId) {
+            abort(422, 'Você não pode agendar um atendimento consigo mesmo.');
+        }
     }
 
     protected function validateSchedule(
@@ -145,13 +230,11 @@ class OrderController extends ApiController
         Carbon $end,
         ?int $ignoreOrderId = null
     ): void {
-
         $tz = 'America/Sao_Paulo';
 
         $start = $start->copy()->setTimezone($tz)->startOfMinute();
         $end = $end->copy()->setTimezone($tz)->startOfMinute();
 
-        // ✅ DEBUG: mostra no log exatamente start/end
         Log::info('[OrderController.validateSchedule] schedule check', [
             'attendant_id' => $attendantId,
             'start' => $start->format('Y-m-d H:i:sP'),
@@ -163,9 +246,9 @@ class OrderController extends ApiController
             abort(
                 422,
                 "Horário inválido: duração do serviço retornou 0 min.\n" .
-                "Início: {$start->format('d/m/Y H:i')}\n" .
-                "Fim: {$end->format('d/m/Y H:i')}\n" .
-                "Verifique se os serviços possuem duration cadastrado."
+                    "Início: {$start->format('d/m/Y H:i')}\n" .
+                    "Fim: {$end->format('d/m/Y H:i')}\n" .
+                    "Verifique se os serviços possuem duration cadastrado."
             );
         }
 
@@ -173,10 +256,7 @@ class OrderController extends ApiController
         $dayOfWeek = strtolower($start->format('l')); // monday..sunday
         $duration = $start->diffInMinutes($end);
 
-        // ======================================================
-        // ✅ 1) Valida se o colaborador tem expediente nesse dia
-        // ======================================================
-
+        // 1) valida expediente
         $workSchedules = EmployerSchedule::query()
             ->where('employer_id', $attendantId)
             ->where('type', 'work')
@@ -193,10 +273,7 @@ class OrderController extends ApiController
             ->map(fn($s) => "{$s->start_time} às {$s->end_time}")
             ->implode(' / ');
 
-        // ======================================================
-        // ✅ 2) Verifica se o agendamento cabe em ALGUM bloco
-        // ======================================================
-
+        // 2) cabe em algum bloco
         $fitsInWork = false;
         $closestEnd = null;
 
@@ -222,25 +299,21 @@ class OrderController extends ApiController
                 abort(
                     422,
                     "Horário inválido: o tempo do serviço estoura o expediente do colaborador.\n" .
-                    "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
-                    "Expediente do colaborador: {$workText}."
+                        "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
+                        "Expediente do colaborador: {$workText}."
                 );
             }
 
             abort(
                 422,
                 "Horário inválido: este colaborador não atende neste horário.\n" .
-                "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
-                "Expediente do colaborador: {$workText}."
+                    "Horário escolhido: {$startsAt} até {$endsAt} ({$duration} min).\n" .
+                    "Expediente do colaborador: {$workText}."
             );
         }
 
-        // ======================================================
-        // ✅ 3) Conflito com outros agendamentos
-        // ======================================================
-
-        if (Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
-
+        // 3) conflitos
+        if (method_exists(Order::class, 'hasScheduleConflict') && Order::hasScheduleConflict($attendantId, $start, $end, $ignoreOrderId)) {
             $conflictOrder = Order::query()
                 ->where('attendant_id', $attendantId)
                 ->where('type', 'appointment')
@@ -251,33 +324,51 @@ class OrderController extends ApiController
                 ->get(['id', 'order_datetime', 'total_duration'])
                 ->first(function ($o) use ($start, $end, $tz) {
                     $os = Carbon::parse($o->order_datetime)->setTimezone($tz)->startOfMinute();
-                    $oe = $os->copy()->addMinutes((int) ($o->total_duration ?? 30))->startOfMinute();
+                    $oe = $os->copy()->addMinutes((int)($o->total_duration ?? 30))->startOfMinute();
                     return $start->lt($oe) && $end->gt($os);
                 });
 
             if ($conflictOrder) {
                 $os = Carbon::parse($conflictOrder->order_datetime)->setTimezone($tz)->startOfMinute();
-                $oe = $os->copy()->addMinutes((int) ($conflictOrder->total_duration ?? 30))->startOfMinute();
+                $oe = $os->copy()->addMinutes((int)($conflictOrder->total_duration ?? 30))->startOfMinute();
 
                 abort(
                     422,
                     "Conflito de agenda: já existe um agendamento nesse horário.\n" .
-                    "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}.\n" .
-                    "Agendamento em conflito: {$os->format('H:i')} até {$oe->format('H:i')}."
+                        "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}.\n" .
+                        "Agendamento em conflito: {$os->format('H:i')} até {$oe->format('H:i')}."
                 );
             }
 
             abort(
                 422,
                 "Conflito de agenda: já existe um atendimento marcado nesse período.\n" .
-                "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}."
+                    "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}."
             );
-        }
-    }
-    protected function validateClientIsNotEmployer(int $clientUserId, Employer $employer): void
-    {
-        if ((int) $employer->user_id === (int) $clientUserId) {
-            abort(422, 'Você não pode agendar um atendimento consigo mesmo.');
+        } else {
+            // fallback se não existir hasScheduleConflict
+            $q = Order::query()
+                ->where('attendant_id', $attendantId)
+                ->where('type', 'appointment')
+                ->whereIn('appointment_status', ['pending', 'confirmed'])
+                ->whereDate('order_datetime', $date->toDateString())
+                ->when($ignoreOrderId, fn($qq) => $qq->where('id', '!=', $ignoreOrderId));
+
+            $existing = $q->get(['id', 'order_datetime', 'total_duration']);
+
+            foreach ($existing as $o) {
+                $os = Carbon::parse($o->order_datetime)->setTimezone($tz)->startOfMinute();
+                $oe = $os->copy()->addMinutes((int)($o->total_duration ?? 30))->startOfMinute();
+
+                if ($start->lt($oe) && $end->gt($os)) {
+                    abort(
+                        422,
+                        "Conflito de agenda: já existe um agendamento nesse horário.\n" .
+                            "Horário solicitado: {$start->format('H:i')} até {$end->format('H:i')}.\n" .
+                            "Agendamento em conflito: {$os->format('H:i')} até {$oe->format('H:i')}."
+                    );
+                }
+            }
         }
     }
 
@@ -287,20 +378,23 @@ class OrderController extends ApiController
     public function store(Request $request)
     {
         try {
-            $user = auth()->user();
+            // valida mode antes
+            $request->validate($this->storeRules(), $this->messages());
 
+            // valida regra de negócio cliente != employer quando vier direto
             if ($request->filled('employer_id') && $request->filled('client_id')) {
-                $employer = \App\Models\Employer::with('user')->find($request->input('employer_id'));
-
+                $employer = Employer::with('user')->find($request->input('employer_id'));
                 if (!$employer) {
                     return response()->json([
-                        'message' => 'Colaborador informado não foi encontrado.'
+                        'success' => false,
+                        'message' => 'Colaborador informado não foi encontrado.',
                     ], 422);
                 }
 
-                if ((int) $employer->user_id === (int) $request->input('client_id')) {
+                if ((int)$employer->user_id === (int)$request->input('client_id')) {
                     return response()->json([
-                        'message' => 'Não é possível realizar um agendamento onde o cliente e o colaborador são a mesma pessoa.'
+                        'success' => false,
+                        'message' => 'Não é possível realizar um agendamento onde o cliente e o colaborador são a mesma pessoa.',
                     ], 422);
                 }
             }
@@ -309,35 +403,58 @@ class OrderController extends ApiController
                 'appointment' => $this->storeAppointment($request),
                 'direct' => $this->storeDirect($request),
                 default => response()->json([
-                    'message' => 'Modo de cria��o inv�lido.'
+                    'success' => false,
+                    'message' => 'Modo de criação inválido.',
                 ], 422),
             };
         } catch (\Illuminate\Validation\ValidationException $e) {
             return response()->json([
-                'message' => 'Erro de valida��o.',
+                'success' => false,
+                'message' => 'Erro de validação.',
                 'errors' => $e->errors(),
             ], 422);
         } catch (\Throwable $e) {
+            Log::error('Order.store', [
+                'exception' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
+            ]);
+
             return response()->json([
-                'message' => 'Não foi possível concluir o agendamento devido a uma regra de negócio ou erro interno.',
+                'success' => false,
+                'message' => 'Não foi possível concluir o cadastro da order devido a uma regra de negócio ou erro interno.',
                 'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
 
-
-
+    /**
+     * ✅ APPOINTMENT
+     * Corrigido para:
+     * - sempre retornar JSON
+     * - sempre commit/rollback
+     * - validar agenda e futuro
+     * - criar order + attach items + total_price + total_duration
+     * - enviar emails após commit
+     */
     protected function storeAppointment(Request $request)
     {
         DB::beginTransaction();
 
         try {
             $user = $request->user();
+
             $data = $request->validate($this->appointmentRules(), $this->messages());
+
+            // valida entidade
+            if ($data['entity_name'] === 'establishment') {
+                $establishment = Establishment::query()->find($data['entity_id']);
+                if (!$establishment) {
+                    abort(422, 'Estabelecimento informado não foi encontrado.');
+                }
+            }
 
             $start = $this->normalizeDate($data['order_datetime']);
 
-            // ✅ log detalhado
             Log::info('[OrderController.storeAppointment] scheduling datetime', [
                 'incoming' => $data['order_datetime'],
                 'parsed_sp' => $start->format('Y-m-d H:i:sP'),
@@ -347,101 +464,226 @@ class OrderController extends ApiController
                 abort(
                     422,
                     "A data do agendamento deve ser futura.\n" .
-                    "Data recebida: {$start->format('d/m/Y H:i')}\n" .
-                    "Agora: " . now('America/Sao_Paulo')->format('d/m/Y H:i')
+                        "Data recebida: {$start->format('d/m/Y H:i')}\n" .
+                        "Agora: " . now('America/Sao_Paulo')->format('d/m/Y H:i')
                 );
             }
 
             $employer = Employer::with('user')->findOrFail($data['attendant_id']);
-            $this->validateClientIsNotEmployer($user->id, $employer);
+            $this->validateClientIsNotEmployer((int)$user->id, $employer);
 
             $duration = $this->calculateDuration($data['items']);
-            $end = $start->copy()->addMinutes($duration);
+            $end = $start->copy()->addMinutes($duration)->startOfMinute();
 
             $this->validateSchedule($employer->id, $start, $end);
 
-            // ... (restante do método igual)
-            // ⚠️ mantenha exatamente seu código daqui pra baixo
-
-            DB::commit();
-
-        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
-            DB::rollBack();
-            return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
-        } catch (\Throwable $e) {
-            DB::rollBack();
-            Log::error('Order.storeAppointment', ['error' => $e->getMessage()]);
-            return response()->json(['message' => 'Erro ao criar agendamento.'], 500);
-        }
-    }
-
-    public function storeDirect(Request $request)
-    {
-        DB::beginTransaction();
-
-        try {
-            $data = $request->validate([
-                'app_id' => 'required|integer|exists:applications,id',
-                'entity_name' => 'required|string',
-                'entity_id' => 'required|integer',
-                'attendant_id' => 'required|integer|exists:employers,id',
-                'client_id' => 'required|integer|exists:users,id',
-                'customer_name' => 'required|string',
-                'origin' => 'required|string',
-                'fulfillment' => 'required|string',
-                'payment_status' => 'required|string',
-                'payment_method' => 'required|string',
-                'items' => 'required|array|min:1',
-                'items.*.item_id' => 'required|integer|exists:items,id',
-                'items.*.quantity' => 'required|integer|min:1',
-            ], $this->messages());
-
-            $employer = Employer::with('user')->findOrFail($data['attendant_id']);
-            $this->validateClientIsNotEmployer($data['client_id'], $employer);
-
+            // cria order
             $order = Order::create([
                 'app_id' => $data['app_id'],
                 'entity_name' => $data['entity_name'],
                 'entity_id' => $data['entity_id'],
-                'order_number' => Order::nextOrderNumber($data['app_id']),
-                'order_datetime' => now('America/Sao_Paulo'),
-                'created_by' => $request->user()->id,
-                'client_id' => $data['client_id'],
+
+                'order_number' => method_exists(Order::class, 'nextOrderNumber')
+                    ? Order::nextOrderNumber($data['app_id'])
+                    : null,
+
+                // importante: salvar no banco SEM timezone bugado
+                'order_datetime' => $start->format('Y-m-d H:i:s'),
+
+                'created_by' => $user->id,
+                'client_id' => $user->id,
                 'attendant_id' => $employer->id,
-                'customer_name' => $data['customer_name'],
+
+                'customer_name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->user_name ?? 'Cliente'),
+
                 'origin' => $data['origin'],
                 'fulfillment' => $data['fulfillment'],
                 'payment_status' => $data['payment_status'],
                 'payment_method' => $data['payment_method'],
-                'type' => 'direct',
-                'status' => 'completed',
+
+                'type' => 'appointment',
+                'status' => 'pending', // order status
+                'appointment_status' => 'pending', // appointment status
+
                 'total_price' => 0,
-                'total_duration' => 0,
+                'total_duration' => $duration,
+
+                'notes' => $data['notes'] ?? null,
             ]);
 
+            // attach itens
+            if (!method_exists($order, 'attachItems')) {
+                abort(500, 'Método attachItems não existe no Model Order.');
+            }
+
             $order->attachItems($data['items']);
-            $order->update(['total_price' => $this->calculateTotalPrice($order)]);
+
+            // atualiza preço total
+            $total = $this->calculateTotalPrice($order);
+            $order->update([
+                'total_price' => $total,
+                'total_duration' => $duration,
+            ]);
 
             DB::commit();
 
+            // emails após commit
+            try {
+                $this->sendAppointmentEmails($order->fresh(), $employer, $user);
+            } catch (\Throwable $e) {
+                Log::error('Order.storeAppointment.emails', ['error' => $e->getMessage()]);
+            }
+
             return response()->json([
-                'message' => 'Pedido criado com sucesso.',
+                'success' => true,
+                'message' => 'Agendamento criado com sucesso e aguardando confirmação.',
                 'order' => $this->utf8ize(
                     $order->fresh()->load([
                         'items.item',
+                        'items.modifiers.modifier',
                         'client',
                         'attendant.user',
                     ])->toArray()
                 ),
             ], 201);
-
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
             DB::rollBack();
-            return response()->json(['message' => $e->getMessage()], $e->getStatusCode());
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro de validação.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Throwable $e) {
             DB::rollBack();
-            Log::error('Order.storeDirect', ['error' => $e->getMessage()]);
-            return response()->json(['message' => 'Erro ao criar pedido.'], 500);
+
+            Log::error('Order.storeAppointment', [
+                'exception' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao criar agendamento.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * ✅ DIRECT ORDER
+     * Corrigido para:
+     * - validar client != employer
+     * - sempre retornar success + order
+     */
+    public function storeDirect(Request $request)
+    {
+        DB::beginTransaction();
+
+        try {
+            $data = $request->validate($this->directRules(), $this->messages());
+
+            // valida entidade
+            if ($data['entity_name'] === 'establishment') {
+                $establishment = Establishment::query()->find($data['entity_id']);
+                if (!$establishment) {
+                    abort(422, 'Estabelecimento informado não foi encontrado.');
+                }
+            }
+
+            $employer = Employer::with('user')->findOrFail($data['attendant_id']);
+            $this->validateClientIsNotEmployer((int)$data['client_id'], $employer);
+
+            $order = Order::create([
+                'app_id' => $data['app_id'],
+                'entity_name' => $data['entity_name'],
+                'entity_id' => $data['entity_id'],
+
+                'order_number' => method_exists(Order::class, 'nextOrderNumber')
+                    ? Order::nextOrderNumber($data['app_id'])
+                    : null,
+
+                'order_datetime' => now('America/Sao_Paulo')->format('Y-m-d H:i:s'),
+
+                'created_by' => $request->user()->id,
+                'client_id' => $data['client_id'],
+                'attendant_id' => $employer->id,
+
+                'customer_name' => $data['customer_name'],
+
+                'origin' => $data['origin'],
+                'fulfillment' => $data['fulfillment'],
+                'payment_status' => $data['payment_status'],
+                'payment_method' => $data['payment_method'],
+
+                'type' => 'direct',
+                'status' => 'completed',
+
+                'total_price' => 0,
+                'total_duration' => 0,
+
+                'notes' => $data['notes'] ?? null,
+            ]);
+
+            if (!method_exists($order, 'attachItems')) {
+                abort(500, 'Método attachItems não existe no Model Order.');
+            }
+
+            $order->attachItems($data['items']);
+
+            $order->update([
+                'total_price' => $this->calculateTotalPrice($order),
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Pedido criado com sucesso.',
+                'order' => $this->utf8ize(
+                    $order->fresh()->load([
+                        'items.item',
+                        'items.modifiers.modifier',
+                        'client',
+                        'attendant.user',
+                    ])->toArray()
+                ),
+            ], 201);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], $e->getStatusCode());
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro de validação.',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Throwable $e) {
+            DB::rollBack();
+
+            Log::error('Order.storeDirect', [
+                'exception' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao criar pedido.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
         }
     }
 
@@ -459,6 +701,7 @@ class OrderController extends ApiController
             ->get();
 
         return response()->json([
+            'success' => true,
             'message' => 'Pedidos listados com sucesso.',
             'orders' => $orders,
         ]);
@@ -474,11 +717,11 @@ class OrderController extends ApiController
             ->get();
 
         return response()->json([
+            'success' => true,
             'message' => 'Pedidos do colaborador listados com sucesso.',
             'orders' => $orders,
         ]);
     }
-
 
     public function listByClient(Request $request)
     {
@@ -486,15 +729,48 @@ class OrderController extends ApiController
             $authUserId = $request->user()->id;
             $appId = $request->input('app_id');
 
-            // desativa os appends para não carregar atributos que quebram
-            Order::flushEventListeners(); // evita triggers de append
-            $orders = Order::where('app_id', $appId)
+            $orders = Order::query()
+                ->where('app_id', $appId)
                 ->where('client_id', $authUserId)
-                ->get(['id', 'app_id', 'entity_name', 'entity_id', 'order_number', 'order_datetime', 'created_by', 'attendant_id', 'client_id', 'customer_name', 'customer_phone', 'customer_email', 'customer_cpf', 'access_code', 'origin', 'fulfillment', 'payment_status', 'payment_method', 'total_price', 'total_duration', 'status', 'notes', 'type', 'appointment_status', 'confirmed_by', 'cancelled_by', 'cancelled_reason', 'attended_at', 'created_at', 'updated_at']);
+                ->get([
+                    'id',
+                    'app_id',
+                    'entity_name',
+                    'entity_id',
+                    'order_number',
+                    'order_datetime',
+                    'created_by',
+                    'attendant_id',
+                    'client_id',
+                    'customer_name',
+                    'customer_phone',
+                    'customer_email',
+                    'customer_cpf',
+                    'access_code',
+                    'origin',
+                    'fulfillment',
+                    'payment_status',
+                    'payment_method',
+                    'total_price',
+                    'total_duration',
+                    'status',
+                    'notes',
+                    'type',
+                    'appointment_status',
+                    'confirmed_by',
+                    'cancelled_by',
+                    'cancelled_reason',
+                    'attended_at',
+                    'created_at',
+                    'updated_at'
+                ]);
 
-            return response()->json($orders);
-
-        } catch (\Exception $e) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Pedidos do cliente listados com sucesso.',
+                'orders' => $orders,
+            ], 200);
+        } catch (\Throwable $e) {
             Log::error('Order.listByClient', [
                 'auth_user_id' => $request->user()->id ?? null,
                 'app_id' => $request->input('app_id') ?? null,
@@ -502,7 +778,9 @@ class OrderController extends ApiController
             ]);
 
             return response()->json([
-                'error' => 'Erro ao listar pedidos do cliente'
+                'success' => false,
+                'message' => 'Erro ao listar pedidos do cliente.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
             ], 500);
         }
     }
@@ -517,6 +795,7 @@ class OrderController extends ApiController
         ])->findOrFail($id);
 
         return response()->json([
+            'success' => true,
             'message' => 'Pedido carregado com sucesso.',
             'order' => $order,
         ]);
@@ -543,6 +822,7 @@ class OrderController extends ApiController
         ]));
 
         return response()->json([
+            'success' => true,
             'message' => 'Pedido atualizado com sucesso.',
             'order' => $order->fresh(),
         ]);
@@ -554,6 +834,9 @@ class OrderController extends ApiController
 
         $request->validate([
             'status' => 'required|string',
+        ], [
+            'status.required' => 'O status é obrigatório.',
+            'status.string' => 'O status deve ser um texto.',
         ]);
 
         $order->update([
@@ -561,8 +844,9 @@ class OrderController extends ApiController
         ]);
 
         return response()->json([
+            'success' => true,
             'message' => 'Status do pedido atualizado com sucesso.',
-            'order' => $order,
+            'order' => $order->fresh(),
         ]);
     }
 
@@ -574,22 +858,37 @@ class OrderController extends ApiController
         try {
             $establishment = Establishment::with('user')->find($order->entity_id);
 
-            $user?->email && Mail::to($user->email)
-                ->queue(new AppointmentAwaitingConfirmation($order, $establishment, $employer->user));
+            if ($user?->email) {
+                Mail::to($user->email)->queue(
+                    new AppointmentAwaitingConfirmation($order, $establishment, $employer->user)
+                );
+            }
 
-            $employer->user?->email && Mail::to($employer->user->email)
-                ->queue(new NewAppointmentNotification($order, $establishment, $user));
+            if ($employer->user?->email) {
+                Mail::to($employer->user->email)->queue(
+                    new NewAppointmentNotification($order, $establishment, $user)
+                );
+            }
 
-            $establishment?->user?->email && Mail::to($establishment->user->email)
-                ->queue(new OwnerAppointmentNotification(
-                    $order,
-                    trim($establishment->user->first_name . ' ' . $establishment->user->last_name),
-                    $user
-                ));
+            if ($establishment?->user?->email) {
+                Mail::to($establishment->user->email)->queue(
+                    new OwnerAppointmentNotification(
+                        $order,
+                        trim(($establishment->user->first_name ?? '') . ' ' . ($establishment->user->last_name ?? '')),
+                        $user
+                    )
+                );
+            }
         } catch (\Throwable $e) {
-            Log::error('Order.sendAppointmentEmails', ['error' => $e->getMessage()]);
+            Log::error('Order.sendAppointmentEmails', [
+                'error' => $e->getMessage(),
+            ]);
         }
     }
+
+    /* ======================================================
+     | LIST MY (mantido seu padrão completo)
+     ====================================================== */
     public function listMy(Request $request, int $app_id)
     {
         try {
@@ -597,9 +896,6 @@ class OrderController extends ApiController
             $tz = 'America/Sao_Paulo';
             $now = now($tz)->format('Y-m-d H:i:s');
 
-            // ==========================================================
-            // Helpers
-            // ==========================================================
             $latestFileFromCollection = function ($files, string $type) {
                 if (!$files || !($files instanceof \Illuminate\Support\Collection)) {
                     return null;
@@ -609,57 +905,48 @@ class OrderController extends ApiController
                     ->where('type', $type)
                     ->sortByDesc(function ($f) {
                         $createdAt = $f->created_at ? strtotime($f->created_at) : 0;
-                        $id = (int) ($f->id ?? 0);
+                        $id = (int)($f->id ?? 0);
                         return ($createdAt * 1000000) + $id;
                     })
                     ->first();
             };
 
             $mapFilePayload = function ($file) {
-                if (!$file)
+                if (!$file) {
                     return null;
+                }
 
                 return [
                     'id' => $file->id ?? null,
                     'type' => $file->type ?? null,
                     'path' => $file->path ?? ($file->file_path ?? null),
-
-                    // ✅ SEMPRE public_url
                     'public_url' => $file->public_url ?? null,
                     'url' => $file->public_url ?? ($file->url ?? null),
-
                     'created_at' => $file->created_at ?? null,
                 ];
             };
 
-            // ==========================================================
-            // Orders - TODOS os pedidos do cliente
-            // Ordenação UX PERFEITA:
-            // 1) FUTUROS (order_datetime >= agora) primeiro, por ordem do mais próximo (ASC)
-            // 2) PASSADOS depois, do mais recente passado (DESC)
-            // 3) tipo/direct etc entra junto naturalmente pelo order_datetime
-            // ==========================================================
             $orders = Order::query()
                 ->where('app_id', $app_id)
                 ->where('client_id', $authUserId)
                 ->orderByRaw("
-                CASE
-                    WHEN order_datetime >= ? THEN 0
-                    ELSE 1
-                END ASC
-            ", [$now])
+                    CASE
+                        WHEN order_datetime >= ? THEN 0
+                        ELSE 1
+                    END ASC
+                ", [$now])
                 ->orderByRaw("
-                CASE
-                    WHEN order_datetime >= ? THEN order_datetime
-                    ELSE NULL
-                END ASC
-            ", [$now])
+                    CASE
+                        WHEN order_datetime >= ? THEN order_datetime
+                        ELSE NULL
+                    END ASC
+                ", [$now])
                 ->orderByRaw("
-                CASE
-                    WHEN order_datetime < ? THEN order_datetime
-                    ELSE NULL
-                END DESC
-            ", [$now])
+                    CASE
+                        WHEN order_datetime < ? THEN order_datetime
+                        ELSE NULL
+                    END DESC
+                ", [$now])
                 ->orderByDesc('id')
                 ->with([
                     'attendant' => function ($q) {
@@ -713,9 +1000,6 @@ class OrderController extends ApiController
                     'updated_at',
                 ]);
 
-            // ==========================================================
-            // Establishments usados nesses pedidos
-            // ==========================================================
             $establishmentIds = $orders
                 ->filter(fn($o) => $o->entity_name === 'establishment' && !empty($o->entity_id))
                 ->pluck('entity_id')
@@ -748,29 +1032,23 @@ class OrderController extends ApiController
                 $establishmentsMap = $establishments->keyBy('id');
             }
 
-            // ==========================================================
-            // Payload
-            // ==========================================================
             $payload = $orders->map(function ($o) use ($establishmentsMap, $latestFileFromCollection, $mapFilePayload, $tz) {
                 $employer = $o->attendant;
                 $employerUser = $employer?->user;
 
-                // ✅ Avatar mais recente do user do employer
                 $avatarFile = $latestFileFromCollection($employerUser?->files, 'avatar');
 
-                // ✅ establishment e imagens mais recentes
                 $establishment = null;
                 $logoFile = null;
                 $bgFile = null;
 
                 if ($o->entity_name === 'establishment' && !empty($o->entity_id)) {
-                    $establishment = $establishmentsMap->get((int) $o->entity_id);
+                    $establishment = $establishmentsMap->get((int)$o->entity_id);
 
                     $logoFile = $latestFileFromCollection($establishment?->files, 'logo');
                     $bgFile = $latestFileFromCollection($establishment?->files, 'background');
                 }
 
-                // ✅ flag útil pro front
                 $isFuture = false;
                 if (!empty($o->order_datetime)) {
                     try {
@@ -799,8 +1077,6 @@ class OrderController extends ApiController
                     'payment_method' => $o->payment_method ?? null,
                     'created_at' => $o->created_at,
                     'updated_at' => $o->updated_at,
-
-                    // ✅ ajuda o front a separar "próximos" e "passados"
                     'is_future' => $isFuture,
 
                     'establishment' => $establishment ? [
@@ -838,7 +1114,6 @@ class OrderController extends ApiController
                 'message' => 'Pedidos listados com sucesso.',
                 'orders' => $payload,
             ], 200);
-
         } catch (\Throwable $e) {
             Log::error('Order.listMy', [
                 'auth_user_id' => $request->user()->id ?? null,
@@ -854,7 +1129,4 @@ class OrderController extends ApiController
             ], 500);
         }
     }
-
 }
-
-
