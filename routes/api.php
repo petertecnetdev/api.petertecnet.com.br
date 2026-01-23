@@ -237,6 +237,10 @@ Route::prefix('order')->middleware(['api', 'auth:api'])->group(function () {
 
     Route::put('/{id}', [OrderController::class, 'update'])->whereNumber('id')->name('order.update');
     Route::put('/{id}/update-status', [OrderController::class, 'updateOrderStatus'])->whereNumber('id')->name('order.updateOrderStatus');
+    Route::get('/listmy/{app_id}', [OrderController::class, 'listMy'])
+        ->whereNumber('app_id')
+        ->name('order.listMy');
+
 });
 
 /*

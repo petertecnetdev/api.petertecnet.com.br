@@ -590,4 +590,72 @@ class OrderController extends ApiController
             Log::error('Order.sendAppointmentEmails', ['error' => $e->getMessage()]);
         }
     }
+
+
+    public function listMy(Request $request, int $app_id)
+    {
+        try {
+            $authUserId = $request->user()->id;
+
+            // ✅ SOMENTE agendamentos do cliente logado
+            $orders = Order::query()
+                ->where('app_id', $app_id)
+                ->where('client_id', $authUserId)
+                ->where('type', 'appointment')
+                ->orderBy('order_datetime', 'desc')
+                ->get([
+                    'id',
+                    'app_id',
+                    'entity_name',
+                    'entity_id',
+                    'order_number',
+                    'order_datetime',
+                    'created_by',
+                    'attendant_id',
+                    'client_id',
+                    'customer_name',
+                    'customer_phone',
+                    'customer_email',
+                    'customer_cpf',
+                    'access_code',
+                    'origin',
+                    'fulfillment',
+                    'payment_status',
+                    'payment_method',
+                    'total_price',
+                    'total_duration',
+                    'status',
+                    'notes',
+                    'type',
+                    'appointment_status',
+                    'confirmed_by',
+                    'cancelled_by',
+                    'cancelled_reason',
+                    'attended_at',
+                    'created_at',
+                    'updated_at',
+                ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Agendamentos listados com sucesso.',
+                'orders' => $orders,
+            ], 200);
+
+        } catch (\Throwable $e) {
+            Log::error('Order.listMy', [
+                'auth_user_id' => $request->user()->id ?? null,
+                'app_id' => $app_id ?? null,
+                'exception' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Erro ao listar seus agendamentos.',
+            ], 500);
+        }
+    }
+
 }
+
+
