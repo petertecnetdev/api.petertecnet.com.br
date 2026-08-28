@@ -1,8 +1,21 @@
 <?php
 
-$allowedOrigins = array_values(array_filter(array_map(
+$officialFrontendOrigins = [
+    'https://nexus.petertecnet.com.br',
+    'https://rasoio.petertecnet.com.br',
+    'https://plat.petertecnet.com.br',
+    'https://cutinapp.petertecnet.com.br',
+    'https://inkap.petertecnet.com.br',
+];
+
+$extraOrigins = array_values(array_filter(array_map(
     'trim',
     explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))
+)));
+
+$allowedOrigins = array_values(array_unique(array_merge(
+    $officialFrontendOrigins,
+    $extraOrigins
 )));
 
 return [
@@ -10,14 +23,13 @@ return [
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    // Extra exact origins can be supplied as a comma-separated environment value.
+    // Official Peter Tecnet browser applications plus optional environment-specific origins.
     'allowed_origins' => $allowedOrigins,
 
-    // Browser applications hosted inside the Peter Tecnet ecosystem are trusted by default.
-    // Localhost is allowed only for local frontend development.
+    // Keep the ecosystem pattern for future Peter Tecnet apps and localhost for development.
     'allowed_origins_patterns' => [
-        '#^https://([a-z0-9-]+\.)*petertecnet\.com\.br$#i',
-        '#^https?://(localhost|127\.0\.0\.1)(:\d{1,5})?$#i',
+        '#^https://([a-z0-9-]+\\.)*petertecnet\\.com\\.br$#i',
+        '#^https?://(localhost|127\\.0\\.0\\.1)(:\\d{1,5})?$#i',
     ],
 
     'allowed_headers' => [
