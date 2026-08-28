@@ -30,11 +30,11 @@ class User extends Authenticatable implements JWTSubject
     protected $fillable = [
         'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'password',
         'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
-        'cpf', 'google_id', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
+        'cpf', 'google_id', 'avatar', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
         'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
         'payment_method', 'newsletter_subscription', 'ticket_purchases', 'account_balance',
-        'is_producer', 'is_participant', 'is_promoter', 'is_partner', 'is_ticket_seller',
-        'extra_info', 'email_verified_at',
+        'is_producer', 'is_participant', 'is_promoter', 'is_barber', 'is_barbershoper',
+        'is_partner', 'is_ticket_seller', 'extra_info', 'email_verified_at',
     ];
 
     protected $hidden = [
@@ -48,10 +48,14 @@ class User extends Authenticatable implements JWTSubject
     protected $casts = [
         'email_verified_at' => 'datetime',
         'reset_password_expires_at' => 'datetime',
+        'birthdate' => 'date',
+        'extra_info' => 'array',
         'newsletter_subscription' => 'boolean',
         'is_producer' => 'boolean',
         'is_participant' => 'boolean',
         'is_promoter' => 'boolean',
+        'is_barber' => 'boolean',
+        'is_barbershoper' => 'boolean',
         'is_partner' => 'boolean',
         'is_ticket_seller' => 'boolean',
         'account_balance' => 'decimal:2',
