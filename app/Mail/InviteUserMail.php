@@ -14,16 +14,11 @@ class InviteUserMail extends Mailable
     public $code;
     public $appName;
 
-    public function __construct($user, $code, $appId)
+    public function __construct($user, $code, string $appName)
     {
         $this->user = $user;
         $this->code = $code;
-
-        $this->appName = match ((int) $appId) {
-            2 => 'Rasoio',
-            3 => 'Cutinapp',
-            default => 'Plataforma Peter Tecnet',
-        };
+        $this->appName = trim($appName) ?: 'Plataforma Peter Tecnet';
     }
 
     public function build()
