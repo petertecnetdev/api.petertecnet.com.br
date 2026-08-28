@@ -1,31 +1,39 @@
 <?php
 
+$allowedOrigins = array_values(array_filter(array_map(
+    'trim',
+    explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))
+)));
+
 return [
+    'paths' => ['api/*'],
 
-    /*
-    |--------------------------------------------------------------------------
-    | CORS Configuration
-    |--------------------------------------------------------------------------
-    |
-    | Define as configurações para requisições cross-origin.
-    | Esta configuração permite que qualquer origem acesse a API,
-    | sem suporte a cookies ou credenciais (suporte a sessões).
-    |
-    */
+    'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    // Extra exact origins can be supplied as a comma-separated environment value.
+    'allowed_origins' => $allowedOrigins,
 
-    'allowed_methods' => ['*'],
+    // Browser applications hosted inside the Peter Tecnet ecosystem are trusted by default.
+    // Localhost is allowed only for local frontend development.
+    'allowed_origins_patterns' => [
+        '#^https://([a-z0-9-]+\.)*petertecnet\.com\.br$#i',
+        '#^https?://(localhost|127\.0\.0\.1)(:\d{1,5})?$#i',
+    ],
 
-    'allowed_origins' => ['*'], // PERMITE QUALQUER ORIGEM
+    'allowed_headers' => [
+        'Accept',
+        'Authorization',
+        'Content-Type',
+        'Origin',
+        'X-Requested-With',
+        'X-Request-ID',
+        'X-App-ID',
+    ],
 
-    'allowed_origins_patterns' => [],
+    'exposed_headers' => ['X-Request-ID'],
 
-    'allowed_headers' => ['*'], // PERMITE TODOS OS HEADERS
+    'max_age' => 600,
 
-    'exposed_headers' => [],
-
-    'max_age' => 0,
-
-    'supports_credentials' => false, // NÃO PERMITE USO DE COOKIES/CREDENCIAIS (OBRIGATÓRIO COM '*')
+    // Authentication is token based; cross-origin cookies are intentionally disabled.
+    'supports_credentials' => false,
 ];
