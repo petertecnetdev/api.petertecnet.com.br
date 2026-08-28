@@ -44,6 +44,11 @@ class ResolveApplicationContext
         $request->attributes->set('application', $application);
         $request->attributes->set('app_id', $application->id);
 
+        // The application identifier is infrastructure context, not a controller
+        // argument. Remove it after resolution so action parameters keep matching
+        // their own route variables (slug, item, employer, establishment, etc.).
+        $request->route()?->forgetParameter('application');
+
         try {
             return $next($request);
         } finally {
