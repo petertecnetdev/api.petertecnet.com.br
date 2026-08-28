@@ -82,7 +82,6 @@ class Item extends Model
         });
     }
 
-
     public function files(): HasMany
     {
         return $this->hasMany(File::class, 'entity_id')
@@ -107,39 +106,35 @@ class Item extends Model
         return $this->morphTo(null, 'entity_name', 'entity_id');
     }
 
-
     public function establishment()
     {
         return $this->belongsTo(Establishment::class, 'entity_id', 'id');
     }
+
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class);
     }
 
-
-
     public static function otherItems(int $limit = 20): Collection
     {
-        // Pega itens ativos agrupados por estabelecimento
         $groups = Item::with('establishment')
             ->where('status', 'active')
             ->get()
             ->groupBy('entity_id');
 
-        // Embaralha os grupos para não começar sempre pelo mesmo estabelecimento
         $groups = $groups->shuffle();
-
         $result = collect();
 
         while ($groups->isNotEmpty() && $result->count() < $limit) {
             foreach ($groups as $key => $group) {
                 if ($group->isNotEmpty()) {
-                    $result->push($group->shift()); // pega 1 item do grupo
-                    if ($result->count() >= $limit)
+                    $result->push($group->shift());
+                    if ($result->count() >= $limit) {
                         break 2;
+                    }
                 } else {
-                    $groups->forget($key); // remove grupo vazio
+                    $groups->forget($key);
                 }
             }
         }
@@ -197,7 +192,8 @@ class Item extends Model
             $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
             $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
 
-            $totalRevenue = (clone $orderItems)->sum('total_price');
+            // order_items stores each line total in subtotal (unit_price * quantity).
+            $totalRevenue = (clone $orderItems)->sum('subtotal');
             $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
             $firstView = $viewsQuery->min('created_at');
@@ -231,7 +227,6 @@ class Item extends Model
                 ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
                 : 0;
 
-            // Trocar employer_id por attendant_id
             $employerStats = (clone $orders)
                 ->selectRaw('attendant_id, COUNT(*) as total')
                 ->whereNotNull('attendant_id')
@@ -265,30 +260,23 @@ class Item extends Model
                 'avg_views_per_user' => $avgViewsPerUser,
                 'avg_views_per_day' => $avgViewsPerDay,
                 'days_active' => $daysActive,
-
                 'likes' => $totalLikes,
                 'favorites' => $totalFavorites,
-
                 'total_orders' => $totalOrders,
                 'completed_orders' => $completedOrders,
                 'cancelled_orders' => $cancelledOrders,
                 'pending_orders' => $pendingOrders,
-
                 'total_revenue' => $totalRevenue,
                 'average_ticket' => $averageTicket,
-
                 'conversion_rate' => $conversionRate,
                 'completion_rate' => $completionRate,
                 'cancellation_rate' => $cancellationRate,
                 'return_rate' => $returnRate,
-
                 'top_employer' => $topEmployerData,
-
                 'engagement_score' => $engagementScore,
             ];
         });
     }
-
 
     public static function totalDurationForItems(array $items): int
     {
