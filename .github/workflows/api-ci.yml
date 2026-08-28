@@ -1,0 +1,65 @@
+name: API CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+
+      - name: Validate Composer manifest
+        run: composer validate --no-check-publish
+
+      - name: Install dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: PHP syntax check
+        shell: bash
+        run: |
+          find app bootstrap config database routes tests -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Prepare application environment
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/api.sqlite
+          CACHE_DRIVER=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          touch /tmp/api.sqlite
+
+      - name: Build Laravel caches
+        run: |
+          php artisan config:clear
+          php artisan route:clear
+          php artisan route:list
+
+      - name: Run migrations on clean database
+        run: php artisan migrate --force
+
+      - name: Run tests
+        run: php artisan test
