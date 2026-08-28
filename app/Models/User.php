@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Traits\HasFiles;
+use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -190,39 +191,13 @@ class User extends Authenticatable implements JWTSubject
         ]);
     }
 
+    /**
+     * Backwards-compatible facade for legacy callers. Network I/O now lives
+     * in LocationService, where HTTPS, timeout and caching are centralized.
+     */
     public static function geoFromIp($ip): array
     {
-        if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return ['city' => null, 'uf' => null];
-        }
-
-        try {
-            $url = 'http://ip-api.com/json/' . rawurlencode($ip) . '?fields=status,message,city,region';
-            $context = stream_context_create([
-                'http' => [
-                    'timeout' => 2,
-                    'ignore_errors' => true,
-                ],
-            ]);
-            $response = @file_get_contents($url, false, $context);
-
-            if (! $response) {
-                return ['city' => null, 'uf' => null];
-            }
-
-            $geo = json_decode($response, true);
-
-            if (is_array($geo) && ($geo['status'] ?? null) === 'success') {
-                return [
-                    'city' => $geo['city'] ?? null,
-                    'uf' => $geo['region'] ?? null,
-                ];
-            }
-        } catch (\Throwable $e) {
-            report($e);
-        }
-
-        return ['city' => null, 'uf' => null];
+        return app(LocationService::class)->fromIp($ip);
     }
 
     public static function credentials($username, $password): array
