@@ -29,24 +29,47 @@ class RasoioWorkflowController extends ApiController
 
         $orders = empty($employerIds)
             ? collect()
-            : Order::query()
-                ->where('app_id', self::APP_ID)
-                ->where('type', 'appointment')
+            : $this->orderedAppointmentsQuery()
                 ->whereIn('attendant_id', $employerIds)
-                ->with([
-                    'items.item',
-                    'client',
-                    'attendant.user',
-                ])
-                ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN 0 WHEN appointment_status IN ('pending','confirmed') THEN 1 ELSE 2 END")
-                ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN order_datetime END ASC")
-                ->orderBy('order_datetime', 'desc')
                 ->get();
 
         return response()->json([
             'success' => true,
             'employers' => $employers,
             'employer' => $employers->first(),
+            'orders' => $orders,
+        ]);
+    }
+
+    public function establishmentOrders(Request $request, string $slug)
+    {
+        $actorId = (int) $request->user()->id;
+        $establishment = Establishment::query()
+            ->where('app_id', self::APP_ID)
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $establishment->user_id === $actorId || (int) $establishment->created_by === $actorId,
+            403,
+            'Somente o responsável pela barbearia pode acessar esta agenda operacional.'
+        );
+
+        $employers = Employer::query()
+            ->where('establishment_id', $establishment->id)
+            ->with('user:id,first_name,last_name,user_name,avatar')
+            ->orderBy('id')
+            ->get();
+
+        $orders = $this->orderedAppointmentsQuery()
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'establishment' => $establishment,
+            'employers' => $employers,
             'orders' => $orders,
         ]);
     }
@@ -225,6 +248,17 @@ class RasoioWorkflowController extends ApiController
             'employments' => $employers,
             'managed_establishments' => $ownedEstablishments,
         ]);
+    }
+
+    private function orderedAppointmentsQuery()
+    {
+        return Order::query()
+            ->where('app_id', self::APP_ID)
+            ->where('type', 'appointment')
+            ->with(['items.item', 'client', 'attendant.user'])
+            ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN 0 WHEN appointment_status IN ('pending','confirmed') THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN order_datetime END ASC")
+            ->orderBy('order_datetime', 'desc');
     }
 
     private function authorizeOrderManagement(Order $order, int $actorId): void
