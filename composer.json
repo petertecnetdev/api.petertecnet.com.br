@@ -1,23 +1,18 @@
 {
-    "name": "laravel/laravel",
+    "name": "petertecnet/api",
     "type": "project",
-    "description": "The Laravel Framework.",
-    "keywords": ["framework", "laravel"],
-    "license": "MIT",
+    "description": "Shared API platform for Peter Tecnet applications.",
+    "keywords": ["laravel", "api", "petertecnet"],
+    "license": "proprietary",
     "require": {
         "php": "^8.0.2",
         "barryvdh/laravel-dompdf": "^3.1",
-        "dompdf/dompdf": "*",
-        "fruitcake/laravel-cors": "^3.0",
         "google/apiclient": "^2.18",
         "guzzlehttp/guzzle": "^7.2",
         "intervention/image": "^2.7",
         "laravel/framework": "^9.19",
-        "laravel/sanctum": "^2.14.1",
         "laravel/tinker": "^2.7",
-        "mpdf/mpdf": "^8.2",
-        "torann/geoip": "^3.0",
-        "tymon/jwt-auth": "*"
+        "tymon/jwt-auth": "^2.3"
     },
     "require-dev": {
         "fakerphp/faker": "^1.9.1",
@@ -62,8 +57,11 @@
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
-        "sort-packages": true
+        "sort-packages": true,
+        "allow-plugins": {
+            "php-http/discovery": true
+        }
     },
-    "minimum-stability": "dev",
+    "minimum-stability": "stable",
     "prefer-stable": true
 }
