@@ -125,7 +125,7 @@ class FileController extends Controller
     public function view($slug)
     {
         $file = File::query()
-            ->where('slug', $slug)
+            ->where('uuid', $slug)
             ->where('visibility', 'public')
             ->where('status', 'active')
             ->firstOrFail();
