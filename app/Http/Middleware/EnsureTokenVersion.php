@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -33,7 +34,15 @@ class EnsureTokenVersion
             ], 401);
         }
 
-        if ($tokenVersion < 1 || $tokenVersion !== (int) ($user->auth_version ?: 1)) {
+        // Always compare against a fresh database value. The JWT guard may keep
+        // the authenticated model in memory for the lifetime of the request or
+        // test process, which must never allow an already-revoked token through.
+        $currentVersion = (int) User::query()
+            ->whereKey($user->getKey())
+            ->value('auth_version');
+        $currentVersion = max($currentVersion, 1);
+
+        if ($tokenVersion < 1 || $tokenVersion !== $currentVersion) {
             return response()->json([
                 'success' => false,
                 'message' => 'Sua sessão expirou por uma alteração de segurança. Faça login novamente.',
