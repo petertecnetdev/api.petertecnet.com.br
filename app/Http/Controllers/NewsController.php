@@ -7,6 +7,7 @@ use App\Models\News;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Intervention\Image\Facades\Image;
 
 class NewsController extends Controller
@@ -165,7 +166,7 @@ class NewsController extends Controller
 
     private function storeImage($uploaded): string
     {
-        $path = 'images/news/' . uuid_create(UUID_TYPE_RANDOM) . '.webp';
+        $path = 'images/news/' . Str::uuid() . '.webp';
         $absolute = Storage::disk('public')->path($path);
         $directory = dirname($absolute);
 
