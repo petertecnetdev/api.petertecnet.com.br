@@ -2,11 +2,20 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
     public function up(): void
     {
+        if (Schema::hasTable('users') && ! Schema::hasColumn('users', 'verification_code_expires_at')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->timestamp('verification_code_expires_at')
+                    ->nullable()
+                    ->after('verification_code');
+            });
+        }
+
         if (Schema::hasTable('establishments')) {
             if (! Schema::hasColumn('establishments', 'created_by')) {
                 Schema::table('establishments', function (Blueprint $table) {
@@ -48,6 +57,44 @@ return new class extends Migration {
             );
         }
 
+        if (Schema::hasTable('interactions')) {
+            $this->addIndexIfMissing(
+                'interactions',
+                'interactions_entity_type_action_idx',
+                ['entity_type', 'entity_id', 'interaction_type']
+            );
+            $this->addIndexIfMissing(
+                'interactions',
+                'interactions_user_created_idx',
+                ['user_id', 'created_at']
+            );
+        }
+
+        if (Schema::hasTable('orders')) {
+            $this->addIndexIfMissing(
+                'orders',
+                'orders_app_entity_datetime_idx',
+                ['app_id', 'entity_name', 'entity_id', 'order_datetime']
+            );
+            $this->addIndexIfMissing(
+                'orders',
+                'orders_client_app_datetime_idx',
+                ['client_id', 'app_id', 'order_datetime']
+            );
+            $this->addIndexIfMissing(
+                'orders',
+                'orders_attendant_datetime_idx',
+                ['attendant_id', 'order_datetime']
+            );
+
+            // Legacy code has historically used both "completed" and "attended".
+            // Keep both values valid while consumers are migrated to one canonical status.
+            if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)
+                && Schema::hasColumn('orders', 'appointment_status')) {
+                DB::statement("ALTER TABLE orders MODIFY appointment_status ENUM('pending','confirmed','rejected','cancelled','completed','attended') NULL");
+            }
+        }
+
         if (Schema::hasTable('files')) {
             $columns = ['app_id', 'entity_name', 'entity_id'];
             if ($this->hasColumns('files', $columns)) {
@@ -68,17 +115,26 @@ return new class extends Migration {
     {
         $this->dropIndexIfExists('service_records', 'service_records_app_status_created_idx');
         $this->dropIndexIfExists('files', 'files_app_entity_idx');
+        $this->dropIndexIfExists('orders', 'orders_attendant_datetime_idx');
+        $this->dropIndexIfExists('orders', 'orders_client_app_datetime_idx');
+        $this->dropIndexIfExists('orders', 'orders_app_entity_datetime_idx');
+        $this->dropIndexIfExists('interactions', 'interactions_user_created_idx');
+        $this->dropIndexIfExists('interactions', 'interactions_entity_type_action_idx');
         $this->dropIndexIfExists('items', 'items_app_slug_idx');
         $this->dropIndexIfExists('items', 'items_app_type_status_idx');
         $this->dropIndexIfExists('items', 'items_app_entity_status_idx');
         $this->dropIndexIfExists('establishments', 'establishments_app_city_uf_cancelled_idx');
         $this->dropIndexIfExists('establishments', 'establishments_app_user_cancelled_idx');
 
-        if (Schema::hasTable('establishments') && Schema::hasColumn('establishments', 'created_by')) {
-            Schema::table('establishments', function (Blueprint $table) {
-                $table->dropConstrainedForeignId('created_by');
+        if (Schema::hasTable('users') && Schema::hasColumn('users', 'verification_code_expires_at')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('verification_code_expires_at');
             });
         }
+
+        // created_by is intentionally preserved on rollback because some installations
+        // already had the column before this migration and destructive rollback would
+        // remove production data that this migration did not necessarily create.
     }
 
     private function addIndexIfMissing(string $table, string $name, array $columns): void
