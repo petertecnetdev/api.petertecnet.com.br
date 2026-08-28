@@ -1,12 +1,12 @@
 <?php
 
-namespace App\\Http\\Controllers;
+namespace App\Http\Controllers;
 
-use App\\Models\\Application;
-use Illuminate\\Database\\Eloquent\\ModelNotFoundException;
-use Illuminate\\Http\\JsonResponse;
-use Illuminate\\Support\\Facades\\Cache;
-use Illuminate\\Support\\Facades\\Log;
+use App\Models\Application;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class ApplicationController extends Controller
 {
@@ -29,7 +29,7 @@ class ApplicationController extends Controller
             );
 
             return response()->json(['applications' => $applications]);
-        } catch (\\Throwable $exception) {
+        } catch (\Throwable $exception) {
             Log::error('Erro ao listar aplicações públicas.', [
                 'exception' => $exception->getMessage(),
             ]);
@@ -52,7 +52,7 @@ class ApplicationController extends Controller
             return response()->json(['application' => $application]);
         } catch (ModelNotFoundException $exception) {
             return response()->json(['message' => 'Aplicação não encontrada.'], 404);
-        } catch (\\Throwable $exception) {
+        } catch (\Throwable $exception) {
             Log::error('Erro ao carregar aplicação pública.', [
                 'slug' => $slug,
                 'exception' => $exception->getMessage(),
