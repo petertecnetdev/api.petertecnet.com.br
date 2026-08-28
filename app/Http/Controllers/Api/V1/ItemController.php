@@ -19,11 +19,28 @@ class ItemController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $requiresApproval = in_array(
+            $this->context->slug(),
+            config('platform.approval_required_apps', []),
+            true
+        );
+
         $query = Item::query()
             ->with('files')
             ->where('app_id', $this->context->id())
             ->where('status', true)
-            ->where('entity_name', 'establishment');
+            ->where('entity_name', 'establishment')
+            ->whereIn('entity_id', function ($subquery) use ($requiresApproval) {
+                $subquery->select('id')
+                    ->from('establishments')
+                    ->where('app_id', $this->context->id())
+                    ->where('is_cancelled', false)
+                    ->where('is_published', true);
+
+                if ($requiresApproval) {
+                    $subquery->where('is_approved', true);
+                }
+            });
 
         if ($request->filled('establishment_id')) {
             $query->where('entity_id', (int) $request->query('establishment_id'));
