@@ -9,12 +9,19 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        // Production already had this legacy table before Laravel's migration
+        // history was fully synchronized. Preserve existing data and simply
+        // allow the migration to be recorded as executed.
+        if (Schema::hasTable('order_item_modifiers')) {
+            return;
+        }
+
         Schema::create('order_item_modifiers', function (Blueprint $table) {
             $table->id();
 
             $table->foreignId('order_item_id')->constrained('order_items')->cascadeOnDelete();
 
-            $table->unsignedBigInteger('modifier_id')->nullable(); // ← precisa ser nullable
+            $table->unsignedBigInteger('modifier_id')->nullable();
             $table->foreign('modifier_id')->references('id')->on('items')->nullOnDelete();
 
             $table->string('type')->nullable();
