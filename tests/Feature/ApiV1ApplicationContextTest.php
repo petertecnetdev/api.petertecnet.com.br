@@ -8,6 +8,7 @@ use App\Models\Item;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
@@ -57,6 +58,14 @@ class ApiV1ApplicationContextTest extends TestCase
             'status' => true,
         ]);
 
+        $this->assertDatabaseHas('establishments', [
+            'id' => $rasoioEstablishment->id,
+            'app_id' => $rasoio->id,
+            'slug' => 'barbearia',
+            'is_published' => 1,
+            'is_cancelled' => 0,
+        ]);
+
         $response = $this->getJson('/api/v1/apps/rasoio/catalog/barbearia');
 
         $response->assertOk()
@@ -69,7 +78,7 @@ class ApiV1ApplicationContextTest extends TestCase
     {
         $user = $this->user();
         $rasoio = $this->application('Rasoio', 'rasoio');
-        $nexus = $this->application('Nexus', 'nexus');
+        $this->application('Nexus', 'nexus');
         $establishment = $this->establishment($user, $rasoio, 'Barbearia', 'barbearia-dois');
         $token = auth('api')->login($user);
 
@@ -133,7 +142,7 @@ class ApiV1ApplicationContextTest extends TestCase
 
     private function establishment(User $user, Application $app, string $name, string $slug): Establishment
     {
-        return Establishment::create([
+        $id = DB::table('establishments')->insertGetId([
             'app_id' => $app->id,
             'name' => $name,
             'slug' => $slug,
@@ -143,6 +152,10 @@ class ApiV1ApplicationContextTest extends TestCase
             'is_published' => true,
             'is_approved' => true,
             'is_cancelled' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+
+        return Establishment::findOrFail($id);
     }
 }
