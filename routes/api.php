@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Admin\ApplicationController as AdminApplicationController;
 
 use App\Http\Controllers\{
     AuthController,
@@ -390,4 +391,11 @@ Route::prefix('applications')->middleware(['api'])->group(function () {
     Route::get('/{slug}', [ApplicationController::class, 'show'])
         ->where('slug', '[A-Za-z0-9\\-]+')
         ->name('applications.show');
+});
+
+Route::prefix('admin/applications')->middleware(['api', 'auth:api'])->group(function () {
+    Route::get('/', [AdminApplicationController::class, 'index']);
+    Route::post('/', [AdminApplicationController::class, 'store']);
+    Route::put('/{application}', [AdminApplicationController::class, 'update']);
+    Route::delete('/{application}', [AdminApplicationController::class, 'destroy']);
 });

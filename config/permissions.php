@@ -1,6 +1,11 @@
 <?php
 
 return [
+    'application_manage' => [
+        'category' => 'Aplicações',
+        'name' => 'Gerenciar aplicações',
+        'description' => 'Permite cadastrar, editar, ativar e excluir aplicações da Peter Tecnet.',
+    ],
     
     'item_scam' => [
         'category' => 'Item',
