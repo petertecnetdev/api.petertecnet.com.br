@@ -22,9 +22,8 @@ class PixEfiService
         $timeout = (int) config('services.efi.timeout', 15);
 
         if ($baseUrl === '' || $this->clientId === '' || $this->clientSecret === '' || $certPath === '') {
-            throw new RuntimeException('Configuração da EFI incompleta. Verifique services.efi e as variáveis de ambiente.');
+            throw new RuntimeException('Configuração da EFI incompleta.');
         }
-
         if (! is_file($certPath) || ! is_readable($certPath)) {
             throw new RuntimeException('Certificado EFI não encontrado ou sem permissão de leitura.');
         }
@@ -46,29 +45,51 @@ class PixEfiService
         try {
             $response = $this->client->post('/oauth/token', [
                 'auth' => [$this->clientId, $this->clientSecret],
+                'json' => ['grant_type' => 'client_credentials'],
+            ]);
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            return is_array($data) && is_string($data['access_token'] ?? null)
+                ? $data['access_token']
+                : null;
+        } catch (RequestException $e) {
+            Log::error('Erro ao obter token da EFI.', [
+                'status' => $e->hasResponse() ? $e->getResponse()->getStatusCode() : null,
+                'message' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    public function createCharge(string $amount, string $pixKey, ?string $requestMessage = null): array
+    {
+        $token = $this->getAccessToken();
+        if (! $token) {
+            throw new RuntimeException('Não foi possível autenticar na EFI.');
+        }
+
+        try {
+            $response = $this->client->post('/v2/cob', [
+                'headers' => ['Authorization' => 'Bearer ' . $token],
                 'json' => [
-                    'grant_type' => 'client_credentials',
+                    'calendario' => ['expiracao' => 3600],
+                    'valor' => ['original' => number_format((float) $amount, 2, '.', '')],
+                    'chave' => $pixKey,
+                    'solicitacaoPagador' => $requestMessage ?: 'Informe o número ou identificador do pedido.',
                 ],
             ]);
 
             $data = json_decode($response->getBody()->getContents(), true);
-
-            if (is_array($data) && isset($data['access_token']) && is_string($data['access_token'])) {
-                return $data['access_token'];
+            if (! is_array($data)) {
+                throw new RuntimeException('Resposta inválida da EFI.');
             }
-
-            Log::warning('EFI não retornou um access token válido.', [
-                'status' => $response->getStatusCode(),
-            ]);
-
-            return null;
+            return $data;
         } catch (RequestException $e) {
-            Log::error('Erro ao obter token de acesso da API EFI.', [
-                'message' => $e->getMessage(),
+            Log::error('Erro ao criar cobrança PIX na EFI.', [
                 'status' => $e->hasResponse() ? $e->getResponse()->getStatusCode() : null,
+                'message' => $e->getMessage(),
             ]);
-
-            return null;
+            throw new RuntimeException('Falha ao criar cobrança PIX.', 0, $e);
         }
     }
 }
