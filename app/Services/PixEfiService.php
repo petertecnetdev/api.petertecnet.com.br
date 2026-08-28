@@ -5,32 +5,43 @@ namespace App\Services;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class PixEfiService
 {
-    protected $client;
-    protected $baseUrl;
-    protected $clientId;
-    protected $clientSecret;
-    protected $certPath;
+    protected Client $client;
+    protected string $clientId;
+    protected string $clientSecret;
 
     public function __construct()
     {
-        $this->baseUrl = env('EFI_API_BASE_URL');
-        $this->clientId = env('EFI_CLIENT_ID');
-        $this->clientSecret = env('EFI_CLIENT_SECRET');
-        $this->certPath = env('EFI_CERT_PATH');
+        $baseUrl = (string) config('services.efi.base_url');
+        $this->clientId = (string) config('services.efi.client_id');
+        $this->clientSecret = (string) config('services.efi.client_secret');
+        $certPath = (string) config('services.efi.cert_path');
+        $timeout = (int) config('services.efi.timeout', 15);
+
+        if ($baseUrl === '' || $this->clientId === '' || $this->clientSecret === '' || $certPath === '') {
+            throw new RuntimeException('Configuração da EFI incompleta. Verifique services.efi e as variáveis de ambiente.');
+        }
+
+        if (! is_file($certPath) || ! is_readable($certPath)) {
+            throw new RuntimeException('Certificado EFI não encontrado ou sem permissão de leitura.');
+        }
 
         $this->client = new Client([
-            'base_uri' => $this->baseUrl,
-            'cert' => $this->certPath, // Certificado no formato .pem
+            'base_uri' => rtrim($baseUrl, '/'),
+            'cert' => $certPath,
+            'timeout' => $timeout,
+            'connect_timeout' => min($timeout, 10),
             'headers' => [
+                'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ],
         ]);
     }
 
-    public function getAccessToken()
+    public function getAccessToken(): ?string
     {
         try {
             $response = $this->client->post('/oauth/token', [
@@ -39,23 +50,24 @@ class PixEfiService
                     'grant_type' => 'client_credentials',
                 ],
             ]);
-    
+
             $data = json_decode($response->getBody()->getContents(), true);
 
-            // Verifica se o token foi retornado
-            if (isset($data['access_token'])) {
-                Log::info('Token obtido com sucesso', ['access_token' => $data['access_token']]);
+            if (is_array($data) && isset($data['access_token']) && is_string($data['access_token'])) {
                 return $data['access_token'];
-            } else {
-                Log::warning('Token não encontrado na resposta', $data);
-                return null;
             }
-        } catch (RequestException $e) {
-            // Log detalhado para facilitar a depuração
-            Log::error('Erro ao obter token de acesso da API Pix EFI: ' . $e->getMessage(), [
-                'response' => $e->hasResponse() ? $e->getResponse()->getBody()->getContents() : 'Nenhuma resposta',
-                'request' => $e->getRequest()->getBody()->getContents()
+
+            Log::warning('EFI não retornou um access token válido.', [
+                'status' => $response->getStatusCode(),
             ]);
+
+            return null;
+        } catch (RequestException $e) {
+            Log::error('Erro ao obter token de acesso da API EFI.', [
+                'message' => $e->getMessage(),
+                'status' => $e->hasResponse() ? $e->getResponse()->getStatusCode() : null,
+            ]);
+
             return null;
         }
     }
