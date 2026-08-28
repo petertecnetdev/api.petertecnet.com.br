@@ -56,7 +56,11 @@ class User extends Authenticatable implements JWTSubject
     {
         static::updating(function (User $user) {
             if ($user->isDirty('password') && ! $user->isDirty('auth_version')) {
-                $user->auth_version = ((int) $user->getOriginal('auth_version')) + 1;
+                // A just-created model may not contain the database default in its
+                // in-memory original attributes. Treat the minimum valid version as 1
+                // so the first password change always advances the security version.
+                $currentVersion = max((int) $user->getOriginal('auth_version'), 1);
+                $user->auth_version = $currentVersion + 1;
             }
         });
     }
