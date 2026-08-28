@@ -51,7 +51,7 @@ class UserController extends ApiController
             'profile_id' => 'nullable|integer|exists:profiles,id',
         ]);
 
-        $temporaryPassword = Str::password(14);
+        $temporaryPassword = Str::random(14) . 'Aa1!';
         $verificationCode = strtoupper(Str::random(6));
 
         $user = User::create([
@@ -105,9 +105,15 @@ class UserController extends ApiController
                 if ($key === 'uf' && $value) {
                     $value = strtoupper($value);
                 }
+                if ($key === 'email' && $value) {
+                    $value = strtolower(trim($value));
+                }
                 if ($user->{$key} != $value) {
                     $changes[$key] = ['from' => $user->{$key}, 'to' => $value];
                     $user->{$key} = $value;
+                    if ($key === 'email') {
+                        $user->email_verified_at = null;
+                    }
                 }
             }
 
