@@ -49,5 +49,7 @@ class Kernel extends HttpKernel
         'verified' => \Illuminate\Auth\Middleware\EnsureEmailIsVerified::class,
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
+        'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
     ];
 }

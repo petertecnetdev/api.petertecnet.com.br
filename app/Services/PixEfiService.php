@@ -4,6 +4,7 @@ namespace App\Services;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
@@ -42,6 +43,13 @@ class PixEfiService
 
     public function getAccessToken(): ?string
     {
+        $cacheKey = 'efi:oauth:' . hash('sha256', $this->clientId);
+        $cached = Cache::get($cacheKey);
+
+        if (is_string($cached) && $cached !== '') {
+            return $cached;
+        }
+
         try {
             $response = $this->client->post('/oauth/token', [
                 'auth' => [$this->clientId, $this->clientSecret],
@@ -49,9 +57,15 @@ class PixEfiService
             ]);
             $data = json_decode($response->getBody()->getContents(), true);
 
-            return is_array($data) && is_string($data['access_token'] ?? null)
-                ? $data['access_token']
-                : null;
+            if (! is_array($data) || ! is_string($data['access_token'] ?? null)) {
+                return null;
+            }
+
+            $token = $data['access_token'];
+            $expiresIn = max((int) ($data['expires_in'] ?? 300), 120);
+            Cache::put($cacheKey, $token, now()->addSeconds(max($expiresIn - 60, 60)));
+
+            return $token;
         } catch (RequestException $e) {
             Log::error('Erro ao obter token da EFI.', [
                 'status' => $e->hasResponse() ? $e->getResponse()->getStatusCode() : null,
@@ -83,6 +97,7 @@ class PixEfiService
             if (! is_array($data)) {
                 throw new RuntimeException('Resposta inválida da EFI.');
             }
+
             return $data;
         } catch (RequestException $e) {
             Log::error('Erro ao criar cobrança PIX na EFI.', [

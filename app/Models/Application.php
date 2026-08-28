@@ -26,9 +26,24 @@ class Application extends Model
         'release_date' => 'datetime',
     ];
 
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
     public function appointments()
     {
         return $this->hasMany(Appointment::class, 'app_id');
+    }
+
+    public function establishments()
+    {
+        return $this->hasMany(Establishment::class, 'app_id');
+    }
+
+    public function items()
+    {
+        return $this->hasMany(Item::class, 'app_id');
     }
 
     public function users()

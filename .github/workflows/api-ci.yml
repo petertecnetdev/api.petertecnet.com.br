@@ -64,5 +64,12 @@ jobs:
       - name: Run migrations on clean database
         run: php artisan migrate --force
 
+      - name: Audit migration history
+        run: php artisan platform:audit-migrations
+
+      - name: Verify versioned API routes
+        shell: bash
+        run: php artisan route:list | grep -q 'api/v1/apps/{application}'
+
       - name: Run tests
         run: php artisan test

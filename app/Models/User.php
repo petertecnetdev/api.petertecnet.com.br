@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Traits\HasFiles;
+use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -14,7 +15,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'verification_code_expires_at', 'password',
-        'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
+        'auth_version', 'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
         'cpf', 'google_id', 'avatar', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
         'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
         'payment_method', 'newsletter_subscription', 'ticket_purchases', 'account_balance',
@@ -29,6 +30,7 @@ class User extends Authenticatable implements JWTSubject
         'verification_code_expires_at',
         'reset_password_code',
         'reset_password_expires_at',
+        'auth_version',
     ];
 
     protected $casts = [
@@ -47,7 +49,21 @@ class User extends Authenticatable implements JWTSubject
         'is_ticket_seller' => 'boolean',
         'account_balance' => 'decimal:2',
         'ticket_purchases' => 'integer',
+        'auth_version' => 'integer',
     ];
+
+    protected static function booted()
+    {
+        static::updating(function (User $user) {
+            if ($user->isDirty('password') && ! $user->isDirty('auth_version')) {
+                // A just-created model may not contain the database default in its
+                // in-memory original attributes. Treat the minimum valid version as 1
+                // so the first password change always advances the security version.
+                $currentVersion = max((int) $user->getOriginal('auth_version'), 1);
+                $user->auth_version = $currentVersion + 1;
+            }
+        });
+    }
 
     public function getJWTIdentifier()
     {
@@ -56,7 +72,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function getJWTCustomClaims()
     {
-        return [];
+        return ['ver' => (int) ($this->auth_version ?: 1)];
     }
 
     public function profile()
@@ -74,9 +90,18 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasManyThrough(Event::class, Production::class);
     }
 
+    /**
+     * Legacy single-employment accessor kept for frontend compatibility.
+     * New code must use employments().
+     */
     public function employer()
     {
-        return $this->hasOne(Employer::class, 'user_id');
+        return $this->hasOne(Employer::class, 'user_id')->latestOfMany();
+    }
+
+    public function employments()
+    {
+        return $this->hasMany(Employer::class, 'user_id');
     }
 
     public function establishments()
@@ -181,39 +206,13 @@ class User extends Authenticatable implements JWTSubject
         ]);
     }
 
+    /**
+     * Backwards-compatible facade for legacy callers. Network I/O now lives
+     * in LocationService, where HTTPS, timeout and caching are centralized.
+     */
     public static function geoFromIp($ip): array
     {
-        if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
-            return ['city' => null, 'uf' => null];
-        }
-
-        try {
-            $url = 'http://ip-api.com/json/' . rawurlencode($ip) . '?fields=status,message,city,region';
-            $context = stream_context_create([
-                'http' => [
-                    'timeout' => 2,
-                    'ignore_errors' => true,
-                ],
-            ]);
-            $response = @file_get_contents($url, false, $context);
-
-            if (! $response) {
-                return ['city' => null, 'uf' => null];
-            }
-
-            $geo = json_decode($response, true);
-
-            if (is_array($geo) && ($geo['status'] ?? null) === 'success') {
-                return [
-                    'city' => $geo['city'] ?? null,
-                    'uf' => $geo['region'] ?? null,
-                ];
-            }
-        } catch (\Throwable $e) {
-            report($e);
-        }
-
-        return ['city' => null, 'uf' => null];
+        return app(LocationService::class)->fromIp($ip);
     }
 
     public static function credentials($username, $password): array

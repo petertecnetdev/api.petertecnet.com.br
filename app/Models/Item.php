@@ -3,11 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
-use Illuminate\Support\Collection;
 
 class Item extends Model
 {
@@ -55,16 +54,15 @@ class Item extends Model
         'expiration_date' => 'datetime',
     ];
 
-    protected $appends = [
-        'image_url',
-        'metrics',
-    ];
+    // Metrics are intentionally not appended automatically. They are expensive
+    // and must be requested explicitly by analytics/metrics endpoints.
+    protected $appends = ['image_url'];
 
     protected static function booted()
     {
         static::creating(function ($model) {
             if (empty($model->slug)) {
-                $base = Str::slug($model->name);
+                $base = Str::slug($model->name) ?: 'item';
                 $slug = $base;
                 $i = 1;
 
@@ -82,6 +80,16 @@ class Item extends Model
         });
     }
 
+    public function scopeForApplication($query, int $appId)
+    {
+        return $query->where('app_id', $appId);
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', true);
+    }
+
     public function files(): HasMany
     {
         return $this->hasMany(File::class, 'entity_id')
@@ -97,7 +105,8 @@ class Item extends Model
 
     public function employers()
     {
-        return $this->hasMany(Employer::class, 'entity_id', 'entity_id')
+        return $this->belongsToMany(Employer::class, 'employer_item', 'item_id', 'employer_id')
+            ->withTimestamps()
             ->with('user');
     }
 
@@ -119,7 +128,7 @@ class Item extends Model
     public static function otherItems(int $limit = 20): Collection
     {
         $groups = Item::with('establishment')
-            ->where('status', 'active')
+            ->where('status', true)
             ->get()
             ->groupBy('entity_id');
 
@@ -161,8 +170,7 @@ class Item extends Model
     {
         $files = $this->files;
 
-        return
-            $files->firstWhere('is_primary', true)?->public_url
+        return $files->firstWhere('is_primary', true)?->public_url
             ?? $files->firstWhere('type', 'image')?->public_url
             ?? $files->first()?->public_url
             ?? $this->image;
@@ -175,8 +183,8 @@ class Item extends Model
             $likesQuery = $this->likes();
             $favoritesQuery = $this->favorites();
 
-            $orderItems = \App\Models\OrderItem::where('item_id', $this->id);
-            $orders = \App\Models\Order::whereIn('id', $orderItems->pluck('order_id'));
+            $orderItems = OrderItem::where('item_id', $this->id);
+            $orders = Order::whereIn('id', $orderItems->pluck('order_id'));
 
             $totalViews = $viewsQuery->count();
             $uniqueUsers = (clone $viewsQuery)
@@ -192,12 +200,11 @@ class Item extends Model
             $cancelledOrders = (clone $orders)->whereIn('appointment_status', ['cancelled', 'rejected'])->count();
             $pendingOrders = (clone $orders)->where('appointment_status', 'pending')->count();
 
-            // order_items stores each line total in subtotal (unit_price * quantity).
             $totalRevenue = (clone $orderItems)->sum('subtotal');
             $averageTicket = $totalOrders > 0 ? round($totalRevenue / $totalOrders, 2) : 0;
 
             $firstView = $viewsQuery->min('created_at');
-            if ($firstView && !($firstView instanceof \Carbon\Carbon)) {
+            if ($firstView && ! ($firstView instanceof \Carbon\Carbon)) {
                 $firstView = \Carbon\Carbon::parse($firstView);
             }
 
@@ -222,7 +229,7 @@ class Item extends Model
                 ->groupBy('client_id')
                 ->pluck('total', 'client_id');
 
-            $recurringClients = $clientsCount->filter(fn($c) => $c > 1);
+            $recurringClients = $clientsCount->filter(fn ($c) => $c > 1);
             $returnRate = $clientsCount->count() > 0
                 ? round(($recurringClients->count() / $clientsCount->count()) * 100, 2)
                 : 0;
@@ -235,22 +242,18 @@ class Item extends Model
                 ->get();
 
             $topEmployer = $employerStats->first();
-            if ($topEmployer) {
-                $topEmployerData = [
-                    'employer_id' => $topEmployer->attendant_id,
-                    'total_orders' => $topEmployer->total,
-                    'employer' => \App\Models\Employer::find($topEmployer->attendant_id),
-                ];
-            } else {
-                $topEmployerData = null;
-            }
+            $topEmployerData = $topEmployer ? [
+                'employer_id' => $topEmployer->attendant_id,
+                'total_orders' => $topEmployer->total,
+                'employer' => Employer::find($topEmployer->attendant_id),
+            ] : null;
 
             $engagementScore = round(
-                ($uniqueUsers * 1.2) +
-                ($totalViews * 0.3) +
-                ($totalLikes * 0.5) +
-                ($totalFavorites * 0.7) +
-                ($completedOrders * 1.5),
+                ($uniqueUsers * 1.2)
+                + ($totalViews * 0.3)
+                + ($totalLikes * 0.5)
+                + ($totalFavorites * 0.7)
+                + ($completedOrders * 1.5),
                 2
             );
 
