@@ -28,8 +28,6 @@ class EstablishmentController extends Controller
             $establishment = Establishment::create($data);
             $this->storeMedia($request, $establishment, $user->id);
 
-            // Creating a resource inside an application establishes an explicit
-            // relationship between the account and that application.
             $user->applications()->syncWithoutDetaching([
                 $establishment->app_id => ['status' => 'active', 'joined_at' => now()],
             ]);
@@ -305,16 +303,14 @@ class EstablishmentController extends Controller
         $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
         $establishment = Establishment::query()
             ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
-            ->with(['items' => fn ($q) => $q
-                ->where('app_id', isset($data['app_id']) ? $data['app_id'] : null)
-                ->when(! isset($data['app_id']), fn ($items) => $items)
-                ->where('status', true)])
             ->where('slug', $slug)
             ->firstOrFail();
 
-        // Ensure item/application consistency even for legacy records.
-        $items = $establishment->items->where('app_id', $establishment->app_id);
-        $establishment->setRelation('items', $items->values());
+        $items = $establishment->items()
+            ->where('app_id', $establishment->app_id)
+            ->where('status', true)
+            ->get();
+        $establishment->setRelation('items', $items);
 
         $grouped = $items->groupBy(fn ($item) => $item->category ?: 'Outros');
         $category = strtolower((string) $establishment->category);
@@ -382,9 +378,6 @@ class EstablishmentController extends Controller
         $slug = $base;
         $i = 2;
 
-        // Legacy public routes identify establishments by slug without app_id and the
-        // current database also enforces a global unique constraint. Keep that contract
-        // until a versioned app-scoped URL is introduced.
         while (Establishment::query()
             ->where('slug', $slug)
             ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
