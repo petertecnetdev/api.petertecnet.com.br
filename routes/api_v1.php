@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -15,6 +16,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/items', [ItemController::class, 'index']);
 
         Route::middleware('auth:api')->group(function () {
+            Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
             Route::post('/establishments', [EstablishmentController::class, 'store']);
             Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);
