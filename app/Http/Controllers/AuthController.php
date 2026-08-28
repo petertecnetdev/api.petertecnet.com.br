@@ -21,7 +21,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -29,13 +28,8 @@ class AuthController extends Controller
     {
         $this->middleware('auth:api', [
             'except' => [
-                'login',
-                'register',
-                'sendResetCodeEmail',
-                'resetPassword',
-                'googleAuth',
-                'completeInvite',
-                'refresh',
+                'login', 'register', 'sendResetCodeEmail', 'resetPassword',
+                'googleAuth', 'completeInvite', 'refresh',
             ],
         ]);
     }
@@ -49,8 +43,7 @@ class AuthController extends Controller
             'longitude' => 'nullable|numeric|between:-180,180',
         ]);
 
-        $credentials = User::credentials($data['username'], $data['password']);
-        $token = auth()->attempt($credentials);
+        $token = auth()->attempt(User::credentials($data['username'], $data['password']));
 
         if (! $token) {
             return response()->json(['error' => 'Credenciais inválidas.'], 401);
@@ -84,13 +77,12 @@ class AuthController extends Controller
         $clientId = (string) config('services.google.client_id');
 
         if ($clientId === '') {
-            Log::error('Google OAuth não configurado.');
             return response()->json(['error' => 'Login com Google indisponível.'], 503);
         }
 
         try {
-            $client = new Google_Client(['client_id' => $clientId]);
-            $payload = $client->verifyIdToken($request->input('token_id'));
+            $payload = (new Google_Client(['client_id' => $clientId]))
+                ->verifyIdToken($request->input('token_id'));
 
             if (! is_array($payload)
                 || empty($payload['sub'])
@@ -101,8 +93,7 @@ class AuthController extends Controller
 
             $googleId = (string) $payload['sub'];
             $email = strtolower(trim((string) $payload['email']));
-            $firstName = trim((string) ($payload['given_name'] ?? Str::before((string) ($payload['name'] ?? ''), ' ')));
-            $firstName = $firstName !== '' ? $firstName : 'Usuário';
+            $firstName = trim((string) ($payload['given_name'] ?? 'Usuário')) ?: 'Usuário';
 
             $user = User::query()
                 ->where('google_id', $googleId)
@@ -181,10 +172,7 @@ class AuthController extends Controller
 
     public function emailVerify(Request $request)
     {
-        $data = $request->validate([
-            'verification_code' => 'required|string|min:4|max:12',
-        ]);
-
+        $data = $request->validate(['verification_code' => 'required|string|min:4|max:12']);
         $user = Auth::user();
 
         if ($user->email_verified_at) {
@@ -195,11 +183,7 @@ class AuthController extends Controller
             return response()->json(['error' => 'Código de verificação inválido.'], 422);
         }
 
-        $user->forceFill([
-            'email_verified_at' => now(),
-            'verification_code' => null,
-        ])->save();
-
+        $user->forceFill(['email_verified_at' => now(), 'verification_code' => null])->save();
         $this->recordInteraction($user, 'verification');
 
         return response()->json(['message' => 'E-mail verificado com sucesso.']);
@@ -221,7 +205,10 @@ class AuthController extends Controller
     {
         $data = $request->validate([
             'current_password' => 'required|string',
-            'new_password' => ['required', 'string', 'different:current_password', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'new_password' => [
+                'required', 'string', 'different:current_password',
+                Password::min(8)->mixedCase()->numbers()->symbols(),
+            ],
             'password_confirmation' => 'required|string|same:new_password',
         ]);
 
@@ -240,8 +227,7 @@ class AuthController extends Controller
     public function sendResetCodeEmail(Request $request)
     {
         $data = $request->validate(['email' => 'required|email|max:255']);
-        $email = strtolower(trim($data['email']));
-        $user = User::query()->where('email', $email)->first();
+        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
 
         if ($user) {
             $rawCode = $this->newCode(8);
@@ -262,7 +248,6 @@ class AuthController extends Controller
             }
         }
 
-        // Deliberately identical response for existing and non-existing accounts.
         return response()->json([
             'message' => 'Se o e-mail estiver cadastrado, um código de redefinição será enviado.',
         ]);
@@ -296,10 +281,7 @@ class AuthController extends Controller
 
         $this->recordInteraction($user, 'password_changed');
 
-        return response()->json([
-            'error' => false,
-            'message' => 'Senha redefinida com sucesso.',
-        ]);
+        return response()->json(['error' => false, 'message' => 'Senha redefinida com sucesso.']);
     }
 
     public function logout()
@@ -419,12 +401,16 @@ class AuthController extends Controller
                 'email_verified_at' => now(),
             ])->save();
 
-            $user->applications()
+            $pendingApplicationIds = $user->applications()
                 ->wherePivot('status', 'pending')
-                ->updateExistingPivot(
-                    $user->applications()->wherePivot('status', 'pending')->pluck('applications.id')->all(),
-                    ['status' => 'active', 'joined_at' => now()]
-                );
+                ->pluck('applications.id');
+
+            foreach ($pendingApplicationIds as $applicationId) {
+                $user->applications()->updateExistingPivot($applicationId, [
+                    'status' => 'active',
+                    'joined_at' => now(),
+                ]);
+            }
         });
 
         try {
@@ -486,11 +472,10 @@ class AuthController extends Controller
             return Hash::check($provided, $stored);
         }
 
-        // Compatibility with codes issued before this hardening pass.
         return hash_equals($stored, $provided);
     }
 
-    private function recordInteraction(?User $user, string $type, array $metadata = []): void
+    private function recordInteraction(?User $user, string $type, array $content = []): void
     {
         if (! $user) {
             return;
@@ -501,8 +486,8 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'interaction_type' => $type,
                 'entity_id' => $user->id,
-                'entity_type' => 'user',
-                'metadata' => $metadata ?: null,
+                'entity_type' => 'User',
+                'content' => $content ?: null,
             ]);
         } catch (\Throwable $e) {
             Log::warning('Falha ao registrar interação de autenticação.', [
