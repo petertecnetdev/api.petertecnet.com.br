@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Carbon\Carbon;
 
 class File extends Model
 {
@@ -16,70 +16,22 @@ class File extends Model
     protected $table = 'files';
 
     protected $fillable = [
-        'uuid',
-        'app_id',
-        'entity_id',
-        'entity_name',
-        'fileable_id',
-        'fileable_type',
+        'uuid', 'app_id', 'entity_id', 'entity_name', 'fileable_id', 'fileable_type',
+        'original_name', 'extension', 'mime_type', 'file_size', 'content_hash',
+        'type', 'storage', 'path', 'storage_path', 'public_url',
+        'width', 'height', 'quality', 'color_profile', 'orientation',
+        'duration', 'fps', 'bitrate', 'video_width', 'video_height', 'codec',
+        'group', 'tags', 'sort_order', 'position', 'is_primary', 'processed',
+        'variants', 'meta', 'visibility', 'visibility_scope', 'status',
+        'locked', 'expires_at', 'usage_count', 'last_used_at', 'source', 'version',
+        'checksum', 'download_count', 'last_downloaded_at', 'compressed',
+        'compression_ratio', 'created_by', 'updated_by',
+    ];
 
-        'original_name',
-        'extension',
-        'mime_type',
-        'file_size',
-        'content_hash',
-
-        'type',
-        'storage',
-        'path',
+    protected $hidden = [
         'storage_path',
-        'public_url',
-
-        'width',
-        'height',
-        'quality',
-        'color_profile',
-        'orientation',
-
-        'duration',
-        'fps',
-        'bitrate',
-        'video_width',
-        'video_height',
-        'codec',
-
-        'group',
-        'tags',
-        'sort_order',
-        'position',
-        'is_primary',
-        'processed',
-
-        'variants',
-        'meta',
-
-        'visibility',
-        'visibility_scope',
-        'status',
-
-        'locked',
-        'expires_at',
-
-        'usage_count',
-        'last_used_at',
-
-        'source',
-        'version',
+        'content_hash',
         'checksum',
-
-        'download_count',
-        'last_downloaded_at',
-
-        'compressed',
-        'compression_ratio',
-
-        'created_by',
-        'updated_by',
     ];
 
     protected $casts = [
@@ -95,34 +47,18 @@ class File extends Model
         'last_downloaded_at' => 'datetime',
     ];
 
-    protected $appends = [
-        'metrics',
-        'interaction_summary',
-    ];
-
-    /* ============================================================
-       BOOT
-    ============================================================ */
+    protected $appends = ['metrics', 'interaction_summary'];
 
     protected static function boot()
     {
         parent::boot();
 
         static::creating(function ($model) {
-
             if (empty($model->uuid)) {
                 $model->uuid = (string) Str::uuid();
             }
-
-            if (!empty($model->path)) {
-                $model->content_hash = md5($model->path . microtime());
-            }
         });
     }
-
-    /* ============================================================
-       RELACIONAMENTOS
-    ============================================================ */
 
     public function entity()
     {
@@ -165,60 +101,44 @@ class File extends Model
         return $this->interactions()->where('interaction_type', 'download');
     }
 
-    /* ============================================================
-       MÉTRICAS
-    ============================================================ */
-
     public function getMetricsAttribute()
     {
         return Cache::remember("file_{$this->id}_metrics", 120, function () {
-
             $views = $this->views();
             $downloads = $this->downloads();
-
             $totalViews = $views->count();
             $uniqueUsers = $views->distinct('user_id')->count('user_id');
-
             $totalDownloads = $downloads->count();
             $uniqueDownloaders = $downloads->distinct('user_id')->count('user_id');
-
             $firstView = $views->min('created_at');
-            if ($firstView && !($firstView instanceof Carbon)) {
+
+            if ($firstView && ! ($firstView instanceof Carbon)) {
                 $firstView = Carbon::parse($firstView);
             }
 
             $daysActive = $firstView ? now()->diffInDays($firstView) + 1 : 1;
-
-            $avgViewsPerDay = round($totalViews / max($daysActive, 1), 2);
-
-            $engagementScore = round(
-                ($totalViews * 0.5) +
-                ($uniqueUsers * 1.2) +
-                ($totalDownloads * 1.5),
-                2
-            );
 
             return [
                 'total_views' => $totalViews,
                 'unique_users' => $uniqueUsers,
                 'total_downloads' => $totalDownloads,
                 'unique_downloaders' => $uniqueDownloaders,
-                'avg_views_per_day' => $avgViewsPerDay,
+                'avg_views_per_day' => round($totalViews / max($daysActive, 1), 2),
                 'days_active' => $daysActive,
-                'engagement_score' => $engagementScore,
+                'engagement_score' => round(
+                    ($totalViews * 0.5) + ($uniqueUsers * 1.2) + ($totalDownloads * 1.5),
+                    2
+                ),
             ];
         });
     }
 
-    /* ============================================================
-       INTERACTION SUMMARY
-    ============================================================ */
-
     public function getInteractionSummaryAttribute()
     {
         return Cache::remember("file_{$this->id}_summary", 120, function () {
-
-            $views = $this->views()->with('user:id,first_name,last_name,user_name,avatar,email')->get();
+            $views = $this->views()
+                ->with('user:id,first_name,last_name,user_name,avatar')
+                ->get();
 
             if ($views->isEmpty()) {
                 return [
@@ -229,54 +149,46 @@ class File extends Model
                 ];
             }
 
-            $mostActive = $views->groupBy('user_id')->map(function ($g) {
-
-                $u = $g->first()->user;
+            $mostActive = $views->groupBy('user_id')->map(function ($group) {
+                $user = $group->first()->user;
 
                 return [
-                    'user_id' => $u?->id,
-                    'user_name' => $u?->user_name,
-                    'name' => trim(($u?->first_name ?? '') . ' ' . ($u?->last_name ?? '')),
-                    'avatar' => $u?->avatar,
-                    'email' => $u?->email,
-                    'total' => $g->count(),
+                    'user_id' => $user?->id,
+                    'user_name' => $user?->user_name,
+                    'name' => trim(($user?->first_name ?? '') . ' ' . ($user?->last_name ?? '')),
+                    'avatar' => $user?->avatar,
+                    'total' => $group->count(),
                 ];
-
             })->sortByDesc('total')->first();
 
             $lastView = $views->sortByDesc('created_at')->first()?->user;
 
             return [
                 'total_views' => $views->count(),
-                'unique_users' => $views->pluck('user_id')->unique()->count(),
+                'unique_users' => $views->pluck('user_id')->filter()->unique()->count(),
                 'most_active_user' => $mostActive,
                 'last_view_user' => $lastView ? [
                     'user_id' => $lastView->id,
                     'user_name' => $lastView->user_name,
                     'name' => trim(($lastView->first_name ?? '') . ' ' . ($lastView->last_name ?? '')),
                     'avatar' => $lastView->avatar,
-                    'email' => $lastView->email,
                 ] : null,
             ];
         });
     }
 
-    /* ============================================================
-       UTILITÁRIOS
-    ============================================================ */
-
-    public function isPublic()
+    public function isPublic(): bool
     {
-        return $this->visibility === 'public';
+        return $this->visibility === 'public' && $this->status === 'active';
     }
 
-    public function markAsUsed()
+    public function markAsUsed(): void
     {
         $this->increment('usage_count');
         $this->update(['last_used_at' => now()]);
     }
 
-    public function incrementDownload()
+    public function incrementDownload(): void
     {
         $this->increment('download_count');
         $this->update(['last_downloaded_at' => now()]);
@@ -287,61 +199,52 @@ class File extends Model
         return $this->variants[$name] ?? null;
     }
 
-    public function scopeVisible($q)
+    public function scopeVisible($query)
     {
-        return $q->where('visibility', 'public');
+        return $query->where('visibility', 'public')->where('status', 'active');
     }
 
-    public function scopePrimary($q)
+    public function scopePrimary($query)
     {
-        return $q->where('is_primary', true);
+        return $query->where('is_primary', true);
     }
 
-    /* ============================================================
-       MÉTODO storeOne — FINAL
-    ============================================================ */
+    public static function storeOne(
+        $file,
+        string $entityName,
+        int $entityId,
+        string $type,
+        ?int $appId,
+        int $createdBy
+    ) {
+        $extension = strtolower((string) $file->extension());
+        $original = $file->getClientOriginalName();
+        $mime = $file->getMimeType() ?: 'application/octet-stream';
+        $size = $file->getSize() ?: 0;
+        $uuid = (string) Str::uuid();
+        $filename = "{$uuid}.{$extension}";
+        $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
+        $absolute = Storage::disk('public')->path($path);
 
-   public static function storeOne(
-    $file,
-    string $entityName,
-    int $entityId,
-    string $type,
-    ?int $appId,
-    int $createdBy
-) {
-    $ext = strtolower($file->getClientOriginalExtension());
-    $original = $file->getClientOriginalName();
-    $mime = $file->getMimeType();
-    $size = $file->getSize();
-
-    $uuid = (string) Str::uuid();
-    $filename = "{$uuid}.{$ext}";
-
-    // Caminho relativo dentro do disco public
-    $path = $file->storeAs("uploads/{$entityName}/{$entityId}", $filename, 'public');
-
-    // Caminho físico real no servidor
-    $absolute = Storage::disk('public')->path($path);
-
-    return self::create([
-        'uuid' => $uuid,
-        'app_id' => $appId,
-        'entity_name' => $entityName,
-        'entity_id' => $entityId,
-        'type' => $type,
-
-        'original_name' => $original,
-        'extension' => $ext,
-        'mime_type' => $mime,
-        'file_size' => $size,
-
-        'storage' => 'public',
-        'path' => $path,
-        'storage_path' => $absolute,
-        'public_url' => Storage::disk('public')->url($path),
-
-        'created_by' => $createdBy,
-    ]);
-}
-
+        return self::create([
+            'uuid' => $uuid,
+            'app_id' => $appId,
+            'entity_name' => $entityName,
+            'entity_id' => $entityId,
+            'type' => $type,
+            'original_name' => $original,
+            'extension' => $extension,
+            'mime_type' => $mime,
+            'file_size' => $size,
+            'content_hash' => is_file($absolute) ? hash_file('sha256', $absolute) : null,
+            'storage' => 'public',
+            'path' => $path,
+            'storage_path' => $absolute,
+            'public_url' => Storage::disk('public')->url($path),
+            'visibility' => 'public',
+            'status' => 'active',
+            'created_by' => $createdBy,
+            'updated_by' => $createdBy,
+        ]);
+    }
 }

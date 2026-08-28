@@ -2,249 +2,176 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Menu;
+use App\Models\Establishment;
 use App\Models\Interaction;
+use App\Models\Menu;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Intervention\Image\Facades\Image;
 
 class MenuController extends Controller
 {
-    protected function getValidationMessages()
+    public function list(Request $request)
     {
-        return [
-            'establishment_id.required' => 'O ID do estabelecimento é obrigatório.',
-            'establishment_id.integer' => 'O ID do estabelecimento deve ser um número inteiro.',
-            'establishment_id.exists' => 'O estabelecimento informado não existe.',
+        $data = $request->validate([
+            'establishment_id' => 'nullable|integer|exists:establishments,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
 
-            'name.required' => 'O nome do menu é obrigatório.',
-            'name.string' => 'O nome do menu deve ser uma string válida.',
-            'name.max' => 'O nome do menu deve ter no máximo 255 caracteres.',
+        return response()->json([
+            'menus' => Menu::query()
+                ->when(isset($data['establishment_id']), fn ($q) => $q->where('establishment_id', $data['establishment_id']))
+                ->where('is_active', true)
+                ->with('items')
+                ->latest()
+                ->paginate($data['per_page'] ?? 20),
+        ]);
+    }
 
-            'description.string' => 'A descrição deve ser uma string válida.',
-
-            'valid_from.date' => 'A data de início de validade deve ser uma data válida.',
-            'valid_to.date' => 'A data de término de validade deve ser uma data válida.',
-            'valid_to.after' => 'A data de término de validade deve ser posterior à data de início.',
-
-            'price_modifier_percent.numeric' => 'O modificador de preço deve ser um número.',
-            'price_modifier_percent.min' => 'O modificador de preço não pode ser negativo.',
-            'price_modifier_percent.max' => 'O modificador de preço não pode exceder 100.',
-
-            'is_active.boolean' => 'O campo ativo deve ser verdadeiro ou falso.',
-
-            'cover_image.image' => 'A imagem de capa deve ser um arquivo de imagem válido.',
-            'cover_image.mimes' => 'A imagem de capa deve ser do tipo jpeg, png ou jpg.',
-            'cover_image.max' => 'A imagem de capa não pode exceder 2MB.',
-        ];
+    public function show($id)
+    {
+        $menu = Menu::with(['items', 'establishment:id,name,fantasy,slug,user_id'])->findOrFail($id);
+        Interaction::registerView($menu, Auth::user());
+        return response()->json(['menu' => $menu]);
     }
 
     public function store(Request $request)
     {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Tentativa de criar menu sem autenticação.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
+        $data = $this->validateMenu($request, true);
+        $establishment = Establishment::findOrFail($data['establishment_id']);
+        $this->assertOwner($establishment);
+        $data['slug'] = $this->uniqueSlug($data['name'], $establishment->id);
 
-            $user = Auth::user();
-            Log::info('Iniciando criação de menu.', ['user_id' => $user->id]);
-
-            if (!$user->hasPermission('menu_store')) {
-                Log::warning('Usuário sem permissão tentou criar menu.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para criar menus.'], 403);
-            }
-
-            $validated = $request->validate([
-                'establishment_id' => 'required|integer|exists:establishments,id',
-                'name' => 'required|string|max:255',
-                'description' => 'nullable|string',
-                'valid_from' => 'nullable|date',
-                'valid_to' => 'nullable|date|after:valid_from',
-                'price_modifier_percent' => 'nullable|numeric|min:0|max:100',
-                'is_active' => 'sometimes|boolean',
-                'cover_image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            ], $this->getValidationMessages());
-
-            $menu = new Menu();
-            $menu->fill($validated);
-            $slug = Str::slug($validated['name']);
-            $count = Menu::where('slug', $slug)->count();
-            if ($count > 0) {
-                $slug .= '-' . ($count + 1);
-            }
-            $menu->slug = $slug;
-            $menu->save();
-
+        $menu = DB::transaction(function () use ($request, $data) {
+            $menu = Menu::create($data);
             if ($request->hasFile('cover_image')) {
-                $destination = public_path('images');
-                $filename = uniqid('menu_cover_') . '.' . $request->file('cover_image')->getClientOriginalExtension();
-                $request->file('cover_image')->move($destination, $filename);
-                $img = Image::make($destination . '/' . $filename)->fit(800, 600);
-                $img->save();
-                $menu->cover_image = 'images/' . $filename;
+                $menu->cover_image = $this->storeImage($request->file('cover_image'));
                 $menu->save();
             }
+            return $menu;
+        });
 
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'Create';
-            $interaction->entity_type = 'menu';
-            $interaction->entity_id = $menu->id;
-            $interaction->content = "O usuário {$user->first_name} criou o menu {$menu->name}.";
-            $interaction->save();
-
-            return response()->json(['message' => 'Menu criado com sucesso.', 'menu' => $menu], 201);
-        } catch (ValidationException $e) {
-            Log::error('Erro de validação ao criar menu.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao criar menu: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao criar o menu.'], 500);
-        }
+        Interaction::register('create', $menu, Auth::user());
+        return response()->json(['message' => 'Menu criado com sucesso.', 'menu' => $menu], 201);
     }
 
     public function update(Request $request, $id)
     {
-        try {
-            if (!Auth::check()) {
-                Log::warning('Tentativa de atualizar menu sem autenticação.');
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
+        $menu = Menu::with(['establishment', 'items'])->findOrFail($id);
+        $this->assertOwner($menu->establishment);
+        $data = $this->validateMenu($request, false);
+
+        if (isset($data['establishment_id']) && (int) $data['establishment_id'] !== (int) $menu->establishment_id) {
+            $target = Establishment::findOrFail($data['establishment_id']);
+            $this->assertOwner($target);
+        }
+
+        DB::transaction(function () use ($request, $menu, $data) {
+            if (isset($data['name'])) {
+                $data['slug'] = $this->uniqueSlug($data['name'], (int) ($data['establishment_id'] ?? $menu->establishment_id), $menu->id);
             }
-
-            $user = Auth::user();
-            if (!$user->hasPermission('menu_update')) {
-                Log::warning('Usuário sem permissão tentou atualizar menu.', ['user_id' => $user->id]);
-                return response()->json(['error' => 'Você não tem permissão para atualizar menus.'], 403);
-            }
-
-            $menu = Menu::with('establishment.items')->findOrFail($id);
-
-            // validação dos campos do menu
-            $validated = $request->validate([
-                'name' => 'sometimes|required|string|max:255',
-                'description' => 'nullable|string',
-                'valid_from' => 'nullable|date',
-                'valid_to' => 'nullable|date|after:valid_from',
-                'price_modifier_percent' => 'nullable|numeric|min:0|max:100',
-                'is_active' => 'sometimes|boolean',
-                'cover_image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048',
-            ], $this->getValidationMessages());
-
-            // preencher e salvar mudanças básicas
-            $menu->fill($validated);
-
-            if ($request->has('name')) {
-                $slug = Str::slug($validated['name']);
-                $count = Menu::where('slug', $slug)->where('id', '!=', $menu->id)->count();
-                if ($count > 0) {
-                    $slug .= '-' . ($count + 1);
-                }
-                $menu->slug = $slug;
-            }
+            $menu->fill(collect($data)->except(['cover_image', 'items', 'all_items'])->all());
 
             if ($request->hasFile('cover_image')) {
-                $destination = public_path('images');
-                $filename = uniqid('menu_cover_') . '.' . $request->file('cover_image')->getClientOriginalExtension();
-                $request->file('cover_image')->move($destination, $filename);
-                $img = Image::make("$destination/$filename")->fit(800, 600);
-                $img->save();
-                $menu->cover_image = "images/$filename";
+                $old = $menu->cover_image;
+                $menu->cover_image = $this->storeImage($request->file('cover_image'));
+                $this->deleteImage($old);
             }
-
             $menu->save();
 
-            // validação e sincronização de items
             if ($request->boolean('all_items')) {
-                // adiciona todos os itens do estabelecimento
-                $syncData = $menu->establishment->items->mapWithKeys(function ($item) {
-                    return [
-                        $item->id => [
-                            'display_order' => 0,
-                            'is_active' => true,
-                            'price_override' => null,
-                        ]
-                    ];
-                })->toArray();
-                $menu->items()->sync($syncData);
-            } elseif ($request->has('items')) {
-                $validatedItems = $request->validate([
-                    'items' => 'required|array|min:1',
-                    'items.*.item_id' => 'required|integer|exists:items,id',
-                    'items.*.display_order' => 'nullable|integer|min:0',
-                    'items.*.is_active' => 'nullable|boolean',
-                    'items.*.price_override' => 'nullable|numeric|min:0',
-                ], [
-                    'items.required' => 'A lista de itens é obrigatória.',
-                    'items.array' => 'Os itens devem ser um array.',
-                    'items.*.item_id.required' => 'O ID do item é obrigatório.',
-                    'items.*.item_id.integer' => 'O ID do item deve ser um número inteiro.',
-                    'items.*.item_id.exists' => 'O item informado não existe.',
-                    'items.*.display_order.integer' => 'A ordem de exibição deve ser um número inteiro.',
-                    'items.*.display_order.min' => 'A ordem de exibição deve ser pelo menos 0.',
-                    'items.*.is_active.boolean' => 'O campo ativo deve ser verdadeiro ou falso.',
-                    'items.*.price_override.numeric' => 'O preço de override deve ser um número.',
-                    'items.*.price_override.min' => 'O preço de override não pode ser negativo.',
-                ]);
-
-                $syncData = [];
-                foreach ($validatedItems['items'] as $entry) {
-                    $syncData[$entry['item_id']] = [
-                        'display_order' => $entry['display_order'] ?? 0,
-                        'is_active' => $entry['is_active'] ?? true,
-                        'price_override' => $entry['price_override'] ?? null,
+                $items = $menu->establishment->items()->where('status', true)->pluck('id');
+                $sync = $items->mapWithKeys(fn ($id) => [$id => ['display_order' => 0, 'is_active' => true, 'price_override' => null]])->all();
+                $menu->items()->sync($sync);
+            } elseif (isset($data['items'])) {
+                $validItemIds = $menu->establishment->items()->pluck('id')->map(fn ($id) => (int) $id)->all();
+                $sync = [];
+                foreach ($data['items'] as $row) {
+                    abort_unless(in_array((int) $row['item_id'], $validItemIds, true), 422, 'Um item informado não pertence a este estabelecimento.');
+                    $sync[$row['item_id']] = [
+                        'display_order' => $row['display_order'] ?? 0,
+                        'is_active' => $row['is_active'] ?? true,
+                        'price_override' => $row['price_override'] ?? null,
                     ];
                 }
-                $menu->items()->sync($syncData);
+                $menu->items()->sync($sync);
             }
+        });
 
-            // registrar interação
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'Update',
-                'entity_type' => 'menu',
-                'entity_id' => $menu->id,
-                'content' => "O usuário {$user->first_name} atualizou o menu {$menu->name}.",
-            ]);
+        Interaction::registerUpdate($menu, Auth::user(), []);
+        return response()->json(['message' => 'Menu atualizado com sucesso.', 'menu' => $menu->fresh()->load('items')]);
+    }
 
-            return response()->json([
-                'message' => 'Menu atualizado com sucesso.',
-                'menu' => $menu->load('items'),
-            ], 200);
+    public function destroy($id)
+    {
+        $menu = Menu::with('establishment')->findOrFail($id);
+        $this->assertOwner($menu->establishment);
+        $image = $menu->cover_image;
+        $menu->delete();
+        $this->deleteImage($image);
+        return response()->json(['message' => 'Menu excluído com sucesso.']);
+    }
 
-        } catch (ValidationException $e) {
-            Log::error('Erro de validação ao atualizar menu.', ['errors' => $e->errors()]);
-            return response()->json(['errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao atualizar menu: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar o menu.'], 500);
+    private function validateMenu(Request $request, bool $creating): array
+    {
+        $required = $creating ? 'required' : 'sometimes';
+        return $request->validate([
+            'establishment_id' => "$required|integer|exists:establishments,id",
+            'name' => "$required|string|max:255",
+            'description' => 'sometimes|nullable|string|max:10000',
+            'valid_from' => 'sometimes|nullable|date',
+            'valid_to' => 'sometimes|nullable|date|after_or_equal:valid_from',
+            'price_modifier_percent' => 'sometimes|nullable|numeric|min:-100|max:1000',
+            'is_active' => 'sometimes|boolean',
+            'cover_image' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'all_items' => 'sometimes|boolean',
+            'items' => 'sometimes|array|max:500',
+            'items.*.item_id' => 'required|integer|exists:items,id',
+            'items.*.display_order' => 'nullable|integer|min:0',
+            'items.*.is_active' => 'nullable|boolean',
+            'items.*.price_override' => 'nullable|numeric|min:0',
+        ]);
+    }
+
+    private function assertOwner(Establishment $establishment): void
+    {
+        $user = Auth::user();
+        abort_unless($user && (
+            $user->hasProfile('Administrador')
+            || (int) $establishment->user_id === (int) $user->id
+            || (int) $establishment->created_by === (int) $user->id
+        ), 403, 'Você não pode gerenciar o menu deste estabelecimento.');
+    }
+
+    private function uniqueSlug(string $name, int $establishmentId, ?int $ignoreId = null): string
+    {
+        $base = Str::slug($name) ?: Str::random(12);
+        $slug = $base;
+        $i = 2;
+        while (Menu::query()->where('establishment_id', $establishmentId)->where('slug', $slug)->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+            $slug = $base . '-' . $i++;
+        }
+        return $slug;
+    }
+
+    private function storeImage($uploaded): string
+    {
+        $path = 'images/menus/' . Str::uuid() . '.webp';
+        $absolute = Storage::disk('public')->path($path);
+        if (! is_dir(dirname($absolute))) {
+            mkdir(dirname($absolute), 0755, true);
+        }
+        Image::make($uploaded->getRealPath())->orientate()->fit(800, 600)->encode('webp', 85)->save($absolute);
+        return $path;
+    }
+
+    private function deleteImage(?string $path): void
+    {
+        if ($path && str_starts_with($path, 'images/menus/')) {
+            Storage::disk('public')->delete($path);
         }
     }
-public function show($id)
-{
-    try {
-        $menu = Menu::with('items')->findOrFail($id);
-
-        if (Auth::check()) {
-            Interaction::create([
-                'user_id'          => Auth::id(),
-                'interaction_type' => 'View',
-                'entity_type'      => 'menu',
-                'entity_id'        => $menu->id,
-                'content'          => "O usuário " . Auth::user()->first_name . " visualizou o menu {$menu->name}.",
-            ]);
-        }
-
-        return response()->json(['menu' => $menu], 200);
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json(['error' => 'Menu não encontrado.'], 404);
-    } catch (\Exception $e) {
-        Log::error('Erro ao buscar menu: ' . $e->getMessage());
-        return response()->json(['error' => 'Ocorreu um erro ao buscar o menu.'], 500);
-    }
-}
-
 }

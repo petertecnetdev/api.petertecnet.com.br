@@ -8,52 +8,58 @@ use Illuminate\Support\Facades\Config;
 class Production extends Model
 {
     protected $fillable = [
-        'name', 'type', 'phone','establishment_type', 'description', 'city', 'location',
+        'name', 'slug', 'type', 'phone', 'establishment_type', 'description', 'city', 'location',
         'cep', 'address', 'user_id', 'is_featured', 'is_published', 'is_approved', 'is_cancelled',
         'additional_info', 'facebook_url', 'twitter_url', 'instagram_url', 'youtube_url',
         'other_information', 'ticket_price_min', 'ticket_price_max', 'total_tickets_sold',
-        'total_tickets_available', 'logo', 'background', 'segments','website_url', 'cnpj', 'fantasy'
+        'total_tickets_available', 'logo', 'background', 'segments', 'website_url', 'cnpj', 'fantasy',
     ];
 
     protected $casts = [
-        'segments' => 'json',
+        'segments' => 'array',
+        'is_featured' => 'boolean',
+        'is_published' => 'boolean',
+        'is_approved' => 'boolean',
+        'is_cancelled' => 'boolean',
+        'ticket_price_min' => 'decimal:2',
+        'ticket_price_max' => 'decimal:2',
+        'total_tickets_sold' => 'integer',
+        'total_tickets_available' => 'integer',
     ];
 
-    // Relação com o usuário responsável pela produção
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    // Relação com as interações da produção
     public function interactions()
     {
-        return $this->hasMany(Interaction::class, 'entity_id')->where('entity_type', 'production');
+        return $this->hasMany(Interaction::class, 'entity_id')
+            ->where('entity_type', 'production');
     }
-    // Método para obter os nomes dos segmentos atribuídos à produção
+
     public function getSegmentsnNamesAttribute()
     {
-        $segmentsArray = is_string($this->segments) ? json_decode($this->segments, true) : [];
+        $segmentsArray = is_array($this->segments) ? $this->segments : [];
 
-        if (is_null($segmentsArray) || empty($segmentsArray) || count($segmentsArray) <= 0) {
-            return '<i>Nenhum seguimento atribuido</i>';
+        if ($segmentsArray === []) {
+            return '<i>Nenhum segmento atribuído</i>';
         }
 
         $names = [];
-        $segments = Config::get('segments'); // Certifique-se de ter definido seu arquivo de configuração
+        $segments = Config::get('segments', []);
 
         foreach ($segmentsArray as $key) {
-            if (isset($segments[$key])) {
+            if (isset($segments[$key]['name'])) {
                 $names[] = $segments[$key]['name'];
             }
         }
 
-        return implode(" | ", $names);
+        return implode(' | ', $names);
     }
+
     public function events()
     {
         return $this->hasMany(Event::class)->orderBy('start_date', 'desc');
     }
-    
-    // Outros métodos e lógica associados à model Production
 }

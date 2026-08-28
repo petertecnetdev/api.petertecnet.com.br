@@ -1,19 +1,6 @@
 <?php
 
 return [
-
-    /*
-    |--------------------------------------------------------------------------
-    | Third Party Services
-    |--------------------------------------------------------------------------
-    |
-    | This file is for storing the credentials for third party services such
-    | as Mailgun, Postmark, AWS and more. This file provides the de facto
-    | location for this type of information, allowing packages to have
-    | a conventional location for credentials.
-    |
-    */
-
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),
         'secret' => env('MAILGUN_SECRET'),
@@ -35,4 +22,11 @@ return [
         'client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID')),
     ],
 
+    'efi' => [
+        'base_url' => env('EFI_API_BASE_URL'),
+        'client_id' => env('EFI_CLIENT_ID'),
+        'client_secret' => env('EFI_CLIENT_SECRET'),
+        'cert_path' => env('EFI_CERT_PATH'),
+        'timeout' => (int) env('EFI_API_TIMEOUT', 15),
+    ],
 ];

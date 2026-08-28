@@ -2,681 +2,434 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\GoogleAuthRequest;
+use App\Mail\InviteCompleteMail;
+use App\Mail\InviteUserMail;
+use App\Mail\ResendVerificationCodeMail;
+use App\Mail\ResetPasswordMail;
+use App\Mail\VerificationCodeMail;
+use App\Models\Application;
+use App\Models\Interaction;
+use App\Models\User;
+use Google_Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use App\Models\{User, Interaction};
-use App\Mail\VerificationCodeMail;
-use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
-use App\Mail\{ResendVerificationCodeMail, InviteCompleteMail,InviteUserMail, ResetPasswordMail};
-use Validator;
-use Exception;
-use App\Http\Requests\GoogleAuthRequest;
-use Google_Client;
+use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
 {
-
-    protected function getValidationMessages()
+    public function __construct()
     {
-        return [
-            'first_name.required' => 'O campo nome é obrigatório.',
-            'first_name.regex' => 'O nome não pode conter caracteres especiais ou números.',
-            'email.required' => 'O campo e-mail é obrigatório.',
-            'email.email' => 'O e-mail deve ser um endereço de e-mail válido.',
-            'email.unique' => 'Este e-mail já está sendo utilizado por outro usuário. Caso seja seu e-mail, você pode recuperar a senha pelo link no formulário.',
-            'password.required' => 'O campo senha é obrigatório.',
-            'password.min' => 'A senha deve ter no mínimo :min caracteres.',
-            'password.regex' => 'A senha deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
-            'verification_code.required' => 'O campo código de verificação é obrigatório.',
-            'verification_code.string' => 'O código de verificação deve ser uma sequência de caracteres.',
-            'verification_code.size' => 'O código de verificação deve ter exatamente :size caracteres.',
-            'reset_password_code.required' => 'O campo código de redefinição de senha é obrigatório.',
-            'reset_password_code.string' => 'O código de redefinição de senha deve ser uma sequência de caracteres.',
-            'reset_password_code.size' => 'O código de redefinição de senha deve ter exatamente :size caracteres.',
-            'current_password.required' => 'O campo senha atual é obrigatório.',
-            'current_password.regex' => 'A senha atual deve conter pelo menos uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@, $, !, %, *, ?, &).',
-            'password_confirmation.required' => 'O campo confirmação de senha é obrigatório.',
-            'password_confirmation.same' => 'A confirmação de senha deve coincidir com a senha.',
-            'default' => 'Um erro ocorreu. Por favor, tente novamente.',
-        ];
+        $this->middleware('auth:api', [
+            'except' => [
+                'login', 'register', 'sendResetCodeEmail', 'resetPassword',
+                'googleAuth', 'completeInvite', 'refresh',
+            ],
+        ]);
     }
 
+    public function login(Request $request)
+    {
+        $data = $request->validate([
+            'username' => 'required|string|max:255',
+            'password' => 'required|string|max:255',
+            'latitude' => 'nullable|numeric|between:-90,90',
+            'longitude' => 'nullable|numeric|between:-180,180',
+        ]);
 
+        $token = auth()->attempt(User::credentials($data['username'], $data['password']));
 
-    /**
-     * Create a new AuthController instance.
-     *
-     * @return void
-     */
-   public function __construct()
-{
-    $this->middleware('auth:api', [
-        'except' => [
-            'login',
-            'register',
-            'sendResetCodeEmail',
-            'resetPassword',
-            'googleAuth',
-            'invite',          // ← agora está correto
-            'completeInvite',  // ← ok
-        ],
-    ]);
-}
+        if (! $token) {
+            return response()->json(['error' => 'Credenciais inválidas.'], 401);
+        }
 
+        $user = auth()->user();
+        $location = $this->resolveLocation(
+            $request,
+            $data['latitude'] ?? null,
+            $data['longitude'] ?? null
+        );
 
+        $user->updateAddress($location['city'], $location['uf']);
+        $this->recordInteraction($user, 'login', [
+            'ip' => $request->ip(),
+            'latitude' => $data['latitude'] ?? null,
+            'longitude' => $data['longitude'] ?? null,
+            'city' => $location['city'],
+            'uf' => $location['uf'],
+            'user_agent' => $request->userAgent(),
+        ]);
 
-    /**
-     * Get a JWT via given credentials.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-
+        return response()->json([
+            'message' => 'Login realizado com sucesso!',
+            'token' => $this->createNewToken($token),
+        ]);
+    }
 
     public function googleAuth(GoogleAuthRequest $request)
     {
-        try {
-            $client = new \Google_Client(['client_id' => env('GOOGLE_CLIENT_ID')]);
-            $payload = $client->verifyIdToken($request->input('token_id'));
+        $clientId = (string) config('services.google.client_id');
 
-            if (!$payload) {
+        if ($clientId === '') {
+            return response()->json(['error' => 'Login com Google indisponível.'], 503);
+        }
+
+        try {
+            $payload = (new Google_Client(['client_id' => $clientId]))
+                ->verifyIdToken($request->input('token_id'));
+
+            if (! is_array($payload)
+                || empty($payload['sub'])
+                || empty($payload['email'])
+                || ! ($payload['email_verified'] ?? false)) {
                 return response()->json(['error' => 'Token do Google inválido.'], 401);
             }
 
-            $googleId = $payload['sub'];
-            $email = $payload['email'];
-            $firstName = data_get($payload, 'given_name', explode(' ', $payload['name'])[0] ?? '');
+            $googleId = (string) $payload['sub'];
+            $email = strtolower(trim((string) $payload['email']));
+            $firstName = trim((string) ($payload['given_name'] ?? 'Usuário')) ?: 'Usuário';
 
-            $user = User::where('google_id', $googleId)
+            $user = User::query()
+                ->where('google_id', $googleId)
                 ->orWhere('email', $email)
                 ->first();
 
-            if (!$user) {
-                // Criação do novo usuário com e-mail já verificado
-                $username = Str::slug($firstName) . '-' . Str::random(4);
-                while (User::where('user_name', $username)->exists()) {
-                    $username = Str::slug($firstName) . '-' . Str::random(4);
-                }
+            if ($user && $user->google_id && $user->google_id !== $googleId) {
+                return response()->json(['error' => 'Esta conta já está vinculada a outro login Google.'], 409);
+            }
 
+            if (! $user) {
                 $user = User::create([
                     'first_name' => $firstName,
                     'email' => $email,
-                    'password' => bcrypt(Str::random(16)),
-                    'user_name' => $username,
+                    'password' => Hash::make(Str::random(40)),
+                    'user_name' => $this->uniqueUsername($firstName),
                     'google_id' => $googleId,
                     'email_verified_at' => now(),
                 ]);
             } else {
-                // ⚠️ Atualiza se ainda não tiver verificado o e-mail
-                if (is_null($user->email_verified_at)) {
-                    $user->email_verified_at = now();
-                    $user->save();
-                }
+                $user->forceFill([
+                    'google_id' => $googleId,
+                    'email_verified_at' => $user->email_verified_at ?: now(),
+                ])->save();
             }
 
-
             $token = auth()->login($user);
-
-            Interaction::create([
-                'user_id' => $user->id,
-                'interaction_type' => 'login_google',
-                'entity_id' => $user->id,
-                'entity_type' => 'user',
-            ]);
+            $this->recordInteraction($user, 'login_google');
 
             return response()->json([
                 'message' => 'Login com Google realizado com sucesso!',
                 'token' => $this->createNewToken($token),
-            ], 200);
-
-        } catch (\Exception $e) {
-            Log::error('Erro durante o login com Google', ['message' => $e->getMessage()]);
-            return response()->json(['error' => 'Erro durante o login com Google'], 500);
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Falha no login com Google.', ['message' => $e->getMessage()]);
+            return response()->json(['error' => 'Erro durante o login com Google.'], 500);
         }
     }
-
-
-    public function login(Request $request)
-    {
-        try {
-            Log::info('Tentativa de login', ['username' => $request->username]);
-
-            // =======================
-            //  VALIDAR LOGIN
-            // =======================
-            $validator = Validator::make($request->all(), [
-                'username' => 'required|string',
-                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-            ], $this->getValidationMessages());
-
-            if ($validator->fails()) {
-                throw new ValidationException($validator);
-            }
-
-            $username = $request->username;
-            $password = $request->password;
-
-            // =======================
-            //  CREDENCIAIS VIA MODEL
-            // =======================
-            $credentials = User::credentials($username, $password);
-
-            if (!$token = auth()->attempt($credentials)) {
-
-                $user = filter_var($username, FILTER_VALIDATE_EMAIL)
-                    ? User::where('email', $username)->first()
-                    : User::where('cpf', preg_replace('/[^0-9]/', '', $username))->first();
-
-                return response()->json([
-                    'error' => !$user ? 'Usuário não cadastrado.' : 'Senha incorreta.'
-                ], !$user ? 404 : 401);
-            }
-
-            // Usuário autenticado
-            $user = auth()->user();
-
-            $ip = $request->ip();
-            $latitude = $request->latitude ?? null;
-            $longitude = $request->longitude ?? null;
-
-            $city = null;
-            $uf = null;
-
-            // ============================================================
-            // 1) PRIORIDADE — TENTAR COORDENADAS DO FRONT
-            // ============================================================
-            if ($latitude && $longitude) {
-                try {
-                    $context = stream_context_create([
-                        'http' => [
-                            'header' => "User-Agent: PeterTecnet/1.0\r\n",
-                            'timeout' => 3,
-                            'ignore_errors' => true,
-                        ],
-                    ]);
-
-                    $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";
-                    $json = file_get_contents($url, false, $context);
-                    $response = json_decode($json, true);
-
-                    $city = $response['address']['city']
-                        ?? $response['address']['town']
-                        ?? $response['address']['village']
-                        ?? null;
-
-                    $uf = $response['address']['state'] ?? null;
-
-                    // Transformar para UF
-                    $ufs = [
-                        'Acre' => 'AC',
-                        'Alagoas' => 'AL',
-                        'Amapá' => 'AP',
-                        'Amazonas' => 'AM',
-                        'Bahia' => 'BA',
-                        'Ceará' => 'CE',
-                        'Distrito Federal' => 'DF',
-                        'Espírito Santo' => 'ES',
-                        'Goiás' => 'GO',
-                        'Maranhão' => 'MA',
-                        'Mato Grosso' => 'MT',
-                        'Mato Grosso do Sul' => 'MS',
-                        'Minas Gerais' => 'MG',
-                        'Pará' => 'PA',
-                        'Paraíba' => 'PB',
-                        'Paraná' => 'PR',
-                        'Pernambuco' => 'PE',
-                        'Piauí' => 'PI',
-                        'Rio de Janeiro' => 'RJ',
-                        'Rio Grande do Norte' => 'RN',
-                        'Rio Grande do Sul' => 'RS',
-                        'Rondônia' => 'RO',
-                        'Roraima' => 'RR',
-                        'Santa Catarina' => 'SC',
-                        'São Paulo' => 'SP',
-                        'Sergipe' => 'SE',
-                        'Tocantins' => 'TO'
-                    ];
-
-                    if (isset($ufs[$uf])) {
-                        $uf = $ufs[$uf];
-                    }
-
-                } catch (\Throwable $e) {
-                    Log::warning('Falha no reverse geocode.', ['msg' => $e->getMessage()]);
-                }
-            }
-
-            // ============================================================
-            // 2) FALLBACK — GEOLOCALIZAÇÃO VIA IP PELA MODEL
-            // ============================================================
-            if (!$city || !$uf) {
-                $geo = User::geoFromIp($ip);
-
-                $city = $city ?: $geo['city'];
-                $uf = $uf ?: $geo['uf'];
-            }
-
-            // ============================================================
-            // 3) SALVAR ENDEREÇO DO USUÁRIO (via método da MODEL)
-            // ============================================================
-            $user->updateAddress($city, $uf);
-
-            // ============================================================
-            // 4) REGISTRAR INTERAÇÃO (via MODEL)
-            // ============================================================
-            Interaction::registerLogin($user, [
-                'ip' => $ip,
-                'latitude' => $latitude,
-                'longitude' => $longitude,
-                'city' => $city,
-                'uf' => $uf,
-                'user_agent' => $request->userAgent(),
-            ]);
-
-            return response()->json([
-                'message' => 'Login realizado com sucesso!',
-                'token' => $this->createNewToken($token),
-            ], 200);
-
-        } catch (ValidationException $e) {
-            return response()->json($e->errors(), 422);
-
-        } catch (\Exception $e) {
-            Log::error('Erro inesperado no login', [
-                'msg' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            return response()->json(['error' => 'Erro durante o login'], 500);
-        }
-    }
-
-
-
-    /**
-     * Register a User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
 
     public function register(Request $request)
     {
-        try {
-            $validator = Validator::make($request->all(), [
-                'first_name' => ['required', 'regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
-                'email' => 'required|email|unique:users',
-                'password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-                'cpf' => ['nullable', 'regex:/^\d{11}$/', 'unique:users,cpf'],
-            ], $this->getValidationMessages());
+        $data = $request->validate([
+            'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-ZÀ-ÿ\\s]+$/'],
+            'email' => 'required|email|max:255|unique:users,email',
+            'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'cpf' => ['nullable', 'regex:/^\\d{11}$/', 'unique:users,cpf'],
+            'app_id' => 'nullable|integer|exists:applications,id',
+        ]);
 
-            if ($validator->fails()) {
-                throw new ValidationException($validator);
-            }
+        $rawCode = $this->newCode(6);
 
-            $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
-            while (User::where('user_name', $username)->exists()) {
-                $username = Str::slug($request->input('first_name')) . '-' . Str::random(4);
-            }
-
-            $verificationCode = Str::random(4);
-
+        $user = DB::transaction(function () use ($data, $rawCode) {
             $user = User::create([
-                'first_name' => $request->input('first_name'),
-                'email' => $request->input('email'),
-                'password' => bcrypt($request->input('password')),
-                'user_name' => $username,
-                'verification_code' => $verificationCode,
-                'cpf' => $request->input('cpf'),
+                'first_name' => trim($data['first_name']),
+                'email' => strtolower(trim($data['email'])),
+                'password' => Hash::make($data['password']),
+                'user_name' => $this->uniqueUsername($data['first_name']),
+                'verification_code' => Hash::make($rawCode),
+                'cpf' => $data['cpf'] ?? null,
             ]);
 
-            Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
+            if (! empty($data['app_id'])) {
+                $user->applications()->syncWithoutDetaching([
+                    $data['app_id'] => ['status' => 'active', 'joined_at' => now()],
+                ]);
+            }
 
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'resgister';
-            $interaction->entity_id = $user->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
+            return $user;
+        });
 
-            return response()->json(['message' => 'Registro bem-sucedido'], 201);
-        } catch (ValidationException $e) {
-            Log::error('ValidationException: ' . $e->getMessage());
-            $errors = $e->errors();
-            return response()->json(['message' => 'Erro de validação', 'errors' => $errors], 422);
-        } catch (\Exception $e) {
-            Log::error('Exception: ' . $e->getMessage());
-            return response()->json(['message' => 'Erro durante o registro. Por favor, tente novamente.'], 500);
-        }
+        Mail::to($user->email)->send(new VerificationCodeMail($rawCode, $user));
+        $this->recordInteraction($user, 'register');
+
+        return response()->json(['message' => 'Registro bem-sucedido'], 201);
     }
-
 
     public function emailVerify(Request $request)
     {
-        try {
-            $validator = Validator::make($request->all(), [
-                'verification_code' => 'required|string|size:4', // Supondo que o código tenha 4 caracteres
-            ]);
+        $data = $request->validate(['verification_code' => 'required|string|min:4|max:12']);
+        $user = Auth::user();
 
-            if ($validator->fails()) {
-                throw new ValidationException($validator);
-            }
-
-            $user = auth()->user();
-
-            // Verifica se o email já foi verificado
-            if ($user->email_verified_at !== null) {
-                return response()->json(['message' => 'O e-mail já foi verificado anteriormente'], 200);
-            }
-
-            $verificationCode = $request->input('verification_code');
-
-            if ($user->verification_code === $verificationCode) {
-                $user->email_verified_at = now();
-                $user->verification_code = null; // Limpa o código de verificação após a validação
-                $user->save();
-
-                $interaction = new Interaction();
-                $interaction->user_id = $user->id;
-                $interaction->interaction_type = 'verification';
-                $interaction->entity_id = $user->id;
-                $interaction->entity_type = 'user';
-                $interaction->save();
-
-                return response()->json(['message' => 'E-mail verificado com sucesso']);
-            } else {
-                return response()->json(['error' => 'Código de verificação inválido'], 422);
-            }
-        } catch (ValidationException $e) {
-            return response()->json(['error' => 'Erro de validação', 'errors' => $e->errors()], 422);
-        } catch (\Exception $e) {
-            Log::error('Exception: ' . $e->getMessage());
-            return response()->json(['error' => 'Erro durante a verificação do e-mail'], 500);
+        if ($user->email_verified_at) {
+            return response()->json(['message' => 'O e-mail já foi verificado anteriormente.']);
         }
+
+        if (! $this->matchesCode($data['verification_code'], $user->verification_code)) {
+            return response()->json(['error' => 'Código de verificação inválido.'], 422);
+        }
+
+        $user->forceFill(['email_verified_at' => now(), 'verification_code' => null])->save();
+        $this->recordInteraction($user, 'verification');
+
+        return response()->json(['message' => 'E-mail verificado com sucesso.']);
+    }
+
+    public function resendCodeEmailVerification()
+    {
+        $user = Auth::user();
+        $rawCode = $this->newCode(6);
+
+        $user->forceFill(['verification_code' => Hash::make($rawCode)])->save();
+        Mail::to($user->email)->send(new ResendVerificationCodeMail($rawCode, $user));
+        $this->recordInteraction($user, 'verification_code_resent');
+
+        return response()->json(['message' => 'Novo código de verificação enviado com sucesso.']);
     }
 
     public function changePassword(Request $request)
     {
-        try {
-            $user = auth()->user();
+        $data = $request->validate([
+            'current_password' => 'required|string',
+            'new_password' => [
+                'required', 'string', 'different:current_password',
+                Password::min(8)->mixedCase()->numbers()->symbols(),
+            ],
+            'password_confirmation' => 'required|string|same:new_password',
+        ]);
 
-            // Validação dos dados recebidos
-            $validator = Validator::make($request->all(), [
-                'current_password' => 'required|string|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-                'new_password' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/|different:current_password',
-                'password_confirmation' => 'required|string|min:6|regex:/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/',
-            ], $this->getValidationMessages());
+        $user = Auth::user();
 
-            if ($validator->fails()) {
-                throw new ValidationException($validator);
-            }
-
-            // Verifica se a senha atual está correta
-            if (!Hash::check($request->input('current_password'), $user->password)) {
-                return response()->json(['error' => 'A senha atual está incorreta.'], 401);
-            }
-
-            // Atualiza a senha do usuário
-            $user->password = bcrypt($request->input('new_password'));
-            $user->save();
-
-            // Interação registrada
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'password_change';
-            $interaction->entity_id = $user->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
-            return response()->json(['message' => 'Senha alterada com sucesso!'], 200);
-        } catch (ValidationException $exception) {
-            return response()->json($exception->errors(), 422);
-        } catch (\Exception $exception) {
-            Log::error('Exception: ' . $exception->getMessage());
-            return response()->json(['error' => 'Erro durante a alteração da senha'], 500);
+        if (! Hash::check($data['current_password'], $user->password)) {
+            return response()->json(['error' => 'A senha atual está incorreta.'], 401);
         }
+
+        $user->forceFill(['password' => Hash::make($data['new_password'])])->save();
+        $this->recordInteraction($user, 'password_change');
+
+        return response()->json(['message' => 'Senha alterada com sucesso!']);
     }
 
-
-
-
-    /**
-     * Log the user out (Invalidate the token).
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-
-    public function logout()
-    {
-        $interaction = new Interaction();
-        $interaction->user_id = Auth()->user()->id;
-        $interaction->interaction_type = 'logout';
-        $interaction->entity_id = Auth()->user()->id;
-        $interaction->entity_type = 'user';
-        $interaction->save();
-
-        if (Auth::check()) {
-
-            Auth::logout();
-            return response()->json(['message' => 'Logout realizado com sucesso']);
-        } else {
-            return response()->json(['error' => 'Usuário não autenticado'], 401);
-        }
-    }
     public function sendResetCodeEmail(Request $request)
     {
-        try {
-            // Validação do e-mail (não é necessário atribuir o resultado à variável)
-            $request->validate([
-                'email' => 'required|email',
-            ], $this->getValidationMessages());
+        $data = $request->validate(['email' => 'required|email|max:255']);
+        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
 
-            Log::info('Validação do e-mail realizada com sucesso', ['email' => $request->email]);
+        if ($user) {
+            $rawCode = $this->newCode(8);
+            $user->forceFill([
+                'reset_password_code' => Hash::make($rawCode),
+                'reset_password_expires_at' => now()->addMinutes(10),
+            ])->save();
 
-            // Verifica se o e-mail existe no banco de dados
-            $user = User::where('email', $request->email)->first();
-
-            if (!$user) {
-                Log::warning('E-mail não encontrado no banco de dados', ['email' => $request->email]);
-                return response()->json(['message' => 'E-mail não encontrado.'], 404);
+            try {
+                Mail::to($user->email)->send(new ResetPasswordMail($rawCode, $user));
+                $this->recordInteraction($user, 'password_reset_requested');
+            } catch (\Throwable $e) {
+                Log::error('Falha ao enviar e-mail de recuperação.', [
+                    'user_id' => $user->id,
+                    'message' => $e->getMessage(),
+                ]);
+                return response()->json(['message' => 'Não foi possível enviar o e-mail neste momento.'], 503);
             }
-
-            Log::info('Usuário encontrado', ['user_id' => $user->id]);
-
-            // Gera um código de redefinição de senha
-            $code = Str::random(8);
-            Log::info('Código de redefinição de senha gerado', ['code' => $code]);
-
-            // Salva o código de redefinição de senha no usuário
-            $user->reset_password_code = $code;
-            $user->reset_password_expires_at = now()->addMinutes(10);
-            $user->save();
-            Log::info('Código de redefinição de senha salvo no usuário', ['user_id' => $user->id]);
-
-            // Envia o e-mail com o código de redefinição de senha
-            Mail::to($user->email)->send(new ResetPasswordMail($code, $user));
-            Log::info('E-mail de redefinição de senha enviado', ['email' => $user->email]);
-
-            // Registra a interação
-            $interaction = new Interaction();
-            $interaction->user_id = $user->id;
-            $interaction->interaction_type = 'ResetCode';
-            $interaction->entity_id = $user->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
-            Log::info('Interação registrada', ['user_id' => $user->id, 'interaction_type' => 'ResetCode']);
-
-            return response()->json(['message' => 'Código de redefinição de senha enviado por e-mail']);
-        } catch (ValidationException $e) {
-            Log::error('Erro de validação', ['error' => $e->getMessage()]);
-            return response()->json(['message' => 'Erro de validação: ' . $e->getMessage()], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao enviar o código de redefinição de senha por e-mail', [
-                'email' => $request->email,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json(['message' => 'Falha ao enviar o código de redefinição de senha por e-mail'], 500);
         }
+
+        return response()->json([
+            'message' => 'Se o e-mail estiver cadastrado, um código de redefinição será enviado.',
+        ]);
     }
 
     public function resetPassword(Request $request)
     {
-        try {
-            // Registra log sem incluir dados sensíveis
-            Log::info('Iniciando validação para redefinir senha', ['email' => $request->email]);
+        $data = $request->validate([
+            'email' => 'required|email|max:255',
+            'reset_password_code' => 'required|string|min:6|max:16',
+            'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()->symbols()],
+        ]);
 
-            $request->validate([
-                'email' => 'required|email',
-                'reset_password_code' => 'required|string|size:8',
-                'password' => [
-                    'required',
-                    'string',
-                    'min:6',
-                    'regex:/[A-Z]/',
-                    'regex:/[a-z]/',
-                    'regex:/[!@#$%^&*(),.?":{}|<>]/',
-                ]
-            ], $this->getValidationMessages());
+        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
 
-            // Verifica se o e-mail existe no banco de dados
-            $user = User::where('email', $request->email)->first();
-
-            if (!$user) {
-                return response()->json([
-                    'error' => true,
-                    'message' => 'E-mail não encontrado. Se você ainda não tem um cadastro, por favor, cadastre-se.'
-                ], 404);
-            }
-
-            // Verifica se o código de redefinição de senha corresponde e não está expirado
-            if ($user->reset_password_code !== $request->reset_password_code || now()->gt($user->reset_password_expires_at)) {
-                return response()->json([
-                    'error' => true,
-                    'message' => 'Código de redefinição de senha inválido ou expirado. Por favor, solicite um novo código.'
-                ], 400);
-            }
-
-            // Atualiza a senha do usuário
-            $user->password = Hash::make($request->password);
-            $user->reset_password_code = null;
-            $user->reset_password_expires_at = null;
-            $user->save();
-
-            // Registra a interação do usuário
-            $this->logPasswordChangedInteraction($user);
-
-            return response()->json([
-                'error' => false,
-                'message' => 'Senha redefinida com sucesso. Agora é só digitar suas novas credenciais para efetuar o login.'
-            ]);
-        } catch (ValidationException $e) {
+        if (! $user
+            || ! $user->reset_password_expires_at
+            || now()->greaterThan($user->reset_password_expires_at)
+            || ! $this->matchesCode($data['reset_password_code'], $user->reset_password_code)) {
             return response()->json([
                 'error' => true,
-                'message' => $e->validator->errors()->first()
+                'message' => 'Código de redefinição inválido ou expirado.',
             ], 422);
-        } catch (\Exception $e) {
-            Log::error('Erro ao redefinir senha', [
-                'email' => $request->email,
-                'error' => $e->getMessage()
-            ]);
-            return response()->json([
-                'error' => true,
-                'message' => 'Ocorreu um erro ao redefinir a senha. Tente novamente mais tarde.'
-            ], 500);
         }
+
+        $user->forceFill([
+            'password' => Hash::make($data['password']),
+            'reset_password_code' => null,
+            'reset_password_expires_at' => null,
+        ])->save();
+
+        $this->recordInteraction($user, 'password_changed');
+
+        return response()->json(['error' => false, 'message' => 'Senha redefinida com sucesso.']);
     }
 
-    private function logPasswordChangedInteraction($user)
+    public function logout()
     {
-        $interaction = new Interaction();
-        $interaction->user_id = $user->id;
-        $interaction->interaction_type = 'PasswordChanged';
-        $interaction->entity_id = $user->id;
-        $interaction->entity_type = 'user';
-        $interaction->save();
-    }
+        $user = Auth::user();
+        $this->recordInteraction($user, 'logout');
+        Auth::logout();
 
-
-    public function checkauth()
-    {
-        if (Auth::check()) {
-            return true;
-        }
-        return false;
+        return response()->json(['message' => 'Logout realizado com sucesso.']);
     }
 
     public function refresh()
     {
-        return response()->json(
-            $this->createNewToken(auth()->refresh())
-        );
+        try {
+            return response()->json($this->createNewToken(auth()->refresh()));
+        } catch (\Throwable $e) {
+            return response()->json(['error' => 'Token inválido ou não renovável.'], 401);
+        }
+    }
+
+    public function checkauth()
+    {
+        return response()->json(['authenticated' => Auth::check()]);
     }
 
     public function unauthorized()
     {
         return response()->json(['error' => 'Unauthorized'], 401);
     }
-    /**
-     * Get the authenticated User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    // App\Http\Controllers\AuthController.php
 
     public function me()
-{
-    try {
-        $user = User::with(['profile', 'employer', 'establishments'])
-            ->where('user_name', Auth::user()->user_name)
-            ->first();
+    {
+        $user = User::query()
+            ->with(['profile', 'employer', 'establishments', 'applications'])
+            ->findOrFail(Auth::id());
 
-        if (!$user) {
-            return response()->json(['error' => 'Usuário não autenticado'], 404);
-        }
+        $this->recordInteraction($user, 'me');
 
-        // 🔥 FIX — garantir URL completa do avatar
-        if ($user->avatar) {
-            $user->avatar ;
-        }
-
-        Interaction::create([
-            'user_id' => $user->id,
-            'interaction_type' => 'me',
-            'entity_id' => $user->id,
-            'entity_type' => 'user',
-        ]);
-
-        $employerData = $user->employer;
+        $employer = $user->employer;
         $establishments = $user->establishments;
+        $applications = $user->applications;
 
-        $user->setRelation('employer', null);
-        $user->setRelation('establishments', null);
+        $user->unsetRelation('employer');
+        $user->unsetRelation('establishments');
+        $user->unsetRelation('applications');
 
         return response()->json([
             'message' => 'Usuário encontrado com sucesso.',
             'user' => $user,
-            'is_employer' => (bool) $employerData,
-            'employer' => $employerData,
+            'is_employer' => (bool) $employer,
+            'employer' => $employer,
             'establishments' => $establishments,
-        ], 200);
-
-    } catch (\Exception $e) {
-        return response()->json([
-            'error' => 'Ocorreu um erro: ' . $e->getMessage()
-        ], 500);
+            'applications' => $applications,
+        ]);
     }
-}
 
+    public function invite(Request $request)
+    {
+        $actor = Auth::user();
 
-    /**
-     * Get the token array structure.
-     *
-     * @param  string $token
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    protected function createNewToken($token)
+        if (! $actor->hasProfile('Administrador')
+            && ! $actor->hasPermission('user_create')
+            && ! $actor->hasPermission('application_manage')) {
+            return response()->json(['message' => 'Você não tem permissão para enviar convites.'], 403);
+        }
+
+        $data = $request->validate([
+            'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-ZÀ-ÿ\\s]+$/'],
+            'email' => 'required|email|max:255|unique:users,email',
+            'app_id' => 'required|integer|exists:applications,id',
+        ]);
+
+        $application = Application::findOrFail($data['app_id']);
+        $rawCode = $this->newCode(6);
+
+        $user = DB::transaction(function () use ($data, $rawCode) {
+            $user = User::create([
+                'first_name' => trim($data['first_name']),
+                'email' => strtolower(trim($data['email'])),
+                'password' => Hash::make(Str::random(40)),
+                'user_name' => $this->uniqueUsername($data['first_name']),
+                'verification_code' => Hash::make($rawCode),
+            ]);
+
+            $user->applications()->attach($data['app_id'], [
+                'status' => 'pending',
+                'joined_at' => null,
+            ]);
+
+            return $user;
+        });
+
+        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->id));
+        $this->recordInteraction($user, 'invite_sent', ['application_id' => $application->id]);
+
+        return response()->json(['message' => 'Convite enviado com sucesso.']);
+    }
+
+    public function completeInvite(Request $request)
+    {
+        $data = $request->validate([
+            'email' => 'required|email|max:255',
+            'verification_code' => 'required|string|min:4|max:12',
+            'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()->symbols()],
+        ]);
+
+        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
+
+        if (! $user || ! $this->matchesCode($data['verification_code'], $user->verification_code)) {
+            return response()->json(['message' => 'Convite inválido ou expirado.'], 422);
+        }
+
+        DB::transaction(function () use ($user, $data) {
+            $user->forceFill([
+                'password' => Hash::make($data['password']),
+                'verification_code' => null,
+                'email_verified_at' => now(),
+            ])->save();
+
+            $pendingApplicationIds = $user->applications()
+                ->wherePivot('status', 'pending')
+                ->pluck('applications.id');
+
+            foreach ($pendingApplicationIds as $applicationId) {
+                $user->applications()->updateExistingPivot($applicationId, [
+                    'status' => 'active',
+                    'joined_at' => now(),
+                ]);
+            }
+        });
+
+        try {
+            Mail::to($user->email)->send(new InviteCompleteMail($user));
+        } catch (\Throwable $e) {
+            Log::warning('Convite concluído, mas e-mail de confirmação falhou.', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        $this->recordInteraction($user, 'invite_completed');
+
+        return response()->json([
+            'message' => 'Senha criada com sucesso. Você já pode acessar o aplicativo.',
+        ]);
+    }
+
+    protected function createNewToken($token): array
     {
         return [
             'access_token' => $token,
@@ -685,164 +438,118 @@ class AuthController extends Controller
             'user' => auth()->user(),
         ];
     }
-    public function resendCodeEmailVerification()
+
+    private function uniqueUsername(string $name): string
     {
-        try {
+        $base = Str::slug($name) ?: 'user';
 
-            // Busca pelo usuário com o e-mail fornecido
-            $user = auth()->user();
+        do {
+            $username = $base . '-' . Str::lower(Str::random(6));
+        } while (User::query()->where('user_name', $username)->exists());
 
-            if (!$user) {
-                return response()->json(['message' => 'Nenhum usuário encontrado com este e-mail.'], 404);
-            }
-
-            // Geração de um novo código de verificação
-            $newVerificationCode = Str::random(4);
-
-            // Atualização do código de verificação no banco de dados
-            $user->verification_code = $newVerificationCode;
-            $user->save();
-
-            // Envio do e-mail de verificação com o novo código
-            Mail::to($user->email)->send(new ResendVerificationCodeMail($newVerificationCode, $user));
-            $interaction = new Interaction();
-            $interaction->user_id = Auth()->user()->id;
-            $interaction->interaction_type = 'ResetCodeVerification';
-            $interaction->entity_id = Auth()->user()->id;
-            $interaction->entity_type = 'user';
-            $interaction->save();
-            return response()->json(['message' => 'Novo código de verificação enviado com sucesso.'], 200);
-        } catch (ValidationException $e) {
-            // Captura de exceções de validação
-            Log::error('ValidationException: ' . $e->getMessage());
-            $errors = $e->errors();
-            return response()->json(['message' => 'Erro de validação', 'errors' => $errors], 422);
-        } catch (\Exception $e) {
-            // Captura de outras exceções
-            Log::error('Exception: ' . $e->getMessage());
-            return response()->json(['message' => 'Erro ao reenviar o código de verificação. Por favor, tente novamente.'], 500);
-        }
+        return $username;
     }
 
-
- public function invite(Request $request)
-{
-    try {
-        $request->validate([
-            'first_name' => ['required','regex:/^[a-zA-ZÀ-ÿ\s]+$/'],
-            'email' => 'required|email',
-            'app_id' => 'required|integer'
-        ]);
-
-        $existing = User::where('email', $request->email)->first();
-        if ($existing) {
-            return response()->json([
-                'message' => 'Este e-mail já está cadastrado no sistema.'
-            ], 422);
-        }
-
-        $username = Str::slug($request->first_name) . '-' . Str::random(4);
-        while (User::where('user_name', $username)->exists()) {
-            $username = Str::slug($request->first_name) . '-' . Str::random(4);
-        }
-
-        $code = Str::random(6);
-
-        $user = User::create([
-            'first_name' => $request->first_name,
-            'email' => $request->email,
-            'password' => bcrypt(Str::random(16)),
-            'user_name' => $username,
-            'verification_code' => $code,
-            'app_id' => $request->app_id
-        ]);
-
-        Mail::to($user->email)->send(
-            new InviteUserMail($user, $code, $request->app_id)
-        );
-
-        Interaction::create([
-            'user_id' => $user->id,
-            'interaction_type' => 'invite_sent',
-            'entity_id' => $user->id,
-            'entity_type' => 'user'
-        ]);
-
-        return response()->json([
-            'message' => 'Convite enviado com sucesso.'
-        ]);
-
-    } catch (ValidationException $e) {
-        return response()->json([
-            'message' => 'Erro de validação.',
-            'errors' => $e->errors()
-        ], 422);
-    } catch (\Exception $e) {
-        Log::error('invite: '.$e->getMessage());
-        return response()->json([
-            'message' => 'Erro ao enviar convite.'
-        ], 500);
-    }
-}
-
-
-    public function completeInvite(Request $request)
+    private function newCode(int $length): string
     {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $code = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        return $code;
+    }
+
+    private function matchesCode(string $provided, ?string $stored): bool
+    {
+        if (! $stored) {
+            return false;
+        }
+
+        if (Str::startsWith($stored, ['$2y$', '$2a$', '$argon2'])) {
+            return Hash::check($provided, $stored);
+        }
+
+        return hash_equals($stored, $provided);
+    }
+
+    private function recordInteraction(?User $user, string $type, array $content = []): void
+    {
+        if (! $user) {
+            return;
+        }
+
         try {
-            $request->validate([
-                'email' => 'required|email',
-                'verification_code' => 'required|string|size:6',
-                'password' => [
-                    'required',
-                    'string',
-                    'min:6',
-                    'regex:/[A-Z]/',
-                    'regex:/[a-z]/',
-                    'regex:/[!@#$%^&*(),.?":{}|<>]/'
-                ]
-            ]);
-
-            $user = User::where('email', $request->email)->first();
-
-            if (!$user) {
-                return response()->json([
-                    'message' => 'Usuário não encontrado.'
-                ], 404);
-            }
-
-            if ($user->verification_code !== $request->verification_code) {
-                return response()->json([
-                    'message' => 'Código inválido.'
-                ], 422);
-            }
-
-            $user->password = bcrypt($request->password);
-            $user->verification_code = null;
-            $user->email_verified_at = now();
-            $user->save();
-
-            Mail::to($user->email)->send(new InviteCompleteMail($user));
-
             Interaction::create([
                 'user_id' => $user->id,
-                'interaction_type' => 'invite_completed',
+                'interaction_type' => $type,
                 'entity_id' => $user->id,
-                'entity_type' => 'user'
+                'entity_type' => 'User',
+                'content' => $content ?: null,
             ]);
-
-            return response()->json([
-                'message' => 'Senha criada com sucesso. Você já pode acessar o aplicativo.'
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao registrar interação de autenticação.', [
+                'user_id' => $user->id,
+                'type' => $type,
+                'message' => $e->getMessage(),
             ]);
-
-        } catch (ValidationException $e) {
-            return response()->json([
-                'message' => $e->validator->errors()->first()
-            ], 422);
-        } catch (\Exception $e) {
-            Log::error('completeInvite: '.$e->getMessage());
-            return response()->json([
-                'message' => 'Erro ao finalizar convite.'
-            ], 500);
         }
+    }
+
+    private function resolveLocation(Request $request, $latitude, $longitude): array
+    {
+        $city = null;
+        $uf = null;
+
+        if ($latitude !== null && $longitude !== null) {
+            try {
+                $response = Http::withHeaders(['User-Agent' => 'PeterTecnet/1.0'])
+                    ->timeout(3)
+                    ->get('https://nominatim.openstreetmap.org/reverse', [
+                        'format' => 'json',
+                        'lat' => $latitude,
+                        'lon' => $longitude,
+                        'addressdetails' => 1,
+                    ]);
+
+                if ($response->successful()) {
+                    $address = (array) data_get($response->json(), 'address', []);
+                    $city = $address['city'] ?? $address['town'] ?? $address['village'] ?? null;
+                    $uf = $this->stateToUf($address['state'] ?? null);
+                }
+            } catch (\Throwable $e) {
+                Log::notice('Reverse geocode indisponível.', ['message' => $e->getMessage()]);
+            }
+        }
+
+        if (! $city || ! $uf) {
+            $geo = User::geoFromIp($request->ip());
+            $city = $city ?: ($geo['city'] ?? null);
+            $uf = $uf ?: ($geo['uf'] ?? null);
+        }
+
+        return ['city' => $city, 'uf' => $uf];
+    }
+
+    private function stateToUf(?string $state): ?string
+    {
+        if (! $state) {
+            return null;
+        }
+
+        $map = [
+            'Acre' => 'AC', 'Alagoas' => 'AL', 'Amapá' => 'AP', 'Amazonas' => 'AM',
+            'Bahia' => 'BA', 'Ceará' => 'CE', 'Distrito Federal' => 'DF', 'Espírito Santo' => 'ES',
+            'Goiás' => 'GO', 'Maranhão' => 'MA', 'Mato Grosso' => 'MT', 'Mato Grosso do Sul' => 'MS',
+            'Minas Gerais' => 'MG', 'Pará' => 'PA', 'Paraíba' => 'PB', 'Paraná' => 'PR',
+            'Pernambuco' => 'PE', 'Piauí' => 'PI', 'Rio de Janeiro' => 'RJ',
+            'Rio Grande do Norte' => 'RN', 'Rio Grande do Sul' => 'RS', 'Rondônia' => 'RO',
+            'Roraima' => 'RR', 'Santa Catarina' => 'SC', 'São Paulo' => 'SP', 'Sergipe' => 'SE',
+            'Tocantins' => 'TO',
+        ];
+
+        return $map[$state] ?? (strlen($state) === 2 ? strtoupper($state) : null);
     }
 }
