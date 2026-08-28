@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Establishment;
+use App\Models\Item;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -57,6 +59,47 @@ class AccountController extends Controller
             'establishments' => $establishments,
             'applications' => $applications,
             'app_id' => $appId,
+        ]);
+    }
+
+    public function itemMetrics(Request $request)
+    {
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+            'establishment_id' => 'required|integer|min:1',
+        ]);
+
+        $establishment = Establishment::query()
+            ->where('app_id', (int) $data['app_id'])
+            ->where('id', (int) $data['establishment_id'])
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $establishment->user_id === (int) Auth::id()
+                || (int) $establishment->created_by === (int) Auth::id()
+                || Auth::user()?->hasProfile('Administrador'),
+            403,
+            'Acesso negado.'
+        );
+
+        $items = Item::query()
+            ->where('app_id', (int) $data['app_id'])
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $establishment->id)
+            ->withCount([
+                'views as total_views' => fn ($query) => $query->where('interaction_type', 'view'),
+            ])
+            ->get(['id', 'slug', 'name'])
+            ->map(fn (Item $item) => [
+                'id' => $item->id,
+                'slug' => $item->slug,
+                'name' => $item->name,
+                'total_views' => (int) $item->total_views,
+            ]);
+
+        return response()->json([
+            'establishment_id' => $establishment->id,
+            'items' => $items,
         ]);
     }
 
