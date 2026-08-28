@@ -29,4 +29,8 @@ return [
         'cert_path' => env('EFI_CERT_PATH'),
         'timeout' => (int) env('EFI_API_TIMEOUT', 15),
     ],
+
+    'geo_ip' => [
+        'endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}'),
+    ],
 ];
