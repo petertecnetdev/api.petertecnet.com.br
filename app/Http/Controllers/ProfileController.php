@@ -2,191 +2,113 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Profile;
 use Illuminate\Http\Request;
-use App\Models\{Profile};
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class ProfileController extends Controller
 {
-    
     public function list()
     {
-        try {
-            // Verificar se o usuário está autenticado
-            if (!Auth::check()) {
-                return response()->json(['error' => 'Usuário não autenticado.'], 401);
-            }
-    
-            // Obter o usuário autenticado
-            $user = Auth::user();
-    
-            // Verificar se o usuário possui permissão para listar perfis
-            if (!$user->hasPermission('profile_list')) {
-                return response()->json(['error' => 'Você não tem permissão para listar perfis.'], 403);
-            }
-    
-            // Obter todos os perfis
-            $profiles = Profile::all();
-    
-            return response()->json(['profiles' => $profiles], 200);
-        } catch (\Exception $e) {
-            // Console log para mostrar o erro
-            \Log::error('Erro ao listar perfis:', ['exception' => $e]);
-    
-            return response()->json(['error' => 'Erro ao listar perfis. Por favor, tente novamente.'], 500);
+        if (! $this->allowed('profile_view')) {
+            return response()->json(['error' => 'Você não tem permissão para listar perfis.'], 403);
         }
+
+        return response()->json(['profiles' => Profile::query()->orderBy('name')->get()]);
     }
-    
+
     public function store(Request $request)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
+    {
+        if (! $this->allowed('profile_create')) {
+            return response()->json(['error' => 'Você não tem permissão para criar perfis.'], 403);
         }
 
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-
-        $data = $request->validate([
-            'name' => 'required|string',
-            'permissions' => 'nullable|array',
-        ]);
-
-        // Console log para mostrar os dados recebidos
-        \Log::info('Dados recebidos para criação de perfil:', $data);
+        $data = $request->validate($this->rules());
+        $data['permissions'] = array_values(array_unique($data['permissions'] ?? []));
 
         $profile = Profile::create($data);
 
-        return response()->json(['message' => 'Perfil criado com sucesso.', 'profile' => $profile], 201);
-    } catch (\Exception $e) {
-        // Console log para mostrar o erro
-        \Log::error('Erro ao criar perfil:', ['exception' => $e]);
-
-        return response()->json(['error' => 'Erro ao criar perfil. Por favor, tente novamente.'], 500);
+        return response()->json([
+            'message' => 'Perfil criado com sucesso.',
+            'profile' => $profile,
+        ], 201);
     }
-}
 
-public function update(Request $request, $id)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-        // Verificar se o usuário possui permissão para editar perfis
-        if (!$user->hasPermission('profile_edit')) {
+    public function update(Request $request, $id)
+    {
+        if (! $this->allowed('profile_edit')) {
             return response()->json(['error' => 'Você não tem permissão para editar perfis.'], 403);
         }
-        $profile = Profile::find($id);
-        if (!$profile) {
-            return response()->json(['error' => 'Perfil não encontrado.'], 404);
+
+        $profile = Profile::findOrFail($id);
+        $data = $request->validate($this->rules($profile->id, false));
+
+        if (array_key_exists('permissions', $data)) {
+            $data['permissions'] = array_values(array_unique($data['permissions'] ?? []));
         }
-        // Validar os dados da requisição
-        $request->validate([
-            'name' => 'required|string',
-            'permissions' => 'nullable|array',
+
+        $profile->update($data);
+
+        return response()->json([
+            'message' => 'Perfil atualizado com sucesso.',
+            'profile' => $profile->fresh(),
         ]);
-
-        // Inicializar um array para armazenar os dados atualizados
-        $data = [];
-
-        // Verificar e atualizar o nome do perfil, se fornecido na solicitação
-        if ($request->has('name')) {
-            $data['name'] = $request->input('name');
-        }
-
-        // Verificar e atualizar as permissões do perfil, se fornecidas na solicitação
-        if ($request->has('permissions')) {
-            $data['permissions'] = $request->input('permissions');
-        }
-
-        // Verificar se houve alguma atualização nos dados
-        if (!empty($data)) {
-            // Atualizar os dados do perfil
-            $profile->update($data);
-        }
-        \Log::info('Dados recebidos para atualização:', $data);
-        // Retornar uma resposta de sucesso
-        return response()->json(['message' => 'Perfil atualizado com sucesso.', 'profile' => $profile], 200);
-    } catch (\Exception $e) {
-        // Registrar o erro no log
-        \Log::error('Erro ao atualizar perfil:', ['exception' => $e]);
-
-        // Retornar uma resposta de erro
-        return response()->json(['error' => 'Erro ao atualizar perfil. Por favor, tente novamente.'], 500);
     }
-}
 
-public function show($id)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        // Verificar se o perfil existe
-        $profile = Profile::find($id);
-        if (!$profile) {
-            return response()->json(['error' => 'Perfil não encontrado.'], 404);
-        }
-
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-        // Verificar se o usuário possui permissão para visualizar o perfil
-        if (!$user->hasPermission('profile_view')) {
+    public function show($id)
+    {
+        if (! $this->allowed('profile_view')) {
             return response()->json(['error' => 'Você não tem permissão para visualizar perfis.'], 403);
         }
 
-        return response()->json(['profile' => $profile], 200);
-    } catch (\Exception $e) {
-        // Console log para mostrar o erro
-        \Log::error('Erro ao exibir perfil:', ['exception' => $e]);
-
-        return response()->json(['error' => 'Erro ao exibir perfil. Por favor, tente novamente.'], 500);
+        return response()->json(['profile' => Profile::findOrFail($id)]);
     }
-}
 
-
-public function destroy($id)
-{
-    try {
-        // Verificar se o usuário está autenticado
-        if (!Auth::check()) {
-            return response()->json(['error' => 'Usuário não autenticado.'], 401);
-        }
-
-        // Obter o usuário autenticado
-        $user = Auth::user();
-
-        // Verificar se o usuário possui permissão para excluir perfis
-        if (!$user->hasPermission('profile_delete')) {
+    public function destroy($id)
+    {
+        if (! $this->allowed('profile_delete')) {
             return response()->json(['error' => 'Você não tem permissão para excluir perfis.'], 403);
         }
 
-        // Verificar se o perfil existe
-        $profile = Profile::find($id);
-        if (!$profile) {
-            return response()->json(['error' => 'Perfil não encontrado.'], 404);
+        $profile = Profile::findOrFail($id);
+
+        if ($profile->name === 'Administrador') {
+            return response()->json(['error' => 'O perfil Administrador não pode ser excluído.'], 409);
         }
 
-        // Excluir o perfil
+        if ($profile->users()->exists()) {
+            return response()->json([
+                'error' => 'Este perfil está vinculado a usuários e não pode ser excluído.',
+            ], 409);
+        }
+
         $profile->delete();
 
-        return response()->json(['success' => 'Perfil excluído com sucesso.'], 200);
-    } catch (\Exception $e) {
-        // Console log para mostrar o erro
-        \Log::error('Erro ao excluir perfil:', ['exception' => $e]);
-
-        return response()->json(['error' => 'Erro ao excluir perfil. Por favor, tente novamente.'], 500);
+        return response()->json(['message' => 'Perfil excluído com sucesso.']);
     }
-}
 
+    private function rules(?int $ignoreId = null, bool $creating = true): array
+    {
+        $permissionKeys = array_keys(config('permissions', []));
+        $nameRules = [
+            $creating ? 'required' : 'sometimes',
+            'string',
+            'max:100',
+            Rule::unique('profiles', 'name')->ignore($ignoreId),
+        ];
+
+        return [
+            'name' => $nameRules,
+            'permissions' => [$creating ? 'nullable' : 'sometimes', 'array'],
+            'permissions.*' => ['string', Rule::in($permissionKeys)],
+        ];
+    }
+
+    private function allowed(string $permission): bool
+    {
+        $user = Auth::user();
+
+        return $user && ($user->hasProfile('Administrador') || $user->hasPermission($permission));
+    }
 }
