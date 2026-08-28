@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Traits\HasFiles;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Tymon\JWTAuth\Contracts\JWTSubject;
-use App\Models\Traits\HasFiles;
 
 class User extends Authenticatable implements JWTSubject
 {
@@ -93,6 +93,13 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasMany(Establishment::class);
     }
 
+    public function applications()
+    {
+        return $this->belongsToMany(Application::class, 'application_user')
+            ->withPivot(['role', 'status', 'metadata', 'joined_at'])
+            ->withTimestamps();
+    }
+
     public function interactions()
     {
         return $this->hasMany(Interaction::class);
@@ -158,8 +165,6 @@ class User extends Authenticatable implements JWTSubject
             return false;
         }
 
-        // Compatibility aliases for legacy controller names. New code should use
-        // the canonical names declared in config/permissions.php.
         $aliases = [
             'profile_list' => 'profile_view',
             'profile_show' => 'profile_view',
