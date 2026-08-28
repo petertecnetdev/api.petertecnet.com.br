@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Model;
 
 class Application extends Model
 {
@@ -22,15 +22,19 @@ class Application extends Model
     ];
 
     protected $casts = [
-        'is_active'   => 'boolean',
-        'release_date'=> 'datetime',
+        'is_active' => 'boolean',
+        'release_date' => 'datetime',
     ];
 
-    /**
-     * Relacionamento com agendamentos
-     */
     public function appointments()
     {
         return $this->hasMany(Appointment::class, 'app_id');
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'application_user')
+            ->withPivot(['role', 'status', 'metadata', 'joined_at'])
+            ->withTimestamps();
     }
 }
