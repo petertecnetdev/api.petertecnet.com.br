@@ -1,7 +1,10 @@
 name: API CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -44,7 +47,7 @@ jobs:
           LOG_CHANNEL=stderr
           DB_CONNECTION=sqlite
           DB_DATABASE=/tmp/api.sqlite
-          CACHE_DRIVER=array
+          CACHE_STORE=array
           SESSION_DRIVER=array
           QUEUE_CONNECTION=sync
           MAIL_MAILER=array
