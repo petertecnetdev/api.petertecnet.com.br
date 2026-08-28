@@ -15,7 +15,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
 
-        Route::middleware('auth:api')->group(function () {
+        Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
             Route::post('/establishments', [EstablishmentController::class, 'store']);
