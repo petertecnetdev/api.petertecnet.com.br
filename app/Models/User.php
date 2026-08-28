@@ -15,7 +15,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $fillable = [
         'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'verification_code_expires_at', 'password',
-        'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
+        'auth_version', 'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
         'cpf', 'google_id', 'avatar', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
         'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
         'payment_method', 'newsletter_subscription', 'ticket_purchases', 'account_balance',
@@ -30,6 +30,7 @@ class User extends Authenticatable implements JWTSubject
         'verification_code_expires_at',
         'reset_password_code',
         'reset_password_expires_at',
+        'auth_version',
     ];
 
     protected $casts = [
@@ -48,7 +49,17 @@ class User extends Authenticatable implements JWTSubject
         'is_ticket_seller' => 'boolean',
         'account_balance' => 'decimal:2',
         'ticket_purchases' => 'integer',
+        'auth_version' => 'integer',
     ];
+
+    protected static function booted()
+    {
+        static::updating(function (User $user) {
+            if ($user->isDirty('password') && ! $user->isDirty('auth_version')) {
+                $user->auth_version = ((int) $user->getOriginal('auth_version')) + 1;
+            }
+        });
+    }
 
     public function getJWTIdentifier()
     {
@@ -57,7 +68,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function getJWTCustomClaims()
     {
-        return [];
+        return ['ver' => (int) ($this->auth_version ?: 1)];
     }
 
     public function profile()
