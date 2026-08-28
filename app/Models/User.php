@@ -218,14 +218,18 @@ class User extends Authenticatable implements JWTSubject
 
     public static function credentials($username, $password): array
     {
-        if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
-            return ['email' => strtolower(trim($username)), 'password' => $password];
+        $identifier = trim((string) $username);
+
+        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+            return ['email' => strtolower($identifier), 'password' => $password];
         }
 
-        return [
-            'cpf' => preg_replace('/[^0-9]/', '', (string) $username),
-            'password' => $password,
-        ];
+        $cpf = preg_replace('/[^0-9]/', '', $identifier);
+        if (strlen($cpf) === 11) {
+            return ['cpf' => $cpf, 'password' => $password];
+        }
+
+        return ['user_name' => $identifier, 'password' => $password];
     }
 
     public function files()
