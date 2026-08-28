@@ -74,6 +74,89 @@ class RasoioWorkflowController extends ApiController
         ]);
     }
 
+    public function orderDetail(Request $request, int $id)
+    {
+        $order = Order::query()
+            ->where('app_id', self::APP_ID)
+            ->where('type', 'appointment')
+            ->with([
+                'items.item',
+                'items.modifiers.modifier',
+                'client',
+                'creator',
+                'attendant.user',
+                'confirmedBy',
+                'cancelledBy',
+            ])
+            ->findOrFail($id);
+
+        $actorId = (int) $request->user()->id;
+        $this->authorizeOrderVisibility($order, $actorId);
+
+        $establishment = $order->entity_name === 'establishment'
+            ? Establishment::query()
+                ->where('app_id', self::APP_ID)
+                ->with(['employers.user'])
+                ->find($order->entity_id)
+            : null;
+
+        $creator = $order->creator;
+        $creatorRole = 'Usuário';
+        $creatorRoleKey = 'user';
+
+        if ($creator) {
+            if ((int) $order->client_id === (int) $creator->id) {
+                $creatorRole = 'Cliente';
+                $creatorRoleKey = 'client';
+            } elseif ($establishment) {
+                $isOwner = (int) $establishment->user_id === (int) $creator->id
+                    || (int) $establishment->created_by === (int) $creator->id;
+
+                $creatorEmployment = $establishment->employers
+                    ->first(fn ($employment) => (int) $employment->user_id === (int) $creator->id);
+
+                $employmentRole = strtolower(trim((string) ($creatorEmployment?->role ?? '')));
+                $isManager = $isOwner || in_array($employmentRole, ['gerente', 'manager', 'gestor', 'administrador'], true);
+
+                if ($isManager) {
+                    $creatorRole = $isOwner ? 'Responsável da barbearia' : 'Gerente da barbearia';
+                    $creatorRoleKey = 'manager';
+                } elseif ($creatorEmployment) {
+                    $creatorRole = 'Barbeiro';
+                    $creatorRoleKey = 'barber';
+                }
+            }
+        }
+
+        $scheduledAt = $order->order_datetime
+            ? Carbon::parse($order->order_datetime)->timezone(self::TZ)
+            : null;
+        $requestedAt = $order->created_at
+            ? Carbon::parse($order->created_at)->timezone(self::TZ)
+            : null;
+        $now = now(self::TZ);
+
+        return response()->json([
+            'success' => true,
+            'order' => $order,
+            'establishment' => $establishment,
+            'audit' => [
+                'requested_at' => $requestedAt?->toIso8601String(),
+                'scheduled_at' => $scheduledAt?->toIso8601String(),
+                'seconds_until' => $scheduledAt ? $now->diffInSeconds($scheduledAt, false) : null,
+                'created_by' => $creator ? [
+                    'id' => $creator->id,
+                    'first_name' => $creator->first_name,
+                    'last_name' => $creator->last_name,
+                    'user_name' => $creator->user_name,
+                    'avatar' => $creator->avatar,
+                    'role' => $creatorRole,
+                    'role_key' => $creatorRoleKey,
+                ] : null,
+            ],
+        ]);
+    }
+
     public function transition(Request $request, int $id)
     {
         $data = $request->validate([
@@ -259,6 +342,33 @@ class RasoioWorkflowController extends ApiController
             ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN 0 WHEN appointment_status IN ('pending','confirmed') THEN 1 ELSE 2 END")
             ->orderByRaw("CASE WHEN appointment_status IN ('pending','confirmed') AND order_datetime >= NOW() THEN order_datetime END ASC")
             ->orderBy('order_datetime', 'desc');
+    }
+
+    private function authorizeOrderVisibility(Order $order, int $actorId): void
+    {
+        $isClient = (int) $order->client_id === $actorId;
+        $isCreator = (int) $order->created_by === $actorId;
+        $isAttendant = $order->attendant_id
+            ? Employer::query()->whereKey($order->attendant_id)->where('user_id', $actorId)->exists()
+            : false;
+
+        $isManager = false;
+        if ($order->entity_name === 'establishment') {
+            $establishment = Establishment::query()
+                ->where('app_id', self::APP_ID)
+                ->find($order->entity_id);
+
+            if ($establishment) {
+                $isManager = (int) $establishment->user_id === $actorId
+                    || (int) $establishment->created_by === $actorId
+                    || $establishment->employers()
+                        ->where('user_id', $actorId)
+                        ->whereIn('role', ['gerente', 'manager', 'gestor', 'administrador'])
+                        ->exists();
+            }
+        }
+
+        abort_unless($isClient || $isCreator || $isAttendant || $isManager, 403, 'Você não pode visualizar este agendamento.');
     }
 
     private function authorizeOrderManagement(Order $order, int $actorId): void
