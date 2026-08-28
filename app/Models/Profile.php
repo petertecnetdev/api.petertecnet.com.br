@@ -1,38 +1,45 @@
 <?php
 
 namespace App\Models;
+
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 
 class Profile extends Model
 {
-    use \Illuminate\Database\Eloquent\Factories\HasFactory;
+    use HasFactory;
 
-    protected $fillable = ['id', 'name', 'permissions'];
+    protected $fillable = ['name', 'permissions'];
 
     protected $casts = [
-        'permissions' => 'json',
+        'permissions' => 'array',
     ];
 
     public $timestamps = false;
 
+    public function users()
+    {
+        return $this->hasMany(User::class);
+    }
+
     public function getPermissionNamesAttribute()
     {
-        $permissionsArray = is_string($this->permissions) ? json_decode($this->permissions, true) : [];
+        $permissionsArray = is_array($this->permissions) ? $this->permissions : [];
 
-        if (is_null($permissionsArray) || empty($permissionsArray) || count($permissionsArray) <= 0) {
+        if ($permissionsArray === []) {
             return '<i>Nenhuma Permissão Atribuída</i>';
         }
 
         $names = [];
-        $permissions = Config::get('permissions'); // Certifique-se de ter definido seu arquivo de configuração
+        $permissions = Config::get('permissions', []);
 
         foreach ($permissionsArray as $key) {
-            if (isset($permissions[$key])) {
+            if (isset($permissions[$key]['name'])) {
                 $names[] = $permissions[$key]['name'];
             }
         }
 
-        return implode(" | ", $names);
+        return implode(' | ', $names);
     }
 }
