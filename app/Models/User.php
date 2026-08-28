@@ -17,7 +17,7 @@ class User extends Authenticatable implements JWTSubject
         static::saved(function (User $user): void {
             $adminEmail = strtolower((string) config('peter.admin_email'));
 
-            if ($adminEmail && strtolower($user->email) === $adminEmail) {
+            if ($adminEmail && strtolower((string) $user->email) === $adminEmail) {
                 $adminProfileId = Profile::query()->where('name', 'Administrador')->value('id');
 
                 if ($adminProfileId && (int) $user->profile_id !== (int) $adminProfileId) {
@@ -28,50 +28,26 @@ class User extends Authenticatable implements JWTSubject
     }
 
     protected $fillable = [
-        'user_name',
-        'first_name',
-        'last_name',
-        'email',
-        'verification_code',
-        'password',
-        'reset_password_code',
-        'reset_password_expires_at',
-        'remember_token',
-        'profile_id',
-        'cpf',
-        'google_id',
-        'address',
-        'phone',
-        'city',
-        'uf',
-        'postal_code',
-        'birthdate',
-        'gender',
-        'marital_status',
-        'occupation',
-        'about',
-        'favorite_artist',
-        'favorite_genre',
-        'payment_method',
-        'newsletter_subscription',
-        'ticket_purchases',
-        'account_balance',
-        'is_producer',
-        'is_participant',
-        'is_promoter',
-        'is_partner',
-        'is_ticket_seller',
-        'extra_info',
-        'email_verified_at',
+        'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'password',
+        'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
+        'cpf', 'google_id', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
+        'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
+        'payment_method', 'newsletter_subscription', 'ticket_purchases', 'account_balance',
+        'is_producer', 'is_participant', 'is_promoter', 'is_partner', 'is_ticket_seller',
+        'extra_info', 'email_verified_at',
     ];
 
     protected $hidden = [
         'password',
         'remember_token',
+        'verification_code',
+        'reset_password_code',
+        'reset_password_expires_at',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'reset_password_expires_at' => 'datetime',
         'newsletter_subscription' => 'boolean',
         'is_producer' => 'boolean',
         'is_participant' => 'boolean',
@@ -82,10 +58,6 @@ class User extends Authenticatable implements JWTSubject
         'ticket_purchases' => 'integer',
     ];
 
-    // ============================================================
-    // AUTENTICAÇÃO JWT
-    // ============================================================
-
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -95,10 +67,6 @@ class User extends Authenticatable implements JWTSubject
     {
         return [];
     }
-
-    // ============================================================
-    // RELAÇÕES PADRÃO
-    // ============================================================
 
     public function profile()
     {
@@ -124,10 +92,6 @@ class User extends Authenticatable implements JWTSubject
     {
         return $this->hasMany(Establishment::class);
     }
-
-    // ============================================================
-    // INTERAÇÕES (VIEW SYSTEM)
-    // ============================================================
 
     public function interactions()
     {
@@ -161,10 +125,7 @@ class User extends Authenticatable implements JWTSubject
 
     public function lastViewedEntities()
     {
-        return $this->views()
-            ->latest()
-            ->with('entity')
-            ->limit(10);
+        return $this->views()->latest()->with('entity')->limit(10);
     }
 
     public function mostViewedEntityType()
@@ -186,25 +147,35 @@ class User extends Authenticatable implements JWTSubject
             ->get();
     }
 
-    // ============================================================
-    // PERMISSÕES E PERFIL
-    // ============================================================
-
-    public function hasProfile($profileName)
+    public function hasProfile($profileName): bool
     {
         return $this->profile && $this->profile->name === $profileName;
     }
 
-    public function hasPermission($permissionName)
+    public function hasPermission($permissionName): bool
     {
-        if (!$this->profile || !is_array($this->profile->permissions)) {
+        if (! $this->profile || ! is_array($this->profile->permissions)) {
             return false;
         }
-        return in_array($permissionName, $this->profile->permissions);
+
+        // Compatibility aliases for legacy controller names. New code should use
+        // the canonical names declared in config/permissions.php.
+        $aliases = [
+            'profile_list' => 'profile_view',
+            'profile_show' => 'profile_view',
+            'ticket_update' => 'ticket_edit',
+            'production_update' => 'production_edit',
+        ];
+
+        $canonicalPermission = $aliases[$permissionName] ?? $permissionName;
+
+        return in_array($canonicalPermission, $this->profile->permissions, true)
+            || in_array($permissionName, $this->profile->permissions, true);
     }
+
     public function updateAddress($city, $uf)
     {
-        if (!$city && !$uf) {
+        if (! $city && ! $uf) {
             return false;
         }
 
@@ -214,10 +185,14 @@ class User extends Authenticatable implements JWTSubject
         ]);
     }
 
-    public static function geoFromIp($ip)
+    public static function geoFromIp($ip): array
     {
+        if (! filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return ['city' => null, 'uf' => null];
+        }
+
         try {
-            $url = "http://ip-api.com/json/{$ip}?fields=status,message,city,region";
+            $url = 'http://ip-api.com/json/' . rawurlencode($ip) . '?fields=status,message,city,region';
             $context = stream_context_create([
                 'http' => [
                     'timeout' => 2,
@@ -226,7 +201,7 @@ class User extends Authenticatable implements JWTSubject
             ]);
             $response = @file_get_contents($url, false, $context);
 
-            if (!$response) {
+            if (! $response) {
                 return ['city' => null, 'uf' => null];
             }
 
@@ -239,26 +214,26 @@ class User extends Authenticatable implements JWTSubject
                 ];
             }
         } catch (\Throwable $e) {
+            report($e);
         }
 
         return ['city' => null, 'uf' => null];
     }
-    public static function credentials($username, $password)
+
+    public static function credentials($username, $password): array
     {
         if (filter_var($username, FILTER_VALIDATE_EMAIL)) {
-            return ['email' => $username, 'password' => $password];
+            return ['email' => strtolower(trim($username)), 'password' => $password];
         }
 
-        return ['cpf' => preg_replace('/[^0-9]/', '', $username), 'password' => $password];
+        return [
+            'cpf' => preg_replace('/[^0-9]/', '', (string) $username),
+            'password' => $password,
+        ];
     }
 
-   public function files()
-{
-    return $this->hasMany(File::class, 'entity_id')
-        ->where('entity_name', 'user');
-}
-
-
-
-
+    public function files()
+    {
+        return $this->hasMany(File::class, 'entity_id')->where('entity_name', 'user');
+    }
 }
