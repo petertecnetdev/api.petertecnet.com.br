@@ -127,12 +127,13 @@ class EstablishmentController extends Controller
         $data['updated_by'] = $request->user()->id;
 
         $model->fill($data)->save();
-        $model->setAppends([]);
+        $fresh = $model->fresh();
+        $fresh->setAppends([]);
 
         return response()->json([
             'success' => true,
             'message' => 'Estabelecimento atualizado com sucesso.',
-            'data' => $model->fresh(),
+            'data' => $fresh,
         ]);
     }
 
