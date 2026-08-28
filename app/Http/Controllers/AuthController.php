@@ -191,7 +191,11 @@ class AuthController extends Controller
             if ($latitude && $longitude) {
                 try {
                     $context = stream_context_create([
-                        'http' => ['header' => "User-Agent: Rasoio/1.0\r\n"]
+                        'http' => [
+                            'header' => "User-Agent: PeterTecnet/1.0\r\n",
+                            'timeout' => 3,
+                            'ignore_errors' => true,
+                        ],
                     ]);
 
                     $url = "https://nominatim.openstreetmap.org/reverse?format=json&lat={$latitude}&lon={$longitude}&addressdetails=1";

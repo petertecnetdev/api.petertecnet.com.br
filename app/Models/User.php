@@ -218,9 +218,21 @@ class User extends Authenticatable implements JWTSubject
     {
         try {
             $url = "http://ip-api.com/json/{$ip}?fields=status,message,city,region";
-            $geo = json_decode(file_get_contents($url), true);
+            $context = stream_context_create([
+                'http' => [
+                    'timeout' => 2,
+                    'ignore_errors' => true,
+                ],
+            ]);
+            $response = @file_get_contents($url, false, $context);
 
-            if ($geo['status'] === 'success') {
+            if (!$response) {
+                return ['city' => null, 'uf' => null];
+            }
+
+            $geo = json_decode($response, true);
+
+            if (is_array($geo) && ($geo['status'] ?? null) === 'success') {
                 return [
                     'city' => $geo['city'] ?? null,
                     'uf' => $geo['region'] ?? null,
