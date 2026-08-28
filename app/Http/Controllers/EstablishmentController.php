@@ -19,7 +19,7 @@ class EstablishmentController extends Controller
         $user = Auth::user();
         $data['city'] = $data['city'] ?? $user->city;
         $data['uf'] = isset($data['uf']) ? strtoupper($data['uf']) : $user->uf;
-        $data['slug'] = $this->uniqueSlug($data['fantasy'] ?? $data['name'], (int) $data['app_id']);
+        $data['slug'] = $this->uniqueSlug($data['fantasy'] ?? $data['name']);
         $data['user_id'] = $user->id;
         $data['created_by'] = $user->id;
         $data['updated_by'] = $user->id;
@@ -27,6 +27,11 @@ class EstablishmentController extends Controller
         $establishment = DB::transaction(function () use ($request, $data, $user) {
             $establishment = Establishment::create($data);
             $this->storeMedia($request, $establishment, $user->id);
+
+            $user->applications()->syncWithoutDetaching([
+                $establishment->app_id => ['status' => 'active', 'joined_at' => now()],
+            ]);
+
             return $establishment;
         });
 
@@ -42,14 +47,15 @@ class EstablishmentController extends Controller
         $this->assertOwner($establishment);
         $data = $this->validateEstablishment($request, false);
 
-        if (isset($data['app_id']) && (int) $data['app_id'] !== (int) $establishment->app_id && ! Auth::user()->hasProfile('Administrador')) {
-            return response()->json(['error' => 'A aplicação do estabelecimento não pode ser alterada.'], 403);
+        if (isset($data['app_id']) && (int) $data['app_id'] !== (int) $establishment->app_id) {
+            return response()->json([
+                'error' => 'A aplicação do estabelecimento é imutável. Crie outro estabelecimento na aplicação desejada.',
+            ], 409);
         }
 
         if (isset($data['name']) || isset($data['fantasy'])) {
             $data['slug'] = $this->uniqueSlug(
                 $data['fantasy'] ?? $data['name'] ?? $establishment->fantasy ?? $establishment->name,
-                (int) ($data['app_id'] ?? $establishment->app_id),
                 $establishment->id
             );
         }
@@ -91,9 +97,15 @@ class EstablishmentController extends Controller
         return response()->json(['message' => 'Estabelecimento excluído com sucesso.']);
     }
 
-    public function show($id)
+    public function show(Request $request, $id)
     {
-        $establishment = Establishment::with(['user:id,first_name,last_name,user_name,avatar', 'files' => $this->publicFiles()])->findOrFail($id);
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+
+        $establishment = Establishment::query()
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->with(['user:id,first_name,last_name,user_name,avatar', 'files' => $this->publicFiles()])
+            ->findOrFail($id);
+
         Interaction::registerView($establishment, Auth::user());
 
         return response()->json([
@@ -105,26 +117,37 @@ class EstablishmentController extends Controller
 
     public function list(Request $request)
     {
-        $data = $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
+        $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
         return response()->json([
             'message' => 'Estabelecimentos listados com sucesso.',
             'establishments' => Establishment::query()
                 ->where('is_cancelled', false)
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
                 ->with(['files' => $this->publicFiles()])
                 ->latest()
                 ->paginate($data['per_page'] ?? 10),
         ]);
     }
 
-    public function listByCategory($category)
+    public function listByCategory(Request $request, $category)
     {
+        $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
         return response()->json([
             'message' => 'Estabelecimentos listados por categoria com sucesso.',
             'establishments' => Establishment::query()
                 ->where('is_cancelled', false)
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
                 ->when($category, fn ($q) => $q->where('category', $category))
                 ->with(['files' => $this->publicFiles()])
-                ->paginate(10),
+                ->paginate($data['per_page'] ?? 10),
         ]);
     }
 
@@ -145,9 +168,10 @@ class EstablishmentController extends Controller
         ]);
     }
 
-    public function view(string $identifier)
+    public function view(Request $request, string $identifier)
     {
-        $establishment = $this->findByIdentifier($identifier)
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+        $establishment = $this->findByIdentifier($identifier, $data['app_id'] ?? null)
             ->load(['files' => $this->publicFiles()]);
         Interaction::registerView($establishment, Auth::user());
 
@@ -197,17 +221,25 @@ class EstablishmentController extends Controller
         return response()->json(['success' => true, 'message' => 'Estabelecimentos listados com sucesso.', 'establishments' => $establishments]);
     }
 
-    public function myEstablishments()
+    public function myEstablishments(Request $request)
     {
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+
         return response()->json([
             'message' => 'Estabelecimentos do usuário listados com sucesso.',
-            'establishments' => Establishment::query()->where('user_id', Auth::id())->with('files')->latest()->get(),
+            'establishments' => Establishment::query()
+                ->where('user_id', Auth::id())
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->with('files')
+                ->latest()
+                ->get(),
         ]);
     }
 
     public function listByUser(Request $request)
     {
         $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
             'category' => 'nullable|string|max:100',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
@@ -216,6 +248,7 @@ class EstablishmentController extends Controller
             'message' => 'Estabelecimentos listados com sucesso.',
             'establishments' => Establishment::query()
                 ->where('user_id', Auth::id())
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
                 ->when(! empty($data['category']), fn ($q) => $q->where('category', $data['category']))
                 ->latest()
                 ->paginate($data['per_page'] ?? 10),
@@ -225,6 +258,7 @@ class EstablishmentController extends Controller
     public function listMyByCategory(Request $request, $category)
     {
         $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
             'q' => 'nullable|string|max:200',
             'per_page' => 'nullable|integer|min:1|max:100',
             'sort' => 'nullable|in:name,city,created_at',
@@ -235,6 +269,7 @@ class EstablishmentController extends Controller
 
         $query = Establishment::query()
             ->where('user_id', Auth::id())
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
             ->whereIn('category', $categories)
             ->when(! empty($data['q']), function ($q) use ($data) {
                 $like = '%' . $data['q'] . '%';
@@ -263,10 +298,21 @@ class EstablishmentController extends Controller
         ]);
     }
 
-    public function generatePdf($slug)
+    public function generatePdf(Request $request, $slug)
     {
-        $establishment = Establishment::with(['items' => fn ($q) => $q->where('status', true)])->where('slug', $slug)->firstOrFail();
-        $grouped = $establishment->items->groupBy(fn ($item) => $item->category ?: 'Outros');
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+        $establishment = Establishment::query()
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        $items = $establishment->items()
+            ->where('app_id', $establishment->app_id)
+            ->where('status', true)
+            ->get();
+        $establishment->setRelation('items', $items);
+
+        $grouped = $items->groupBy(fn ($item) => $item->category ?: 'Outros');
         $category = strtolower((string) $establishment->category);
         $tipo = in_array($category, ['barbershop', 'beauty', 'salon'], true) ? 'Tabela de Preços' : 'Catálogo';
 
@@ -326,21 +372,27 @@ class EstablishmentController extends Controller
         ), 403, 'Acesso negado.');
     }
 
-    private function uniqueSlug(string $source, int $appId, ?int $ignoreId = null): string
+    private function uniqueSlug(string $source, ?int $ignoreId = null): string
     {
         $base = Str::slug($source) ?: Str::random(12);
         $slug = $base;
         $i = 2;
-        while (Establishment::query()->where('app_id', $appId)->where('slug', $slug)->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+
+        while (Establishment::query()
+            ->where('slug', $slug)
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->exists()) {
             $slug = $base . '-' . $i++;
         }
+
         return $slug;
     }
 
-    private function findByIdentifier(string $identifier): Establishment
+    private function findByIdentifier(string $identifier, ?int $appId = null): Establishment
     {
         return Establishment::query()
             ->where('is_cancelled', false)
+            ->when($appId !== null, fn ($q) => $q->where('app_id', $appId))
             ->when(is_numeric($identifier), fn ($q) => $q->where('id', (int) $identifier), fn ($q) => $q->where('slug', $identifier))
             ->firstOrFail();
     }

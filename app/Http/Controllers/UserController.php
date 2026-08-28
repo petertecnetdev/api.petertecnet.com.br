@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\VerificationCodeMail;
 use App\Mail\WelcomeMail;
 use App\Models\File;
 use App\Models\Interaction;
@@ -51,6 +52,8 @@ class UserController extends ApiController
             'profile_id' => 'nullable|integer|exists:profiles,id',
         ]);
 
+        $this->assertCanAssignProfile($data['profile_id'] ?? null);
+
         $temporaryPassword = Str::random(14) . 'Aa1!';
         $verificationCode = strtoupper(Str::random(6));
 
@@ -61,6 +64,7 @@ class UserController extends ApiController
             'user_name' => $this->uniqueUsername($data['first_name']),
             'password' => Hash::make($temporaryPassword),
             'verification_code' => Hash::make($verificationCode),
+            'verification_code_expires_at' => now()->addDay(),
             'profile_id' => $data['profile_id'] ?? null,
         ]);
 
@@ -98,9 +102,12 @@ class UserController extends ApiController
         }
 
         $data = $request->validate($rules);
-        $changes = [];
+        $this->assertCanAssignProfile($data['profile_id'] ?? null);
 
-        DB::transaction(function () use ($request, $user, $actor, $data, &$changes) {
+        $changes = [];
+        $emailVerificationCode = null;
+
+        DB::transaction(function () use ($request, $user, $actor, $data, &$changes, &$emailVerificationCode) {
             foreach (collect($data)->except('avatar')->all() as $key => $value) {
                 if ($key === 'uf' && $value) {
                     $value = strtoupper($value);
@@ -112,7 +119,10 @@ class UserController extends ApiController
                     $changes[$key] = ['from' => $user->{$key}, 'to' => $value];
                     $user->{$key} = $value;
                     if ($key === 'email') {
+                        $emailVerificationCode = strtoupper(Str::random(6));
                         $user->email_verified_at = null;
+                        $user->verification_code = Hash::make($emailVerificationCode);
+                        $user->verification_code_expires_at = now()->addMinutes(30);
                     }
                 }
             }
@@ -134,6 +144,10 @@ class UserController extends ApiController
                 Interaction::registerUpdate($user, $actor, $changes);
             }
         });
+
+        if ($emailVerificationCode !== null) {
+            Mail::to($user->email)->send(new VerificationCodeMail($emailVerificationCode, $user));
+        }
 
         return response()->json(['message' => 'Usuário atualizado com sucesso.', 'user' => $user->fresh()->load(['profile', 'files'])]);
     }
@@ -264,6 +278,22 @@ class UserController extends ApiController
     private function hasPermission(?User $user, string $permission): bool
     {
         return $user && ($user->hasProfile('Administrador') || $user->hasPermission($permission));
+    }
+
+    private function assertCanAssignProfile(?int $profileId): void
+    {
+        if (! $profileId) {
+            return;
+        }
+
+        $isAdminProfile = Profile::query()
+            ->whereKey($profileId)
+            ->where('name', 'Administrador')
+            ->exists();
+
+        if ($isAdminProfile) {
+            abort_unless(Auth::user()?->hasProfile('Administrador'), 403, 'Somente um administrador pode atribuir o perfil Administrador.');
+        }
     }
 
     private function uniqueUsername(string $name): string

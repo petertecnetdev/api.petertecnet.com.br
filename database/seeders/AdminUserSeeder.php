@@ -10,15 +10,26 @@ class AdminUserSeeder extends Seeder
 {
     public function run(): void
     {
-        $email = config('peter.admin_email');
-        $profile = Profile::query()->where('name', 'Administrador')->firstOrFail();
-        $user = User::query()->whereRaw('LOWER(email) = ?', [strtolower($email)])->first();
+        $email = strtolower(trim((string) config('peter.admin_email')));
 
-        if (!$user) {
-            $this->command?->info("Conta administrativa reservada para {$email}; ela receberá o perfil ao ser cadastrada.");
+        if ($email === '') {
+            $this->command?->warn('PETER_ADMIN_EMAIL não está configurado; nenhuma conta recebeu privilégios administrativos.');
             return;
         }
 
-        $user->forceFill(['profile_id' => $profile->id])->save();
+        $profile = Profile::query()->where('name', 'Administrador')->firstOrFail();
+        $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+
+        if (! $user) {
+            $this->command?->warn('A conta administrativa configurada ainda não existe; nenhuma promoção foi realizada.');
+            return;
+        }
+
+        if ((int) $user->profile_id === (int) $profile->id) {
+            return;
+        }
+
+        $user->forceFill(['profile_id' => $profile->id])->saveQuietly();
+        $this->command?->info('Perfil administrativo aplicado à conta configurada.');
     }
 }

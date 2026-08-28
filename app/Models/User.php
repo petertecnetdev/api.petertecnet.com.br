@@ -12,23 +12,8 @@ class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, HasFiles, Notifiable;
 
-    protected static function booted(): void
-    {
-        static::saved(function (User $user): void {
-            $adminEmail = strtolower((string) config('peter.admin_email'));
-
-            if ($adminEmail && strtolower((string) $user->email) === $adminEmail) {
-                $adminProfileId = Profile::query()->where('name', 'Administrador')->value('id');
-
-                if ($adminProfileId && (int) $user->profile_id !== (int) $adminProfileId) {
-                    $user->forceFill(['profile_id' => $adminProfileId])->saveQuietly();
-                }
-            }
-        });
-    }
-
     protected $fillable = [
-        'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'password',
+        'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'verification_code_expires_at', 'password',
         'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
         'cpf', 'google_id', 'avatar', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
         'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
@@ -41,12 +26,14 @@ class User extends Authenticatable implements JWTSubject
         'password',
         'remember_token',
         'verification_code',
+        'verification_code_expires_at',
         'reset_password_code',
         'reset_password_expires_at',
     ];
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'verification_code_expires_at' => 'datetime',
         'reset_password_expires_at' => 'datetime',
         'birthdate' => 'date',
         'extra_info' => 'array',
