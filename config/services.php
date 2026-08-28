@@ -30,6 +30,10 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'google' => [
+        'client_id' => env('GOOGLE_CLIENT_ID'),
+    ],
+
     'efi' => [
         'base_url' => env('EFI_API_BASE_URL'),
         'client_id' => env('EFI_CLIENT_ID'),
