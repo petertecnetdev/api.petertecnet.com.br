@@ -12,11 +12,21 @@ class EnsureOrderContext
 {
     public function handle(Request $request, Closure $next)
     {
+        $routeName = (string) optional($request->route())->getName();
+
+        if ($routeName === 'order.listByClient' && ! $request->filled('app_id')) {
+            $request->merge(['app_id' => (int) $request->route('app_id')]);
+            return $next($request);
+        }
+
+        if (! in_array($routeName, ['order.store', 'order.storeDirect'], true)) {
+            return $next($request);
+        }
+
         $appId = (int) $request->input('app_id');
         $entityName = (string) $request->input('entity_name', '');
         $entityId = (int) $request->input('entity_id');
 
-        // Leave required-field reporting to the controller validator.
         if ($appId <= 0 || $entityName === '' || $entityId <= 0) {
             return $next($request);
         }
@@ -61,10 +71,8 @@ class EnsureOrderContext
                 ->pluck('id')
                 ->map(fn ($id) => (int) $id);
 
-            $invalidItemIds = $itemIds->diff($validItemIds);
-
             abort_if(
-                $invalidItemIds->isNotEmpty(),
+                $itemIds->diff($validItemIds)->isNotEmpty(),
                 422,
                 'Todos os itens do pedido devem pertencer ao mesmo estabelecimento e aplicação.'
             );
