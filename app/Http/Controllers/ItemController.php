@@ -17,26 +17,52 @@ class ItemController extends Controller
 {
     public function index(Request $request)
     {
-        $data = $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
-        return response()->json(Item::query()->where('status', true)->latest()->paginate($data['per_page'] ?? 20));
+        $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        return response()->json(
+            Item::query()
+                ->where('status', true)
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->latest()
+                ->paginate($data['per_page'] ?? 20)
+        );
     }
 
     public function listAll(Request $request)
     {
         $this->requirePermission('item_list');
-        $data = $request->validate(['per_page' => 'nullable|integer|min:1|max:100']);
-        return response()->json(Item::query()->latest()->paginate($data['per_page'] ?? 100));
+        $data = $request->validate([
+            'app_id' => 'nullable|integer|exists:applications,id',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        return response()->json(
+            Item::query()
+                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->latest()
+                ->paginate($data['per_page'] ?? 100)
+        );
     }
 
     public function listByApp(int $app_id)
     {
-        return response()->json(Item::query()->where('app_id', $app_id)->where('status', true)->latest()->paginate(20));
+        return response()->json(
+            Item::query()
+                ->where('app_id', $app_id)
+                ->where('status', true)
+                ->latest()
+                ->paginate(20)
+        );
     }
 
     public function listByEntity(string $identifier)
     {
         $establishment = $this->findEstablishment($identifier);
         $items = Item::query()
+            ->where('app_id', $establishment->app_id)
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
@@ -51,9 +77,11 @@ class ItemController extends Controller
     {
         $establishment = $this->findEstablishment($identifier);
         $items = Item::query()
+            ->where('app_id', $establishment->app_id)
             ->where('entity_name', 'establishment')
             ->where('status', true)
             ->whereHas('establishment', fn ($q) => $q
+                ->where('app_id', $establishment->app_id)
                 ->where('uf', $establishment->uf)
                 ->where('city', $establishment->city)
                 ->where('id', '!=', $establishment->id))
@@ -74,9 +102,10 @@ class ItemController extends Controller
         ]);
 
         $query = Item::query()
+            ->where('app_id', (int) $app_id)
             ->where('status', true)
             ->whereHas('establishment', function ($q) use ($app_id, $data) {
-                $q->where('app_id', $app_id);
+                $q->where('app_id', (int) $app_id);
                 if (! empty($data['city']) && $data['city'] !== 'Todas') {
                     $q->where('city', $data['city']);
                 }
@@ -99,27 +128,44 @@ class ItemController extends Controller
         ]);
     }
 
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
-        $item = Item::query()->where('status', true)->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')])->findOrFail($id);
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+
+        $item = Item::query()
+            ->where('status', true)
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')])
+            ->findOrFail($id);
+
         return response()->json($item);
     }
 
-    public function view(string $identifier)
+    public function view(Request $request, string $identifier)
     {
+        $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
+
         $item = Item::query()
             ->where('status', true)
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
             ->when(is_numeric($identifier), fn ($q) => $q->where('id', (int) $identifier), fn ($q) => $q->where('slug', $identifier))
             ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')])
             ->firstOrFail();
 
         Interaction::registerView($item, Auth::user());
 
+        $establishment = null;
+        if ($item->entity_name === 'establishment') {
+            $establishment = Establishment::query()
+                ->where('app_id', $item->app_id)
+                ->find($item->entity_id);
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Item encontrado com sucesso.',
             'item' => $item,
-            'establishment' => $item->entity_name === 'establishment' ? Establishment::find($item->entity_id) : null,
+            'establishment' => $establishment,
         ]);
     }
 
@@ -130,6 +176,12 @@ class ItemController extends Controller
             'entity_name' => 'required|string|max:100',
             'app_id' => 'required|integer|exists:applications,id',
         ]);
+
+        if ($data['entity_name'] === 'establishment') {
+            Establishment::query()
+                ->where('app_id', $data['app_id'])
+                ->findOrFail($data['entity_id']);
+        }
 
         return response()->json(['services' => Item::query()
             ->where($data)
@@ -142,7 +194,7 @@ class ItemController extends Controller
     {
         $this->requirePermission('item_create');
         $data = $this->validateItem($request, true);
-        $this->assertCanManageEntity($data['entity_name'], (int) $data['entity_id']);
+        $this->assertCanManageEntity($data['entity_name'], (int) $data['entity_id'], (int) $data['app_id']);
         $user = Auth::user();
 
         $item = DB::transaction(function () use ($request, $data, $user) {
@@ -178,7 +230,7 @@ class ItemController extends Controller
         ]);
 
         foreach ($data['items'] as $row) {
-            $this->assertCanManageEntity($row['entity_name'], (int) $row['entity_id']);
+            $this->assertCanManageEntity($row['entity_name'], (int) $row['entity_id'], (int) $row['app_id']);
         }
 
         $user = Auth::user();
@@ -207,15 +259,14 @@ class ItemController extends Controller
         $this->assertCanManageItem($item);
         $data = $this->validateItem($request, false);
 
-        if (isset($data['entity_name']) || isset($data['entity_id'])) {
-            $entityName = $data['entity_name'] ?? $item->entity_name;
-            $entityId = (int) ($data['entity_id'] ?? $item->entity_id);
-            $this->assertCanManageEntity($entityName, $entityId);
-        }
+        $targetEntityName = $data['entity_name'] ?? $item->entity_name;
+        $targetEntityId = (int) ($data['entity_id'] ?? $item->entity_id);
+        $targetAppId = (int) ($data['app_id'] ?? $item->app_id);
+        $this->assertCanManageEntity($targetEntityName, $targetEntityId, $targetAppId);
 
-        DB::transaction(function () use ($request, $item, $data) {
-            if (isset($data['name'])) {
-                $data['slug'] = $this->uniqueSlug($data['name'], (int) ($data['app_id'] ?? $item->app_id), $item->id);
+        DB::transaction(function () use ($request, $item, $data, $targetAppId) {
+            if (isset($data['name']) || isset($data['app_id'])) {
+                $data['slug'] = $this->uniqueSlug($data['name'] ?? $item->name, $targetAppId, $item->id);
             }
             $item->fill($data);
             $item->updated_by = Auth::id();
@@ -271,10 +322,13 @@ class ItemController extends Controller
             'entity_id' => 'required|integer|min:1',
             'percentage' => 'required|numeric|min:0|max:100',
         ]);
-        $this->assertCanManageEntity('establishment', (int) $data['entity_id']);
+
+        $establishment = Establishment::findOrFail($data['entity_id']);
+        $this->assertCanManageEntity('establishment', (int) $data['entity_id'], (int) $establishment->app_id);
 
         $factor = $increase ? 1 + ($data['percentage'] / 100) : 1 - ($data['percentage'] / 100);
         Item::query()
+            ->where('app_id', $establishment->app_id)
             ->where('entity_id', $data['entity_id'])
             ->where('entity_name', 'establishment')
             ->get()
@@ -324,21 +378,31 @@ class ItemController extends Controller
         if ($user->hasProfile('Administrador') || (int) $item->created_by === (int) $user->id || (int) $item->user_id === (int) $user->id) {
             return;
         }
-        $this->assertCanManageEntity($item->entity_name, (int) $item->entity_id);
+        $this->assertCanManageEntity($item->entity_name, (int) $item->entity_id, (int) $item->app_id);
     }
 
-    private function assertCanManageEntity(string $entityName, int $entityId): void
+    private function assertCanManageEntity(string $entityName, int $entityId, ?int $expectedAppId = null): void
     {
         $user = Auth::user();
-        if ($user->hasProfile('Administrador')) {
-            return;
-        }
+
         if ($entityName === 'establishment') {
             $establishment = Establishment::findOrFail($entityId);
+
+            if ($expectedAppId !== null && (int) $establishment->app_id !== $expectedAppId) {
+                abort(422, 'A aplicação do item deve ser a mesma aplicação do estabelecimento.');
+            }
+
+            if ($user->hasProfile('Administrador')) {
+                return;
+            }
+
             if ((int) $establishment->user_id === (int) $user->id || (int) $establishment->created_by === (int) $user->id) {
                 return;
             }
+        } elseif ($user->hasProfile('Administrador')) {
+            return;
         }
+
         abort(403, 'Você não pode alterar itens desta entidade.');
     }
 
@@ -364,6 +428,7 @@ class ItemController extends Controller
     private function findEstablishment(string $identifier): Establishment
     {
         return Establishment::query()
+            ->where('is_cancelled', false)
             ->when(is_numeric($identifier), fn ($q) => $q->where('id', (int) $identifier), fn ($q) => $q->where('slug', $identifier))
             ->firstOrFail();
     }
