@@ -152,6 +152,7 @@ class AuthController extends Controller
                 'password' => Hash::make($data['password']),
                 'user_name' => $this->uniqueUsername($data['first_name']),
                 'verification_code' => Hash::make($rawCode),
+                'verification_code_expires_at' => now()->addMinutes(30),
                 'cpf' => $data['cpf'] ?? null,
             ]);
 
@@ -179,11 +180,15 @@ class AuthController extends Controller
             return response()->json(['message' => 'O e-mail já foi verificado anteriormente.']);
         }
 
-        if (! $this->matchesCode($data['verification_code'], $user->verification_code)) {
-            return response()->json(['error' => 'Código de verificação inválido.'], 422);
+        if (! $this->verificationCodeIsValid($user, $data['verification_code'])) {
+            return response()->json(['error' => 'Código de verificação inválido ou expirado.'], 422);
         }
 
-        $user->forceFill(['email_verified_at' => now(), 'verification_code' => null])->save();
+        $user->forceFill([
+            'email_verified_at' => now(),
+            'verification_code' => null,
+            'verification_code_expires_at' => null,
+        ])->save();
         $this->recordInteraction($user, 'verification');
 
         return response()->json(['message' => 'E-mail verificado com sucesso.']);
@@ -194,7 +199,10 @@ class AuthController extends Controller
         $user = Auth::user();
         $rawCode = $this->newCode(6);
 
-        $user->forceFill(['verification_code' => Hash::make($rawCode)])->save();
+        $user->forceFill([
+            'verification_code' => Hash::make($rawCode),
+            'verification_code_expires_at' => now()->addMinutes(30),
+        ])->save();
         Mail::to($user->email)->send(new ResendVerificationCodeMail($rawCode, $user));
         $this->recordInteraction($user, 'verification_code_resent');
 
@@ -364,6 +372,7 @@ class AuthController extends Controller
                 'password' => Hash::make(Str::random(40)),
                 'user_name' => $this->uniqueUsername($data['first_name']),
                 'verification_code' => Hash::make($rawCode),
+                'verification_code_expires_at' => now()->addDay(),
             ]);
 
             $user->applications()->attach($data['app_id'], [
@@ -374,7 +383,7 @@ class AuthController extends Controller
             return $user;
         });
 
-        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->id));
+        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name));
         $this->recordInteraction($user, 'invite_sent', ['application_id' => $application->id]);
 
         return response()->json(['message' => 'Convite enviado com sucesso.']);
@@ -390,7 +399,7 @@ class AuthController extends Controller
 
         $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
 
-        if (! $user || ! $this->matchesCode($data['verification_code'], $user->verification_code)) {
+        if (! $user || ! $this->verificationCodeIsValid($user, $data['verification_code'])) {
             return response()->json(['message' => 'Convite inválido ou expirado.'], 422);
         }
 
@@ -398,6 +407,7 @@ class AuthController extends Controller
             $user->forceFill([
                 'password' => Hash::make($data['password']),
                 'verification_code' => null,
+                'verification_code_expires_at' => null,
                 'email_verified_at' => now(),
             ])->save();
 
@@ -460,6 +470,13 @@ class AuthController extends Controller
         }
 
         return $code;
+    }
+
+    private function verificationCodeIsValid(User $user, string $provided): bool
+    {
+        return $user->verification_code_expires_at
+            && now()->lessThanOrEqualTo($user->verification_code_expires_at)
+            && $this->matchesCode($provided, $user->verification_code);
     }
 
     private function matchesCode(string $provided, ?string $stored): bool
