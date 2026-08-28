@@ -19,7 +19,8 @@ use App\Http\Controllers\{
     EmployerController,
     OrderForecastController,
     FileController,
-    HomeController
+    HomeController,
+    ApplicationController
 };
 
 /*
@@ -376,4 +377,17 @@ Route::prefix('file')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/{id}', [FileController::class, 'update'])->whereNumber('id')->name('file.update.post');
 
     Route::delete('/{id}', [FileController::class, 'delete'])->whereNumber('id')->name('file.delete');
+});
+
+
+/*
+|--------------------------------------------------------------------------
+| APLICAÇÕES PETER TECNET (PÚBLICO / SOMENTE LEITURA)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('applications')->middleware(['api'])->group(function () {
+    Route::get('/', [ApplicationController::class, 'index'])->name('applications.index');
+    Route::get('/{slug}', [ApplicationController::class, 'show'])
+        ->where('slug', '[A-Za-z0-9\\-]+')
+        ->name('applications.show');
 });
