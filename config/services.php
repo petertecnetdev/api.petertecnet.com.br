@@ -1,18 +1,6 @@
 <?php
 
 return [
-
-    /*
-    |--------------------------------------------------------------------------
-    | Third Party Services
-    |--------------------------------------------------------------------------
-    |
-    | Centralize external service configuration here. Application code should
-    | consume config() values instead of calling env() directly so config cache
-    | works consistently in production.
-    |
-    */
-
     'mailgun' => [
         'domain' => env('MAILGUN_DOMAIN'),
         'secret' => env('MAILGUN_SECRET'),
@@ -31,7 +19,7 @@ return [
     ],
 
     'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID'),
+        'client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID')),
     ],
 
     'efi' => [
@@ -41,5 +29,4 @@ return [
         'cert_path' => env('EFI_CERT_PATH'),
         'timeout' => (int) env('EFI_API_TIMEOUT', 15),
     ],
-
 ];
