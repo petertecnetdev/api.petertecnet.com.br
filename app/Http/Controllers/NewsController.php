@@ -2,313 +2,204 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Interaction;
+use App\Models\News;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use App\Models\{News, Interaction};
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Intervention\Image\Facades\Image;
-
 
 class NewsController extends Controller
 {
-    // Função para obter mensagens de validação personalizadas
-    protected function getValidationMessages()
-    {
-        return [
-            // Validações para o campo título
-            'title.required' => 'O campo título é obrigatório.',
-            'title.string' => 'O título deve ser uma string válida.',
-            'title.max' => 'O título não pode ter mais que 255 caracteres.',
-    
-            // Validações para o campo conteúdo
-            'content.required' => 'O conteúdo da notícia é obrigatório.',
-            'content.string' => 'O conteúdo deve ser uma string válida.',
-    
-            // Validações para o campo imagem
-            'image.required' => 'O campo imagem é obrigatório.',
-            'image.image' => 'O arquivo deve ser uma imagem válida.',
-            'image.mimes' => 'A imagem deve estar em um dos seguintes formatos: jpeg, png, jpg, gif.',
-            'image.max' => 'A imagem não pode ser maior que 2MB.',
-    
-            // Validações para o campo de data de publicação (opcional, se necessário)
-            'published_at.date' => 'A data de publicação deve ser uma data válida.',
-    
-            // Validações para o campo user_id (opcional, se necessário)
-            'user_id.exists' => 'O usuário associado à notícia deve ser válido.',
-    
-            // Validações para o campo name
-            'name.string' => 'O nome deve ser uma string válida.',
-            'name.max' => 'O nome não pode ter mais que 255 caracteres.',
-        ];
-    }
-
-
-    // Método responsável por listar todas as notícias
     public function list(Request $request)
     {
-        try {
-            // Definir o número de itens por página
-            $perPage = 6; // Valor fixo de 6 itens por página
-    
-            // Obter o termo de pesquisa, se houver
-            $search = $request->input('search', '');
-    
-            // Obter as notícias paginadas, com base na pesquisa
-            $newsQuery = News::where('title', 'like', '%' . $search . '%')
-                ->orWhere('content', 'like', '%' . $search . '%')
-                ->orderBy('created_at', 'desc');
-    
-            $news = $newsQuery->paginate($perPage);
-    
-            return response()->json($news);
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Erro ao buscar notícias.'], 500);
+        $data = $request->validate([
+            'search' => 'nullable|string|max:200',
+            'per_page' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $search = trim((string) ($data['search'] ?? ''));
+        $query = News::query()->with('user:id,first_name,last_name,user_name,avatar');
+
+        if ($search !== '') {
+            $query->where(function ($scope) use ($search) {
+                $scope->where('title', 'like', '%' . $search . '%')
+                    ->orWhere('content', 'like', '%' . $search . '%');
+            });
         }
+
+        return response()->json(
+            $query->orderByDesc('created_at')->paginate($data['per_page'] ?? 6)
+        );
     }
-    
+
+    public function search(Request $request)
+    {
+        return $this->list($request);
+    }
 
     public function store(Request $request)
     {
-        try {
-            // Log para iniciar o processo de validação
-            Log::info('Iniciando validação dos campos para a criação da notícia.', $request->all());
+        $user = Auth::user();
 
-            // Validação dos campos com mensagens personalizadas
-            $request->validate([
-                'title' => 'required|string|max:255',
-                'content' => 'required|string',
-                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048', // Validação de imagem
-            ], $this->getValidationMessages());
-
-            Log::info('Validação dos campos concluída com sucesso.');
-
-            // Processar e redimensionar a imagem
-            $image = $request->file('image');
-            $imagePath = 'images/news/' . uniqid() . '.' . $image->getClientOriginalExtension();
-
-            // Redimensionar para 660x441 usando Intervention Image
-            $resizedImage = Image::make($image)->resize(660, 441);
-            $resizedImage->save(storage_path('app/public/' . $imagePath));
-
-            Log::info('Imagem redimensionada e salva com sucesso em: ' . $imagePath);
-
-            // Recuperar o ID do usuário autenticado, se houver
-            $userId = auth()->check() ? auth()->id() : null;
-
-            // Criar nova notícia
-            $news = News::create([
-                'title' => $request->input('title'),
-                'content' => $request->input('content'),
-                'slug' => Str::slug($request->input('title')), // Slug gerado automaticamente
-                'image' => $imagePath, // Caminho da imagem armazenada
-                'user_id' => $userId, // Se o usuário estiver autenticado, salvar o ID dele
-            ]);
-
-            Log::info('Notícia criada com sucesso: ', $news->toArray());
-
-            return response()->json(['message' => 'Notícia criada com sucesso.', 'news' => $news], 201);
-
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Log para erro de validação
-            Log::error('Erro de validação ao criar notícia: ' . $e->getMessage());
-            Log::error('Detalhes dos erros de validação: ', $e->errors());
-
-            // Retornar os erros de validação para o front-end
-            return response()->json([
-                'errors' => $e->errors(),
-            ], 422);
-
-        } catch (\Exception $e) {
-            // Log para qualquer outro erro
-            Log::error('Erro ao criar notícia: ' . $e->getMessage());
-
-            return response()->json(['error' => 'Ocorreu um erro ao cadastrar a notícia'], 500);
+        if (! $this->allowed($user, 'blog_create')) {
+            return response()->json(['error' => 'Você não tem permissão para criar notícias.'], 403);
         }
-    }
 
+        $data = $request->validate([
+            'title' => 'required|string|max:255',
+            'content' => 'required|string|max:100000',
+            'published_at' => 'nullable|date',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+        ]);
+
+        $imagePath = $request->hasFile('image')
+            ? $this->storeImage($request->file('image'))
+            : null;
+
+        $news = News::create([
+            'title' => $data['title'],
+            'content' => $data['content'],
+            'published_at' => $data['published_at'] ?? null,
+            'image' => $imagePath,
+            'user_id' => $user->id,
+        ]);
+
+        return response()->json([
+            'message' => 'Notícia criada com sucesso.',
+            'news' => $news,
+        ], 201);
+    }
 
     public function update(Request $request, $id)
     {
-        try {
-            // Encontrar a notícia
-            $news = News::findOrFail($id);
-    
-            // Validação dos campos
-            $validatedData = $request->validate([
-                'title' => 'nullable|string|max:255',
-                'content' => 'nullable|string',
-                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048', // Validação de imagem
-            ], $this->getValidationMessages());
-    
-            // Atualizar os campos, se necessário
-            $news->fill($request->only(['title', 'content', 'published_at']));
-    
-            // Verifica se uma nova imagem foi enviada
-            if ($request->hasFile('image')) {
-                // Armazenar nova imagem
-                $imagePath = $request->file('image')->store('images/news', 'public');
-                $news->image = $imagePath;
-            }
-    
-            // Forçar atualização no campo updated_at
-            $news->updated_at = now();
-    
-            // Salvar a notícia
-            $news->save();
-    
-            // Retornar resposta
-            return response()->json(['message' => 'Notícia atualizada com sucesso.', 'news' => $news], 200);
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Logar erros de validação
-            Log::error('Erro de validação ao atualizar a notícia: ', [
-                'errors' => $e->validator->errors(),
-                'request_data' => $request->all(),
-                'news_id' => $id,
-            ]);
-            return response()->json(['errors' => $e->validator->errors()], 422);
-        } catch (\Exception $e) {
-            // Logar erros gerais
-            Log::error('Erro ao atualizar a notícia: ', [
-                'message' => $e->getMessage(),
-                'request_data' => $request->all(),
-                'news_id' => $id,
-            ]);
-            return response()->json(['error' => 'Ocorreu um erro ao atualizar a notícia'], 500);
+        $news = News::findOrFail($id);
+        $user = Auth::user();
+
+        if (! $this->canManage($user, $news, 'blog_edit')) {
+            return response()->json(['error' => 'Você não tem permissão para editar esta notícia.'], 403);
         }
+
+        $data = $request->validate([
+            'title' => 'sometimes|string|max:255',
+            'content' => 'sometimes|string|max:100000',
+            'published_at' => 'sometimes|nullable|date',
+            'image' => 'sometimes|nullable|image|mimes:jpeg,png,jpg,webp|max:5120',
+        ]);
+
+        $update = collect($data)->except('image')->all();
+
+        if ($request->hasFile('image')) {
+            $oldImage = $news->image;
+            $update['image'] = $this->storeImage($request->file('image'));
+            $this->deleteImage($oldImage);
+        }
+
+        $news->update($update);
+
+        return response()->json([
+            'message' => 'Notícia atualizada com sucesso.',
+            'news' => $news->fresh(),
+        ]);
     }
-    
-    // Método responsável por exibir uma notícia específica
+
     public function show($id)
     {
-        try {
-            // Verificar se a notícia existe
-            $news = News::with('comments')->findOrFail($id);
-    
-            // Sortear 3 notícias aleatórias diferentes da notícia atual
-            $recommendedNews = News::where('id', '!=', $id)
-                ->inRandomOrder()
-                ->take(3) // Define quantas notícias aleatórias você quer
-                ->get();
-    
-            return response()->json(['news' => $news, 'recommended_news' => $recommendedNews], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::warning('Notícia não encontrada com ID: ' . $id);
-            return response()->json(['error' => 'Notícia não encontrada.'], 404);
-        } catch (\Exception $e) {
-            Log::error('Erro ao mostrar a notícia: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao recuperar a notícia.'], 500);
-        }
+        $news = News::query()
+            ->with([
+                'user:id,first_name,last_name,user_name,avatar',
+                'comments.user:id,first_name,last_name,user_name,avatar',
+            ])
+            ->findOrFail($id);
+
+        $recommendedNews = News::query()
+            ->where('id', '!=', $news->id)
+            ->whereNotNull('published_at')
+            ->inRandomOrder()
+            ->limit(3)
+            ->get();
+
+        return response()->json([
+            'news' => $news,
+            'recommended_news' => $recommendedNews,
+        ]);
     }
-    
 
-
-    // Método responsável por deletar uma notícia
     public function destroy($id)
     {
-        try {
-            // Verificar se a notícia existe
-            $news = News::findOrFail($id);
+        $news = News::findOrFail($id);
+        $user = Auth::user();
 
-            // Deletar a notícia
-            $news->delete();
-
-            return response()->json(['message' => 'Notícia deletada com sucesso.'], 200);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            Log::warning('Notícia não encontrada para deletar com ID: ' . $id);
-            return response()->json(['error' => 'Notícia não encontrada.'], 404);
-        } catch (\Exception $e) {
-            Log::error('Erro ao deletar a notícia: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao deletar a notícia.'], 500);
+        if (! $this->canManage($user, $news, 'blog_delete')) {
+            return response()->json(['error' => 'Você não tem permissão para excluir esta notícia.'], 403);
         }
-    }
-    public function search(Request $request)
-    {
-        try {
-            // Obter o termo de pesquisa
-            $search = $request->input('search', '');
 
-            // Definir o número de itens por página
-            $perPage = 6; // Valor fixo de 6 itens por página
+        $image = $news->image;
+        $news->delete();
+        $this->deleteImage($image);
 
-            // Log do termo de pesquisa
-            Log::info('Iniciando busca de notícias com o termo: ' . $search);
-
-            // Obter as notícias paginadas com base na pesquisa
-            $news = News::where('title', 'like', '%' . $search . '%')
-                ->orWhere('content', 'like', '%' . $search . '%')
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-
-            // Retorna o objeto de paginação das notícias
-            return response()->json($news, 200);
-        } catch (\Exception $e) {
-            // Log para qualquer erro que ocorra
-            Log::error('Erro ao buscar notícias: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao buscar as notícias.'], 500);
-        }
+        return response()->json(['message' => 'Notícia deletada com sucesso.']);
     }
 
     public function comment(Request $request, $newsId)
     {
-        try {
-            // Log para iniciar o processo de validação
-            Log::info('Iniciando validação do comentário.', $request->all());
+        News::findOrFail($newsId);
 
-            // Validação dos campos do comentário
-            $request->validate([
-                'comment' => 'required|string|max:1000', // Você pode ajustar o limite de caracteres
-                'name' => 'nullable|string|max:255', // Nome do usuário não autenticado (opcional)
-            ], [
-                'comment.required' => 'O comentário é obrigatório.',
-                'comment.string' => 'O comentário deve ser uma string.',
-                'comment.max' => 'O comentário não pode ter mais que 1000 caracteres.',
-                'name.string' => 'O nome deve ser uma string.',
-                'name.max' => 'O nome não pode ter mais que 255 caracteres.',
-            ]);
+        $data = $request->validate([
+            'comment' => 'required|string|max:1000',
+        ]);
 
-            // Recuperar o ID do usuário autenticado
-            $userId = auth()->check() ? auth()->id() : null;
+        $interaction = Interaction::create([
+            'user_id' => Auth::id(),
+            'entity_id' => $newsId,
+            'entity_type' => 'news',
+            'interaction_type' => 'comment',
+            'comment' => $data['comment'],
+        ]);
 
-            // Recuperar o nome do usuário se não estiver autenticado
-            $userName = auth()->check() ? null : $request->input('name');
+        return response()->json([
+            'message' => 'Comentário adicionado com sucesso.',
+            'interaction' => $interaction->load('user:id,first_name,last_name,user_name,avatar'),
+        ], 201);
+    }
 
-            // Verificar se o usuário não está autenticado e forneceu o nome
-            if (!$userId && !$userName) {
-                return response()->json(['error' => 'É necessário fornecer o nome se não estiver autenticado.'], 422);
-            }
+    private function storeImage($uploaded): string
+    {
+        $path = 'images/news/' . uuid_create(UUID_TYPE_RANDOM) . '.webp';
+        $absolute = Storage::disk('public')->path($path);
+        $directory = dirname($absolute);
 
-            // Criação do registro de interação
-            $interaction = Interaction::create([
-                'user_id' => $userId, // ID do usuário logado (null se não autenticado)
-                'name' => $userName, // Nome do usuário (pode ser null se autenticado)
-                'entity_id' => $newsId, // ID da notícia que está sendo comentada
-                'entity_type' => 'news', // Entidade que está sendo comentada
-                'interaction_type' => 'comment', // Tipo de interação
-                'comment' => $request->input('comment'), // Conteúdo do comentário
-            ]);
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
 
-            Log::info('Comentário adicionado com sucesso: ', $interaction->toArray());
+        Image::make($uploaded->getRealPath())
+            ->orientate()
+            ->fit(660, 441)
+            ->encode('webp', 85)
+            ->save($absolute);
 
-            return response()->json(['message' => 'Comentário adicionado com sucesso.', 'interaction' => $interaction], 201);
+        return $path;
+    }
 
-        } catch (\Illuminate\Validation\ValidationException $e) {
-            // Log para erro de validação
-            Log::error('Erro de validação ao adicionar comentário: ' . $e->getMessage());
-            Log::error('Detalhes dos erros de validação: ', $e->errors());
-
-            // Retornar os erros de validação para o front-end
-            return response()->json([
-                'errors' => $e->errors(),
-            ], 422);
-
-        } catch (\Exception $e) {
-            // Log para qualquer outro erro
-            Log::error('Erro ao adicionar comentário: ' . $e->getMessage());
-            return response()->json(['error' => 'Ocorreu um erro ao adicionar o comentário.'], 500);
+    private function deleteImage(?string $path): void
+    {
+        if ($path && str_starts_with($path, 'images/news/')) {
+            Storage::disk('public')->delete($path);
         }
     }
 
+    private function canManage($user, News $news, string $permission): bool
+    {
+        return $user && (
+            $user->hasProfile('Administrador')
+            || (int) $news->user_id === (int) $user->id
+            || $user->hasPermission($permission)
+        );
+    }
 
-
-
+    private function allowed($user, string $permission): bool
+    {
+        return $user && ($user->hasProfile('Administrador') || $user->hasPermission($permission));
+    }
 }
