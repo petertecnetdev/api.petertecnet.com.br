@@ -12,21 +12,6 @@ class User extends Authenticatable implements JWTSubject
 {
     use HasFactory, HasFiles, Notifiable;
 
-    protected static function booted(): void
-    {
-        static::saved(function (User $user): void {
-            $adminEmail = strtolower((string) config('peter.admin_email'));
-
-            if ($adminEmail && strtolower((string) $user->email) === $adminEmail) {
-                $adminProfileId = Profile::query()->where('name', 'Administrador')->value('id');
-
-                if ($adminProfileId && (int) $user->profile_id !== (int) $adminProfileId) {
-                    $user->forceFill(['profile_id' => $adminProfileId])->saveQuietly();
-                }
-            }
-        });
-    }
-
     protected $fillable = [
         'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'password',
         'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
