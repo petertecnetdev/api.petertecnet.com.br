@@ -31,11 +31,10 @@ class ServiceRecordController extends Controller
             'notes' => 'nullable|string|max:5000',
         ]);
 
-        $serviceRecord = ServiceRecord::create([
-            ...$data,
+        $serviceRecord = ServiceRecord::create(array_merge($data, [
             'registered_by' => Auth::id(),
             'discount' => $data['discount'] ?? 0,
-        ]);
+        ]));
 
         return response()->json([
             'message' => 'Atendimento registrado com sucesso.',
