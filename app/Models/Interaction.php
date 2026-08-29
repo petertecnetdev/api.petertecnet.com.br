@@ -5,24 +5,14 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Illuminate\Support\Str;
 
 class Interaction extends Model
 {
     use HasFactory;
 
     protected $fillable = [
-        'user_id',
-        'app_id',
-        'entity_id',
-        'entity_type',
-        'interaction_type',
-        'route',
-        'method',
-        'session_key',
-        'comment',
-        'name',
-        'content',
+        'user_id', 'app_id', 'entity_id', 'entity_type', 'interaction_type', 'route', 'method', 'session_key',
+        'comment', 'name', 'content',
     ];
 
     protected $casts = [
@@ -31,40 +21,45 @@ class Interaction extends Model
         'updated_at' => 'datetime',
     ];
 
-    public function user()
+    protected static function booted(): void
     {
-        return $this->belongsTo(User::class);
+        static::creating(function (Interaction $interaction) {
+            $content = is_array($interaction->content) ? $interaction->content : [];
+            $request = request();
+
+            if (! $interaction->app_id) {
+                foreach ([
+                    $content['app_id'] ?? null,
+                    $content['application_id'] ?? null,
+                    $request?->input('app_id'),
+                    $request?->input('application_id'),
+                    $request?->header('X-Application-Id'),
+                ] as $candidate) {
+                    if (is_numeric($candidate) && (int) $candidate > 0) {
+                        $interaction->app_id = (int) $candidate;
+                        break;
+                    }
+                }
+            }
+
+            $interaction->route ??= $request?->route()?->uri() ?: $request?->path();
+            $interaction->method ??= $request?->method();
+            $interaction->session_key ??= static::sessionKey($request?->userAgent(), $request?->ip());
+
+            $interaction->content = array_merge([
+                'ip' => $request?->ip(),
+                'user_agent' => $request?->userAgent(),
+            ], $content);
+        });
     }
 
-    public function application()
-    {
-        return $this->belongsTo(Application::class, 'app_id');
-    }
-
-    public function establishment()
-    {
-        return $this->belongsTo(Establishment::class, 'entity_id')->where('entity_type', 'Establishment');
-    }
-
-    public function employer()
-    {
-        return $this->belongsTo(Employer::class, 'entity_id')->where('entity_type', 'Employer');
-    }
-
-    public function item()
-    {
-        return $this->belongsTo(Item::class, 'entity_id')->where('entity_type', 'Item');
-    }
-
-    public function order()
-    {
-        return $this->belongsTo(Order::class, 'entity_id')->where('entity_type', 'Order');
-    }
-
-    public function entity(): MorphTo
-    {
-        return $this->morphTo(__FUNCTION__, 'entity_type', 'entity_id');
-    }
+    public function user() { return $this->belongsTo(User::class); }
+    public function application() { return $this->belongsTo(Application::class, 'app_id'); }
+    public function establishment() { return $this->belongsTo(Establishment::class, 'entity_id')->where('entity_type', 'Establishment'); }
+    public function employer() { return $this->belongsTo(Employer::class, 'entity_id')->where('entity_type', 'Employer'); }
+    public function item() { return $this->belongsTo(Item::class, 'entity_id')->where('entity_type', 'Item'); }
+    public function order() { return $this->belongsTo(Order::class, 'entity_id')->where('entity_type', 'Order'); }
+    public function entity(): MorphTo { return $this->morphTo(__FUNCTION__, 'entity_type', 'entity_id'); }
 
     public function scopeViews($query) { return $query->where('interaction_type', 'view'); }
     public function scopeLikes($query) { return $query->where('interaction_type', 'like'); }
@@ -85,13 +80,9 @@ class Interaction extends Model
 
     public static function mostActiveUserForEntity($entityType, $entityId)
     {
-        return static::where('entity_type', $entityType)
-            ->where('entity_id', $entityId)
-            ->selectRaw('user_id, COUNT(*) as total')
-            ->groupBy('user_id')
-            ->orderByDesc('total')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->first();
+        return static::where('entity_type', $entityType)->where('entity_id', $entityId)
+            ->selectRaw('user_id, COUNT(*) as total')->groupBy('user_id')->orderByDesc('total')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')->first();
     }
 
     public static function analyticsForEntity($entityType, $entityId)
@@ -108,16 +99,8 @@ class Interaction extends Model
         return [
             'id' => $this->id,
             'type' => $this->interaction_type,
-            'application' => $this->application ? [
-                'id' => $this->application->id,
-                'name' => $this->application->name,
-                'slug' => $this->application->slug,
-            ] : null,
-            'entity' => [
-                'type' => $this->entity_type,
-                'id' => $this->entity_id,
-                'name' => $this->name,
-            ],
+            'application' => $this->application ? ['id' => $this->application->id, 'name' => $this->application->name, 'slug' => $this->application->slug] : null,
+            'entity' => ['type' => $this->entity_type, 'id' => $this->entity_id, 'name' => $this->name],
             'user' => [
                 'id' => $this->user?->id,
                 'name' => trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? '')),
@@ -135,7 +118,6 @@ class Interaction extends Model
     public static function registerLogin($user, $data = [])
     {
         if (! $user) return null;
-
         return static::register('login', $user, $user, $data, 'Login do usuário');
     }
 
@@ -143,11 +125,8 @@ class Interaction extends Model
     {
         $ip = request()->ip();
         $userId = $user?->id;
-        $entityType = class_basename($entity);
-        $entityId = $entity->id;
-
-        $exists = static::where('entity_type', $entityType)
-            ->where('entity_id', $entityId)
+        $exists = static::where('entity_type', class_basename($entity))
+            ->where('entity_id', $entity->id)
             ->where('interaction_type', 'view')
             ->where(function ($q) use ($userId, $ip) {
                 if ($userId) $q->where('user_id', $userId);
@@ -157,7 +136,6 @@ class Interaction extends Model
             ->exists();
 
         if ($exists) return null;
-
         return static::register('view', $entity, $user, $extra, $entity->name ?? $entity->title ?? 'Visualização');
     }
 
@@ -190,25 +168,15 @@ class Interaction extends Model
 
     public static function register($type, $entity, $user = null, $content = [], ?string $name = null)
     {
-        $request = request();
         $appId = static::resolveApplicationId($entity, $content);
-
-        $payload = array_merge([
-            'ip' => $request?->ip(),
-            'user_agent' => $request?->userAgent(),
-        ], $content);
-
         return static::create([
             'interaction_type' => $type,
             'entity_type' => class_basename($entity),
             'entity_id' => $entity->id,
             'user_id' => $user?->id,
             'app_id' => $appId,
-            'route' => $request?->route()?->uri() ?: $request?->path(),
-            'method' => $request?->method(),
-            'session_key' => static::sessionKey($request?->userAgent(), $request?->ip()),
             'name' => $name ?: ucfirst(str_replace('_', ' ', $type)),
-            'content' => $payload,
+            'content' => $content,
         ]);
     }
 
@@ -220,7 +188,7 @@ class Interaction extends Model
 
     private static function resolveApplicationId($entity, array $content = []): ?int
     {
-        $candidates = [
+        foreach ([
             $content['app_id'] ?? null,
             $content['application_id'] ?? null,
             request()?->input('app_id'),
@@ -228,12 +196,9 @@ class Interaction extends Model
             request()?->header('X-Application-Id'),
             data_get($entity, 'app_id'),
             data_get($entity, 'application_id'),
-        ];
-
-        foreach ($candidates as $candidate) {
+        ] as $candidate) {
             if (is_numeric($candidate) && (int) $candidate > 0) return (int) $candidate;
         }
-
         return null;
     }
 
