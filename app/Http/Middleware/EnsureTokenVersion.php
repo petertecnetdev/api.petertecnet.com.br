@@ -13,13 +13,24 @@ class EnsureTokenVersion
     {
         $user = $request->user('api');
 
+        // Public API routes are allowed to continue without authentication.
+        // Whenever a bearer token is present, security state is enforced globally.
         if (! $user) {
+            return $next($request);
+        }
+
+        $freshUser = User::query()->find($user->getKey());
+        if (! $freshUser) {
+            return response()->json(['success'=>false,'message'=>'Usuário não encontrado.','code'=>'USER_NOT_FOUND'], 401);
+        }
+
+        if (isset($freshUser->status) && $freshUser->status !== 'active') {
             return response()->json([
                 'success' => false,
-                'message' => 'Não autenticado.',
-                'code' => 'UNAUTHENTICATED',
+                'message' => $freshUser->status === 'blocked' ? 'Seu acesso foi bloqueado pela administração da Peter Tecnet.' : 'Sua conta não está ativa.',
+                'code' => 'ACCOUNT_BLOCKED',
                 'request_id' => $request->attributes->get('request_id'),
-            ], 401);
+            ], 403);
         }
 
         try {
@@ -34,13 +45,7 @@ class EnsureTokenVersion
             ], 401);
         }
 
-        // Always compare against a fresh database value. The JWT guard may keep
-        // the authenticated model in memory for the lifetime of the request or
-        // test process, which must never allow an already-revoked token through.
-        $currentVersion = (int) User::query()
-            ->whereKey($user->getKey())
-            ->value('auth_version');
-        $currentVersion = max($currentVersion, 1);
+        $currentVersion = max((int) $freshUser->auth_version, 1);
 
         if ($tokenVersion < 1 || $tokenVersion !== $currentVersion) {
             return response()->json([
