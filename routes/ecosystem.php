@@ -7,9 +7,11 @@ Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
+    Route::get('/activity', [EcosystemController::class, 'activity']);
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
+    Route::get('/users/{user}', [EcosystemController::class, 'userDetail'])->whereNumber('user');
     Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])->whereNumber('user');
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
