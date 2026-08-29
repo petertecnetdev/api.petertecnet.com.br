@@ -6,6 +6,7 @@ use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\Order;
 use App\Models\User;
+use App\Services\AppNotificationService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -29,9 +30,7 @@ class RasoioWorkflowController extends ApiController
 
         $orders = empty($employerIds)
             ? collect()
-            : $this->orderedAppointmentsQuery()
-                ->whereIn('attendant_id', $employerIds)
-                ->get();
+            : $this->orderedAppointmentsQuery()->whereIn('attendant_id', $employerIds)->get();
 
         return response()->json([
             'success' => true,
@@ -49,11 +48,7 @@ class RasoioWorkflowController extends ApiController
             ->where('slug', $slug)
             ->firstOrFail();
 
-        abort_unless(
-            (int) $establishment->user_id === $actorId || (int) $establishment->created_by === $actorId,
-            403,
-            'Somente o responsável pela barbearia pode acessar esta agenda operacional.'
-        );
+        abort_unless($this->isEstablishmentManager($establishment, $actorId), 403, 'Somente a gestão da barbearia pode acessar esta agenda operacional.');
 
         $employers = Employer::query()
             ->where('establishment_id', $establishment->id)
@@ -79,25 +74,14 @@ class RasoioWorkflowController extends ApiController
         $order = Order::query()
             ->where('app_id', self::APP_ID)
             ->where('type', 'appointment')
-            ->with([
-                'items.item',
-                'items.modifiers.modifier',
-                'client',
-                'creator',
-                'attendant.user',
-                'confirmedBy',
-                'cancelledBy',
-            ])
+            ->with(['items.item', 'items.modifiers.modifier', 'client', 'creator', 'attendant.user', 'confirmedBy', 'cancelledBy'])
             ->findOrFail($id);
 
         $actorId = (int) $request->user()->id;
         $this->authorizeOrderVisibility($order, $actorId);
 
         $establishment = $order->entity_name === 'establishment'
-            ? Establishment::query()
-                ->where('app_id', self::APP_ID)
-                ->with(['employers.user'])
-                ->find($order->entity_id)
+            ? Establishment::query()->where('app_id', self::APP_ID)->with(['employers.user'])->find($order->entity_id)
             : null;
 
         $creator = $order->creator;
@@ -109,12 +93,8 @@ class RasoioWorkflowController extends ApiController
                 $creatorRole = 'Cliente';
                 $creatorRoleKey = 'client';
             } elseif ($establishment) {
-                $isOwner = (int) $establishment->user_id === (int) $creator->id
-                    || (int) $establishment->created_by === (int) $creator->id;
-
-                $creatorEmployment = $establishment->employers
-                    ->first(fn ($employment) => (int) $employment->user_id === (int) $creator->id);
-
+                $isOwner = (int) $establishment->user_id === (int) $creator->id || (int) $establishment->created_by === (int) $creator->id;
+                $creatorEmployment = $establishment->employers->first(fn ($employment) => (int) $employment->user_id === (int) $creator->id);
                 $employmentRole = strtolower(trim((string) ($creatorEmployment?->role ?? '')));
                 $isManager = $isOwner || in_array($employmentRole, ['gerente', 'manager', 'gestor', 'administrador'], true);
 
@@ -128,12 +108,8 @@ class RasoioWorkflowController extends ApiController
             }
         }
 
-        $scheduledAt = $order->order_datetime
-            ? Carbon::parse($order->order_datetime)->timezone(self::TZ)
-            : null;
-        $requestedAt = $order->created_at
-            ? Carbon::parse($order->created_at)->timezone(self::TZ)
-            : null;
+        $scheduledAt = $order->order_datetime ? Carbon::parse($order->order_datetime)->timezone(self::TZ) : null;
+        $requestedAt = $order->created_at ? Carbon::parse($order->created_at)->timezone(self::TZ) : null;
         $now = now(self::TZ);
 
         return response()->json([
@@ -157,18 +133,14 @@ class RasoioWorkflowController extends ApiController
         ]);
     }
 
-    public function transition(Request $request, int $id)
+    public function transition(Request $request, int $id, AppNotificationService $notifications)
     {
         $data = $request->validate([
             'action' => 'required|string|in:accept,reject,cancel,complete,no_show',
             'reason' => 'nullable|string|max:1000',
         ]);
 
-        $order = Order::query()
-            ->where('app_id', self::APP_ID)
-            ->where('type', 'appointment')
-            ->findOrFail($id);
-
+        $order = Order::query()->where('app_id', self::APP_ID)->where('type', 'appointment')->findOrFail($id);
         $actorId = (int) $request->user()->id;
         $this->authorizeOrderManagement($order, $actorId);
 
@@ -196,79 +168,102 @@ class RasoioWorkflowController extends ApiController
             'no_show' => 'no_show',
         ][$data['action']];
 
-        $changes = [
-            'appointment_status' => $next,
-            'status' => $next,
-        ];
-
-        if ($data['action'] === 'accept') {
-            $changes['confirmed_by'] = $actorId;
-        }
-
+        $changes = ['appointment_status' => $next, 'status' => $next];
+        if ($data['action'] === 'accept') $changes['confirmed_by'] = $actorId;
         if (in_array($data['action'], ['reject', 'cancel'], true)) {
             $changes['cancelled_by'] = $actorId;
             $changes['cancelled_reason'] = $data['reason'] ?? ($data['action'] === 'reject' ? 'Agendamento recusado.' : null);
         }
-
-        if ($data['action'] === 'complete') {
-            $changes['attended_at'] = $now;
-        }
+        if ($data['action'] === 'complete') $changes['attended_at'] = $now;
 
         $order->update($changes);
+        $freshOrder = $order->fresh()->load(['items.item', 'client', 'attendant.user']);
+
+        $labels = [
+            'accept' => ['Agendamento confirmado', 'Seu agendamento foi confirmado.'],
+            'reject' => ['Agendamento recusado', 'O agendamento foi recusado.'],
+            'cancel' => ['Agendamento cancelado', 'O agendamento foi cancelado.'],
+            'complete' => ['Atendimento concluído', 'O atendimento foi marcado como concluído.'],
+            'no_show' => ['Não comparecimento registrado', 'O agendamento foi marcado como não comparecimento.'],
+        ];
+
+        [$title, $message] = $labels[$data['action']];
+        $notifications->sendToUsers(
+            self::APP_ID,
+            $this->appointmentStakeholderUserIds($freshOrder),
+            [
+                'type' => 'appointment.updated',
+                'title' => $title,
+                'message' => $message,
+                'reference_type' => 'order',
+                'reference_id' => $freshOrder->id,
+                'reference_url' => '/order/view/' . $freshOrder->id,
+                'data' => ['status' => $next, 'order_number' => $freshOrder->order_number],
+            ],
+            $actorId
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Agendamento atualizado com sucesso.',
-            'order' => $order->fresh()->load(['items.item', 'client', 'attendant.user']),
+            'order' => $freshOrder,
         ]);
     }
 
-    public function assign(Request $request, int $id)
+    public function assign(Request $request, int $id, AppNotificationService $notifications)
     {
-        $data = $request->validate([
-            'attendant_id' => 'required|integer|exists:employers,id',
-        ]);
+        $data = $request->validate(['attendant_id' => 'required|integer|exists:employers,id']);
 
-        $order = Order::query()
-            ->where('app_id', self::APP_ID)
-            ->where('type', 'appointment')
-            ->findOrFail($id);
-
+        $order = Order::query()->where('app_id', self::APP_ID)->where('type', 'appointment')->findOrFail($id);
         $actorId = (int) $request->user()->id;
-        $establishment = Establishment::query()
-            ->where('app_id', self::APP_ID)
-            ->findOrFail($order->entity_id);
+        $establishment = Establishment::query()->where('app_id', self::APP_ID)->findOrFail($order->entity_id);
 
-        abort_unless(
-            (int) $establishment->user_id === $actorId || (int) $establishment->created_by === $actorId,
-            403,
-            'Somente o responsável pela barbearia pode redirecionar este agendamento.'
-        );
-
+        abort_unless($this->isEstablishmentManager($establishment, $actorId), 403, 'Somente a gestão da barbearia pode redirecionar este agendamento.');
         abort_unless(in_array($order->appointment_status, ['pending', 'confirmed'], true), 422, 'Este agendamento não pode mais ser redirecionado.');
+
+        $oldAttendantUserId = $order->attendant_id
+            ? Employer::query()->whereKey($order->attendant_id)->value('user_id')
+            : null;
 
         $employer = Employer::query()
             ->whereKey((int) $data['attendant_id'])
             ->where('establishment_id', $establishment->id)
+            ->with('user:id,first_name,last_name,user_name')
             ->firstOrFail();
 
         $start = Carbon::parse($order->order_datetime, self::TZ);
         $end = $start->copy()->addMinutes(max(1, (int) ($order->total_duration ?: 30)));
 
         if (method_exists(Order::class, 'hasScheduleConflict')) {
-            abort_if(
-                Order::hasScheduleConflict($employer->id, $start, $end, $order->id),
-                422,
-                'O colaborador selecionado já possui outro agendamento nesse horário.'
-            );
+            abort_if(Order::hasScheduleConflict($employer->id, $start, $end, $order->id), 422, 'O colaborador selecionado já possui outro agendamento nesse horário.');
         }
 
         $order->update(['attendant_id' => $employer->id]);
+        $freshOrder = $order->fresh()->load(['client', 'attendant.user']);
+
+        $recipients = $this->appointmentStakeholderUserIds($freshOrder);
+        if ($oldAttendantUserId) $recipients[] = (int) $oldAttendantUserId;
+
+        $professionalName = trim(($employer->user?->first_name ?? '') . ' ' . ($employer->user?->last_name ?? '')) ?: 'novo profissional';
+        $notifications->sendToUsers(
+            self::APP_ID,
+            $recipients,
+            [
+                'type' => 'appointment.assigned',
+                'title' => 'Profissional do agendamento atualizado',
+                'message' => 'O agendamento foi direcionado para ' . $professionalName . '.',
+                'reference_type' => 'order',
+                'reference_id' => $freshOrder->id,
+                'reference_url' => '/order/view/' . $freshOrder->id,
+                'data' => ['attendant_id' => $employer->id, 'order_number' => $freshOrder->order_number],
+            ],
+            $actorId
+        );
 
         return response()->json([
             'success' => true,
             'message' => 'Agendamento direcionado para o colaborador.',
-            'order' => $order->fresh()->load(['client', 'attendant.user']),
+            'order' => $freshOrder,
         ]);
     }
 
@@ -298,11 +293,7 @@ class RasoioWorkflowController extends ApiController
         $barberQuery = Order::query()->where('app_id', self::APP_ID)->where('type', 'appointment')->whereIn('attendant_id', $employerIds);
 
         $countStatuses = function ($query): array {
-            $rows = (clone $query)
-                ->select('appointment_status', DB::raw('COUNT(*) as total'))
-                ->groupBy('appointment_status')
-                ->pluck('total', 'appointment_status');
-
+            $rows = (clone $query)->select('appointment_status', DB::raw('COUNT(*) as total'))->groupBy('appointment_status')->pluck('total', 'appointment_status');
             return [
                 'requested' => (int) $rows->sum(),
                 'pending' => (int) ($rows['pending'] ?? 0),
@@ -315,12 +306,8 @@ class RasoioWorkflowController extends ApiController
         };
 
         $roles = ['Cliente'];
-        if ($employers->isNotEmpty()) {
-            $roles[] = 'Barbeiro';
-        }
-        if ($ownedEstablishments->isNotEmpty() || $employers->contains(fn ($e) => in_array(strtolower((string) $e->role), ['gerente', 'manager'], true))) {
-            $roles[] = 'Gerente';
-        }
+        if ($employers->isNotEmpty()) $roles[] = 'Barbeiro';
+        if ($ownedEstablishments->isNotEmpty() || $employers->contains(fn ($e) => in_array(strtolower((string) $e->role), ['gerente', 'manager'], true))) $roles[] = 'Gerente';
 
         return response()->json([
             'success' => true,
@@ -354,18 +341,8 @@ class RasoioWorkflowController extends ApiController
 
         $isManager = false;
         if ($order->entity_name === 'establishment') {
-            $establishment = Establishment::query()
-                ->where('app_id', self::APP_ID)
-                ->find($order->entity_id);
-
-            if ($establishment) {
-                $isManager = (int) $establishment->user_id === $actorId
-                    || (int) $establishment->created_by === $actorId
-                    || $establishment->employers()
-                        ->where('user_id', $actorId)
-                        ->whereIn('role', ['gerente', 'manager', 'gestor', 'administrador'])
-                        ->exists();
-            }
+            $establishment = Establishment::query()->where('app_id', self::APP_ID)->find($order->entity_id);
+            $isManager = $establishment ? $this->isEstablishmentManager($establishment, $actorId) : false;
         }
 
         abort_unless($isClient || $isCreator || $isAttendant || $isManager, 403, 'Você não pode visualizar este agendamento.');
@@ -379,16 +356,49 @@ class RasoioWorkflowController extends ApiController
 
         $isManager = false;
         if ($order->entity_name === 'establishment') {
-            $establishment = Establishment::query()
-                ->where('app_id', self::APP_ID)
-                ->find($order->entity_id);
-
-            $isManager = $establishment && (
-                (int) $establishment->user_id === $actorId ||
-                (int) $establishment->created_by === $actorId
-            );
+            $establishment = Establishment::query()->where('app_id', self::APP_ID)->find($order->entity_id);
+            $isManager = $establishment ? $this->isEstablishmentManager($establishment, $actorId) : false;
         }
 
         abort_unless($isAttendant || $isManager, 403, 'Você não pode alterar este agendamento.');
+    }
+
+    private function isEstablishmentManager(Establishment $establishment, int $userId): bool
+    {
+        if ((int) $establishment->user_id === $userId || (int) $establishment->created_by === $userId) return true;
+
+        return Employer::query()
+            ->where('establishment_id', $establishment->id)
+            ->where('user_id', $userId)
+            ->whereIn('role', ['gerente', 'manager', 'gestor', 'administrador'])
+            ->exists();
+    }
+
+    private function appointmentStakeholderUserIds(Order $order): array
+    {
+        $ids = [];
+        if ($order->client_id) $ids[] = (int) $order->client_id;
+
+        if ($order->attendant_id) {
+            $attendantUserId = Employer::query()->whereKey($order->attendant_id)->value('user_id');
+            if ($attendantUserId) $ids[] = (int) $attendantUserId;
+        }
+
+        if ($order->entity_name === 'establishment') {
+            $establishment = Establishment::query()->where('app_id', self::APP_ID)->find($order->entity_id);
+            if ($establishment) {
+                if ($establishment->user_id) $ids[] = (int) $establishment->user_id;
+                if ($establishment->created_by) $ids[] = (int) $establishment->created_by;
+
+                $managerIds = Employer::query()
+                    ->where('establishment_id', $establishment->id)
+                    ->whereIn('role', ['gerente', 'manager', 'gestor', 'administrador'])
+                    ->pluck('user_id')
+                    ->all();
+                $ids = array_merge($ids, array_map('intval', $managerIds));
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
     }
 }
