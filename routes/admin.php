@@ -3,7 +3,7 @@
 use App\Http\Controllers\Admin\SystemController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('admin')->middleware(['auth:api', \App\Http\Middleware\EnsureCentralAdmin::class])->group(function () {
+Route::prefix('admin')->middleware(['auth:api', 'token.version', \App\Http\Middleware\EnsureCentralAdmin::class])->group(function () {
     Route::get('/dashboard', [SystemController::class, 'dashboard']);
     Route::get('/users', [SystemController::class, 'users']);
     Route::post('/users', [SystemController::class, 'storeUser']);
