@@ -20,21 +20,71 @@ class TrackApiInteraction
     public function handle(Request $request, Closure $next): Response
     {
         $startedAt = microtime(true);
-        $user = Auth::guard('api')->user();
-        $response = $next($request);
+
+        try {
+            $user = Auth::guard('api')->user();
+        } catch (\Throwable) {
+            $user = null;
+        }
+
+        try {
+            $response = $next($request);
+        } catch (\Throwable $exception) {
+            try {
+                $this->recordException($request, $user, $startedAt, $exception);
+            } catch (\Throwable $trackingException) {
+                $this->logTrackingFailure($request, $trackingException);
+            }
+
+            throw $exception;
+        }
 
         try {
             if ($this->shouldTrack($request, $response)) {
                 $this->record($request, $response, $user, $startedAt);
             }
         } catch (\Throwable $exception) {
-            Log::warning('Failed to track API interaction.', [
-                'route' => $request->route()?->getName(),
-                'message' => $exception->getMessage(),
-            ]);
+            $this->logTrackingFailure($request, $exception);
         }
 
         return $response;
+    }
+
+    private function recordException(Request $request, $user, float $startedAt, \Throwable $exception): void
+    {
+        if ($request->isMethod('OPTIONS') || str_starts_with($request->path(), 'broadcasting/')) {
+            return;
+        }
+
+        $route = $request->route();
+        $parameters = $this->redact($route?->parameters() ?? []);
+        $status = method_exists($exception, 'getStatusCode') ? $exception->getStatusCode() : 500;
+
+        Interaction::create([
+            'user_id' => $user?->id,
+            'interaction_type' => 'request_error',
+            'entity_type' => $this->entityType((string) $route?->getName()),
+            'entity_id' => $this->numericEntityId($parameters),
+            'name' => 'Exceção durante tentativa de acesso',
+            'content' => array_filter([
+                'route_name' => $route?->getName(),
+                'path' => $request->path(),
+                'status' => $status,
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'parameters' => $parameters ?: null,
+                'input' => ($input = $this->redact($request->all())) ? $input : null,
+                'error' => mb_substr($exception->getMessage() ?: 'Erro interno da API', 0, 500),
+                'exception' => get_class($exception),
+            ], fn ($value) => $value !== null && $value !== [] && $value !== ''),
+        ]);
+    }
+
+    private function logTrackingFailure(Request $request, \Throwable $exception): void
+    {
+        Log::warning('Failed to track API interaction.', [
+            'route' => $request->route()?->getName(),
+            'message' => $exception->getMessage(),
+        ]);
     }
 
     private function shouldTrack(Request $request, Response $response): bool
