@@ -6,12 +6,18 @@ use App\Http\Controllers\RasoioEmployerController;
 use App\Http\Controllers\RasoioWorkflowController;
 use Illuminate\Support\Facades\Route;
 
-// Mantém compatibilidade com o frontend atual da Rasoio.
-// Este arquivo é carregado depois de routes/api.php, portanto esta definição
-// passa a ser a regra efetiva de disponibilidade usada por /employer/available-times.
+// Mantém compatibilidade com o frontend atual e também com builds antigos da Rasoio.
+// Este arquivo é carregado depois de routes/api.php, portanto estas definições
+// passam a ser as regras efetivas para os endpoints legados usados pela Rasoio.
 Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/available-times', [RasoioAvailabilityController::class, 'times'])
         ->name('rasoio.employer.availableTimes');
+
+    // Compatibilidade com versões antigas do frontend que ainda usam
+    // POST /employer/store. Na Rasoio, proprietário/gerente também pode ser
+    // colaborador atendente da própria empresa.
+    Route::post('/store', [RasoioEmployerController::class, 'store'])
+        ->name('rasoio.employer.store');
 });
 
 Route::prefix('rasoio')->middleware(['api', 'auth:api'])->group(function () {
