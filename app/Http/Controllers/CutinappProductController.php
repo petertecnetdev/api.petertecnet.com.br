@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CutinappProductController extends Controller
@@ -20,7 +21,7 @@ class CutinappProductController extends Controller
     {
         $userId = (int) Auth::id();
         $allowed = (int) optional($event->production)->user_id === $userId
-            || \DB::table('cutinapp_event_members')
+            || DB::table('cutinapp_event_members')
                 ->where('event_id', $event->id)
                 ->where('user_id', $userId)
                 ->where('status', 'active')
