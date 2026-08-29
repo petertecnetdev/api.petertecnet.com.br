@@ -7,7 +7,29 @@ use Illuminate\Http\Request;
 
 class AppNotificationController extends ApiController
 {
-    public function index(Request $request, int $appId)
+    private const RASOIO_APP_ID = 1;
+
+    public function rasoioIndex(Request $request)
+    {
+        return $this->indexForApp($request, self::RASOIO_APP_ID);
+    }
+
+    public function rasoioUnreadCount(Request $request)
+    {
+        return $this->unreadCountForApp($request, self::RASOIO_APP_ID);
+    }
+
+    public function rasoioMarkRead(Request $request, int $id)
+    {
+        return $this->markReadForApp($request, self::RASOIO_APP_ID, $id);
+    }
+
+    public function rasoioMarkAllRead(Request $request)
+    {
+        return $this->markAllReadForApp($request, self::RASOIO_APP_ID);
+    }
+
+    private function indexForApp(Request $request, int $appId)
     {
         $userId = (int) $request->user()->id;
         $limit = max(1, min(50, (int) $request->query('limit', 20)));
@@ -32,7 +54,7 @@ class AppNotificationController extends ApiController
         ]);
     }
 
-    public function unreadCount(Request $request, int $appId)
+    private function unreadCountForApp(Request $request, int $appId)
     {
         $count = AppNotification::query()
             ->where('app_id', $appId)
@@ -46,7 +68,7 @@ class AppNotificationController extends ApiController
         ]);
     }
 
-    public function markRead(Request $request, int $appId, int $id)
+    private function markReadForApp(Request $request, int $appId, int $id)
     {
         $notification = AppNotification::query()
             ->where('app_id', $appId)
@@ -63,7 +85,7 @@ class AppNotificationController extends ApiController
         ]);
     }
 
-    public function markAllRead(Request $request, int $appId)
+    private function markAllReadForApp(Request $request, int $appId)
     {
         AppNotification::query()
             ->where('app_id', $appId)
