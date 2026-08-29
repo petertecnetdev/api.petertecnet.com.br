@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 class Interaction extends Model
 {
@@ -12,9 +13,13 @@ class Interaction extends Model
 
     protected $fillable = [
         'user_id',
+        'app_id',
         'entity_id',
         'entity_type',
-        'interaction_type', // ex: view, like, comment, share, favorite, rating
+        'interaction_type',
+        'route',
+        'method',
+        'session_key',
         'comment',
         'name',
         'content',
@@ -26,100 +31,62 @@ class Interaction extends Model
         'updated_at' => 'datetime',
     ];
 
-    /* ===============================
-       RELACIONAMENTOS DIRETOS
-    ================================ */
-
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
+    public function application()
+    {
+        return $this->belongsTo(Application::class, 'app_id');
+    }
+
     public function establishment()
     {
-        return $this->belongsTo(Establishment::class, 'entity_id')
-            ->where('entity_type', 'Establishment');
+        return $this->belongsTo(Establishment::class, 'entity_id')->where('entity_type', 'Establishment');
     }
 
     public function employer()
     {
-        return $this->belongsTo(Employer::class, 'entity_id')
-            ->where('entity_type', 'Employer');
+        return $this->belongsTo(Employer::class, 'entity_id')->where('entity_type', 'Employer');
     }
 
     public function item()
     {
-        return $this->belongsTo(Item::class, 'entity_id')
-            ->where('entity_type', 'Item');
+        return $this->belongsTo(Item::class, 'entity_id')->where('entity_type', 'Item');
     }
 
     public function order()
     {
-        return $this->belongsTo(Order::class, 'entity_id')
-            ->where('entity_type', 'Order');
+        return $this->belongsTo(Order::class, 'entity_id')->where('entity_type', 'Order');
     }
 
-    /* Relação polimórfica principal — cobre todas as entidades */
     public function entity(): MorphTo
     {
         return $this->morphTo(__FUNCTION__, 'entity_type', 'entity_id');
     }
 
-    /* ===============================
-       ESCOPO PARA FILTRAGEM POR TIPO
-    ================================ */
-
-    public function scopeViews($query)
-    {
-        return $query->where('interaction_type', 'view');
-    }
-
-    public function scopeLikes($query)
-    {
-        return $query->where('interaction_type', 'like');
-    }
-
-    public function scopeComments($query)
-    {
-        return $query->where('interaction_type', 'comment');
-    }
-
-    public function scopeShares($query)
-    {
-        return $query->where('interaction_type', 'share');
-    }
-
-    public function scopeRatings($query)
-    {
-        return $query->where('interaction_type', 'rating');
-    }
-
-    /* ===============================
-       MÉTRICAS E ANALYTICS
-    ================================ */
+    public function scopeViews($query) { return $query->where('interaction_type', 'view'); }
+    public function scopeLikes($query) { return $query->where('interaction_type', 'like'); }
+    public function scopeComments($query) { return $query->where('interaction_type', 'comment'); }
+    public function scopeShares($query) { return $query->where('interaction_type', 'share'); }
+    public function scopeRatings($query) { return $query->where('interaction_type', 'rating'); }
+    public function scopeFromEntity($query, $type, $id) { return $query->where('entity_type', $type)->where('entity_id', $id); }
 
     public static function totalViewsForEntity($entityType, $entityId)
     {
-        return static::where('entity_type', $entityType)
-            ->where('entity_id', $entityId)
-            ->where('interaction_type', 'view')
-            ->count();
+        return static::where('entity_type', $entityType)->where('entity_id', $entityId)->views()->count();
     }
 
     public static function uniqueViewersForEntity($entityType, $entityId)
     {
-        return static::where('entity_type', $entityType)
-            ->where('entity_id', $entityId)
-            ->where('interaction_type', 'view')
-            ->distinct('user_id')
-            ->count('user_id');
+        return static::where('entity_type', $entityType)->where('entity_id', $entityId)->views()->distinct('user_id')->count('user_id');
     }
 
     public static function mostActiveUserForEntity($entityType, $entityId)
     {
         return static::where('entity_type', $entityType)
             ->where('entity_id', $entityId)
-            ->where('interaction_type', 'view')
             ->selectRaw('user_id, COUNT(*) as total')
             ->groupBy('user_id')
             ->orderByDesc('total')
@@ -136,15 +103,16 @@ class Interaction extends Model
         ];
     }
 
-    /* ===============================
-       FORMATAÇÃO E UTILITÁRIOS
-    ================================ */
-
     public function getSummaryAttribute()
     {
         return [
             'id' => $this->id,
             'type' => $this->interaction_type,
+            'application' => $this->application ? [
+                'id' => $this->application->id,
+                'name' => $this->application->name,
+                'slug' => $this->application->slug,
+            ] : null,
             'entity' => [
                 'type' => $this->entity_type,
                 'id' => $this->entity_id,
@@ -152,155 +120,125 @@ class Interaction extends Model
             ],
             'user' => [
                 'id' => $this->user?->id,
-                'name' => trim($this->user?->first_name . ' ' . $this->user?->last_name),
+                'name' => trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? '')),
                 'user_name' => $this->user?->user_name,
                 'avatar' => $this->user?->avatar,
             ],
+            'route' => $this->route,
+            'method' => $this->method,
             'comment' => $this->comment,
-            'created_at' => $this->created_at?->format('d/m/Y H:i'),
+            'content' => $this->content,
+            'created_at' => $this->created_at?->toIso8601String(),
         ];
     }
 
-    public function scopeFromEntity($query, $type, $id)
+    public static function registerLogin($user, $data = [])
     {
-        return $query->where('entity_type', $type)->where('entity_id', $id);
+        if (! $user) return null;
+
+        return static::register('login', $user, $user, $data, 'Login do usuário');
     }
 
-    /* ===============================
-       MÉTODOS PARA REUTILIZAÇÃO GLOBAL
-    ================================ */
-public static function registerLogin($user, $data = [])
-{
-    if (!$user) {
-        return null;
+    public static function registerView($entity, $user = null, $extra = [])
+    {
+        $ip = request()->ip();
+        $userId = $user?->id;
+        $entityType = class_basename($entity);
+        $entityId = $entity->id;
+
+        $exists = static::where('entity_type', $entityType)
+            ->where('entity_id', $entityId)
+            ->where('interaction_type', 'view')
+            ->where(function ($q) use ($userId, $ip) {
+                if ($userId) $q->where('user_id', $userId);
+                if ($ip) $q->orWhereJsonContains('content->ip', $ip);
+            })
+            ->where('created_at', '>=', now()->subMinute())
+            ->exists();
+
+        if ($exists) return null;
+
+        return static::register('view', $entity, $user, $extra, $entity->name ?? $entity->title ?? 'Visualização');
     }
-
-    return static::create([
-        'user_id' => $user->id,
-        'entity_id' => $user->id,
-        'entity_type' => 'User',
-        'interaction_type' => 'login',
-        'name' => 'Login do usuário',
-        'content' => [
-            'ip' => $data['ip'] ?? null,
-            'latitude' => $data['latitude'] ?? null,
-            'longitude' => $data['longitude'] ?? null,
-            'city' => $data['city'] ?? null,
-            'uf' => $data['uf'] ?? null,
-            'user_agent' => $data['user_agent'] ?? request()->userAgent(),
-        ],
-    ]);
-}
-
-   public static function registerView($entity, $user = null, $extra = [])
-{
-    $ip = request()->ip();
-    $userId = $user?->id;
-    $entityType = class_basename($entity);
-    $entityId = $entity->id;
-
-    // 🔒 Evita duplicar a mesma view em curto período
-    $exists = static::where('entity_type', $entityType)
-        ->where('entity_id', $entityId)
-        ->where('interaction_type', 'view')
-        ->where(function ($q) use ($userId, $ip) {
-            $q->where('user_id', $userId)
-              ->orWhereJsonContains('content->ip', $ip);
-        })
-        ->where('created_at', '>=', now()->subMinute())
-        ->exists();
-
-    if ($exists) {
-        return null;
-    }
-
-    return static::create([
-        'entity_type' => $entityType,
-        'entity_id' => $entityId,
-        'user_id' => $userId,
-        'interaction_type' => 'view',
-        'name' => $entity->name ?? $entity->title ?? 'Visualização',
-        'content' => array_merge([
-            'ip' => $ip,
-            'user_agent' => request()->userAgent(),
-        ], $extra),
-    ]);
-}
 
     public static function registerLike($entity, $user = null)
     {
-        return static::create([
-            'entity_type' => class_basename($entity),
-            'entity_id' => $entity->id,
-            'user_id' => $user?->id,
-            'interaction_type' => 'like',
-            'name' => $entity->name ?? $entity->title ?? 'Like',
-        ]);
+        return static::register('like', $entity, $user, [], $entity->name ?? $entity->title ?? 'Like');
     }
 
     public static function registerComment($entity, $user, $commentText)
     {
-        return static::create([
-            'entity_type' => class_basename($entity),
-            'entity_id' => $entity->id,
-            'user_id' => $user->id,
-            'interaction_type' => 'comment',
-            'name' => $entity->name ?? $entity->title ?? 'Comentário',
-            'comment' => $commentText,
+        $interaction = static::register('comment', $entity, $user, [], $entity->name ?? $entity->title ?? 'Comentário');
+        if ($interaction) $interaction->update(['comment' => $commentText]);
+        return $interaction;
+    }
+
+    public static function tooManyRecentLogins($userId)
+    {
+        return static::where('user_id', $userId)->whereIn('interaction_type', ['login', 'login_google'])->where('created_at', '>=', now()->subSeconds(10))->exists();
+    }
+
+    public static function registerLoginAuto($user)
+    {
+        return static::registerLogin($user, [
+            'latitude' => request('latitude'),
+            'longitude' => request('longitude'),
+            'city' => request('city'),
+            'uf' => request('uf'),
         ]);
     }
-    public static function tooManyRecentLogins($userId)
-{
-    return static::where('user_id', $userId)
-        ->where('interaction_type', 'login')
-        ->where('created_at', '>=', now()->subSeconds(10))
-        ->exists();
-}
 
-public static function registerLoginAuto($user)
-{
-    return static::registerLogin($user, [
-        'ip' => request()->ip(),
-        'latitude' => request('latitude'),
-        'longitude' => request('longitude'),
-        'city' => request('city'),
-        'uf' => request('uf'),
-        'user_agent' => request()->userAgent(),
-    ]);
-}
-public static function register($type, $entity, $user = null, $content = [])
-{
-    return static::create([
-        'interaction_type' => $type,
-        'entity_type' => class_basename($entity),
-        'entity_id' => $entity->id,
-        'user_id' => $user?->id,
-        'name' => ucfirst($type),
-        'content' => array_merge([
-            'ip' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-        ], $content),
-    ]);
-}
-public static function registerUpdate($entity, $user, array $changes = [], array $extra = [])
-{
-    if (!$entity || !$user) {
+    public static function register($type, $entity, $user = null, $content = [], ?string $name = null)
+    {
+        $request = request();
+        $appId = static::resolveApplicationId($entity, $content);
+
+        $payload = array_merge([
+            'ip' => $request?->ip(),
+            'user_agent' => $request?->userAgent(),
+        ], $content);
+
+        return static::create([
+            'interaction_type' => $type,
+            'entity_type' => class_basename($entity),
+            'entity_id' => $entity->id,
+            'user_id' => $user?->id,
+            'app_id' => $appId,
+            'route' => $request?->route()?->uri() ?: $request?->path(),
+            'method' => $request?->method(),
+            'session_key' => static::sessionKey($request?->userAgent(), $request?->ip()),
+            'name' => $name ?: ucfirst(str_replace('_', ' ', $type)),
+            'content' => $payload,
+        ]);
+    }
+
+    public static function registerUpdate($entity, $user, array $changes = [], array $extra = [])
+    {
+        if (! $entity || ! $user) return null;
+        return static::register('update', $entity, $user, array_merge(['changes' => $changes], $extra), 'Atualização de ' . class_basename($entity));
+    }
+
+    private static function resolveApplicationId($entity, array $content = []): ?int
+    {
+        $candidates = [
+            $content['app_id'] ?? null,
+            $content['application_id'] ?? null,
+            request()?->input('app_id'),
+            request()?->input('application_id'),
+            request()?->header('X-Application-Id'),
+            data_get($entity, 'app_id'),
+            data_get($entity, 'application_id'),
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (is_numeric($candidate) && (int) $candidate > 0) return (int) $candidate;
+        }
+
         return null;
     }
 
-    return static::create([
-        'interaction_type' => 'update',
-        'entity_type' => class_basename($entity),
-        'entity_id' => $entity->id,
-        'user_id' => $user->id,
-        'name' => 'Atualização de ' . class_basename($entity),
-
-        'content' => array_merge([
-            'ip' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-            'changes' => $changes
-        ], $extra),
-    ]);
-}
-
+    private static function sessionKey(?string $agent, ?string $ip): string
+    {
+        return substr(hash('sha256', (string) $ip . '|' . (string) $agent), 0, 40);
+    }
 }
