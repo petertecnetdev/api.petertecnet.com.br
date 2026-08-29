@@ -1,0 +1,22 @@
+<?php
+
+namespace App\Models;
+
+use Illuminate\Database\Eloquent\Model;
+
+class EcosystemAuditLog extends Model
+{
+    protected $fillable = [
+        'user_id', 'action', 'entity_type', 'entity_id', 'before', 'after', 'ip', 'user_agent',
+    ];
+
+    protected $casts = [
+        'before' => 'array',
+        'after' => 'array',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+}
