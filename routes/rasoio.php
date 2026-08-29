@@ -12,8 +12,8 @@ Route::prefix('rasoio')->middleware(['api', 'auth:api'])->group(function () {
     Route::patch('/orders/{id}/assign', [RasoioWorkflowController::class, 'assign'])->whereNumber('id');
     Route::get('/users/{userName}', [RasoioWorkflowController::class, 'userProfile']);
 
-    Route::get('/notifications', fn ($request) => app(AppNotificationController::class)->index($request, 1));
-    Route::get('/notifications/unread-count', fn ($request) => app(AppNotificationController::class)->unreadCount($request, 1));
-    Route::patch('/notifications/{id}/read', fn ($request, $id) => app(AppNotificationController::class)->markRead($request, 1, (int) $id))->whereNumber('id');
-    Route::patch('/notifications/read-all', fn ($request) => app(AppNotificationController::class)->markAllRead($request, 1));
+    Route::get('/notifications', [AppNotificationController::class, 'rasoioIndex']);
+    Route::get('/notifications/unread-count', [AppNotificationController::class, 'rasoioUnreadCount']);
+    Route::patch('/notifications/read-all', [AppNotificationController::class, 'rasoioMarkAllRead']);
+    Route::patch('/notifications/{id}/read', [AppNotificationController::class, 'rasoioMarkRead'])->whereNumber('id');
 });
