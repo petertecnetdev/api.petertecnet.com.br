@@ -23,10 +23,16 @@ class EmployerRemoved extends Mailable
 
     public function build()
     {
+        // O fluxo de desvinculação preserva o User antes de excluir o Employer
+        // e o envia ao mailable. Também mantemos compatibilidade caso algum
+        // fluxo antigo ainda envie o próprio Employer.
+        $collaborator = $this->employer->user ?? $this->employer;
+        $role = $this->employer->role ?? 'colaborador';
+
         $viewData = [
-            'userName'          => $this->employer->user->first_name,
+            'userName'          => $collaborator->first_name ?? 'Colaborador',
             'establishmentName' => $this->establishment->name,
-            'role'              => $this->employer->role,
+            'role'              => $role,
         ];
 
         $html = view('emails.employer_removed', $viewData)->render();
