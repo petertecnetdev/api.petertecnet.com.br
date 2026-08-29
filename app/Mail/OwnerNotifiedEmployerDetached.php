@@ -23,11 +23,16 @@ class OwnerNotifiedEmployerDetached extends Mailable
 
     public function build()
     {
+        // O controller preserva o User antes de excluir o vínculo Employer.
+        // Aceitamos tanto User quanto Employer para manter compatibilidade.
+        $collaborator = $this->employer->user ?? $this->employer;
+        $role = $this->employer->role ?? 'colaborador';
+
         $viewData = [
-            'collaboratorName'  => $this->employer->user->first_name,
-            'collaboratorEmail' => $this->employer->user->email,
+            'collaboratorName'  => $collaborator->first_name ?? 'Colaborador',
+            'collaboratorEmail' => $collaborator->email ?? null,
             'establishmentName' => $this->establishment->name,
-            'role'              => $this->employer->role,
+            'role'              => $role,
         ];
 
         $html = view('emails.owner_notified_employer_detached', $viewData)
