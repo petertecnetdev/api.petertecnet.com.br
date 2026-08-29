@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CutinappController;
+use App\Http\Controllers\CutinappCheckoutController;
 use App\Http\Controllers\CutinappPaymentController;
 use App\Http\Controllers\CutinappProductController;
 use App\Http\Controllers\CutinappPromoterPortalController;
@@ -21,7 +22,7 @@ Route::prefix('cutinapp')->group(function () {
         Route::post('/sales/{salePublicId}/pix', [CutinappPaymentController::class, 'createPix'])->middleware('throttle:10,1');
         Route::get('/sales/{salePublicId}/payment-status', [CutinappPaymentController::class, 'status'])->middleware('throttle:30,1');
 
-        Route::post('/events/{eventId}/checkout', [CutinappController::class, 'checkout'])->whereNumber('eventId')->middleware('throttle:20,1');
+        Route::post('/events/{eventId}/checkout', [CutinappCheckoutController::class, 'checkout'])->whereNumber('eventId')->middleware('throttle:20,1');
         Route::get('/events/{eventId}/dashboard', [CutinappController::class, 'dashboard'])->whereNumber('eventId');
 
         Route::get('/events/{eventId}/products', [CutinappProductController::class, 'index'])->whereNumber('eventId');
