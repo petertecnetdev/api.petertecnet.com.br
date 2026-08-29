@@ -56,9 +56,6 @@ class User extends Authenticatable implements JWTSubject
     {
         static::updating(function (User $user) {
             if ($user->isDirty('password') && ! $user->isDirty('auth_version')) {
-                // A just-created model may not contain the database default in its
-                // in-memory original attributes. Treat the minimum valid version as 1
-                // so the first password change always advances the security version.
                 $currentVersion = max((int) $user->getOriginal('auth_version'), 1);
                 $user->auth_version = $currentVersion + 1;
             }
@@ -90,10 +87,6 @@ class User extends Authenticatable implements JWTSubject
         return $this->hasManyThrough(Event::class, Production::class);
     }
 
-    /**
-     * Legacy single-employment accessor kept for frontend compatibility.
-     * New code must use employments().
-     */
     public function employer()
     {
         return $this->hasOne(Employer::class, 'user_id')->latestOfMany();
@@ -177,6 +170,12 @@ class User extends Authenticatable implements JWTSubject
 
     public function hasPermission($permissionName): bool
     {
+        // Administrador is the ecosystem superuser. This keeps every legacy
+        // controller and the new Peter Tecnet governance panel consistent.
+        if ($this->hasProfile('Administrador')) {
+            return true;
+        }
+
         if (! $this->profile || ! is_array($this->profile->permissions)) {
             return false;
         }
@@ -206,10 +205,6 @@ class User extends Authenticatable implements JWTSubject
         ]);
     }
 
-    /**
-     * Backwards-compatible facade for legacy callers. Network I/O now lives
-     * in LocationService, where HTTPS, timeout and caching are centralized.
-     */
     public static function geoFromIp($ip): array
     {
         return app(LocationService::class)->fromIp($ip);
