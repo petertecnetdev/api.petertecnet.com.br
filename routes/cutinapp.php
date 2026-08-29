@@ -3,6 +3,7 @@
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappPaymentController;
 use App\Http\Controllers\CutinappProductController;
+use App\Http\Controllers\CutinappPromoterPortalController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')->group(function () {
@@ -14,6 +15,7 @@ Route::prefix('cutinapp')->group(function () {
     Route::middleware('auth:api')->group(function () {
         Route::get('/my/tickets', [CutinappController::class, 'myTickets']);
         Route::get('/my/sales', [CutinappController::class, 'mySales']);
+        Route::get('/my/promoter', [CutinappPromoterPortalController::class, 'index']);
         Route::post('/checkin', [CutinappController::class, 'checkin'])->middleware('throttle:120,1');
 
         Route::post('/sales/{salePublicId}/pix', [CutinappPaymentController::class, 'createPix'])->middleware('throttle:10,1');
