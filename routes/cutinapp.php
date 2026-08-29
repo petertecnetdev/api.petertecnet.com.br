@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappPaymentController;
+use App\Http\Controllers\CutinappProductController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')->group(function () {
@@ -20,6 +21,11 @@ Route::prefix('cutinapp')->group(function () {
 
         Route::post('/events/{eventId}/checkout', [CutinappController::class, 'checkout'])->whereNumber('eventId')->middleware('throttle:20,1');
         Route::get('/events/{eventId}/dashboard', [CutinappController::class, 'dashboard'])->whereNumber('eventId');
+
+        Route::get('/events/{eventId}/products', [CutinappProductController::class, 'index'])->whereNumber('eventId');
+        Route::post('/events/{eventId}/products', [CutinappProductController::class, 'store'])->whereNumber('eventId');
+        Route::put('/events/{eventId}/products/{itemId}', [CutinappProductController::class, 'update'])->whereNumber(['eventId','itemId']);
+        Route::delete('/events/{eventId}/products/{itemId}', [CutinappProductController::class, 'destroy'])->whereNumber(['eventId','itemId']);
 
         Route::get('/events/{eventId}/members', [CutinappController::class, 'members'])->whereNumber('eventId');
         Route::post('/events/{eventId}/members', [CutinappController::class, 'storeMember'])->whereNumber('eventId');
