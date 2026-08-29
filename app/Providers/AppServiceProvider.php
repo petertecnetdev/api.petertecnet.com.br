@@ -8,6 +8,7 @@ use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
 use App\Models\Interaction;
+use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use App\Support\ApplicationContext;
@@ -35,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         $this->broadcastModelChanges(Interaction::class, ['dashboard', 'activity', 'audit']);
+        $this->broadcastModelChanges(Order::class, ['dashboard', 'activity', 'audit']);
         $this->broadcastModelChanges(User::class, ['dashboard', 'users', 'activity', 'audit']);
         $this->broadcastModelChanges(Application::class, ['dashboard', 'applications', 'users', 'audit']);
         $this->broadcastModelChanges(Profile::class, ['dashboard', 'profiles', 'users', 'audit']);
