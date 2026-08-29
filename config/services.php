@@ -23,10 +23,13 @@ return [
     ],
 
     'efi' => [
-        'base_url' => env('EFI_API_BASE_URL'),
+        'base_url' => env('EFI_API_BASE_URL', 'https://pix.api.efipay.com.br'),
         'client_id' => env('EFI_CLIENT_ID'),
         'client_secret' => env('EFI_CLIENT_SECRET'),
         'cert_path' => env('EFI_CERT_PATH'),
+        'cert_password' => env('EFI_CERT_PASSWORD'),
+        'pix_key' => env('EFI_PIX_KEY'),
+        'webhook_hmac' => env('EFI_WEBHOOK_HMAC'),
         'timeout' => (int) env('EFI_API_TIMEOUT', 15),
     ],
 
