@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AppNotificationController;
 use App\Http\Controllers\RasoioAvailabilityController;
+use App\Http\Controllers\RasoioEmployerController;
 use App\Http\Controllers\RasoioWorkflowController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,6 +15,8 @@ Route::prefix('employer')->middleware(['api', 'auth:api'])->group(function () {
 });
 
 Route::prefix('rasoio')->middleware(['api', 'auth:api'])->group(function () {
+    Route::post('/employers', [RasoioEmployerController::class, 'store']);
+
     Route::get('/orders/employer', [RasoioWorkflowController::class, 'employerOrders']);
     Route::get('/orders/{id}', [RasoioWorkflowController::class, 'orderDetail'])->whereNumber('id');
     Route::get('/establishments/{slug}/orders', [RasoioWorkflowController::class, 'establishmentOrders']);
