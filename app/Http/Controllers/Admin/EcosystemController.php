@@ -7,11 +7,14 @@ use App\Models\Application;
 use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
+use App\Models\Interaction;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -25,19 +28,38 @@ class EcosystemController extends Controller
             ->get()
             ->mapWithKeys(fn ($item) => [$item->key => $item->value]);
 
-        return response()->json([
-            'site' => array_replace_recursive($this->siteDefaults(), $settings->all()),
-        ]);
+        return response()->json(['site' => array_replace_recursive($this->siteDefaults(), $settings->all())]);
     }
 
     public function dashboard(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
 
+        $now = now();
         $applications = Application::query()
             ->withCount(['users', 'establishments', 'items'])
             ->orderBy('name')
             ->get();
+
+        $activeToday = Interaction::query()->whereNotNull('user_id')->where('created_at', '>=', $now->copy()->startOfDay())->distinct()->count('user_id');
+        $active7 = Interaction::query()->whereNotNull('user_id')->where('created_at', '>=', $now->copy()->subDays(7))->distinct()->count('user_id');
+        $active30 = Interaction::query()->whereNotNull('user_id')->where('created_at', '>=', $now->copy()->subDays(30))->distinct()->count('user_id');
+        $activeIds30 = Interaction::query()->whereNotNull('user_id')->where('created_at', '>=', $now->copy()->subDays(30))->distinct()->pluck('user_id');
+
+        $activityByApp = Interaction::query()
+            ->selectRaw('app_id, COUNT(*) total, COUNT(DISTINCT user_id) unique_users')
+            ->where('created_at', '>=', $now->copy()->subDays(30))
+            ->whereNotNull('app_id')
+            ->groupBy('app_id')
+            ->get()
+            ->keyBy('app_id');
+
+        $applications->transform(function ($app) use ($activityByApp) {
+            $usage = $activityByApp->get($app->id);
+            $app->activity_count_30d = (int) ($usage?->total ?? 0);
+            $app->active_users_30d = (int) ($usage?->unique_users ?? 0);
+            return $app;
+        });
 
         return response()->json([
             'summary' => [
@@ -48,9 +70,21 @@ class EcosystemController extends Controller
                 'establishments' => Establishment::count(),
                 'published_establishments' => Establishment::where('is_published', true)->count(),
                 'approved_establishments' => Establishment::where('is_approved', true)->count(),
-                'access_links' => \DB::table('application_user')->count(),
+                'access_links' => DB::table('application_user')->count(),
+                'active_users_today' => $activeToday,
+                'active_users_7d' => $active7,
+                'active_users_30d' => $active30,
+                'inactive_users_30d' => max(User::count() - $activeIds30->count(), 0),
+                'new_users_30d' => User::where('created_at', '>=', $now->copy()->subDays(30))->count(),
+                'interactions_today' => Interaction::where('created_at', '>=', $now->copy()->startOfDay())->count(),
+                'interactions_30d' => Interaction::where('created_at', '>=', $now->copy()->subDays(30))->count(),
             ],
             'applications' => $applications,
+            'activity_types' => Interaction::query()
+                ->selectRaw('interaction_type, COUNT(*) total')
+                ->where('created_at', '>=', $now->copy()->subDays(30))
+                ->groupBy('interaction_type')->orderByDesc('total')->limit(10)->get(),
+            'recent_activity' => $this->interactionQuery()->latest()->limit(16)->get()->map(fn ($item) => $this->interactionPayload($item)),
             'recent_users' => User::query()->with('profile:id,name')->latest('id')->limit(8)->get([
                 'id', 'first_name', 'last_name', 'user_name', 'email', 'profile_id', 'created_at',
             ]),
@@ -62,10 +96,60 @@ class EcosystemController extends Controller
         ]);
     }
 
+    public function activity(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $data = $request->validate([
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
+            'type' => ['nullable', 'string', 'max:100'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+            'search' => ['nullable', 'string', 'max:150'],
+            'limit' => ['nullable', 'integer', 'min:25', 'max:500'],
+        ]);
+
+        $query = $this->interactionQuery();
+        if (! empty($data['user_id'])) $query->where('user_id', $data['user_id']);
+        if (! empty($data['app_id'])) $query->where('app_id', $data['app_id']);
+        if (! empty($data['type'])) $query->where('interaction_type', $data['type']);
+        if (! empty($data['from'])) $query->where('created_at', '>=', $data['from']);
+        else $query->where('created_at', '>=', now()->subDays(30));
+        if (! empty($data['to'])) $query->where('created_at', '<=', date('Y-m-d 23:59:59', strtotime($data['to'])));
+        if (! empty($data['search'])) {
+            $search = $data['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('entity_type', 'like', "%{$search}%")
+                    ->orWhere('route', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($u) => $u->where('email', 'like', "%{$search}%")
+                        ->orWhere('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%"));
+            });
+        }
+
+        $rows = $query->latest()->limit($data['limit'] ?? 300)->get();
+        $base = clone $query;
+
+        return response()->json([
+            'summary' => [
+                'total' => (clone $base)->count(),
+                'users' => (clone $base)->whereNotNull('user_id')->distinct()->count('user_id'),
+                'applications' => (clone $base)->whereNotNull('app_id')->distinct()->count('app_id'),
+            ],
+            'types' => Interaction::query()->select('interaction_type')->distinct()->orderBy('interaction_type')->pluck('interaction_type')->filter()->values(),
+            'activity' => $rows->map(fn ($item) => $this->interactionPayload($item)),
+        ]);
+    }
+
     public function users(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        $query = User::query()->with(['profile:id,name', 'applications:id,name,slug']);
+        $query = User::query()
+            ->with(['profile:id,name', 'applications:id,name,slug'])
+            ->withCount(['interactions', 'establishments']);
+
         if ($search = trim((string) $request->query('search'))) {
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%{$search}%")
@@ -74,7 +158,79 @@ class EcosystemController extends Controller
                     ->orWhere('user_name', 'like', "%{$search}%");
             });
         }
-        return response()->json(['users' => $query->latest('id')->limit(300)->get()]);
+
+        $users = $query->latest('id')->limit(300)->get();
+        $lastActivity = Interaction::query()->selectRaw('user_id, MAX(created_at) last_activity_at')
+            ->whereIn('user_id', $users->pluck('id'))->groupBy('user_id')->pluck('last_activity_at', 'user_id');
+
+        $users->each(function ($user) use ($lastActivity) {
+            $user->last_activity_at = $lastActivity[$user->id] ?? null;
+        });
+
+        return response()->json(['users' => $users]);
+    }
+
+    public function userDetail(Request $request, User $user): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $user->load(['profile:id,name,permissions', 'applications:id,name,slug,logo,url', 'establishments.app:id,name,slug']);
+        $all = $this->interactionQuery()->where('user_id', $user->id)->latest()->limit(500)->get();
+        $logins = $all->whereIn('interaction_type', ['login', 'login_google']);
+        $last = $all->first();
+
+        $ips = $all->map(fn ($i) => data_get($i->content, 'ip'))->filter()->countBy()->sortDesc()->take(12);
+        $locations = $all->map(function ($i) {
+            $city = data_get($i->content, 'city');
+            $uf = data_get($i->content, 'uf');
+            return $city ? trim($city . ($uf ? "/{$uf}" : '')) : null;
+        })->filter()->countBy()->sortDesc()->take(12);
+        $devices = $all->map(fn ($i) => $this->deviceLabel(data_get($i->content, 'user_agent')))->filter()->countBy()->sortDesc()->take(12);
+
+        $byType = Interaction::query()->where('user_id', $user->id)
+            ->selectRaw('interaction_type, COUNT(*) total')->groupBy('interaction_type')->orderByDesc('total')->get();
+        $byApp = Interaction::query()->where('user_id', $user->id)->whereNotNull('app_id')
+            ->selectRaw('app_id, COUNT(*) total, MAX(created_at) last_activity_at')->groupBy('app_id')->orderByDesc('total')->get();
+        $appMap = Application::query()->whereIn('id', $byApp->pluck('app_id'))->get(['id', 'name', 'slug', 'logo'])->keyBy('id');
+
+        $appUsage = $byApp->map(fn ($row) => [
+            'application' => $appMap->get($row->app_id),
+            'total' => (int) $row->total,
+            'last_activity_at' => $row->last_activity_at,
+        ])->values();
+
+        $recentLoginIps = $logins->take(20)->map(fn ($i) => data_get($i->content, 'ip'))->filter();
+        $securityAlerts = [];
+        if ($recentLoginIps->unique()->count() >= 5) $securityAlerts[] = ['level' => 'warning', 'message' => 'Múltiplos IPs diferentes foram usados nos logins recentes.'];
+        if ($logins->count() >= 2 && $logins->take(10)->groupBy(fn ($i) => $i->created_at?->format('Y-m-d H:i'))->max(fn ($g) => $g->count()) >= 3) $securityAlerts[] = ['level' => 'warning', 'message' => 'Foram detectados vários logins em um intervalo curto.'];
+        if ($all->isEmpty()) $securityAlerts[] = ['level' => 'info', 'message' => 'Ainda não há atividade registrada para este usuário.'];
+
+        return response()->json([
+            'user' => $user,
+            'summary' => [
+                'total_interactions' => Interaction::where('user_id', $user->id)->count(),
+                'interactions_7d' => Interaction::where('user_id', $user->id)->where('created_at', '>=', now()->subDays(7))->count(),
+                'interactions_30d' => Interaction::where('user_id', $user->id)->where('created_at', '>=', now()->subDays(30))->count(),
+                'logins_7d' => Interaction::where('user_id', $user->id)->whereIn('interaction_type', ['login', 'login_google'])->where('created_at', '>=', now()->subDays(7))->count(),
+                'logins_30d' => Interaction::where('user_id', $user->id)->whereIn('interaction_type', ['login', 'login_google'])->where('created_at', '>=', now()->subDays(30))->count(),
+                'logins_90d' => Interaction::where('user_id', $user->id)->whereIn('interaction_type', ['login', 'login_google'])->where('created_at', '>=', now()->subDays(90))->count(),
+                'first_activity_at' => Interaction::where('user_id', $user->id)->oldest()->value('created_at'),
+                'last_activity_at' => $last?->created_at,
+                'last_login_at' => $logins->first()?->created_at,
+                'establishments' => $user->establishments->count(),
+                'applications' => $user->applications->count(),
+            ],
+            'activity_by_type' => $byType,
+            'application_usage' => $appUsage,
+            'security' => [
+                'ips' => $ips->map(fn ($count, $ip) => ['value' => $ip, 'count' => $count])->values(),
+                'locations' => $locations->map(fn ($count, $value) => ['value' => $value, 'count' => $count])->values(),
+                'devices' => $devices->map(fn ($count, $value) => ['value' => $value, 'count' => $count])->values(),
+                'alerts' => $securityAlerts,
+            ],
+            'resources' => $this->userResources($user),
+            'timeline' => $all->take(200)->map(fn ($item) => $this->interactionPayload($item))->values(),
+        ]);
     }
 
     public function storeUser(Request $request): JsonResponse
@@ -244,6 +400,60 @@ class EcosystemController extends Controller
         return response()->json(['logs' => EcosystemAuditLog::query()->with('user:id,first_name,last_name,email')->latest()->limit(300)->get()]);
     }
 
+    private function interactionQuery()
+    {
+        return Interaction::query()->with([
+            'user:id,first_name,last_name,user_name,email,avatar',
+            'application:id,name,slug,logo',
+        ]);
+    }
+
+    private function interactionPayload(Interaction $item): array
+    {
+        return [
+            'id' => $item->id,
+            'type' => $item->interaction_type,
+            'name' => $item->name,
+            'entity_type' => $item->entity_type,
+            'entity_id' => $item->entity_id,
+            'route' => $item->route,
+            'method' => $item->method,
+            'session_key' => $item->session_key,
+            'content' => $item->content,
+            'created_at' => $item->created_at,
+            'user' => $item->user,
+            'application' => $item->application,
+        ];
+    }
+
+    private function userResources(User $user): array
+    {
+        $resources = [
+            'establishments' => $user->establishments->map(fn ($e) => [
+                'id' => $e->id,
+                'name' => $e->fantasy ?: $e->name,
+                'application' => $e->app?->name,
+                'app_id' => $e->app_id,
+            ])->values(),
+        ];
+
+        foreach (['orders', 'items', 'appointments', 'productions', 'events'] as $table) {
+            if (Schema::hasTable($table) && Schema::hasColumn($table, 'user_id')) {
+                $resources[$table . '_count'] = DB::table($table)->where('user_id', $user->id)->count();
+            }
+        }
+
+        return $resources;
+    }
+
+    private function deviceLabel(?string $agent): ?string
+    {
+        if (! $agent) return null;
+        $browser = str_contains($agent, 'Edg/') ? 'Edge' : (str_contains($agent, 'Chrome/') ? 'Chrome' : (str_contains($agent, 'Firefox/') ? 'Firefox' : (str_contains($agent, 'Safari/') ? 'Safari' : 'Outro navegador')));
+        $device = str_contains($agent, 'Android') ? 'Android' : (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad') ? 'iOS' : (str_contains($agent, 'Windows') ? 'Windows' : (str_contains($agent, 'Macintosh') ? 'macOS' : 'Outro dispositivo')));
+        return "{$browser} · {$device}";
+    }
+
     private function validateProfile(Request $request, ?Profile $profile = null): array
     {
         $available = array_keys(config('permissions', []));
@@ -258,6 +468,7 @@ class EcosystemController extends Controller
     {
         $user = $request->user();
         abort_unless($user && (
+            $user->hasProfile('Administrador') ||
             $user->hasPermission('ecosystem_manage') ||
             $user->hasPermission('application_manage') ||
             $user->hasPermission('user_management') ||
