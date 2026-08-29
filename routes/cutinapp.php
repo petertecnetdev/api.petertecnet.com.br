@@ -1,10 +1,12 @@
 <?php
 
+use App\Http\Controllers\CutinappCommissionController;
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCheckoutController;
 use App\Http\Controllers\CutinappPaymentController;
 use App\Http\Controllers\CutinappProductController;
 use App\Http\Controllers\CutinappPromoterPortalController;
+use App\Http\Controllers\CutinappTeamController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')->group(function () {
@@ -31,14 +33,16 @@ Route::prefix('cutinapp')->group(function () {
         Route::delete('/events/{eventId}/products/{itemId}', [CutinappProductController::class, 'destroy'])->whereNumber(['eventId','itemId']);
 
         Route::get('/events/{eventId}/members', [CutinappController::class, 'members'])->whereNumber('eventId');
-        Route::post('/events/{eventId}/members', [CutinappController::class, 'storeMember'])->whereNumber('eventId');
-        Route::put('/events/{eventId}/members/{memberId}', [CutinappController::class, 'updateMember'])->whereNumber(['eventId','memberId']);
+        Route::post('/events/{eventId}/members', [CutinappTeamController::class, 'storeMember'])->whereNumber('eventId');
+        Route::put('/events/{eventId}/members/{memberId}', [CutinappTeamController::class, 'updateMember'])->whereNumber(['eventId','memberId']);
         Route::delete('/events/{eventId}/members/{memberId}', [CutinappController::class, 'deleteMember'])->whereNumber(['eventId','memberId']);
 
         Route::get('/events/{eventId}/promoters', [CutinappController::class, 'promoters'])->whereNumber('eventId');
-        Route::post('/events/{eventId}/promoters', [CutinappController::class, 'storePromoter'])->whereNumber('eventId');
+        Route::post('/events/{eventId}/promoters', [CutinappTeamController::class, 'storePromoter'])->whereNumber('eventId');
         Route::put('/events/{eventId}/promoters/{promoterId}', [CutinappController::class, 'updatePromoter'])->whereNumber(['eventId','promoterId']);
         Route::get('/events/{eventId}/promoters/{promoterId}/stats', [CutinappController::class, 'promoterStats'])->whereNumber(['eventId','promoterId']);
+        Route::get('/events/{eventId}/promoters/{promoterId}/commissions', [CutinappCommissionController::class, 'summary'])->whereNumber(['eventId','promoterId']);
+        Route::post('/events/{eventId}/promoters/{promoterId}/payout', [CutinappCommissionController::class, 'payout'])->whereNumber(['eventId','promoterId']);
 
         Route::get('/events/{eventId}/promotions', [CutinappController::class, 'promotions'])->whereNumber('eventId');
         Route::post('/events/{eventId}/promotions', [CutinappController::class, 'storePromotion'])->whereNumber('eventId');
