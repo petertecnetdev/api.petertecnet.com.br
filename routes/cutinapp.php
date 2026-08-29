@@ -1,16 +1,22 @@
 <?php
 
 use App\Http\Controllers\CutinappController;
+use App\Http\Controllers\CutinappPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')->group(function () {
     Route::get('/events', [CutinappController::class, 'discover']);
     Route::get('/events/{eventId}', [CutinappController::class, 'eventPublic'])->whereNumber('eventId');
 
+    Route::post('/payments/pix/webhook', [CutinappPaymentController::class, 'webhook'])->middleware('throttle:240,1');
+
     Route::middleware('auth:api')->group(function () {
         Route::get('/my/tickets', [CutinappController::class, 'myTickets']);
         Route::get('/my/sales', [CutinappController::class, 'mySales']);
         Route::post('/checkin', [CutinappController::class, 'checkin'])->middleware('throttle:120,1');
+
+        Route::post('/sales/{salePublicId}/pix', [CutinappPaymentController::class, 'createPix'])->middleware('throttle:10,1');
+        Route::get('/sales/{salePublicId}/payment-status', [CutinappPaymentController::class, 'status'])->middleware('throttle:30,1');
 
         Route::post('/events/{eventId}/checkout', [CutinappController::class, 'checkout'])->whereNumber('eventId')->middleware('throttle:20,1');
         Route::get('/events/{eventId}/dashboard', [CutinappController::class, 'dashboard'])->whereNumber('eventId');
