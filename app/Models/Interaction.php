@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ApplicationContextService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -26,30 +27,22 @@ class Interaction extends Model
         static::creating(function (Interaction $interaction) {
             $content = is_array($interaction->content) ? $interaction->content : [];
             $request = request();
+            $context = app(ApplicationContextService::class)->describe($request, null, $content);
 
-            if (! $interaction->app_id) {
-                foreach ([
-                    $content['app_id'] ?? null,
-                    $content['application_id'] ?? null,
-                    $request?->input('app_id'),
-                    $request?->input('application_id'),
-                    $request?->header('X-Application-Id'),
-                ] as $candidate) {
-                    if (is_numeric($candidate) && (int) $candidate > 0) {
-                        $interaction->app_id = (int) $candidate;
-                        break;
-                    }
-                }
-            }
-
+            $interaction->app_id ??= $context['application']?->id;
             $interaction->route ??= $request?->route()?->uri() ?: $request?->path();
             $interaction->method ??= $request?->method();
             $interaction->session_key ??= static::sessionKey($request?->userAgent(), $request?->ip());
 
-            $interaction->content = array_merge([
+            $interaction->content = array_filter(array_merge([
                 'ip' => $request?->ip(),
                 'user_agent' => $request?->userAgent(),
-            ], $content);
+                'origin' => $context['origin'],
+                'referer' => $context['referer'],
+                'app_slug' => $context['application']?->slug,
+                'app_name' => $context['application']?->name,
+                'declared_app' => $context['declared_app'],
+            ], $content), fn ($value) => $value !== null && $value !== '');
         });
     }
 
@@ -99,11 +92,17 @@ class Interaction extends Model
         return [
             'id' => $this->id,
             'type' => $this->interaction_type,
-            'application' => $this->application ? ['id' => $this->application->id, 'name' => $this->application->name, 'slug' => $this->application->slug] : null,
+            'application' => $this->application ? [
+                'id' => $this->application->id,
+                'name' => $this->application->name,
+                'slug' => $this->application->slug,
+                'url' => $this->application->url,
+            ] : null,
             'entity' => ['type' => $this->entity_type, 'id' => $this->entity_id, 'name' => $this->name],
             'user' => [
                 'id' => $this->user?->id,
                 'name' => trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? '')),
+                'email' => $this->user?->email,
                 'user_name' => $this->user?->user_name,
                 'avatar' => $this->user?->avatar,
             ],
@@ -153,7 +152,8 @@ class Interaction extends Model
 
     public static function tooManyRecentLogins($userId)
     {
-        return static::where('user_id', $userId)->whereIn('interaction_type', ['login', 'login_google'])->where('created_at', '>=', now()->subSeconds(10))->exists();
+        return static::where('user_id', $userId)->whereIn('interaction_type', ['login', 'login_google'])
+            ->where('created_at', '>=', now()->subSeconds(10))->exists();
     }
 
     public static function registerLoginAuto($user)
@@ -168,13 +168,14 @@ class Interaction extends Model
 
     public static function register($type, $entity, $user = null, $content = [], ?string $name = null)
     {
-        $appId = static::resolveApplicationId($entity, $content);
+        $app = app(ApplicationContextService::class)->resolve(request(), $entity, $content);
+
         return static::create([
             'interaction_type' => $type,
             'entity_type' => class_basename($entity),
             'entity_id' => $entity->id,
             'user_id' => $user?->id,
-            'app_id' => $appId,
+            'app_id' => $app?->id,
             'name' => $name ?: ucfirst(str_replace('_', ' ', $type)),
             'content' => $content,
         ]);
@@ -184,22 +185,6 @@ class Interaction extends Model
     {
         if (! $entity || ! $user) return null;
         return static::register('update', $entity, $user, array_merge(['changes' => $changes], $extra), 'Atualização de ' . class_basename($entity));
-    }
-
-    private static function resolveApplicationId($entity, array $content = []): ?int
-    {
-        foreach ([
-            $content['app_id'] ?? null,
-            $content['application_id'] ?? null,
-            request()?->input('app_id'),
-            request()?->input('application_id'),
-            request()?->header('X-Application-Id'),
-            data_get($entity, 'app_id'),
-            data_get($entity, 'application_id'),
-        ] as $candidate) {
-            if (is_numeric($candidate) && (int) $candidate > 0) return (int) $candidate;
-        }
-        return null;
     }
 
     private static function sessionKey(?string $agent, ?string $ip): string
