@@ -7,6 +7,9 @@ use App\Http\Controllers\NexusDiscoveryController;
 Route::prefix('nexus')->middleware('api')->group(function () {
     Route::get('/discovery', [NexusDiscoveryController::class, 'index'])
         ->name('nexus.discovery.index');
+
+    Route::get('/search', [NexusDiscoveryController::class, 'search'])
+        ->name('nexus.search');
 });
 
 Route::prefix('nexus')->middleware(['api', 'auth:api'])->group(function () {
