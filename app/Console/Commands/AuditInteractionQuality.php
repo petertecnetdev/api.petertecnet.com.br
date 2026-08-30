@@ -63,13 +63,13 @@ class AuditInteractionQuality extends Command
             }
         });
 
-        $duplicateGroups = DB::table('interactions')
+        $duplicateQuery = DB::table('interactions')
             ->whereNotNull('request_id')
             ->where('request_id', '!=', '')
             ->selectRaw('app_id, request_id, COUNT(*) total')
             ->groupBy('app_id', 'request_id')
-            ->havingRaw('COUNT(*) > 1')
-            ->count();
+            ->havingRaw('COUNT(*) > 1');
+        $duplicateGroups = DB::query()->fromSub($duplicateQuery, 'duplicate_interactions')->count();
 
         $this->table(['Métrica', 'Total'], [
             ['Inspecionadas', $stats['inspected']],
