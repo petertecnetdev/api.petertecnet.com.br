@@ -8,6 +8,7 @@ use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
 use App\Models\Interaction;
+use App\Models\Item;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -475,6 +476,91 @@ class EcosystemController extends Controller
         return response()->json(null, 204);
     }
 
+    public function items(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $data = $request->validate([
+            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
+            'establishment_id' => ['nullable', 'integer', 'exists:establishments,id'],
+            'search' => ['nullable', 'string', 'max:150'],
+        ]);
+
+        $query = Item::query()
+            ->with([
+                'establishment:id,name,fantasy,app_id',
+                'establishment.applications:id,name,slug',
+                'files' => fn ($files) => $files->where('visibility', 'public')->where('status', 'active'),
+            ])
+            ->withCount('orderItems');
+
+        if (! empty($data['app_id'])) $query->where('app_id', $data['app_id']);
+        if (! empty($data['establishment_id'])) {
+            $query->where('entity_name', 'establishment')->where('entity_id', $data['establishment_id']);
+        }
+        if ($search = trim((string) ($data['search'] ?? ''))) {
+            $query->where(fn ($item) => $item
+                ->where('name', 'like', "%{$search}%")
+                ->orWhere('sku', 'like', "%{$search}%")
+                ->orWhere('category', 'like', "%{$search}%"));
+        }
+
+        return response()->json(['items' => $query->latest('id')->limit(500)->get()]);
+    }
+
+    public function storeItem(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $data = $this->validateAdminItem($request);
+        $establishment = Establishment::query()->forApplication((int) $data['app_id'])->findOrFail($data['entity_id']);
+        $actor = $request->user();
+
+        $item = Item::create($data + [
+            'entity_name' => 'establishment',
+            'user_id' => $establishment->user_id ?: $actor->id,
+            'created_by' => $actor->id,
+            'updated_by' => $actor->id,
+        ]);
+
+        $this->audit($request, 'item.created', $item, null, $item->toArray());
+        return response()->json(['item' => $item->load(['establishment:id,name,fantasy,app_id', 'files'])], 201);
+    }
+
+    public function updateItem(Request $request, Item $item): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $before = $item->toArray();
+        $data = $this->validateAdminItem($request, $item);
+        $entityId = (int) ($data['entity_id'] ?? $item->entity_id);
+        $appId = (int) ($data['app_id'] ?? $item->app_id);
+        $establishment = Establishment::query()->forApplication($appId)->findOrFail($entityId);
+
+        $item->update($data + [
+            'entity_name' => 'establishment',
+            'user_id' => $establishment->user_id ?: $item->user_id,
+            'updated_by' => $request->user()->id,
+        ]);
+
+        $this->audit($request, 'item.updated', $item, $before, $item->fresh()->toArray());
+        return response()->json(['item' => $item->fresh()->load(['establishment:id,name,fantasy,app_id', 'files'])]);
+    }
+
+    public function destroyItem(Request $request, Item $item): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $before = $item->toArray();
+
+        if ($item->orderItems()->exists()) {
+            $item->forceFill(['status' => false, 'updated_by' => $request->user()->id])->save();
+            $this->audit($request, 'item.archived', $item, $before, $item->fresh()->toArray());
+            return response()->json(['message' => 'O item possui pedidos vinculados e foi arquivado para preservar o histórico.']);
+        }
+
+        $item->employers()->detach();
+        $item->delete();
+        $this->audit($request, 'item.deleted', null, $before, null, Item::class, $before['id']);
+        return response()->json(null, 204);
+    }
+
     public function settings(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
@@ -562,6 +648,40 @@ class EcosystemController extends Controller
         $browser = str_contains($agent, 'Edg/') ? 'Edge' : (str_contains($agent, 'Chrome/') ? 'Chrome' : (str_contains($agent, 'Firefox/') ? 'Firefox' : (str_contains($agent, 'Safari/') ? 'Safari' : 'Outro navegador')));
         $device = str_contains($agent, 'Android') ? 'Android' : (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad') ? 'iOS' : (str_contains($agent, 'Windows') ? 'Windows' : (str_contains($agent, 'Macintosh') ? 'macOS' : 'Outro dispositivo')));
         return "{$browser} · {$device}";
+    }
+
+    private function validateAdminItem(Request $request, ?Item $item = null): array
+    {
+        $creating = $item === null;
+        return $request->validate([
+            'name' => [$creating ? 'required' : 'sometimes', 'required', 'string', 'max:255'],
+            'app_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:applications,id'],
+            'entity_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:establishments,id'],
+            'type' => [$creating ? 'required' : 'sometimes', 'required', Rule::in(['service', 'product', 'item', 'ticket'])],
+            'price' => [$creating ? 'required' : 'sometimes', 'required', 'numeric', 'min:0'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'sku' => ['nullable', 'string', 'max:100'],
+            'category' => ['nullable', 'string', 'max:150'],
+            'subcategory' => ['nullable', 'string', 'max:150'],
+            'brand' => ['nullable', 'string', 'max:150'],
+            'duration' => ['nullable', 'integer', 'min:0', 'max:1440'],
+            'stock' => ['nullable', 'integer', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
+            'image' => ['nullable', 'url', 'max:1000'],
+            'status' => ['sometimes', 'boolean'],
+            'is_featured' => ['sometimes', 'boolean'],
+        ], [
+            'name.required' => 'Informe o nome do item.',
+            'app_id.required' => 'Selecione a aplicação do item.',
+            'app_id.exists' => 'A aplicação selecionada não existe.',
+            'entity_id.required' => 'Selecione a empresa do item.',
+            'entity_id.exists' => 'A empresa selecionada não existe.',
+            'type.required' => 'Selecione o tipo do item.',
+            'type.in' => 'Selecione um tipo de item válido.',
+            'price.required' => 'Informe o preço do item.',
+            'price.numeric' => 'Informe um preço válido.',
+            'image.url' => 'Informe uma URL válida para a imagem.',
+        ]);
     }
 
     private function validateEstablishment(Request $request, ?Establishment $establishment = null): array
