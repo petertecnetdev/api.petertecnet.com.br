@@ -72,6 +72,7 @@ class InteractionController extends Controller
                 'method' => $request->method(),
                 'name' => $this->description($type, $event),
                 'content' => array_filter([
+                    'source_channel' => 'frontend',
                     'frontend_event' => $type,
                     'frontend_page' => $event['page'] ?? null,
                     'target' => $event['target'] ?? null,
