@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Interaction;
+use App\Services\ApplicationContextService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
@@ -26,6 +27,8 @@ class InteractionAuditObserver
     {
         try { $user = Auth::guard('api')->user(); } catch (\Throwable) { $user = null; }
         $request = request();
+        $sourceApplication = app(ApplicationContextService::class)->resolveSource($request);
+        $targetApplicationId = $model->app_id ?? $model->application_id ?? null;
         $before = $this->sanitize($before);
         $after = $this->sanitize($after);
         $label = $model->name ?? $model->title ?? $model->order_number ?? $model->email ?? class_basename($model).' #'.$model->getKey();
@@ -33,7 +36,7 @@ class InteractionAuditObserver
 
         Interaction::create([
             'user_id' => $user?->id,
-            'app_id' => $model->app_id ?? null,
+            'app_id' => $sourceApplication?->id ?: $targetApplicationId,
             'entity_type' => class_basename($model),
             'entity_id' => $model->getKey(),
             'interaction_type' => $action,
@@ -46,6 +49,10 @@ class InteractionAuditObserver
             'name' => "{$verb} {$label}",
             'content' => array_filter([
                 'changes' => ['before' => $before, 'after' => $after],
+                'source_app_id' => $sourceApplication?->id,
+                'source_app_slug' => $sourceApplication?->slug,
+                'target_app_id' => $targetApplicationId,
+                'application_context' => $sourceApplication ? 'source' : 'target_fallback',
                 'entity_snapshot' => ['type' => class_basename($model), 'id' => $model->getKey(), 'name' => $label],
                 'path' => $request?->path(),
                 'frontend_page' => $request?->header('X-Frontend-Page') ?: $request?->header('Referer'),
