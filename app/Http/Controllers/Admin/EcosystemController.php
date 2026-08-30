@@ -386,22 +386,37 @@ class EcosystemController extends Controller
         return response()->json(['establishments' => $query->latest('id')->limit(300)->get()]);
     }
 
+    public function storeEstablishment(Request $request): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $data = $this->validateEstablishment($request);
+        $data['created_by'] = $request->user()->id;
+        $data['updated_by'] = $request->user()->id;
+
+        $establishment = DB::transaction(function () use ($data) {
+            $establishment = Establishment::create($data);
+            $this->ensureOwnerApplicationAccess($establishment);
+            return $establishment;
+        });
+
+        $this->audit($request, 'establishment.created', $establishment, null, $establishment->toArray());
+
+        return response()->json([
+            'establishment' => $establishment->load(['app:id,name,slug', 'user:id,first_name,last_name,email']),
+        ], 201);
+    }
+
     public function updateEstablishment(Request $request, Establishment $establishment): JsonResponse
     {
         $this->authorizeAccess($request);
         $before = $establishment->toArray();
-        $data = $request->validate([
-            'name' => ['sometimes', 'required', 'string', 'max:255'],
-            'fantasy' => ['nullable', 'string', 'max:255'],
-            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
-            'user_id' => ['nullable', 'integer', 'exists:users,id'],
-            'is_published' => ['sometimes', 'boolean'],
-            'is_approved' => ['sometimes', 'boolean'],
-            'is_featured' => ['sometimes', 'boolean'],
-            'is_cancelled' => ['sometimes', 'boolean'],
-        ]);
+        $data = $this->validateEstablishment($request, $establishment);
         $data['updated_by'] = $request->user()->id;
-        $establishment->update($data);
+
+        DB::transaction(function () use ($establishment, $data) {
+            $establishment->update($data);
+            $this->ensureOwnerApplicationAccess($establishment->fresh());
+        });
         $this->audit($request, 'establishment.updated', $establishment, $before, $establishment->fresh()->toArray());
         return response()->json(['establishment' => $establishment->fresh()->load(['app:id,name,slug', 'user:id,first_name,last_name,email'])]);
     }
@@ -493,6 +508,53 @@ class EcosystemController extends Controller
         $browser = str_contains($agent, 'Edg/') ? 'Edge' : (str_contains($agent, 'Chrome/') ? 'Chrome' : (str_contains($agent, 'Firefox/') ? 'Firefox' : (str_contains($agent, 'Safari/') ? 'Safari' : 'Outro navegador')));
         $device = str_contains($agent, 'Android') ? 'Android' : (str_contains($agent, 'iPhone') || str_contains($agent, 'iPad') ? 'iOS' : (str_contains($agent, 'Windows') ? 'Windows' : (str_contains($agent, 'Macintosh') ? 'macOS' : 'Outro dispositivo')));
         return "{$browser} · {$device}";
+    }
+
+    private function validateEstablishment(Request $request, ?Establishment $establishment = null): array
+    {
+        $creating = $establishment === null;
+
+        return $request->validate([
+            'name' => [$creating ? 'required' : 'sometimes', 'required', 'string', 'max:255'],
+            'fantasy' => ['nullable', 'string', 'max:255'],
+            'slug' => ['nullable', 'string', 'max:255', Rule::unique('establishments', 'slug')->ignore($establishment?->id)],
+            'cnpj' => ['nullable', 'string', 'max:30', Rule::unique('establishments', 'cnpj')->ignore($establishment?->id)],
+            'type' => ['nullable', 'string', 'max:100'],
+            'category' => ['nullable', 'string', 'max:150'],
+            'phone' => ['nullable', 'string', 'max:40'],
+            'email' => ['nullable', 'email', 'max:255'],
+            'description' => ['nullable', 'string', 'max:5000'],
+            'city' => ['nullable', 'string', 'max:120'],
+            'uf' => ['nullable', 'string', 'size:2'],
+            'cep' => ['nullable', 'string', 'max:20'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'website_url' => ['nullable', 'url', 'max:500'],
+            'instagram_url' => ['nullable', 'url', 'max:500'],
+            'app_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:applications,id'],
+            'user_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:users,id'],
+            'is_published' => ['sometimes', 'boolean'],
+            'is_approved' => ['sometimes', 'boolean'],
+            'is_featured' => ['sometimes', 'boolean'],
+            'is_cancelled' => ['sometimes', 'boolean'],
+        ]);
+    }
+
+    private function ensureOwnerApplicationAccess(Establishment $establishment): void
+    {
+        if (! $establishment->user_id || ! $establishment->app_id) return;
+
+        $user = User::find($establishment->user_id);
+        if (! $user) return;
+
+        $existing = $user->applications()->whereKey($establishment->app_id)->first()?->pivot;
+        $user->applications()->syncWithoutDetaching([
+            $establishment->app_id => [
+                'status' => 'active',
+                'role' => $existing?->role ?: 'owner',
+                'metadata' => $existing?->metadata ?: json_encode([], JSON_UNESCAPED_UNICODE),
+                'joined_at' => $existing?->joined_at ?: now(),
+            ],
+        ]);
     }
 
     private function validateProfile(Request $request, ?Profile $profile = null): array
