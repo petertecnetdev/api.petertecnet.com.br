@@ -37,6 +37,10 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/ecosystem.php'));
 
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/nexus.php'));
+
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
         });
