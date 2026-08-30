@@ -7,6 +7,7 @@ use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
 use Tymon\JWTAuth\Contracts\JWTSubject;
 
 class User extends Authenticatable implements JWTSubject
@@ -170,8 +171,6 @@ class User extends Authenticatable implements JWTSubject
 
     public function hasPermission($permissionName): bool
     {
-        // Administrador is the ecosystem superuser. This keeps every legacy
-        // controller and the new Peter Tecnet governance panel consistent.
         if ($this->hasProfile('Administrador')) {
             return true;
         }
@@ -199,15 +198,32 @@ class User extends Authenticatable implements JWTSubject
             return false;
         }
 
-        return $this->update([
-            'city' => $city ?: $this->city,
-            'uf' => $uf ?: $this->uf,
-        ]);
+        try {
+            return $this->update([
+                'city' => $city ?: $this->city,
+                'uf' => $uf ?: $this->uf,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Falha ao atualizar localização do usuário durante autenticação.', [
+                'user_id' => $this->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     public static function geoFromIp($ip): array
     {
-        return app(LocationService::class)->fromIp($ip);
+        try {
+            return app(LocationService::class)->fromIp($ip);
+        } catch (\Throwable $e) {
+            Log::notice('Geolocalização por IP indisponível durante autenticação.', [
+                'message' => $e->getMessage(),
+            ]);
+
+            return ['city' => null, 'uf' => null];
+        }
     }
 
     public static function credentials($username, $password): array
