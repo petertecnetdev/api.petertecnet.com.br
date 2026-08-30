@@ -131,6 +131,7 @@ class TrackApiInteraction
     {
         $agent = (string) $request->userAgent();
         return array_filter([
+            'source_channel' => 'api',
             'route_name' => $request->route()?->getName(),
             'path' => $request->path(),
             'frontend_page' => $request->headers->get('X-Frontend-Page') ?: $request->headers->get('Referer'),
