@@ -145,7 +145,7 @@ class AuthController extends Controller
 
         $rawCode = $this->newCode(6);
 
-        $user = DB::transaction(function () use ($data, $rawCode) {
+        $user = DB::transaction(function () use ($data, $rawCode, $actor) {
             $user = User::create([
                 'first_name' => trim($data['first_name']),
                 'email' => strtolower(trim($data['email'])),
@@ -352,6 +352,7 @@ class AuthController extends Controller
 
         if (! $actor->hasProfile('Administrador')
             && ! $actor->hasPermission('user_create')
+            && ! $actor->hasPermission('marketing_user_invite')
             && ! $actor->hasPermission('application_manage')) {
             return response()->json(['message' => 'Você não tem permissão para enviar convites.'], 403);
         }
@@ -363,6 +364,13 @@ class AuthController extends Controller
         ]);
 
         $application = Application::findOrFail($data['app_id']);
+        if (! $actor->hasProfile('Administrador')) {
+            $hasApplicationAccess = $actor->applications()
+                ->whereKey($application->id)
+                ->wherePivot('status', 'active')
+                ->exists();
+            abort_unless($hasApplicationAccess, 403, 'Você só pode convidar usuários para aplicações atribuídas ao seu perfil.');
+        }
         $rawCode = $this->newCode(6);
 
         $user = DB::transaction(function () use ($data, $rawCode) {
@@ -377,16 +385,22 @@ class AuthController extends Controller
 
             $user->applications()->attach($data['app_id'], [
                 'status' => 'pending',
+                'role' => 'client',
+                'metadata' => json_encode(['invited_by' => $actor->id, 'invited_at' => now()->toIso8601String()], JSON_UNESCAPED_UNICODE),
                 'joined_at' => null,
             ]);
 
             return $user;
         });
 
-        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name));
+        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name, $application->url));
         $this->recordInteraction($user, 'invite_sent', ['application_id' => $application->id]);
 
-        return response()->json(['message' => 'Convite enviado com sucesso.']);
+        return response()->json([
+            'message' => 'Conta criada e convite enviado com sucesso.',
+            'user' => $user->load('applications:id,name,slug,url'),
+            'application' => $application->only(['id', 'name', 'slug', 'url']),
+        ], 201);
     }
 
     public function completeInvite(Request $request)
