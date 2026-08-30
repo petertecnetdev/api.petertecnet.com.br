@@ -184,7 +184,7 @@ class Interaction extends Model
             'user_id' => $user?->id,
             'app_id' => $app?->id,
             'name' => $name ?: ucfirst(str_replace('_', ' ', $type)),
-            'content' => $content,
+            'content' => array_merge(['source_channel' => 'domain'], $content),
         ]);
     }
 
