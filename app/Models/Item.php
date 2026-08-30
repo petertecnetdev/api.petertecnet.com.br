@@ -54,8 +54,6 @@ class Item extends Model
         'expiration_date' => 'datetime',
     ];
 
-    // Metrics are intentionally not appended automatically. They are expensive
-    // and must be requested explicitly by analytics/metrics endpoints.
     protected $appends = ['image_url'];
 
     protected static function booted()
@@ -88,6 +86,11 @@ class Item extends Model
     public function scopeActive($query)
     {
         return $query->where('status', true);
+    }
+
+    public function app()
+    {
+        return $this->belongsTo(Application::class, 'app_id');
     }
 
     public function files(): HasMany
