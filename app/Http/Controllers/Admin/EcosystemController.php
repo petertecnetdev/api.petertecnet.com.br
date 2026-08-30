@@ -431,6 +431,41 @@ class EcosystemController extends Controller
         return response()->json(['establishment' => $establishment->fresh()->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email'])]);
     }
 
+    public function destroyEstablishment(Request $request, Establishment $establishment): JsonResponse
+    {
+        $this->authorizeAccess($request);
+
+        $before = $establishment->load([
+            'applications:id,name,slug',
+            'app:id,name,slug',
+            'user:id,first_name,last_name,email',
+        ])->toArray();
+
+        DB::transaction(function () use ($request, $establishment, $before) {
+            $establishment->forceFill([
+                'is_published' => false,
+                'is_approved' => false,
+                'is_featured' => false,
+                'is_cancelled' => true,
+                'updated_by' => $request->user()->id,
+            ])->save();
+
+            $establishment->delete();
+
+            $this->audit(
+                $request,
+                'establishment.deleted',
+                null,
+                $before,
+                ['deleted_at' => $establishment->deleted_at?->toIso8601String()],
+                Establishment::class,
+                $establishment->id
+            );
+        });
+
+        return response()->json(null, 204);
+    }
+
     public function settings(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
