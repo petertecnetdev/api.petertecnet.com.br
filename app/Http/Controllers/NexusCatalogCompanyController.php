@@ -140,8 +140,10 @@ class NexusCatalogCompanyController extends Controller
 
         $targetAppId = (int) $data['app_id'];
 
+        // A Nexus é uma vitrine do ecossistema. O item pode ter sido criado em
+        // qualquer aplicação Peter Tecnet; portanto, não filtramos pelo app_id
+        // da Nexus antes de descobrir a identidade real do item.
         $item = Item::query()
-            ->where('app_id', $targetAppId)
             ->where('entity_name', 'establishment')
             ->where('status', true)
             ->when(
@@ -154,13 +156,14 @@ class NexusCatalogCompanyController extends Controller
                     ->where('visibility', 'public')
                     ->where('status', 'active')
                     ->orderBy('position'),
+                'app:id,name,slug',
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
             ->firstOrFail();
 
         $company = Establishment::query()
             ->where('is_cancelled', false)
-            ->forApplication($targetAppId)
+            ->whereNull('source_establishment_id')
             ->with([
                 'files' => fn ($query) => $query
                     ->where('visibility', 'public')
@@ -173,8 +176,10 @@ class NexusCatalogCompanyController extends Controller
 
         Interaction::registerView($item, Auth::user());
 
+        // Relacionados seguem a aplicação de origem do item para não misturar
+        // regras de negócio de catálogos distintos no mesmo bloco.
         $otherItems = Item::query()
-            ->where('app_id', $targetAppId)
+            ->where('app_id', $item->app_id)
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
             ->where('status', true)
@@ -191,11 +196,32 @@ class NexusCatalogCompanyController extends Controller
             ->limit(8)
             ->get();
 
+        $linkedApplicationIds = $company->applications
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+        $catalogActive = (int) $company->app_id === $targetAppId || $linkedApplicationIds->contains($targetAppId);
+
         return response()->json([
             'success' => true,
-            'message' => 'Item Nexus carregado com sucesso.',
-            'item' => $item,
-            'establishment' => $company,
+            'message' => 'Item do ecossistema carregado com sucesso na Nexus.',
+            'item' => array_merge($item->toArray(), [
+                'source_app' => $item->app ? [
+                    'id' => $item->app->id,
+                    'name' => $item->app->name,
+                    'slug' => $item->app->slug,
+                ] : null,
+            ]),
+            'establishment' => array_merge($company->toArray(), [
+                'application_ids' => $linkedApplicationIds,
+                'catalog_active' => $catalogActive,
+                'is_nexus_native' => (int) $company->app_id === $targetAppId,
+                'source_app' => $company->app ? [
+                    'id' => $company->app->id,
+                    'name' => $company->app->name,
+                    'slug' => $company->app->slug,
+                ] : null,
+            ]),
             'other_items' => $otherItems,
         ]);
     }
