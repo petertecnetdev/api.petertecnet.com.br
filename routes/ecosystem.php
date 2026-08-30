@@ -22,6 +22,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])->whereNumber('profile');
 
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
+    Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
 
     Route::get('/settings', [EcosystemController::class, 'settings']);
