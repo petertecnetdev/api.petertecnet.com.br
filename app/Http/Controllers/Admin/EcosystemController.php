@@ -127,6 +127,11 @@ class EcosystemController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:150'],
+            'outcome' => ['nullable', Rule::in(['success', 'denied', 'error'])],
+            'severity' => ['nullable', Rule::in(['normal', 'attention', 'suspicious', 'critical'])],
+            'environment' => ['nullable', 'string', 'max:50'],
+            'method' => ['nullable', Rule::in(['GET', 'POST', 'PUT', 'PATCH', 'DELETE'])],
+            'entity_type' => ['nullable', 'string', 'max:150'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:20', 'max:100'],
         ]);
@@ -135,6 +140,11 @@ class EcosystemController extends Controller
         if (! empty($data['user_id'])) $query->where('user_id', $data['user_id']);
         if (! empty($data['app_id'])) $query->where('app_id', $data['app_id']);
         if (! empty($data['type'])) $query->where('interaction_type', $data['type']);
+        if (! empty($data['outcome'])) $query->where('outcome', $data['outcome']);
+        if (! empty($data['severity'])) $query->where('severity', $data['severity']);
+        if (! empty($data['environment'])) $query->where('environment', $data['environment']);
+        if (! empty($data['method'])) $query->where('method', $data['method']);
+        if (! empty($data['entity_type'])) $query->where('entity_type', 'like', '%' . $data['entity_type'] . '%');
         if (! empty($data['from'])) $query->where('created_at', '>=', $data['from']);
         if (! empty($data['to'])) $query->where('created_at', '<=', date('Y-m-d 23:59:59', strtotime($data['to'])));
         if (! empty($data['search'])) {
@@ -185,13 +195,47 @@ class EcosystemController extends Controller
             ->with(['profile:id,name', 'applications:id,name,slug'])
             ->withCount(['interactions', 'establishments']);
 
-        if ($search = trim((string) $request->query('search'))) {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'profile_id' => ['nullable', 'integer', 'exists:profiles,id'],
+            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
+            'access_status' => ['nullable', Rule::in(['active', 'blocked', 'pending', 'none'])],
+            'has_establishment' => ['nullable', Rule::in(['yes', 'no'])],
+            'activity_from' => ['nullable', 'date'],
+            'activity_to' => ['nullable', 'date'],
+        ]);
+
+        if ($search = trim((string) ($data['search'] ?? ''))) {
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%{$search}%")
                     ->orWhere('last_name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('user_name', 'like', "%{$search}%");
+                    ->orWhere('user_name', 'like', "%{$search}%")
+                    ->orWhere('id', $search);
             });
+        }
+        if (! empty($data['profile_id'])) $query->where('profile_id', $data['profile_id']);
+        if (! empty($data['app_id'])) {
+            $appId = (int) $data['app_id'];
+            if (($data['access_status'] ?? null) === 'none') {
+                $query->whereDoesntHave('applications', fn ($app) => $app->where('applications.id', $appId));
+            } else {
+                $query->whereHas('applications', function ($app) use ($appId, $data) {
+                    $app->where('applications.id', $appId);
+                    if (! empty($data['access_status'])) $app->where('application_user.status', $data['access_status']);
+                });
+            }
+        } elseif (! empty($data['access_status']) && $data['access_status'] !== 'none') {
+            $query->whereHas('applications', fn ($app) => $app->where('application_user.status', $data['access_status']));
+        }
+        if (($data['has_establishment'] ?? null) === 'yes') $query->has('establishments');
+        if (($data['has_establishment'] ?? null) === 'no') $query->doesntHave('establishments');
+        if (! empty($data['activity_from'])) {
+            $query->whereHas('interactions', fn ($activity) => $activity->where('created_at', '>=', $data['activity_from']));
+        }
+        if (! empty($data['activity_to'])) {
+            $until = date('Y-m-d 23:59:59', strtotime($data['activity_to']));
+            $query->whereHas('interactions', fn ($activity) => $activity->where('created_at', '<=', $until));
         }
 
         $users = $query->latest('id')->limit(300)->get();
@@ -389,9 +433,37 @@ class EcosystemController extends Controller
                 ->orderByRaw("CASE type WHEN 'logo' THEN 1 WHEN 'avatar' THEN 2 WHEN 'image' THEN 3 ELSE 4 END")
                 ->orderBy('position'),
         ]);
-        if ($request->filled('app_id')) $query->forApplication($request->integer('app_id'));
-        if ($search = trim((string) $request->query('search'))) {
-            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('fantasy', 'like', "%{$search}%")->orWhere('cnpj', 'like', "%{$search}%"));
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'approval' => ['nullable', Rule::in(['approved', 'pending'])],
+            'publication' => ['nullable', Rule::in(['published', 'hidden'])],
+            'featured' => ['nullable', Rule::in(['yes', 'no'])],
+            'city' => ['nullable', 'string', 'max:120'],
+            'uf' => ['nullable', 'string', 'size:2'],
+            'type' => ['nullable', 'string', 'max:100'],
+            'category' => ['nullable', 'string', 'max:150'],
+        ]);
+        if (! empty($data['app_id'])) $query->forApplication((int) $data['app_id']);
+        if (! empty($data['user_id'])) $query->where('user_id', $data['user_id']);
+        if (($data['approval'] ?? null) === 'approved') $query->where('is_approved', true);
+        if (($data['approval'] ?? null) === 'pending') $query->where('is_approved', false);
+        if (($data['publication'] ?? null) === 'published') $query->where('is_published', true);
+        if (($data['publication'] ?? null) === 'hidden') $query->where('is_published', false);
+        if (($data['featured'] ?? null) === 'yes') $query->where('is_featured', true);
+        if (($data['featured'] ?? null) === 'no') $query->where('is_featured', false);
+        if (! empty($data['city'])) $query->where('city', 'like', '%' . $data['city'] . '%');
+        if (! empty($data['uf'])) $query->where('uf', strtoupper($data['uf']));
+        if (! empty($data['type'])) $query->where('type', $data['type']);
+        if (! empty($data['category'])) $query->where('category', 'like', '%' . $data['category'] . '%');
+        if ($search = trim((string) ($data['search'] ?? ''))) {
+            $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")
+                ->orWhere('fantasy', 'like', "%{$search}%")
+                ->orWhere('cnpj', 'like', "%{$search}%")
+                ->orWhere('email', 'like', "%{$search}%")
+                ->orWhere('phone', 'like', "%{$search}%")
+                ->orWhere('id', $search));
         }
         return response()->json(['establishments' => $query->latest('id')->limit(300)->get()]);
     }
@@ -483,6 +555,12 @@ class EcosystemController extends Controller
             'app_id' => ['nullable', 'integer', 'exists:applications,id'],
             'establishment_id' => ['nullable', 'integer', 'exists:establishments,id'],
             'search' => ['nullable', 'string', 'max:150'],
+            'type' => ['nullable', Rule::in(['service', 'product', 'item', 'ticket'])],
+            'status' => ['nullable', Rule::in(['active', 'archived'])],
+            'featured' => ['nullable', Rule::in(['yes', 'no'])],
+            'category' => ['nullable', 'string', 'max:150'],
+            'min_price' => ['nullable', 'numeric', 'min:0'],
+            'max_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $query = Item::query()
@@ -497,6 +575,14 @@ class EcosystemController extends Controller
         if (! empty($data['establishment_id'])) {
             $query->where('entity_name', 'establishment')->where('entity_id', $data['establishment_id']);
         }
+        if (! empty($data['type'])) $query->where('type', $data['type']);
+        if (($data['status'] ?? null) === 'active') $query->where('status', true);
+        if (($data['status'] ?? null) === 'archived') $query->where('status', false);
+        if (($data['featured'] ?? null) === 'yes') $query->where('is_featured', true);
+        if (($data['featured'] ?? null) === 'no') $query->where('is_featured', false);
+        if (! empty($data['category'])) $query->where('category', 'like', '%' . $data['category'] . '%');
+        if (isset($data['min_price'])) $query->where('price', '>=', $data['min_price']);
+        if (isset($data['max_price'])) $query->where('price', '<=', $data['max_price']);
         if ($search = trim((string) ($data['search'] ?? ''))) {
             $query->where(fn ($item) => $item
                 ->where('name', 'like', "%{$search}%")
@@ -586,7 +672,34 @@ class EcosystemController extends Controller
     public function auditLogs(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        return response()->json(['logs' => EcosystemAuditLog::query()->with('user:id,first_name,last_name,email')->latest()->limit(300)->get()]);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:150'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'action' => ['nullable', 'string', 'max:150'],
+            'entity_type' => ['nullable', 'string', 'max:255'],
+            'from' => ['nullable', 'date'],
+            'to' => ['nullable', 'date'],
+        ]);
+        $query = EcosystemAuditLog::query()->with('user:id,first_name,last_name,email');
+        if (! empty($data['user_id'])) $query->where('user_id', $data['user_id']);
+        if (! empty($data['action'])) $query->where('action', $data['action']);
+        if (! empty($data['entity_type'])) $query->where('entity_type', $data['entity_type']);
+        if (! empty($data['from'])) $query->where('created_at', '>=', $data['from']);
+        if (! empty($data['to'])) $query->where('created_at', '<=', date('Y-m-d 23:59:59', strtotime($data['to'])));
+        if ($search = trim((string) ($data['search'] ?? ''))) {
+            $query->where(fn ($log) => $log->where('action', 'like', "%{$search}%")
+                ->orWhere('entity_type', 'like', "%{$search}%")
+                ->orWhere('entity_id', $search)
+                ->orWhere('ip', 'like', "%{$search}%")
+                ->orWhereHas('user', fn ($user) => $user->where('email', 'like', "%{$search}%")
+                    ->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")));
+        }
+        return response()->json([
+            'logs' => $query->latest()->limit(300)->get(),
+            'actions' => EcosystemAuditLog::query()->select('action')->distinct()->orderBy('action')->pluck('action')->filter()->values(),
+            'entity_types' => EcosystemAuditLog::query()->select('entity_type')->distinct()->orderBy('entity_type')->pluck('entity_type')->filter()->values(),
+        ]);
     }
 
     private function interactionQuery()
