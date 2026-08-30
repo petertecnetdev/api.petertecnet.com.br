@@ -149,7 +149,7 @@ class MarketingController extends Controller
         $actor = $this->authorizeMarketing($request, 'marketing_user_view');
         $ids = $this->applicationIds($actor);
         $query = User::query()
-            ->select(['users.id', 'first_name', 'last_name', 'user_name', 'email', 'profile_id', 'email_verified_at', 'users.created_at'])
+            ->select(['users.id', 'first_name', 'last_name', 'user_name', 'email', 'avatar', 'profile_id', 'email_verified_at', 'users.created_at'])
             ->whereHas('applications', fn ($apps) => $apps->whereIn('applications.id', $ids))
             ->with(['profile:id,name', 'applications' => fn ($apps) => $apps->select('applications.id', 'name', 'slug', 'url', 'logo')->whereIn('applications.id', $ids)])
             ->withCount(['interactions' => fn ($interactions) => $interactions->whereIn('app_id', $ids), 'establishments']);
@@ -179,6 +179,7 @@ class MarketingController extends Controller
             'last_name' => $user->last_name,
             'user_name' => $user->user_name,
             'email' => $user->email,
+            'avatar' => $user->avatar,
             'email_verified_at' => $user->email_verified_at,
             'created_at' => $user->created_at,
             'profile' => $user->profile,
