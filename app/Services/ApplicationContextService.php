@@ -85,6 +85,17 @@ class ApplicationContextService
 
     public function resolveStoredContext(array $content): ?Application
     {
+        // For historical repair, an exact browser origin is stronger evidence
+        // than a legacy declared slug, which may have been hard-coded wrongly.
+        foreach ([
+            $content['origin'] ?? null,
+            $content['referer'] ?? null,
+            $content['frontend_page'] ?? null,
+        ] as $url) {
+            $app = $this->findByUrl($url);
+            if ($app) return $app;
+        }
+
         foreach ([
             $content['declared_app'] ?? null,
             $content['app_slug'] ?? null,
@@ -94,15 +105,6 @@ class ApplicationContextService
                 $app = $this->findBySlug($candidate);
                 if ($app) return $app;
             }
-        }
-
-        foreach ([
-            $content['origin'] ?? null,
-            $content['referer'] ?? null,
-            $content['frontend_page'] ?? null,
-        ] as $url) {
-            $app = $this->findByUrl($url);
-            if ($app) return $app;
         }
 
         return null;
