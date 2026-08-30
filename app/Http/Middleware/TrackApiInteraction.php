@@ -63,13 +63,6 @@ class TrackApiInteraction
         $routeName = (string) $route?->getName();
         $status = $response->getStatusCode();
 
-        $alreadyRecorded = Interaction::query()
-            ->where('route', $route?->uri() ?: $request->path())
-            ->when($user?->id, fn ($query, $id) => $query->where('user_id', $id))
-            ->where('created_at', '>=', now()->subSeconds(5))->exists();
-
-        if ($alreadyRecorded && $status < 400) return;
-
         $parameters = $this->redact($route?->parameters() ?? []);
         $input = $this->redact($request->all());
         $entity = $this->entitySnapshot($routeName, $parameters, $input);
