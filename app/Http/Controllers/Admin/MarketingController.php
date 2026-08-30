@@ -117,6 +117,11 @@ class MarketingController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:150'],
+            'outcome' => ['nullable', 'in:success,denied,error'],
+            'severity' => ['nullable', 'in:normal,attention,suspicious,critical'],
+            'environment' => ['nullable', 'string', 'max:50'],
+            'method' => ['nullable', 'in:GET,POST,PUT,PATCH,DELETE'],
+            'entity_type' => ['nullable', 'string', 'max:150'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:20', 'max:100'],
         ]);
@@ -126,9 +131,22 @@ class MarketingController extends Controller
         if (! empty($data['user_id'])) $query->where('user_id', $data['user_id']);
         if (! empty($data['app_id'])) $query->where('app_id', $data['app_id']);
         if (! empty($data['type'])) $query->where('interaction_type', $data['type']);
+        if (! empty($data['outcome'])) $query->where('outcome', $data['outcome']);
+        if (! empty($data['severity'])) $query->where('severity', $data['severity']);
+        if (! empty($data['environment'])) $query->where('environment', $data['environment']);
+        if (! empty($data['method'])) $query->where('method', $data['method']);
+        if (! empty($data['entity_type'])) $query->where('entity_type', 'like', '%'.$data['entity_type'].'%');
         if (! empty($data['from'])) $query->where('created_at', '>=', $data['from']);
         if (! empty($data['to'])) $query->where('created_at', '<=', $data['to'].' 23:59:59');
-        if (! empty($data['search'])) $query->where('name', 'like', '%'.$data['search'].'%');
+        if (! empty($data['search'])) {
+            $search = $data['search'];
+            $query->where(fn ($activity) => $activity->where('name', 'like', "%{$search}%")
+                ->orWhere('route', 'like', "%{$search}%")
+                ->orWhere('entity_type', 'like', "%{$search}%")
+                ->orWhereHas('user', fn ($user) => $user->where('email', 'like', "%{$search}%")
+                    ->orWhere('first_name', 'like', "%{$search}%")
+                    ->orWhere('last_name', 'like', "%{$search}%")));
+        }
 
         $page = (int) ($data['page'] ?? 1);
         $perPage = (int) ($data['per_page'] ?? 40);
