@@ -49,7 +49,7 @@ class TrackApiInteraction
         $routeName = (string) $request->route()?->getName();
         $status = $response->getStatusCode();
 
-        if ($request->isMethod('OPTIONS') || str_starts_with($path, 'broadcasting/')) return false;
+        if ($request->isMethod('OPTIONS') || str_starts_with($path, 'broadcasting/') || $path === 'api/interactions/batch') return false;
         if (str_starts_with($path, 'api/admin/')) return $status >= 400;
         if (in_array($routeName, ['auth.google', 'invite', 'invite.complete'], true) || str_starts_with($path, 'api/auth/')) return $status >= 400;
         if ($status >= 400 || ! $request->isMethod('GET')) return true;
@@ -93,7 +93,7 @@ class TrackApiInteraction
 
     private function recordException(Request $request, $user, float $startedAt, \Throwable $exception): void
     {
-        if ($request->isMethod('OPTIONS') || str_starts_with($request->path(), 'broadcasting/')) return;
+        if ($request->isMethod('OPTIONS') || str_starts_with($request->path(), 'broadcasting/') || $request->path() === 'api/interactions/batch') return;
 
         $route = $request->route();
         $routeName = (string) $route?->getName();
