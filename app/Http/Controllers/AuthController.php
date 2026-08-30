@@ -494,23 +494,53 @@ class AuthController extends Controller
 
     private function recordInteraction(?User $user, string $type, array $content = []): void
     {
-        if (! $user) {
-            return;
-        }
+        if (! $user) return;
 
         try {
+            $request = request();
+            $user->loadMissing(['profile:id,name', 'applications:id,name,slug', 'establishments:id,name,app_id']);
+            $labels = [
+                'login' => 'Entrou no aplicativo',
+                'login_google' => 'Entrou com Google',
+                'logout' => 'Saiu do aplicativo',
+                'register' => 'Criou uma conta',
+                'verification' => 'Verificou o e-mail',
+                'password_change' => 'Alterou a senha',
+                'password_changed' => 'Redefiniu a senha',
+                'password_reset_requested' => 'Solicitou recuperação de senha',
+            ];
+
             Interaction::create([
                 'user_id' => $user->id,
                 'interaction_type' => $type,
+                'outcome' => 'success',
+                'severity' => str_contains($type, 'password') ? 'attention' : 'normal',
+                'environment' => app()->environment(),
                 'entity_id' => $user->id,
                 'entity_type' => 'User',
-                'content' => $content ?: null,
+                'request_id' => $request?->attributes->get('request_id'),
+                'correlation_id' => $request?->header('X-Correlation-ID') ?: $request?->attributes->get('request_id'),
+                'name' => $labels[$type] ?? ucfirst(str_replace('_', ' ', $type)),
+                'content' => array_filter(array_merge($content, [
+                    'status' => 200,
+                    'frontend_page' => $request?->header('X-Frontend-Page') ?: $request?->header('Referer'),
+                    'origin' => $request?->header('Origin'),
+                    'referer' => $request?->header('Referer'),
+                    'ip' => $request?->ip(),
+                    'user_agent' => $request?->userAgent(),
+                    'user_snapshot' => [
+                        'id' => $user->id,
+                        'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: $user->user_name,
+                        'email' => $user->email,
+                        'profile' => $user->profile?->name,
+                        'applications' => $user->applications->map->only(['id', 'name', 'slug'])->values()->all(),
+                        'establishments' => $user->establishments->map->only(['id', 'name', 'app_id'])->values()->all(),
+                    ],
+                ]), fn ($value) => $value !== null && $value !== [] && $value !== ''),
             ]);
         } catch (\Throwable $e) {
             Log::warning('Falha ao registrar interação de autenticação.', [
-                'user_id' => $user->id,
-                'type' => $type,
-                'message' => $e->getMessage(),
+                'user_id' => $user->id, 'type' => $type, 'message' => $e->getMessage(),
             ]);
         }
     }
