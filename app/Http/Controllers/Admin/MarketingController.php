@@ -66,7 +66,7 @@ class MarketingController extends Controller
         }
 
         $seriesStart = $now->copy()->subHours(23)->startOfHour();
-        $seriesRows = (clone $interaction)->where('created_at', '>=', $seriesStart)->get(['interaction_type', 'created_at'])
+        $seriesRows = (clone $interaction)->where('created_at', '>=', $seriesStart)->get(['interaction_type', 'outcome', 'created_at'])
             ->groupBy(fn ($item) => $item->created_at->format('Y-m-d H:00:00'));
         $series = collect(range(0, 23))->map(function ($offset) use ($seriesStart, $seriesRows) {
             $moment = $seriesStart->copy()->addHours($offset);
@@ -149,8 +149,9 @@ class MarketingController extends Controller
         $actor = $this->authorizeMarketing($request, 'marketing_user_view');
         $ids = $this->applicationIds($actor);
         $query = User::query()
+            ->select(['users.id', 'first_name', 'last_name', 'user_name', 'email', 'profile_id', 'email_verified_at', 'users.created_at'])
             ->whereHas('applications', fn ($apps) => $apps->whereIn('applications.id', $ids))
-            ->with(['profile:id,name', 'applications' => fn ($apps) => $apps->whereIn('applications.id', $ids)])
+            ->with(['profile:id,name', 'applications' => fn ($apps) => $apps->select('applications.id', 'name', 'slug', 'url', 'logo')->whereIn('applications.id', $ids)])
             ->withCount(['interactions' => fn ($interactions) => $interactions->whereIn('app_id', $ids), 'establishments']);
 
         if ($search = trim((string) $request->query('search'))) {
@@ -171,13 +172,24 @@ class MarketingController extends Controller
         $ids = $this->applicationIds($actor);
         abort_unless($user->applications()->whereIn('applications.id', $ids)->exists(), 404);
 
-        $user->load(['profile:id,name', 'applications' => fn ($apps) => $apps->whereIn('applications.id', $ids)]);
+        $user->load(['profile:id,name', 'applications' => fn ($apps) => $apps->select('applications.id', 'name', 'slug', 'url', 'logo')->whereIn('applications.id', $ids)]);
+        $safeUser = [
+            'id' => $user->id,
+            'first_name' => $user->first_name,
+            'last_name' => $user->last_name,
+            'user_name' => $user->user_name,
+            'email' => $user->email,
+            'email_verified_at' => $user->email_verified_at,
+            'created_at' => $user->created_at,
+            'profile' => $user->profile,
+            'applications' => $user->applications,
+        ];
         $all = $this->interactionQuery($ids)->where('user_id', $user->id)->latest()->limit(200)->get();
         $logins = $all->whereIn('interaction_type', ['login', 'login_google']);
 
         return response()->json([
             'marketing_scope' => true,
-            'user' => $user,
+            'user' => $safeUser,
             'summary' => [
                 'total_interactions' => $all->count(),
                 'interactions_7d' => $all->where('created_at', '>=', now()->subDays(7))->count(),
