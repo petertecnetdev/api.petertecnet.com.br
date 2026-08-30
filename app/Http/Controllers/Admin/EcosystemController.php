@@ -126,7 +126,8 @@ class EcosystemController extends Controller
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date'],
             'search' => ['nullable', 'string', 'max:150'],
-            'limit' => ['nullable', 'integer', 'min:25', 'max:500'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:20', 'max:100'],
         ]);
 
         $query = $this->interactionQuery();
@@ -134,7 +135,6 @@ class EcosystemController extends Controller
         if (! empty($data['app_id'])) $query->where('app_id', $data['app_id']);
         if (! empty($data['type'])) $query->where('interaction_type', $data['type']);
         if (! empty($data['from'])) $query->where('created_at', '>=', $data['from']);
-        else $query->where('created_at', '>=', now()->subDays(30));
         if (! empty($data['to'])) $query->where('created_at', '<=', date('Y-m-d 23:59:59', strtotime($data['to'])));
         if (! empty($data['search'])) {
             $search = $data['search'];
@@ -148,17 +148,32 @@ class EcosystemController extends Controller
             });
         }
 
-        $rows = $query->latest()->limit($data['limit'] ?? 300)->get();
+        $page = (int) ($data['page'] ?? 1);
+        $perPage = (int) ($data['per_page'] ?? 40);
         $base = clone $query;
+        $total = (clone $base)->count();
+        $lastPage = max((int) ceil($total / $perPage), 1);
+
+        $rows = $query->latest('id')
+            ->forPage($page, $perPage)
+            ->get();
 
         return response()->json([
             'summary' => [
-                'total' => (clone $base)->count(),
+                'total' => $total,
                 'users' => (clone $base)->whereNotNull('user_id')->distinct()->count('user_id'),
                 'applications' => (clone $base)->whereNotNull('app_id')->distinct()->count('app_id'),
             ],
             'types' => Interaction::query()->select('interaction_type')->distinct()->orderBy('interaction_type')->pluck('interaction_type')->filter()->values(),
             'activity' => $rows->map(fn ($item) => $this->interactionPayload($item)),
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $perPage,
+                'total' => $total,
+                'last_page' => $lastPage,
+                'has_more' => $page < $lastPage,
+                'next_page' => $page < $lastPage ? $page + 1 : null,
+            ],
         ]);
     }
 
