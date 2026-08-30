@@ -2,6 +2,12 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\NexusCatalogCompanyController;
+use App\Http\Controllers\NexusDiscoveryController;
+
+Route::prefix('nexus')->middleware('api')->group(function () {
+    Route::get('/discovery', [NexusDiscoveryController::class, 'index'])
+        ->name('nexus.discovery.index');
+});
 
 Route::prefix('nexus')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/catalog-companies', [NexusCatalogCompanyController::class, 'index'])
