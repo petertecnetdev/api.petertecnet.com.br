@@ -61,6 +61,24 @@ class EcosystemController extends Controller
             return $app;
         });
 
+        $seriesStart = $now->copy()->subHours(23)->startOfHour();
+        $seriesRows = Interaction::query()
+            ->where('created_at', '>=', $seriesStart)
+            ->get(['interaction_type', 'created_at'])
+            ->groupBy(fn ($interaction) => $interaction->created_at->format('Y-m-d H:00:00'));
+
+        $interactionSeries = collect(range(0, 23))->map(function ($offset) use ($seriesStart, $seriesRows) {
+            $moment = $seriesStart->copy()->addHours($offset);
+            $bucket = $seriesRows->get($moment->format('Y-m-d H:00:00'), collect());
+
+            return [
+                'timestamp' => $moment->toIso8601String(),
+                'label' => $moment->format('H:i'),
+                'total' => $bucket->count(),
+                'errors' => $bucket->where('interaction_type', 'request_error')->count(),
+            ];
+        })->values();
+
         return response()->json([
             'summary' => [
                 'applications' => Application::count(),
@@ -80,6 +98,7 @@ class EcosystemController extends Controller
                 'interactions_30d' => Interaction::where('created_at', '>=', $now->copy()->subDays(30))->count(),
             ],
             'applications' => $applications,
+            'interaction_series' => $interactionSeries,
             'activity_types' => Interaction::query()
                 ->selectRaw('interaction_type, COUNT(*) total')
                 ->where('created_at', '>=', $now->copy()->subDays(30))
