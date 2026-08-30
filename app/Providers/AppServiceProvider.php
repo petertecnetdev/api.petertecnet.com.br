@@ -8,9 +8,11 @@ use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
 use App\Models\Interaction;
+use App\Models\Item;
 use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
+use App\Observers\InteractionAuditObserver;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\File;
@@ -33,6 +35,10 @@ class AppServiceProvider extends ServiceProvider
         $storagePath = storage_path('app/public');
         if (! File::exists($storagePath)) {
             File::makeDirectory($storagePath, 0775, true);
+        }
+
+        foreach ([Application::class, Profile::class, User::class, Establishment::class, Item::class, Order::class] as $auditedModel) {
+            $auditedModel::observe(InteractionAuditObserver::class);
         }
 
         $this->broadcastModelChanges(Interaction::class, ['dashboard', 'activity', 'audit']);
