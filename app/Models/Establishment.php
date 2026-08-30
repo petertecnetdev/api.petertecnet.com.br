@@ -85,6 +85,21 @@ class Establishment extends Model
         return $this->belongsTo(Application::class, 'app_id');
     }
 
+    public function applications()
+    {
+        return $this->belongsToMany(Application::class, 'application_establishment')
+            ->withPivot('is_primary')
+            ->withTimestamps();
+    }
+
+    public function scopeForApplication($query, int $applicationId)
+    {
+        return $query->where(function ($applicationQuery) use ($applicationId) {
+            $applicationQuery->where('app_id', $applicationId)
+                ->orWhereHas('applications', fn ($related) => $related->whereKey($applicationId));
+        });
+    }
+
     public function items()
     {
         return $this->hasMany(Item::class, 'entity_id')
