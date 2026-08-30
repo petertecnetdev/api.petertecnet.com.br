@@ -16,12 +16,15 @@ class InviteUserMail extends Mailable
     public $appUrl;
     public $activationUrl;
 
-    public function __construct($user, string $code, string $appName, string $appUrl)
+    public function __construct($user, string $code, string $appName, ?string $appUrl)
     {
         $this->user = $user;
         $this->code = $code;
         $this->appName = trim($appName) ?: 'Plataforma Peter Tecnet';
-        $this->appUrl = rtrim($appUrl, '/');
+        $candidateUrl = rtrim(trim((string) $appUrl), '/');
+        $this->appUrl = filter_var($candidateUrl, FILTER_VALIDATE_URL)
+            ? $candidateUrl
+            : rtrim((string) config('app.frontend_url', 'https://petertecnet.com.br'), '/');
         $this->activationUrl = $this->appUrl.'/invite-complete?'.http_build_query([
             'email' => $user->email,
             'code' => $code,
