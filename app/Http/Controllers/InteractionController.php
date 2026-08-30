@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\EcosystemUpdated;
 use App\Models\Interaction;
+use App\Services\ApplicationContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -35,18 +37,24 @@ class InteractionController extends Controller
         ]);
 
         try { $user = Auth::guard('api')->user(); } catch (\Throwable) { $user = null; }
+        $application = app(ApplicationContextService::class)->resolve($request);
+        $sessionKey = substr(hash('sha256', (string) $request->ip().'|'.(string) $request->userAgent()), 0, 40);
 
         foreach ($data['events'] as $event) {
             $metadata = $this->sanitize($event['metadata'] ?? []);
             $type = $event['type'];
-            Interaction::create([
+            Interaction::withoutEvents(fn () => Interaction::create([
                 'user_id' => $user?->id,
+                'app_id' => $application?->id,
                 'interaction_type' => 'frontend_'.$type,
                 'outcome' => $type === 'frontend_error' ? 'error' : 'success',
                 'severity' => $type === 'frontend_error' ? 'attention' : 'normal',
                 'environment' => app()->environment(),
                 'request_id' => $event['id'],
                 'correlation_id' => $data['session_id'],
+                'session_key' => $sessionKey,
+                'route' => $request->route()?->uri(),
+                'method' => $request->method(),
                 'name' => $this->description($type, $event),
                 'content' => array_filter([
                     'frontend_event' => $type,
@@ -61,8 +69,10 @@ class InteractionController extends Controller
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                 ], fn ($value) => $value !== null && $value !== [] && $value !== ''),
-            ]);
+            ]));
         }
+
+        broadcast(new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'));
 
         return response()->json(['accepted' => count($data['events'])], 202);
     }
