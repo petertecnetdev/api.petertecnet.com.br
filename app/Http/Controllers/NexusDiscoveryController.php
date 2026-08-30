@@ -28,29 +28,19 @@ class NexusDiscoveryController extends Controller
         $queryText = trim((string) ($data['q'] ?? ''));
         $limit = (int) ($data['limit'] ?? 48);
 
-        // Nexus e a vitrine transversal do ecossistema Peter Tecnet.
-        // app_id identifica a aplicacao Nexus que esta fazendo a consulta,
-        // mas NAO limita quais empresas podem aparecer na descoberta.
         $baseEstablishments = Establishment::query()
             ->where('is_cancelled', false)
             ->whereNull('source_establishment_id');
 
         $locations = (clone $baseEstablishments)
-            ->whereNotNull('city')
-            ->whereNotNull('uf')
-            ->where('city', '!=', '')
-            ->where('uf', '!=', '')
-            ->select('city', 'uf')
-            ->distinct()
-            ->orderBy('uf')
-            ->orderBy('city')
-            ->get()
-            ->map(fn ($row) => [
+            ->whereNotNull('city')->whereNotNull('uf')
+            ->where('city', '!=', '')->where('uf', '!=', '')
+            ->select('city', 'uf')->distinct()->orderBy('uf')->orderBy('city')
+            ->get()->map(fn ($row) => [
                 'city' => $row->city,
                 'uf' => strtoupper((string) $row->uf),
                 'label' => $row->city . ' - ' . strtoupper((string) $row->uf),
-            ])
-            ->values();
+            ])->values();
 
         $establishmentQuery = (clone $baseEstablishments)
             ->when($targetCity !== '', fn ($q) => $q->where('city', $targetCity))
@@ -73,8 +63,6 @@ class NexusDiscoveryController extends Controller
             ])
             ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')]);
 
-        // A cidade atual apenas influencia a ordem. Nunca excluimos empresas
-        // de outras regioes nem escondemos empresas locais da exploracao geral.
         if ($targetCity === '' && $targetUf === '' && $currentCity !== '' && $currentUf !== '') {
             $establishmentQuery->orderByRaw(
                 'CASE WHEN LOWER(COALESCE(city, \'\')) = LOWER(?) AND UPPER(COALESCE(uf, \'\')) = ? THEN 0 ELSE 1 END ASC',
@@ -82,63 +70,71 @@ class NexusDiscoveryController extends Controller
             );
         }
 
-        $establishments = $establishmentQuery
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get()
-            ->map(function (Establishment $establishment) use ($nexusAppId) {
-                $linkedApplicationIds = $establishment->applications
-                    ->pluck('id')
-                    ->map(fn ($id) => (int) $id);
-
-                $catalogActive = (int) $establishment->app_id === $nexusAppId
-                    || $linkedApplicationIds->contains($nexusAppId);
-
+        $establishments = $establishmentQuery->orderByDesc('is_featured')->orderByDesc('updated_at')
+            ->limit($limit)->get()->map(function (Establishment $establishment) use ($nexusAppId) {
+                $linkedApplicationIds = $establishment->applications->pluck('id')->map(fn ($id) => (int) $id);
+                $catalogActive = (int) $establishment->app_id === $nexusAppId || $linkedApplicationIds->contains($nexusAppId);
                 $establishment->setAttribute('catalog_active', $catalogActive);
                 $establishment->setAttribute('is_nexus_native', (int) $establishment->app_id === $nexusAppId);
                 $establishment->setAttribute('source_app', $establishment->app ? [
-                    'id' => $establishment->app->id,
-                    'name' => $establishment->app->name,
-                    'slug' => $establishment->app->slug,
-                    'logo' => $establishment->app->logo,
+                    'id' => $establishment->app->id, 'name' => $establishment->app->name,
+                    'slug' => $establishment->app->slug, 'logo' => $establishment->app->logo,
                 ] : null);
-
                 return $establishment;
-            })
-            ->values();
+            })->values();
 
         $establishmentIds = $establishments->pluck('id');
-
-        // Os itens acompanham a propria empresa. Nao filtramos por app_id da
-        // Nexus, pois uma empresa de Rasoio/Plat continua tendo seu app de origem.
-        $items = Item::query()
-            ->where('entity_name', 'establishment')
-            ->where('status', true)
+        $items = Item::query()->where('entity_name', 'establishment')->where('status', true)
             ->whereIn('entity_id', $establishmentIds)
-            ->with([
-                'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
-                'establishment:id,app_id,name,fantasy,slug,city,uf',
-            ])
+            ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
+                'establishment:id,app_id,name,fantasy,slug,city,uf'])
             ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')])
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
+
+        return response()->json(['success' => true, 'scope' => [
+            'nexus_app_id' => $nexusAppId, 'current_city' => $currentCity ?: null, 'current_uf' => $currentUf ?: null,
+            'target_city' => $targetCity ?: null, 'target_uf' => $targetUf ?: null, 'query' => $queryText ?: null,
+        ], 'locations' => $locations, 'establishments' => $establishments, 'items' => $items]);
+    }
+
+    public function search(Request $request)
+    {
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+            'q' => 'required|string|min:2|max:120',
+            'limit' => 'nullable|integer|min:1|max:20',
+        ]);
+        $term = trim($data['q']);
+        $like = '%' . $term . '%';
+        $limit = (int) ($data['limit'] ?? 8);
+
+        $companies = Establishment::query()
+            ->where('is_cancelled', false)->whereNull('source_establishment_id')
+            ->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)->orWhere('fantasy', 'like', $like)
+                    ->orWhere('category', 'like', $like)->orWhere('description', 'like', $like)
+                    ->orWhere('city', 'like', $like)->orWhere('uf', 'like', $like);
+            })
+            ->select('id', 'app_id', 'name', 'fantasy', 'slug', 'category', 'city', 'uf')
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
+
+        $items = Item::query()->where('status', true)->where('entity_name', 'establishment')
+            ->where(function ($q) use ($like) {
+                $q->where('name', 'like', $like)->orWhere('description', 'like', $like)
+                    ->orWhere('category', 'like', $like)->orWhere('subcategory', 'like', $like)
+                    ->orWhere('brand', 'like', $like)->orWhere('sku', 'like', $like);
+            })
+            ->whereHas('establishment', fn ($q) => $q->where('is_cancelled', false)->whereNull('source_establishment_id'))
+            ->with('establishment:id,name,fantasy,slug,city,uf')
+            ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'price')
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
 
         return response()->json([
             'success' => true,
-            'scope' => [
-                'nexus_app_id' => $nexusAppId,
-                'current_city' => $currentCity ?: null,
-                'current_uf' => $currentUf ?: null,
-                'target_city' => $targetCity ?: null,
-                'target_uf' => $targetUf ?: null,
-                'query' => $queryText ?: null,
-            ],
-            'locations' => $locations,
-            'establishments' => $establishments,
+            'query' => $term,
+            'companies' => $companies,
             'items' => $items,
+            'total' => $companies->count() + $items->count(),
         ]);
     }
 }
