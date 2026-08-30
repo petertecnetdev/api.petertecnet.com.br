@@ -378,7 +378,16 @@ class EcosystemController extends Controller
     public function establishments(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        $query = Establishment::query()->with(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']);
+        $query = Establishment::query()->with([
+            'app:id,name,slug',
+            'applications:id,name,slug',
+            'user:id,first_name,last_name,email,avatar',
+            'files' => fn ($files) => $files
+                ->select('id', 'entity_id', 'entity_name', 'type', 'public_url', 'position')
+                ->whereIn('type', ['logo', 'avatar', 'image', 'background'])
+                ->orderByRaw("CASE type WHEN 'logo' THEN 1 WHEN 'avatar' THEN 2 WHEN 'image' THEN 3 ELSE 4 END")
+                ->orderBy('position'),
+        ]);
         if ($request->filled('app_id')) $query->forApplication($request->integer('app_id'));
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('fantasy', 'like', "%{$search}%")->orWhere('cnpj', 'like', "%{$search}%"));
