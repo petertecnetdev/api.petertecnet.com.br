@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Establishment;
+use App\Models\Interaction;
+use App\Models\Item;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -59,6 +61,73 @@ class NexusCatalogCompanyController extends Controller
         return response()->json([
             'message' => 'Empresas do ecossistema listadas com sucesso.',
             'companies' => $payload,
+        ]);
+    }
+
+    public function showCatalog(Request $request, string $identifier)
+    {
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+        ]);
+
+        $targetAppId = (int) $data['app_id'];
+
+        $company = Establishment::query()
+            ->where('is_cancelled', false)
+            ->forApplication($targetAppId)
+            ->when(
+                is_numeric($identifier),
+                fn ($query) => $query->where('id', (int) $identifier),
+                fn ($query) => $query->where('slug', $identifier)
+            )
+            ->with([
+                'files' => fn ($query) => $query
+                    ->where('visibility', 'public')
+                    ->where('status', 'active')
+                    ->orderBy('position'),
+                'app:id,name,slug',
+                'applications:id,name,slug',
+            ])
+            ->firstOrFail();
+
+        Interaction::registerView($company, Auth::user());
+
+        $items = Item::query()
+            ->where('app_id', $targetAppId)
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $company->id)
+            ->where('status', true)
+            ->with([
+                'files' => fn ($query) => $query
+                    ->where('visibility', 'public')
+                    ->where('status', 'active')
+                    ->orderBy('position'),
+            ])
+            ->orderByDesc('is_featured')
+            ->orderByDesc('updated_at')
+            ->get();
+
+        $linkedApplicationIds = $company->applications
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Catálogo Nexus carregado com sucesso.',
+            'establishment' => array_merge($company->toArray(), [
+                'application_ids' => $linkedApplicationIds,
+                'catalog_active' => true,
+                'catalog_establishment_id' => $company->id,
+                'catalog_slug' => $company->slug,
+                'is_nexus_native' => (int) $company->app_id === $targetAppId,
+                'source_app' => $company->app ? [
+                    'id' => $company->app->id,
+                    'name' => $company->app->name,
+                    'slug' => $company->app->slug,
+                ] : null,
+            ]),
+            'items' => $items,
         ]);
     }
 
