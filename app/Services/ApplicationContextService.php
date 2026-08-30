@@ -10,19 +10,29 @@ class ApplicationContextService
 {
     private static array $cache = [];
 
+    private const SLUG_ALIASES = [
+        'petertecnet' => 'peter-tecnet',
+        'petertecnet.com.br' => 'peter-tecnet',
+        'www.petertecnet.com.br' => 'peter-tecnet',
+    ];
+
     public function resolve(?Request $request = null, $entity = null, array $content = []): ?Application
     {
         $request ??= request();
 
+        // The source application is authoritative for product analytics. Entity
+        // and payload application IDs describe the target of the action.
+        $source = $this->resolveSource($request, $content);
+        if ($source) return $source;
+
         foreach ([
+            data_get($entity, 'app_id'),
+            data_get($entity, 'application_id'),
+            $content['target_app_id'] ?? null,
             $content['app_id'] ?? null,
             $content['application_id'] ?? null,
             $request?->input('app_id'),
             $request?->input('application_id'),
-            $request?->header('X-App-ID'),
-            $request?->header('X-Application-Id'),
-            data_get($entity, 'app_id'),
-            data_get($entity, 'application_id'),
         ] as $candidate) {
             if (is_numeric($candidate) && (int) $candidate > 0) {
                 $app = $this->findById((int) $candidate);
@@ -30,17 +40,23 @@ class ApplicationContextService
             }
         }
 
+        return null;
+    }
+
+    public function resolveSource(?Request $request = null, array $content = []): ?Application
+    {
+        $request ??= request();
+
         foreach ([
-            $content['app_slug'] ?? null,
-            $content['application_slug'] ?? null,
             $request?->header('X-Peter-App'),
             $request?->header('X-App-Slug'),
             $request?->header('X-Application-Slug'),
-            $request?->input('app_slug'),
-            $request?->input('application_slug'),
+            $content['declared_app'] ?? null,
+            $content['app_slug'] ?? null,
+            $content['application_slug'] ?? null,
         ] as $candidate) {
             if (is_string($candidate) && trim($candidate) !== '') {
-                $app = $this->findBySlugOrHost(trim($candidate));
+                $app = $this->findBySlug(trim($candidate));
                 if ($app) return $app;
             }
         }
@@ -48,12 +64,44 @@ class ApplicationContextService
         foreach ([
             $request?->headers->get('Origin'),
             $request?->headers->get('Referer'),
+            $request?->header('X-Frontend-Page'),
             $content['origin'] ?? null,
             $content['referer'] ?? null,
+            $content['frontend_page'] ?? null,
         ] as $url) {
-            if (! is_string($url) || trim($url) === '') continue;
-            $host = parse_url($url, PHP_URL_HOST) ?: $url;
-            $app = $this->findBySlugOrHost($host);
+            $app = $this->findByUrl($url);
+            if ($app) return $app;
+        }
+
+        foreach ([$request?->header('X-App-ID'), $request?->header('X-Application-Id')] as $candidate) {
+            if (is_numeric($candidate) && (int) $candidate > 0) {
+                $app = $this->findById((int) $candidate);
+                if ($app) return $app;
+            }
+        }
+
+        return null;
+    }
+
+    public function resolveStoredContext(array $content): ?Application
+    {
+        foreach ([
+            $content['declared_app'] ?? null,
+            $content['app_slug'] ?? null,
+            $content['application_slug'] ?? null,
+        ] as $candidate) {
+            if (is_string($candidate) && trim($candidate) !== '') {
+                $app = $this->findBySlug($candidate);
+                if ($app) return $app;
+            }
+        }
+
+        foreach ([
+            $content['origin'] ?? null,
+            $content['referer'] ?? null,
+            $content['frontend_page'] ?? null,
+        ] as $url) {
+            $app = $this->findByUrl($url);
             if ($app) return $app;
         }
 
@@ -63,15 +111,18 @@ class ApplicationContextService
     public function describe(?Request $request = null, $entity = null, array $content = []): array
     {
         $request ??= request();
-        $app = $this->resolve($request, $entity, $content);
+        $source = $this->resolveSource($request, $content);
+        $application = $source ?: $this->resolve($request, $entity, $content);
 
         return [
-            'application' => $app,
+            'application' => $application,
+            'source_application' => $source,
             'origin' => $request?->headers->get('Origin'),
             'referer' => $request?->headers->get('Referer'),
             'declared_app' => $request?->header('X-Peter-App')
                 ?: $request?->header('X-App-Slug')
                 ?: $request?->header('X-Application-Slug'),
+            'resolution' => $source ? 'source' : ($application ? 'target_fallback' : 'unresolved'),
         ];
     }
 
@@ -82,23 +133,43 @@ class ApplicationContextService
         return self::$cache[$key] = Application::query()->find($id);
     }
 
-    private function findBySlugOrHost(string $value): ?Application
+    private function findBySlug(string $value): ?Application
     {
         $normalized = Str::lower(trim($value));
         $normalized = preg_replace('#^https?://#', '', $normalized);
         $normalized = trim((string) $normalized, '/');
-        $host = explode('/', $normalized)[0];
-        $slug = explode('.', $host)[0];
-        $key = 'ctx:' . $normalized;
+        $normalized = self::SLUG_ALIASES[$normalized] ?? $normalized;
+        $key = 'slug:' . $normalized;
 
         if (array_key_exists($key, self::$cache)) return self::$cache[$key];
 
-        $app = Application::query()
+        return self::$cache[$key] = Application::query()
             ->whereRaw('LOWER(slug) = ?', [$normalized])
-            ->orWhereRaw('LOWER(slug) = ?', [$slug])
-            ->orWhere('url', 'like', '%' . $host . '%')
             ->first();
+    }
 
-        return self::$cache[$key] = $app;
+    private function findByUrl($value): ?Application
+    {
+        if (! is_string($value) || trim($value) === '') return null;
+
+        $candidate = trim($value);
+        $host = parse_url($candidate, PHP_URL_HOST);
+        if (! $host && ! str_contains($candidate, '://')) {
+            $host = parse_url('https://' . ltrim($candidate, '/'), PHP_URL_HOST);
+        }
+        $host = Str::lower(preg_replace('/^www\./i', '', (string) $host));
+        if ($host === '') return null;
+
+        $key = 'host:' . $host;
+        if (array_key_exists($key, self::$cache)) return self::$cache[$key];
+
+        $applications = Application::query()->whereNotNull('url')->get();
+        $match = $applications->first(function (Application $application) use ($host) {
+            $applicationHost = parse_url((string) $application->url, PHP_URL_HOST);
+            $applicationHost = Str::lower(preg_replace('/^www\./i', '', (string) $applicationHost));
+            return $applicationHost !== '' && hash_equals($applicationHost, $host);
+        });
+
+        return self::$cache[$key] = $match;
     }
 }
