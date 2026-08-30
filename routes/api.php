@@ -11,6 +11,7 @@ use App\Http\Controllers\{
     FileController,
     HomeController,
     ItemController,
+    InteractionController,
     MenuController,
     NewsController,
     OrderController,
@@ -22,6 +23,8 @@ use App\Http\Controllers\{
     TicketController,
     UserController
 };
+
+Route::post('/interactions/batch', [InteractionController::class, 'storeBatch'])->middleware(['api', 'throttle:120,1'])->name('interactions.batch');
 
 Route::prefix('home')->middleware('api')->group(function () {
     Route::get('/{app_id}', [HomeController::class, 'home'])->whereNumber('app_id')->name('home.main');
