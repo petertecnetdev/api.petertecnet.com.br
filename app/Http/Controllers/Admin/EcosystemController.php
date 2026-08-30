@@ -378,7 +378,7 @@ class EcosystemController extends Controller
     public function establishments(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        $query = Establishment::query()->with(['app:id,name,slug', 'user:id,first_name,last_name,email']);
+        $query = Establishment::query()->with(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']);
         if ($request->filled('app_id')) $query->where('app_id', $request->integer('app_id'));
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('fantasy', 'like', "%{$search}%")->orWhere('cnpj', 'like', "%{$search}%"));
@@ -390,19 +390,22 @@ class EcosystemController extends Controller
     {
         $this->authorizeAccess($request);
         $data = $this->validateEstablishment($request);
+        $applicationIds = collect($data['app_ids'])->map(fn ($id) => (int) $id)->unique()->values();
+        unset($data['app_ids']);
+        $data['app_id'] = (int) ($data['app_id'] ?: $applicationIds->first());
         $data['created_by'] = $request->user()->id;
         $data['updated_by'] = $request->user()->id;
 
-        $establishment = DB::transaction(function () use ($data) {
+        $establishment = DB::transaction(function () use ($data, $applicationIds) {
             $establishment = Establishment::create($data);
-            $this->ensureOwnerApplicationAccess($establishment);
+            $this->syncEstablishmentApplications($establishment, $applicationIds->all());
             return $establishment;
         });
 
         $this->audit($request, 'establishment.created', $establishment, null, $establishment->toArray());
 
         return response()->json([
-            'establishment' => $establishment->load(['app:id,name,slug', 'user:id,first_name,last_name,email']),
+            'establishment' => $establishment->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']),
         ], 201);
     }
 
@@ -411,14 +414,21 @@ class EcosystemController extends Controller
         $this->authorizeAccess($request);
         $before = $establishment->toArray();
         $data = $this->validateEstablishment($request, $establishment);
+        $applicationIds = array_key_exists('app_ids', $data)
+            ? collect($data['app_ids'])->map(fn ($id) => (int) $id)->unique()->values()->all()
+            : $establishment->applications()->pluck('applications.id')->push($establishment->app_id)->filter()->unique()->values()->all();
+        unset($data['app_ids']);
+        if (! empty($applicationIds) && (! isset($data['app_id']) || ! in_array((int) $data['app_id'], $applicationIds, true))) {
+            $data['app_id'] = $applicationIds[0];
+        }
         $data['updated_by'] = $request->user()->id;
 
-        DB::transaction(function () use ($establishment, $data) {
+        DB::transaction(function () use ($establishment, $data, $applicationIds) {
             $establishment->update($data);
-            $this->ensureOwnerApplicationAccess($establishment->fresh());
+            $this->syncEstablishmentApplications($establishment->fresh(), $applicationIds);
         });
         $this->audit($request, 'establishment.updated', $establishment, $before, $establishment->fresh()->toArray());
-        return response()->json(['establishment' => $establishment->fresh()->load(['app:id,name,slug', 'user:id,first_name,last_name,email'])]);
+        return response()->json(['establishment' => $establishment->fresh()->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email'])]);
     }
 
     public function settings(Request $request): JsonResponse
@@ -530,7 +540,9 @@ class EcosystemController extends Controller
             'address' => ['nullable', 'string', 'max:500'],
             'website_url' => ['nullable', 'url', 'max:500'],
             'instagram_url' => ['nullable', 'url', 'max:500'],
-            'app_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:applications,id'],
+            'app_id' => ['nullable', 'integer', 'exists:applications,id'],
+            'app_ids' => [$creating ? 'required' : 'sometimes', 'required', 'array', 'min:1'],
+            'app_ids.*' => ['integer', 'distinct', 'exists:applications,id'],
             'user_id' => [$creating ? 'required' : 'sometimes', 'required', 'integer', 'exists:users,id'],
             'is_published' => ['sometimes', 'boolean'],
             'is_approved' => ['sometimes', 'boolean'],
@@ -539,22 +551,30 @@ class EcosystemController extends Controller
         ]);
     }
 
-    private function ensureOwnerApplicationAccess(Establishment $establishment): void
+    private function syncEstablishmentApplications(Establishment $establishment, array $applicationIds): void
     {
-        if (! $establishment->user_id || ! $establishment->app_id) return;
+        $applicationIds = collect($applicationIds)->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        abort_if($applicationIds->isEmpty(), 422, 'Selecione pelo menos uma aplicação.');
 
+        $establishment->applications()->sync($applicationIds->mapWithKeys(fn ($id) => [
+            $id => ['is_primary' => $id === (int) $establishment->app_id],
+        ])->all());
+
+        if (! $establishment->user_id) return;
         $user = User::find($establishment->user_id);
         if (! $user) return;
 
-        $existing = $user->applications()->whereKey($establishment->app_id)->first()?->pivot;
-        $user->applications()->syncWithoutDetaching([
-            $establishment->app_id => [
-                'status' => 'active',
-                'role' => $existing?->role ?: 'owner',
-                'metadata' => $existing?->metadata ?: json_encode([], JSON_UNESCAPED_UNICODE),
-                'joined_at' => $existing?->joined_at ?: now(),
-            ],
-        ]);
+        foreach ($applicationIds as $applicationId) {
+            $existing = $user->applications()->whereKey($applicationId)->first()?->pivot;
+            $user->applications()->syncWithoutDetaching([
+                $applicationId => [
+                    'status' => 'active',
+                    'role' => $existing?->role ?: 'owner',
+                    'metadata' => $existing?->metadata ?: json_encode([], JSON_UNESCAPED_UNICODE),
+                    'joined_at' => $existing?->joined_at ?: now(),
+                ],
+            ]);
+        }
     }
 
     private function validateProfile(Request $request, ?Profile $profile = null): array
