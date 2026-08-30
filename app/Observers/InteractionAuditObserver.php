@@ -48,6 +48,7 @@ class InteractionAuditObserver
             'parent_interaction_id' => is_numeric($request?->header('X-Parent-Interaction-ID')) ? (int) $request->header('X-Parent-Interaction-ID') : null,
             'name' => "{$verb} {$label}",
             'content' => array_filter([
+                'source_channel' => 'model_audit',
                 'changes' => ['before' => $before, 'after' => $after],
                 'source_app_id' => $sourceApplication?->id,
                 'source_app_slug' => $sourceApplication?->slug,
