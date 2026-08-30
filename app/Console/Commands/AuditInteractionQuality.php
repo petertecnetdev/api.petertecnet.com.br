@@ -66,6 +66,7 @@ class AuditInteractionQuality extends Command
         $duplicateQuery = DB::table('interactions')
             ->whereNotNull('request_id')
             ->where('request_id', '!=', '')
+            ->where('interaction_type', 'like', 'frontend_%')
             ->selectRaw('app_id, request_id, COUNT(*) total')
             ->groupBy('app_id', 'request_id')
             ->havingRaw('COUNT(*) > 1');
