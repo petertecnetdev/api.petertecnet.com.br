@@ -28,14 +28,18 @@ class NexusDiscoveryController extends Controller
         $queryText = trim((string) ($data['q'] ?? ''));
         $limit = (int) ($data['limit'] ?? 48);
 
+        // A descoberta da Nexus não deve ficar presa à cidade do visitante.
+        // Mantemos somente catálogos pertencentes à Nexus e não cancelados.
+        // A localização atual é usada apenas para ordenação/prioridade.
         $baseEstablishments = Establishment::query()
             ->where('app_id', $appId)
-            ->where('is_cancelled', false)
-            ->where('is_published', true);
+            ->where('is_cancelled', false);
 
         $locations = (clone $baseEstablishments)
             ->whereNotNull('city')
             ->whereNotNull('uf')
+            ->where('city', '!=', '')
+            ->where('uf', '!=', '')
             ->select('city', 'uf')
             ->distinct()
             ->orderBy('uf')
@@ -51,14 +55,6 @@ class NexusDiscoveryController extends Controller
         $establishmentQuery = (clone $baseEstablishments)
             ->when($targetCity !== '', fn ($q) => $q->where('city', $targetCity))
             ->when($targetUf !== '', fn ($q) => $q->where('uf', $targetUf))
-            ->when($targetCity === '' && $targetUf === '' && $currentCity !== '' && $currentUf !== '', function ($q) use ($currentCity, $currentUf) {
-                $q->where(function ($outside) use ($currentCity, $currentUf) {
-                    $outside->where('city', '!=', $currentCity)
-                        ->orWhere('uf', '!=', $currentUf)
-                        ->orWhereNull('city')
-                        ->orWhereNull('uf');
-                });
-            })
             ->when($queryText !== '', function ($q) use ($queryText) {
                 $like = '%' . $queryText . '%';
                 $q->where(function ($search) use ($like) {
@@ -66,17 +62,29 @@ class NexusDiscoveryController extends Controller
                         ->orWhere('fantasy', 'like', $like)
                         ->orWhere('city', 'like', $like)
                         ->orWhere('uf', 'like', $like)
-                        ->orWhere('category', 'like', $like);
+                        ->orWhere('category', 'like', $like)
+                        ->orWhere('description', 'like', $like);
                 });
             })
             ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position')])
-            ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')])
+            ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')]);
+
+        // Sem filtro manual de cidade, os catálogos de fora da região aparecem
+        // primeiro, mas os locais também permanecem disponíveis na exploração.
+        if ($targetCity === '' && $targetUf === '' && $currentCity !== '' && $currentUf !== '') {
+            $establishmentQuery->orderByRaw(
+                'CASE WHEN LOWER(COALESCE(city, \'\')) = LOWER(?) AND UPPER(COALESCE(uf, \'\')) = ? THEN 1 ELSE 0 END ASC',
+                [$currentCity, $currentUf]
+            );
+        }
+
+        $establishments = $establishmentQuery
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
             ->get();
 
-        $establishmentIds = $establishmentQuery->pluck('id');
+        $establishmentIds = $establishments->pluck('id');
 
         $items = Item::query()
             ->where('app_id', $appId)
@@ -103,7 +111,7 @@ class NexusDiscoveryController extends Controller
                 'query' => $queryText ?: null,
             ],
             'locations' => $locations,
-            'establishments' => $establishmentQuery,
+            'establishments' => $establishments,
             'items' => $items,
         ]);
     }
