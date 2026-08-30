@@ -3,11 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Establishment;
-use App\Models\File;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class NexusCatalogCompanyController extends Controller
 {
@@ -17,28 +15,18 @@ class NexusCatalogCompanyController extends Controller
             'app_id' => 'required|integer|exists:applications,id',
         ]);
 
-        $userId = Auth::id();
         $targetAppId = (int) $data['app_id'];
 
         $companies = Establishment::query()
-            ->where('user_id', $userId)
+            ->where('user_id', Auth::id())
             ->whereNull('source_establishment_id')
-            ->with(['files', 'app'])
+            ->with(['files', 'app:id,name,slug', 'applications:id,name,slug'])
             ->latest()
             ->get();
 
-        $catalogs = Establishment::query()
-            ->where('user_id', $userId)
-            ->where('app_id', $targetAppId)
-            ->whereNotNull('source_establishment_id')
-            ->with('files')
-            ->get()
-            ->keyBy('source_establishment_id');
-
-        $payload = $companies->map(function (Establishment $company) use ($catalogs, $targetAppId) {
-            $nativeCatalog = (int) $company->app_id === $targetAppId;
-            $linkedCatalog = $catalogs->get($company->id);
-            $catalog = $nativeCatalog ? $company : $linkedCatalog;
+        $payload = $companies->map(function (Establishment $company) use ($targetAppId) {
+            $linkedApplicationIds = $company->applications->pluck('id')->map(fn ($id) => (int) $id);
+            $catalogActive = (int) $company->app_id === $targetAppId || $linkedApplicationIds->contains($targetAppId);
 
             return [
                 'id' => $company->id,
@@ -52,17 +40,19 @@ class NexusCatalogCompanyController extends Controller
                 'city' => $company->city,
                 'uf' => $company->uf,
                 'app_id' => $company->app_id,
+                'application_ids' => $linkedApplicationIds->values(),
+                'applications' => $company->applications,
                 'files' => $company->files,
                 'source_app' => $company->app ? [
                     'id' => $company->app->id,
-                    'name' => $company->app->name ?? null,
-                    'slug' => $company->app->slug ?? null,
+                    'name' => $company->app->name,
+                    'slug' => $company->app->slug,
                 ] : null,
-                'catalog_active' => (bool) $catalog,
-                'catalog_establishment_id' => $catalog?->id,
-                'catalog_slug' => $catalog?->slug,
-                'catalog_files' => $catalog?->files ?? [],
-                'is_nexus_native' => $nativeCatalog,
+                'catalog_active' => $catalogActive,
+                'catalog_establishment_id' => $catalogActive ? $company->id : null,
+                'catalog_slug' => $catalogActive ? $company->slug : null,
+                'catalog_files' => $catalogActive ? $company->files : [],
+                'is_nexus_native' => (int) $company->app_id === $targetAppId,
             ];
         })->values();
 
@@ -81,79 +71,31 @@ class NexusCatalogCompanyController extends Controller
         $user = Auth::user();
         $targetAppId = (int) $data['app_id'];
 
-        $source = Establishment::query()
+        $company = Establishment::query()
             ->where('user_id', $user->id)
             ->whereNull('source_establishment_id')
-            ->with('files')
+            ->with(['files', 'applications:id,name,slug'])
             ->findOrFail($sourceId);
 
-        if ((int) $source->app_id === $targetAppId) {
-            return response()->json([
-                'message' => 'Esta empresa já possui catálogo nesta aplicação.',
-                'establishment' => $source,
+        DB::transaction(function () use ($company, $targetAppId, $user) {
+            $company->applications()->syncWithoutDetaching([
+                $targetAppId => ['is_primary' => (int) $company->app_id === $targetAppId],
             ]);
-        }
 
-        $existing = Establishment::query()
-            ->where('user_id', $user->id)
-            ->where('app_id', $targetAppId)
-            ->where('source_establishment_id', $source->id)
-            ->with('files')
-            ->first();
-
-        if ($existing) {
-            return response()->json([
-                'message' => 'Catálogo já ativado.',
-                'establishment' => $existing,
-            ]);
-        }
-
-        $catalog = DB::transaction(function () use ($source, $targetAppId, $user) {
-            $catalog = $source->replicate(['slug', 'created_at', 'updated_at']);
-            $catalog->app_id = $targetAppId;
-            $catalog->source_establishment_id = $source->id;
-            $catalog->slug = $this->uniqueSlug($source->fantasy ?: $source->name);
-            $catalog->user_id = $user->id;
-            $catalog->created_by = $user->id;
-            $catalog->updated_by = $user->id;
-            $catalog->is_cancelled = false;
-            $catalog->save();
-
-            foreach ($source->files as $file) {
-                $copy = $file->replicate(['uuid', 'created_at', 'updated_at']);
-                $copy->app_id = $targetAppId;
-                $copy->entity_name = 'establishment';
-                $copy->entity_id = $catalog->id;
-                $copy->fileable_type = $file->fileable_type;
-                $copy->fileable_id = $catalog->id;
-                $copy->created_by = $user->id;
-                $copy->updated_by = $user->id;
-                $copy->save();
-            }
-
+            $existing = $user->applications()->whereKey($targetAppId)->first()?->pivot;
             $user->applications()->syncWithoutDetaching([
-                $targetAppId => ['status' => 'active', 'joined_at' => now()],
+                $targetAppId => [
+                    'status' => 'active',
+                    'role' => $existing?->role ?: 'owner',
+                    'metadata' => $existing?->metadata ?: json_encode([], JSON_UNESCAPED_UNICODE),
+                    'joined_at' => $existing?->joined_at ?: now(),
+                ],
             ]);
-
-            return $catalog;
         });
 
         return response()->json([
-            'message' => 'Catálogo Nexus ativado com sucesso.',
-            'establishment' => $catalog->fresh()->load('files'),
-        ], 201);
-    }
-
-    private function uniqueSlug(string $name): string
-    {
-        $base = Str::slug($name) ?: Str::random(12);
-        $slug = $base;
-        $i = 2;
-
-        while (Establishment::query()->where('slug', $slug)->exists()) {
-            $slug = $base . '-' . $i++;
-        }
-
-        return $slug;
+            'message' => 'Empresa vinculada à Nexus com sucesso.',
+            'establishment' => $company->fresh()->load(['files', 'applications:id,name,slug']),
+        ]);
     }
 }
