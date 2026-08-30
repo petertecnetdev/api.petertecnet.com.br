@@ -145,7 +145,7 @@ class AuthController extends Controller
 
         $rawCode = $this->newCode(6);
 
-        $user = DB::transaction(function () use ($data, $rawCode, $actor) {
+        $user = DB::transaction(function () use ($data, $rawCode) {
             $user = User::create([
                 'first_name' => trim($data['first_name']),
                 'email' => strtolower(trim($data['email'])),
@@ -373,7 +373,7 @@ class AuthController extends Controller
         }
         $rawCode = $this->newCode(6);
 
-        $user = DB::transaction(function () use ($data, $rawCode) {
+        $user = DB::transaction(function () use ($data, $rawCode, $actor) {
             $user = User::create([
                 'first_name' => trim($data['first_name']),
                 'email' => strtolower(trim($data['email'])),
