@@ -12,6 +12,27 @@ return [
         'description' => 'Permite cadastrar, editar, ativar e excluir aplicações da Peter Tecnet.',
     ],
 
+    'marketing_dashboard' => [
+        'category' => 'Marketing',
+        'name' => 'Acessar painel de marketing',
+        'description' => 'Permite acompanhar indicadores das aplicações atribuídas ao colaborador.',
+    ],
+    'marketing_activity_view' => [
+        'category' => 'Marketing',
+        'name' => 'Visualizar atividade de marketing',
+        'description' => 'Permite consultar interações e evolução de clientes somente nas aplicações atribuídas.',
+    ],
+    'marketing_user_view' => [
+        'category' => 'Marketing',
+        'name' => 'Visualizar clientes da aplicação',
+        'description' => 'Permite consultar usuários vinculados às aplicações atribuídas.',
+    ],
+    'marketing_user_invite' => [
+        'category' => 'Marketing',
+        'name' => 'Convidar clientes',
+        'description' => 'Permite criar convites de acesso somente para aplicações atribuídas.',
+    ],
+
     'item_scan' => [
         'category' => 'Item',
         'name' => 'Escanear item',
