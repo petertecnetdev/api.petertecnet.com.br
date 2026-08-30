@@ -558,12 +558,30 @@ class EcosystemController extends Controller
     private function validateEstablishment(Request $request, ?Establishment $establishment = null): array
     {
         $creating = $establishment === null;
+        $slugRules = ['nullable', 'string', 'max:255'];
+        $cnpjRules = ['nullable', 'string', 'max:30'];
+
+        $submittedSlug = trim((string) $request->input('slug', ''));
+        $currentSlug = trim((string) ($establishment?->slug ?? ''));
+        if ($creating || $submittedSlug !== $currentSlug) {
+            $slugRules[] = Rule::unique('establishments', 'slug')
+                ->ignore($establishment?->id)
+                ->withoutTrashed();
+        }
+
+        $submittedCnpj = preg_replace('/\\D+/', '', (string) $request->input('cnpj', ''));
+        $currentCnpj = preg_replace('/\\D+/', '', (string) ($establishment?->cnpj ?? ''));
+        if ($creating || $submittedCnpj !== $currentCnpj) {
+            $cnpjRules[] = Rule::unique('establishments', 'cnpj')
+                ->ignore($establishment?->id)
+                ->withoutTrashed();
+        }
 
         return $request->validate([
             'name' => [$creating ? 'required' : 'sometimes', 'required', 'string', 'max:255'],
             'fantasy' => ['nullable', 'string', 'max:255'],
-            'slug' => ['nullable', 'string', 'max:255', Rule::unique('establishments', 'slug')->ignore($establishment?->id)],
-            'cnpj' => ['nullable', 'string', 'max:30', Rule::unique('establishments', 'cnpj')->ignore($establishment?->id)],
+            'slug' => $slugRules,
+            'cnpj' => $cnpjRules,
             'type' => ['nullable', 'string', 'max:100'],
             'category' => ['nullable', 'string', 'max:150'],
             'phone' => ['nullable', 'string', 'max:40'],
@@ -583,6 +601,31 @@ class EcosystemController extends Controller
             'is_approved' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
             'is_cancelled' => ['sometimes', 'boolean'],
+        ], [
+            'name.required' => 'Informe o nome do estabelecimento.',
+            'slug.unique' => 'Este endereço interno (slug) já está sendo usado por outro estabelecimento.',
+            'cnpj.unique' => 'Este CNPJ já está vinculado a outro estabelecimento.',
+            'email.email' => 'Informe um e-mail válido.',
+            'uf.size' => 'A UF deve conter exatamente duas letras.',
+            'website_url.url' => 'Informe uma URL válida para o site, começando com http:// ou https://.',
+            'instagram_url.url' => 'Informe uma URL válida para o Instagram, começando com http:// ou https://.',
+            'app_id.exists' => 'A aplicação principal selecionada não existe.',
+            'app_ids.required' => 'Selecione pelo menos uma aplicação.',
+            'app_ids.min' => 'Selecione pelo menos uma aplicação.',
+            'app_ids.*.distinct' => 'A mesma aplicação foi selecionada mais de uma vez.',
+            'app_ids.*.exists' => 'Uma das aplicações selecionadas não existe.',
+            'user_id.required' => 'Selecione o usuário responsável.',
+            'user_id.exists' => 'O usuário responsável selecionado não existe.',
+        ], [
+            'name' => 'nome',
+            'fantasy' => 'nome fantasia',
+            'slug' => 'endereço interno',
+            'cnpj' => 'CNPJ',
+            'email' => 'e-mail',
+            'uf' => 'UF',
+            'app_id' => 'aplicação principal',
+            'app_ids' => 'aplicações vinculadas',
+            'user_id' => 'usuário responsável',
         ]);
     }
 
