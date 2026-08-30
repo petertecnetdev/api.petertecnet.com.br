@@ -14,6 +14,10 @@ Route::prefix('nexus')->middleware('api')->group(function () {
     Route::get('/catalog/{identifier}', [NexusCatalogCompanyController::class, 'showCatalog'])
         ->where('identifier', '[A-Za-z0-9\-]+')
         ->name('nexus.catalog.show');
+
+    Route::get('/item/{identifier}', [NexusCatalogCompanyController::class, 'showItem'])
+        ->where('identifier', '[A-Za-z0-9\-]+')
+        ->name('nexus.item.show');
 });
 
 Route::prefix('nexus')->middleware(['api', 'auth:api'])->group(function () {
