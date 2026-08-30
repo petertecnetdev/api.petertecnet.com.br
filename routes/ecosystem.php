@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\MarketingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -29,4 +30,12 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
 
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
+});
+
+Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
+    Route::get('/context', [MarketingController::class, 'context']);
+    Route::get('/dashboard', [MarketingController::class, 'dashboard']);
+    Route::get('/activity', [MarketingController::class, 'activity']);
+    Route::get('/users', [MarketingController::class, 'users']);
+    Route::get('/users/{user}', [MarketingController::class, 'userDetail'])->whereNumber('user');
 });
