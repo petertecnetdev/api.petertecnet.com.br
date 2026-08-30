@@ -437,7 +437,8 @@ class EcosystemController extends Controller
     private function interactionQuery()
     {
         return Interaction::query()->with([
-            'user:id,first_name,last_name,user_name,email,avatar',
+            'user:id,first_name,last_name,user_name,email,avatar,profile_id',
+            'user.profile:id,name',
             'application:id,name,slug,logo',
         ]);
     }
@@ -447,6 +448,12 @@ class EcosystemController extends Controller
         return [
             'id' => $item->id,
             'type' => $item->interaction_type,
+            'outcome' => $item->outcome,
+            'severity' => $item->severity,
+            'environment' => $item->environment,
+            'request_id' => $item->request_id,
+            'correlation_id' => $item->correlation_id,
+            'parent_interaction_id' => $item->parent_interaction_id,
             'name' => $item->name,
             'entity_type' => $item->entity_type,
             'entity_id' => $item->entity_id,
