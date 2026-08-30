@@ -44,7 +44,7 @@ class Interaction extends Model
                 'app_name' => $context['application']?->name,
                 'source_app_id' => $context['source_application']?->id,
                 'source_app_slug' => $context['source_application']?->slug,
-                'target_app_id' => data_get($entity = $interaction->entity, 'app_id') ?: $request?->input('app_id'),
+                'target_app_id' => $content['target_app_id'] ?? $content['app_id'] ?? $request?->input('app_id'),
                 'application_context' => $context['resolution'],
                 'declared_app' => $context['declared_app'],
             ], $content), fn ($value) => $value !== null && $value !== '');
