@@ -103,6 +103,7 @@ class NexusCatalogCompanyController extends Controller
                     ->where('status', 'active')
                     ->orderBy('position'),
             ])
+            ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->get();
@@ -128,6 +129,74 @@ class NexusCatalogCompanyController extends Controller
                 ] : null,
             ]),
             'items' => $items,
+        ]);
+    }
+
+    public function showItem(Request $request, string $identifier)
+    {
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+        ]);
+
+        $targetAppId = (int) $data['app_id'];
+
+        $item = Item::query()
+            ->where('app_id', $targetAppId)
+            ->where('entity_name', 'establishment')
+            ->where('status', true)
+            ->when(
+                is_numeric($identifier),
+                fn ($query) => $query->where('id', (int) $identifier),
+                fn ($query) => $query->where('slug', $identifier)
+            )
+            ->with([
+                'files' => fn ($query) => $query
+                    ->where('visibility', 'public')
+                    ->where('status', 'active')
+                    ->orderBy('position'),
+            ])
+            ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
+            ->firstOrFail();
+
+        $company = Establishment::query()
+            ->where('is_cancelled', false)
+            ->forApplication($targetAppId)
+            ->with([
+                'files' => fn ($query) => $query
+                    ->where('visibility', 'public')
+                    ->where('status', 'active')
+                    ->orderBy('position'),
+                'app:id,name,slug',
+                'applications:id,name,slug',
+            ])
+            ->findOrFail($item->entity_id);
+
+        Interaction::registerView($item, Auth::user());
+
+        $otherItems = Item::query()
+            ->where('app_id', $targetAppId)
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $company->id)
+            ->where('status', true)
+            ->where('id', '!=', $item->id)
+            ->with([
+                'files' => fn ($query) => $query
+                    ->where('visibility', 'public')
+                    ->where('status', 'active')
+                    ->orderBy('position'),
+            ])
+            ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
+            ->orderByDesc('is_featured')
+            ->orderByDesc('updated_at')
+            ->limit(8)
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Item Nexus carregado com sucesso.',
+            'item' => $item,
+            'establishment' => $company,
+            'other_items' => $otherItems,
         ]);
     }
 
