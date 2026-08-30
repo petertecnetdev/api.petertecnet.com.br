@@ -22,7 +22,7 @@ return new class extends Migration {
             $table->timestamp('lost_at')->nullable();
             $table->text('notes')->nullable();
             $table->timestamps();
-            $table->index(['app_id', 'establishment_id', 'stage']);
+            $table->index(['app_id', 'establishment_id', 'stage'], 'pf_opp_app_est_stage_idx');
         });
 
         Schema::create('payflow_proposals', function (Blueprint $table) {
@@ -40,7 +40,7 @@ return new class extends Migration {
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('accepted_at')->nullable();
             $table->timestamps();
-            $table->index(['app_id', 'establishment_id', 'status']);
+            $table->index(['app_id', 'establishment_id', 'status'], 'pf_prop_app_est_status_idx');
         });
 
         Schema::create('payflow_charges', function (Blueprint $table) {
@@ -58,8 +58,8 @@ return new class extends Migration {
             $table->timestamp('due_at')->nullable();
             $table->timestamp('paid_at')->nullable();
             $table->timestamps();
-            $table->index(['app_id', 'establishment_id', 'status']);
-            $table->index(['provider', 'external_id']);
+            $table->index(['app_id', 'establishment_id', 'status'], 'pf_charge_app_est_status_idx');
+            $table->index(['provider', 'external_id'], 'pf_charge_provider_external_idx');
         });
 
         Schema::create('payflow_agent_activities', function (Blueprint $table) {
@@ -74,7 +74,7 @@ return new class extends Migration {
             $table->json('metadata')->nullable();
             $table->timestamp('executed_at')->useCurrent();
             $table->timestamps();
-            $table->index(['app_id', 'establishment_id', 'executed_at']);
+            $table->index(['app_id', 'establishment_id', 'executed_at'], 'pf_activity_app_est_exec_idx');
         });
     }
 
