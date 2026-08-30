@@ -28,8 +28,11 @@ class EstablishmentController extends Controller
             $establishment = Establishment::create($data);
             $this->storeMedia($request, $establishment, $user->id);
 
+            $establishment->applications()->sync([
+                $establishment->app_id => ['is_primary' => true],
+            ]);
             $user->applications()->syncWithoutDetaching([
-                $establishment->app_id => ['status' => 'active', 'joined_at' => now()],
+                $establishment->app_id => ['status' => 'active', 'role' => 'owner', 'joined_at' => now()],
             ]);
 
             return $establishment;
@@ -102,7 +105,7 @@ class EstablishmentController extends Controller
         $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
 
         $establishment = Establishment::query()
-            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
             ->with(['user:id,first_name,last_name,user_name,avatar', 'files' => $this->publicFiles()])
             ->findOrFail($id);
 
@@ -126,7 +129,7 @@ class EstablishmentController extends Controller
             'message' => 'Estabelecimentos listados com sucesso.',
             'establishments' => Establishment::query()
                 ->where('is_cancelled', false)
-                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
                 ->with(['files' => $this->publicFiles()])
                 ->latest()
                 ->paginate($data['per_page'] ?? 10),
@@ -144,7 +147,7 @@ class EstablishmentController extends Controller
             'message' => 'Estabelecimentos listados por categoria com sucesso.',
             'establishments' => Establishment::query()
                 ->where('is_cancelled', false)
-                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
                 ->when($category, fn ($q) => $q->where('category', $category))
                 ->with(['files' => $this->publicFiles()])
                 ->paginate($data['per_page'] ?? 10),
@@ -157,7 +160,7 @@ class EstablishmentController extends Controller
         return response()->json([
             'message' => 'Cidades listadas com sucesso.',
             'cities' => Establishment::query()
-                ->where('app_id', (int) $app_id)
+                ->forApplication((int) $app_id)
                 ->where('is_cancelled', false)
                 ->whereNotNull('city')
                 ->whereNotNull('uf')
@@ -190,7 +193,7 @@ class EstablishmentController extends Controller
         ]);
 
         $query = Establishment::query()
-            ->where('app_id', (int) $app_id)
+            ->forApplication((int) $app_id)
             ->where('is_cancelled', false)
             ->when(! empty($data['city']) && $data['city'] !== 'Todas', fn ($q) => $q->where('city', $data['city']))
             ->when(! empty($data['uf']) && $data['uf'] !== 'ALL', fn ($q) => $q->where('uf', strtoupper($data['uf'])))
@@ -229,7 +232,7 @@ class EstablishmentController extends Controller
             'message' => 'Estabelecimentos do usuário listados com sucesso.',
             'establishments' => Establishment::query()
                 ->where('user_id', Auth::id())
-                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
                 ->with('files')
                 ->latest()
                 ->get(),
@@ -248,7 +251,7 @@ class EstablishmentController extends Controller
             'message' => 'Estabelecimentos listados com sucesso.',
             'establishments' => Establishment::query()
                 ->where('user_id', Auth::id())
-                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
                 ->when(! empty($data['category']), fn ($q) => $q->where('category', $data['category']))
                 ->latest()
                 ->paginate($data['per_page'] ?? 10),
@@ -269,7 +272,7 @@ class EstablishmentController extends Controller
 
         $query = Establishment::query()
             ->where('user_id', Auth::id())
-            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
             ->whereIn('category', $categories)
             ->when(! empty($data['q']), function ($q) use ($data) {
                 $like = '%' . $data['q'] . '%';
@@ -290,7 +293,7 @@ class EstablishmentController extends Controller
         return response()->json([
             'message' => 'Estabelecimentos do usuário listados com sucesso.',
             'establishments' => Establishment::query()
-                ->where('app_id', $data['app_id'])
+                ->forApplication((int) $data['app_id'])
                 ->where('user_id', Auth::id())
                 ->with('files')
                 ->latest()
@@ -302,7 +305,7 @@ class EstablishmentController extends Controller
     {
         $data = $request->validate(['app_id' => 'nullable|integer|exists:applications,id']);
         $establishment = Establishment::query()
-            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+            ->when(isset($data['app_id']), fn ($q) => $q->forApplication((int) $data['app_id']))
             ->where('slug', $slug)
             ->firstOrFail();
 
@@ -392,7 +395,7 @@ class EstablishmentController extends Controller
     {
         return Establishment::query()
             ->where('is_cancelled', false)
-            ->when($appId !== null, fn ($q) => $q->where('app_id', $appId))
+            ->when($appId !== null, fn ($q) => $q->forApplication((int) $appId))
             ->when(is_numeric($identifier), fn ($q) => $q->where('id', (int) $identifier), fn ($q) => $q->where('slug', $identifier))
             ->firstOrFail();
     }
