@@ -379,7 +379,7 @@ class EcosystemController extends Controller
     {
         $this->authorizeAccess($request);
         $query = Establishment::query()->with(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']);
-        if ($request->filled('app_id')) $query->where('app_id', $request->integer('app_id'));
+        if ($request->filled('app_id')) $query->forApplication($request->integer('app_id'));
         if ($search = trim((string) $request->query('search'))) {
             $query->where(fn ($q) => $q->where('name', 'like', "%{$search}%")->orWhere('fantasy', 'like', "%{$search}%")->orWhere('cnpj', 'like', "%{$search}%"));
         }
@@ -392,7 +392,7 @@ class EcosystemController extends Controller
         $data = $this->validateEstablishment($request);
         $applicationIds = collect($data['app_ids'])->map(fn ($id) => (int) $id)->unique()->values();
         unset($data['app_ids']);
-        $data['app_id'] = (int) ($data['app_id'] ?: $applicationIds->first());
+        $data['app_id'] = (int) (($data['app_id'] ?? null) ?: $applicationIds->first());
         $data['created_by'] = $request->user()->id;
         $data['updated_by'] = $request->user()->id;
 
