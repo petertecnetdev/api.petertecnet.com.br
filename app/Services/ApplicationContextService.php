@@ -47,6 +47,20 @@ class ApplicationContextService
     {
         $request ??= request();
 
+        // Exact browser origin is the strongest source signal. Headers remain
+        // authoritative for native/mobile clients whose origin is local.
+        foreach ([
+            $request?->headers->get('Origin'),
+            $request?->headers->get('Referer'),
+            $request?->header('X-Frontend-Page'),
+            $content['origin'] ?? null,
+            $content['referer'] ?? null,
+            $content['frontend_page'] ?? null,
+        ] as $url) {
+            $app = $this->findByUrl($url);
+            if ($app) return $app;
+        }
+
         foreach ([
             $request?->header('X-Peter-App'),
             $request?->header('X-App-Slug'),
@@ -59,18 +73,6 @@ class ApplicationContextService
                 $app = $this->findBySlug(trim($candidate));
                 if ($app) return $app;
             }
-        }
-
-        foreach ([
-            $request?->headers->get('Origin'),
-            $request?->headers->get('Referer'),
-            $request?->header('X-Frontend-Page'),
-            $content['origin'] ?? null,
-            $content['referer'] ?? null,
-            $content['frontend_page'] ?? null,
-        ] as $url) {
-            $app = $this->findByUrl($url);
-            if ($app) return $app;
         }
 
         foreach ([$request?->header('X-App-ID'), $request?->header('X-Application-Id')] as $candidate) {
