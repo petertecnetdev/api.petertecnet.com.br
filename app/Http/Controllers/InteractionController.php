@@ -37,10 +37,25 @@ class InteractionController extends Controller
         ]);
 
         try { $user = Auth::guard('api')->user(); } catch (\Throwable) { $user = null; }
-        $application = app(ApplicationContextService::class)->resolve($request);
-        $sessionKey = substr(hash('sha256', (string) $request->ip().'|'.(string) $request->userAgent()), 0, 40);
+
+        $context = app(ApplicationContextService::class);
+        $declared = $context->resolveStoredContext(['declared_app' => $request->header('X-Peter-App') ?: $request->header('X-App-Slug')]);
+        $origin = $context->resolveStoredContext(['origin' => $request->header('Origin') ?: $request->header('Referer')]);
+        abort_if($declared && $origin && $declared->id !== $origin->id, 422, 'A aplicação declarada não corresponde à origem da telemetria.');
+        $application = $declared ?: $origin;
+        abort_unless($application, 422, 'Não foi possível identificar a aplicação de origem da telemetria.');
+
+        $sessionKey = substr(hash('sha256', $application->id.'|'.$data['session_id']), 0, 40);
+        $eventIds = collect($data['events'])->pluck('id')->unique()->values();
+        $existingIds = Interaction::query()
+            ->where('app_id', $application->id)
+            ->whereIn('request_id', $eventIds)
+            ->pluck('request_id')
+            ->flip();
+        $accepted = 0;
 
         foreach ($data['events'] as $event) {
+            if ($existingIds->has($event['id'])) continue;
             $metadata = $this->sanitize($event['metadata'] ?? []);
             $type = $event['type'];
             Interaction::withoutEvents(fn () => Interaction::create([
@@ -66,15 +81,26 @@ class InteractionController extends Controller
                     'status' => $type === 'frontend_error' ? null : 200,
                     'origin' => $request->header('Origin'),
                     'referer' => $request->header('Referer'),
+                    'app_slug' => $application->slug,
+                    'app_name' => $application->name,
+                    'declared_app' => $request->header('X-Peter-App') ?: $request->header('X-App-Slug'),
+                    'telemetry_schema' => $request->header('X-Telemetry-Schema') ?: '1',
                     'ip' => $request->ip(),
                     'user_agent' => $request->userAgent(),
                 ], fn ($value) => $value !== null && $value !== [] && $value !== ''),
             ]));
+            $accepted++;
         }
 
-        broadcast(new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'));
+        if ($accepted > 0) {
+            broadcast(new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'));
+        }
 
-        return response()->json(['accepted' => count($data['events'])], 202);
+        return response()->json([
+            'accepted' => $accepted,
+            'duplicates' => count($data['events']) - $accepted,
+            'application' => ['id' => $application->id, 'slug' => $application->slug],
+        ], 202);
     }
 
     private function description(string $type, array $event): string
