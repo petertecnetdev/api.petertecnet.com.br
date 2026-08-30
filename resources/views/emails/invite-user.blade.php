@@ -62,6 +62,10 @@
             letter-spacing: 3px;
         }
 
+        .action { display: block; margin: 24px auto; padding: 14px 20px; border-radius: 8px; background: #00BFFF; color: #071621 !important; font-weight: 700; text-align: center; text-decoration: none; }
+
+        .app-url { overflow-wrap: anywhere; color: #72dcff; text-align: center; }
+
         .footer {
             text-align: center;
             padding: 20px 0;
@@ -115,9 +119,16 @@
 
         <div class="verification-code">{{ $code }}</div>
 
+        <a href="{{ $activationUrl }}" class="action">Criar minha senha e ativar conta</a>
+
         <p>
-            Basta inserir este código na página de finalização do convite para completar seu cadastro.
-            Após isso, você poderá usar normalmente todos os recursos da plataforma.
+            Endereço oficial da aplicação:
+        </p>
+        <p class="app-url"><a href="{{ $appUrl }}" style="color:#72dcff">{{ $appUrl }}</a></p>
+
+        <p>
+            Abra o botão acima, confirme seu e-mail e defina uma senha pessoal. O convite expira em 24 horas.
+            Se você não reconhece este convite, ignore esta mensagem e não compartilhe o código.
         </p>
     </div>
 
