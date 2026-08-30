@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Cache;
@@ -11,7 +12,7 @@ use App\Traits\HasFiles;
 
 class Establishment extends Model
 {
-    use HasFiles;
+    use HasFiles, SoftDeletes;
 
     protected $fillable = [
         'name',
