@@ -20,7 +20,7 @@ class NexusDiscoveryController extends Controller
             'limit' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $appId = (int) $data['app_id'];
+        $nexusAppId = (int) $data['app_id'];
         $currentCity = trim((string) ($data['city'] ?? ''));
         $currentUf = strtoupper(trim((string) ($data['uf'] ?? '')));
         $targetCity = trim((string) ($data['target_city'] ?? ''));
@@ -28,12 +28,12 @@ class NexusDiscoveryController extends Controller
         $queryText = trim((string) ($data['q'] ?? ''));
         $limit = (int) ($data['limit'] ?? 48);
 
-        // A descoberta da Nexus não deve ficar presa à cidade do visitante.
-        // Mantemos somente catálogos pertencentes à Nexus e não cancelados.
-        // A localização atual é usada apenas para ordenação/prioridade.
+        // Nexus e a vitrine transversal do ecossistema Peter Tecnet.
+        // app_id identifica a aplicacao Nexus que esta fazendo a consulta,
+        // mas NAO limita quais empresas podem aparecer na descoberta.
         $baseEstablishments = Establishment::query()
-            ->where('app_id', $appId)
-            ->where('is_cancelled', false);
+            ->where('is_cancelled', false)
+            ->whereNull('source_establishment_id');
 
         $locations = (clone $baseEstablishments)
             ->whereNotNull('city')
@@ -66,14 +66,18 @@ class NexusDiscoveryController extends Controller
                         ->orWhere('description', 'like', $like);
                 });
             })
-            ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position')])
+            ->with([
+                'app:id,name,slug,logo',
+                'applications:id,name,slug,logo',
+                'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
+            ])
             ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')]);
 
-        // Sem filtro manual de cidade, os catálogos de fora da região aparecem
-        // primeiro, mas os locais também permanecem disponíveis na exploração.
+        // A cidade atual apenas influencia a ordem. Nunca excluimos empresas
+        // de outras regioes nem escondemos empresas locais da exploracao geral.
         if ($targetCity === '' && $targetUf === '' && $currentCity !== '' && $currentUf !== '') {
             $establishmentQuery->orderByRaw(
-                'CASE WHEN LOWER(COALESCE(city, \'\')) = LOWER(?) AND UPPER(COALESCE(uf, \'\')) = ? THEN 1 ELSE 0 END ASC',
+                'CASE WHEN LOWER(COALESCE(city, \'\')) = LOWER(?) AND UPPER(COALESCE(uf, \'\')) = ? THEN 0 ELSE 1 END ASC',
                 [$currentCity, $currentUf]
             );
         }
@@ -82,18 +86,39 @@ class NexusDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(function (Establishment $establishment) use ($nexusAppId) {
+                $linkedApplicationIds = $establishment->applications
+                    ->pluck('id')
+                    ->map(fn ($id) => (int) $id);
+
+                $catalogActive = (int) $establishment->app_id === $nexusAppId
+                    || $linkedApplicationIds->contains($nexusAppId);
+
+                $establishment->setAttribute('catalog_active', $catalogActive);
+                $establishment->setAttribute('is_nexus_native', (int) $establishment->app_id === $nexusAppId);
+                $establishment->setAttribute('source_app', $establishment->app ? [
+                    'id' => $establishment->app->id,
+                    'name' => $establishment->app->name,
+                    'slug' => $establishment->app->slug,
+                    'logo' => $establishment->app->logo,
+                ] : null);
+
+                return $establishment;
+            })
+            ->values();
 
         $establishmentIds = $establishments->pluck('id');
 
+        // Os itens acompanham a propria empresa. Nao filtramos por app_id da
+        // Nexus, pois uma empresa de Rasoio/Plat continua tendo seu app de origem.
         $items = Item::query()
-            ->where('app_id', $appId)
             ->where('entity_name', 'establishment')
             ->where('status', true)
             ->whereIn('entity_id', $establishmentIds)
             ->with([
                 'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
-                'establishment:id,name,fantasy,slug,city,uf',
+                'establishment:id,app_id,name,fantasy,slug,city,uf',
             ])
             ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')])
             ->orderByDesc('is_featured')
@@ -104,6 +129,7 @@ class NexusDiscoveryController extends Controller
         return response()->json([
             'success' => true,
             'scope' => [
+                'nexus_app_id' => $nexusAppId,
                 'current_city' => $currentCity ?: null,
                 'current_uf' => $currentUf ?: null,
                 'target_city' => $targetCity ?: null,
