@@ -12,7 +12,8 @@ class Interaction extends Model
     use HasFactory;
 
     protected $fillable = [
-        'user_id', 'app_id', 'entity_id', 'entity_type', 'interaction_type', 'route', 'method', 'session_key',
+        'user_id', 'app_id', 'entity_id', 'entity_type', 'interaction_type', 'outcome', 'severity', 'environment',
+        'route', 'method', 'session_key', 'request_id', 'correlation_id', 'parent_interaction_id',
         'comment', 'name', 'content',
     ];
 
@@ -47,6 +48,8 @@ class Interaction extends Model
     }
 
     public function user() { return $this->belongsTo(User::class); }
+    public function parentInteraction() { return $this->belongsTo(self::class, 'parent_interaction_id'); }
+    public function relatedInteractions() { return $this->hasMany(self::class, 'parent_interaction_id'); }
     public function application() { return $this->belongsTo(Application::class, 'app_id'); }
     public function establishment() { return $this->belongsTo(Establishment::class, 'entity_id')->where('entity_type', 'Establishment'); }
     public function employer() { return $this->belongsTo(Employer::class, 'entity_id')->where('entity_type', 'Employer'); }
