@@ -27,6 +27,11 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
 
+    Route::get('/items', [EcosystemController::class, 'items']);
+    Route::post('/items', [EcosystemController::class, 'storeItem']);
+    Route::put('/items/{item}', [EcosystemController::class, 'updateItem'])->whereNumber('item');
+    Route::delete('/items/{item}', [EcosystemController::class, 'destroyItem'])->whereNumber('item');
+
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
 
