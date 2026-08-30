@@ -124,7 +124,7 @@ class Interaction extends Model
     public static function registerLogin($user, $data = [])
     {
         if (! $user) return null;
-        return static::register('login', $user, $user, $data, 'Login do usuário');
+        return static::register('login', $user, $user, array_merge(['source_channel' => 'domain'], $data), 'Login do usuário');
     }
 
     public static function registerView($entity, $user = null, $extra = [])
