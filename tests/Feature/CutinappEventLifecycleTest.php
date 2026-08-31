@@ -91,7 +91,7 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)
             ->postJson("/api/cutinapp/events/{$eventId}/publish")
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Crie ao menos uma cortesia disponível antes de publicar o evento.');
+            ->assertJsonPath('message', 'Crie ao menos um ingresso disponível antes de publicar o evento.');
 
         $this->withHeaders($headers)
             ->postJson('/api/cutinapp/courtesies', [
