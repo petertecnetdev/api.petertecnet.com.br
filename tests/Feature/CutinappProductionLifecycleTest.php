@@ -86,7 +86,7 @@ class CutinappProductionLifecycleTest extends TestCase
                 'name' => 'Produção Fluxo Editada',
                 'city' => 'Campinas',
                 'uf' => 'SP',
-                'instagram_url' => 'cutinapp.eventos',
+                'instagram_url' => '@cutinapp.eventos',
             ])
             ->assertOk()
             ->assertJsonPath('production.name', 'Produção Fluxo Editada')
