@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,24 +18,29 @@ class Ticket extends Model
         'ticket_type',
         'quantity',
         'description',
-        // Adicione outros campos relevantes aqui, se houver.
     ];
 
-    // Defina o nome da tabela, se for diferente do padrão
     protected $table = 'tickets';
-
-    // Define a chave primária, se for diferente do padrão (id)
     protected $primaryKey = 'id';
 
-    // Relação com o model Event (um ingresso pertence a um evento)
+    protected $casts = [
+        'price' => 'decimal:2',
+        'quantity' => 'integer',
+        'limit_date' => 'datetime',
+    ];
+
     public function event()
     {
         return $this->belongsTo(Event::class);
     }
 
-    // Relação com o model Production (um ingresso pertence a uma produção)
     public function production()
     {
         return $this->belongsTo(Production::class);
+    }
+
+    public function passes()
+    {
+        return $this->hasMany(EventPass::class);
     }
 }
