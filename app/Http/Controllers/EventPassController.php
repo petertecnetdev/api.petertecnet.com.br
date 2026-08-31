@@ -10,6 +10,7 @@ use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class EventPassController extends Controller
 {
@@ -238,7 +239,15 @@ class EventPassController extends Controller
 
     private function requestUser(Request $request): User
     {
-        $user = $request->user('api');
+        $token = trim((string) $request->bearerToken());
+        abort_if($token === '', 401, 'Sessão inválida ou expirada. Faça login novamente.');
+
+        try {
+            $user = JWTAuth::setToken($token)->authenticate();
+        } catch (\Throwable) {
+            $user = null;
+        }
+
         abort_unless($user instanceof User, 401, 'Sessão inválida ou expirada. Faça login novamente.');
         return $user;
     }
