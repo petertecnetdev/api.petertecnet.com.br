@@ -11,6 +11,14 @@ use Intervention\Image\Facades\Image;
 
 class CutinappController extends Controller
 {
+    public function config()
+    {
+        return response()->json([
+            'google_client_id' => (string) config('services.google.client_id'),
+            'app' => 'cutinapp',
+        ]);
+    }
+
     public function myProductions()
     {
         return response()->json([
