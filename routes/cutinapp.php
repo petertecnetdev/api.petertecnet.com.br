@@ -20,9 +20,16 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/events/show/{id}', [CutinappController::class, 'showEvent'])->whereNumber('id');
     Route::post('/events', [CutinappController::class, 'createEvent']);
     Route::match(['post', 'put'], '/events/{id}', [CutinappController::class, 'updateEvent'])->whereNumber('id');
+    Route::post('/events/{id}/publish', [CutinappController::class, 'publishEvent'])->whereNumber('id');
+    Route::post('/events/{id}/unpublish', [CutinappController::class, 'unpublishEvent'])->whereNumber('id');
+
     Route::post('/courtesies', [CutinappController::class, 'createCourtesy']);
+    Route::get('/events/{eventId}/courtesies', [CutinappController::class, 'eventCourtesies'])->whereNumber('eventId');
+    Route::match(['post', 'put'], '/courtesies/{ticketId}', [CutinappController::class, 'updateCourtesy'])->whereNumber('ticketId');
+    Route::delete('/courtesies/{ticketId}', [CutinappController::class, 'deleteCourtesy'])->whereNumber('ticketId');
 
     Route::get('/passes/mine', [EventPassController::class, 'mine']);
+    Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
     Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');
     Route::post('/passes/claim/{ticketId}', [EventPassController::class, 'claim'])->whereNumber('ticketId');
     Route::post('/checkin', [EventPassController::class, 'validateToken'])->middleware('throttle:120,1');
