@@ -55,7 +55,10 @@ class CutinappApplicationOwnershipTest extends TestCase
         $participant = $this->user('Participante', 'ownership-participant@cutinapp.test');
         $this->withHeaders($this->headersFor($participant))
             ->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
-            ->assertCreated();
+            ->assertCreated()
+            ->assertJsonPath('pass.user_id', $participant->id)
+            ->assertJsonPath('pass.event_id', $event['id'])
+            ->assertJsonPath('pass.ticket_id', $ticket['id']);
 
         $this->assertDatabaseHas('productions', ['id' => $production['id'], 'app_id' => $application->id]);
         $this->assertDatabaseHas('events', ['id' => $event['id'], 'app_id' => $application->id]);
