@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Intervention\Image\Facades\Image;
+use Throwable;
 
 class CutinappEventController extends Controller
 {
@@ -248,6 +249,8 @@ class CutinappEventController extends Controller
     private function normalizeInput(Request $request): void
     {
         $merge = [];
+        $dateErrors = [];
+
         if ($request->has('uf')) {
             $merge['uf'] = strtoupper(trim((string) $request->input('uf')));
         }
@@ -255,11 +258,28 @@ class CutinappEventController extends Controller
             $url = trim((string) $request->input('google_maps_url'));
             $merge['google_maps_url'] = $url === '' ? null : $url;
         }
+
         foreach (['start_date', 'end_date'] as $field) {
-            if ($request->filled($field)) {
-                $merge[$field] = Carbon::parse((string) $request->input($field), config('app.timezone'))->format('Y-m-d H:i:s');
+            if (! $request->filled($field)) {
+                continue;
+            }
+
+            try {
+                $merge[$field] = Carbon::parse(
+                    (string) $request->input($field),
+                    config('app.timezone')
+                )->format('Y-m-d H:i:s');
+            } catch (Throwable) {
+                $dateErrors[$field][] = $field === 'start_date'
+                    ? 'Informe uma data de início válida.'
+                    : 'Informe uma data de término válida.';
             }
         }
+
+        if ($dateErrors !== []) {
+            throw ValidationException::withMessages($dateErrors);
+        }
+
         if ($merge !== []) {
             $request->merge($merge);
         }
@@ -273,13 +293,20 @@ class CutinappEventController extends Controller
             return;
         }
 
-        $start = Carbon::parse($startValue, config('app.timezone'));
-        $end = Carbon::parse($endValue, config('app.timezone'));
+        $timezone = config('app.timezone');
+        $start = Carbon::parse($startValue, $timezone);
+        $end = Carbon::parse($endValue, $timezone);
         $errors = [];
 
-        if (($event === null || array_key_exists('start_date', $data)) && $start->lt(now()->subMinute())) {
+        if ($event === null) {
+            $minimumStart = Carbon::now($timezone)->addDay()->startOfDay();
+            if ($start->lt($minimumStart)) {
+                $errors['start_date'][] = 'O evento precisa ser criado com pelo menos um dia de antecedência. Escolha uma data a partir de amanhã.';
+            }
+        } elseif (array_key_exists('start_date', $data) && $start->lt(now()->subMinute())) {
             $errors['start_date'][] = 'O início do evento não pode ficar no passado.';
         }
+
         if (! $end->gt($start)) {
             $errors['end_date'][] = 'O término do evento precisa ser posterior ao início.';
         }
