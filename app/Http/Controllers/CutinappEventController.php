@@ -7,15 +7,16 @@ use App\Models\Application;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Intervention\Image\Facades\Image;
 use Throwable;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappEventController extends Controller
 {
@@ -26,7 +27,7 @@ class CutinappEventController extends Controller
         return app(CutinappDiscoveryController::class)->events($request);
     }
 
-    public function publicEvent(string $slug)
+    public function publicEvent(Request $request, string $slug)
     {
         $appId = $this->applicationId();
         $event = Event::query()
@@ -58,9 +59,9 @@ class CutinappEventController extends Controller
                 return $ticket;
             });
 
-        if (Auth::check()) {
+        if ($viewer = $this->optionalRequestUser($request)) {
             $engagement = DB::table('cutinapp_event_engagements')
-                ->where(['app_id' => $appId, 'user_id' => Auth::id(), 'event_id' => $event->id])
+                ->where(['app_id' => $appId, 'user_id' => $viewer->id, 'event_id' => $event->id])
                 ->first();
             $event->setAttribute('viewer_engagement', $engagement);
         }
@@ -70,6 +71,7 @@ class CutinappEventController extends Controller
 
     public function mine(Request $request)
     {
+        $user = $this->requestUser($request);
         $data = $request->validate([
             'q' => 'nullable|string|max:120',
             'city' => 'nullable|string|max:120',
@@ -83,7 +85,7 @@ class CutinappEventController extends Controller
         $query = Event::query()
             ->where('app_id', $appId)
             ->where('app_slug', self::APP)
-            ->whereHas('production', fn ($q) => $q->where('app_id', $appId)->where('user_id', Auth::id()))
+            ->whereHas('production', fn ($q) => $q->where('app_id', $appId)->where('user_id', $user->id))
             ->with(['production:id,app_id,name,slug,user_id,app_slug', 'artists:id,app_id,slug,stage_name'])
             ->withCount(['tickets' => fn ($q) => $q->where('app_id', $appId)]);
 
@@ -107,10 +109,10 @@ class CutinappEventController extends Controller
         return response()->json(['events' => $query->orderByDesc('start_date')->paginate($data['per_page'] ?? 50)->appends($request->query())]);
     }
 
-    public function show(int $id)
+    public function show(Request $request, int $id)
     {
         $appId = $this->applicationId();
-        $event = $this->ownedEvent($id);
+        $event = $this->ownedEvent($id, $this->requestUser($request));
         $event->load(['production:id,app_id,name,slug,user_id,app_slug', 'artists:id,app_id,slug,stage_name']);
         $event->loadCount(['tickets' => fn ($query) => $query->where('app_id', $appId)]);
         return response()->json(['event' => $event]);
@@ -118,9 +120,10 @@ class CutinappEventController extends Controller
 
     public function store(Request $request)
     {
+        $user = $this->requestUser($request);
         $this->normalizeInput($request);
         $data = $request->validate($this->rules(true), $this->messages(), $this->attributes());
-        $production = $this->ownedProduction((int) $data['production_id']);
+        $production = $this->ownedProduction((int) $data['production_id'], $user);
         $this->validateDates($data, null);
 
         if (empty($data['city']) && $production->city) $data['city'] = $production->city;
@@ -147,10 +150,11 @@ class CutinappEventController extends Controller
 
     public function update(Request $request, int $id)
     {
-        $event = $this->ownedEvent($id);
+        $user = $this->requestUser($request);
+        $event = $this->ownedEvent($id, $user);
         $this->normalizeInput($request);
         $data = $request->validate($this->rules(false), $this->messages(), $this->attributes());
-        if (isset($data['production_id'])) $this->ownedProduction((int) $data['production_id']);
+        if (isset($data['production_id'])) $this->ownedProduction((int) $data['production_id'], $user);
         $this->validateDates($data, $event);
         if (! empty($data['title']) && $data['title'] !== $event->title) $data['slug'] = $this->uniqueSlug($data['title'], $event->id);
 
@@ -166,9 +170,9 @@ class CutinappEventController extends Controller
         return response()->json(['message' => 'Evento atualizado com sucesso.', 'event' => $event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
 
-    public function publish(int $id)
+    public function publish(Request $request, int $id)
     {
-        $event = $this->ownedEvent($id);
+        $event = $this->ownedEvent($id, $this->requestUser($request));
         abort_if($event->is_cancelled, 422, 'Um evento cancelado não pode ser publicado.');
         abort_if(! $event->end_date || $event->end_date->lte(now()), 422, 'Um evento já encerrado não pode ser publicado.');
         abort_if(! $event->start_date || $event->start_date->lte(now()), 422, 'A data de início precisa estar no futuro para publicar o evento.');
@@ -185,9 +189,9 @@ class CutinappEventController extends Controller
         return response()->json(['message' => 'Evento publicado. A página pública já está disponível.', 'event' => $event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
 
-    public function unpublish(int $id)
+    public function unpublish(Request $request, int $id)
     {
-        $event = $this->ownedEvent($id);
+        $event = $this->ownedEvent($id, $this->requestUser($request));
         $event->forceFill(['is_published' => false])->save();
         return response()->json(['message' => 'Evento retirado da publicação. Os ingressos já emitidos foram preservados.', 'event' => $event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
@@ -256,18 +260,18 @@ class CutinappEventController extends Controller
         if ($errors !== []) throw ValidationException::withMessages($errors);
     }
 
-    private function ownedProduction(int $id): Production
+    private function ownedProduction(int $id, User $user): Production
     {
         $production = Production::query()->where('app_id', $this->applicationId())->where('app_slug', self::APP)->findOrFail($id);
-        abort_unless(Auth::user()?->hasProfile('Administrador') || (int) $production->user_id === (int) Auth::id(), 403, 'Você não pode gerenciar esta produção.');
+        abort_unless($user->hasProfile('Administrador') || (int) $production->user_id === (int) $user->id, 403, 'Você não pode gerenciar esta produção.');
         return $production;
     }
 
-    private function ownedEvent(int $id): Event
+    private function ownedEvent(int $id, User $user): Event
     {
         $event = Event::query()->where('app_id', $this->applicationId())->where('app_slug', self::APP)->with('production')->findOrFail($id);
         abort_unless($event->production && (int) $event->production->app_id === $this->applicationId(), 404, 'Evento não encontrado na Cutinapp.');
-        abort_unless(Auth::user()?->hasProfile('Administrador') || (int) $event->production->user_id === (int) Auth::id(), 403, 'Você não pode gerenciar este evento.');
+        abort_unless($user->hasProfile('Administrador') || (int) $event->production->user_id === (int) $user->id, 403, 'Você não pode gerenciar este evento.');
         return $event;
     }
 
@@ -282,6 +286,25 @@ class CutinappEventController extends Controller
                 'reference_type' => 'event', 'reference_id' => $event->id, 'reference_url' => '/event/' . $event->slug,
                 'data' => ['production_id' => $event->production_id, 'event_id' => $event->id],
             ]);
+        }
+    }
+
+    private function requestUser(Request $request): User
+    {
+        $user = $this->optionalRequestUser($request);
+        abort_unless($user instanceof User, 401, 'Sua sessão expirou. Entre novamente.');
+        return $user;
+    }
+
+    private function optionalRequestUser(Request $request): ?User
+    {
+        $token = $request->bearerToken();
+        if (! $token) return null;
+        try {
+            $user = JWTAuth::setToken($token)->authenticate();
+            return $user instanceof User ? $user : null;
+        } catch (Throwable) {
+            return null;
         }
     }
 
