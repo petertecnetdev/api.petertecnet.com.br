@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappFreeEventFlowTest extends TestCase
 {
@@ -14,8 +15,7 @@ class CutinappFreeEventFlowTest extends TestCase
     public function test_free_event_can_run_from_production_to_duplicate_checkin_block(): void
     {
         $producer = $this->user('Produtor', 'producer@cutinapp.test');
-        $producerToken = auth('api')->login($producer);
-        $producerHeaders = ['Authorization' => 'Bearer ' . $producerToken, 'X-Peter-App' => 'cutinapp'];
+        $producerHeaders = $this->headersFor($producer);
 
         $productionResponse = $this->withHeaders($producerHeaders)
             ->postJson('/api/cutinapp/productions', [
@@ -24,10 +24,18 @@ class CutinappFreeEventFlowTest extends TestCase
                 'uf' => 'SP',
             ])
             ->assertCreated()
-            ->assertJsonPath('production.app_slug', 'cutinapp');
+            ->assertJsonPath('production.app_slug', 'cutinapp')
+            ->assertJsonPath('production.user_id', $producer->id)
+            ->assertJsonPath('production.uf', 'SP');
 
         $productionId = $productionResponse->json('production.id');
         $this->assertNotNull($productionId);
+        $this->assertDatabaseHas('productions', [
+            'id' => $productionId,
+            'user_id' => $producer->id,
+            'app_slug' => 'cutinapp',
+            'uf' => 'SP',
+        ]);
 
         $eventResponse = $this->withHeaders($producerHeaders)
             ->postJson('/api/cutinapp/events', [
@@ -77,8 +85,7 @@ class CutinappFreeEventFlowTest extends TestCase
             ->assertJsonPath('tickets.0.available', true);
 
         $participant = $this->user('Participante', 'participant@cutinapp.test');
-        $participantToken = auth('api')->login($participant);
-        $participantHeaders = ['Authorization' => 'Bearer ' . $participantToken, 'X-Peter-App' => 'cutinapp'];
+        $participantHeaders = $this->headersFor($participant);
 
         $claimResponse = $this->withHeaders($participantHeaders)
             ->postJson("/api/cutinapp/passes/claim/{$ticketId}")
@@ -128,21 +135,28 @@ class CutinappFreeEventFlowTest extends TestCase
     public function test_checkin_rejects_ticket_from_another_event(): void
     {
         $producer = $this->user('Produtor', 'producer-two@cutinapp.test');
-        $headers = ['Authorization' => 'Bearer ' . auth('api')->login($producer), 'X-Peter-App' => 'cutinapp'];
+        $headers = $this->headersFor($producer);
 
-        $productionId = $this->withHeaders($headers)->postJson('/api/cutinapp/productions', ['name' => 'Produção B'])->json('production.id');
+        $productionId = $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/productions', ['name' => 'Produção B'])
+            ->assertCreated()
+            ->json('production.id');
 
         $eventA = $this->createPublishedEventWithCourtesy($headers, $productionId, 'Evento A');
         $eventB = $this->createPublishedEventWithCourtesy($headers, $productionId, 'Evento B');
 
         $participant = $this->user('Participante', 'participant-two@cutinapp.test');
-        $participantHeaders = ['Authorization' => 'Bearer ' . auth('api')->login($participant), 'X-Peter-App' => 'cutinapp'];
+        $participantHeaders = $this->headersFor($participant);
         $token = $this->withHeaders($participantHeaders)
             ->postJson('/api/cutinapp/passes/claim/' . $eventA['ticket_id'])
+            ->assertCreated()
             ->json('pass.token');
 
         $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/checkin', ['event_id' => $eventB['event_id'], 'token' => $token])
+            ->postJson('/api/cutinapp/checkin', [
+                'event_id' => $eventB['event_id'],
+                'token' => $token,
+            ])
             ->assertStatus(422)
             ->assertJsonPath('message', 'Este ingresso pertence a outro evento.');
     }
@@ -156,17 +170,27 @@ class CutinappFreeEventFlowTest extends TestCase
             'address' => 'Rua Teste, 1',
             'start_date' => now()->addDay()->format('Y-m-d H:i:s'),
             'end_date' => now()->addDay()->addHours(2)->format('Y-m-d H:i:s'),
-        ])->json('event');
+        ])->assertCreated()->json('event');
 
         $ticket = $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies', [
             'event_id' => $event['id'],
             'name' => 'Cortesia',
             'quantity' => 10,
-        ])->json('ticket');
+        ])->assertCreated()->json('ticket');
 
-        $this->withHeaders($headers)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
+            ->assertOk();
 
         return ['event_id' => $event['id'], 'ticket_id' => $ticket['id']];
+    }
+
+    private function headersFor(User $user): array
+    {
+        return [
+            'Authorization' => 'Bearer ' . JWTAuth::fromUser($user),
+            'X-Peter-App' => 'cutinapp',
+        ];
     }
 
     private function user(string $name, string $email): User
