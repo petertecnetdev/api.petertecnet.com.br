@@ -7,11 +7,12 @@ use App\Models\Application;
 use App\Models\CutinappArtist;
 use App\Models\Event;
 use App\Models\Production;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Throwable;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappSocialController extends Controller
 {
@@ -49,11 +50,11 @@ class CutinappSocialController extends Controller
         if (! empty($data['genre'])) $query->where('genres', 'like', '%' . $data['genre'] . '%');
 
         $artists = $query->paginate($data['per_page'] ?? 24);
-        $artists->getCollection()->transform(fn ($artist) => $this->decorateArtist($artist));
+        $artists->getCollection()->transform(fn ($artist) => $this->decorateArtist($artist, $request));
         return response()->json(['artists' => $artists]);
     }
 
-    public function publicArtist(string $slug)
+    public function publicArtist(Request $request, string $slug)
     {
         $appId = $this->applicationId();
         $artist = CutinappArtist::query()
@@ -63,7 +64,7 @@ class CutinappSocialController extends Controller
             ->firstOrFail();
 
         $artist->setAttribute('followers_count', $this->followersCount('artist', $artist->id));
-        $artist->setAttribute('is_following', $this->isFollowing('artist', $artist->id));
+        $artist->setAttribute('is_following', $this->isFollowing($request, 'artist', $artist->id));
 
         $upcoming = $this->artistEvents($artist->id, true)->limit(12)->get();
         $past = $this->artistEvents($artist->id, false)->limit(12)->get();
@@ -73,20 +74,24 @@ class CutinappSocialController extends Controller
 
     public function myArtists(Request $request)
     {
+        $user = $this->requestUser($request);
         $appId = $this->applicationId();
         $query = CutinappArtist::query()->where('app_id', $appId);
-        if (! Auth::user()?->hasProfile('Administrador')) {
-            $query->where('user_id', Auth::id());
+        if (! $user->hasProfile('Administrador')) {
+            $query->where('user_id', $user->id);
         }
-        return response()->json(['artists' => $query->orderBy('stage_name')->paginate(min((int) $request->input('per_page', 50), 100))]);
+        return response()->json(['artists' => $query->orderBy('stage_name')->paginate(min(max((int) $request->input('per_page', 50), 1), 100))]);
     }
 
     public function storeArtist(Request $request)
     {
+        $user = $this->requestUser($request);
         $appId = $this->applicationId();
         $data = $this->artistData($request);
         $data['app_id'] = $appId;
-        $data['user_id'] = $request->filled('user_id') && Auth::user()?->hasProfile('Administrador') ? (int) $request->input('user_id') : Auth::id();
+        $data['user_id'] = $request->filled('user_id') && $user->hasProfile('Administrador')
+            ? (int) $request->input('user_id')
+            : $user->id;
         $data['slug'] = $this->uniqueArtistSlug($data['stage_name']);
         $artist = CutinappArtist::create($data);
         return response()->json(['message' => 'Artista criado com sucesso.', 'artist' => $artist], 201);
@@ -94,7 +99,8 @@ class CutinappSocialController extends Controller
 
     public function updateArtist(Request $request, int $id)
     {
-        $artist = $this->managedArtist($id);
+        $user = $this->requestUser($request);
+        $artist = $this->managedArtist($id, $user);
         $data = $this->artistData($request, false);
         if (! empty($data['stage_name']) && $data['stage_name'] !== $artist->stage_name) {
             $data['slug'] = $this->uniqueArtistSlug($data['stage_name'], $artist->id);
@@ -104,15 +110,16 @@ class CutinappSocialController extends Controller
         return response()->json(['message' => 'Perfil do artista atualizado.', 'artist' => $artist->fresh()]);
     }
 
-    public function eventArtists(int $eventId)
+    public function eventArtists(Request $request, int $eventId)
     {
-        $event = $this->ownedEvent($eventId);
+        $event = $this->ownedEvent($eventId, $this->requestUser($request));
         return response()->json(['artists' => $event->artists()->orderBy('cutinapp_event_artist.sort_order')->get()]);
     }
 
     public function attachArtist(Request $request, int $eventId)
     {
-        $event = $this->ownedEvent($eventId);
+        $user = $this->requestUser($request);
+        $event = $this->ownedEvent($eventId, $user);
         $data = $request->validate([
             'artist_id' => 'required|integer',
             'participation_type' => 'required|string|max:80',
@@ -136,21 +143,21 @@ class CutinappSocialController extends Controller
         return response()->json(['message' => 'Artista vinculado ao evento.', 'artists' => $event->artists()->orderBy('cutinapp_event_artist.sort_order')->get()]);
     }
 
-    public function detachArtist(int $eventId, int $artistId)
+    public function detachArtist(Request $request, int $eventId, int $artistId)
     {
-        $event = $this->ownedEvent($eventId);
+        $event = $this->ownedEvent($eventId, $this->requestUser($request));
         $event->artists()->detach($artistId);
         return response()->json(['message' => 'Artista removido do line-up.']);
     }
 
-    public function publicProduction(string $slug)
+    public function publicProduction(Request $request, string $slug)
     {
         $appId = $this->applicationId();
         $production = Production::query()
             ->where('app_id', $appId)->where('app_slug', self::APP)->where('slug', $slug)
             ->firstOrFail();
         $production->setAttribute('followers_count', $this->followersCount('production', $production->id));
-        $production->setAttribute('is_following', $this->isFollowing('production', $production->id));
+        $production->setAttribute('is_following', $this->isFollowing($request, 'production', $production->id));
         $upcoming = Event::where('app_id', $appId)->where('production_id', $production->id)->where('is_published', true)->where('is_cancelled', false)->where('end_date', '>', now())->orderBy('start_date')->limit(24)->get();
         $past = Event::where('app_id', $appId)->where('production_id', $production->id)->where('end_date', '<=', now())->orderByDesc('start_date')->limit(24)->get();
         $artists = CutinappArtist::query()->where('app_id', $appId)->whereHas('events', fn ($q) => $q->where('events.production_id', $production->id))->distinct()->limit(30)->get();
@@ -159,37 +166,41 @@ class CutinappSocialController extends Controller
 
     public function follow(Request $request)
     {
+        $user = $this->requestUser($request);
         $data = $request->validate(['target_type' => 'required|in:artist,production', 'target_id' => 'required|integer|min:1']);
         $this->assertTarget($data['target_type'], $data['target_id']);
         DB::table('cutinapp_follows')->updateOrInsert([
-            'app_id' => $this->applicationId(), 'user_id' => Auth::id(), 'target_type' => $data['target_type'], 'target_id' => $data['target_id'],
+            'app_id' => $this->applicationId(), 'user_id' => $user->id, 'target_type' => $data['target_type'], 'target_id' => $data['target_id'],
         ], ['updated_at' => now(), 'created_at' => now()]);
         return response()->json(['message' => 'Agora você está seguindo este perfil.', 'following' => true]);
     }
 
     public function unfollow(Request $request)
     {
+        $user = $this->requestUser($request);
         $data = $request->validate(['target_type' => 'required|in:artist,production', 'target_id' => 'required|integer|min:1']);
-        DB::table('cutinapp_follows')->where(['app_id' => $this->applicationId(), 'user_id' => Auth::id(), 'target_type' => $data['target_type'], 'target_id' => $data['target_id']])->delete();
+        DB::table('cutinapp_follows')->where(['app_id' => $this->applicationId(), 'user_id' => $user->id, 'target_type' => $data['target_type'], 'target_id' => $data['target_id']])->delete();
         return response()->json(['message' => 'Você deixou de seguir este perfil.', 'following' => false]);
     }
 
     public function engagement(Request $request, int $eventId)
     {
+        $user = $this->requestUser($request);
         $event = Event::where('app_id', $this->applicationId())->where('app_slug', self::APP)->findOrFail($eventId);
         $data = $request->validate(['is_favorite' => 'sometimes|boolean', 'is_interested' => 'sometimes|boolean']);
         DB::table('cutinapp_event_engagements')->updateOrInsert(
-            ['app_id' => $this->applicationId(), 'user_id' => Auth::id(), 'event_id' => $event->id],
+            ['app_id' => $this->applicationId(), 'user_id' => $user->id, 'event_id' => $event->id],
             array_merge($data, ['updated_at' => now(), 'created_at' => now()])
         );
-        $row = DB::table('cutinapp_event_engagements')->where(['app_id' => $this->applicationId(), 'user_id' => Auth::id(), 'event_id' => $event->id])->first();
+        $row = DB::table('cutinapp_event_engagements')->where(['app_id' => $this->applicationId(), 'user_id' => $user->id, 'event_id' => $event->id])->first();
         return response()->json(['message' => 'Preferência atualizada.', 'engagement' => $row]);
     }
 
     public function preferences(Request $request)
     {
+        $user = $this->requestUser($request);
         if ($request->isMethod('get')) {
-            return response()->json(['preferences' => DB::table('cutinapp_user_preferences')->where(['app_id' => $this->applicationId(), 'user_id' => Auth::id()])->first()]);
+            return response()->json(['preferences' => DB::table('cutinapp_user_preferences')->where(['app_id' => $this->applicationId(), 'user_id' => $user->id])->first()]);
         }
         $data = $request->validate([
             'preferred_city' => 'nullable|string|max:120', 'preferred_uf' => 'nullable|string|size:2',
@@ -198,24 +209,25 @@ class CutinappSocialController extends Controller
         ]);
         if (isset($data['preferred_uf'])) $data['preferred_uf'] = strtoupper($data['preferred_uf']);
         DB::table('cutinapp_user_preferences')->updateOrInsert(
-            ['app_id' => $this->applicationId(), 'user_id' => Auth::id()],
+            ['app_id' => $this->applicationId(), 'user_id' => $user->id],
             array_merge($data, ['updated_at' => now(), 'created_at' => now()])
         );
-        return response()->json(['message' => 'Preferências de descoberta salvas.', 'preferences' => DB::table('cutinapp_user_preferences')->where(['app_id' => $this->applicationId(), 'user_id' => Auth::id()])->first()]);
+        return response()->json(['message' => 'Preferências de descoberta salvas.', 'preferences' => DB::table('cutinapp_user_preferences')->where(['app_id' => $this->applicationId(), 'user_id' => $user->id])->first()]);
     }
 
     public function feed(Request $request)
     {
+        $user = $this->requestUser($request);
         $appId = $this->applicationId();
         $perPage = min(max((int) $request->input('per_page', 20), 1), 50);
-        $followedProductions = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'user_id' => Auth::id(), 'target_type' => 'production'])->pluck('target_id');
-        $followedArtists = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'user_id' => Auth::id(), 'target_type' => 'artist'])->pluck('target_id');
-        $preferences = DB::table('cutinapp_user_preferences')->where(['app_id' => $appId, 'user_id' => Auth::id()])->first();
+        $followedProductions = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'user_id' => $user->id, 'target_type' => 'production'])->pluck('target_id');
+        $followedArtists = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'user_id' => $user->id, 'target_type' => 'artist'])->pluck('target_id');
+        $preferences = DB::table('cutinapp_user_preferences')->where(['app_id' => $appId, 'user_id' => $user->id])->first();
 
         $query = Event::query()->where('events.app_id', $appId)->where('events.app_slug', self::APP)->where('events.is_published', true)->where('events.is_cancelled', false)->where('events.end_date', '>', now())
             ->with(['production:id,app_id,name,slug,logo,city,uf', 'artists:id,app_id,slug,stage_name,photo'])
             ->withCount(['tickets as passes_available_count' => fn ($q) => $q->where('app_id', $appId)->where('price', 0)->where('quantity', '>', 0)])
-            ->orderByRaw('CASE WHEN production_id IN (' . ($followedProductions->isEmpty() ? '0' : $followedProductions->implode(',')) . ') THEN 0 ELSE 1 END')
+            ->orderByRaw('CASE WHEN production_id IN (' . ($followedProductions->isEmpty() ? '0' : $followedProductions->map(fn ($id) => (int) $id)->implode(',')) . ') THEN 0 ELSE 1 END')
             ->orderBy('start_date');
 
         if ($preferences?->preferred_city) {
@@ -232,7 +244,8 @@ class CutinappSocialController extends Controller
 
     public function notifications(Request $request)
     {
-        $items = AppNotification::query()->where('app_id', $this->applicationId())->where('user_id', Auth::id())->latest()->paginate(min(max((int) $request->input('per_page', 30), 1), 100));
+        $user = $this->requestUser($request);
+        $items = AppNotification::query()->where('app_id', $this->applicationId())->where('user_id', $user->id)->latest()->paginate(min(max((int) $request->input('per_page', 30), 1), 100));
         return response()->json(['notifications' => $items]);
     }
 
@@ -243,10 +256,10 @@ class CutinappSocialController extends Controller
         return $upcoming ? $q->where('end_date', '>', now())->orderBy('start_date') : $q->where('end_date', '<=', now())->orderByDesc('start_date');
     }
 
-    private function decorateArtist(CutinappArtist $artist): CutinappArtist
+    private function decorateArtist(CutinappArtist $artist, Request $request): CutinappArtist
     {
         $artist->setAttribute('followers_count', $this->followersCount('artist', $artist->id));
-        $artist->setAttribute('is_following', $this->isFollowing('artist', $artist->id));
+        $artist->setAttribute('is_following', $this->isFollowing($request, 'artist', $artist->id));
         return $artist;
     }
 
@@ -255,9 +268,15 @@ class CutinappSocialController extends Controller
         return DB::table('cutinapp_follows')->where(['app_id' => $this->applicationId(), 'target_type' => $type, 'target_id' => $id])->count();
     }
 
-    private function isFollowing(string $type, int $id): bool
+    private function isFollowing(Request $request, string $type, int $id): bool
     {
-        return Auth::check() && DB::table('cutinapp_follows')->where(['app_id' => $this->applicationId(), 'user_id' => Auth::id(), 'target_type' => $type, 'target_id' => $id])->exists();
+        $user = $this->optionalRequestUser($request);
+        return $user instanceof User && DB::table('cutinapp_follows')->where([
+            'app_id' => $this->applicationId(),
+            'user_id' => $user->id,
+            'target_type' => $type,
+            'target_id' => $id,
+        ])->exists();
     }
 
     private function assertTarget(string $type, int $id): void
@@ -269,17 +288,17 @@ class CutinappSocialController extends Controller
         abort_unless($exists, 404, 'Perfil não encontrado na Cutinapp.');
     }
 
-    private function managedArtist(int $id): CutinappArtist
+    private function managedArtist(int $id, User $user): CutinappArtist
     {
         $artist = CutinappArtist::where('app_id', $this->applicationId())->findOrFail($id);
-        abort_unless(Auth::user()?->hasProfile('Administrador') || (int) $artist->user_id === (int) Auth::id(), 403, 'Você não pode administrar este artista.');
+        abort_unless($user->hasProfile('Administrador') || (int) $artist->user_id === (int) $user->id, 403, 'Você não pode administrar este artista.');
         return $artist;
     }
 
-    private function ownedEvent(int $id): Event
+    private function ownedEvent(int $id, User $user): Event
     {
         $event = Event::where('app_id', $this->applicationId())->where('app_slug', self::APP)->with('production')->findOrFail($id);
-        abort_unless($event->production && (Auth::user()?->hasProfile('Administrador') || (int) $event->production->user_id === (int) Auth::id()), 403, 'Você não pode administrar este evento.');
+        abort_unless($event->production && ($user->hasProfile('Administrador') || (int) $event->production->user_id === (int) $user->id), 403, 'Você não pode administrar este evento.');
         return $event;
     }
 
@@ -313,6 +332,25 @@ class CutinappSocialController extends Controller
                 'reference_type' => 'event', 'reference_id' => $event->id, 'reference_url' => '/event/' . $event->slug,
                 'data' => ['artist_id' => $artist->id, 'event_id' => $event->id],
             ]);
+        }
+    }
+
+    private function requestUser(Request $request): User
+    {
+        $user = $this->optionalRequestUser($request);
+        abort_unless($user instanceof User, 401, 'Sua sessão expirou. Entre novamente.');
+        return $user;
+    }
+
+    private function optionalRequestUser(Request $request): ?User
+    {
+        $token = $request->bearerToken();
+        if (! $token) return null;
+        try {
+            $user = JWTAuth::setToken($token)->authenticate();
+            return $user instanceof User ? $user : null;
+        } catch (Throwable) {
+            return null;
         }
     }
 
