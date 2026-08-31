@@ -2,22 +2,23 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     private function indexExists(string $table, string $index): bool
     {
-        return collect(DB::select("SHOW INDEX FROM `{$table}` WHERE Key_name = ?", [$index]))->isNotEmpty();
+        return collect(Schema::getIndexes($table))
+            ->contains(fn (array $metadata) => ($metadata['name'] ?? null) === $index);
     }
 
     private function foreignExists(string $table, string $column): bool
     {
-        return collect(DB::select(
-            "SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ? AND REFERENCED_TABLE_NAME IS NOT NULL LIMIT 1",
-            [$table, $column]
-        ))->isNotEmpty();
+        return collect(Schema::getForeignKeys($table))
+            ->contains(function (array $metadata) use ($column) {
+                $columns = $metadata['columns'] ?? [];
+                return in_array($column, $columns, true);
+            });
     }
 
     public function up(): void
