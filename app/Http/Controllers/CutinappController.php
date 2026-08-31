@@ -179,7 +179,6 @@ class CutinappController extends Controller
 
         $data['app_slug'] = self::APP;
         $data['slug'] = $this->uniqueEventSlug($data['title']);
-        // Um evento nasce como rascunho. A publicação é uma ação explícita após a configuração da entrada.
         $data['is_published'] = false;
         $data['is_cancelled'] = false;
         unset($data['image']);
@@ -208,7 +207,6 @@ class CutinappController extends Controller
             $data['slug'] = $this->uniqueEventSlug($data['title'], $event->id);
         }
 
-        // Publicação e cancelamento têm ações próprias para evitar mudanças acidentais por formulário.
         unset($data['image'], $data['app_slug'], $data['is_published'], $data['is_cancelled']);
         $event->update($data);
 
@@ -472,13 +470,17 @@ class CutinappController extends Controller
         $base = Str::slug($name) ?: 'producao-' . Str::lower(Str::random(8));
         $slug = $base;
         $i = 2;
+
+        // productions.slug is globally UNIQUE in the shared database. The lookup must
+        // therefore be global too, otherwise a slug owned by another application can
+        // pass this check and fail at INSERT/UPDATE with a database constraint error.
         while (Production::query()
-            ->where('app_slug', self::APP)
             ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
             ->where('slug', $slug)
             ->exists()) {
             $slug = $base . '-' . $i++;
         }
+
         return $slug;
     }
 
@@ -487,13 +489,15 @@ class CutinappController extends Controller
         $base = Str::slug($name) ?: 'evento-' . Str::lower(Str::random(8));
         $slug = $base;
         $i = 2;
+
+        // events.slug is also globally UNIQUE in the shared database.
         while (Event::query()
-            ->where('app_slug', self::APP)
             ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
             ->where('slug', $slug)
             ->exists()) {
             $slug = $base . '-' . $i++;
         }
+
         return $slug;
     }
 }
