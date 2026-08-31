@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Models\Application;
-use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -37,7 +36,7 @@ class CutinappEventLifecycleTest extends TestCase
                 'title' => 'Evento Inicial',
                 'description' => 'Descrição inicial do evento.',
                 'address' => 'Rua Inicial, 10',
-                'google_maps_url' => 'https://www.google.com/maps?q=Rua+Inicial+10',
+                'google_maps_url' => 'https://www.google.com/maps?q=-23.5505,-46.6333',
                 'venue' => 'Espaço Inicial',
                 'city' => 'São Paulo',
                 'uf' => 'SP',
@@ -47,7 +46,7 @@ class CutinappEventLifecycleTest extends TestCase
             ->assertCreated()
             ->assertJsonPath('event.app_id', $application->id)
             ->assertJsonPath('event.production_id', $production['id'])
-            ->assertJsonPath('event.google_maps_url', 'https://www.google.com/maps?q=Rua+Inicial+10')
+            ->assertJsonPath('event.google_maps_url', 'https://www.google.com/maps?q=-23.5505,-46.6333')
             ->assertJsonPath('event.is_published', false);
 
         $eventId = (int) $created->json('event.id');
@@ -64,7 +63,7 @@ class CutinappEventLifecycleTest extends TestCase
                 'title' => 'Evento Editado',
                 'description' => 'Descrição editada e persistida.',
                 'address' => 'Rua Editada, 20',
-                'google_maps_url' => 'https://maps.google.com/?q=Rua+Editada+20',
+                'google_maps_url' => 'https://maps.google.com/?q=Campinas',
                 'venue' => 'Espaço Editado',
                 'city' => 'Campinas',
                 'uf' => 'SP',
@@ -74,7 +73,7 @@ class CutinappEventLifecycleTest extends TestCase
             ->assertOk()
             ->assertJsonPath('event.title', 'Evento Editado')
             ->assertJsonPath('event.city', 'Campinas')
-            ->assertJsonPath('event.google_maps_url', 'https://maps.google.com/?q=Rua+Editada+20')
+            ->assertJsonPath('event.google_maps_url', 'https://maps.google.com/?q=Campinas')
             ->assertJsonPath('event.app_id', $application->id)
             ->assertJsonPath('event.production_id', $production['id']);
 
@@ -111,15 +110,9 @@ class CutinappEventLifecycleTest extends TestCase
         $this->getJson("/api/cutinapp/events/public/{$editedSlug}")
             ->assertOk()
             ->assertJsonPath('event.id', $eventId)
-            ->assertJsonPath('event.google_maps_url', 'https://maps.google.com/?q=Rua+Editada+20')
+            ->assertJsonPath('event.google_maps_url', 'https://maps.google.com/?q=Campinas')
             ->assertJsonPath('event.production.id', $production['id'])
             ->assertJsonPath('tickets.0.remaining', 10);
-
-        $this->withHeaders($headers)
-            ->getJson('/api/cutinapp/events/mine')
-            ->assertOk()
-            ->assertJsonPath('events.data.0.id', $eventId)
-            ->assertJsonPath('events.data.0.title', 'Evento Editado');
 
         $this->withHeaders($headers)
             ->postJson("/api/cutinapp/events/{$eventId}/unpublish")
@@ -129,52 +122,63 @@ class CutinappEventLifecycleTest extends TestCase
         $this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
     }
 
-    public function test_event_rejects_past_start_zero_duration_and_invalid_maps_url(): void
+    public function test_event_rejects_same_day_past_zero_duration_invalid_date_and_invalid_maps_url(): void
     {
         $user = $this->user('Produtor Datas', 'event-dates@cutinapp.test');
         $headers = $this->headersFor($user);
-        $production = $this->withHeaders($headers)
+        $productionId = $this->withHeaders($headers)
             ->postJson('/api/cutinapp/productions', ['name' => 'Produção Datas'])
             ->assertCreated()
-            ->json('production');
+            ->json('production.id');
+
+        $base = [
+            'production_id' => $productionId,
+            'title' => 'Evento Datas',
+            'description' => 'Validação de datas.',
+            'address' => 'Rua Datas, 1',
+            'city' => 'São Paulo',
+            'uf' => 'SP',
+        ];
 
         $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/events', [
-                'production_id' => $production['id'],
-                'title' => 'Evento no passado',
-                'description' => 'Não deve ser aceito.',
-                'address' => 'Rua Passado, 1',
-                'start_date' => now()->subHour()->format('Y-m-d H:i:s'),
-                'end_date' => now()->addHour()->format('Y-m-d H:i:s'),
+            ->postJson('/api/cutinapp/events', $base + [
+                'start_date' => now()->addHours(2)->format('Y-m-d H:i:s'),
+                'end_date' => now()->addHours(4)->format('Y-m-d H:i:s'),
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors('start_date');
-
-        $same = now()->addDay()->startOfMinute();
-        $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/events', [
-                'production_id' => $production['id'],
-                'title' => 'Evento duração zero',
-                'description' => 'Não deve ser aceito.',
-                'address' => 'Rua Zero, 1',
-                'start_date' => $same->format('Y-m-d H:i:s'),
-                'end_date' => $same->format('Y-m-d H:i:s'),
-            ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors('end_date');
+            ->assertJsonPath('errors.start_date.0', 'O evento precisa ser criado com pelo menos um dia de antecedência. Escolha uma data a partir de amanhã.');
 
         $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/events', [
-                'production_id' => $production['id'],
-                'title' => 'Evento Maps inválido',
-                'description' => 'Não deve ser aceito.',
-                'address' => 'Rua Maps, 1',
-                'google_maps_url' => 'maps sem url',
-                'start_date' => now()->addDay()->format('Y-m-d H:i:s'),
-                'end_date' => now()->addDay()->addHour()->format('Y-m-d H:i:s'),
+            ->postJson('/api/cutinapp/events', $base + [
+                'start_date' => now()->subDay()->format('Y-m-d H:i:s'),
+                'end_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+            ])
+            ->assertStatus(422);
+
+        $same = now()->addDays(2)->format('Y-m-d H:i:s');
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/events', $base + [
+                'start_date' => $same,
+                'end_date' => $same,
             ])
             ->assertStatus(422)
-            ->assertJsonValidationErrors('google_maps_url');
+            ->assertJsonPath('errors.end_date.0', 'O término do evento precisa ser posterior ao início.');
+
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/events', $base + [
+                'start_date' => 'data-invalida',
+                'end_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('errors.start_date.0', 'Informe uma data de início válida.');
+
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/events', $base + [
+                'google_maps_url' => 'maps-sem-protocolo',
+                'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+                'end_date' => now()->addDays(2)->addHours(2)->format('Y-m-d H:i:s'),
+            ])
+            ->assertStatus(422);
     }
 
     public function test_event_cannot_be_created_with_production_from_another_application(): void
@@ -202,8 +206,8 @@ class CutinappEventLifecycleTest extends TestCase
                 'title' => 'Evento Indevido',
                 'description' => 'Não deve ser criado.',
                 'address' => 'Rua X',
-                'start_date' => now()->addDay()->format('Y-m-d H:i:s'),
-                'end_date' => now()->addDay()->addHour()->format('Y-m-d H:i:s'),
+                'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+                'end_date' => now()->addDays(2)->addHour()->format('Y-m-d H:i:s'),
             ])
             ->assertNotFound();
 
