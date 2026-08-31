@@ -1,13 +1,14 @@
 <?php
 
 use App\Http\Controllers\CutinappController;
+use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\EventPassController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/config', [CutinappController::class, 'config']);
-    Route::get('/events', [CutinappController::class, 'publicEvents']);
-    Route::get('/events/public/{slug}', [CutinappController::class, 'publicEvent']);
+    Route::get('/events', [CutinappEventController::class, 'publicEvents']);
+    Route::get('/events/public/{slug}', [CutinappEventController::class, 'publicEvent']);
 });
 
 Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
@@ -16,12 +17,12 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/productions', [CutinappController::class, 'createProduction']);
     Route::match(['post', 'put'], '/productions/{id}', [CutinappController::class, 'updateProduction'])->whereNumber('id');
 
-    Route::get('/events/mine', [CutinappController::class, 'myEvents']);
-    Route::get('/events/show/{id}', [CutinappController::class, 'showEvent'])->whereNumber('id');
-    Route::post('/events', [CutinappController::class, 'createEvent']);
-    Route::match(['post', 'put'], '/events/{id}', [CutinappController::class, 'updateEvent'])->whereNumber('id');
-    Route::post('/events/{id}/publish', [CutinappController::class, 'publishEvent'])->whereNumber('id');
-    Route::post('/events/{id}/unpublish', [CutinappController::class, 'unpublishEvent'])->whereNumber('id');
+    Route::get('/events/mine', [CutinappEventController::class, 'mine']);
+    Route::get('/events/show/{id}', [CutinappEventController::class, 'show'])->whereNumber('id');
+    Route::post('/events', [CutinappEventController::class, 'store']);
+    Route::match(['post', 'put'], '/events/{id}', [CutinappEventController::class, 'update'])->whereNumber('id');
+    Route::post('/events/{id}/publish', [CutinappEventController::class, 'publish'])->whereNumber('id');
+    Route::post('/events/{id}/unpublish', [CutinappEventController::class, 'unpublish'])->whereNumber('id');
 
     Route::post('/courtesies', [CutinappController::class, 'createCourtesy']);
     Route::get('/events/{eventId}/courtesies', [CutinappController::class, 'eventCourtesies'])->whereNumber('eventId');
