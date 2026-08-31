@@ -59,7 +59,7 @@ class CutinappFreeEventFlowTest extends TestCase
         $this->withHeaders($producerHeaders)
             ->postJson("/api/cutinapp/events/{$eventId}/publish")
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Crie ao menos uma cortesia disponível antes de publicar o evento.');
+            ->assertJsonPath('message', 'Crie ao menos um ingresso disponível antes de publicar o evento.');
 
         $courtesyResponse = $this->withHeaders($producerHeaders)
             ->postJson('/api/cutinapp/courtesies', [
