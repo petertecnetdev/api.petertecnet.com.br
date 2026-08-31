@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Validation\ValidationException;
 
 class Event extends Model
 {
     protected $fillable = [
-        'app_id', 'app_slug', 'production_id', 'title', 'description', 'image', 'address',
+        'app_id', 'app_slug', 'production_id', 'title', 'description', 'image', 'address', 'google_maps_url',
         'start_date', 'end_date', 'venue', 'uf', 'establishment_type', 'slug', 'city',
         'state', 'country', 'location', 'cep', 'latitude', 'longitude', 'is_featured',
         'is_published', 'is_approved', 'is_cancelled', 'max_attendees', 'remaining_tickets',
@@ -44,6 +46,38 @@ class Event extends Model
         'max_attendees' => 'integer',
         'remaining_tickets' => 'integer',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Event $event) {
+            if ($event->app_slug !== 'cutinapp') {
+                return;
+            }
+
+            if ($event->google_maps_url) {
+                $event->google_maps_url = trim((string) $event->google_maps_url);
+            }
+
+            if (! $event->start_date || ! $event->end_date) {
+                return;
+            }
+
+            $start = Carbon::parse($event->start_date, config('app.timezone'));
+            $end = Carbon::parse($event->end_date, config('app.timezone'));
+
+            if ($event->isDirty('start_date') && $start->lt(now()->subMinutes(1))) {
+                throw ValidationException::withMessages([
+                    'start_date' => ['O início do evento não pode ficar no passado.'],
+                ]);
+            }
+
+            if (! $end->gt($start)) {
+                throw ValidationException::withMessages([
+                    'end_date' => ['O término do evento precisa ser posterior ao início.'],
+                ]);
+            }
+        });
+    }
 
     public function application()
     {
