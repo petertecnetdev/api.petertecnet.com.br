@@ -6,8 +6,8 @@ use App\Models\Application;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -17,9 +17,7 @@ class EventPassController extends Controller
 
     public function claim(Request $request, int $ticketId)
     {
-        $user = Auth::user();
-        abort_unless($user, 401, 'Faça login para retirar a cortesia.');
-
+        $user = $this->requestUser($request);
         $application = $this->application();
         $alreadyIssued = false;
 
@@ -80,11 +78,12 @@ class EventPassController extends Controller
         ], $alreadyIssued ? 200 : 201);
     }
 
-    public function mine()
+    public function mine(Request $request)
     {
+        $user = $this->requestUser($request);
         $appId = $this->applicationId();
         $passes = EventPass::query()
-            ->where('user_id', Auth::id())
+            ->where('user_id', $user->id)
             ->whereHas('event', fn ($query) => $query
                 ->where('app_id', $appId)
                 ->where('app_slug', self::APP))
@@ -95,8 +94,9 @@ class EventPassController extends Controller
         return response()->json(['passes' => $passes]);
     }
 
-    public function show(int $passId)
+    public function show(Request $request, int $passId)
     {
+        $user = $this->requestUser($request);
         $appId = $this->applicationId();
         $pass = EventPass::query()
             ->whereHas('event', fn ($query) => $query
@@ -105,16 +105,17 @@ class EventPassController extends Controller
             ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar'])
             ->findOrFail($passId);
 
-        if ((int) $pass->user_id !== (int) Auth::id()) {
-            $this->manageableEvent((int) $pass->event_id);
+        if ((int) $pass->user_id !== (int) $user->id) {
+            $this->manageableEvent((int) $pass->event_id, $user);
         }
 
         return response()->json(['pass' => $pass]);
     }
 
-    public function participants(int $eventId)
+    public function participants(Request $request, int $eventId)
     {
-        $event = $this->manageableEvent($eventId);
+        $operator = $this->requestUser($request);
+        $event = $this->manageableEvent($eventId, $operator);
         $passes = EventPass::query()
             ->where('event_id', $event->id)
             ->with(['ticket:id,app_id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
@@ -133,6 +134,7 @@ class EventPassController extends Controller
 
     public function validateToken(Request $request)
     {
+        $operator = $this->requestUser($request);
         $data = $request->validate([
             'token' => 'required|string|max:180',
             'event_id' => 'required|integer|exists:events,id',
@@ -142,10 +144,9 @@ class EventPassController extends Controller
             'event_id.exists' => 'O evento selecionado não foi encontrado.',
         ]);
 
-        $selectedEvent = $this->manageableEvent((int) $data['event_id']);
+        $selectedEvent = $this->manageableEvent((int) $data['event_id'], $operator);
         abort_if($selectedEvent->is_cancelled || ! $selectedEvent->is_published, 422, 'A portaria só pode validar um evento publicado e não cancelado.');
 
-        $operator = Auth::user();
         $appId = $this->applicationId();
 
         $result = DB::transaction(function () use ($data, $operator, $selectedEvent, $appId) {
@@ -202,9 +203,10 @@ class EventPassController extends Controller
         return response()->json(['message' => $result['message'], 'pass' => $result['pass']], $result['status']);
     }
 
-    public function eventStats(int $eventId)
+    public function eventStats(Request $request, int $eventId)
     {
-        $event = $this->manageableEvent($eventId);
+        $operator = $this->requestUser($request);
+        $event = $this->manageableEvent($eventId, $operator);
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled']),
@@ -213,9 +215,8 @@ class EventPassController extends Controller
         ]);
     }
 
-    private function manageableEvent(int $eventId): Event
+    private function manageableEvent(int $eventId, User $operator): Event
     {
-        $operator = Auth::user();
         $appId = $this->applicationId();
         $event = Event::query()
             ->where('app_id', $appId)
@@ -233,6 +234,13 @@ class EventPassController extends Controller
 
         abort_unless($allowed, 403, 'Sem permissão para acessar a operação deste evento.');
         return $event;
+    }
+
+    private function requestUser(Request $request): User
+    {
+        $user = $request->user('api');
+        abort_unless($user instanceof User, 401, 'Sessão inválida ou expirada. Faça login novamente.');
+        return $user;
     }
 
     private function application(): Application
@@ -253,12 +261,35 @@ class EventPassController extends Controller
 
     private function registerParticipation(Application $application, int $userId, string $role): void
     {
-        $application->users()->syncWithoutDetaching([
-            $userId => [
-                'role' => $role,
-                'status' => 'active',
-                'joined_at' => now(),
-            ],
+        $existing = DB::table('application_user')
+            ->where('application_id', $application->id)
+            ->where('user_id', $userId)
+            ->first();
+
+        $priority = ['participant' => 10, 'staff' => 20, 'promoter' => 30, 'producer' => 40, 'admin' => 50];
+        $existingRole = (string) ($existing->role ?? '');
+        $effectiveRole = ($priority[$existingRole] ?? 0) > ($priority[$role] ?? 0) ? $existingRole : $role;
+
+        if ($existing) {
+            DB::table('application_user')
+                ->where('application_id', $application->id)
+                ->where('user_id', $userId)
+                ->update([
+                    'role' => $effectiveRole,
+                    'status' => 'active',
+                    'updated_at' => now(),
+                ]);
+            return;
+        }
+
+        DB::table('application_user')->insert([
+            'application_id' => $application->id,
+            'user_id' => $userId,
+            'role' => $effectiveRole,
+            'status' => 'active',
+            'joined_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 }
