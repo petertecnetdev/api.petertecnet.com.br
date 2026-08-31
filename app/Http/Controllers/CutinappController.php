@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Production;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 use Intervention\Image\Facades\Image;
 
@@ -54,17 +54,16 @@ class CutinappController extends Controller
         unset($data['logo'], $data['background']);
 
         $production = Production::create($data);
+        $directory = public_path('images/cutinapp/productions');
+        File::ensureDirectoryExists($directory);
 
         foreach (['logo' => [600, 600], 'background' => [1920, 700]] as $field => $size) {
             if (! $request->hasFile($field)) {
                 continue;
             }
 
-            $path = 'images/cutinapp/productions/' . $field . '-' . Str::uuid() . '.webp';
-            $absolute = Storage::disk('public')->path($path);
-            if (! is_dir(dirname($absolute))) {
-                mkdir(dirname($absolute), 0755, true);
-            }
+            $filename = $field . '-' . Str::uuid() . '.webp';
+            $absolute = $directory . DIRECTORY_SEPARATOR . $filename;
 
             Image::make($request->file($field)->getRealPath())
                 ->orientate()
@@ -72,7 +71,7 @@ class CutinappController extends Controller
                 ->encode('webp', 86)
                 ->save($absolute);
 
-            $production->{$field} = $path;
+            $production->{$field} = 'images/cutinapp/productions/' . $filename;
         }
 
         $production->save();
