@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Application;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
@@ -17,10 +18,14 @@ class EventPassController extends Controller
     public function claim(Request $request, int $ticketId)
     {
         $user = Auth::user();
+        abort_unless($user, 401, 'Faça login para retirar a cortesia.');
+
+        $application = $this->application();
         $alreadyIssued = false;
 
-        $pass = DB::transaction(function () use ($ticketId, $user, &$alreadyIssued) {
+        $pass = DB::transaction(function () use ($ticketId, $user, $application, &$alreadyIssued) {
             $ticket = Ticket::query()
+                ->where('app_id', $application->id)
                 ->where('app_slug', self::APP)
                 ->with('event.production')
                 ->lockForUpdate()
@@ -28,7 +33,10 @@ class EventPassController extends Controller
 
             abort_unless(
                 $ticket->event
+                    && (int) $ticket->event->app_id === (int) $application->id
                     && $ticket->event->app_slug === self::APP
+                    && $ticket->event->production
+                    && (int) $ticket->event->production->app_id === (int) $application->id
                     && ! $ticket->event->is_cancelled
                     && $ticket->event->is_published,
                 422,
@@ -61,6 +69,8 @@ class EventPassController extends Controller
             ])->load(['ticket', 'event.production']);
         });
 
+        $this->registerParticipation($application, $user->id, 'participant');
+
         return response()->json([
             'message' => $alreadyIssued
                 ? 'Você já possui esta cortesia. Abrimos o ingresso já emitido.'
@@ -72,9 +82,12 @@ class EventPassController extends Controller
 
     public function mine()
     {
+        $appId = $this->applicationId();
         $passes = EventPass::query()
             ->where('user_id', Auth::id())
-            ->whereHas('event', fn ($query) => $query->where('app_slug', self::APP))
+            ->whereHas('event', fn ($query) => $query
+                ->where('app_id', $appId)
+                ->where('app_slug', self::APP))
             ->with(['ticket', 'event.production'])
             ->latest()
             ->get();
@@ -84,8 +97,11 @@ class EventPassController extends Controller
 
     public function show(int $passId)
     {
+        $appId = $this->applicationId();
         $pass = EventPass::query()
-            ->whereHas('event', fn ($query) => $query->where('app_slug', self::APP))
+            ->whereHas('event', fn ($query) => $query
+                ->where('app_id', $appId)
+                ->where('app_slug', self::APP))
             ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar'])
             ->findOrFail($passId);
 
@@ -101,7 +117,7 @@ class EventPassController extends Controller
         $event = $this->manageableEvent($eventId);
         $passes = EventPass::query()
             ->where('event_id', $event->id)
-            ->with(['ticket:id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
+            ->with(['ticket:id,app_id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
             ->orderBy('holder_name')
             ->get();
 
@@ -130,15 +146,21 @@ class EventPassController extends Controller
         abort_if($selectedEvent->is_cancelled || ! $selectedEvent->is_published, 422, 'A portaria só pode validar um evento publicado e não cancelado.');
 
         $operator = Auth::user();
+        $appId = $this->applicationId();
 
-        $result = DB::transaction(function () use ($data, $operator, $selectedEvent) {
+        $result = DB::transaction(function () use ($data, $operator, $selectedEvent, $appId) {
             $pass = EventPass::query()
                 ->with(['ticket', 'event.production', 'user'])
                 ->where('token', trim($data['token']))
                 ->lockForUpdate()
                 ->first();
 
-            if (! $pass || $pass->ticket?->app_slug !== self::APP || $pass->event?->app_slug !== self::APP) {
+            if (! $pass
+                || (int) ($pass->ticket?->app_id ?? 0) !== $appId
+                || (int) ($pass->event?->app_id ?? 0) !== $appId
+                || (int) ($pass->event?->production?->app_id ?? 0) !== $appId
+                || $pass->ticket?->app_slug !== self::APP
+                || $pass->event?->app_slug !== self::APP) {
                 return ['status' => 404, 'message' => 'QR Code inválido. Nenhum ingresso Cutinapp encontrado.', 'pass' => null];
             }
 
@@ -194,14 +216,49 @@ class EventPassController extends Controller
     private function manageableEvent(int $eventId): Event
     {
         $operator = Auth::user();
-        $event = Event::query()->where('app_slug', self::APP)->with('production')->findOrFail($eventId);
+        $appId = $this->applicationId();
+        $event = Event::query()
+            ->where('app_id', $appId)
+            ->where('app_slug', self::APP)
+            ->with('production')
+            ->findOrFail($eventId);
         $production = $event->production;
+
+        abort_unless($production && (int) $production->app_id === $appId, 404, 'Evento não encontrado na Cutinapp.');
+
         $allowed = $operator->hasProfile('Administrador')
-            || ($production && (int) $production->user_id === (int) $operator->id)
+            || (int) $production->user_id === (int) $operator->id
             || $operator->hasPermission('ticket_checkin')
             || $operator->hasPermission('event_checkin');
 
         abort_unless($allowed, 403, 'Sem permissão para acessar a operação deste evento.');
         return $event;
+    }
+
+    private function application(): Application
+    {
+        $application = Application::query()
+            ->where('slug', self::APP)
+            ->where('is_active', true)
+            ->first();
+
+        abort_unless($application, 503, 'A Cutinapp não está registrada corretamente na API. Execute as migrations e tente novamente.');
+        return $application;
+    }
+
+    private function applicationId(): int
+    {
+        return (int) $this->application()->id;
+    }
+
+    private function registerParticipation(Application $application, int $userId, string $role): void
+    {
+        $application->users()->syncWithoutDetaching([
+            $userId => [
+                'role' => $role,
+                'status' => 'active',
+                'joined_at' => now(),
+            ],
+        ]);
     }
 }
