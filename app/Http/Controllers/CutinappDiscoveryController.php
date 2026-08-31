@@ -27,14 +27,16 @@ class CutinappDiscoveryController extends Controller
             'free' => 'nullable|boolean',
             'available' => 'nullable|boolean',
             'sort' => 'nullable|in:soonest,newest,popular',
-            'lat' => 'nullable|numeric|between:-90,90',
-            'lng' => 'nullable|numeric|between:-180,180',
+            'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
+            'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
             'radius_km' => 'nullable|integer|min:1|max:500',
             'per_page' => 'nullable|integer|min:1|max:50',
         ], [
             'period.in' => 'Escolha um período de busca válido.',
             'to.after_or_equal' => 'A data final precisa ser igual ou posterior à data inicial.',
             'date.date_format' => 'Informe a data no formato correto.',
+            'lat.required_with' => 'Latitude e longitude precisam ser enviadas juntas.',
+            'lng.required_with' => 'Latitude e longitude precisam ser enviadas juntas.',
         ]);
 
         $appId = $this->applicationId();
@@ -47,10 +49,12 @@ class CutinappDiscoveryController extends Controller
             ->where('events.is_published', true)
             ->where('events.is_cancelled', false)
             ->where('events.end_date', '>', Carbon::now($timezone))
-            ->with(['production:id,app_id,name,slug,user_id,app_slug,logo,city,uf', 'artists:id,app_id,slug,stage_name,photo'])
+            ->with([
+                'production:id,app_id,name,slug,user_id,app_slug,logo,city,uf',
+                'artists:id,app_id,slug,stage_name,photo',
+            ])
             ->withCount(['tickets as ticket_lots_count' => fn ($q) => $q->where('app_id', $appId)])
-            ->withCount(['tickets as free_ticket_lots_count' => fn ($q) => $q->where('app_id', $appId)->where('price', 0)])
-            ->withCount(['tickets as passes_capacity' => fn ($q) => $q->where('app_id', $appId)->where('quantity', '>', 0)]);
+            ->withCount(['tickets as free_ticket_lots_count' => fn ($q) => $q->where('app_id', $appId)->where('price', 0)]);
 
         if (! empty($data['city'])) $query->whereRaw('LOWER(events.city) = LOWER(?)', [trim($data['city'])]);
         if (! empty($data['uf'])) $query->where('events.uf', strtoupper($data['uf']));
@@ -74,9 +78,11 @@ class CutinappDiscoveryController extends Controller
 
         if (($data['free'] ?? false) || ($data['available'] ?? false)) {
             $query->whereHas('tickets', function ($q) use ($appId, $data) {
-                $q->where('app_id', $appId)->where('quantity', '>', 0)
-                    ->where(fn ($d) => $d->whereNull('limit_date')->orWhere('limit_date', '>', now()));
-                if ($data['free'] ?? false) $q->where('price', 0);
+                $q->where('tickets.app_id', $appId)
+                    ->where('tickets.quantity', '>', 0)
+                    ->where(fn ($d) => $d->whereNull('tickets.limit_date')->orWhere('tickets.limit_date', '>', now()))
+                    ->whereRaw('tickets.quantity > (SELECT COUNT(*) FROM event_passes WHERE event_passes.ticket_id = tickets.id)');
+                if ($data['free'] ?? false) $q->where('tickets.price', 0);
             });
         }
 
@@ -87,15 +93,19 @@ class CutinappDiscoveryController extends Controller
             $radius = (int) ($data['radius_km'] ?? 50);
             $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(events.latitude)) * cos(radians(events.longitude) - radians(?)) + sin(radians(?)) * sin(radians(events.latitude))))';
             $query->whereNotNull('events.latitude')->whereNotNull('events.longitude')
-                ->select('events.*')->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
+                ->select('events.*')
+                ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
                 ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
         }
 
-        switch ($data['sort'] ?? ($distanceEnabled ? 'soonest' : 'soonest')) {
-            case 'newest': $query->orderByDesc('events.created_at'); break;
+        switch ($data['sort'] ?? 'soonest') {
+            case 'newest':
+                $query->orderByDesc('events.created_at');
+                break;
             case 'popular':
-                $query->withCount(['tickets as popularity_score' => fn ($q) => $q->where('app_id', $appId)->withCount('passes')])
-                    ->orderByDesc('popularity_score')->orderBy('events.start_date');
+                $query->selectSub(function ($sub) {
+                    $sub->from('event_passes')->selectRaw('COUNT(*)')->whereColumn('event_passes.event_id', 'events.id');
+                }, 'popularity_score')->orderByDesc('popularity_score')->orderBy('events.start_date');
                 break;
             default:
                 if ($distanceEnabled) $query->orderBy('distance_km');
@@ -119,10 +129,14 @@ class CutinappDiscoveryController extends Controller
     public function facets(Request $request)
     {
         $appId = $this->applicationId();
-        $cities = Event::query()->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)->where('is_cancelled', false)->where('end_date', '>', now())
-            ->whereNotNull('city')->selectRaw('city, uf, COUNT(*) total')->groupBy('city', 'uf')->orderByDesc('total')->orderBy('city')->limit(100)->get();
-        $categories = Event::query()->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)->where('end_date', '>', now())
-            ->whereNotNull('category')->selectRaw('category, COUNT(*) total')->groupBy('category')->orderByDesc('total')->limit(50)->get();
+        $cities = Event::query()
+            ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
+            ->where('is_cancelled', false)->where('end_date', '>', now())->whereNotNull('city')
+            ->selectRaw('city, uf, COUNT(*) total')->groupBy('city', 'uf')->orderByDesc('total')->orderBy('city')->limit(100)->get();
+        $categories = Event::query()
+            ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
+            ->where('is_cancelled', false)->where('end_date', '>', now())->whereNotNull('category')
+            ->selectRaw('category, COUNT(*) total')->groupBy('category')->orderByDesc('total')->limit(50)->get();
         return response()->json(['cities' => $cities, 'categories' => $categories, 'timezone' => config('app.timezone')]);
     }
 
@@ -157,20 +171,28 @@ class CutinappDiscoveryController extends Controller
 
     private function weekendRange(Carbon $now): array
     {
-        $friday = $now->copy();
-        if ($now->dayOfWeek > Carbon::SUNDAY && $now->dayOfWeek <= Carbon::FRIDAY) {
-            $friday = $now->copy()->next(Carbon::FRIDAY);
-        } elseif ($now->dayOfWeek === Carbon::SATURDAY || $now->dayOfWeek === Carbon::SUNDAY) {
+        if ($now->isFriday()) {
+            $friday = $now->copy();
+        } elseif ($now->isSaturday() || $now->isSunday()) {
             $friday = $now->copy()->previous(Carbon::FRIDAY);
+        } else {
+            $friday = $now->copy()->next(Carbon::FRIDAY);
         }
-        $from = max($friday->copy()->startOfDay(), $now->copy());
+
+        $from = $friday->copy()->startOfDay();
+        if ($now->betweenIncluded($from, $friday->copy()->addDays(2)->endOfDay())) {
+            $from = $now->copy();
+        }
+
         return [$from, $friday->copy()->addDays(2)->endOfDay()];
     }
 
     private function weekdayRange(Carbon $now, int $weekday): array
     {
         $day = $now->dayOfWeek === $weekday ? $now->copy() : $now->copy()->next($weekday);
-        return [$day->copy()->startOfDay(), $day->copy()->endOfDay()];
+        $from = $day->copy()->startOfDay();
+        if ($now->isSameDay($day)) $from = $now->copy();
+        return [$from, $day->copy()->endOfDay()];
     }
 
     private function applicationId(): int
