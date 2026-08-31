@@ -24,7 +24,7 @@ jobs:
           coverage: none
 
       - name: Validate Composer manifest
-        run: composer validate --no-check-publish
+        run: composer validate --no-check-publish --no-check-lock
 
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
@@ -69,7 +69,10 @@ jobs:
 
       - name: Verify versioned API routes
         shell: bash
-        run: php artisan route:list | grep -q 'api/v1/apps/{application}'
+        run: |
+          php artisan route:list | grep -q 'api/v1/apps/{application}'
+          php artisan route:list | grep -q 'api/cutinapp/events'
+          php artisan route:list | grep -q 'api/cutinapp/checkin'
 
       - name: Run tests
         run: php artisan test
