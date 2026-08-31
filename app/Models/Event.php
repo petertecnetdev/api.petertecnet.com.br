@@ -10,7 +10,7 @@ use Illuminate\Validation\ValidationException;
 class Event extends Model
 {
     protected $fillable = [
-        'app_id', 'app_slug', 'production_id', 'title', 'description', 'image', 'address', 'google_maps_url',
+        'app_id', 'app_slug', 'production_id', 'title', 'description', 'category', 'image', 'address', 'google_maps_url',
         'start_date', 'end_date', 'venue', 'uf', 'establishment_type', 'slug', 'city',
         'state', 'country', 'location', 'cep', 'latitude', 'longitude', 'is_featured',
         'is_published', 'is_approved', 'is_cancelled', 'max_attendees', 'remaining_tickets',
@@ -50,48 +50,30 @@ class Event extends Model
     protected static function booted(): void
     {
         static::saving(function (Event $event) {
-            if ($event->app_slug !== 'cutinapp') {
-                return;
-            }
-
-            if ($event->google_maps_url) {
-                $event->google_maps_url = trim((string) $event->google_maps_url);
-            }
-
-            if (! $event->start_date || ! $event->end_date) {
-                return;
-            }
+            if ($event->app_slug !== 'cutinapp') return;
+            if ($event->google_maps_url) $event->google_maps_url = trim((string) $event->google_maps_url);
+            if (! $event->start_date || ! $event->end_date) return;
 
             $start = Carbon::parse($event->start_date, config('app.timezone'));
             $end = Carbon::parse($event->end_date, config('app.timezone'));
-
             if ($event->isDirty('start_date') && $start->lt(now()->subMinutes(1))) {
-                throw ValidationException::withMessages([
-                    'start_date' => ['O início do evento não pode ficar no passado.'],
-                ]);
+                throw ValidationException::withMessages(['start_date' => ['O início do evento não pode ficar no passado.']]);
             }
-
             if (! $end->gt($start)) {
-                throw ValidationException::withMessages([
-                    'end_date' => ['O término do evento precisa ser posterior ao início.'],
-                ]);
+                throw ValidationException::withMessages(['end_date' => ['O término do evento precisa ser posterior ao início.']]);
             }
         });
     }
 
-    public function application()
-    {
-        return $this->belongsTo(Application::class, 'app_id');
-    }
+    public function application() { return $this->belongsTo(Application::class, 'app_id'); }
+    public function production() { return $this->belongsTo(Production::class); }
+    public function tickets() { return $this->hasMany(Ticket::class); }
 
-    public function production()
+    public function artists()
     {
-        return $this->belongsTo(Production::class);
-    }
-
-    public function tickets()
-    {
-        return $this->hasMany(Ticket::class);
+        return $this->belongsToMany(CutinappArtist::class, 'cutinapp_event_artist', 'event_id', 'artist_id')
+            ->withPivot(['participation_type', 'stage', 'scheduled_at', 'description', 'sort_order', 'is_headliner'])
+            ->withTimestamps();
     }
 
     public function interactions()
@@ -102,18 +84,10 @@ class Event extends Model
     public function getSegmentsnNamesAttribute()
     {
         $assigned = is_array($this->segments) ? $this->segments : [];
-        if ($assigned === []) {
-            return '<i>Nenhum segmento atribuído</i>';
-        }
-
+        if ($assigned === []) return '<i>Nenhum segmento atribuído</i>';
         $names = [];
         $segments = Config::get('segments', []);
-        foreach ($assigned as $key) {
-            if (isset($segments[$key]['name'])) {
-                $names[] = $segments[$key]['name'];
-            }
-        }
-
+        foreach ($assigned as $key) if (isset($segments[$key]['name'])) $names[] = $segments[$key]['name'];
         return implode(' | ', $names);
     }
 }
