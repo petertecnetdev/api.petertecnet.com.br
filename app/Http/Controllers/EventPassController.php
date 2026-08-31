@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
 use Illuminate\Http\Request;
@@ -20,6 +21,10 @@ class EventPassController extends Controller
                 ->with('event.production')
                 ->lockForUpdate()
                 ->findOrFail($ticketId);
+
+            if (! $ticket->event || $ticket->event->is_cancelled) {
+                abort(422, 'Este evento não está disponível para retirada de cortesias.');
+            }
 
             if ((float) $ticket->price > 0) {
                 abort(422, 'Este ingresso não é uma cortesia gratuita.');
@@ -130,15 +135,15 @@ class EventPassController extends Controller
     public function eventStats(int $eventId)
     {
         $operator = Auth::user();
-        $sample = EventPass::query()->with('event.production')->where('event_id', $eventId)->first();
+        $event = Event::query()->with('production')->findOrFail($eventId);
+        $production = $event->production;
 
-        if ($sample) {
-            $production = optional($sample->event)->production;
-            $allowed = $operator->hasProfile('Administrador')
-                || ($production && (int) $production->user_id === (int) $operator->id)
-                || $operator->hasPermission('event_checkin');
-            abort_unless($allowed, 403, 'Sem permissão para visualizar esta portaria.');
-        }
+        $allowed = $operator->hasProfile('Administrador')
+            || ($production && (int) $production->user_id === (int) $operator->id)
+            || $operator->hasPermission('ticket_checkin')
+            || $operator->hasPermission('event_checkin');
+
+        abort_unless($allowed, 403, 'Sem permissão para visualizar esta portaria.');
 
         return response()->json([
             'issued' => EventPass::query()->where('event_id', $eventId)->count(),
