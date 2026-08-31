@@ -37,16 +37,20 @@ class Ticket extends Model
                 return;
             }
 
-            $limit = Carbon::parse($ticket->limit_date, config('app.timezone'));
-            if ($limit->lte(now())) {
+            $timezone = config('app.timezone');
+            $limit = Carbon::parse($ticket->limit_date, $timezone);
+            $minimum = Carbon::now($timezone)->addHour();
+
+            if ($limit->lt($minimum)) {
                 throw ValidationException::withMessages([
-                    'limit_date' => ['O prazo de retirada da cortesia precisa ficar no futuro.'],
+                    'limit_date' => ['O prazo de retirada precisa ser de pelo menos 1 hora após o horário atual.'],
                 ]);
             }
 
             if ($event->start_date && $limit->gt($event->start_date)) {
+                $eventStart = Carbon::parse($event->start_date, $timezone)->format('d/m/Y \à\s H:i');
                 throw ValidationException::withMessages([
-                    'limit_date' => ['O prazo de retirada da cortesia não pode ultrapassar o início do evento.'],
+                    'limit_date' => ["O prazo de retirada não pode ultrapassar o início do evento ({$eventStart})."],
                 ]);
             }
         });
