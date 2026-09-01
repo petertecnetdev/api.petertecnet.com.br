@@ -18,6 +18,7 @@ class CutinappPublicSocialController extends Controller
             ->where('slug', $slug)
             ->where('is_published', true)
             ->where('is_cancelled', false)
+            ->where('is_private', false)
             ->firstOrFail();
 
         return response()->json([

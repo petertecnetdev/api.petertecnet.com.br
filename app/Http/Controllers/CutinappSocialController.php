@@ -8,6 +8,7 @@ use App\Models\CutinappArtist;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
+use App\Services\CutinappLineupNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -37,12 +38,14 @@ class CutinappSocialController extends Controller
                 ->where('events.app_slug', self::APP)
                 ->where('events.is_published', true)
                 ->where('events.is_cancelled', false)
+                ->where('events.is_private', false)
                 ->where('events.end_date', '>', now())])
             ->withCount(['events as total_events_count' => fn ($q) => $q
                 ->where('events.app_id', $appId)
                 ->where('events.app_slug', self::APP)
                 ->where('events.is_published', true)
-                ->where('events.is_cancelled', false)])
+                ->where('events.is_cancelled', false)
+                ->where('events.is_private', false)])
             ->orderBy('stage_name');
 
         if ($q = trim((string) ($data['q'] ?? ''))) {
@@ -144,7 +147,7 @@ class CutinappSocialController extends Controller
             'stage' => $data['stage'] ?? null,
             'is_headliner' => (bool) ($data['is_headliner'] ?? false),
         ]]);
-        $this->notifyFollowersForArtistLineup($artist, $event);
+        app(CutinappLineupNotificationService::class)->notifyPublishedEvent($event->fresh('artists'));
         return response()->json(['message' => 'Artista vinculado ao evento.', 'artists' => $event->artists()->orderBy('cutinapp_event_artist.sort_order')->get()]);
     }
 
@@ -163,9 +166,9 @@ class CutinappSocialController extends Controller
             ->firstOrFail();
         $production->setAttribute('followers_count', $this->followersCount('production', $production->id));
         $production->setAttribute('is_following', $this->isFollowing($request, 'production', $production->id));
-        $upcoming = Event::where('app_id', $appId)->where('production_id', $production->id)->where('is_published', true)->where('is_cancelled', false)->where('end_date', '>', now())->orderBy('start_date')->limit(24)->get();
-        $past = Event::where('app_id', $appId)->where('production_id', $production->id)->where('end_date', '<=', now())->orderByDesc('start_date')->limit(24)->get();
-        $artists = CutinappArtist::query()->where('app_id', $appId)->whereHas('events', fn ($q) => $q->where('events.production_id', $production->id))->distinct()->limit(30)->get();
+        $upcoming = Event::where('app_id', $appId)->where('production_id', $production->id)->where('is_published', true)->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', now())->orderBy('start_date')->limit(24)->get();
+        $past = Event::where('app_id', $appId)->where('production_id', $production->id)->where('is_published', true)->where('is_cancelled', false)->where('is_private', false)->where('end_date', '<=', now())->orderByDesc('start_date')->limit(24)->get();
+        $artists = CutinappArtist::query()->where('app_id', $appId)->whereHas('events', fn ($q) => $q->where('events.production_id', $production->id)->where('events.is_published', true)->where('events.is_cancelled', false)->where('events.is_private', false))->distinct()->limit(30)->get();
         return response()->json(compact('production', 'upcoming', 'past', 'artists'));
     }
 
@@ -196,6 +199,7 @@ class CutinappSocialController extends Controller
             ->where('app_slug', self::APP)
             ->where('is_published', true)
             ->where('is_cancelled', false)
+            ->where('is_private', false)
             ->findOrFail($eventId);
         $data = $request->validate(['is_favorite' => 'sometimes|boolean', 'is_interested' => 'sometimes|boolean']);
         DB::table('cutinapp_event_engagements')->updateOrInsert(
@@ -234,7 +238,7 @@ class CutinappSocialController extends Controller
         $followedArtists = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'user_id' => $user->id, 'target_type' => 'artist'])->pluck('target_id');
         $preferences = DB::table('cutinapp_user_preferences')->where(['app_id' => $appId, 'user_id' => $user->id])->first();
 
-        $query = Event::query()->where('events.app_id', $appId)->where('events.app_slug', self::APP)->where('events.is_published', true)->where('events.is_cancelled', false)->where('events.end_date', '>', now())
+        $query = Event::query()->where('events.app_id', $appId)->where('events.app_slug', self::APP)->where('events.is_published', true)->where('events.is_cancelled', false)->where('events.is_private', false)->where('events.end_date', '>', now())
             ->with(['production:id,app_id,name,slug,logo,city,uf', 'artists:id,app_id,slug,stage_name,photo'])
             ->withCount(['tickets as passes_available_count' => fn ($q) => $q->where('app_id', $appId)->where('price', 0)->where('quantity', '>', 0)])
             ->orderByRaw('CASE WHEN production_id IN (' . ($followedProductions->isEmpty() ? '0' : $followedProductions->map(fn ($id) => (int) $id)->implode(',')) . ') THEN 0 ELSE 1 END')
@@ -266,6 +270,7 @@ class CutinappSocialController extends Controller
             ->where('events.app_slug', self::APP)
             ->where('events.is_published', true)
             ->where('events.is_cancelled', false)
+            ->where('events.is_private', false)
             ->whereHas('artists', fn ($a) => $a->where('cutinapp_artists.id', $artistId))
             ->with('production:id,name,slug,logo');
         return $upcoming ? $q->where('end_date', '>', now())->orderBy('start_date') : $q->where('end_date', '<=', now())->orderByDesc('start_date');
@@ -344,20 +349,6 @@ class CutinappSocialController extends Controller
         $base = Str::slug($name) ?: 'artista'; $slug = $base; $i = 2;
         while (CutinappArtist::when($ignore, fn ($q) => $q->whereKeyNot($ignore))->where('slug', $slug)->exists()) $slug = $base . '-' . $i++;
         return $slug;
-    }
-
-    private function notifyFollowersForArtistLineup(CutinappArtist $artist, Event $event): void
-    {
-        $followers = DB::table('cutinapp_follows')->where(['app_id' => $this->applicationId(), 'target_type' => 'artist', 'target_id' => $artist->id])->pluck('user_id');
-        foreach ($followers as $userId) {
-            AppNotification::create([
-                'app_id' => $this->applicationId(), 'user_id' => $userId, 'type' => 'artist_lineup',
-                'title' => $artist->stage_name . ' confirmado em evento',
-                'message' => $artist->stage_name . ' fará parte de ' . $event->title . '.',
-                'reference_type' => 'event', 'reference_id' => $event->id, 'reference_url' => '/event/' . $event->slug,
-                'data' => ['artist_id' => $artist->id, 'event_id' => $event->id],
-            ]);
-        }
     }
 
     private function requestUser(Request $request): User

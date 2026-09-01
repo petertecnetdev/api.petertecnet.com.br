@@ -36,6 +36,7 @@ class CutinappEventController extends Controller
             ->where('slug', $slug)
             ->where('is_published', true)
             ->where('is_cancelled', false)
+            ->where('is_private', false)
             ->where('end_date', '>', now())
             ->with([
                 'production:id,app_id,name,slug,user_id,app_slug,logo,background,description,city,uf,instagram_url,website_url',
@@ -184,9 +185,13 @@ class CutinappEventController extends Controller
 
         $wasPublished = (bool) $event->is_published;
         $event->forceFill(['is_published' => true])->save();
-        if (! $wasPublished) $this->notifyProductionFollowers($event);
+        if (! $wasPublished && ! $event->is_private) $this->notifyProductionFollowers($event);
 
-        return response()->json(['message' => 'Evento publicado. A página pública já está disponível.', 'event' => $event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
+        $message = $event->is_private
+            ? 'Evento privado ativado. Ele permanece fora da descoberta e dos perfis públicos.'
+            : 'Evento publicado. A página pública já está disponível.';
+
+        return response()->json(['message' => $message, 'event' => $event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
 
     public function unpublish(Request $request, int $id)
@@ -277,6 +282,8 @@ class CutinappEventController extends Controller
 
     private function notifyProductionFollowers(Event $event): void
     {
+        if ($event->is_private) return;
+
         $appId = $this->applicationId();
         $followers = DB::table('cutinapp_follows')->where(['app_id' => $appId, 'target_type' => 'production', 'target_id' => $event->production_id])->pluck('user_id');
         foreach ($followers as $userId) {
