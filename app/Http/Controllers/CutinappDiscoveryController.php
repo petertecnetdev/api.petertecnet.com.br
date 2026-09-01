@@ -48,6 +48,7 @@ class CutinappDiscoveryController extends Controller
             ->where('events.app_slug', self::APP)
             ->where('events.is_published', true)
             ->where('events.is_cancelled', false)
+            ->where('events.is_private', false)
             ->where('events.end_date', '>', Carbon::now($timezone))
             ->with([
                 'production:id,app_id,name,slug,user_id,app_slug,logo,city,uf',
@@ -131,11 +132,11 @@ class CutinappDiscoveryController extends Controller
         $appId = $this->applicationId();
         $cities = Event::query()
             ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
-            ->where('is_cancelled', false)->where('end_date', '>', now())->whereNotNull('city')
+            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', now())->whereNotNull('city')
             ->selectRaw('city, uf, COUNT(*) total')->groupBy('city', 'uf')->orderByDesc('total')->orderBy('city')->limit(100)->get();
         $categories = Event::query()
             ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
-            ->where('is_cancelled', false)->where('end_date', '>', now())->whereNotNull('category')
+            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', now())->whereNotNull('category')
             ->selectRaw('category, COUNT(*) total')->groupBy('category')->orderByDesc('total')->limit(50)->get();
         return response()->json(['cities' => $cities, 'categories' => $categories, 'timezone' => config('app.timezone')]);
     }
