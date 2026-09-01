@@ -15,22 +15,17 @@ class Production extends Model
     {
         static::saving(function (Production $production) {
             if ($production->app_slug !== 'cutinapp') return;
-            $locationDirty = ! $production->exists || $production->isDirty(['city_id','city','uf','cep']);
-            if (! $locationDirty) return;
-            $service = app(CutinappLocationService::class);
-            if ($production->cep) $production->cep = $service->normalizeCep($production->cep);
-            if ($production->city_id || $production->city || $production->uf) {
-                $data = ['city_id'=>$production->city_id,'city'=>$production->city,'uf'=>$production->uf];
-                $service->applyCanonicalCity($data, true);
-                $production->city_id=$data['city_id']; $production->city=$data['city']; $production->uf=$data['uf'];
+            foreach (['city_id','cep','address_number','neighborhood','address_complement','address_reference','formatted_address','latitude','longitude','place_id','google_maps_url','location_public'] as $field) {
+                if (request()->exists($field)) $production->setAttribute($field, request()->input($field));
             }
+            $locationDirty=!$production->exists||$production->isDirty(['city_id','city','uf','cep']);
+            if(!$locationDirty)return;
+            $service=app(CutinappLocationService::class);
+            if($production->cep)$production->cep=$service->normalizeCep($production->cep);
+            if($production->city_id||$production->city||$production->uf){$data=['city_id'=>$production->city_id,'city'=>$production->city,'uf'=>$production->uf];$service->applyCanonicalCity($data,true);$production->city_id=$data['city_id'];$production->city=$data['city'];$production->uf=$data['uf'];}
         });
     }
 
-    public function application(){return $this->belongsTo(Application::class,'app_id');}
-    public function user(){return $this->belongsTo(User::class);}
-    public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');}
-    public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','production');}
-    public function getSegmentsnNamesAttribute(){ $assigned=is_array($this->segments)?$this->segments:[];if($assigned===[])return '<i>Nenhum segmento atribuído</i>';$names=[];$segments=Config::get('segments',[]);foreach($assigned as $key)if(isset($segments[$key]['name']))$names[]=$segments[$key]['name'];return implode(' | ',$names);}
-    public function events(){return $this->hasMany(Event::class)->orderBy('start_date','desc');}
+    public function application(){return $this->belongsTo(Application::class,'app_id');} public function user(){return $this->belongsTo(User::class);} public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');} public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','production');}
+    public function getSegmentsnNamesAttribute(){ $assigned=is_array($this->segments)?$this->segments:[];if($assigned===[])return '<i>Nenhum segmento atribuído</i>';$names=[];$segments=Config::get('segments',[]);foreach($assigned as $key)if(isset($segments[$key]['name']))$names[]=$segments[$key]['name'];return implode(' | ',$names);} public function events(){return $this->hasMany(Event::class)->orderBy('start_date','desc');}
 }
