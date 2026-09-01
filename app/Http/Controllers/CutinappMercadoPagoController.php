@@ -107,16 +107,9 @@ class CutinappMercadoPagoController extends Controller
 
         if (!$payment || !$payment->order) return response()->json(['ok' => true]);
 
-        $account = DB::table('cutinapp_producer_payment_accounts')
-            ->where('production_id', $payment->order->production_id)
-            ->where('provider', 'mercadopago')
-            ->first();
-
-        if (!$account || !$account->access_token) return response()->json(['ok' => false], 409);
-
         try {
-            [, $sellerToken] = $this->sellerToken($account);
-            $remote = $this->mercadoPago->getPayment($sellerToken, $dataId);
+            $token = $this->paymentAccessToken($payment, $payment->order);
+            $remote = $this->mercadoPago->getPayment($token, $dataId);
             $this->syncPayment($payment, $remote);
         } catch (Throwable $e) {
             report($e);
@@ -134,12 +127,9 @@ class CutinappMercadoPagoController extends Controller
         $payment = $order->payments()->where('provider', 'mercadopago')->latest('id')->first();
         if (!$payment || !$payment->provider_payment_id) return response()->json(['order' => $order->fresh(['payments'])]);
 
-        $account = DB::table('cutinapp_producer_payment_accounts')->where('production_id', $order->production_id)->where('provider', 'mercadopago')->first();
-        abort_unless($account && $account->access_token, 409, 'Conta Mercado Pago da produção indisponível.');
-
         try {
-            [, $sellerToken] = $this->sellerToken($account);
-            $remote = $this->mercadoPago->getPayment($sellerToken, (string) $payment->provider_payment_id);
+            $token = $this->paymentAccessToken($payment, $order);
+            $remote = $this->mercadoPago->getPayment($token, (string) $payment->provider_payment_id);
             $this->syncPayment($payment, $remote);
         } catch (Throwable $e) {
             report($e);
@@ -159,12 +149,13 @@ class CutinappMercadoPagoController extends Controller
             $amount = round((float) ($remote['transaction_amount'] ?? 0), 2);
             $externalReference = (string) ($remote['external_reference'] ?? '');
             $providerFee = collect($remote['fee_details'] ?? [])->sum(fn ($fee) => (float) ($fee['amount'] ?? 0));
+            $settlementMode = (string) data_get($order->metadata, 'settlement_mode', 'automatic_split');
 
             abort_if($remoteId === '' || $remoteId !== (string) $payment->provider_payment_id, 422, 'Pagamento remoto não corresponde ao pagamento local.');
             abort_if($externalReference === '' || $externalReference !== (string) $order->public_id, 422, 'Referência externa do pagamento é inválida.');
             abort_if(abs($amount - (float) $order->total) > 0.009, 422, 'Valor confirmado pelo Mercado Pago é diferente do pedido.');
 
-            if (array_key_exists('application_fee', $remote) && abs((float) $remote['application_fee'] - (float) $order->platform_fee) > 0.009) {
+            if ($settlementMode === 'automatic_split' && array_key_exists('application_fee', $remote) && abs((float) $remote['application_fee'] - (float) $order->platform_fee) > 0.009) {
                 abort(422, 'A comissão confirmada pelo Mercado Pago é diferente da comissão do pedido.');
             }
 
@@ -216,14 +207,17 @@ class CutinappMercadoPagoController extends Controller
             DB::table('cutinapp_inventory_reservations')->where('order_id', $order->id)->whereNull('released_at')->update(['released_at' => now(), 'updated_at' => now()]);
 
             if (!DB::table('cutinapp_ledger_entries')->where('payment_id', $payment->id)->where('type', 'gross_sale')->exists()) {
+                $producerDescription = $settlementMode === 'automatic_split'
+                    ? 'Crédito líquido do produtor via split Mercado Pago'
+                    : 'Crédito líquido do produtor a repassar pela plataforma';
                 foreach ([
                     ['type'=>'gross_sale','amount'=>$order->subtotal,'description'=>'Venda aprovada pelo Mercado Pago'],
                     ['type'=>'platform_fee','amount'=>-$order->platform_fee,'description'=>'Comissão Peter Tecnet / Cutinapp'],
-                    ['type'=>'producer_credit','amount'=>$order->producer_net,'description'=>'Crédito líquido do produtor via split Mercado Pago'],
+                    ['type'=>'producer_credit','amount'=>$order->producer_net,'description'=>$producerDescription],
                 ] as $entry) {
                     DB::table('cutinapp_ledger_entries')->insert(array_merge($entry, [
                         'production_id'=>$order->production_id,'order_id'=>$order->id,'payment_id'=>$payment->id,
-                        'status'=>'posted','metadata'=>json_encode(['provider'=>'mercadopago']), 'created_at'=>now(),'updated_at'=>now(),
+                        'status'=>'posted','metadata'=>json_encode(['provider'=>'mercadopago','settlement_mode'=>$settlementMode]), 'created_at'=>now(),'updated_at'=>now(),
                     ]));
                 }
             }
@@ -263,6 +257,24 @@ class CutinappMercadoPagoController extends Controller
                 'updated_at' => now(),
             ]);
         }
+    }
+
+    private function paymentAccessToken(CutinappPayment $payment, CutinappOrder $order): string
+    {
+        $settlementMode = (string) data_get($order->metadata, 'settlement_mode', data_get($payment->provider_payload, 'metadata.settlement_mode', 'automatic_split'));
+        if ($settlementMode === 'platform_collection') {
+            $token = trim((string) config('services.mercadopago.access_token'));
+            if ($token === '') throw new RuntimeException('Token Mercado Pago da plataforma não configurado.');
+            return $token;
+        }
+
+        $account = DB::table('cutinapp_producer_payment_accounts')
+            ->where('production_id', $order->production_id)
+            ->where('provider', 'mercadopago')
+            ->where('status', 'connected')
+            ->first();
+        if (!$account || !$account->access_token) throw new RuntimeException('Conta Mercado Pago da produção indisponível.');
+        return $this->sellerToken($account)[1];
     }
 
     private function sellerToken(object $account): array
