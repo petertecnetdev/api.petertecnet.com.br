@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\CutinappController;
+use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
 use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\CutinappLocationController;
@@ -49,8 +50,8 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/notifications', [CutinappSocialController::class, 'notifications']);
     Route::post('/courtesies', [CutinappController::class, 'createCourtesy']);
     Route::get('/events/{eventId}/courtesies', [CutinappController::class, 'eventCourtesies'])->whereNumber('eventId');
-    Route::match(['post', 'put'], '/courtesies/{ticketId}', [CutinappController::class, 'updateCourtesy'])->whereNumber('ticketId');
-    Route::delete('/courtesies/{ticketId}', [CutinappController::class, 'deleteCourtesy'])->whereNumber('ticketId');
+    Route::match(['post', 'put'], '/courtesies/{ticketId}', [CutinappCourtesyController::class, 'update'])->whereNumber('ticketId');
+    Route::delete('/courtesies/{ticketId}', [CutinappCourtesyController::class, 'destroy'])->whereNumber('ticketId');
     Route::get('/passes/mine', [EventPassController::class, 'mine']);
     Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
     Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');
