@@ -21,7 +21,7 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/locations/cep/{cep}', [CutinappLocationController::class, 'cep'])->where('cep', '[0-9-]{8,9}')->middleware('throttle:60,1');
     Route::get('/events', [CutinappDiscoveryController::class, 'events']);
     Route::get('/discovery/facets', [CutinappDiscoveryController::class, 'facets']);
-    Route::get('/events/public/{slug}', [CutinappEventController::class, 'publicEvent']);
+    Route::get('/events/public/{slug}', [CutinappDiscoveryController::class, 'publicEvent']);
     Route::get('/events/public/{slug}/artists', [CutinappPublicSocialController::class, 'eventArtists']);
     Route::get('/events/public/{slug}/community', [CutinappEventCommunityController::class, 'publicCommunity']);
     Route::get('/artists', [CutinappSocialController::class, 'artists']);
