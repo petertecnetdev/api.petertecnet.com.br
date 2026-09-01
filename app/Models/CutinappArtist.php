@@ -9,7 +9,7 @@ class CutinappArtist extends Model
     protected $table = 'cutinapp_artists';
 
     protected $fillable = [
-        'app_id', 'user_id', 'slug', 'stage_name', 'bio', 'city', 'uf', 'genres',
+        'app_id', 'user_id', 'slug', 'artist_type', 'stage_name', 'bio', 'city', 'uf', 'genres',
         'photo', 'cover', 'instagram_url', 'youtube_url', 'spotify_url', 'website_url',
         'is_published',
     ];
@@ -34,5 +34,22 @@ class CutinappArtist extends Model
         return $this->belongsToMany(Event::class, 'cutinapp_event_artist', 'artist_id', 'event_id')
             ->withPivot(['participation_type', 'stage', 'scheduled_at', 'description', 'sort_order', 'is_headliner'])
             ->withTimestamps();
+    }
+
+    public function members()
+    {
+        return $this->hasMany(CutinappArtistMember::class, 'artist_id')
+            ->orderBy('sort_order')
+            ->orderBy('display_name');
+    }
+
+    public function groupMemberships()
+    {
+        return $this->hasMany(CutinappArtistMember::class, 'member_artist_id');
+    }
+
+    public function isGroup(): bool
+    {
+        return in_array($this->artist_type, ['band', 'group', 'duo', 'collective', 'orchestra'], true);
     }
 }
