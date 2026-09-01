@@ -85,12 +85,12 @@ class CutinappEventCommunityController extends Controller
         $user = $this->requestUser($request);
         $event = $this->publicEventById($eventId);
         $data = $request->validate([
-            'body' => 'required|string|min:2|max:2000',
+            'body' => 'required|string|min:2|max:3000',
             'parent_id' => 'nullable|integer|min:1',
         ], [
             'body.required' => 'Escreva uma mensagem antes de publicar.',
             'body.min' => 'Sua mensagem precisa ter pelo menos 2 caracteres.',
-            'body.max' => 'Sua mensagem pode ter no máximo 2.000 caracteres.',
+            'body.max' => 'Sua mensagem pode ter no máximo 3.000 caracteres.',
         ]);
 
         $parentId = $data['parent_id'] ?? null;
@@ -162,7 +162,7 @@ class CutinappEventCommunityController extends Controller
         $user = $this->requestUser($request);
         $event = $this->publicEventById($eventId);
         $data = $request->validate([
-            'reason' => 'required|in:fraud,misleading,inappropriate,safety,cancelled,spam,copyright,other',
+            'reason' => 'required|in:fraud,misleading,inappropriate,safety,cancelled,illegal,hate,harassment,spam,copyright,other',
             'details' => 'nullable|string|max:3000',
         ], [
             'reason.required' => 'Selecione o motivo da denúncia.',
@@ -186,14 +186,26 @@ class CutinappEventCommunityController extends Controller
 
     private function publicEventBySlug(string $slug): Event
     {
-        return Event::query()->where('app_id', $this->applicationId())->where('app_slug', self::APP)->where('slug', $slug)
-            ->where('is_published', true)->where('is_cancelled', false)->where('is_private', false)->firstOrFail();
+        return Event::query()
+            ->where('app_id', $this->applicationId())
+            ->where('app_slug', self::APP)
+            ->where('slug', $slug)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->where(fn ($query) => $query->where('is_private', false)->orWhereNull('is_private'))
+            ->firstOrFail();
     }
 
     private function publicEventById(int $id): Event
     {
-        return Event::query()->where('app_id', $this->applicationId())->where('app_slug', self::APP)->where('id', $id)
-            ->where('is_published', true)->where('is_cancelled', false)->where('is_private', false)->firstOrFail();
+        return Event::query()
+            ->where('app_id', $this->applicationId())
+            ->where('app_slug', self::APP)
+            ->where('id', $id)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->where(fn ($query) => $query->where('is_private', false)->orWhereNull('is_private'))
+            ->firstOrFail();
     }
 
     private function applicationId(): int
