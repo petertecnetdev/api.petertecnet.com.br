@@ -16,6 +16,61 @@ class CutinappPublicProductionController extends Controller
 {
     private const APP = 'cutinapp';
 
+    public function index(Request $request)
+    {
+        $data = $request->validate([
+            'city' => 'nullable|string|max:120',
+            'uf' => 'nullable|string|size:2',
+            'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
+            'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
+            'radius_km' => 'nullable|integer|min:1|max:500',
+            'per_page' => 'nullable|integer|min:1|max:24',
+        ]);
+
+        $appId = $this->applicationId();
+        $query = Production::query()
+            ->where('app_id', $appId)
+            ->where('app_slug', self::APP)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->withCount(['events as upcoming_events_count' => fn ($q) => $q
+                ->where('app_id', $appId)
+                ->where('app_slug', self::APP)
+                ->where('is_published', true)
+                ->where('is_cancelled', false)
+                ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))
+                ->where('end_date', '>', now())]);
+
+        if (! empty($data['city'])) {
+            $query->whereRaw('LOWER(city) = LOWER(?)', [trim($data['city'])]);
+        }
+        if (! empty($data['uf'])) {
+            $query->where('uf', strtoupper($data['uf']));
+        }
+
+        $distanceEnabled = isset($data['lat'], $data['lng']);
+        if ($distanceEnabled) {
+            $lat = (float) $data['lat'];
+            $lng = (float) $data['lng'];
+            $radius = (int) ($data['radius_km'] ?? 80);
+            $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))';
+            $query->whereNotNull('latitude')
+                ->whereNotNull('longitude')
+                ->select('productions.*')
+                ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
+                ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius])
+                ->orderBy('distance_km');
+        } else {
+            $query->orderByDesc('is_featured')
+                ->orderByDesc('upcoming_events_count')
+                ->orderBy('name');
+        }
+
+        return response()->json([
+            'productions' => $query->paginate($data['per_page'] ?? 8)->appends($request->query()),
+        ]);
+    }
+
     public function show(Request $request, string $slug)
     {
         $appId = $this->applicationId();
@@ -37,7 +92,7 @@ class CutinappPublicProductionController extends Controller
             ->where('production_id', $production->id)
             ->where('is_published', true)
             ->where('is_cancelled', false)
-            ->where('is_private', false);
+            ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'));
 
         $upcoming = (clone $visibleEvents)
             ->where('end_date', '>', now())
@@ -60,7 +115,7 @@ class CutinappPublicProductionController extends Controller
                 ->where('events.production_id', $production->id)
                 ->where('events.is_published', true)
                 ->where('events.is_cancelled', false)
-                ->where('events.is_private', false))
+                ->where(fn ($privacy) => $privacy->where('events.is_private', false)->orWhereNull('events.is_private')))
             ->distinct()
             ->limit(30)
             ->get();
@@ -94,9 +149,7 @@ class CutinappPublicProductionController extends Controller
     private function optionalRequestUser(Request $request): ?User
     {
         $token = $request->bearerToken();
-        if (! $token) {
-            return null;
-        }
+        if (! $token) return null;
 
         try {
             $user = JWTAuth::setToken($token)->authenticate();
@@ -114,7 +167,6 @@ class CutinappPublicProductionController extends Controller
             ->first();
 
         abort_unless($app, 503, 'A Cutinapp não está registrada corretamente na API.');
-
         return (int) $app->id;
     }
 }
