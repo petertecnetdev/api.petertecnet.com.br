@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\ValidationException;
 
 class EventPass extends Model
 {
@@ -26,6 +27,36 @@ class EventPass extends Model
     ];
 
     protected $hidden = [];
+
+    protected static function booted(): void
+    {
+        static::saving(function (EventPass $pass) {
+            if (! $pass->isDirty('checked_in_at') || ! $pass->checked_in_at) {
+                return;
+            }
+
+            $event = $pass->relationLoaded('event') ? $pass->event : $pass->event()->first();
+            if (! $event || $event->app_slug !== 'cutinapp') {
+                return;
+            }
+
+            $now = now(config('app.timezone'));
+            $start = $event->start_date?->copy()->timezone(config('app.timezone'));
+            $end = $event->end_date?->copy()->timezone(config('app.timezone'));
+
+            if ($start && $now->lt($start)) {
+                throw ValidationException::withMessages([
+                    'token' => ['Este ingresso ainda não pode ser utilizado. A entrada será liberada no horário de início do evento.'],
+                ]);
+            }
+
+            if ($end && $now->gt($end)) {
+                throw ValidationException::withMessages([
+                    'token' => ['Este ingresso não pode mais ser utilizado porque o evento já terminou.'],
+                ]);
+            }
+        });
+    }
 
     public function ticket()
     {
