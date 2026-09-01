@@ -27,7 +27,11 @@ class CutinappCheckinScopeTest extends TestCase
         $operator->update(['profile_id' => $operatorProfile->id]);
 
         $production = $this->withHeaders($this->headersFor($owner))
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Escopo'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Escopo',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->json('production');
 
