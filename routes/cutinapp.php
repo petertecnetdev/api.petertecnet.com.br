@@ -4,6 +4,7 @@ use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappDiscoveryController;
 use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\CutinappLocationController;
+use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
 use App\Http\Controllers\EventPassController;
@@ -20,7 +21,7 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/events/public/{slug}/artists', [CutinappPublicSocialController::class, 'eventArtists']);
     Route::get('/artists', [CutinappSocialController::class, 'artists']);
     Route::get('/artists/{slug}', [CutinappSocialController::class, 'publicArtist']);
-    Route::get('/productions/public/{slug}', [CutinappSocialController::class, 'publicProduction']);
+    Route::get('/productions/public/{slug}', [CutinappPublicProductionController::class, 'show']);
 });
 
 Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
