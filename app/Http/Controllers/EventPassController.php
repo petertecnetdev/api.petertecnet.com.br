@@ -182,13 +182,32 @@ class EventPassController extends Controller
                 return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => null];
             }
 
+            $now = now();
+            if ($pass->event->start_date && $now->lt($pass->event->start_date)) {
+                $startsAt = $pass->event->start_date->timezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
+                return [
+                    'status' => 422,
+                    'message' => "Este ingresso ainda não pode ser utilizado. A entrada será liberada no início do evento, em {$startsAt}.",
+                    'pass' => $pass,
+                ];
+            }
+
+            if ($pass->event->end_date && $now->gt($pass->event->end_date)) {
+                $endedAt = $pass->event->end_date->timezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
+                return [
+                    'status' => 422,
+                    'message' => "Este ingresso não pode mais ser utilizado. O evento terminou em {$endedAt}.",
+                    'pass' => $pass,
+                ];
+            }
+
             if ($pass->checked_in_at) {
                 return ['status' => 409, 'message' => 'Este ingresso já foi utilizado anteriormente.', 'pass' => $pass];
             }
 
             $pass->forceFill([
                 'status' => 'checked_in',
-                'checked_in_at' => now(),
+                'checked_in_at' => $now,
                 'checked_in_by' => $operator->id,
             ])->save();
 
@@ -212,7 +231,7 @@ class EventPassController extends Controller
         $event = $this->manageableEvent($eventId, $operator);
 
         return response()->json([
-            'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled']),
+            'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled', 'start_date', 'end_date']),
             'issued' => EventPass::query()->where('event_id', $eventId)->count(),
             'checked_in' => EventPass::query()->where('event_id', $eventId)->whereNotNull('checked_in_at')->count(),
         ]);
