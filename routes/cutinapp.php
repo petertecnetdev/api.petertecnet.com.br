@@ -32,6 +32,7 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/artists', [CutinappSocialController::class, 'artists']);
     Route::get('/artists/{slug}/members', [CutinappArtistMemberController::class, 'publicIndex']);
     Route::get('/artists/{slug}', [CutinappSocialController::class, 'publicArtist']);
+    Route::get('/productions/public', [CutinappPublicProductionController::class, 'index']);
     Route::get('/productions/public/{slug}', [CutinappPublicProductionController::class, 'show']);
 });
 
