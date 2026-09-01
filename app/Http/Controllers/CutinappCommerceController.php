@@ -192,7 +192,9 @@ class CutinappCommerceController extends Controller
                 'payer' => $payer,
                 'metadata' => ['app_slug'=>self::APP,'order_id'=>$order->id,'order_public_id'=>$order->public_id,'production_id'=>$order->production_id,'settlement_mode'=>$settlementMode],
             ];
-            if ($usesProducerAccount) $payload['application_fee'] = (float) $order->platform_fee;
+            if ($usesProducerAccount && (float) $order->platform_fee > 0) {
+                $payload['application_fee'] = (float) $order->platform_fee;
+            }
 
             if ($data['payment_method'] === 'pix') {
                 $payload['payment_method_id'] = 'pix';
