@@ -3,6 +3,7 @@
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
+use App\Http\Controllers\CutinappEventCommunityController;
 use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\CutinappLocationController;
 use App\Http\Controllers\CutinappPassClaimController;
@@ -21,6 +22,7 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/discovery/facets', [CutinappDiscoveryController::class, 'facets']);
     Route::get('/events/public/{slug}', [CutinappEventController::class, 'publicEvent']);
     Route::get('/events/public/{slug}/artists', [CutinappPublicSocialController::class, 'eventArtists']);
+    Route::get('/events/public/{slug}/community', [CutinappEventCommunityController::class, 'publicCommunity']);
     Route::get('/artists', [CutinappSocialController::class, 'artists']);
     Route::get('/artists/{slug}', [CutinappSocialController::class, 'publicArtist']);
     Route::get('/productions/public/{slug}', [CutinappPublicProductionController::class, 'show']);
@@ -37,6 +39,12 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::match(['post', 'put'], '/events/{id}', [CutinappEventController::class, 'update'])->whereNumber('id');
     Route::post('/events/{id}/publish', [CutinappEventController::class, 'publish'])->whereNumber('id');
     Route::post('/events/{id}/unpublish', [CutinappEventController::class, 'unpublish'])->whereNumber('id');
+    Route::post('/events/{eventId}/community', [CutinappEventCommunityController::class, 'createPost'])->whereNumber('eventId')->middleware('throttle:30,1');
+    Route::delete('/community/{postId}', [CutinappEventCommunityController::class, 'deletePost'])->whereNumber('postId');
+    Route::post('/community/{postId}/like', [CutinappEventCommunityController::class, 'like'])->whereNumber('postId')->middleware('throttle:120,1');
+    Route::delete('/community/{postId}/like', [CutinappEventCommunityController::class, 'unlike'])->whereNumber('postId');
+    Route::put('/events/{eventId}/rating', [CutinappEventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
+    Route::post('/events/{eventId}/report', [CutinappEventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
     Route::get('/artists/mine/list', [CutinappSocialController::class, 'myArtists']);
     Route::post('/artists', [CutinappSocialController::class, 'storeArtist']);
     Route::match(['post', 'put'], '/artists/{id}', [CutinappSocialController::class, 'updateArtist'])->whereNumber('id');
