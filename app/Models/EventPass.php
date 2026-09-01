@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Traits\HasFiles;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\ValidationException;
@@ -12,6 +13,7 @@ class EventPass extends Model
 
     protected $fillable = [
         'ticket_id',
+        'cutinapp_order_item_id',
         'event_id',
         'user_id',
         'holder_name',
@@ -61,6 +63,11 @@ class EventPass extends Model
     public function ticket()
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    public function orderItem()
+    {
+        return $this->belongsTo(CutinappOrderItem::class, 'cutinapp_order_item_id');
     }
 
     public function event()
