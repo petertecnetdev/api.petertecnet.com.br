@@ -108,6 +108,7 @@ class EventPassController extends Controller
 
         if ((int) $pass->user_id !== (int) $user->id) {
             $this->manageableEvent((int) $pass->event_id, $user);
+            $pass->makeHidden('token');
         }
 
         return response()->json(['pass' => $pass]);
@@ -122,6 +123,8 @@ class EventPassController extends Controller
             ->with(['ticket:id,app_id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
             ->orderBy('holder_name')
             ->get();
+
+        $passes->each->makeHidden('token');
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published']),
@@ -167,7 +170,7 @@ class EventPassController extends Controller
             }
 
             if ((int) $pass->event_id !== (int) $selectedEvent->id) {
-                return ['status' => 422, 'message' => 'Este ingresso pertence a outro evento.', 'pass' => $pass];
+                return ['status' => 422, 'message' => 'Este ingresso pertence a outro evento.', 'pass' => null];
             }
 
             if ($pass->event->is_cancelled || ! $pass->event->is_published) {
@@ -175,7 +178,7 @@ class EventPassController extends Controller
             }
 
             if (! $this->canOperateEvent($operator, $pass->event, $appId)) {
-                return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => $pass];
+                return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => null];
             }
 
             if ($pass->checked_in_at) {
@@ -194,6 +197,10 @@ class EventPassController extends Controller
                 'pass' => $pass->fresh()->load(['ticket', 'event.production', 'user']),
             ];
         });
+
+        if ($result['pass'] instanceof EventPass) {
+            $result['pass']->makeHidden('token');
+        }
 
         return response()->json(['message' => $result['message'], 'pass' => $result['pass']], $result['status']);
     }
