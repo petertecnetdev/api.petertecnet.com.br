@@ -39,6 +39,7 @@ class AppNotification extends Model
                 ->where('app_slug', 'cutinapp')
                 ->where('is_published', true)
                 ->where('is_cancelled', false)
+                ->where('is_private', false)
                 ->exists();
 
             if (! $isPublicCutinappEvent) {
