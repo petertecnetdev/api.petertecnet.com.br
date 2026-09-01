@@ -77,6 +77,11 @@ return new class extends Migration
             $table->index(['type', 'event_item_id']);
         });
 
+        Schema::table('event_passes', function (Blueprint $table) {
+            $table->foreignId('cutinapp_order_item_id')->nullable()->after('ticket_id')->constrained('cutinapp_order_items')->nullOnDelete();
+            $table->index(['cutinapp_order_item_id', 'status']);
+        });
+
         Schema::create('cutinapp_inventory_reservations', function (Blueprint $table) {
             $table->id();
             $table->foreignId('order_id')->constrained('cutinapp_orders')->cascadeOnDelete();
@@ -134,6 +139,11 @@ return new class extends Migration
         Schema::dropIfExists('cutinapp_ledger_entries');
         Schema::dropIfExists('cutinapp_payments');
         Schema::dropIfExists('cutinapp_inventory_reservations');
+        Schema::table('event_passes', function (Blueprint $table) {
+            $table->dropForeign(['cutinapp_order_item_id']);
+            $table->dropIndex(['cutinapp_order_item_id', 'status']);
+            $table->dropColumn('cutinapp_order_item_id');
+        });
         Schema::dropIfExists('cutinapp_order_items');
         Schema::dropIfExists('cutinapp_orders');
         Schema::dropIfExists('cutinapp_producer_payment_accounts');
