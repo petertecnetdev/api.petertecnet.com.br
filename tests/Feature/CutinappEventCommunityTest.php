@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Application;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -38,6 +39,10 @@ class CutinappEventCommunityTest extends TestCase
         ])->assertCreated()->json('ticket');
         $this->withHeaders($ph)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
 
+        // Eventos antigos podem ter is_private = NULL. Eles são públicos na descoberta
+        // e a comunidade deve aplicar exatamente a mesma regra de visibilidade.
+        DB::table('events')->where('id', $event['id'])->update(['is_private' => null]);
+
         $postId = $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/community', [
             'body' => 'Quem mais vai para este evento?',
         ])->assertCreated()->json('post_id');
@@ -49,10 +54,10 @@ class CutinappEventCommunityTest extends TestCase
         $this->withHeaders($uh)->postJson('/api/cutinapp/community/' . $postId . '/like')->assertOk()->assertJsonPath('liked', true);
         $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/rating', ['rating' => 5])->assertOk()->assertJsonPath('rating', 5);
         $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/report', ['reason' => 'misleading', 'details' => 'Informação a ser conferida pela moderação.'])->assertOk();
-        $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/report', ['reason' => 'other', 'details' => 'Atualização da denúncia.'])->assertOk();
+        $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/report', ['reason' => 'harassment', 'details' => 'Atualização da denúncia.'])->assertOk();
 
         $this->assertDatabaseCount('cutinapp_event_reports', 1);
-        $this->assertDatabaseHas('cutinapp_event_reports', ['app_id'=>$app->id,'event_id'=>$event['id'],'user_id'=>$participant->id,'status'=>'open','reason'=>'other']);
+        $this->assertDatabaseHas('cutinapp_event_reports', ['app_id'=>$app->id,'event_id'=>$event['id'],'user_id'=>$participant->id,'status'=>'open','reason'=>'harassment']);
 
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/community')
             ->assertOk()
