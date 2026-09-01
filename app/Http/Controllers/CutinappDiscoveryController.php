@@ -65,10 +65,19 @@ class CutinappDiscoveryController extends Controller
         if (! empty($data['production_id'])) $query->where('events.production_id', $data['production_id']);
         if (! empty($data['artist_id'])) $query->whereHas('artists', fn ($q) => $q->where('cutinapp_artists.id', $data['artist_id']));
 
-        // Um evento pertence ao período quando sua duração cruza a janela pesquisada.
-        // Isso mantém visíveis eventos que começaram antes, mas ainda acontecem hoje.
-        if ($from) $query->where('events.end_date', '>=', $from);
-        if ($to) $query->where('events.start_date', '<=', $to);
+        // "Hoje" inclui eventos que começaram antes e continuam acontecendo agora.
+        // Todos os períodos futuros são orientados pela data de início: um evento de hoje
+        // que atravessa a madrugada não deve aparecer como um evento de "Amanhã".
+        if ($from || $to) {
+            $isToday = ($data['period'] ?? null) === 'today' && empty($data['date']);
+            if ($isToday) {
+                if ($from) $query->where('events.end_date', '>=', $from);
+                if ($to) $query->where('events.start_date', '<=', $to);
+            } else {
+                if ($from) $query->where('events.start_date', '>=', $from);
+                if ($to) $query->where('events.start_date', '<=', $to);
+            }
+        }
 
         if (! empty($data['q'])) {
             $term = '%' . trim($data['q']) . '%';
@@ -138,8 +147,6 @@ class CutinappDiscoveryController extends Controller
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($timezone);
 
-        // A URL pública permanece válida para eventos publicados, inclusive depois
-        // do término. Isso evita 404 na view e permite histórico/comunidade.
         $event = Event::query()
             ->where('app_id', $appId)
             ->where('app_slug', self::APP)
