@@ -45,11 +45,12 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/checkout', [CutinappCommerceController::class, 'checkout'])->middleware('throttle:30,1');
     Route::get('/orders/mine', [CutinappCommerceController::class, 'mine']);
     Route::get('/orders/{publicId}', [CutinappCommerceController::class, 'show']);
+    Route::post('/orders/{publicId}/sync-payment', [CutinappMercadoPagoController::class, 'sync'])->middleware('throttle:30,1');
     Route::get('/productions/{productionId}/mercadopago/connect', [CutinappMercadoPagoController::class, 'connect'])->whereNumber('productionId');
     Route::post('/events/{eventId}/items', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
     Route::match(['put','post'], '/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId')->whereNumber('itemId');
     Route::delete('/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'deleteEventItem'])->whereNumber('eventId')->whereNumber('itemId');
-    Route::match(['get','put'], '/productions/{productionId}/payment-account', [CutinappCommerceController::class, 'paymentAccount'])->whereNumber('productionId');
+    Route::get('/productions/{productionId}/payment-account', [CutinappCommerceController::class, 'paymentAccount'])->whereNumber('productionId');
     Route::get('/productions/{productionId}/financial-summary', [CutinappCommerceController::class, 'financialSummary'])->whereNumber('productionId');
 
     Route::get('/productions/mine', [CutinappController::class, 'myProductions']);
