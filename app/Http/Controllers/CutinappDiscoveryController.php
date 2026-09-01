@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Application;
 use App\Models\Event;
+use App\Models\Ticket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -40,7 +41,8 @@ class CutinappDiscoveryController extends Controller
         ]);
 
         $appId = $this->applicationId();
-        $timezone = config('app.timezone');
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $now = Carbon::now($timezone);
         [$from, $to] = $this->periodRange($data, $timezone);
 
         $query = Event::query()
@@ -49,7 +51,7 @@ class CutinappDiscoveryController extends Controller
             ->where('events.is_published', true)
             ->where('events.is_cancelled', false)
             ->where('events.is_private', false)
-            ->where('events.end_date', '>', Carbon::now($timezone))
+            ->where('events.end_date', '>', $now)
             ->with([
                 'production:id,app_id,name,slug,user_id,app_slug,logo,city,uf',
                 'artists:id,app_id,slug,stage_name,photo',
@@ -62,7 +64,10 @@ class CutinappDiscoveryController extends Controller
         if (! empty($data['category'])) $query->where('events.category', $data['category']);
         if (! empty($data['production_id'])) $query->where('events.production_id', $data['production_id']);
         if (! empty($data['artist_id'])) $query->whereHas('artists', fn ($q) => $q->where('cutinapp_artists.id', $data['artist_id']));
-        if ($from) $query->where('events.start_date', '>=', $from);
+
+        // Um evento pertence ao período quando sua duração cruza a janela pesquisada.
+        // Isso mantém visíveis eventos que começaram antes, mas ainda acontecem hoje.
+        if ($from) $query->where('events.end_date', '>=', $from);
         if ($to) $query->where('events.start_date', '<=', $to);
 
         if (! empty($data['q'])) {
@@ -78,10 +83,10 @@ class CutinappDiscoveryController extends Controller
         }
 
         if (($data['free'] ?? false) || ($data['available'] ?? false)) {
-            $query->whereHas('tickets', function ($q) use ($appId, $data) {
+            $query->whereHas('tickets', function ($q) use ($appId, $data, $now) {
                 $q->where('tickets.app_id', $appId)
                     ->where('tickets.quantity', '>', 0)
-                    ->where(fn ($d) => $d->whereNull('tickets.limit_date')->orWhere('tickets.limit_date', '>', now()))
+                    ->where(fn ($d) => $d->whereNull('tickets.limit_date')->orWhere('tickets.limit_date', '>', $now))
                     ->whereRaw('tickets.quantity > (SELECT COUNT(*) FROM event_passes WHERE event_passes.ticket_id = tickets.id)');
                 if ($data['free'] ?? false) $q->where('tickets.price', 0);
             });
@@ -127,18 +132,68 @@ class CutinappDiscoveryController extends Controller
         ]);
     }
 
+    public function publicEvent(Request $request, string $slug)
+    {
+        $appId = $this->applicationId();
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $now = Carbon::now($timezone);
+
+        // A URL pública permanece válida para eventos publicados, inclusive depois
+        // do término. Isso evita 404 na view e permite histórico/comunidade.
+        $event = Event::query()
+            ->where('app_id', $appId)
+            ->where('app_slug', self::APP)
+            ->where('slug', $slug)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->where('is_private', false)
+            ->with([
+                'production:id,app_id,name,slug,user_id,app_slug,logo,background,description,city,uf,instagram_url,website_url',
+                'artists' => fn ($q) => $q->where('cutinapp_artists.app_id', $appId)
+                    ->where('cutinapp_artists.is_published', true)
+                    ->orderByDesc('cutinapp_event_artist.is_headliner')
+                    ->orderBy('cutinapp_event_artist.sort_order'),
+            ])
+            ->firstOrFail();
+
+        $tickets = Ticket::query()
+            ->where('app_id', $appId)
+            ->where('event_id', $event->id)
+            ->where('price', 0)
+            ->withCount('passes')
+            ->orderBy('created_at')
+            ->get()
+            ->map(function (Ticket $ticket) use ($now) {
+                $remaining = max(0, (int) $ticket->quantity - (int) $ticket->passes_count);
+                $expired = $ticket->limit_date && $now->greaterThan(Carbon::parse($ticket->limit_date, config('app.timezone', 'America/Sao_Paulo')));
+                $ticket->setAttribute('remaining', $remaining);
+                $ticket->setAttribute('available', $remaining > 0 && ! $expired);
+                $ticket->setAttribute('expired', (bool) $expired);
+                return $ticket;
+            });
+
+        $event->setAttribute('has_ended', $event->end_date ? Carbon::parse($event->end_date, $timezone)->lte($now) : false);
+        $event->setAttribute('is_happening_now', $event->start_date && $event->end_date
+            ? Carbon::parse($event->start_date, $timezone)->lte($now) && Carbon::parse($event->end_date, $timezone)->gt($now)
+            : false);
+
+        return response()->json(['event' => $event, 'tickets' => $tickets]);
+    }
+
     public function facets(Request $request)
     {
         $appId = $this->applicationId();
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $now = Carbon::now($timezone);
         $cities = Event::query()
             ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
-            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', now())->whereNotNull('city')
+            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', $now)->whereNotNull('city')
             ->selectRaw('city, uf, COUNT(*) total')->groupBy('city', 'uf')->orderByDesc('total')->orderBy('city')->limit(100)->get();
         $categories = Event::query()
             ->where('app_id', $appId)->where('app_slug', self::APP)->where('is_published', true)
-            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', now())->whereNotNull('category')
+            ->where('is_cancelled', false)->where('is_private', false)->where('end_date', '>', $now)->whereNotNull('category')
             ->selectRaw('category, COUNT(*) total')->groupBy('category')->orderByDesc('total')->limit(50)->get();
-        return response()->json(['cities' => $cities, 'categories' => $categories, 'timezone' => config('app.timezone')]);
+        return response()->json(['cities' => $cities, 'categories' => $categories, 'timezone' => $timezone]);
     }
 
     private function periodRange(array $data, string $timezone): array
