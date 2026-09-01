@@ -34,10 +34,15 @@ class CutinappSocialController extends Controller
             ->where('is_published', true)
             ->withCount(['events as upcoming_events_count' => fn ($q) => $q
                 ->where('events.app_id', $appId)
+                ->where('events.app_slug', self::APP)
                 ->where('events.is_published', true)
                 ->where('events.is_cancelled', false)
                 ->where('events.end_date', '>', now())])
-            ->withCount(['events as total_events_count' => fn ($q) => $q->where('events.app_id', $appId)])
+            ->withCount(['events as total_events_count' => fn ($q) => $q
+                ->where('events.app_id', $appId)
+                ->where('events.app_slug', self::APP)
+                ->where('events.is_published', true)
+                ->where('events.is_cancelled', false)])
             ->orderBy('stage_name');
 
         if ($q = trim((string) ($data['q'] ?? ''))) {
@@ -186,7 +191,12 @@ class CutinappSocialController extends Controller
     public function engagement(Request $request, int $eventId)
     {
         $user = $this->requestUser($request);
-        $event = Event::where('app_id', $this->applicationId())->where('app_slug', self::APP)->findOrFail($eventId);
+        $event = Event::query()
+            ->where('app_id', $this->applicationId())
+            ->where('app_slug', self::APP)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->findOrFail($eventId);
         $data = $request->validate(['is_favorite' => 'sometimes|boolean', 'is_interested' => 'sometimes|boolean']);
         DB::table('cutinapp_event_engagements')->updateOrInsert(
             ['app_id' => $this->applicationId(), 'user_id' => $user->id, 'event_id' => $event->id],
@@ -251,8 +261,13 @@ class CutinappSocialController extends Controller
 
     private function artistEvents(int $artistId, bool $upcoming)
     {
-        $q = Event::query()->where('events.app_id', $this->applicationId())->where('events.is_published', true)->where('events.is_cancelled', false)
-            ->whereHas('artists', fn ($a) => $a->where('cutinapp_artists.id', $artistId))->with('production:id,name,slug,logo');
+        $q = Event::query()
+            ->where('events.app_id', $this->applicationId())
+            ->where('events.app_slug', self::APP)
+            ->where('events.is_published', true)
+            ->where('events.is_cancelled', false)
+            ->whereHas('artists', fn ($a) => $a->where('cutinapp_artists.id', $artistId))
+            ->with('production:id,name,slug,logo');
         return $upcoming ? $q->where('end_date', '>', now())->orderBy('start_date') : $q->where('end_date', '<=', now())->orderByDesc('start_date');
     }
 
@@ -283,8 +298,18 @@ class CutinappSocialController extends Controller
     {
         $appId = $this->applicationId();
         $exists = $type === 'artist'
-            ? CutinappArtist::where('app_id', $appId)->whereKey($id)->exists()
-            : Production::where('app_id', $appId)->where('app_slug', self::APP)->whereKey($id)->exists();
+            ? CutinappArtist::query()
+                ->where('app_id', $appId)
+                ->where('is_published', true)
+                ->whereKey($id)
+                ->exists()
+            : Production::query()
+                ->where('app_id', $appId)
+                ->where('app_slug', self::APP)
+                ->where('is_published', true)
+                ->where('is_cancelled', false)
+                ->whereKey($id)
+                ->exists();
         abort_unless($exists, 404, 'Perfil não encontrado na Cutinapp.');
     }
 
