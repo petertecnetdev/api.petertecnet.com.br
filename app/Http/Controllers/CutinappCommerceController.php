@@ -16,7 +16,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use RuntimeException;
+use Throwable;
 
 class CutinappCommerceController extends Controller
 {
@@ -69,9 +69,17 @@ class CutinappCommerceController extends Controller
             'payment_method_id' => 'required_if:payment_method,card|nullable|string|max:80',
             'issuer_id' => 'nullable|string|max:80',
             'installments' => 'required_if:payment_method,card|nullable|integer|min:1|max:24',
+            'payer_identification_type' => 'required_if:payment_method,card|nullable|string|in:CPF',
+            'payer_identification_number' => 'required_if:payment_method,card|nullable|string|max:30',
+            'payer_email' => 'nullable|email|max:190',
         ]);
 
         abort_if(empty($data['tickets']) && empty($data['items']), 422, 'Selecione ao menos um ingresso ou item.');
+        if ($data['payment_method'] === 'card') {
+            $document = preg_replace('/\D+/', '', (string) ($data['payer_identification_number'] ?? ''));
+            abort_if(strlen($document) !== 11, 422, 'Informe um CPF válido para o titular do cartão.');
+            $data['payer_identification_number'] = $document;
+        }
 
         $application = Application::query()->where('slug', self::APP)->where('is_active', true)->firstOrFail();
         $platformRate = max(0, min((float) config('services.cutinapp.platform_fee_percent', 8), 100));
@@ -115,7 +123,7 @@ class CutinappCommerceController extends Controller
                 abort_if((float) $ticket->price <= 0, 422, 'Cortesias gratuitas não entram no checkout pago.');
                 abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, "O lote {$ticket->name} não está mais disponível.");
 
-                $issued = EventPass::query()->where('ticket_id', $ticket->id)->whereNotIn('status', ['cancelled','refunded'])->count();
+                $issued = EventPass::query()->where('ticket_id', $ticket->id)->whereNotIn('status', ['cancelled','refunded','charged_back'])->count();
                 $reserved = DB::table('cutinapp_inventory_reservations')->where('ticket_id', $ticket->id)->whereNull('released_at')->where('expires_at', '>', now())->sum('quantity');
                 $qty = (int) $requested['quantity'];
                 abort_if($issued + $reserved + $qty > (int) $ticket->quantity, 422, "Não há quantidade suficiente no lote {$ticket->name}.");
@@ -156,15 +164,23 @@ class CutinappCommerceController extends Controller
         }
 
         try {
-            [$account, $sellerToken] = $this->sellerToken($account);
+            [, $sellerToken] = $this->sellerToken($account);
             $idempotencyKey = (string) Str::uuid();
+            $payer = ['email' => $user->email];
+            if ($data['payment_method'] === 'card') {
+                $payer['identification'] = [
+                    'type' => 'CPF',
+                    'number' => $data['payer_identification_number'],
+                ];
+            }
+
             $payload = [
                 'transaction_amount' => (float) $order->total,
                 'description' => mb_substr('Cutinapp - ' . ($order->event->title ?? 'Evento'), 0, 255),
                 'external_reference' => $order->public_id,
                 'application_fee' => (float) $order->platform_fee,
                 'notification_url' => rtrim((string) config('app.url'), '/') . '/api/cutinapp/payments/mercadopago/webhook',
-                'payer' => ['email' => $user->email],
+                'payer' => $payer,
                 'metadata' => ['app_slug'=>self::APP,'order_id'=>$order->id,'order_public_id'=>$order->public_id,'production_id'=>$order->production_id],
             ];
 
@@ -199,7 +215,7 @@ class CutinappCommerceController extends Controller
             ]);
 
             $order->update(['processor_fee' => $providerFee]);
-        } catch (RuntimeException $e) {
+        } catch (Throwable $e) {
             report($e);
             $this->cancelOrder($order);
             return response()->json(['message' => 'Não foi possível iniciar o pagamento no Mercado Pago. Tente novamente.'], 502);
@@ -260,9 +276,9 @@ class CutinappCommerceController extends Controller
     public function financialSummary(Request $request, int $productionId)
     {
         $this->ownedProduction($request, $productionId);
-        $gross = (float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'gross_sale')->sum('amount');
-        $fees = abs((float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'platform_fee')->sum('amount'));
-        $earned = (float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'producer_credit')->sum('amount');
+        $gross = (float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'gross_sale')->where('status', 'posted')->sum('amount');
+        $fees = abs((float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'platform_fee')->where('status', 'posted')->sum('amount'));
+        $earned = (float) DB::table('cutinapp_ledger_entries')->where('production_id', $productionId)->where('type', 'producer_credit')->where('status', 'posted')->sum('amount');
         $processorFees = (float) DB::table('cutinapp_payments as p')->join('cutinapp_orders as o','o.id','=','p.order_id')->where('o.production_id', $productionId)->where('p.status', 'paid')->sum('p.provider_fee');
 
         return response()->json([
