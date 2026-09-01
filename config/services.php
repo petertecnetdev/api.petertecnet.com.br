@@ -49,7 +49,9 @@ return [
         // payout settlement is implemented and operationally approved.
         'allow_platform_collection' => filter_var(env('CUTINAPP_ALLOW_PLATFORM_COLLECTION', false), FILTER_VALIDATE_BOOL),
         'manual_payout_requests_enabled' => filter_var(env('CUTINAPP_ENABLE_MANUAL_PAYOUT_REQUESTS', false), FILTER_VALIDATE_BOOL),
-        'order_expiration_minutes' => max(5, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 15), 60)),
+        // Mercado Pago documents a 30-minute minimum for configurable Pix
+        // expiration. Keep the local inventory reservation aligned with it.
+        'order_expiration_minutes' => max(30, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 30), 60)),
     ],
 
     'geo_ip' => [
