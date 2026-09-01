@@ -10,7 +10,7 @@ class CutinappLineupNotificationService
 {
     public function notifyPublishedEvent(Event $event): void
     {
-        if ($event->app_slug !== 'cutinapp' || ! $event->is_published || $event->is_cancelled) {
+        if ($event->app_slug !== 'cutinapp' || ! $event->is_published || $event->is_cancelled || $event->is_private) {
             return;
         }
 
