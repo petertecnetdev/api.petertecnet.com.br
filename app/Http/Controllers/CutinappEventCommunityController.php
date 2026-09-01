@@ -6,6 +6,7 @@ use App\Models\Application;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\User;
+use App\Services\AppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -13,6 +14,8 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 class CutinappEventCommunityController extends Controller
 {
     private const APP = 'cutinapp';
+
+    public function __construct(private AppNotificationService $notifications) {}
 
     public function publicCommunity(Request $request, string $slug)
     {
@@ -84,6 +87,7 @@ class CutinappEventCommunityController extends Controller
     {
         $user = $this->requestUser($request);
         $event = $this->publicEventById($eventId);
+        $appId = $this->applicationId();
         $data = $request->validate([
             'body' => 'required|string|min:2|max:3000',
             'parent_id' => 'nullable|integer|min:1',
@@ -94,16 +98,19 @@ class CutinappEventCommunityController extends Controller
         ]);
 
         $parentId = $data['parent_id'] ?? null;
+        $parent = null;
         if ($parentId) {
-            $parent = DB::table('cutinapp_event_posts')->where('id', $parentId)->where('app_id', $this->applicationId())->where('event_id', $event->id)->whereNull('parent_id')->where('status', 'published')->first();
+            $parent = DB::table('cutinapp_event_posts')->where('id', $parentId)->where('app_id', $appId)->where('event_id', $event->id)->whereNull('parent_id')->where('status', 'published')->first();
             abort_unless($parent, 422, 'A publicação que você tentou responder não está mais disponível.');
         }
 
         $id = DB::table('cutinapp_event_posts')->insertGetId([
-            'app_id' => $this->applicationId(), 'event_id' => $event->id, 'user_id' => $user->id,
+            'app_id' => $appId, 'event_id' => $event->id, 'user_id' => $user->id,
             'parent_id' => $parentId, 'body' => trim($data['body']), 'status' => 'published',
             'is_pinned' => false, 'created_at' => now(), 'updated_at' => now(),
         ]);
+
+        $this->notifyCommunityActivity($event, $user, $id, $parent);
 
         return response()->json(['message' => $parentId ? 'Comentário publicado.' : 'Publicação adicionada ao evento.', 'post_id' => $id], 201);
     }
@@ -129,10 +136,30 @@ class CutinappEventCommunityController extends Controller
     {
         $user = $this->requestUser($request);
         $post = $this->publishedPost($postId);
+        $appId = $this->applicationId();
+        $alreadyLiked = DB::table('cutinapp_event_post_likes')->where(['app_id'=>$appId,'post_id'=>$post->id,'user_id'=>$user->id])->exists();
+
         DB::table('cutinapp_event_post_likes')->updateOrInsert(
-            ['app_id'=>$this->applicationId(),'post_id'=>$post->id,'user_id'=>$user->id],
+            ['app_id'=>$appId,'post_id'=>$post->id,'user_id'=>$user->id],
             ['created_at'=>now(),'updated_at'=>now()]
         );
+
+        if (! $alreadyLiked && (int) $post->user_id !== (int) $user->id) {
+            $event = Event::query()->where('app_id', $appId)->where('app_slug', self::APP)->find($post->event_id);
+            if ($event) {
+                $actor = trim((string) ($user->first_name ?? '')) ?: 'Alguém';
+                $this->safeNotifyUser($appId, (int) $post->user_id, [
+                    'type' => 'comment_like',
+                    'title' => 'Curtiram sua publicação',
+                    'message' => $actor . ' curtiu o que você publicou em ' . $event->title . '.',
+                    'reference_type' => 'event',
+                    'reference_id' => $event->id,
+                    'reference_url' => '/event/' . $event->slug . '#comunidade',
+                    'data' => ['event_id' => $event->id, 'post_id' => $post->id, 'actor_id' => $user->id],
+                ]);
+            }
+        }
+
         return response()->json(['message' => 'Publicação curtida.', 'liked' => true]);
     }
 
@@ -175,6 +202,59 @@ class CutinappEventCommunityController extends Controller
             ['reason'=>$data['reason'],'details'=>trim((string)($data['details'] ?? '')) ?: null,'status'=>'open','reviewed_by'=>null,'reviewed_at'=>null,'moderation_note'=>null,'created_at'=>now(),'updated_at'=>now()]
         );
         return response()->json(['message' => 'Denúncia enviada. Nossa equipe poderá revisar este evento.']);
+    }
+
+    private function notifyCommunityActivity(Event $event, User $actor, int $postId, ?object $parent): void
+    {
+        $appId = $this->applicationId();
+        $parentAuthorId = $parent ? (int) $parent->user_id : null;
+        $attendees = EventPass::query()
+            ->where('event_id', $event->id)
+            ->whereNotNull('user_id')
+            ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
+            ->distinct()
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->reject(fn ($id) => $id === (int) $actor->id || ($parentAuthorId && $id === $parentAuthorId))
+            ->values();
+
+        $actorName = trim((string) ($actor->first_name ?? '')) ?: 'Alguém';
+        $payload = [
+            'type' => $parent ? 'event_reply' : 'event_comment',
+            'title' => $parent ? 'Nova resposta no evento' : 'Novo comentário no evento',
+            'message' => $actorName . ($parent ? ' respondeu uma conversa em ' : ' publicou na conversa de ') . $event->title . '.',
+            'reference_type' => 'event',
+            'reference_id' => $event->id,
+            'reference_url' => '/event/' . $event->slug . '#comunidade',
+            'data' => ['event_id' => $event->id, 'post_id' => $postId, 'actor_id' => $actor->id],
+        ];
+
+        try {
+            $this->notifications->sendToUsers($appId, $attendees, $payload, (int) $actor->id);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        if ($parentAuthorId && $parentAuthorId !== (int) $actor->id) {
+            $this->safeNotifyUser($appId, $parentAuthorId, [
+                'type' => 'event_reply',
+                'title' => 'Responderam sua publicação',
+                'message' => $actorName . ' respondeu sua publicação em ' . $event->title . '.',
+                'reference_type' => 'event',
+                'reference_id' => $event->id,
+                'reference_url' => '/event/' . $event->slug . '#comunidade',
+                'data' => ['event_id' => $event->id, 'post_id' => $postId, 'parent_post_id' => $parent->id, 'actor_id' => $actor->id],
+            ]);
+        }
+    }
+
+    private function safeNotifyUser(int $appId, int $userId, array $payload): void
+    {
+        try {
+            $this->notifications->sendToUser($appId, $userId, $payload);
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     private function publishedPost(int $postId): object
