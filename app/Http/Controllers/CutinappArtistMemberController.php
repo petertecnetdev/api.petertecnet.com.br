@@ -168,7 +168,13 @@ class CutinappArtistMemberController extends Controller
     private function managedArtist(int $id, User $user): CutinappArtist
     {
         $artist = CutinappArtist::where('app_id', $this->applicationId())->findOrFail($id);
-        abort_unless($user->hasProfile('Administrador') || (int) $artist->user_id === (int) $user->id, 403, 'Você não pode administrar este artista.');
+        abort_unless(
+            $user->hasProfile('Administrador') ||
+            (int) $artist->user_id === (int) $user->id ||
+            (int) $artist->created_by_user_id === (int) $user->id,
+            403,
+            'Você não pode administrar este artista.'
+        );
         return $artist;
     }
 
