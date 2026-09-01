@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\CutinappArtistClaimController;
 use App\Http\Controllers\CutinappArtistMemberController;
+use App\Http\Controllers\CutinappCommerceController;
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
@@ -9,6 +10,7 @@ use App\Http\Controllers\CutinappEventCommunityController;
 use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\CutinappFeedController;
 use App\Http\Controllers\CutinappLocationController;
+use App\Http\Controllers\CutinappMercadoPagoController;
 use App\Http\Controllers\CutinappModerationController;
 use App\Http\Controllers\CutinappNotificationController;
 use App\Http\Controllers\CutinappPassClaimController;
@@ -29,6 +31,9 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
     Route::get('/events/public/{slug}', [CutinappDiscoveryController::class, 'publicEvent']);
     Route::get('/events/public/{slug}/artists', [CutinappPublicSocialController::class, 'eventArtists']);
     Route::get('/events/public/{slug}/community', [CutinappEventCommunityController::class, 'publicCommunity']);
+    Route::get('/events/public/{slug}/commerce', [CutinappCommerceController::class, 'catalog']);
+    Route::get('/payments/mercadopago/oauth/callback', [CutinappMercadoPagoController::class, 'callback'])->middleware('throttle:60,1');
+    Route::post('/payments/mercadopago/webhook', [CutinappMercadoPagoController::class, 'webhook'])->middleware('throttle:240,1');
     Route::get('/artists', [CutinappSocialController::class, 'artists']);
     Route::get('/artists/{slug}/members', [CutinappArtistMemberController::class, 'publicIndex']);
     Route::get('/artists/{slug}', [CutinappSocialController::class, 'publicArtist']);
@@ -38,26 +43,33 @@ Route::prefix('cutinapp')->middleware('api')->group(function () {
 
 Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/profile/overview', [CutinappUserProfileController::class, 'overview']);
+    Route::post('/checkout', [CutinappCommerceController::class, 'checkout'])->middleware('throttle:30,1');
+    Route::get('/orders/mine', [CutinappCommerceController::class, 'mine']);
+    Route::get('/orders/{publicId}', [CutinappCommerceController::class, 'show']);
+    Route::post('/orders/{publicId}/sync-payment', [CutinappMercadoPagoController::class, 'sync'])->middleware('throttle:30,1');
+    Route::get('/productions/{productionId}/mercadopago/connect', [CutinappMercadoPagoController::class, 'connect'])->whereNumber('productionId');
+    Route::post('/events/{eventId}/items', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
+    Route::match(['put','post'], '/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId')->whereNumber('itemId');
+    Route::delete('/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'deleteEventItem'])->whereNumber('eventId')->whereNumber('itemId');
+    Route::get('/productions/{productionId}/payment-account', [CutinappCommerceController::class, 'paymentAccount'])->whereNumber('productionId');
+    Route::get('/productions/{productionId}/financial-summary', [CutinappCommerceController::class, 'financialSummary'])->whereNumber('productionId');
 
     Route::get('/productions/mine', [CutinappController::class, 'myProductions']);
     Route::get('/productions/{id}', [CutinappController::class, 'showProduction'])->whereNumber('id');
     Route::post('/productions', [CutinappController::class, 'createProduction']);
     Route::match(['post', 'put'], '/productions/{id}', [CutinappController::class, 'updateProduction'])->whereNumber('id');
-
     Route::get('/events/mine', [CutinappEventController::class, 'mine']);
     Route::get('/events/show/{id}', [CutinappEventController::class, 'show'])->whereNumber('id');
     Route::post('/events', [CutinappEventController::class, 'store']);
     Route::match(['post', 'put'], '/events/{id}', [CutinappEventController::class, 'update'])->whereNumber('id');
     Route::post('/events/{id}/publish', [CutinappEventController::class, 'publish'])->whereNumber('id');
     Route::post('/events/{id}/unpublish', [CutinappEventController::class, 'unpublish'])->whereNumber('id');
-
     Route::post('/events/{eventId}/community', [CutinappEventCommunityController::class, 'createPost'])->whereNumber('eventId')->middleware('throttle:30,1');
     Route::delete('/community/{postId}', [CutinappEventCommunityController::class, 'deletePost'])->whereNumber('postId');
     Route::post('/community/{postId}/like', [CutinappEventCommunityController::class, 'like'])->whereNumber('postId')->middleware('throttle:120,1');
     Route::delete('/community/{postId}/like', [CutinappEventCommunityController::class, 'unlike'])->whereNumber('postId');
     Route::put('/events/{eventId}/rating', [CutinappEventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
     Route::post('/events/{eventId}/report', [CutinappEventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
-
     Route::get('/artists/manageable', [CutinappArtistClaimController::class, 'manageable']);
     Route::post('/artists/provisional', [CutinappArtistClaimController::class, 'storeProvisional']);
     Route::match(['post', 'put'], '/artists/{artistId}/managed', [CutinappArtistClaimController::class, 'updateManaged'])->whereNumber('artistId');
@@ -66,7 +78,6 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/events/{eventId}/artists/{artistId}/claim', [CutinappArtistClaimController::class, 'claim'])->whereNumber('eventId')->whereNumber('artistId')->middleware('throttle:10,1');
     Route::get('/events/{eventId}/artist-claims', [CutinappArtistClaimController::class, 'eventClaims'])->whereNumber('eventId');
     Route::put('/events/{eventId}/artist-claims/{claimId}', [CutinappArtistClaimController::class, 'review'])->whereNumber('eventId')->whereNumber('claimId');
-
     Route::get('/artists/mine/list', [CutinappSocialController::class, 'myArtists']);
     Route::post('/artists', [CutinappSocialController::class, 'storeArtist']);
     Route::match(['post', 'put'], '/artists/{id}', [CutinappSocialController::class, 'updateArtist'])->whereNumber('id');
@@ -82,20 +93,16 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::delete('/follow', [CutinappSocialController::class, 'unfollow']);
     Route::match(['get', 'put'], '/preferences', [CutinappSocialController::class, 'preferences']);
     Route::put('/events/{eventId}/engagement', [CutinappSocialController::class, 'engagement'])->whereNumber('eventId');
-
     Route::get('/feed', [CutinappFeedController::class, 'index']);
     Route::get('/notifications', [CutinappNotificationController::class, 'index']);
     Route::post('/notifications/read-all', [CutinappNotificationController::class, 'markAllRead']);
     Route::post('/notifications/{notificationId}/read', [CutinappNotificationController::class, 'markRead'])->whereNumber('notificationId');
-
     Route::get('/moderation/reports', [CutinappModerationController::class, 'reports']);
     Route::put('/moderation/reports/{reportId}', [CutinappModerationController::class, 'updateReport'])->whereNumber('reportId');
-
     Route::post('/courtesies', [CutinappController::class, 'createCourtesy']);
     Route::get('/events/{eventId}/courtesies', [CutinappController::class, 'eventCourtesies'])->whereNumber('eventId');
     Route::match(['post', 'put'], '/courtesies/{ticketId}', [CutinappCourtesyController::class, 'update'])->whereNumber('ticketId');
     Route::delete('/courtesies/{ticketId}', [CutinappCourtesyController::class, 'destroy'])->whereNumber('ticketId');
-
     Route::get('/passes/mine', [EventPassController::class, 'mine']);
     Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
     Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');

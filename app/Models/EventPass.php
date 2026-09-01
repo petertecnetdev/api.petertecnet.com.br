@@ -12,6 +12,7 @@ class EventPass extends Model
 
     protected $fillable = [
         'ticket_id',
+        'cutinapp_order_item_id',
         'event_id',
         'user_id',
         'holder_name',
@@ -33,6 +34,13 @@ class EventPass extends Model
         static::saving(function (EventPass $pass) {
             if (! $pass->isDirty('checked_in_at') || ! $pass->checked_in_at) {
                 return;
+            }
+
+            $previousStatus = (string) $pass->getOriginal('status');
+            if (in_array($previousStatus, ['cancelled', 'refunded', 'charged_back'], true)) {
+                throw ValidationException::withMessages([
+                    'token' => ['Este ingresso foi cancelado ou teve o pagamento revertido e não pode ser utilizado.'],
+                ]);
             }
 
             $event = $pass->relationLoaded('event') ? $pass->event : $pass->event()->first();
@@ -61,6 +69,11 @@ class EventPass extends Model
     public function ticket()
     {
         return $this->belongsTo(Ticket::class);
+    }
+
+    public function orderItem()
+    {
+        return $this->belongsTo(CutinappOrderItem::class, 'cutinapp_order_item_id');
     }
 
     public function event()
