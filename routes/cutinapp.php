@@ -5,6 +5,7 @@ use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
 use App\Http\Controllers\CutinappEventController;
 use App\Http\Controllers\CutinappLocationController;
+use App\Http\Controllers\CutinappPassClaimController;
 use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
@@ -55,7 +56,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/passes/mine', [EventPassController::class, 'mine']);
     Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
     Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');
-    Route::post('/passes/claim/{ticketId}', [EventPassController::class, 'claim'])->whereNumber('ticketId');
+    Route::post('/passes/claim/{ticketId}', [CutinappPassClaimController::class, 'claim'])->whereNumber('ticketId');
     Route::post('/checkin', [EventPassController::class, 'validateToken'])->middleware('throttle:120,1');
     Route::get('/checkin/event/{eventId}/stats', [EventPassController::class, 'eventStats'])->whereNumber('eventId');
 });
