@@ -107,10 +107,10 @@ class CutinappSocialGraphTest extends TestCase
         ])->assertCreated()->json('event');
 
         $this->withHeaders($uh)->putJson('/api/cutinapp/preferences', ['preferred_city' => 'Recife', 'preferred_uf' => 'PE', 'radius_km' => 80])->assertOk()->assertJsonPath('preferences.preferred_city', 'Recife');
-        $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])->assertOk();
         $this->withHeaders($uh)->postJson('/api/cutinapp/follow', ['target_type' => 'production', 'target_id' => $production['id']])->assertOk();
         $this->withHeaders($ph)->postJson('/api/cutinapp/courtesies', ['event_id' => $event['id'], 'name' => 'Free', 'quantity' => 5])->assertCreated();
         $this->withHeaders($ph)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
+        $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])->assertOk();
 
         $this->assertDatabaseHas('cutinapp_event_engagements', ['user_id' => $participant->id, 'event_id' => $event['id'], 'is_favorite' => 1, 'is_interested' => 1]);
         $this->withHeaders($uh)->getJson('/api/cutinapp/notifications')->assertOk()->assertJsonPath('notifications.data.0.reference_id', $event['id']);
