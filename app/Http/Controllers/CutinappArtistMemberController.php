@@ -14,6 +14,7 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 class CutinappArtistMemberController extends Controller
 {
     private const APP = 'cutinapp';
+    private const ARTIST_TYPES = ['solo', 'band', 'group', 'duo', 'collective', 'orchestra'];
     private const GROUP_TYPES = ['band', 'group', 'duo', 'collective', 'orchestra'];
 
     public function publicIndex(string $slug)
@@ -54,6 +55,21 @@ class CutinappArtistMemberController extends Controller
         ]);
     }
 
+    public function updateType(Request $request, int $artistId)
+    {
+        $artist = $this->managedArtist($artistId, $this->requestUser($request));
+        $data = $request->validate(['artist_type' => 'required|in:' . implode(',', self::ARTIST_TYPES)]);
+
+        if ($data['artist_type'] === 'solo' && $artist->members()->exists()) {
+            throw ValidationException::withMessages([
+                'artist_type' => ['Remova ou encerre os integrantes antes de transformar este perfil em artista solo.'],
+            ]);
+        }
+
+        $artist->update(['artist_type' => $data['artist_type']]);
+        return response()->json(['message' => 'Tipo do perfil artístico atualizado.', 'artist' => $artist->fresh()]);
+    }
+
     public function index(Request $request, int $artistId)
     {
         $artist = $this->managedGroup($artistId, $this->requestUser($request));
@@ -66,7 +82,11 @@ class CutinappArtistMemberController extends Controller
         $artist = $this->managedGroup($artistId, $this->requestUser($request));
         $data = $this->memberData($request);
         $linked = $this->linkedArtist($data['member_artist_id'] ?? null, $artist);
+        $displayName = trim((string) ($data['display_name'] ?? '')) ?: $linked?->stage_name;
 
+        if (! $displayName) {
+            throw ValidationException::withMessages(['display_name' => ['Informe o nome do integrante ou vincule um artista existente.']]);
+        }
         if ($linked && CutinappArtistMember::where('artist_id', $artist->id)->where('member_artist_id', $linked->id)->exists()) {
             throw ValidationException::withMessages(['member_artist_id' => ['Este artista já faz parte deste grupo.']]);
         }
@@ -76,7 +96,7 @@ class CutinappArtistMemberController extends Controller
             'app_id' => $this->applicationId(),
             'artist_id' => $artist->id,
             'member_artist_id' => $linked?->id,
-            'display_name' => trim((string) ($data['display_name'] ?? '')) ?: $linked?->stage_name,
+            'display_name' => $displayName,
             'photo' => trim((string) ($data['photo'] ?? '')) ?: $linked?->photo,
         ]);
 
@@ -98,15 +118,12 @@ class CutinappArtistMemberController extends Controller
             throw ValidationException::withMessages(['member_artist_id' => ['Este artista já faz parte deste grupo.']]);
         }
 
-        if (array_key_exists('member_artist_id', $data)) {
-            $data['member_artist_id'] = $linked?->id;
-        }
-        if ((! isset($data['display_name']) || trim((string) $data['display_name']) === '') && $linked) {
+        if (array_key_exists('member_artist_id', $data)) $data['member_artist_id'] = $linked?->id;
+        if (array_key_exists('display_name', $data) && trim((string) $data['display_name']) === '') {
+            if (! $linked) throw ValidationException::withMessages(['display_name' => ['O integrante precisa ter um nome.']]);
             $data['display_name'] = $linked->stage_name;
         }
-        if (isset($data['left_at']) && $data['left_at']) {
-            $data['is_current'] = false;
-        }
+        if (isset($data['left_at']) && $data['left_at']) $data['is_current'] = false;
 
         $member->update($data);
         return response()->json([
@@ -148,10 +165,16 @@ class CutinappArtistMemberController extends Controller
         return CutinappArtist::where('app_id', $this->applicationId())->findOrFail($id);
     }
 
-    private function managedGroup(int $id, User $user): CutinappArtist
+    private function managedArtist(int $id, User $user): CutinappArtist
     {
         $artist = CutinappArtist::where('app_id', $this->applicationId())->findOrFail($id);
         abort_unless($user->hasProfile('Administrador') || (int) $artist->user_id === (int) $user->id, 403, 'Você não pode administrar este artista.');
+        return $artist;
+    }
+
+    private function managedGroup(int $id, User $user): CutinappArtist
+    {
+        $artist = $this->managedArtist($id, $user);
         abort_unless(in_array($artist->artist_type, self::GROUP_TYPES, true), 422, 'Somente bandas, duos, grupos, coletivos ou orquestras possuem integrantes.');
         return $artist;
     }
@@ -160,11 +183,7 @@ class CutinappArtistMemberController extends Controller
     {
         $token = $request->bearerToken();
         if (! $token) abort(401, 'Sua sessão expirou. Entre novamente.');
-        try {
-            $user = JWTAuth::setToken($token)->authenticate();
-        } catch (Throwable) {
-            $user = null;
-        }
+        try { $user = JWTAuth::setToken($token)->authenticate(); } catch (Throwable) { $user = null; }
         abort_unless($user instanceof User, 401, 'Sua sessão expirou. Entre novamente.');
         return $user;
     }
