@@ -39,9 +39,7 @@ class CutinappEventCommunityTest extends TestCase
         ])->assertCreated()->json('ticket');
         $this->withHeaders($ph)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
 
-        // Eventos antigos podem ter is_private = NULL. Eles são públicos na descoberta
-        // e a comunidade deve aplicar exatamente a mesma regra de visibilidade.
-        DB::table('events')->where('id', $event['id'])->update(['is_private' => null]);
+        $this->assertFalse((bool) DB::table('events')->where('id', $event['id'])->value('is_private'));
 
         $postId = $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/community', [
             'body' => 'Quem mais vai para este evento?',
@@ -81,32 +79,55 @@ class CutinappEventCommunityTest extends TestCase
 
     public function test_user_cannot_delete_another_users_post_but_production_owner_can_moderate(): void
     {
-        $owner = $this->user('Owner Comunidade', 'community-owner@cutinapp.test');
-        $author = $this->user('Autor Comunidade', 'community-author@cutinapp.test');
-        $other = $this->user('Outro Comunidade', 'community-other@cutinapp.test');
-        $oh = $this->headersFor($owner);
+        $producer = $this->user('Produtor Moderador', 'moderator-producer@cutinapp.test');
+        $author = $this->user('Autor Post', 'post-author@cutinapp.test');
+        $other = $this->user('Outro Usuario', 'other-user@cutinapp.test');
+        $ph = $this->headersFor($producer);
+        $ah = $this->headersFor($author);
+        $oh = $this->headersFor($other);
 
-        $production = $this->withHeaders($oh)->postJson('/api/cutinapp/productions', ['name'=>'Moderação Produções','city'=>'São Paulo','uf'=>'SP'])->assertCreated()->json('production');
-        $event = $this->withHeaders($oh)->postJson('/api/cutinapp/events', [
-            'production_id'=>$production['id'],'title'=>'Evento Moderação','description'=>'Teste','address'=>'Rua 1','city'=>'São Paulo','uf'=>'SP',
-            'start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(2)->addHours(2)->format('Y-m-d H:i:s'),
+        $production = $this->withHeaders($ph)->postJson('/api/cutinapp/productions', [
+            'name' => 'Produção Moderadora', 'city' => 'Rio de Janeiro', 'uf' => 'RJ',
+        ])->assertCreated()->json('production');
+        $event = $this->withHeaders($ph)->postJson('/api/cutinapp/events', [
+            'production_id' => $production['id'], 'title' => 'Evento Moderado',
+            'description' => 'Evento para testar moderação da comunidade.', 'address' => 'Rua Moderação, 20',
+            'city' => 'Rio de Janeiro', 'uf' => 'RJ',
+            'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+            'end_date' => now()->addDays(2)->addHours(4)->format('Y-m-d H:i:s'),
         ])->assertCreated()->json('event');
-        $this->withHeaders($oh)->postJson('/api/cutinapp/courtesies', ['event_id'=>$event['id'],'name'=>'Entrada','quantity'=>5])->assertCreated();
-        $this->withHeaders($oh)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
+        $this->withHeaders($ph)->postJson('/api/cutinapp/courtesies', [
+            'event_id' => $event['id'], 'name' => 'Entrada Moderada', 'quantity' => 10,
+        ])->assertCreated();
+        $this->withHeaders($ph)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
 
-        $postId = $this->withHeaders($this->headersFor($author))->postJson('/api/cutinapp/events/' . $event['id'] . '/community', ['body'=>'Publicação do participante'])->assertCreated()->json('post_id');
-        $this->withHeaders($this->headersFor($other))->deleteJson('/api/cutinapp/community/' . $postId)->assertForbidden();
-        $this->withHeaders($oh)->deleteJson('/api/cutinapp/community/' . $postId)->assertOk();
-        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'status'=>'hidden']);
+        $postId = $this->withHeaders($ah)->postJson('/api/cutinapp/events/' . $event['id'] . '/community', [
+            'body' => 'Mensagem da comunidade.',
+        ])->assertCreated()->json('post_id');
+
+        $this->withHeaders($oh)->deleteJson('/api/cutinapp/community/' . $postId)->assertForbidden();
+        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'deleted_at'=>null]);
+
+        $this->withHeaders($ph)->deleteJson('/api/cutinapp/community/' . $postId)->assertOk();
+        $this->assertSoftDeleted('cutinapp_event_posts', ['id'=>$postId]);
     }
 
     private function headersFor(User $user): array
     {
-        return ['Authorization'=>'Bearer ' . JWTAuth::fromUser($user),'X-Peter-App'=>'cutinapp'];
+        return [
+            'Authorization' => 'Bearer ' . JWTAuth::fromUser($user),
+            'X-Peter-App' => 'cutinapp',
+        ];
     }
 
     private function user(string $name, string $email): User
     {
-        return User::create(['first_name'=>$name,'email'=>$email,'user_name'=>strtolower(str_replace(' ','-',$name)) . '-' . substr(md5($email),0,6),'password'=>Hash::make('Test1234!'),'email_verified_at'=>now()]);
+        return User::create([
+            'first_name' => $name,
+            'email' => $email,
+            'user_name' => strtolower(str_replace(' ', '-', $name)) . '-' . substr(md5($email), 0, 8),
+            'password' => Hash::make('Test1234!'),
+            'email_verified_at' => now(),
+        ]);
     }
 }
