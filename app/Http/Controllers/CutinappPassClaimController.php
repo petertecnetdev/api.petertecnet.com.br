@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\AppNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -29,9 +30,6 @@ class CutinappPassClaimController extends Controller
                 ->select(['id', 'event_id'])
                 ->findOrFail($ticketId);
 
-            // Every claim for the same event locks the same event row first.
-            // This serializes claims across different ticket batches so the
-            // event-wide capacity cannot be exceeded under concurrency.
             $event = Event::query()
                 ->where('app_id', $application->id)
                 ->where('app_slug', self::APP)
@@ -97,6 +95,18 @@ class CutinappPassClaimController extends Controller
         }, 3);
 
         $this->registerParticipation($application, $user->id, 'participant');
+
+        if (! $alreadyIssued && $pass->event) {
+            app(AppNotificationService::class)->sendToUser($application->id, $user->id, [
+                'type' => 'ticket_issued',
+                'title' => 'Seu ingresso está pronto',
+                'message' => 'O ingresso para ' . $pass->event->title . ' foi emitido. Abra sua carteira para acessar o QR Code.',
+                'reference_type' => 'event_pass',
+                'reference_id' => $pass->id,
+                'reference_url' => '/passes/' . $pass->id,
+                'data' => ['event_id' => $pass->event_id, 'ticket_id' => $pass->ticket_id],
+            ]);
+        }
 
         return response()->json([
             'message' => $alreadyIssued
