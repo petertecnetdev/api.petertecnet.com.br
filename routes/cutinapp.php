@@ -52,6 +52,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/artists/mine/list', [CutinappSocialController::class, 'myArtists']);
     Route::post('/artists', [CutinappSocialController::class, 'storeArtist']);
     Route::match(['post', 'put'], '/artists/{id}', [CutinappSocialController::class, 'updateArtist'])->whereNumber('id');
+    Route::put('/artists/{artistId}/type', [CutinappArtistMemberController::class, 'updateType'])->whereNumber('artistId');
     Route::get('/artists/{artistId}/members', [CutinappArtistMemberController::class, 'index'])->whereNumber('artistId');
     Route::post('/artists/{artistId}/members', [CutinappArtistMemberController::class, 'store'])->whereNumber('artistId');
     Route::match(['post', 'put'], '/artists/{artistId}/members/{memberId}', [CutinappArtistMemberController::class, 'update'])->whereNumber('artistId')->whereNumber('memberId');
