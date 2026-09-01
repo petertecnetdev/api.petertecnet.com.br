@@ -37,9 +37,10 @@ class EventPassController extends Controller
                     && $ticket->event->production
                     && (int) $ticket->event->production->app_id === (int) $application->id
                     && ! $ticket->event->is_cancelled
-                    && $ticket->event->is_published,
+                    && $ticket->event->is_published
+                    && ! $ticket->event->is_private,
                 422,
-                'Este evento não está disponível para retirada de cortesias.'
+                'Este evento não está disponível para retirada pública de cortesias.'
             );
             abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, 'O prazo para retirada desta cortesia terminou.');
