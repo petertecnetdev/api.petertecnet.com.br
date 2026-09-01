@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Application;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -102,7 +103,7 @@ class CutinappLineupNotificationLifecycleTest extends TestCase
 
     private function lineupNotificationCount(int $appId, int $userId, int $eventId): int
     {
-        return \DB::table('app_notifications')
+        return DB::table('app_notifications')
             ->where('app_id', $appId)
             ->where('user_id', $userId)
             ->where('type', 'artist_lineup')
