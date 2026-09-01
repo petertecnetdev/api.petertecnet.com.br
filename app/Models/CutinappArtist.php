@@ -9,7 +9,7 @@ class CutinappArtist extends Model
     protected $table = 'cutinapp_artists';
 
     protected $fillable = [
-        'app_id', 'user_id', 'slug', 'artist_type', 'stage_name', 'bio', 'city', 'uf', 'genres',
+        'app_id', 'user_id', 'created_by_user_id', 'claimed_at', 'slug', 'artist_type', 'stage_name', 'bio', 'city', 'uf', 'genres',
         'photo', 'cover', 'instagram_url', 'youtube_url', 'spotify_url', 'website_url',
         'is_published',
     ];
@@ -17,6 +17,7 @@ class CutinappArtist extends Model
     protected $casts = [
         'genres' => 'array',
         'is_published' => 'boolean',
+        'claimed_at' => 'datetime',
     ];
 
     public function application()
@@ -27,6 +28,16 @@ class CutinappArtist extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_user_id');
+    }
+
+    public function claims()
+    {
+        return $this->hasMany(CutinappArtistClaim::class, 'artist_id');
     }
 
     public function events()
@@ -51,5 +62,10 @@ class CutinappArtist extends Model
     public function isGroup(): bool
     {
         return in_array($this->artist_type, ['band', 'group', 'duo', 'collective', 'orchestra'], true);
+    }
+
+    public function isClaimed(): bool
+    {
+        return ! is_null($this->user_id);
     }
 }
