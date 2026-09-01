@@ -20,7 +20,11 @@ class CutinappCourtesyLifecycleTest extends TestCase
         $application = Application::query()->where('slug', 'cutinapp')->firstOrFail();
 
         $productionId = $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Cortesia'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Cortesia',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->json('production.id');
 
@@ -106,7 +110,12 @@ class CutinappCourtesyLifecycleTest extends TestCase
         $headers = $this->headersFor($producer);
 
         $productionId = $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Exclusão'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Exclusão',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
+            ->assertCreated()
             ->json('production.id');
 
         $eventId = $this->withHeaders($headers)
@@ -118,6 +127,7 @@ class CutinappCourtesyLifecycleTest extends TestCase
                 'start_date' => now()->addDay()->format('Y-m-d H:i:s'),
                 'end_date' => now()->addDay()->addHour()->format('Y-m-d H:i:s'),
             ])
+            ->assertCreated()
             ->json('event.id');
 
         $ticketId = $this->withHeaders($headers)
@@ -126,6 +136,7 @@ class CutinappCourtesyLifecycleTest extends TestCase
                 'name' => 'Pode excluir',
                 'quantity' => 2,
             ])
+            ->assertCreated()
             ->json('ticket.id');
 
         $this->withHeaders($headers)

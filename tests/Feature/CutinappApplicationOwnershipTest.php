@@ -20,7 +20,11 @@ class CutinappApplicationOwnershipTest extends TestCase
         $producerHeaders = $this->headersFor($producer);
 
         $production = $this->withHeaders($producerHeaders)
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Ownership'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Ownership',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->assertJsonPath('production.app_id', $application->id)
             ->json('production');
@@ -36,6 +40,7 @@ class CutinappApplicationOwnershipTest extends TestCase
             ])
             ->assertCreated()
             ->assertJsonPath('event.app_id', $application->id)
+            ->assertJsonPath('event.city', 'São Paulo')
             ->json('event');
 
         $ticket = $this->withHeaders($producerHeaders)

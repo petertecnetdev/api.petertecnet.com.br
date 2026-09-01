@@ -108,6 +108,7 @@ class EventPassController extends Controller
 
         if ((int) $pass->user_id !== (int) $user->id) {
             $this->manageableEvent((int) $pass->event_id, $user);
+            $pass->makeHidden('token');
         }
 
         return response()->json(['pass' => $pass]);
@@ -122,6 +123,8 @@ class EventPassController extends Controller
             ->with(['ticket:id,app_id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
             ->orderBy('holder_name')
             ->get();
+
+        $passes->each->makeHidden('token');
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published']),
@@ -167,21 +170,15 @@ class EventPassController extends Controller
             }
 
             if ((int) $pass->event_id !== (int) $selectedEvent->id) {
-                return ['status' => 422, 'message' => 'Este ingresso pertence a outro evento.', 'pass' => $pass];
+                return ['status' => 422, 'message' => 'Este ingresso pertence a outro evento.', 'pass' => null];
             }
 
             if ($pass->event->is_cancelled || ! $pass->event->is_published) {
                 return ['status' => 422, 'message' => 'Este evento não está disponível para entrada.', 'pass' => $pass];
             }
 
-            $production = $pass->event->production;
-            $canCheckIn = $operator->hasProfile('Administrador')
-                || ($production && (int) $production->user_id === (int) $operator->id)
-                || $operator->hasPermission('ticket_checkin')
-                || $operator->hasPermission('event_checkin');
-
-            if (! $canCheckIn) {
-                return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => $pass];
+            if (! $this->canOperateEvent($operator, $pass->event, $appId)) {
+                return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => null];
             }
 
             if ($pass->checked_in_at) {
@@ -200,6 +197,10 @@ class EventPassController extends Controller
                 'pass' => $pass->fresh()->load(['ticket', 'event.production', 'user']),
             ];
         });
+
+        if ($result['pass'] instanceof EventPass) {
+            $result['pass']->makeHidden('token');
+        }
 
         return response()->json(['message' => $result['message'], 'pass' => $result['pass']], $result['status']);
     }
@@ -227,14 +228,53 @@ class EventPassController extends Controller
         $production = $event->production;
 
         abort_unless($production && (int) $production->app_id === $appId, 404, 'Evento não encontrado na Cutinapp.');
+        abort_unless($this->canOperateEvent($operator, $event, $appId), 403, 'Sem permissão para acessar a operação deste evento.');
 
-        $allowed = $operator->hasProfile('Administrador')
-            || (int) $production->user_id === (int) $operator->id
-            || $operator->hasPermission('ticket_checkin')
-            || $operator->hasPermission('event_checkin');
-
-        abort_unless($allowed, 403, 'Sem permissão para acessar a operação deste evento.');
         return $event;
+    }
+
+    private function canOperateEvent(User $operator, Event $event, int $appId): bool
+    {
+        $production = $event->production;
+
+        if ($operator->hasProfile('Administrador')) {
+            return true;
+        }
+
+        if ($production && (int) $production->user_id === (int) $operator->id) {
+            return true;
+        }
+
+        if (! $operator->hasPermission('ticket_checkin') && ! $operator->hasPermission('event_checkin')) {
+            return false;
+        }
+
+        $membership = DB::table('application_user')
+            ->where('application_id', $appId)
+            ->where('user_id', $operator->id)
+            ->where('status', 'active')
+            ->first();
+
+        if (! $membership) {
+            return false;
+        }
+
+        $metadata = $membership->metadata ?? null;
+        if (is_string($metadata) && $metadata !== '') {
+            $metadata = json_decode($metadata, true);
+        } elseif (is_object($metadata)) {
+            $metadata = (array) $metadata;
+        }
+
+        if (! is_array($metadata)) {
+            return false;
+        }
+
+        $eventIds = array_map('intval', is_array($metadata['event_ids'] ?? null) ? $metadata['event_ids'] : []);
+        $productionIds = array_map('intval', is_array($metadata['production_ids'] ?? null) ? $metadata['production_ids'] : []);
+
+        return in_array((int) $event->id, $eventIds, true)
+            || ($production && in_array((int) $production->id, $productionIds, true));
     }
 
     private function requestUser(Request $request): User
