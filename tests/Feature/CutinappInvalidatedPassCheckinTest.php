@@ -17,7 +17,8 @@ class CutinappInvalidatedPassCheckinTest extends TestCase
     public function test_refunded_and_charged_back_passes_are_rejected_and_excluded_from_stats(): void
     {
         $owner = $this->user('Owner Invalidated', 'invalidated-owner@cutinapp.test');
-        $participant = $this->user('Participant Invalidated', 'invalidated-participant@cutinapp.test');
+        $refundedParticipant = $this->user('Participant Refunded', 'invalidated-refunded@cutinapp.test');
+        $chargedBackParticipant = $this->user('Participant Chargeback', 'invalidated-chargeback@cutinapp.test');
         $headers = $this->headersFor($owner);
 
         $production = $this->withHeaders($headers)->postJson('/api/cutinapp/productions', [
@@ -47,7 +48,7 @@ class CutinappInvalidatedPassCheckinTest extends TestCase
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
 
-        $firstPass = $this->withHeaders($this->headersFor($participant))
+        $firstPass = $this->withHeaders($this->headersFor($refundedParticipant))
             ->postJson('/api/cutinapp/passes/claim/' . $ticket['id'])
             ->assertCreated()
             ->json('pass');
@@ -57,9 +58,9 @@ class CutinappInvalidatedPassCheckinTest extends TestCase
         $secondPass = EventPass::create([
             'ticket_id' => $ticket['id'],
             'event_id' => $event['id'],
-            'user_id' => $participant->id,
-            'holder_name' => 'Participant Invalidated',
-            'holder_email' => $participant->email,
+            'user_id' => $chargedBackParticipant->id,
+            'holder_name' => 'Participant Chargeback',
+            'holder_email' => $chargedBackParticipant->email,
             'token' => 'CUT-CHARGEDBACK-TEST',
             'status' => 'charged_back',
         ]);
