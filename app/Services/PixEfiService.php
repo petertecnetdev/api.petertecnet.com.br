@@ -13,33 +13,43 @@ class PixEfiService
     protected Client $client;
     protected string $clientId;
     protected string $clientSecret;
+    protected string $certPath;
 
     public function __construct()
     {
-        $baseUrl = (string) config('services.efi.base_url');
+        $baseUrl = (string) config('services.efi.base_url', 'https://pix.api.efipay.com.br');
         $this->clientId = (string) config('services.efi.client_id');
         $this->clientSecret = (string) config('services.efi.client_secret');
-        $certPath = (string) config('services.efi.cert_path');
+        $this->certPath = (string) config('services.efi.cert_path');
         $timeout = (int) config('services.efi.timeout', 15);
 
-        if ($baseUrl === '' || $this->clientId === '' || $this->clientSecret === '' || $certPath === '') {
-            throw new RuntimeException('Configuração da EFI incompleta.');
-        }
-        if (! is_file($certPath) || ! is_readable($certPath)) {
-            throw new RuntimeException('Certificado EFI não encontrado ou sem permissão de leitura.');
-        }
-
-        $this->client = new Client([
-            'base_uri' => rtrim($baseUrl, '/'),
-            'cert' => $certPath,
+        $options = [
+            'base_uri' => rtrim($baseUrl !== '' ? $baseUrl : 'https://pix.api.efipay.com.br', '/'),
             'timeout' => $timeout,
             'connect_timeout' => min($timeout, 10),
             'headers' => ['Accept' => 'application/json', 'Content-Type' => 'application/json'],
-        ]);
+        ];
+
+        if ($this->certPath !== '' && is_file($this->certPath) && is_readable($this->certPath)) {
+            $options['cert'] = $this->certPath;
+        }
+
+        $this->client = new Client($options);
+    }
+
+    private function assertConfigured(): void
+    {
+        if ($this->clientId === '' || $this->clientSecret === '' || $this->certPath === '') {
+            throw new RuntimeException('Configuração da EFI incompleta.');
+        }
+        if (! is_file($this->certPath) || ! is_readable($this->certPath)) {
+            throw new RuntimeException('Certificado EFI não encontrado ou sem permissão de leitura.');
+        }
     }
 
     public function getAccessToken(): ?string
     {
+        $this->assertConfigured();
         $cacheKey = 'efi:oauth:' . hash('sha256', $this->clientId);
         $cached = Cache::get($cacheKey);
         if (is_string($cached) && $cached !== '') return $cached;
