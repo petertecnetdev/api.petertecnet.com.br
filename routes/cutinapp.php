@@ -17,6 +17,7 @@ use App\Http\Controllers\CutinappPassClaimController;
 use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
+use App\Http\Controllers\CutinappTicketController;
 use App\Http\Controllers\CutinappUserProfileController;
 use App\Http\Controllers\EventPassController;
 use Illuminate\Support\Facades\Route;
@@ -99,6 +100,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/notifications/{notificationId}/read', [CutinappNotificationController::class, 'markRead'])->whereNumber('notificationId');
     Route::get('/moderation/reports', [CutinappModerationController::class, 'reports']);
     Route::put('/moderation/reports/{reportId}', [CutinappModerationController::class, 'updateReport'])->whereNumber('reportId');
+    Route::post('/tickets', [CutinappTicketController::class, 'store']);
     Route::post('/courtesies', [CutinappController::class, 'createCourtesy']);
     Route::get('/events/{eventId}/courtesies', [CutinappController::class, 'eventCourtesies'])->whereNumber('eventId');
     Route::match(['post', 'put'], '/courtesies/{ticketId}', [CutinappCourtesyController::class, 'update'])->whereNumber('ticketId');
