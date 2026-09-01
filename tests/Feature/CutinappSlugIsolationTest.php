@@ -64,7 +64,11 @@ class CutinappSlugIsolationTest extends TestCase
         $headers = $this->headersFor($producer);
 
         $productionId = $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Cutinapp'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Cutinapp',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->json('production.id');
 
