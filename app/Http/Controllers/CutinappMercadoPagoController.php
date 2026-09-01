@@ -25,7 +25,7 @@ class CutinappMercadoPagoController extends Controller
         $state = Str::random(64);
         Cache::put($this->stateKey($state), [
             'production_id' => $productionId,
-            'user_id' => (int) $request->user()->id,
+            'actor_id' => (int) $request->user()->id,
             'created_at' => now()->timestamp,
         ], now()->addMinutes(10));
 
@@ -43,16 +43,12 @@ class CutinappMercadoPagoController extends Controller
         abort_unless(is_array($state), 422, 'A autorização expirou ou já foi utilizada. Conecte a conta novamente.');
 
         $productionId = (int) ($state['production_id'] ?? 0);
-        $userId = (int) ($state['user_id'] ?? 0);
-        abort_if($productionId <= 0 || $userId <= 0, 422, 'Estado de autorização inválido.');
-
-        $production = DB::table('productions')->where('id', $productionId)->first();
-        abort_unless($production && (int) $production->user_id === $userId, 403, 'A autorização não pertence a esta produção.');
+        abort_if($productionId <= 0 || !DB::table('productions')->where('id', $productionId)->exists(), 422, 'Produção da autorização inválida.');
 
         try {
             $tokens = $this->mercadoPago->exchangeAuthorizationCode($request->string('code')->toString());
             $accessToken = trim((string) ($tokens['access_token'] ?? ''));
-            abort_if($accessToken === '', 502, 'O Mercado Pago não retornou um token de acesso válido.');
+            if ($accessToken === '') throw new RuntimeException('O Mercado Pago não retornou um token de acesso válido.');
 
             $now = now();
             DB::table('cutinapp_producer_payment_accounts')->updateOrInsert(
@@ -68,6 +64,7 @@ class CutinappMercadoPagoController extends Controller
                         'public_key' => $tokens['public_key'] ?? null,
                         'scope' => $tokens['scope'] ?? null,
                         'live_mode' => $tokens['live_mode'] ?? null,
+                        'connected_by_user_id' => $state['actor_id'] ?? null,
                     ], JSON_UNESCAPED_UNICODE),
                     'connected_at' => $now,
                     'verified_at' => $now,
@@ -118,7 +115,7 @@ class CutinappMercadoPagoController extends Controller
         if (!$account || !$account->access_token) return response()->json(['ok' => false], 409);
 
         try {
-            [$account, $sellerToken] = $this->sellerToken($account);
+            [, $sellerToken] = $this->sellerToken($account);
             $remote = $this->mercadoPago->getPayment($sellerToken, $dataId);
             $this->syncPayment($payment, $remote);
         } catch (Throwable $e) {
@@ -171,10 +168,7 @@ class CutinappMercadoPagoController extends Controller
                 abort(422, 'A comissão confirmada pelo Mercado Pago é diferente da comissão do pedido.');
             }
 
-            $payment->update([
-                'provider_fee' => round($providerFee, 2),
-                'provider_payload' => $remote,
-            ]);
+            $payment->update(['provider_fee' => round($providerFee, 2), 'provider_payload' => $remote]);
             $order->update(['processor_fee' => round($providerFee, 2)]);
 
             if (in_array($status, ['refunded', 'charged_back'], true)) {
@@ -202,18 +196,14 @@ class CutinappMercadoPagoController extends Controller
             $order->update(['status' => 'paid', 'paid_at' => $order->paid_at ?: now(), 'cancelled_at' => null]);
 
             foreach ($order->items->where('type', 'ticket') as $line) {
-                $alreadyIssued = EventPass::query()
-                    ->where('event_id', $order->event_id)
-                    ->where('ticket_id', $line->ticket_id)
-                    ->where('user_id', $order->user_id)
-                    ->where('status', 'issued')
-                    ->count();
-
+                $alreadyIssued = EventPass::query()->where('cutinapp_order_item_id', $line->id)->count();
                 $toIssue = max(0, (int) $line->quantity - $alreadyIssued);
+
                 for ($i = 0; $i < $toIssue; $i++) {
                     EventPass::create([
                         'event_id' => $order->event_id,
                         'ticket_id' => $line->ticket_id,
+                        'cutinapp_order_item_id' => $line->id,
                         'user_id' => $order->user_id,
                         'holder_name' => trim(($order->user->first_name ?? '') . ' ' . ($order->user->last_name ?? '')) ?: null,
                         'holder_email' => $order->user->email ?? null,
@@ -226,12 +216,11 @@ class CutinappMercadoPagoController extends Controller
             DB::table('cutinapp_inventory_reservations')->where('order_id', $order->id)->whereNull('released_at')->update(['released_at' => now(), 'updated_at' => now()]);
 
             if (!DB::table('cutinapp_ledger_entries')->where('payment_id', $payment->id)->where('type', 'gross_sale')->exists()) {
-                $entries = [
+                foreach ([
                     ['type'=>'gross_sale','amount'=>$order->subtotal,'description'=>'Venda aprovada pelo Mercado Pago'],
                     ['type'=>'platform_fee','amount'=>-$order->platform_fee,'description'=>'Comissão Peter Tecnet / Cutinapp'],
                     ['type'=>'producer_credit','amount'=>$order->producer_net,'description'=>'Crédito líquido do produtor via split Mercado Pago'],
-                ];
-                foreach ($entries as $entry) {
+                ] as $entry) {
                     DB::table('cutinapp_ledger_entries')->insert(array_merge($entry, [
                         'production_id'=>$order->production_id,'order_id'=>$order->id,'payment_id'=>$payment->id,
                         'status'=>'posted','metadata'=>json_encode(['provider'=>'mercadopago']), 'created_at'=>now(),'updated_at'=>now(),
@@ -248,12 +237,17 @@ class CutinappMercadoPagoController extends Controller
         $payment->update(['status' => $status, 'refunded_at' => now()]);
         $order->update(['status' => $status]);
 
+        $orderItemIds = $order->items->where('type', 'ticket')->pluck('id');
         EventPass::query()
-            ->where('event_id', $order->event_id)
-            ->where('user_id', $order->user_id)
-            ->whereIn('ticket_id', $order->items->where('type', 'ticket')->pluck('ticket_id'))
+            ->whereIn('cutinapp_order_item_id', $orderItemIds)
             ->whereIn('status', ['issued','active'])
             ->update(['status' => $status === 'charged_back' ? 'charged_back' : 'refunded', 'updated_at' => now()]);
+
+        DB::table('cutinapp_ledger_entries')
+            ->where('payment_id', $payment->id)
+            ->whereIn('type', ['gross_sale','platform_fee','producer_credit'])
+            ->where('status', 'posted')
+            ->update(['status' => 'reversed', 'updated_at' => now()]);
 
         if (!DB::table('cutinapp_ledger_entries')->where('payment_id', $payment->id)->where('type', 'reversal')->exists()) {
             DB::table('cutinapp_ledger_entries')->insert([
