@@ -36,7 +36,8 @@ class CutinappPublicProductionController extends Controller
             ->where('app_slug', self::APP)
             ->where('production_id', $production->id)
             ->where('is_published', true)
-            ->where('is_cancelled', false);
+            ->where('is_cancelled', false)
+            ->where('is_private', false);
 
         $upcoming = (clone $visibleEvents)
             ->where('end_date', '>', now())
@@ -58,7 +59,8 @@ class CutinappPublicProductionController extends Controller
                 ->where('events.app_slug', self::APP)
                 ->where('events.production_id', $production->id)
                 ->where('events.is_published', true)
-                ->where('events.is_cancelled', false))
+                ->where('events.is_cancelled', false)
+                ->where('events.is_private', false))
             ->distinct()
             ->limit(30)
             ->get();
