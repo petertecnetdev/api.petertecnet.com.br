@@ -37,6 +37,11 @@ class CutinappCommerceController extends Controller
         $items = CutinappEventItem::query()->where('event_id', $event->id)->where('is_active', true)->orderBy('name')->get();
         $account = DB::table('cutinapp_producer_payment_accounts')->where('production_id', $event->production_id)->where('provider', 'mercadopago')->first();
         $metadata = $account?->metadata ? json_decode($account->metadata, true) : [];
+        $producerConnected = (bool) ($account && $account->status === 'connected' && $account->access_token);
+        $platformToken = trim((string) config('services.mercadopago.access_token'));
+        $platformPublicKey = trim((string) config('services.mercadopago.public_key'));
+        $platformAvailable = $platformToken !== '' && $platformPublicKey !== '';
+        $checkoutAvailable = $producerConnected || $platformAvailable;
 
         return response()->json([
             'event' => $event->only(['id','title','slug','start_date','end_date']),
@@ -44,8 +49,11 @@ class CutinappCommerceController extends Controller
             'items' => $items,
             'payment_config' => [
                 'provider' => 'mercadopago',
-                'connected' => $account && $account->status === 'connected',
-                'public_key' => $metadata['public_key'] ?? config('services.mercadopago.public_key'),
+                'connected' => $checkoutAvailable,
+                'available' => $checkoutAvailable,
+                'producer_connected' => $producerConnected,
+                'settlement_mode' => $producerConnected ? 'automatic_split' : ($platformAvailable ? 'platform_collection' : 'unavailable'),
+                'public_key' => $producerConnected ? ($metadata['public_key'] ?? $platformPublicKey) : $platformPublicKey,
                 'methods' => ['pix', 'card'],
             ],
         ]);
@@ -158,31 +166,33 @@ class CutinappCommerceController extends Controller
             ->where('status', 'connected')
             ->first();
 
-        if (!$account || !$account->access_token) {
+        $usesProducerAccount = (bool) ($account && $account->access_token);
+        $platformToken = trim((string) config('services.mercadopago.access_token'));
+        if (!$usesProducerAccount && $platformToken === '') {
             $this->cancelOrder($order);
-            return response()->json(['message' => 'O produtor ainda não conectou a conta Mercado Pago.'], 422);
+            return response()->json(['message' => 'Pagamentos estão temporariamente indisponíveis.'], 503);
         }
 
         try {
-            [, $sellerToken] = $this->sellerToken($account);
+            $sellerToken = $usesProducerAccount ? $this->sellerToken($account)[1] : $platformToken;
+            $settlementMode = $usesProducerAccount ? 'automatic_split' : 'platform_collection';
+            $order->update(['metadata' => array_merge($order->metadata ?? [], ['settlement_mode' => $settlementMode])]);
+
             $idempotencyKey = (string) Str::uuid();
             $payer = ['email' => $user->email];
             if ($data['payment_method'] === 'card') {
-                $payer['identification'] = [
-                    'type' => 'CPF',
-                    'number' => $data['payer_identification_number'],
-                ];
+                $payer['identification'] = ['type' => 'CPF', 'number' => $data['payer_identification_number']];
             }
 
             $payload = [
                 'transaction_amount' => (float) $order->total,
                 'description' => mb_substr('Cutinapp - ' . ($order->event->title ?? 'Evento'), 0, 255),
                 'external_reference' => $order->public_id,
-                'application_fee' => (float) $order->platform_fee,
                 'notification_url' => rtrim((string) config('app.url'), '/') . '/api/cutinapp/payments/mercadopago/webhook',
                 'payer' => $payer,
-                'metadata' => ['app_slug'=>self::APP,'order_id'=>$order->id,'order_public_id'=>$order->public_id,'production_id'=>$order->production_id],
+                'metadata' => ['app_slug'=>self::APP,'order_id'=>$order->id,'order_public_id'=>$order->public_id,'production_id'=>$order->production_id,'settlement_mode'=>$settlementMode],
             ];
+            if ($usesProducerAccount) $payload['application_fee'] = (float) $order->platform_fee;
 
             if ($data['payment_method'] === 'pix') {
                 $payload['payment_method_id'] = 'pix';
@@ -286,7 +296,7 @@ class CutinappCommerceController extends Controller
             'platform_fees' => round($fees, 2),
             'processor_fees' => round($processorFees, 2),
             'producer_earned' => round($earned, 2),
-            'settlement' => 'automatic_split',
+            'settlement' => 'automatic_split_or_platform_collection',
             'provider' => 'mercadopago',
         ]);
     }
