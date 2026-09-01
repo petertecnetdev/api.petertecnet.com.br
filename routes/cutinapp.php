@@ -14,6 +14,7 @@ use App\Http\Controllers\CutinappMercadoPagoController;
 use App\Http\Controllers\CutinappModerationController;
 use App\Http\Controllers\CutinappNotificationController;
 use App\Http\Controllers\CutinappPassClaimController;
+use App\Http\Controllers\CutinappPayoutController;
 use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
@@ -54,6 +55,9 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::delete('/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'deleteEventItem'])->whereNumber('eventId')->whereNumber('itemId');
     Route::get('/productions/{productionId}/payment-account', [CutinappCommerceController::class, 'paymentAccount'])->whereNumber('productionId');
     Route::get('/productions/{productionId}/financial-summary', [CutinappCommerceController::class, 'financialSummary'])->whereNumber('productionId');
+    Route::get('/productions/{productionId}/payouts', [CutinappPayoutController::class, 'summary'])->whereNumber('productionId');
+    Route::post('/productions/{productionId}/payouts', [CutinappPayoutController::class, 'requestPayout'])->whereNumber('productionId')->middleware('throttle:10,1');
+    Route::post('/productions/{productionId}/payouts/{payoutId}/cancel', [CutinappPayoutController::class, 'cancel'])->whereNumber('productionId')->whereNumber('payoutId');
 
     Route::get('/productions/mine', [CutinappController::class, 'myProductions']);
     Route::get('/productions/{id}', [CutinappController::class, 'showProduction'])->whereNumber('id');
