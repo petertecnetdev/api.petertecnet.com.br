@@ -106,10 +106,10 @@ class CutinappEventCommunityTest extends TestCase
         ])->assertCreated()->json('post_id');
 
         $this->withHeaders($oh)->deleteJson('/api/cutinapp/community/' . $postId)->assertForbidden();
-        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'deleted_at'=>null]);
+        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'status'=>'published']);
 
         $this->withHeaders($ph)->deleteJson('/api/cutinapp/community/' . $postId)->assertOk();
-        $this->assertSoftDeleted('cutinapp_event_posts', ['id'=>$postId]);
+        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'status'=>'hidden']);
     }
 
     private function headersFor(User $user): array
