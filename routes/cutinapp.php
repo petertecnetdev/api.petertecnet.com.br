@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CutinappArtistClaimController;
 use App\Http\Controllers\CutinappArtistMemberController;
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCourtesyController;
@@ -55,6 +56,15 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::delete('/community/{postId}/like', [CutinappEventCommunityController::class, 'unlike'])->whereNumber('postId');
     Route::put('/events/{eventId}/rating', [CutinappEventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
     Route::post('/events/{eventId}/report', [CutinappEventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
+
+    Route::get('/artists/manageable', [CutinappArtistClaimController::class, 'manageable']);
+    Route::post('/artists/provisional', [CutinappArtistClaimController::class, 'storeProvisional']);
+    Route::match(['post', 'put'], '/artists/{artistId}/managed', [CutinappArtistClaimController::class, 'updateManaged'])->whereNumber('artistId');
+    Route::get('/artist-claims/mine', [CutinappArtistClaimController::class, 'myClaims']);
+    Route::get('/events/{eventId}/artists/{artistId}/claim', [CutinappArtistClaimController::class, 'claimability'])->whereNumber('eventId')->whereNumber('artistId');
+    Route::post('/events/{eventId}/artists/{artistId}/claim', [CutinappArtistClaimController::class, 'claim'])->whereNumber('eventId')->whereNumber('artistId')->middleware('throttle:10,1');
+    Route::get('/events/{eventId}/artist-claims', [CutinappArtistClaimController::class, 'eventClaims'])->whereNumber('eventId');
+    Route::put('/events/{eventId}/artist-claims/{claimId}', [CutinappArtistClaimController::class, 'review'])->whereNumber('eventId')->whereNumber('claimId');
 
     Route::get('/artists/mine/list', [CutinappSocialController::class, 'myArtists']);
     Route::post('/artists', [CutinappSocialController::class, 'storeArtist']);
