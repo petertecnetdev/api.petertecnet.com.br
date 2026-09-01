@@ -62,8 +62,21 @@ class CutinappDiscoveryController extends Controller
         if (! empty($data['category'])) $query->where('events.category', $data['category']);
         if (! empty($data['production_id'])) $query->where('events.production_id', $data['production_id']);
         if (! empty($data['artist_id'])) $query->whereHas('artists', fn ($q) => $q->where('cutinapp_artists.id', $data['artist_id']));
-        if ($from) $query->where('events.start_date', '>=', $from);
-        if ($to) $query->where('events.start_date', '<=', $to);
+
+        // Calendar-day filters are deliberately expressed as DATE comparisons.
+        // They represent the user's local civil day and must not drift when the
+        // database driver serializes Carbon instances differently (SQLite CI vs.
+        // MariaDB production). Ranges such as weekend/next7/custom remain precise
+        // datetime boundaries.
+        $exactCalendarDay = ! empty($data['date'])
+            || in_array($data['period'] ?? null, ['today', 'tomorrow'], true);
+
+        if ($exactCalendarDay && $from) {
+            $query->whereDate('events.start_date', $from->toDateString());
+        } else {
+            if ($from) $query->where('events.start_date', '>=', $from);
+            if ($to) $query->where('events.start_date', '<=', $to);
+        }
 
         if (! empty($data['q'])) {
             $term = '%' . trim($data['q']) . '%';
