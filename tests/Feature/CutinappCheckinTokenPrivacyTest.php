@@ -28,7 +28,11 @@ class CutinappCheckinTokenPrivacyTest extends TestCase
         $operator->update(['profile_id' => $operatorProfile->id]);
 
         $production = $this->withHeaders($this->headersFor($owner))
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção Privacidade'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção Privacidade',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->json('production');
 
