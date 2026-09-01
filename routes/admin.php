@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\SystemController;
 use Illuminate\Support\Facades\Route;
 
@@ -14,4 +15,8 @@ Route::prefix('admin')->middleware(['auth:api', 'token.version', \App\Http\Middl
     Route::get('/users/{user}/applications', [SystemController::class, 'applicationsAccess'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [SystemController::class, 'setApplicationAccess'])->whereNumber(['user','application']);
     Route::get('/audit-logs', [SystemController::class, 'auditLogs']);
+
+    Route::get('/finance/overview', [FinancialController::class, 'overview']);
+    Route::get('/finance/payments', [FinancialController::class, 'payments']);
+    Route::get('/finance/payments/{paymentId}', [FinancialController::class, 'payment'])->whereNumber('paymentId');
 });
