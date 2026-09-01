@@ -43,6 +43,7 @@ return [
 
     'cutinapp' => [
         'platform_fee_percent' => (float) env('CUTINAPP_PLATFORM_FEE_PERCENT', 8),
+        'frontend_url' => env('CUTINAPP_FRONTEND_URL', 'https://cutinapp.petertecnet.com.br'),
     ],
 
     'geo_ip' => [
