@@ -15,6 +15,7 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 class EventPassController extends Controller
 {
     private const APP = 'cutinapp';
+    private const INVALID_PASS_STATUSES = ['cancelled', 'refunded', 'charged_back'];
 
     public function claim(Request $request, int $ticketId)
     {
@@ -48,6 +49,7 @@ class EventPassController extends Controller
             $existing = EventPass::query()
                 ->where('ticket_id', $ticket->id)
                 ->where('user_id', $user->id)
+                ->whereNotIn('status', self::INVALID_PASS_STATUSES)
                 ->first();
 
             if ($existing) {
@@ -55,7 +57,10 @@ class EventPassController extends Controller
                 return $existing->load(['ticket', 'event.production']);
             }
 
-            $issued = EventPass::query()->where('ticket_id', $ticket->id)->count();
+            $issued = EventPass::query()
+                ->where('ticket_id', $ticket->id)
+                ->whereNotIn('status', self::INVALID_PASS_STATUSES)
+                ->count();
             abort_if((int) $ticket->quantity <= 0 || $issued >= (int) $ticket->quantity, 422, 'As cortesias deste lote estão esgotadas.');
 
             return EventPass::create([
@@ -126,13 +131,14 @@ class EventPassController extends Controller
             ->get();
 
         $passes->each->makeHidden('token');
+        $validPasses = $passes->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published']),
             'passes' => $passes,
             'stats' => [
-                'issued' => $passes->count(),
-                'checked_in' => $passes->whereNotNull('checked_in_at')->count(),
+                'issued' => $validPasses->count(),
+                'checked_in' => $validPasses->whereNotNull('checked_in_at')->count(),
             ],
         ]);
     }
@@ -172,6 +178,15 @@ class EventPassController extends Controller
 
             if ((int) $pass->event_id !== (int) $selectedEvent->id) {
                 return ['status' => 422, 'message' => 'Este ingresso pertence a outro evento.', 'pass' => null];
+            }
+
+            if (in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true)) {
+                $messages = [
+                    'cancelled' => 'Este ingresso foi cancelado e não pode ser utilizado.',
+                    'refunded' => 'Este ingresso foi reembolsado e não pode ser utilizado.',
+                    'charged_back' => 'Este ingresso foi invalidado por contestação do pagamento.',
+                ];
+                return ['status' => 422, 'message' => $messages[$pass->status] ?? 'Este ingresso não está válido para entrada.', 'pass' => $pass];
             }
 
             if ($pass->event->is_cancelled || ! $pass->event->is_published) {
@@ -229,11 +244,12 @@ class EventPassController extends Controller
     {
         $operator = $this->requestUser($request);
         $event = $this->manageableEvent($eventId, $operator);
+        $valid = EventPass::query()->where('event_id', $eventId)->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled', 'start_date', 'end_date']),
-            'issued' => EventPass::query()->where('event_id', $eventId)->count(),
-            'checked_in' => EventPass::query()->where('event_id', $eventId)->whereNotNull('checked_in_at')->count(),
+            'issued' => (clone $valid)->count(),
+            'checked_in' => (clone $valid)->whereNotNull('checked_in_at')->count(),
         ]);
     }
 
