@@ -20,7 +20,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
     {
         config()->set('services.cutinapp.allow_platform_collection', false);
 
-        [$producer, $event, $ticket] = $this->paidEventFixture('sales-disabled');
+        [, $event, $ticket] = $this->paidEventFixture('sales-disabled');
 
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
             ->assertOk()
@@ -46,10 +46,10 @@ class CutinappCommerceProductionSafetyTest extends TestCase
     public function test_pix_expiration_matches_inventory_reservation_and_uses_split(): void
     {
         config()->set('services.cutinapp.allow_platform_collection', false);
-        config()->set('services.cutinapp.order_expiration_minutes', 15);
+        config()->set('services.cutinapp.order_expiration_minutes', 30);
         config()->set('services.cutinapp.platform_fee_percent', 8);
 
-        [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('pix-expiration');
+        [, $event, $ticket, $productionId] = $this->paidEventFixture('pix-expiration');
 
         DB::table('cutinapp_producer_payment_accounts')->insert([
             'production_id' => $productionId,
@@ -77,8 +77,8 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 $this->assertEqualsWithDelta(1.60, (float) $payload['application_fee'], 0.001);
                 $this->assertArrayHasKey('date_of_expiration', $payload);
                 $expiration = \Carbon\Carbon::parse($payload['date_of_expiration']);
-                $this->assertGreaterThan(now()->addMinutes(14), $expiration);
-                $this->assertLessThanOrEqual(now()->addMinutes(16), $expiration);
+                $this->assertGreaterThan(now()->addMinutes(29), $expiration);
+                $this->assertLessThanOrEqual(now()->addMinutes(31), $expiration);
                 return true;
             })
             ->andReturn([
