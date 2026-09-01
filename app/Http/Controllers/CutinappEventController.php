@@ -72,8 +72,8 @@ class CutinappEventController extends Controller
         abort_if($event->is_cancelled,422,'Um evento cancelado não pode ser publicado.');
         abort_if(!$event->end_date || Carbon::parse($event->end_date,$timezone)->lte($now),422,'Um evento já encerrado não pode ser publicado.');
         abort_if(!$event->start_date || Carbon::parse($event->start_date,$timezone)->lte($now),422,'O evento precisa ser publicado antes do horário de início.');
-        $hasAvailableCourtesy=Ticket::query()->where('app_id',$this->applicationId())->where('event_id',$event->id)->where('price',0)->where('quantity','>',0)->where(fn($q)=>$q->whereNull('limit_date')->orWhere('limit_date','>',$now))->exists();
-        abort_unless($hasAvailableCourtesy,422,'Crie ao menos um ingresso disponível antes de publicar o evento.');
+        $hasAvailableTicket=Ticket::query()->where('app_id',$this->applicationId())->where('event_id',$event->id)->where('quantity','>',0)->where(fn($q)=>$q->whereNull('limit_date')->orWhere('limit_date','>',$now))->exists();
+        abort_unless($hasAvailableTicket,422,'Crie ao menos um ingresso disponível antes de publicar o evento.');
         $wasPublished=(bool)$event->is_published; $event->forceFill(['is_published'=>true])->save(); if(!$wasPublished&&!$event->is_private)$this->notifyProductionFollowers($event);
         $message=$event->is_private?'Evento privado ativado. Ele permanece fora da descoberta e dos perfis públicos.':'Evento publicado. Ele já pode aparecer na descoberta, inclusive quando acontece hoje.';
         return response()->json(['message'=>$message,'event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
