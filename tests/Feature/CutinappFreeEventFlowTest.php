@@ -138,7 +138,11 @@ class CutinappFreeEventFlowTest extends TestCase
         $headers = $this->headersFor($producer);
 
         $productionId = $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/productions', ['name' => 'Produção B'])
+            ->postJson('/api/cutinapp/productions', [
+                'name' => 'Produção B',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
+            ])
             ->assertCreated()
             ->json('production.id');
 
@@ -158,7 +162,8 @@ class CutinappFreeEventFlowTest extends TestCase
                 'token' => $token,
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Este ingresso pertence a outro evento.');
+            ->assertJsonPath('message', 'Este ingresso pertence a outro evento.')
+            ->assertJsonPath('pass', null);
     }
 
     private function createPublishedEventWithCourtesy(array $headers, int $productionId, string $title): array
