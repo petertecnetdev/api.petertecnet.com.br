@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CutinappLineupNotificationService;
 use App\Services\CutinappLocationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -65,6 +66,14 @@ class Event extends Model
             if (! $end->gt($start)) {
                 throw ValidationException::withMessages(['end_date' => ['O término do evento precisa ser posterior ao início.']]);
             }
+        });
+
+        static::saved(function (Event $event) {
+            if ($event->app_slug !== 'cutinapp' || ! $event->wasChanged('is_published') || ! $event->is_published || $event->is_cancelled) {
+                return;
+            }
+
+            app(CutinappLineupNotificationService::class)->notifyPublishedEvent($event);
         });
     }
 
