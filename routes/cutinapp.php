@@ -54,6 +54,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/productions/{productionId}/mercadopago/connect', [CutinappMercadoPagoController::class, 'connect'])->whereNumber('productionId');
     Route::get('/productions/{productionId}/contract', [CutinappProducerContractController::class, 'show'])->whereNumber('productionId');
     Route::post('/productions/{productionId}/contract/sign', [CutinappProducerContractController::class, 'sign'])->whereNumber('productionId')->middleware('throttle:10,1');
+    Route::post('/productions/{productionId}/contract/resend', [CutinappProducerContractController::class, 'resend'])->whereNumber('productionId')->middleware('throttle:5,1');
     Route::get('/productions/{productionId}/contract/pdf', [CutinappProducerContractController::class, 'pdf'])->whereNumber('productionId');
     Route::post('/events/{eventId}/items', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
     Route::match(['put','post'], '/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId')->whereNumber('itemId');
