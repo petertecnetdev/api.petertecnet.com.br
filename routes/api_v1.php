@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\AdmissionController;
 use App\Http\Controllers\Api\V1\CheckInController;
 use App\Http\Controllers\Api\V1\DeveloperProjectController;
+use App\Http\Controllers\Api\V1\DiscoveryController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\IdentityController;
@@ -60,7 +61,8 @@ Route::prefix('v1/apps/{application}')
             });
         });
 
-        // Public application-scoped discovery contracts.
+        Route::get('/discovery', [DiscoveryController::class, 'index']);
+        Route::get('/search', [DiscoveryController::class, 'search']);
         Route::get('/establishments', [EstablishmentController::class, 'index']);
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);

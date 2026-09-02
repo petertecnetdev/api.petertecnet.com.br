@@ -3,96 +3,74 @@
 namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
+use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 
 class AppNotificationController extends ApiController
 {
-    private const RASOIO_APP_ID = 1;
+    public function __construct(private readonly ApplicationContext $context) {}
 
-    public function rasoioIndex(Request $request)
+    public function index(Request $request)
     {
-        return $this->indexForApp($request, self::RASOIO_APP_ID);
-    }
-
-    public function rasoioUnreadCount(Request $request)
-    {
-        return $this->unreadCountForApp($request, self::RASOIO_APP_ID);
-    }
-
-    public function rasoioMarkRead(Request $request, int $id)
-    {
-        return $this->markReadForApp($request, self::RASOIO_APP_ID, $id);
-    }
-
-    public function rasoioMarkAllRead(Request $request)
-    {
-        return $this->markAllReadForApp($request, self::RASOIO_APP_ID);
-    }
-
-    private function indexForApp(Request $request, int $appId)
-    {
+        $this->context->requireCapability('notifications');
         $userId = (int) $request->user()->id;
-        $limit = max(1, min(50, (int) $request->query('limit', 20)));
-
+        $limit = max(1, min(100, (int) $request->query('limit', $request->query('per_page', 20))));
         $query = AppNotification::query()
-            ->where('app_id', $appId)
+            ->where('app_id', $this->context->id())
             ->where('user_id', $userId);
 
-        $notifications = (clone $query)
-            ->latest('id')
-            ->limit($limit)
-            ->get();
+        if ($request->boolean('unread')) $query->whereNull('read_at');
 
-        $unreadCount = (clone $query)
+        $notifications = (clone $query)->latest('id')->limit($limit)->get();
+        $unreadCount = AppNotification::query()
+            ->where('app_id', $this->context->id())
+            ->where('user_id', $userId)
             ->whereNull('read_at')
             ->count();
 
         return response()->json([
             'success' => true,
-            'unread_count' => $unreadCount,
             'notifications' => $notifications,
+            'unread_count' => $unreadCount,
         ]);
     }
 
-    private function unreadCountForApp(Request $request, int $appId)
+    public function unreadCount(Request $request)
     {
+        $this->context->requireCapability('notifications');
         $count = AppNotification::query()
-            ->where('app_id', $appId)
+            ->where('app_id', $this->context->id())
             ->where('user_id', (int) $request->user()->id)
             ->whereNull('read_at')
             ->count();
 
-        return response()->json([
-            'success' => true,
-            'unread_count' => $count,
-        ]);
+        return response()->json(['success' => true, 'unread_count' => $count]);
     }
 
-    private function markReadForApp(Request $request, int $appId, int $id)
+    public function markRead(Request $request, int $id)
     {
+        $this->context->requireCapability('notifications');
         $notification = AppNotification::query()
-            ->where('app_id', $appId)
+            ->where('app_id', $this->context->id())
             ->where('user_id', (int) $request->user()->id)
             ->findOrFail($id);
 
-        if (!$notification->read_at) {
+        if (! $notification->read_at) {
             $notification->forceFill(['read_at' => now()])->save();
         }
 
-        return response()->json([
-            'success' => true,
-            'notification' => $notification->fresh(),
-        ]);
+        return response()->json(['success' => true, 'notification' => $notification->fresh()]);
     }
 
-    private function markAllReadForApp(Request $request, int $appId)
+    public function markAllRead(Request $request)
     {
-        AppNotification::query()
-            ->where('app_id', $appId)
+        $this->context->requireCapability('notifications');
+        $updated = AppNotification::query()
+            ->where('app_id', $this->context->id())
             ->where('user_id', (int) $request->user()->id)
             ->whereNull('read_at')
-            ->update(['read_at' => now()]);
+            ->update(['read_at' => now(), 'updated_at' => now()]);
 
-        return response()->json(['success' => true]);
+        return response()->json(['success' => true, 'updated' => $updated]);
     }
 }
