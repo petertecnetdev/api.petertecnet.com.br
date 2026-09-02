@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\AdmissionController;
+use App\Http\Controllers\Api\V1\CheckInController;
 use App\Http\Controllers\Api\V1\DeveloperProjectController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
@@ -11,7 +13,9 @@ use App\Http\Controllers\Api\V1\OauthTokenController;
 use App\Http\Controllers\Api\V1\OrderController;
 use App\Http\Controllers\Api\V1\OrderingSettingsController;
 use App\Http\Controllers\Api\V1\PaymentController;
+use App\Http\Controllers\Api\V1\PeopleController;
 use App\Http\Controllers\Api\V1\SandboxResourceController;
+use App\Http\Controllers\Api\V1\TeamController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -56,10 +60,16 @@ Route::prefix('v1/apps/{application}')
             });
         });
 
+        // Public application-scoped discovery contracts.
         Route::get('/establishments', [EstablishmentController::class, 'index']);
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
+        Route::get('/people', [PeopleController::class, 'index']);
+        Route::get('/people/{person}', [PeopleController::class, 'show'])->whereNumber('person');
+        Route::get('/teams', [TeamController::class, 'index']);
+        Route::get('/teams/{team}', [TeamController::class, 'show'])->whereNumber('team');
+        Route::get('/events/{event}/admissions', [AdmissionController::class, 'index'])->whereNumber('event');
         Route::get('/establishments/{slug}/ordering', [OrderController::class, 'ordering']);
         Route::post('/payments/mercadopago/webhook', [OrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
@@ -68,6 +78,8 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/establishments', [EstablishmentController::class, 'index'])->middleware('api.scope:establishments.read');
                 Route::get('/items', [ItemController::class, 'index'])->middleware('api.scope:catalog.read');
                 Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog'])->middleware('api.scope:catalog.read');
+                Route::get('/people', [PeopleController::class, 'index'])->middleware('api.scope:people.read');
+                Route::get('/teams', [TeamController::class, 'index'])->middleware('api.scope:people.read');
             });
 
             Route::prefix('sandbox')->group(function () {
@@ -82,6 +94,16 @@ Route::prefix('v1/apps/{application}')
         Route::middleware(['auth:api', 'token.version', 'actor.context'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
+            Route::get('/me/admissions', [AdmissionController::class, 'mine']);
+
+            Route::post('/people', [PeopleController::class, 'store'])->middleware(['actor.scope:people.write', 'idempotent']);
+            Route::patch('/people/{person}', [PeopleController::class, 'update'])->whereNumber('person')->middleware(['actor.scope:people.write', 'idempotent']);
+            Route::post('/teams', [TeamController::class, 'store'])->middleware(['actor.scope:people.write', 'idempotent']);
+            Route::put('/teams/{team}/members', [TeamController::class, 'syncMembers'])->whereNumber('team')->middleware(['actor.scope:people.write', 'idempotent']);
+            Route::post('/events/{event}/admissions', [AdmissionController::class, 'store'])->whereNumber('event')->middleware(['actor.scope:events.write', 'idempotent']);
+            Route::post('/admissions/{admission}/credentials', [AdmissionController::class, 'issue'])->whereNumber('admission')->middleware(['actor.scope:events.write', 'idempotent']);
+            Route::post('/check-ins', [CheckInController::class, 'store'])->middleware(['actor.scope:events.checkin', 'idempotent']);
+
             Route::post('/establishments', [EstablishmentController::class, 'store'])->middleware('idempotent');
 
             Route::middleware('tenant.context')->group(function () {
@@ -108,9 +130,9 @@ Route::prefix('v1/apps/{application}')
 
             Route::post('/orders', [OrderController::class, 'checkout'])->middleware(['throttle:30,1', 'idempotent']);
             Route::get('/me/orders', [OrderController::class, 'myOrders']);
-            Route::get('/me/orders/{order}', [OrderController::class, 'myOrder'])->whereNumber('order');
-            Route::get('/me/orders/{order}/payment', [PaymentController::class, 'show'])->whereNumber('order');
-            Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->whereNumber('order')->middleware('idempotent');
+            Route::get('/me/orders/{order}', [OrderController::class, 'myOrder']);
+            Route::get('/me/orders/{order}/payment', [PaymentController::class, 'show']);
+            Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->middleware('idempotent');
             Route::get('/dashboard', [OrderController::class, 'dashboard']);
 
             Route::prefix('developer')->group(function () {
