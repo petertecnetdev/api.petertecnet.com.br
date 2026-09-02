@@ -1,0 +1,158 @@
+openapi: 3.1.0
+info:
+  title: Peter Platform API
+  version: 1.0.0
+  description: Stable public and first-party API contract for Peter Tecnet applications and developer projects.
+servers:
+  - url: https://api.petertecnet.com.br/api/v1
+    description: Production
+  - url: https://api.petertecnet.com.br/api/v1
+    description: Sandbox uses credentials issued for sandbox projects
+paths:
+  /oauth/token:
+    post:
+      summary: Exchange OAuth client credentials for an access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grant_type, client_id, client_secret]
+              properties:
+                grant_type: { type: string, const: client_credentials }
+                client_id: { type: string, format: uuid }
+                client_secret: { type: string }
+                scope: { type: string }
+      responses:
+        '200':
+          description: Access token issued
+  /apps/{application}/establishments:
+    get:
+      summary: List establishments in an application
+      parameters:
+        - $ref: '#/components/parameters/Application'
+      responses:
+        '200': { description: Establishments }
+  /apps/{application}/items:
+    get:
+      summary: List catalog items in an application
+      parameters:
+        - $ref: '#/components/parameters/Application'
+      responses:
+        '200': { description: Items }
+  /apps/{application}/catalog/{establishmentSlug}:
+    get:
+      summary: Read an establishment catalog
+      parameters:
+        - $ref: '#/components/parameters/Application'
+        - name: establishmentSlug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: Catalog }
+  /apps/{application}/platform/establishments:
+    get:
+      summary: Developer-project authenticated establishment listing
+      security: [{ ApiKey: [] }, { OAuthBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+      responses:
+        '200': { description: Establishments }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /apps/{application}/platform/items:
+    get:
+      summary: Developer-project authenticated catalog item listing
+      security: [{ ApiKey: [] }, { OAuthBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+      responses:
+        '200': { description: Items }
+  /apps/{application}/developer/projects:
+    get:
+      summary: List projects owned by the authenticated user
+      security: [{ UserBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+      responses:
+        '200': { description: Projects }
+    post:
+      summary: Create an API project
+      security: [{ UserBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '201': { description: Project created }
+  /apps/{application}/developer/projects/{project}/api-keys:
+    post:
+      summary: Issue an API key
+      security: [{ UserBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: project
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '201': { description: Key issued; raw key is returned once }
+  /apps/{application}/developer/projects/{project}/oauth-clients:
+    post:
+      summary: Issue an OAuth client
+      security: [{ UserBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: project
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '201': { description: OAuth client issued; secret is returned once }
+  /apps/{application}/developer/projects/{project}/usage:
+    get:
+      summary: Read monthly project usage
+      security: [{ UserBearer: [] }]
+      parameters:
+        - $ref: '#/components/parameters/Application'
+        - name: project
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        '200': { description: Usage summary }
+components:
+  securitySchemes:
+    ApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+    OAuthBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: opaque
+    UserBearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    Application:
+      name: application
+      in: path
+      required: true
+      description: Application slug or numeric identifier
+      schema: { type: string }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Required for developer-project writes; supported for first-party JWT writes.
+      schema: { type: string, maxLength: 190 }
+  responses:
+    Unauthorized:
+      description: Authentication failed
+    Forbidden:
+      description: Scope or tenant access denied
