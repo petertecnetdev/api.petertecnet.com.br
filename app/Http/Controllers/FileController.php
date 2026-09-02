@@ -21,8 +21,47 @@ class FileController extends Controller
             'is_primary' => 'nullable|boolean',
             'position' => 'nullable|integer|min:0',
             'visibility' => 'nullable|in:public,private',
-            'file' => 'required|file|max:20480|mimes:jpg,jpeg,png,webp,gif,pdf,txt,csv,doc,docx,xls,xlsx,zip',
+            'file' => 'nullable|required_without:external_url|file|max:20480|mimes:jpg,jpeg,png,webp,gif,pdf,txt,csv,doc,docx,xls,xlsx,zip',
+            'external_url' => 'nullable|required_without:file|url:http,https|max:2048',
         ]);
+
+        if (! empty($data['external_url'])) {
+            $url = trim($data['external_url']);
+            $path = (string) parse_url($url, PHP_URL_PATH);
+            $name = basename($path) ?: 'external-image';
+            $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+            $file = File::create([
+                'uuid' => (string) Str::uuid(),
+                'app_id' => $data['app_id'],
+                'entity_id' => $data['entity_id'],
+                'entity_name' => $data['entity_name'],
+                'fileable_id' => $data['entity_id'],
+                'fileable_type' => $data['entity_name'],
+                'original_name' => mb_substr($name, 0, 255),
+                'extension' => $extension ?: null,
+                'mime_type' => 'image/external',
+                'file_size' => 0,
+                'type' => 'image',
+                'storage' => 'external',
+                'path' => null,
+                'storage_path' => null,
+                'public_url' => $url,
+                'group' => $data['group'] ?? null,
+                'position' => $data['position'] ?? 0,
+                'is_primary' => $data['is_primary'] ?? true,
+                'visibility' => $data['visibility'] ?? 'public',
+                'visibility_scope' => 'global',
+                'status' => 'active',
+                'source' => 'external_url',
+                'version' => 1,
+                'created_by' => Auth::id(),
+                'updated_by' => Auth::id(),
+                'meta' => ['external_url' => true],
+            ]);
+
+            return response()->json(['message' => 'Imagem externa vinculada com sucesso.', 'file' => $file], 201);
+        }
 
         $uploaded = $request->file('file');
         $extension = strtolower((string) $uploaded->getClientOriginalExtension());
