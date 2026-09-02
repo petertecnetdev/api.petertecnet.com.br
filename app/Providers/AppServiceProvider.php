@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Domain\Commerce\Contracts\PaymentProviderInterface;
 use App\Events\EcosystemUpdated;
+use App\Infrastructure\Payments\MercadoPagoPaymentProvider;
 use App\Models\Application;
 use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
@@ -13,7 +15,9 @@ use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use App\Observers\InteractionAuditObserver;
+use App\Support\ActorContext;
 use App\Support\ApplicationContext;
+use App\Support\TenantContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
@@ -23,13 +27,16 @@ class AppServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->singleton(ApplicationContext::class, fn () => new ApplicationContext());
+        $this->app->singleton(TenantContext::class, fn () => new TenantContext());
+        $this->app->singleton(ActorContext::class, fn () => new ActorContext());
+        $this->app->bind(PaymentProviderInterface::class, MercadoPagoPaymentProvider::class);
     }
 
     public function boot()
     {
         Relation::morphMap([
-            'establishment' => 'App\Models\Establishment',
-            'event' => 'App\Models\Event',
+            'establishment' => 'App\\Models\\Establishment',
+            'event' => 'App\\Models\\Event',
         ]);
 
         $storagePath = storage_path('app/public');
