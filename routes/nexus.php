@@ -17,6 +17,11 @@ Route::prefix('nexus')->middleware('api')->group(function () {
         ->middleware('throttle:120,1')
         ->name('nexus.share.catalog');
 
+    Route::get('/share/item/{identifier}', [NexusShareController::class, 'item'])
+        ->where('identifier', '[A-Za-z0-9\-]+')
+        ->middleware('throttle:120,1')
+        ->name('nexus.share.item');
+
     Route::get('/catalog/{identifier}', [NexusCatalogCompanyController::class, 'showCatalog'])
         ->where('identifier', '[A-Za-z0-9\-]+')
         ->name('nexus.catalog.show');
