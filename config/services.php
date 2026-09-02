@@ -36,6 +36,7 @@ return [
         'base_url' => env('ASAAS_API_BASE_URL', 'https://api.asaas.com/v3'),
         'api_key' => env('ASAAS_API_KEY'),
         'webhook_token' => env('ASAAS_WEBHOOK_TOKEN'),
+        'withdrawal_auth_token' => env('ASAAS_WITHDRAWAL_AUTH_TOKEN'),
         'timeout' => (int) env('ASAAS_API_TIMEOUT', 20),
     ],
 
