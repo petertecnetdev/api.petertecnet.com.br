@@ -25,15 +25,8 @@ class EcosystemSsoController extends Controller
             ->firstOrFail();
 
         $user = $request->user();
-        $hasAccess = $user->applications()
-            ->where('applications.id', $application->id)
-            ->where(function ($query) {
-                $query->where('application_user.status', 'active')
-                    ->orWhereNull('application_user.status');
-            })
-            ->exists();
-
-        abort_unless($hasAccess, 403, 'Sua Conta Peter Tecnet não possui acesso a este aplicativo.');
+        $this->ensureSelfServiceMembership($user, $application);
+        abort_unless($this->hasAccess($user, $application), 403, 'Sua Conta Peter Tecnet não possui acesso a este aplicativo.');
 
         $code = Str::random(64);
         Cache::put($this->cacheKey($code), [
@@ -84,15 +77,8 @@ class EcosystemSsoController extends Controller
             ], 401);
         }
 
-        $hasAccess = $user->applications()
-            ->where('applications.id', $application->id)
-            ->where(function ($query) {
-                $query->where('application_user.status', 'active')
-                    ->orWhereNull('application_user.status');
-            })
-            ->exists();
-
-        abort_unless($hasAccess, 403, 'Sua Conta Peter Tecnet não possui mais acesso a este aplicativo.');
+        $this->ensureSelfServiceMembership($user, $application);
+        abort_unless($this->hasAccess($user, $application), 403, 'Sua Conta Peter Tecnet não possui mais acesso a este aplicativo.');
 
         $token = auth('api')->login($user);
 
@@ -106,6 +92,36 @@ class EcosystemSsoController extends Controller
                 'application' => $application->only(['id', 'slug', 'name', 'url']),
             ],
         ]);
+    }
+
+    private function ensureSelfServiceMembership(User $user, Application $application): void
+    {
+        if (! $application->self_service_access) {
+            return;
+        }
+
+        $alreadyMember = $user->applications()
+            ->where('applications.id', $application->id)
+            ->exists();
+
+        if (! $alreadyMember) {
+            $user->applications()->attach($application->id, [
+                'status' => 'active',
+                'role' => 'member',
+                'joined_at' => now(),
+            ]);
+        }
+    }
+
+    private function hasAccess(User $user, Application $application): bool
+    {
+        return $user->applications()
+            ->where('applications.id', $application->id)
+            ->where(function ($query) {
+                $query->where('application_user.status', 'active')
+                    ->orWhereNull('application_user.status');
+            })
+            ->exists();
     }
 
     private function cacheKey(string $code): string
