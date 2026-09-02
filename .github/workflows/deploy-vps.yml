@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   deploy:
-    # Central deploy: SSH retries, serialized VPS builds and superseded-run cancellation.
+    # Central deploy: queue-safe SSH retries, non-blocking VPS lock and superseded-run cancellation.
     uses: petertecnetdev/petertecnet.com.br/.github/workflows/reusable-vps-deploy.yml@main
     with:
       deploy_path: /var/www/api.petertecnet.com.br
