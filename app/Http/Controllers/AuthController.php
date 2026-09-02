@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class AuthController extends Controller
@@ -140,7 +141,17 @@ class AuthController extends Controller
             'email' => 'required|email|max:255|unique:users,email',
             'password' => ['required', 'string', Password::min(8)->mixedCase()->numbers()->symbols()],
             'cpf' => ['nullable', 'regex:/^\\d{11}$/', 'unique:users,cpf'],
-            'app_id' => 'nullable|integer|exists:applications,id',
+            'app_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('applications', 'id')->where(
+                    fn ($query) => $query
+                        ->where('is_active', true)
+                        ->where('self_service_access', true)
+                ),
+            ],
+        ], [
+            'app_id.exists' => 'A aplicação informada não está disponível para cadastro público.',
         ]);
 
         $rawCode = $this->newCode(6);
