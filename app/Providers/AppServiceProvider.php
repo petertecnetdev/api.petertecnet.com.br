@@ -5,10 +5,12 @@ namespace App\Providers;
 use App\Domain\Commerce\Contracts\PaymentProviderInterface;
 use App\Events\EcosystemUpdated;
 use App\Infrastructure\Payments\MercadoPagoPaymentProvider;
+use App\Infrastructure\Products\Cutinapp\Observers\EventObserver as CutinappEventObserver;
 use App\Models\Application;
 use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
+use App\Models\Event;
 use App\Models\Interaction;
 use App\Models\Item;
 use App\Models\Order;
@@ -35,9 +37,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         Relation::morphMap([
-            'establishment' => 'App\\Models\\Establishment',
-            'event' => 'App\\Models\\Event',
+            'establishment' => Establishment::class,
+            'event' => Event::class,
         ]);
+
+        // Product hooks are infrastructure adapters; the canonical Event model stays product-agnostic.
+        Event::observe(CutinappEventObserver::class);
 
         $storagePath = storage_path('app/public');
         if (! File::exists($storagePath)) {
