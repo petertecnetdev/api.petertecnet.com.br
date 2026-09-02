@@ -76,6 +76,27 @@ class NexusPublicCatalogIsolationTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_social_preview_is_server_rendered_and_respects_nexus_linkage(): void
+    {
+        [$nexus, , $company] = $this->fixture();
+
+        $this->get('/api/nexus/share/catalog/' . $company->slug . '?app_id=' . $nexus->id)
+            ->assertNotFound();
+
+        $company->applications()->syncWithoutDetaching([
+            $nexus->id => ['is_primary' => false],
+        ]);
+
+        $response = $this->get('/api/nexus/share/catalog/' . $company->slug . '?app_id=' . $nexus->id);
+
+        $response
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+            ->assertSee('og:title', false)
+            ->assertSee('og:description', false)
+            ->assertSee('https://nexus.petertecnet.com.br/catalog/empresa-isolada-publica', false);
+    }
+
     private function fixture(): array
     {
         $nexus = Application::create([
