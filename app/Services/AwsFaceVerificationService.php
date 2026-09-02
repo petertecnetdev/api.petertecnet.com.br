@@ -81,6 +81,7 @@ class AwsFaceVerificationService
         if (!$temporary) {
             throw new RuntimeException('Não foi possível emitir credenciais temporárias para prova de vida.');
         }
+        $expiration = $temporary['Expiration'] ?? null;
 
         return [
             'session_id' => $sessionId,
@@ -89,8 +90,8 @@ class AwsFaceVerificationService
                 'accessKeyId' => (string) $temporary['AccessKeyId'],
                 'secretAccessKey' => (string) $temporary['SecretAccessKey'],
                 'sessionToken' => (string) $temporary['SessionToken'],
-                'expiration' => method_exists($temporary['Expiration'] ?? null, 'format')
-                    ? $temporary['Expiration']->format(DATE_ATOM)
+                'expiration' => is_object($expiration) && method_exists($expiration, 'format')
+                    ? $expiration->format(DATE_ATOM)
                     : null,
             ],
         ];
