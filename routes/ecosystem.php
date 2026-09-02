@@ -22,12 +22,14 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::post('/command/incidents', [CommandCenterController::class, 'storeIncident']);
     Route::patch('/command/incidents/{incident}', [CommandCenterController::class, 'updateIncident'])->whereNumber('incident');
 
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction']);
-    Route::get('/financial/orders', [FinancialController::class, 'orders']);
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
-    Route::get('/financial/health', [FinancialController::class, 'health']);
+    Route::prefix('financial')->middleware('admin.permission:finance_view')->group(function () {
+        Route::get('/dashboard', [FinancialController::class, 'dashboard']);
+        Route::get('/transactions', [FinancialController::class, 'transactions']);
+        Route::get('/transactions/{payment}', [FinancialController::class, 'transaction']);
+        Route::get('/orders', [FinancialController::class, 'orders']);
+        Route::get('/payouts', [FinancialController::class, 'payouts']);
+        Route::get('/health', [FinancialController::class, 'health']);
+    });
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
@@ -44,7 +46,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
-    Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
+    Route::delete('/estosystem/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
 
     Route::get('/items', [EcosystemController::class, 'items']);
     Route::post('/items', [EcosystemController::class, 'storeItem']);
@@ -54,7 +56,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
 
-    Route::get('/audit', [EcosystemController::class, 'auditLogs']);
+    Route::get('/audit', [EcosystemController::class, 'auditLogs'])->middleware('admin.permission:audit_view');
 });
 
 Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
