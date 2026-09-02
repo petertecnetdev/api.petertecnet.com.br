@@ -9,6 +9,12 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
+Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{40,128}')
+    ->middleware(['api', 'throttle:30,1']);
+Route::post('/auth/invitations/{token}/activate', [InvitationActivationController::class, 'activate'])
+    ->where('token', '[A-Za-z0-9]{40,128}')
+    ->middleware(['api', 'throttle:10,1']);
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
