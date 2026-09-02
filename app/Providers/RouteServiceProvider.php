@@ -29,40 +29,15 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Global provider callbacks only. User-facing finance operations are
+            // application-scoped under /api/v1/apps/{application}/... .
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/finance.php'));
 
-            // Product-prefixed route files are compatibility adapters only.
-            // They bind an application context; reusable business logic must live
-            // in Domain/* and consume ApplicationScope instead of product names.
-            Route::middleware(['api', 'app.bind:rasoio'])
-                ->prefix('api')
-                ->group(base_path('routes/rasoio.php'));
-
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/ecosystem.php'));
-
-            Route::middleware(['api', 'app.bind:nexus'])
-                ->prefix('api')
-                ->group(base_path('routes/nexus.php'));
-
-            Route::middleware(['api', 'app.bind:payflow'])
-                ->prefix('api')
-                ->group(base_path('routes/payflow.php'));
-
-            Route::middleware(['api', 'app.bind:cutinapp'])
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp.php'));
-
-            Route::middleware(['api', 'app.bind:cutinapp'])
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp_history.php'));
-
-            Route::middleware(['api', 'app.bind:laora'])
-                ->prefix('api')
-                ->group(base_path('routes/laora.php'));
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
