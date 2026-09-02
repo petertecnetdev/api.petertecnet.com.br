@@ -53,8 +53,8 @@ class ResetPasswordMail extends Mailable
         $scheme = strtolower((string) ($parts['scheme'] ?? ''));
         $host = strtolower((string) ($parts['host'] ?? ''));
 
-        return $scheme === 'https:'
-            ? false
-            : ($scheme === 'https' && $host !== '' && ! in_array($host, ['localhost', '127.0.0.1', '::1'], true));
+        return $scheme === 'https'
+            && $host !== ''
+            && ! in_array($host, ['localhost', '127.0.0.1', '::1'], true);
     }
 }
