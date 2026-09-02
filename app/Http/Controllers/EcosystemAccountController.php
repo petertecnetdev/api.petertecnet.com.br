@@ -22,6 +22,8 @@ class EcosystemAccountController extends Controller
             ->map(function (Application $application) use ($memberships) {
                 $membership = $memberships->get($application->id);
                 $status = $membership?->pivot?->status;
+                $memberAccess = $membership !== null && ($status === null || $status === 'active');
+                $hasAccess = $memberAccess || (bool) $application->self_service_access;
 
                 return [
                     'id' => (int) $application->id,
@@ -31,7 +33,8 @@ class EcosystemAccountController extends Controller
                     'url' => $application->url,
                     'logo' => $application->logo,
                     'version' => $application->version,
-                    'has_access' => $membership !== null && ($status === null || $status === 'active'),
+                    'has_access' => $hasAccess,
+                    'self_service_access' => (bool) $application->self_service_access,
                     'membership' => $membership ? [
                         'role' => $membership->pivot->role,
                         'status' => $status,
