@@ -97,6 +97,43 @@ class NexusPublicCatalogIsolationTest extends TestCase
             ->assertSee('https://nexus.petertecnet.com.br/catalog/empresa-isolada-publica', false);
     }
 
+    public function test_item_social_preview_is_server_rendered_and_respects_nexus_linkage(): void
+    {
+        [$nexus, $source, $company, $user] = $this->fixture();
+
+        $item = Item::create([
+            'app_id' => $source->id,
+            'entity_name' => 'establishment',
+            'entity_id' => $company->id,
+            'name' => 'Produto compartilhável',
+            'slug' => 'produto-compartilhavel',
+            'type' => 'product',
+            'description' => 'Descrição própria para o preview social.',
+            'price' => 39.9,
+            'status' => true,
+            'user_id' => $user->id,
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $this->get('/api/nexus/share/item/' . $item->slug . '?app_id=' . $nexus->id)
+            ->assertNotFound();
+
+        $company->applications()->syncWithoutDetaching([
+            $nexus->id => ['is_primary' => false],
+        ]);
+
+        $response = $this->get('/api/nexus/share/item/' . $item->slug . '?app_id=' . $nexus->id);
+
+        $response
+            ->assertOk()
+            ->assertHeader('Content-Type', 'text/html; charset=UTF-8')
+            ->assertSee('property="og:type" content="product"', false)
+            ->assertSee('Produto compartilhável — Empresa isolada pública', false)
+            ->assertSee('Descrição própria para o preview social.', false)
+            ->assertSee('https://nexus.petertecnet.com.br/item/produto-compartilhavel', false);
+    }
+
     private function fixture(): array
     {
         $nexus = Application::create([
