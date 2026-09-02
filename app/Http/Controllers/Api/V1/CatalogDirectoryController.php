@@ -203,6 +203,33 @@ class CatalogDirectoryController extends Controller
         ]);
     }
 
+    public function deactivate(Request $request, int $sourceId): JsonResponse
+    {
+        $targetAppId = $this->applicationId($request);
+        $company = Establishment::query()
+            ->where('user_id', $request->user()->id)
+            ->whereNull('source_establishment_id')
+            ->with('applications:id,name,slug')
+            ->findOrFail($sourceId);
+
+        if ((int) $company->app_id === $targetAppId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A empresa é nativa deste aplicativo e não pode ser apenas desvinculada. Use a exclusão da própria empresa.',
+                'code' => 'NATIVE_ESTABLISHMENT_CANNOT_DETACH',
+            ], 422);
+        }
+
+        $company->applications()->detach($targetAppId);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Catálogo desvinculado do aplicativo sem alterar a empresa de origem.',
+            'target_application_id' => $targetAppId,
+            'establishment_id' => $company->id,
+        ]);
+    }
+
     private function publicCompany(int $targetAppId, string $identifier): Establishment
     {
         return Establishment::query()
