@@ -17,7 +17,7 @@ jobs:
       deploy_path: /var/www/api.petertecnet.com.br
       deploy_type: laravel
       deploy_branch: staging
-      health_url: ''
+      health_url: 'https://api.petertecnet.com.br/health'
     secrets:
       VPS_HOST: ${{ secrets.VPS_HOST }}
       VPS_PORT: ${{ secrets.VPS_PORT }}
