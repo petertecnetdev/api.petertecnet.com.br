@@ -3,13 +3,13 @@
 use App\Http\Controllers\FinancialController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('finance')->middleware('api')->group(function () {
+Route::prefix('finance')->group(function () {
     Route::post('/webhooks/asaas', [FinancialController::class, 'asaasWebhook'])
         ->middleware('throttle:240,1')
         ->name('finance.webhooks.asaas');
 });
 
-Route::prefix('finance')->middleware(['api', 'auth:api'])->group(function () {
+Route::prefix('finance')->middleware('auth:api')->group(function () {
     Route::get('/productions/{productionId}', [FinancialController::class, 'overview'])
         ->whereNumber('productionId')
         ->name('finance.production.overview');
