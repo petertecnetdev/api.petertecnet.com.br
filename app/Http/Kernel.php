@@ -26,7 +26,6 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-
         'api' => [
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
@@ -59,5 +58,6 @@ class Kernel extends HttpKernel
         'idempotent' => \App\Http\Middleware\IdempotentRequest::class,
         'legacy.deprecated' => \App\Http\Middleware\LegacyApiDeprecation::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
+        'admin.permission' => \App\Http\Middleware\RequireAdminPermission::class,
     ];
 }
