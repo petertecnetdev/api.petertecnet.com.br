@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use Illuminate\Support\Facades\Route;
 
@@ -9,6 +10,10 @@ Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
+    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
+    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
+    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
@@ -17,24 +22,19 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
     Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])->whereNumber('user')->whereNumber('application');
-
     Route::get('/profiles', [EcosystemController::class, 'profiles']);
     Route::post('/profiles', [EcosystemController::class, 'storeProfile']);
     Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])->whereNumber('profile');
-
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
-
     Route::get('/items', [EcosystemController::class, 'items']);
     Route::post('/items', [EcosystemController::class, 'storeItem']);
     Route::put('/items/{item}', [EcosystemController::class, 'updateItem'])->whereNumber('item');
     Route::delete('/items/{item}', [EcosystemController::class, 'destroyItem'])->whereNumber('item');
-
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
-
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
 });
 
