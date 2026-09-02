@@ -29,7 +29,6 @@ class CommerceController extends Controller
     {
         $establishment = $this->publicEstablishment($slug);
         $items = Item::query()
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
@@ -63,8 +62,8 @@ class CommerceController extends Controller
 
         [$order, $establishment] = DB::transaction(function () use ($data, $user) {
             $establishment = Establishment::query()
+                ->forApplication($this->context->id())
                 ->whereKey($data['establishment_id'])
-                ->where('app_id', $this->context->id())
                 ->where('is_cancelled', false)
                 ->where('is_published', true)
                 ->lockForUpdate()
@@ -85,7 +84,6 @@ class CommerceController extends Controller
 
             $catalog = Item::query()
                 ->whereIn('id', $requested->keys()->map(fn ($id) => (int) $id))
-                ->where('app_id', $this->context->id())
                 ->where('entity_name', 'establishment')
                 ->where('entity_id', $establishment->id)
                 ->where('status', true)
@@ -196,8 +194,8 @@ class CommerceController extends Controller
         abort_if($order->payment_status === 'paid', 422, 'Esta compra já está paga.');
 
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
             ->firstOrFail();
 
         abort_unless(
@@ -305,8 +303,8 @@ class CommerceController extends Controller
     private function serializeOrder(Order $order, bool $seller = false): array
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
             ->first();
 
         $claim = $order->payment_status === 'paid'
@@ -371,8 +369,8 @@ class CommerceController extends Controller
     private function manageable(Request $request, int $establishmentId): Establishment
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($establishmentId)
-            ->where('app_id', $this->context->id())
             ->where('is_cancelled', false)
             ->firstOrFail();
 
@@ -391,7 +389,7 @@ class CommerceController extends Controller
     private function publicEstablishment(string $slug): Establishment
     {
         return Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
             ->where('is_published', true)
