@@ -37,8 +37,13 @@ class PlatOrderingSettingsController extends Controller
             'pix_key'=>['nullable','string','max:255'],
         ]);
 
+        $methods = array_values(array_unique($data['payment_methods'] ?? []));
+        $mercadoPagoConfigured = trim((string) config('services.mercadopago.access_token')) !== '';
+        $pixKey = trim((string) ($data['pix_key'] ?? $est->pix_key ?? ''));
+        abort_if(in_array('pix', $methods, true) && ! $mercadoPagoConfigured && $pixKey === '', 422, 'Para aceitar Pix, configure o Mercado Pago na API ou informe uma chave Pix do restaurante.');
+
         if (array_key_exists('opening_hours', $data)) $data['opening_hours'] = json_encode($data['opening_hours']);
-        if (array_key_exists('payment_methods', $data)) $data['payment_methods'] = json_encode(array_values(array_unique($data['payment_methods'])));
+        $data['payment_methods'] = json_encode($methods);
         $data['updated_by'] = $request->user()->id;
         $est->forceFill($data)->save();
 
@@ -57,6 +62,11 @@ class PlatOrderingSettingsController extends Controller
 
     private function data(Establishment $est): array
     {
+        $mercadoPagoConfigured = trim((string) config('services.mercadopago.access_token')) !== '';
+        $fallbackMethods = $mercadoPagoConfigured || trim((string) ($est->pix_key ?? '')) !== ''
+            ? ['pix','cash','card_on_delivery']
+            : ['cash','card_on_delivery'];
+
         return [
             'establishment' => $est->only(['id','name','fantasy','slug','logo']),
             'ordering_enabled' => (bool)($est->ordering_enabled ?? true),
@@ -68,9 +78,9 @@ class PlatOrderingSettingsController extends Controller
             'minimum_order' => (float)($est->minimum_order ?? 0),
             'estimated_delivery_minutes' => $est->estimated_delivery_minutes ? (int)$est->estimated_delivery_minutes : 45,
             'opening_hours' => $this->decode($est->opening_hours, []),
-            'payment_methods' => $this->decode($est->payment_methods, ['pix','cash','card_on_delivery']),
+            'payment_methods' => $this->decode($est->payment_methods, $fallbackMethods),
             'pix_key' => (string)($est->pix_key ?? ''),
-            'mercadopago_configured' => trim((string)config('services.mercadopago.access_token')) !== '',
+            'mercadopago_configured' => $mercadoPagoConfigured,
         ];
     }
 
