@@ -1,21 +1,25 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Http\Controllers\Api\V1;
 
+use App\Http\Controllers\Controller;
+use App\Models\Application;
 use App\Models\Establishment;
+use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 
-class NexusShareController extends Controller
+class CatalogShareController extends Controller
 {
-    public function catalog(Request $request, string $identifier)
+    public function __construct(private readonly ApplicationContext $context)
     {
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ]);
-        $appId = (int) $data['app_id'];
+    }
 
+    public function catalog(Request $request, string $identifier): Response
+    {
+        $application = $this->application($request);
         $company = Establishment::query()
-            ->forApplication($appId)
+            ->forApplication((int) $application->id)
             ->where('is_cancelled', false)
             ->when(
                 is_numeric($identifier),
@@ -28,21 +32,26 @@ class NexusShareController extends Controller
                 ->orderBy('position')])
             ->firstOrFail();
 
-        $base = rtrim((string) config('peter.frontends.nexus', 'https://nexus.petertecnet.com.br'), '/');
+        $configuredFrontend = config('peter.frontends.' . $application->slug);
+        $base = rtrim((string) ($application->url ?: $configuredFrontend), '/');
+        abort_if($base === '', 422, 'O aplicativo não possui URL pública configurada.');
+
         $catalogUrl = $base . '/catalog/' . rawurlencode($company->slug);
-        $title = trim((string) ($company->fantasy ?: $company->name ?: 'Catálogo Nexus'));
-        $description = trim((string) ($company->description ?: "Confira o catálogo online de {$title} na Nexus."));
+        $appName = trim((string) ($application->name ?: $application->slug ?: 'Peter Tecnet'));
+        $title = trim((string) ($company->fantasy ?: $company->name ?: 'Catálogo'));
+        $description = trim((string) ($company->description ?: "Confira o catálogo online de {$title}."));
         $image = optional(
             $company->files->first(fn ($file) => $file->type === 'logo' && ! empty($file->public_url))
                 ?: $company->files->first(fn ($file) => ! empty($file->public_url))
         )->public_url;
         $image = $image ?: $base . '/images/logo.png';
 
-        $esc = fn ($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeTitle = $esc($title . ' — Catálogo Nexus');
-        $safeDescription = $esc($description);
-        $safeUrl = $esc($catalogUrl);
-        $safeImage = $esc($image);
+        $escape = fn ($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $safeTitle = $escape($title . ' — ' . $appName);
+        $safeDescription = $escape($description);
+        $safeUrl = $escape($catalogUrl);
+        $safeImage = $escape($image);
+        $safeAppName = $escape($appName);
         $jsonCatalogUrl = $this->json($catalogUrl);
 
         $html = <<<HTML
@@ -57,7 +66,7 @@ class NexusShareController extends Controller
 <link rel="canonical" href="{$safeUrl}">
 <meta property="og:locale" content="pt_BR">
 <meta property="og:type" content="website">
-<meta property="og:site_name" content="Nexus">
+<meta property="og:site_name" content="{$safeAppName}">
 <meta property="og:title" content="{$safeTitle}">
 <meta property="og:description" content="{$safeDescription}">
 <meta property="og:url" content="{$safeUrl}">
@@ -80,6 +89,13 @@ HTML;
             ->header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
             ->header('X-Content-Type-Options', 'nosniff')
             ->header('Referrer-Policy', 'strict-origin-when-cross-origin');
+    }
+
+    private function application(Request $request): Application
+    {
+        if ($this->context->has()) return $this->context->application();
+        $appId = (int) $request->validate(['app_id' => 'required|integer|exists:applications,id'])['app_id'];
+        return Application::query()->findOrFail($appId);
     }
 
     private function json(string $value): string

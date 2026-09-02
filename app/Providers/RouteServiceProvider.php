@@ -39,7 +39,7 @@ class RouteServiceProvider extends ServiceProvider
 
             Route::middleware('api')
                 ->prefix('api')
-                ->group(base_path('routes/nexus.php'));
+                ->group(base_path('routes/catalog.php'));
 
             Route::middleware('api')
                 ->prefix('api')
