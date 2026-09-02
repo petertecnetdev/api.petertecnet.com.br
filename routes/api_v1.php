@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
+use App\Http\Controllers\Api\V1\PlatPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -43,6 +44,7 @@ Route::prefix('v1/apps/{application}')
             Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
             Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
+            Route::get('/me/orders/{order}/payment', [PlatPaymentController::class, 'show'])->whereNumber('order');
             Route::get('/establishments/{establishment}/orders', [PlatOrderController::class, 'establishmentOrders'])->whereNumber('establishment');
             Route::patch('/orders/{order}/status', [PlatOrderController::class, 'updateStatus'])->whereNumber('order');
             Route::get('/dashboard', [PlatOrderController::class, 'dashboard']);
