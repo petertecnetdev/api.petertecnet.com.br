@@ -13,11 +13,8 @@ class PeterPlatformProductAdapterTest extends TestCase
 
     public function test_cutinapp_legacy_contract_is_available_through_v1_without_deprecation_headers(): void
     {
-        Application::create([
-            'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
-            'is_active' => true,
-        ]);
+        $application = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $application->forceFill(['is_active' => true])->save();
 
         $legacy = $this->getJson('/api/cutinapp/config');
         $legacy->assertOk();
@@ -33,11 +30,8 @@ class PeterPlatformProductAdapterTest extends TestCase
     {
         Mail::fake();
 
-        $application = Application::create([
-            'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
-            'is_active' => true,
-        ]);
+        $application = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $application->forceFill(['is_active' => true])->save();
 
         $response = $this->postJson('/api/v1/apps/cutinapp/auth/register', [
             'first_name' => 'Pessoa Teste',
@@ -61,11 +55,8 @@ class PeterPlatformProductAdapterTest extends TestCase
 
     public function test_product_adapter_rejects_inactive_application_context(): void
     {
-        Application::create([
-            'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
-            'is_active' => false,
-        ]);
+        $application = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $application->forceFill(['is_active' => false])->save();
 
         $this->getJson('/api/v1/apps/cutinapp/cutinapp/config')
             ->assertNotFound()
