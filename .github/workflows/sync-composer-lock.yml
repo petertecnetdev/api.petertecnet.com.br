@@ -1,0 +1,46 @@
+name: Sync Composer Lock
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - .github/workflows/sync-composer-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout staging
+        uses: actions/checkout@v4
+        with:
+          ref: staging
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          tools: composer:v2
+          coverage: none
+
+      - name: Refresh lock metadata only
+        run: composer update --lock --no-interaction --no-scripts
+
+      - name: Commit synchronized lock
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- composer.lock; then
+            echo "composer.lock is already synchronized."
+            exit 0
+          fi
+
+          git config user.name "Peter Tecnet Automation"
+          git config user.email "petertecnet@gmail.com"
+          git add composer.lock
+          git commit -m "build: synchronize Composer lock"
+          git push origin HEAD:staging
