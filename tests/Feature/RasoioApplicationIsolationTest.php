@@ -17,7 +17,7 @@ class RasoioApplicationIsolationTest extends TestCase
 
     public function test_rasoio_availability_rejects_employer_from_another_application(): void
     {
-        [$owner, $otherOwner, $otherEstablishment] = $this->applicationFixtures();
+        [$rasoio, $owner, $otherOwner, $otherEstablishment] = $this->applicationFixtures();
 
         $employer = Employer::create([
             'user_id' => $otherOwner->id,
@@ -29,6 +29,8 @@ class RasoioApplicationIsolationTest extends TestCase
         ]);
 
         $token = auth('api')->login($owner);
+
+        $this->assertNotSame((int) $rasoio->id, (int) $otherEstablishment->app_id);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/api/rasoio/availability/times', [
@@ -42,9 +44,11 @@ class RasoioApplicationIsolationTest extends TestCase
     public function test_rasoio_employer_endpoint_rejects_other_application(): void
     {
         Mail::fake();
-        [$owner, $otherOwner, $otherEstablishment] = $this->applicationFixtures();
+        [$rasoio, $owner, $otherOwner, $otherEstablishment] = $this->applicationFixtures();
 
         $token = auth('api')->login($otherOwner);
+
+        $this->assertNotSame((int) $rasoio->id, (int) $otherEstablishment->app_id);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/api/rasoio/employers', [
@@ -61,19 +65,22 @@ class RasoioApplicationIsolationTest extends TestCase
 
     private function applicationFixtures(): array
     {
-        $rasoio = Application::query()->find(1);
-
-        if (! $rasoio) {
-            $rasoio = Application::create([
+        $rasoio = Application::query()->firstOrCreate(
+            ['slug' => 'rasoio'],
+            [
                 'name' => 'Rasoio',
-                'slug' => 'rasoio',
                 'is_active' => true,
-            ]);
+            ]
+        );
+
+        if (! $rasoio->is_active) {
+            $rasoio->forceFill(['is_active' => true])->save();
         }
 
-        $this->assertSame(1, (int) $rasoio->id);
+        $otherApp = Application::query()
+            ->where('id', '!=', $rasoio->id)
+            ->first();
 
-        $otherApp = Application::query()->whereKeyNot(1)->first();
         if (! $otherApp) {
             $otherApp = Application::create([
                 'name' => 'Outra aplicação',
@@ -82,13 +89,13 @@ class RasoioApplicationIsolationTest extends TestCase
             ]);
         }
 
-        $this->assertNotSame(1, (int) $otherApp->id);
+        $this->assertNotSame((int) $rasoio->id, (int) $otherApp->id);
 
         $owner = $this->user('rasoio-owner@example.test', 'rasoio-owner');
         $otherOwner = $this->user('other-owner@example.test', 'other-owner');
 
         Establishment::create([
-            'app_id' => 1,
+            'app_id' => $rasoio->id,
             'name' => 'Barbearia Rasoio',
             'slug' => 'barbearia-rasoio',
             'user_id' => $owner->id,
@@ -105,7 +112,7 @@ class RasoioApplicationIsolationTest extends TestCase
             'updated_by' => $otherOwner->id,
         ]);
 
-        return [$owner, $otherOwner, $otherEstablishment];
+        return [$rasoio, $owner, $otherOwner, $otherEstablishment];
     }
 
     private function user(string $email, string $username): User
