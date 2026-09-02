@@ -1,13 +1,13 @@
 <?php
 
+use App\Domain\Commerce\Http\Controllers\OrderingController;
+use App\Domain\Commerce\Http\Controllers\OrderingSettingsController;
+use App\Domain\Commerce\Http\Controllers\PaymentStatusController;
 use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
-use App\Http\Controllers\Api\V1\PlatOrderController;
-use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
-use App\Http\Controllers\Api\V1\PlatPaymentController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -17,8 +17,8 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
-        Route::get('/establishments/{slug}/ordering', [PlatOrderController::class, 'ordering']);
-        Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
+        Route::get('/establishments/{slug}/ordering', [OrderingController::class, 'ordering']);
+        Route::post('/payments/mercadopago/webhook', [OrderingController::class, 'paymentWebhook'])->middleware('throttle:120,1');
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
@@ -41,15 +41,15 @@ Route::prefix('v1/apps/{application}')
             Route::put('/employers/{employer}/items', [EmployerController::class, 'syncItems']);
             Route::get('/employers/{employer}/metrics', [EmployerController::class, 'metrics']);
 
-            Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
-            Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
-            Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
-            Route::get('/me/orders/{order}/payment', [PlatPaymentController::class, 'show'])->whereNumber('order');
-            Route::get('/establishments/{establishment}/orders', [PlatOrderController::class, 'establishmentOrders'])->whereNumber('establishment');
-            Route::patch('/orders/{order}/status', [PlatOrderController::class, 'updateStatus'])->whereNumber('order');
-            Route::get('/dashboard', [PlatOrderController::class, 'dashboard']);
+            Route::post('/orders', [OrderingController::class, 'checkout'])->middleware('throttle:30,1');
+            Route::get('/me/orders', [OrderingController::class, 'myOrders']);
+            Route::get('/me/orders/{order}', [OrderingController::class, 'myOrder'])->whereNumber('order');
+            Route::get('/me/orders/{order}/payment', [PaymentStatusController::class, 'show'])->whereNumber('order');
+            Route::get('/establishments/{establishment}/orders', [OrderingController::class, 'establishmentOrders'])->whereNumber('establishment');
+            Route::patch('/orders/{order}/status', [OrderingController::class, 'updateStatus'])->whereNumber('order');
+            Route::get('/dashboard', [OrderingController::class, 'dashboard']);
 
-            Route::get('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'show'])->whereNumber('establishment');
-            Route::patch('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'update'])->whereNumber('establishment');
+            Route::get('/establishments/{establishment}/ordering-settings', [OrderingSettingsController::class, 'show'])->whereNumber('establishment');
+            Route::patch('/establishments/{establishment}/ordering-settings', [OrderingSettingsController::class, 'update'])->whereNumber('establishment');
         });
     });
