@@ -17,48 +17,23 @@ class RouteServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
 
         $this->routes(function () {
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api.php'));
+            $legacy = ['api', 'legacy.deprecated'];
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/account.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/api.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/account.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api_v1.php'));
+            // Stable Peter Platform contract. Never inherits legacy deprecation headers.
+            Route::middleware('api')->prefix('api')->group(base_path('routes/api_v1.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/rasoio.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/rasoio.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/ecosystem.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/nexus.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/payflow.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp_history.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/laora.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/ecosystem.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/nexus.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/payflow.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp_history.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/laora.php'));
-
-            Route::middleware('web')
-                ->group(base_path('routes/web.php'));
+            Route::middleware('web')->group(base_path('routes/web.php'));
         });
     }
 
