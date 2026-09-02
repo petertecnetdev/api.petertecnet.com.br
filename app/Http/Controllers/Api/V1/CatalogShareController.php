@@ -18,11 +18,9 @@ class CatalogShareController extends Controller
     public function catalog(Request $request, string $identifier): Response
     {
         $application = $this->application($request);
-
         $company = Establishment::query()
             ->forApplication((int) $application->id)
             ->where('is_cancelled', false)
-            ->where('is_published', true)
             ->when(
                 is_numeric($identifier),
                 fn ($query) => $query->where('id', (int) $identifier),
@@ -34,7 +32,8 @@ class CatalogShareController extends Controller
                 ->orderBy('position')])
             ->firstOrFail();
 
-        $base = rtrim((string) $application->url, '/');
+        $configuredFrontend = config('peter.frontends.' . $application->slug);
+        $base = rtrim((string) ($application->url ?: $configuredFrontend), '/');
         abort_if($base === '', 422, 'O aplicativo não possui URL pública configurada.');
 
         $catalogUrl = $base . '/catalog/' . rawurlencode($company->slug);
@@ -94,15 +93,9 @@ HTML;
 
     private function application(Request $request): Application
     {
-        if ($this->context->has()) {
-            return $this->context->application();
-        }
-
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ]);
-
-        return Application::query()->findOrFail((int) $data['app_id']);
+        if ($this->context->has()) return $this->context->application();
+        $appId = (int) $request->validate(['app_id' => 'required|integer|exists:applications,id'])['app_id'];
+        return Application::query()->findOrFail($appId);
     }
 
     private function json(string $value): string
