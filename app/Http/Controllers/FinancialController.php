@@ -1,0 +1,160 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Production;
+use App\Services\FinancialIdentityService;
+use App\Services\FinancialPayoutService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use RuntimeException;
+use Throwable;
+
+class FinancialController extends Controller
+{
+    public function __construct(
+        private FinancialIdentityService $identity,
+        private FinancialPayoutService $payouts,
+    ) {}
+
+    public function overview(Request $request, int $productionId)
+    {
+        $production = $this->ownedProduction($request, $productionId);
+        return response()->json($this->payouts->overview($production, $request->user()));
+    }
+
+    public function saveIdentity(Request $request, int $productionId)
+    {
+        $this->ownedProduction($request, $productionId);
+        $data = $request->validate([
+            'legal_name' => 'nullable|string|min:5|max:190',
+            'document_type' => 'nullable|string|in:CPF',
+            'document_number' => 'nullable|string|max:30',
+            'birthdate' => 'nullable|date|before:-18 years',
+        ]);
+
+        return response()->json([
+            'message' => 'Dados de identidade salvos.',
+            'identity' => $this->identity->saveProfile($request->user(), $data),
+        ]);
+    }
+
+    public function uploadDocument(Request $request, int $productionId)
+    {
+        $this->ownedProduction($request, $productionId);
+        $data = $request->validate([
+            'front' => 'required|file|mimes:jpg,jpeg,png,webp|max:8192',
+            'back' => 'nullable|file|mimes:jpg,jpeg,png,webp|max:8192',
+            'consent' => 'required|accepted',
+        ]);
+
+        return response()->json([
+            'message' => 'Documento recebido. Agora faça a prova de vida.',
+            'identity' => $this->identity->uploadDocuments(
+                $request->user(),
+                $request->file('front'),
+                $request->file('back'),
+                (bool) $data['consent'],
+            ),
+        ], 201);
+    }
+
+    public function startLiveness(Request $request, int $productionId)
+    {
+        $this->ownedProduction($request, $productionId);
+        try {
+            return response()->json($this->identity->startLiveness($request->user()));
+        } catch (RuntimeException $e) {
+            report($e);
+            return response()->json(['message' => $e->getMessage()], 503);
+        }
+    }
+
+    public function completeLiveness(Request $request, int $productionId)
+    {
+        $this->ownedProduction($request, $productionId);
+        $data = $request->validate(['session_id' => 'required|string|min:20|max:200']);
+
+        try {
+            $identity = $this->identity->completeLiveness($request->user(), $data['session_id']);
+            $verified = data_get($identity, 'beneficiary.status') === 'verified';
+            return response()->json([
+                'message' => $verified
+                    ? 'Identidade confirmada com sucesso.'
+                    : 'A verificação precisa ser refeita ou analisada.',
+                'identity' => $identity,
+            ], $verified ? 200 : 422);
+        } catch (RuntimeException $e) {
+            report($e);
+            return response()->json(['message' => 'Não foi possível concluir a prova de vida. Tente novamente.'], 502);
+        }
+    }
+
+    public function savePix(Request $request, int $productionId)
+    {
+        $production = $this->ownedProduction($request, $productionId);
+        $data = $request->validate([
+            'pix_key_type' => 'required|string|in:CPF,CNPJ,EMAIL,PHONE,EVP',
+            'pix_key' => 'required|string|min:3|max:190',
+        ]);
+
+        try {
+            $overview = $this->payouts->savePixDestination(
+                $production,
+                $request->user(),
+                $data['pix_key_type'],
+                $data['pix_key'],
+            );
+            return response()->json([
+                'message' => data_get($overview, 'destination.status') === 'cooling'
+                    ? 'Nova chave Pix verificada. Por segurança, os repasses ficarão bloqueados durante o período indicado.'
+                    : 'Chave Pix verificada e ativada para recebimentos.',
+                ...$overview,
+            ]);
+        } catch (RuntimeException $e) {
+            report($e);
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
+    public function requestPayout(Request $request, int $productionId)
+    {
+        $production = $this->ownedProduction($request, $productionId);
+        $data = $request->validate(['amount' => 'required|numeric|min:0.01|max:999999999.99']);
+
+        try {
+            return response()->json(
+                $this->payouts->requestPayout($production, $request->user(), (float) $data['amount']),
+                201
+            );
+        } catch (RuntimeException $e) {
+            report($e);
+            return response()->json(['message' => $e->getMessage()], 502);
+        }
+    }
+
+    public function asaasWebhook(Request $request)
+    {
+        $expected = trim((string) config('services.asaas.webhook_token'));
+        $provided = trim((string) $request->header('asaas-access-token'));
+        abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 401, 'Webhook não autenticado.');
+
+        try {
+            $this->payouts->processWebhook($request->all());
+        } catch (Throwable $e) {
+            report($e);
+            return response()->json(['ok' => false], 500);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function ownedProduction(Request $request, int $productionId): Production
+    {
+        $production = Production::query()->findOrFail($productionId);
+        $user = $request->user();
+        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        abort_unless($user && ($admin || (int) $production->user_id === (int) $user->id), 403);
+        return $production;
+    }
+}
