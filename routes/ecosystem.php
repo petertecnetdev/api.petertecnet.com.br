@@ -1,6 +1,6 @@
 <?php
 
-use App\Http\Controllers\AuthController;
+use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -9,7 +9,7 @@ use App\Http\Controllers\Admin\OnboardingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
-Route::post('/auth/invite-complete', [AuthController::class, 'completeInvite'])->middleware(['api', 'throttle:10,1']);
+Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
