@@ -25,9 +25,16 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/account.php'));
 
+            // Canonical shared platform contract.
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
+
+            // Temporary expand/contract boundary. The file owns its middleware
+            // groups so each legacy URL can bind the appropriate application
+            // context without duplicating the global API middleware stack.
+            Route::prefix('api')
+                ->group(base_path('routes/compatibility.php'));
 
             // Global provider callbacks only. User-facing finance operations are
             // application-scoped under /api/v1/apps/{application}/... .
