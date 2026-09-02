@@ -69,6 +69,7 @@ class NexusCatalogCompanyController extends Controller
         $targetAppId = (int) $data['app_id'];
 
         $companyQuery = Establishment::query()
+            ->forApplication($targetAppId)
             ->where('is_cancelled', false)
             ->when(
                 is_numeric($identifier),
@@ -76,7 +77,7 @@ class NexusCatalogCompanyController extends Controller
                 fn ($query) => $query->where('slug', $identifier)
             );
 
-        if (!is_numeric($identifier)) {
+        if (! is_numeric($identifier)) {
             $companyQuery
                 ->orderByRaw('CASE WHEN app_id = ? THEN 0 ELSE 1 END', [$targetAppId])
                 ->orderByDesc('updated_at');
@@ -95,10 +96,10 @@ class NexusCatalogCompanyController extends Controller
 
         Interaction::registerView($company, Auth::user());
 
-        // A Nexus é a vitrine transversal do ecossistema. Se a empresa aparece
-        // na descoberta pública, seu catálogo também precisa abrir. Por isso os
-        // itens são obtidos pelo vínculo real com a empresa (entity_id), sem
-        // exigir que tenham sido criados originalmente com app_id da Nexus.
+        // Once the company is explicitly linked to Nexus, its own active items
+        // may be shown even when they originated in another Peter Tecnet app.
+        // The company/application boundary above is mandatory and prevents a
+        // slug from leaking an unrelated application's catalog.
         $items = Item::query()
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
@@ -121,14 +122,13 @@ class NexusCatalogCompanyController extends Controller
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values();
-        $catalogActive = (int) $company->app_id === $targetAppId || $linkedApplicationIds->contains($targetAppId);
 
         return response()->json([
             'success' => true,
             'message' => 'Catálogo do ecossistema carregado com sucesso na Nexus.',
             'establishment' => array_merge($company->toArray(), [
                 'application_ids' => $linkedApplicationIds,
-                'catalog_active' => $catalogActive,
+                'catalog_active' => true,
                 'catalog_establishment_id' => $company->id,
                 'catalog_slug' => $company->slug,
                 'is_nexus_native' => (int) $company->app_id === $targetAppId,
@@ -158,7 +158,7 @@ class NexusCatalogCompanyController extends Controller
                 fn ($query) => $query->where('slug', $identifier)
             );
 
-        if (!is_numeric($identifier)) {
+        if (! is_numeric($identifier)) {
             $itemQuery
                 ->orderByRaw('CASE WHEN app_id = ? THEN 0 ELSE 1 END', [$targetAppId])
                 ->orderByDesc('updated_at');
@@ -176,6 +176,7 @@ class NexusCatalogCompanyController extends Controller
             ->firstOrFail();
 
         $company = Establishment::query()
+            ->forApplication($targetAppId)
             ->where('is_cancelled', false)
             ->with([
                 'files' => fn ($query) => $query
@@ -212,7 +213,6 @@ class NexusCatalogCompanyController extends Controller
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values();
-        $catalogActive = (int) $company->app_id === $targetAppId || $linkedApplicationIds->contains($targetAppId);
 
         return response()->json([
             'success' => true,
@@ -226,7 +226,7 @@ class NexusCatalogCompanyController extends Controller
             ]),
             'establishment' => array_merge($company->toArray(), [
                 'application_ids' => $linkedApplicationIds,
-                'catalog_active' => $catalogActive,
+                'catalog_active' => true,
                 'is_nexus_native' => (int) $company->app_id === $targetAppId,
                 'source_app' => $company->app ? [
                     'id' => $company->app->id,

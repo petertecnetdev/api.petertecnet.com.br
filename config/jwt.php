@@ -1,42 +1,42 @@
 <?php
-// config/jwt.php
+
 return [
 
     'secret' => env('JWT_SECRET'),
 
     'keys' => [
-        'public'    => env('JWT_PUBLIC_KEY'),
-        'private'   => env('JWT_PRIVATE_KEY'),
-        'passphrase'=> env('JWT_PASSPHRASE'),
+        'public' => env('JWT_PUBLIC_KEY'),
+        'private' => env('JWT_PRIVATE_KEY'),
+        'passphrase' => env('JWT_PASSPHRASE'),
     ],
 
-     'ttl'         => env('JWT_TTL', 10080),
-    'refresh_ttl' => env('JWT_REFRESH_TTL', 40320),
+    // Access tokens are intentionally short-lived. Clients can rotate them
+    // through /auth/refresh while the refresh window is still valid.
+    'ttl' => env('JWT_TTL', 120),
+    'refresh_ttl' => env('JWT_REFRESH_TTL', 20160),
 
-    'algo'          => env('JWT_ALGO', Tymon\JWTAuth\Providers\JWT\Provider::ALGO_HS256),
+    'algo' => env('JWT_ALGO', Tymon\JWTAuth\Providers\JWT\Provider::ALGO_HS256),
 
-    'required_claims'    => [
+    'required_claims' => [
         'iss', 'iat', 'exp', 'nbf', 'sub', 'jti',
     ],
 
-    'persistent_claims'  => [
-        // 
-    ],
+    'persistent_claims' => [],
 
-    'lock_subject'       => true,
+    'lock_subject' => true,
 
-    'leeway'             => env('JWT_LEEWAY', 0),
+    'leeway' => env('JWT_LEEWAY', 0),
 
-    'blacklist_enabled'  => env('JWT_BLACKLIST_ENABLED', true),
+    'blacklist_enabled' => env('JWT_BLACKLIST_ENABLED', true),
 
     'blacklist_grace_period' => env('JWT_BLACKLIST_GRACE_PERIOD', 0),
 
-    'decrypt_cookies'    => false,
+    'decrypt_cookies' => false,
 
     'providers' => [
-        'jwt'       => Tymon\JWTAuth\Providers\JWT\Lcobucci::class,
-        'auth'      => Tymon\JWTAuth\Providers\Auth\Illuminate::class,
-        'storage'   => Tymon\JWTAuth\Providers\Storage\Illuminate::class,
+        'jwt' => Tymon\JWTAuth\Providers\JWT\Lcobucci::class,
+        'auth' => Tymon\JWTAuth\Providers\Auth\Illuminate::class,
+        'storage' => Tymon\JWTAuth\Providers\Storage\Illuminate::class,
     ],
 
 ];

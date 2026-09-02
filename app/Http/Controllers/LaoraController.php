@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Events\LaoraUserEvent;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -19,7 +20,12 @@ class LaoraController extends Controller
         $user = $request->user();
         $profile = DB::table('laora_profiles')->where('user_id', $user->id)->first();
 
-        return response()->json(['data' => $profile ? $this->profilePayload($profile, true) : null]);
+        return response()->json([
+            'data' => $profile ? $this->profilePayload($profile, true) : null,
+            'meta' => [
+                'email_verified' => (bool) $user->email_verified_at,
+            ],
+        ]);
     }
 
     public function updateProfile(Request $request)
@@ -28,22 +34,26 @@ class LaoraController extends Controller
         $data = $request->validate([
             'display_name' => ['required', 'string', 'min:2', 'max:80'],
             'birthdate' => ['required', 'date', 'before_or_equal:' . now()->subYears(18)->toDateString()],
-            'gender' => ['nullable', 'string', 'max:40'],
-            'orientation' => ['nullable', 'string', 'max:40'],
+            'gender' => ['nullable', Rule::in(['woman', 'man', 'non_binary', 'other'])],
+            'orientation' => ['nullable', Rule::in(['straight', 'gay', 'bisexual', 'pansexual', 'other'])],
             'bio' => ['nullable', 'string', 'max:800'],
             'interests' => ['nullable', 'array', 'max:12'],
             'interests.*' => ['string', 'max:40'],
             'city' => ['nullable', 'string', 'max:120'],
             'uf' => ['nullable', 'string', 'size:2'],
-            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
-            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
+            'latitude' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'age_min' => ['required', 'integer', 'min:18', 'max:99'],
             'age_max' => ['required', 'integer', 'min:18', 'max:99', 'gte:age_min'],
             'max_distance_km' => ['required', 'integer', 'min:1', 'max:500'],
-            'preferred_genders' => ['nullable', 'array', 'max:10'],
-            'preferred_genders.*' => ['string', 'max:40'],
+            'preferred_genders' => ['nullable', 'array', 'max:4'],
+            'preferred_genders.*' => [Rule::in(['woman', 'man', 'non_binary', 'other'])],
             'discovery_enabled' => ['boolean'],
         ]);
+
+        if ($request->has('latitude') xor $request->has('longitude')) {
+            return response()->json(['message' => 'Latitude e longitude devem ser informadas juntas.'], 422);
+        }
 
         $now = now();
         $payload = [
@@ -55,8 +65,6 @@ class LaoraController extends Controller
             'interests' => json_encode(array_values(array_unique($data['interests'] ?? [])), JSON_UNESCAPED_UNICODE),
             'city' => $data['city'] ?? null,
             'uf' => isset($data['uf']) ? strtoupper($data['uf']) : null,
-            'latitude' => $data['latitude'] ?? null,
-            'longitude' => $data['longitude'] ?? null,
             'age_min' => $data['age_min'],
             'age_max' => $data['age_max'],
             'max_distance_km' => $data['max_distance_km'],
@@ -66,6 +74,11 @@ class LaoraController extends Controller
             'updated_at' => $now,
         ];
 
+        if ($request->has('latitude') && $request->has('longitude')) {
+            $payload['latitude'] = $data['latitude'];
+            $payload['longitude'] = $data['longitude'];
+        }
+
         DB::transaction(function () use ($user, $payload, $now) {
             $exists = DB::table('laora_profiles')->where('user_id', $user->id)->exists();
             if ($exists) {
@@ -73,14 +86,15 @@ class LaoraController extends Controller
             } else {
                 DB::table('laora_profiles')->insert(array_merge($payload, [
                     'user_id' => $user->id,
+                    'latitude' => $payload['latitude'] ?? null,
+                    'longitude' => $payload['longitude'] ?? null,
                     'is_complete' => false,
                     'created_at' => $now,
                 ]));
             }
 
             $profileId = DB::table('laora_profiles')->where('user_id', $user->id)->value('id');
-            $hasPhoto = DB::table('laora_photos')->where('profile_id', $profileId)->where('moderation_status', 'approved')->exists();
-            DB::table('laora_profiles')->where('id', $profileId)->update(['is_complete' => $hasPhoto]);
+            $this->refreshProfileCompleteness((int) $profileId);
         });
 
         return $this->profile($request);
@@ -88,7 +102,7 @@ class LaoraController extends Controller
 
     public function uploadPhoto(Request $request)
     {
-        $this->assertActive($request->user()->id);
+        $this->assertActive($request->user());
         $request->validate(['photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:8192']]);
 
         $profile = DB::table('laora_profiles')->where('user_id', $request->user()->id)->first();
@@ -109,15 +123,18 @@ class LaoraController extends Controller
             'profile_id' => $profile->id,
             'path' => $path,
             'position' => $count,
-            'is_primary' => $count === 0,
-            'moderation_status' => 'approved',
+            'is_primary' => false,
+            'moderation_status' => 'pending',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        DB::table('laora_profiles')->where('id', $profile->id)->update(['is_complete' => true, 'updated_at' => now()]);
+        $this->refreshProfileCompleteness((int) $profile->id);
 
-        return response()->json(['data' => $this->photoPayload(DB::table('laora_photos')->where('id', $id)->first())], 201);
+        return response()->json([
+            'data' => $this->photoPayload(DB::table('laora_photos')->where('id', $id)->first(), true),
+            'message' => 'Foto enviada e aguardando moderação.',
+        ], 201);
     }
 
     public function deletePhoto(Request $request, int $photoId)
@@ -131,27 +148,45 @@ class LaoraController extends Controller
         Storage::disk('public')->delete($photo->path);
         DB::transaction(function () use ($profile, $photoId) {
             DB::table('laora_photos')->where('id', $photoId)->delete();
-            $photos = DB::table('laora_photos')->where('profile_id', $profile->id)->orderBy('position')->orderBy('id')->get();
-            foreach ($photos as $position => $item) {
-                DB::table('laora_photos')->where('id', $item->id)->update([
-                    'position' => $position,
-                    'is_primary' => $position === 0,
-                    'updated_at' => now(),
-                ]);
-            }
-            DB::table('laora_profiles')->where('id', $profile->id)->update([
-                'is_complete' => $photos->isNotEmpty(),
-                'updated_at' => now(),
-            ]);
+            $this->normalizePhotos((int) $profile->id);
+            $this->refreshProfileCompleteness((int) $profile->id);
         });
 
         return response()->json(['message' => 'Foto removida.']);
     }
 
+    public function reorderPhotos(Request $request)
+    {
+        $data = $request->validate([
+            'photo_ids' => ['required', 'array', 'min:1', 'max:' . self::PHOTO_LIMIT],
+            'photo_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+        $profile = DB::table('laora_profiles')->where('user_id', $request->user()->id)->first();
+        abort_unless($profile, 404, 'Perfil não encontrado.');
+
+        $owned = DB::table('laora_photos')->where('profile_id', $profile->id)->pluck('id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+        $requested = collect($data['photo_ids'])->map(fn ($id) => (int) $id)->sort()->values()->all();
+        abort_unless($owned === $requested, 422, 'A lista deve conter todas as fotos do seu perfil.');
+
+        DB::transaction(function () use ($profile, $data) {
+            foreach ($data['photo_ids'] as $position => $photoId) {
+                DB::table('laora_photos')->where('profile_id', $profile->id)->where('id', $photoId)->update([
+                    'position' => $position,
+                    'is_primary' => false,
+                    'updated_at' => now(),
+                ]);
+            }
+            $this->normalizePhotos((int) $profile->id);
+        });
+
+        return $this->profile($request);
+    }
+
     public function discover(Request $request)
     {
         $user = $request->user();
-        $this->assertActive($user->id);
+        $this->assertActive($user);
+        $this->assertVerified($user);
         $me = DB::table('laora_profiles')->where('user_id', $user->id)->first();
         if (! $me || ! $me->is_complete || ! $me->discovery_enabled) {
             return response()->json(['data' => [], 'meta' => ['profile_required' => true]]);
@@ -165,32 +200,41 @@ class LaoraController extends Controller
         $seenIds = DB::table('laora_swipes')->where('swiper_user_id', $user->id)->pluck('target_user_id')->map(fn ($id) => (int) $id)->all();
         $excluded = array_values(array_unique(array_merge([$user->id], $blockedIds, $seenIds)));
         $preferred = $this->decodeJson($me->preferred_genders);
+        $myAge = Carbon::parse($me->birthdate)->age;
 
         $query = DB::table('laora_profiles')->where('is_complete', true)->where('discovery_enabled', true)->whereNotIn('user_id', $excluded);
         if ($preferred) {
             $query->whereIn('gender', $preferred);
         }
 
-        $candidates = $query->orderByDesc('last_active_at')->limit(120)->get();
+        $candidates = $query->orderByDesc('last_active_at')->limit(250)->get();
         $data = [];
         foreach ($candidates as $candidate) {
             $age = Carbon::parse($candidate->birthdate)->age;
             if ($age < (int) $me->age_min || $age > (int) $me->age_max || $age < 18) continue;
+            if ($myAge < (int) $candidate->age_min || $myAge > (int) $candidate->age_max) continue;
+
+            $candidatePreferred = $this->decodeJson($candidate->preferred_genders);
+            if ($candidatePreferred && (! $me->gender || ! in_array($me->gender, $candidatePreferred, true))) continue;
+
             $distance = $this->distanceKm($me, $candidate);
-            if ($distance !== null && $distance > (int) $me->max_distance_km) continue;
+            if ($me->latitude !== null && $me->longitude !== null && $distance === null) continue;
+            if ($distance !== null && ($distance > (int) $me->max_distance_km || $distance > (int) $candidate->max_distance_km)) continue;
+
             $payload = $this->profilePayload($candidate, false);
             $payload['distance_km'] = $distance === null ? null : (int) round($distance);
             $data[] = $payload;
             if (count($data) >= 30) break;
         }
 
-        return response()->json(['data' => $data, 'meta' => ['count' => count($data)]]);
+        return response()->json(['data' => $data, 'meta' => ['count' => count($data), 'has_location' => $me->latitude !== null && $me->longitude !== null]]);
     }
 
     public function swipe(Request $request)
     {
         $user = $request->user();
-        $this->assertActive($user->id);
+        $this->assertActive($user);
+        $this->assertVerified($user);
         $data = $request->validate([
             'target_user_id' => ['required', 'integer', 'exists:users,id', Rule::notIn([$user->id])],
             'action' => ['required', Rule::in(['like', 'pass'])],
@@ -198,7 +242,7 @@ class LaoraController extends Controller
         $targetId = (int) $data['target_user_id'];
         $this->assertNotBlocked($user->id, $targetId);
 
-        $targetProfile = DB::table('laora_profiles')->where('user_id', $targetId)->where('is_complete', true)->first();
+        $targetProfile = DB::table('laora_profiles')->where('user_id', $targetId)->where('is_complete', true)->where('discovery_enabled', true)->first();
         if (! $targetProfile) return response()->json(['message' => 'Perfil indisponível.'], 404);
 
         $match = null;
@@ -220,50 +264,89 @@ class LaoraController extends Controller
             $match = DB::table('laora_matches')->where('user_one_id', $one)->where('user_two_id', $two)->first();
         });
 
+        if ($match) {
+            $this->broadcastTo($user->id, 'match.created', ['match' => $this->matchPayload($match, $user->id)]);
+            $this->broadcastTo($targetId, 'match.created', ['match' => $this->matchPayload($match, $targetId)]);
+        }
+
         return response()->json(['data' => ['matched' => (bool) $match, 'match' => $match ? $this->matchPayload($match, $user->id) : null]]);
     }
 
     public function matches(Request $request)
     {
-        $userId = $request->user()->id;
-        $this->assertActive($userId);
-        $rows = DB::table('laora_matches')->where('status', 'active')
-            ->where(fn ($q) => $q->where('user_one_id', $userId)->orWhere('user_two_id', $userId))
-            ->orderByDesc('matched_at')->get();
+        $user = $request->user();
+        $this->assertActive($user);
+        $this->assertVerified($user);
+        $limit = min(max((int) $request->query('limit', 50), 1), 100);
+        $query = DB::table('laora_matches')->where('status', 'active')
+            ->where(fn ($q) => $q->where('user_one_id', $user->id)->orWhere('user_two_id', $user->id));
+        if ($request->filled('before_id')) $query->where('id', '<', (int) $request->query('before_id'));
+        $rows = $query->orderByDesc('id')->limit($limit + 1)->get();
+        $hasMore = $rows->count() > $limit;
+        $rows = $rows->take($limit);
 
-        return response()->json(['data' => $rows->map(fn ($match) => $this->matchPayload($match, $userId))->values()]);
+        return response()->json([
+            'data' => $rows->map(fn ($match) => $this->matchPayload($match, $user->id))->values(),
+            'meta' => ['has_more' => $hasMore, 'next_before_id' => $rows->last()?->id],
+        ]);
     }
 
     public function unmatch(Request $request, int $matchId)
     {
         $match = $this->ownedMatch($matchId, $request->user()->id);
+        $otherId = $match->user_one_id == $request->user()->id ? $match->user_two_id : $match->user_one_id;
         DB::table('laora_matches')->where('id', $match->id)->update([
             'status' => 'unmatched', 'unmatched_at' => now(), 'unmatched_by_user_id' => $request->user()->id, 'updated_at' => now(),
         ]);
+        $this->broadcastTo($otherId, 'match.ended', ['match_id' => $match->id]);
         return response()->json(['message' => 'Match desfeito.']);
     }
 
     public function messages(Request $request, int $matchId)
     {
-        $userId = $request->user()->id;
-        $match = $this->ownedMatch($matchId, $userId, true);
-        $messages = DB::table('laora_messages')->where('match_id', $match->id)->whereNull('deleted_at')->orderBy('id')->limit(200)->get();
-        DB::table('laora_messages')->where('match_id', $match->id)->where('sender_user_id', '<>', $userId)->whereNull('read_at')->update(['read_at' => now()]);
-        return response()->json(['data' => $messages]);
+        $user = $request->user();
+        $this->assertActive($user);
+        $this->assertVerified($user);
+        $match = $this->ownedMatch($matchId, $user->id, true);
+        $limit = min(max((int) $request->query('limit', 50), 1), 100);
+        $query = DB::table('laora_messages')->where('match_id', $match->id)->whereNull('deleted_at');
+        if ($request->filled('before_id')) $query->where('id', '<', (int) $request->query('before_id'));
+        $messages = $query->orderByDesc('id')->limit($limit + 1)->get();
+        $hasMore = $messages->count() > $limit;
+        $messages = $messages->take($limit)->reverse()->values();
+
+        DB::table('laora_messages')->where('match_id', $match->id)->where('sender_user_id', '<>', $user->id)->whereNull('read_at')->update(['read_at' => now()]);
+        $otherId = $match->user_one_id == $user->id ? $match->user_two_id : $match->user_one_id;
+        $this->broadcastTo($otherId, 'messages.read', ['match_id' => $match->id, 'reader_user_id' => $user->id]);
+
+        return response()->json([
+            'data' => $messages,
+            'meta' => ['has_more' => $hasMore, 'next_before_id' => $messages->first()?->id],
+        ]);
     }
 
     public function sendMessage(Request $request, int $matchId)
     {
-        $userId = $request->user()->id;
-        $this->assertActive($userId);
-        $match = $this->ownedMatch($matchId, $userId, true);
-        $otherId = $match->user_one_id == $userId ? $match->user_two_id : $match->user_one_id;
-        $this->assertNotBlocked($userId, $otherId);
+        $user = $request->user();
+        $this->assertActive($user);
+        $this->assertVerified($user);
+        $match = $this->ownedMatch($matchId, $user->id, true);
+        $otherId = $match->user_one_id == $user->id ? $match->user_two_id : $match->user_one_id;
+        $this->assertNotBlocked($user->id, $otherId);
         $data = $request->validate(['body' => ['required', 'string', 'max:3000']]);
+        $body = trim($data['body']);
+        abort_if($body === '', 422, 'A mensagem não pode estar vazia.');
+
+        $recentCount = DB::table('laora_messages')->where('sender_user_id', $user->id)->where('created_at', '>=', now()->subMinute())->count();
+        abort_if($recentCount >= 30, 429, 'Muitas mensagens em pouco tempo. Aguarde alguns instantes.');
+
         $id = DB::table('laora_messages')->insertGetId([
-            'match_id' => $match->id, 'sender_user_id' => $userId, 'body' => trim($data['body']), 'created_at' => now(), 'updated_at' => now(),
+            'match_id' => $match->id, 'sender_user_id' => $user->id, 'body' => $body, 'created_at' => now(), 'updated_at' => now(),
         ]);
-        return response()->json(['data' => DB::table('laora_messages')->where('id', $id)->first()], 201);
+        $message = DB::table('laora_messages')->where('id', $id)->first();
+        $this->broadcastTo($otherId, 'message.created', ['match_id' => $match->id, 'message' => $message]);
+
+        return response()->json(['data' => $message], 201);
     }
 
     public function block(Request $request, int $targetUserId)
@@ -281,6 +364,7 @@ class LaoraController extends Controller
                 'status' => 'blocked', 'unmatched_at' => now(), 'unmatched_by_user_id' => $userId, 'updated_at' => now(),
             ]);
         });
+        $this->broadcastTo($targetUserId, 'relationship.blocked', []);
         return response()->json(['message' => 'Usuário bloqueado.']);
     }
 
@@ -296,17 +380,20 @@ class LaoraController extends Controller
         $data = $request->validate([
             'reported_user_id' => ['required', 'integer', 'exists:users,id', Rule::notIn([$userId])],
             'match_id' => ['nullable', 'integer', 'exists:laora_matches,id'],
-            'reason' => ['required', 'string', 'max:80'],
+            'reason' => ['required', Rule::in(['fake_profile', 'harassment', 'spam', 'sexual_content', 'underage', 'violence', 'scam', 'other'])],
             'details' => ['nullable', 'string', 'max:2000'],
             'block_user' => ['boolean'],
         ]);
         if (! empty($data['match_id'])) $this->ownedMatch((int) $data['match_id'], $userId);
 
+        $duplicate = DB::table('laora_reports')->where('reporter_user_id', $userId)->where('reported_user_id', $data['reported_user_id'])->where('status', 'open')->where('created_at', '>=', now()->subDay())->exists();
+        abort_if($duplicate, 429, 'Você já enviou uma denúncia recente sobre esta conta.');
+
         $id = DB::table('laora_reports')->insertGetId([
             'reporter_user_id' => $userId,
             'reported_user_id' => $data['reported_user_id'],
             'match_id' => $data['match_id'] ?? null,
-            'reason' => trim($data['reason']),
+            'reason' => $data['reason'],
             'details' => isset($data['details']) ? trim($data['details']) : null,
             'status' => 'open',
             'created_at' => now(), 'updated_at' => now(),
@@ -317,6 +404,10 @@ class LaoraController extends Controller
                 ['blocker_user_id' => $userId, 'blocked_user_id' => $data['reported_user_id']],
                 ['reason' => 'report', 'updated_at' => now(), 'created_at' => now()]
             );
+            [$one, $two] = $this->orderedPair($userId, (int) $data['reported_user_id']);
+            DB::table('laora_matches')->where('user_one_id', $one)->where('user_two_id', $two)->update([
+                'status' => 'blocked', 'unmatched_at' => now(), 'unmatched_by_user_id' => $userId, 'updated_at' => now(),
+            ]);
         }
 
         return response()->json(['data' => ['id' => $id, 'status' => 'open'], 'message' => 'Denúncia recebida.'], 201);
@@ -324,7 +415,9 @@ class LaoraController extends Controller
 
     private function profilePayload(object $profile, bool $owner): array
     {
-        $photos = DB::table('laora_photos')->where('profile_id', $profile->id)->where('moderation_status', 'approved')->orderBy('position')->get()->map(fn ($photo) => $this->photoPayload($photo))->values()->all();
+        $photoQuery = DB::table('laora_photos')->where('profile_id', $profile->id)->orderBy('position')->orderBy('id');
+        if (! $owner) $photoQuery->where('moderation_status', 'approved');
+        $photos = $photoQuery->get()->map(fn ($photo) => $this->photoPayload($photo, $owner))->values()->all();
         $payload = [
             'id' => $profile->id,
             'user_id' => $profile->user_id,
@@ -354,9 +447,11 @@ class LaoraController extends Controller
         return $payload;
     }
 
-    private function photoPayload(object $photo): array
+    private function photoPayload(object $photo, bool $owner = false): array
     {
-        return ['id' => $photo->id, 'url' => Storage::disk('public')->url($photo->path), 'position' => $photo->position, 'is_primary' => (bool) $photo->is_primary];
+        $payload = ['id' => $photo->id, 'url' => Storage::disk('public')->url($photo->path), 'position' => $photo->position, 'is_primary' => (bool) $photo->is_primary];
+        if ($owner) $payload['moderation_status'] = $photo->moderation_status;
+        return $payload;
     }
 
     private function matchPayload(object $match, int $viewerId): array
@@ -391,13 +486,20 @@ class LaoraController extends Controller
         abort_if($blocked, 403, 'Interação indisponível entre estas contas.');
     }
 
-    private function assertActive(int $userId): void
+    private function assertVerified(User $user): void
     {
-        $action = DB::table('laora_moderation_actions')->where('target_user_id', $userId)
+        abort_unless($user->email_verified_at, 403, 'Verifique seu e-mail para usar descoberta, matches e mensagens.');
+    }
+
+    private function assertActive(User $user): void
+    {
+        $action = DB::table('laora_moderation_actions')->where('target_user_id', $user->id)
             ->whereIn('action', ['suspend', 'ban'])
             ->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))
             ->latest('id')->first();
-        abort_if($action, 403, $action->action === 'ban' ? 'Sua conta está impedida de usar o Laora.' : 'Seu acesso ao Laora está temporariamente suspenso.');
+        if ($action) {
+            abort(403, $action->action === 'ban' ? 'Sua conta está impedida de usar o Laora.' : 'Seu acesso ao Laora está temporariamente suspenso.');
+        }
     }
 
     private function orderedPair(int $one, int $two): array
@@ -419,5 +521,36 @@ class LaoraController extends Controller
         $deltaLat = $lat2 - $lat1; $deltaLon = deg2rad((float) $two->longitude - (float) $one->longitude);
         $a = sin($deltaLat / 2) ** 2 + cos($lat1) * cos($lat2) * sin($deltaLon / 2) ** 2;
         return 6371 * 2 * atan2(sqrt($a), sqrt(1 - $a));
+    }
+
+    private function normalizePhotos(int $profileId): void
+    {
+        $photos = DB::table('laora_photos')->where('profile_id', $profileId)->orderBy('position')->orderBy('id')->get();
+        $primaryAssigned = false;
+        foreach ($photos as $position => $item) {
+            $isPrimary = ! $primaryAssigned && $item->moderation_status === 'approved';
+            if ($isPrimary) $primaryAssigned = true;
+            DB::table('laora_photos')->where('id', $item->id)->update([
+                'position' => $position,
+                'is_primary' => $isPrimary,
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function refreshProfileCompleteness(int $profileId): void
+    {
+        $hasApprovedPhoto = DB::table('laora_photos')->where('profile_id', $profileId)->where('moderation_status', 'approved')->exists();
+        DB::table('laora_profiles')->where('id', $profileId)->update(['is_complete' => $hasApprovedPhoto, 'updated_at' => now()]);
+        $this->normalizePhotos($profileId);
+    }
+
+    private function broadcastTo(int $userId, string $type, array $payload): void
+    {
+        try {
+            event(new LaoraUserEvent($userId, $type, $payload));
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 }

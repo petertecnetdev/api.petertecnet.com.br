@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\NexusCatalogCompanyController;
 use App\Http\Controllers\NexusDiscoveryController;
+use App\Http\Controllers\NexusShareController;
 
 Route::prefix('nexus')->middleware('api')->group(function () {
     Route::get('/discovery', [NexusDiscoveryController::class, 'index'])
@@ -10,6 +11,11 @@ Route::prefix('nexus')->middleware('api')->group(function () {
 
     Route::get('/search', [NexusDiscoveryController::class, 'search'])
         ->name('nexus.search');
+
+    Route::get('/share/catalog/{identifier}', [NexusShareController::class, 'catalog'])
+        ->where('identifier', '[A-Za-z0-9\-]+')
+        ->middleware('throttle:120,1')
+        ->name('nexus.share.catalog');
 
     Route::get('/catalog/{identifier}', [NexusCatalogCompanyController::class, 'showCatalog'])
         ->where('identifier', '[A-Za-z0-9\-]+')

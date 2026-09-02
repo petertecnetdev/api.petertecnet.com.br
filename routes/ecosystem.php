@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -11,10 +12,24 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
 
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+    Route::get('/command/overview', [CommandCenterController::class, 'overview']);
+    Route::get('/command/search', [CommandCenterController::class, 'globalSearch']);
+    Route::get('/command/security', [CommandCenterController::class, 'security']);
+    Route::get('/command/queues', [CommandCenterController::class, 'queues']);
+    Route::post('/command/queues/{uuid}/retry', [CommandCenterController::class, 'retryJob']);
+    Route::get('/command/applications/{application}', [CommandCenterController::class, 'application'])->whereNumber('application');
+    Route::get('/command/incidents', [CommandCenterController::class, 'incidents']);
+    Route::post('/command/incidents', [CommandCenterController::class, 'storeIncident']);
+    Route::patch('/command/incidents/{incident}', [CommandCenterController::class, 'updateIncident'])->whereNumber('incident');
+
+    Route::prefix('financial')->middleware('admin.permission:finance_view')->group(function () {
+        Route::get('/dashboard', [FinancialController::class, 'dashboard']);
+        Route::get('/transactions', [FinancialController::class, 'transactions']);
+        Route::get('/transactions/{payment}', [FinancialController::class, 'transaction']);
+        Route::get('/orders', [FinancialController::class, 'orders']);
+        Route::get('/payouts', [FinancialController::class, 'payouts']);
+        Route::get('/health', [FinancialController::class, 'health']);
+    });
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
@@ -41,7 +56,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
 
-    Route::get('/audit', [EcosystemController::class, 'auditLogs']);
+    Route::get('/audit', [EcosystemController::class, 'auditLogs'])->middleware('admin.permission:audit_view');
 });
 
 Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {

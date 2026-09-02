@@ -12,11 +12,21 @@ class LaoraPrivacyController extends Controller
     {
         $userId = (int) $request->user()->id;
         $profile = DB::table('laora_profiles')->where('user_id', $userId)->first();
+        $photos = $profile ? DB::table('laora_photos')->where('profile_id', $profile->id)->orderBy('position')->get()->map(function ($photo) {
+            return [
+                'id' => $photo->id,
+                'url' => Storage::disk('public')->url($photo->path),
+                'position' => $photo->position,
+                'is_primary' => (bool) $photo->is_primary,
+                'moderation_status' => $photo->moderation_status,
+                'created_at' => $photo->created_at,
+            ];
+        }) : collect();
 
         $data = [
             'generated_at' => now()->toIso8601String(),
             'profile' => $profile,
-            'photos' => $profile ? DB::table('laora_photos')->where('profile_id', $profile->id)->get() : [],
+            'photos' => $photos,
             'swipes' => DB::table('laora_swipes')->where('swiper_user_id', $userId)->get(),
             'matches' => DB::table('laora_matches')->where('user_one_id', $userId)->orWhere('user_two_id', $userId)->get(),
             'messages' => DB::table('laora_messages')->where('sender_user_id', $userId)->get(),
@@ -31,8 +41,7 @@ class LaoraPrivacyController extends Controller
     public function destroyProfile(Request $request)
     {
         $userId = (int) $request->user()->id;
-        $data = $request->validate(['confirmation' => ['required', 'in:EXCLUIR']]);
-        unset($data);
+        $request->validate(['confirmation' => ['required', 'in:EXCLUIR']]);
 
         $profile = DB::table('laora_profiles')->where('user_id', $userId)->first();
         if (! $profile) {
@@ -48,7 +57,15 @@ class LaoraPrivacyController extends Controller
                 'updated_at' => now(),
             ]);
 
-            DB::table('laora_matches')->where('user_one_id', $userId)->orWhere('user_two_id', $userId)->delete();
+            DB::table('laora_matches')
+                ->where(fn ($q) => $q->where('user_one_id', $userId)->orWhere('user_two_id', $userId))
+                ->update([
+                    'status' => 'unmatched',
+                    'unmatched_at' => now(),
+                    'unmatched_by_user_id' => $userId,
+                    'updated_at' => now(),
+                ]);
+
             DB::table('laora_swipes')->where('swiper_user_id', $userId)->orWhere('target_user_id', $userId)->delete();
             DB::table('laora_blocks')->where('blocker_user_id', $userId)->orWhere('blocked_user_id', $userId)->delete();
             DB::table('laora_profiles')->where('id', $profile->id)->delete();
@@ -59,7 +76,7 @@ class LaoraPrivacyController extends Controller
         }
 
         return response()->json([
-            'message' => 'Seu perfil e dados de relacionamento foram removidos. Registros mínimos de segurança e moderação podem ser preservados quando houver obrigação ou interesse legítimo aplicável.',
+            'message' => 'Seu perfil e dados de relacionamento foram removidos. Registros mínimos de segurança e moderação podem ser preservados quando houver obrigação legal, prevenção a fraude ou interesse legítimo aplicável.',
         ]);
     }
 }
