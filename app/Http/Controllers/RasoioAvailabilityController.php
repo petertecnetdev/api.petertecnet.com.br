@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Application;
 use App\Models\Employer;
 use App\Models\EmployerSchedule;
 use App\Models\Order;
@@ -10,7 +11,6 @@ use Illuminate\Http\Request;
 
 class RasoioAvailabilityController extends Controller
 {
-    private const APP_ID = 1;
     private const TZ = 'America/Sao_Paulo';
 
     public function times(Request $request)
@@ -21,14 +21,16 @@ class RasoioAvailabilityController extends Controller
             'duration' => 'required|integer|min:5|max:1440',
         ]);
 
+        $rasoioAppId = $this->rasoioAppId();
         $employerId = (int) $data['employer_id'];
-        $this->assertRasoioEmployer($employerId);
+        $this->assertRasoioEmployer($employerId, $rasoioAppId);
 
         $date = Carbon::parse($data['date'], self::TZ)->startOfDay();
         $times = $this->availableTimesForDate(
             $employerId,
             $date,
-            (int) $data['duration']
+            (int) $data['duration'],
+            $rasoioAppId
         );
 
         return response()->json([
@@ -47,8 +49,9 @@ class RasoioAvailabilityController extends Controller
             'duration' => 'required|integer|min:5|max:1440',
         ]);
 
+        $rasoioAppId = $this->rasoioAppId();
         $employerId = (int) $data['employer_id'];
-        $this->assertRasoioEmployer($employerId);
+        $this->assertRasoioEmployer($employerId, $rasoioAppId);
 
         $startDate = isset($data['start_date'])
             ? Carbon::parse($data['start_date'], self::TZ)->startOfDay()
@@ -62,7 +65,7 @@ class RasoioAvailabilityController extends Controller
 
         for ($i = 0; $i < $days; $i++) {
             $date = $startDate->copy()->addDays($i);
-            $times = $this->availableTimesForDate($employerId, $date, $duration);
+            $times = $this->availableTimesForDate($employerId, $date, $duration, $rasoioAppId);
 
             if (count($times) > 0) {
                 $key = $date->toDateString();
@@ -78,17 +81,28 @@ class RasoioAvailabilityController extends Controller
         ]);
     }
 
-    private function assertRasoioEmployer(int $employerId): void
+    private function rasoioAppId(): int
+    {
+        $appId = Application::query()
+            ->where('slug', 'rasoio')
+            ->value('id');
+
+        abort_if(! $appId, 503, 'Aplicação Rasoio não está registrada na API.');
+
+        return (int) $appId;
+    }
+
+    private function assertRasoioEmployer(int $employerId, int $rasoioAppId): void
     {
         $belongsToRasoio = Employer::query()
             ->whereKey($employerId)
-            ->whereHas('establishment', fn ($query) => $query->where('app_id', self::APP_ID))
+            ->whereHas('establishment', fn ($query) => $query->where('app_id', $rasoioAppId))
             ->exists();
 
         abort_unless($belongsToRasoio, 404, 'Profissional não encontrado na Rasoio.');
     }
 
-    private function availableTimesForDate(int $employerId, Carbon $date, int $duration): array
+    private function availableTimesForDate(int $employerId, Carbon $date, int $duration, int $rasoioAppId): array
     {
         $now = Carbon::now(self::TZ);
         $dayOfWeek = strtolower($date->format('l'));
@@ -121,7 +135,7 @@ class RasoioAvailabilityController extends Controller
             ->values();
 
         $orders = Order::query()
-            ->where('app_id', self::APP_ID)
+            ->where('app_id', $rasoioAppId)
             ->where('attendant_id', $employerId)
             ->where('type', 'appointment')
             ->whereDate('order_datetime', $dateString)
