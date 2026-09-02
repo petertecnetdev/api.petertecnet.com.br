@@ -3,16 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Establishment;
+use App\Models\Item;
 use Illuminate\Http\Request;
 
 class NexusShareController extends Controller
 {
     public function catalog(Request $request, string $identifier)
     {
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ]);
-        $appId = (int) $data['app_id'];
+        $appId = $this->validatedAppId($request);
 
         $company = Establishment::query()
             ->forApplication($appId)
@@ -28,7 +26,7 @@ class NexusShareController extends Controller
                 ->orderBy('position')])
             ->firstOrFail();
 
-        $base = rtrim((string) config('peter.frontends.nexus', 'https://nexus.petertecnet.com.br'), '/');
+        $base = $this->nexusBaseUrl();
         $catalogUrl = $base . '/catalog/' . rawurlencode($company->slug);
         $title = trim((string) ($company->fantasy ?: $company->name ?: 'Catálogo Nexus'));
         $description = trim((string) ($company->description ?: "Confira o catálogo online de {$title} na Nexus."));
@@ -36,14 +34,92 @@ class NexusShareController extends Controller
             $company->files->first(fn ($file) => $file->type === 'logo' && ! empty($file->public_url))
                 ?: $company->files->first(fn ($file) => ! empty($file->public_url))
         )->public_url;
-        $image = $image ?: $base . '/images/logo.png';
 
+        return $this->shareDocument(
+            url: $catalogUrl,
+            title: $title . ' — Catálogo Nexus',
+            description: $description,
+            image: $image ?: $base . '/images/logo.png',
+            type: 'website'
+        );
+    }
+
+    public function item(Request $request, string $identifier)
+    {
+        $appId = $this->validatedAppId($request);
+
+        $item = Item::query()
+            ->where('entity_name', 'establishment')
+            ->where('status', true)
+            ->when(
+                is_numeric($identifier),
+                fn ($query) => $query->where('id', (int) $identifier),
+                fn ($query) => $query->where('slug', $identifier)
+            )
+            ->with(['files' => fn ($query) => $query
+                ->where('visibility', 'public')
+                ->where('status', 'active')
+                ->orderBy('position')])
+            ->firstOrFail();
+
+        $company = Establishment::query()
+            ->forApplication($appId)
+            ->where('is_cancelled', false)
+            ->with(['files' => fn ($query) => $query
+                ->where('visibility', 'public')
+                ->where('status', 'active')
+                ->orderBy('position')])
+            ->findOrFail($item->entity_id);
+
+        $base = $this->nexusBaseUrl();
+        $itemUrl = $base . '/item/' . rawurlencode($item->slug);
+        $companyTitle = trim((string) ($company->fantasy ?: $company->name ?: 'Nexus'));
+        $itemTitle = trim((string) ($item->name ?: 'Item Nexus'));
+        $description = trim((string) (
+            $item->short_description
+                ?: $item->description
+                ?: "Confira {$itemTitle} de {$companyTitle} na Nexus."
+        ));
+        $image = optional(
+            $item->files->first(fn ($file) => ! empty($file->public_url))
+        )->public_url;
+        $image = $image ?: optional(
+            $company->files->first(fn ($file) => $file->type === 'logo' && ! empty($file->public_url))
+                ?: $company->files->first(fn ($file) => ! empty($file->public_url))
+        )->public_url;
+
+        return $this->shareDocument(
+            url: $itemUrl,
+            title: $itemTitle . ' — ' . $companyTitle,
+            description: $description,
+            image: $image ?: $base . '/images/logo.png',
+            type: 'product'
+        );
+    }
+
+    private function validatedAppId(Request $request): int
+    {
+        $data = $request->validate([
+            'app_id' => 'required|integer|exists:applications,id',
+        ]);
+
+        return (int) $data['app_id'];
+    }
+
+    private function nexusBaseUrl(): string
+    {
+        return rtrim((string) config('peter.frontends.nexus', 'https://nexus.petertecnet.com.br'), '/');
+    }
+
+    private function shareDocument(string $url, string $title, string $description, string $image, string $type)
+    {
         $esc = fn ($value) => htmlspecialchars((string) $value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        $safeTitle = $esc($title . ' — Catálogo Nexus');
+        $safeTitle = $esc($title);
         $safeDescription = $esc($description);
-        $safeUrl = $esc($catalogUrl);
+        $safeUrl = $esc($url);
         $safeImage = $esc($image);
-        $jsonCatalogUrl = $this->json($catalogUrl);
+        $safeType = $esc($type);
+        $jsonUrl = $this->json($url);
 
         $html = <<<HTML
 <!doctype html>
@@ -56,7 +132,7 @@ class NexusShareController extends Controller
 <meta name="robots" content="index,follow,max-image-preview:large">
 <link rel="canonical" href="{$safeUrl}">
 <meta property="og:locale" content="pt_BR">
-<meta property="og:type" content="website">
+<meta property="og:type" content="{$safeType}">
 <meta property="og:site_name" content="Nexus">
 <meta property="og:title" content="{$safeTitle}">
 <meta property="og:description" content="{$safeDescription}">
@@ -70,7 +146,7 @@ class NexusShareController extends Controller
 </head>
 <body>
 <p>Abrindo <a href="{$safeUrl}">{$safeTitle}</a>…</p>
-<script>window.location.replace({$jsonCatalogUrl});</script>
+<script>window.location.replace({$jsonUrl});</script>
 </body>
 </html>
 HTML;
