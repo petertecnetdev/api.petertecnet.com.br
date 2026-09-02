@@ -24,36 +24,44 @@ class AdminDatabaseBackupCommand extends Command
         $cfg=config('database.connections.mysql');
         $dir=storage_path('app/backups');
         File::ensureDirectoryExists($dir,0700,true);
-        $filename='petertecnet-'.now()->format('Ymd-His').'.sql.gz';
-        $path=$dir.DIRECTORY_SEPARATOR.$filename;
+        $base='petertecnet-'.now()->format('Ymd-His').'.sql';
+        $plain=$dir.DIRECTORY_SEPARATOR.$base;
+        $path=$plain.'.gz';
 
         $dump=new Process([
-            'mysqldump','--single-transaction','--quick','--skip-lock-tables','--set-gtid-purged=OFF',
+            'mysqldump','--single-transaction','--quick','--skip-lock-tables',
             '-h',(string)($cfg['host']??'127.0.0.1'),'-P',(string)($cfg['port']??3306),'-u',(string)($cfg['username']??''),(string)($cfg['database']??'')
         ],null,['MYSQL_PWD'=>(string)($cfg['password']??'')]);
-        $gzip=new Process(['gzip','-c']);
 
         try {
+            $handle=fopen($plain,'wb');
+            if(!$handle) throw new \RuntimeException('Não foi possível abrir o arquivo temporário do backup.');
+            @chmod($plain,0600);
             $dump->setTimeout(900);
-            $dump->run();
+            $dump->run(function(string $type,string $buffer) use ($handle){
+                if($type===Process::OUT) fwrite($handle,$buffer);
+            });
+            fclose($handle);
             if(!$dump->isSuccessful()) throw new \RuntimeException(trim($dump->getErrorOutput()) ?: 'mysqldump falhou.');
-            $gzip->setInput($dump->getOutput());
+            if(!File::exists($plain) || File::size($plain)<100) throw new \RuntimeException('Dump SQL inválido ou vazio.');
+
+            $gzip=new Process(['gzip','-f',$plain]);
             $gzip->setTimeout(900);
             $gzip->run();
             if(!$gzip->isSuccessful()) throw new \RuntimeException(trim($gzip->getErrorOutput()) ?: 'gzip falhou.');
-            File::put($path,$gzip->getOutput());
+            if(!File::exists($path) || File::size($path)<100) throw new \RuntimeException('Arquivo de backup comprimido inválido ou vazio.');
             @chmod($path,0600);
-            if(!File::exists($path) || File::size($path)<100) throw new \RuntimeException('Arquivo de backup inválido ou vazio.');
 
             $retention=max((int)$this->option('retention'),1);
             foreach(File::files($dir) as $file){
                 if($file->getMTime()<now()->subDays($retention)->timestamp) @unlink($file->getPathname());
             }
-            $this->heartbeat('healthy',['file'=>$filename,'bytes'=>File::size($path),'retention_days'=>$retention]);
-            $this->info("Backup criado: {$filename}");
+            $this->heartbeat('healthy',['file'=>basename($path),'bytes'=>File::size($path),'retention_days'=>$retention]);
+            $this->info('Backup criado: '.basename($path));
             return self::SUCCESS;
         } catch (\Throwable $e) {
-            @unlink($path);
+            if(isset($handle) && is_resource($handle)) fclose($handle);
+            @unlink($plain);@unlink($path);
             $this->heartbeat('failed',['error'=>mb_substr($e->getMessage(),0,500)]);
             $this->error($e->getMessage());
             return self::FAILURE;
