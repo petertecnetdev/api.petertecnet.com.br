@@ -19,11 +19,6 @@ class PlatformArchitectureTest extends TestCase
         'camquick',
     ];
 
-    /**
-     * Application names are context/configuration values only. They must never
-     * become the name of a runtime class, route contract, domain module or
-     * operational table.
-     */
     public function test_runtime_architecture_contains_no_product_specific_names(): void
     {
         $roots = [
@@ -36,27 +31,24 @@ class PlatformArchitectureTest extends TestCase
         ];
 
         $violations = [];
-        $pattern = $this->productPattern();
+        $sourcePattern = $this->sourceProductPattern();
+        $filenamePattern = $this->filenameProductPattern();
 
         foreach ($roots as $root) {
-            if (! File::isDirectory($root)) {
-                continue;
-            }
+            if (! File::isDirectory($root)) continue;
 
             foreach (File::allFiles($root) as $file) {
-                if (! str_ends_with($file->getFilename(), '.php')) {
-                    continue;
-                }
+                if (! str_ends_with($file->getFilename(), '.php')) continue;
 
                 $relative = $this->relative($file->getPathname());
                 $contents = File::get($file->getPathname());
 
-                if (preg_match($pattern, $file->getFilename())) {
+                if (preg_match($filenamePattern, $file->getFilename())) {
                     $violations[] = $relative.' [filename]';
                     continue;
                 }
 
-                if (preg_match($pattern, $contents)) {
+                if (preg_match($sourcePattern, $contents)) {
                     $violations[] = $relative.' [source]';
                 }
             }
@@ -74,18 +66,15 @@ class PlatformArchitectureTest extends TestCase
     public function test_routes_are_application_scoped_and_never_product_prefixed(): void
     {
         $violations = [];
-        $pattern = $this->productPattern();
         $routesPath = base_path('routes');
 
         foreach (File::files($routesPath) as $file) {
-            if (! str_ends_with($file->getFilename(), '.php')) {
-                continue;
-            }
+            if (! str_ends_with($file->getFilename(), '.php')) continue;
 
             $relative = $this->relative($file->getPathname());
             $contents = File::get($file->getPathname());
 
-            if (preg_match($pattern, $file->getFilename())) {
+            if (preg_match($this->filenameProductPattern(), $file->getFilename())) {
                 $violations[] = $relative.' [filename]';
             }
 
@@ -123,14 +112,10 @@ class PlatformArchitectureTest extends TestCase
         $tablePrefixPattern = '/\b('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_[a-z0-9_]+\b/i';
 
         foreach ($roots as $root) {
-            if (! File::isDirectory($root)) {
-                continue;
-            }
+            if (! File::isDirectory($root)) continue;
 
             foreach (File::allFiles($root) as $file) {
-                if (! str_ends_with($file->getFilename(), '.php')) {
-                    continue;
-                }
+                if (! str_ends_with($file->getFilename(), '.php')) continue;
 
                 $contents = File::get($file->getPathname());
                 if (preg_match($tablePrefixPattern, $contents, $matches)) {
@@ -167,9 +152,17 @@ class PlatformArchitectureTest extends TestCase
         );
     }
 
-    private function productPattern(): string
+    private function filenameProductPattern(): string
     {
-        return '/\b('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')\b/i';
+        // Plat is special because "Platform" is a legitimate architecture term.
+        return '/^(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form))/i';
+    }
+
+    private function sourceProductPattern(): string
+    {
+        // Catch both standalone slugs/branding literals and CamelCase classes,
+        // while explicitly avoiding the legitimate word "Platform".
+        return '/(?<![A-Za-z0-9_])(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form))/i';
     }
 
     private function relative(string $path): string
