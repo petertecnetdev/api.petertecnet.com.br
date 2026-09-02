@@ -29,6 +29,9 @@ Route::prefix('v1/apps/{application}/directory')
             Route::post('/companies/{sourceId}/activate', [CatalogDirectoryController::class, 'activate'])
                 ->whereNumber('sourceId')
                 ->name('v1.directory.companies.activate');
+            Route::delete('/companies/{sourceId}/activate', [CatalogDirectoryController::class, 'deactivate'])
+                ->whereNumber('sourceId')
+                ->name('v1.directory.companies.deactivate');
         });
     });
 
