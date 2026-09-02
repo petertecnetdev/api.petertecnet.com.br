@@ -50,7 +50,7 @@ class RasoioApplicationIsolationTest extends TestCase
             ->postJson('/api/rasoio/employers', [
                 'user_id' => $owner->id,
                 'establishment_id' => $otherEstablishment->id,
-                'app_id' => 2,
+                'app_id' => $otherEstablishment->app_id,
                 'role' => 'barber',
                 'permissions' => [],
             ])
@@ -61,26 +61,34 @@ class RasoioApplicationIsolationTest extends TestCase
 
     private function applicationFixtures(): array
     {
-        $rasoio = Application::create([
-            'name' => 'Rasoio',
-            'slug' => 'rasoio',
-            'is_active' => true,
-        ]);
+        $rasoio = Application::query()->find(1);
 
-        $otherApp = Application::create([
-            'name' => 'Outra aplicação',
-            'slug' => 'outra-app',
-            'is_active' => true,
-        ]);
+        if (! $rasoio) {
+            $rasoio = Application::create([
+                'name' => 'Rasoio',
+                'slug' => 'rasoio',
+                'is_active' => true,
+            ]);
+        }
 
         $this->assertSame(1, (int) $rasoio->id);
-        $this->assertSame(2, (int) $otherApp->id);
+
+        $otherApp = Application::query()->whereKeyNot(1)->first();
+        if (! $otherApp) {
+            $otherApp = Application::create([
+                'name' => 'Outra aplicação',
+                'slug' => 'outra-app',
+                'is_active' => true,
+            ]);
+        }
+
+        $this->assertNotSame(1, (int) $otherApp->id);
 
         $owner = $this->user('rasoio-owner@example.test', 'rasoio-owner');
         $otherOwner = $this->user('other-owner@example.test', 'other-owner');
 
         Establishment::create([
-            'app_id' => $rasoio->id,
+            'app_id' => 1,
             'name' => 'Barbearia Rasoio',
             'slug' => 'barbearia-rasoio',
             'user_id' => $owner->id,
