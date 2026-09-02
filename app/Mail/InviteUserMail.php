@@ -27,14 +27,18 @@ class InviteUserMail extends Mailable
         $this->appId = $application?->id ?? $appId;
         $this->appName = trim((string) ($application?->name ?? $appName)) ?: 'Plataforma Peter Tecnet';
 
-        $candidateUrl = rtrim(trim((string) ($application?->url ?? $appUrl)), '/');
-        $this->appUrl = filter_var($candidateUrl, FILTER_VALIDATE_URL)
-            ? $candidateUrl
-            : rtrim((string) config('app.frontend_url', 'https://petertecnet.com.br'), '/');
+        $targetUrl = rtrim(trim((string) ($application?->url ?? $appUrl)), '/');
+        $this->appUrl = $this->isPublicHttpsUrl($targetUrl)
+            ? $targetUrl
+            : 'https://petertecnet.com.br';
 
-        $frontendUrl = rtrim((string) config('app.frontend_url', 'https://petertecnet.com.br'), '/');
-        if (! filter_var($frontendUrl, FILTER_VALIDATE_URL)) {
-            $frontendUrl = 'https://petertecnet.com.br';
+        $centralApplication = Application::query()
+            ->where('slug', 'peter-tecnet')
+            ->first();
+
+        $activationBaseUrl = rtrim(trim((string) ($centralApplication?->url ?? '')), '/');
+        if (! $this->isPublicHttpsUrl($activationBaseUrl)) {
+            $activationBaseUrl = 'https://petertecnet.com.br';
         }
 
         $query = [
@@ -46,7 +50,7 @@ class InviteUserMail extends Mailable
             $query['app_id'] = $this->appId;
         }
 
-        $this->activationUrl = $frontendUrl.'/invite-complete?'.http_build_query($query);
+        $this->activationUrl = $activationBaseUrl.'/invite-complete?'.http_build_query($query);
     }
 
     public function build()
@@ -62,5 +66,22 @@ class InviteUserMail extends Mailable
                 'appUrl' => $this->appUrl,
                 'activationUrl' => $this->activationUrl,
             ]);
+    }
+
+    private function isPublicHttpsUrl(string $url): bool
+    {
+        if (! filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        $parts = parse_url($url);
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        $host = strtolower((string) ($parts['host'] ?? ''));
+
+        if ($scheme !== 'https' || $host === '') {
+            return false;
+        }
+
+        return ! in_array($host, ['localhost', '127.0.0.1', '::1'], true);
     }
 }
