@@ -57,6 +57,7 @@ class Kernel extends HttpKernel
         'api.quota' => \App\Http\Middleware\EnforceProjectQuota::class,
         'api.usage' => \App\Http\Middleware\TrackApiUsage::class,
         'idempotent' => \App\Http\Middleware\IdempotentRequest::class,
+        'legacy.deprecated' => \App\Http\Middleware\LegacyApiDeprecation::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
     ];
 }
