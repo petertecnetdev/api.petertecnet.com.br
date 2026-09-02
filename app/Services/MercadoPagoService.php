@@ -66,9 +66,11 @@ class MercadoPagoService
             unset($payload['application_fee']);
             data_set($payload, 'metadata.settlement_mode', 'same_account');
 
-            // The first request was rejected and created no payment. Reusing
-            // the idempotency key keeps the logical checkout operation stable.
-            $retry = $this->postPayment($sellerAccessToken, $payload, $idempotencyKey);
+            // The rejected request created no payment. Because the retry has a
+            // different payload, use a fresh idempotency key instead of reusing
+            // the key tied to the rejected split attempt.
+            $retryKey = $idempotencyKey . '-same-account';
+            $retry = $this->postPayment($sellerAccessToken, $payload, $retryKey);
             if ($retry->successful()) {
                 $result = $retry->json();
                 $result['_cutinapp_same_account'] = true;
