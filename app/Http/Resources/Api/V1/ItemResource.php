@@ -22,6 +22,13 @@ class ItemResource extends JsonResource
             'type' => $this->type ?? null,
             'category' => $this->category ?? null,
             'slug' => $this->slug ?? null,
+            'image_url' => $this->image_url ?? null,
+            'files' => $this->whenLoaded('files', fn () => $this->files->map(fn ($file) => [
+                'id' => $file->id,
+                'path' => $file->path ?? null,
+                'url' => $file->url ?? null,
+                'type' => $file->type ?? null,
+            ])->values()->all()),
             'created_at' => $this->created_at?->toIso8601String(),
             'updated_at' => $this->updated_at?->toIso8601String(),
         ];
