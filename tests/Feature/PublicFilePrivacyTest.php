@@ -24,7 +24,7 @@ class PublicFilePrivacyTest extends TestCase
             'updated_by' => null,
         ]);
 
-        $response = $this->getJson('/api/file/entity?entity_id=9001&entity_name=privacy_test');
+        $response = $this->getJson('/api/file/list-by-entity?entity_id=9001&entity_name=privacy_test');
 
         $response->assertOk();
 
@@ -53,7 +53,7 @@ class PublicFilePrivacyTest extends TestCase
             'updated_by' => null,
         ]);
 
-        $response = $this->getJson('/api/file/' . $file->uuid . '/view');
+        $response = $this->getJson('/api/file/view/' . $file->uuid);
 
         $response->assertOk();
 
