@@ -14,7 +14,6 @@ class CutinappContractProtectedEventController extends CutinappEventController
         if ($productionId > 0) {
             $signed = DB::table('cutinapp_producer_contract_acceptances')
                 ->where('production_id', $productionId)
-                ->where('user_id', $request->user()->id)
                 ->where('contract_version', CutinappProducerContractService::VERSION)
                 ->exists();
 
