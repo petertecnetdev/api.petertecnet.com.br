@@ -52,5 +52,6 @@ class Kernel extends HttpKernel
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
+        'admin.permission' => \App\Http\Middleware\RequireAdminPermission::class,
     ];
 }
