@@ -15,6 +15,7 @@ use App\Http\Controllers\CutinappModerationController;
 use App\Http\Controllers\CutinappNotificationController;
 use App\Http\Controllers\CutinappPassClaimController;
 use App\Http\Controllers\CutinappPayoutController;
+use App\Http\Controllers\CutinappProducerContractController;
 use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
@@ -50,6 +51,9 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/orders/{publicId}', [CutinappCommerceController::class, 'show']);
     Route::post('/orders/{publicId}/sync-payment', [CutinappMercadoPagoController::class, 'sync'])->middleware('throttle:30,1');
     Route::get('/productions/{productionId}/mercadopago/connect', [CutinappMercadoPagoController::class, 'connect'])->whereNumber('productionId');
+    Route::get('/productions/{productionId}/contract', [CutinappProducerContractController::class, 'show'])->whereNumber('productionId');
+    Route::post('/productions/{productionId}/contract/sign', [CutinappProducerContractController::class, 'sign'])->whereNumber('productionId')->middleware('throttle:10,1');
+    Route::get('/productions/{productionId}/contract/pdf', [CutinappProducerContractController::class, 'pdf'])->whereNumber('productionId');
     Route::post('/events/{eventId}/items', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
     Route::match(['put','post'], '/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId')->whereNumber('itemId');
     Route::delete('/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'deleteEventItem'])->whereNumber('eventId')->whereNumber('itemId');
