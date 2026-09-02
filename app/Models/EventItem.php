@@ -7,7 +7,8 @@ use Illuminate\Database\Eloquent\Model;
 class EventItem extends Model
 {
     protected $table = 'event_items';
-    protected $fillable = ['event_id','name','description','price','quantity','is_active'];
-    protected $casts = ['price'=>'decimal:2','quantity'=>'integer','is_active'=>'boolean'];
+    protected $fillable = ['app_id','event_id','name','description','price','quantity','is_active'];
+    protected $casts = ['app_id'=>'integer','price'=>'decimal:2','quantity'=>'integer','is_active'=>'boolean'];
+    public function application(){return $this->belongsTo(Application::class,'app_id');}
     public function event(){return $this->belongsTo(Event::class);}
 }
