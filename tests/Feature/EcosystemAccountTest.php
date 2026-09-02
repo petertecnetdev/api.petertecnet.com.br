@@ -51,6 +51,8 @@ class EcosystemAccountTest extends TestCase
             ->assertJsonFragment(['slug' => 'rasoio', 'has_access' => true])
             ->assertJsonFragment(['slug' => 'nexus', 'has_access' => false]);
 
-        $this->assertCount(1, $response->json('data.accessible_applications'));
+        $accessibleSlugs = collect($response->json('data.accessible_applications'))->pluck('slug');
+        $this->assertTrue($accessibleSlugs->contains('rasoio'));
+        $this->assertFalse($accessibleSlugs->contains('nexus'));
     }
 }

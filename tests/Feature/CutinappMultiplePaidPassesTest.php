@@ -23,13 +23,16 @@ class CutinappMultiplePaidPassesTest extends TestCase
             'email_verified_at' => now(),
         ]);
 
-        $appId = DB::table('applications')->insertGetId([
-            'name' => 'Cutinapp Test',
-            'slug' => 'cutinapp',
-            'status' => 1,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $appId = (int) DB::table('applications')->where('slug', 'cutinapp')->value('id');
+        if ($appId <= 0) {
+            $appId = DB::table('applications')->insertGetId([
+                'name' => 'Cutinapp Test',
+                'slug' => 'cutinapp',
+                'is_active' => true,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         $productionId = DB::table('productions')->insertGetId([
             'app_id' => $appId,
