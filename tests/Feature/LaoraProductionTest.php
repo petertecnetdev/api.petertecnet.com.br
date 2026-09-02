@@ -23,8 +23,8 @@ class LaoraProductionTest extends TestCase
         ])->assertOk();
 
         $profile = DB::table('laora_profiles')->where('id', $profileId)->first();
-        $this->assertSame('-19.9167000', (string) $profile->latitude);
-        $this->assertSame('-43.9345000', (string) $profile->longitude);
+        $this->assertEqualsWithDelta(-19.9167, (float) $profile->latitude, 0.000001);
+        $this->assertEqualsWithDelta(-43.9345, (float) $profile->longitude, 0.000001);
     }
 
     public function test_discovery_respects_bilateral_gender_preferences(): void
