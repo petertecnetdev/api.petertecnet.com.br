@@ -21,13 +21,11 @@ class CatalogDirectoryController extends Controller
     public function companies(Request $request): JsonResponse
     {
         $targetAppId = $this->applicationId($request);
-
         $companies = Establishment::query()
-            ->where('user_id', Auth::id())
+            ->where('user_id', $request->user()->id)
             ->whereNull('source_establishment_id')
             ->with(['files', 'app:id,name,slug', 'applications:id,name,slug'])
-            ->latest()
-            ->get();
+            ->latest()->get();
 
         $payload = $companies->map(function (Establishment $company) use ($targetAppId) {
             $linkedApplicationIds = $company->applications->pluck('id')->map(fn ($id) => (int) $id);
@@ -68,26 +66,7 @@ class CatalogDirectoryController extends Controller
     public function catalog(Request $request, string $identifier): JsonResponse
     {
         $targetAppId = $this->applicationId($request);
-
-        $company = Establishment::query()
-            ->forApplication($targetAppId)
-            ->where('is_cancelled', false)
-            ->where('is_published', true)
-            ->when(
-                is_numeric($identifier),
-                fn ($query) => $query->where('id', (int) $identifier),
-                fn ($query) => $query->where('slug', $identifier)
-            )
-            ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
-                'app:id,name,slug',
-                'applications:id,name,slug',
-            ])
-            ->firstOrFail();
-
+        $company = $this->publicCompany($targetAppId, $identifier);
         Interaction::registerView($company, Auth::user());
 
         $items = Item::query()
@@ -95,23 +74,15 @@ class CatalogDirectoryController extends Controller
             ->where('entity_id', $company->id)
             ->where('status', true)
             ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'app:id,name,slug',
                 'establishment:id,app_id,name,fantasy,slug,city,uf',
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
             ->orderByRaw('CASE WHEN app_id = ? THEN 0 ELSE 1 END', [$targetAppId])
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->get();
 
-        $linkedApplicationIds = $company->applications
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $linkedApplicationIds = $company->applications->pluck('id')->map(fn ($id) => (int) $id)->values();
 
         return response()->json([
             'success' => true,
@@ -132,36 +103,30 @@ class CatalogDirectoryController extends Controller
     public function item(Request $request, string $identifier): JsonResponse
     {
         $targetAppId = $this->applicationId($request);
-
         $item = Item::query()
             ->where('entity_name', 'establishment')
             ->where('status', true)
+            ->whereHas('establishment', fn ($query) => $query
+                ->forApplication($targetAppId)
+                ->where('is_cancelled', false))
             ->when(
                 is_numeric($identifier),
                 fn ($query) => $query->where('id', (int) $identifier),
                 fn ($query) => $query->where('slug', $identifier)
             )
             ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'app:id,name,slug',
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
             ->orderByRaw('CASE WHEN app_id = ? THEN 0 ELSE 1 END', [$targetAppId])
-            ->orderByDesc('updated_at')
-            ->firstOrFail();
+            ->orderByDesc('updated_at')->firstOrFail();
 
         $company = Establishment::query()
             ->forApplication($targetAppId)
             ->where('is_cancelled', false)
-            ->where('is_published', true)
             ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'app:id,name,slug',
                 'applications:id,name,slug',
             ])
@@ -175,22 +140,13 @@ class CatalogDirectoryController extends Controller
             ->where('status', true)
             ->where('id', '!=', $item->id)
             ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'app:id,name,slug',
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit(8)
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit(8)->get();
 
-        $linkedApplicationIds = $company->applications
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
+        $linkedApplicationIds = $company->applications->pluck('id')->map(fn ($id) => (int) $id)->values();
 
         return response()->json([
             'success' => true,
@@ -217,7 +173,6 @@ class CatalogDirectoryController extends Controller
     {
         $targetAppId = $this->applicationId($request);
         $user = $request->user();
-
         $company = Establishment::query()
             ->where('user_id', $user->id)
             ->whereNull('source_establishment_id')
@@ -248,29 +203,33 @@ class CatalogDirectoryController extends Controller
         ]);
     }
 
+    private function publicCompany(int $targetAppId, string $identifier): Establishment
+    {
+        return Establishment::query()
+            ->forApplication($targetAppId)
+            ->where('is_cancelled', false)
+            ->when(
+                is_numeric($identifier),
+                fn ($query) => $query->where('id', (int) $identifier),
+                fn ($query) => $query->where('slug', $identifier)
+            )
+            ->with([
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
+                'app:id,name,slug',
+                'applications:id,name,slug',
+            ])
+            ->firstOrFail();
+    }
+
     private function applicationId(Request $request): int
     {
-        if ($this->context->has()) {
-            return $this->context->id();
-        }
-
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ]);
-
-        return (int) $data['app_id'];
+        if ($this->context->has()) return $this->context->id();
+        return (int) $request->validate(['app_id' => 'required|integer|exists:applications,id'])['app_id'];
     }
 
     private function sourceApplication(Establishment $company): ?array
     {
-        if (! $company->app) {
-            return null;
-        }
-
-        return [
-            'id' => $company->app->id,
-            'name' => $company->app->name,
-            'slug' => $company->app->slug,
-        ];
+        if (! $company->app) return null;
+        return ['id' => $company->app->id, 'name' => $company->app->name, 'slug' => $company->app->slug];
     }
 }
