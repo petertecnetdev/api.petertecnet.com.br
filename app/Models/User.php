@@ -234,9 +234,36 @@ class User extends Authenticatable implements JWTSubject
             return ['email' => strtolower($identifier), 'password' => $password];
         }
 
-        $cpf = preg_replace('/[^0-9]/', '', $identifier);
-        if (strlen($cpf) === 11) {
-            return ['cpf' => $cpf, 'password' => $password];
+        $digits = preg_replace('/[^0-9]/', '', $identifier);
+        $looksExplicitlyLikePhone = str_starts_with($identifier, '+')
+            || str_contains($identifier, '(')
+            || strlen($digits) === 10
+            || in_array(strlen($digits), [12, 13], true);
+
+        $localPhone = $digits;
+        if (in_array(strlen($localPhone), [12, 13], true) && str_starts_with($localPhone, '55')) {
+            $localPhone = substr($localPhone, 2);
+        }
+
+        if (in_array(strlen($localPhone), [10, 11], true)) {
+            $phoneExpression = "REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), '(', ''), ')', ''), '-', ''), ' ', ''), '.', '')";
+            $phone = static::query()
+                ->whereNotNull('phone')
+                ->where(function ($query) use ($identifier, $localPhone, $phoneExpression) {
+                    $query->where('phone', $identifier)
+                        ->orWhere('phone', $localPhone)
+                        ->orWhereRaw("{$phoneExpression} = ?", [$localPhone])
+                        ->orWhereRaw("{$phoneExpression} = ?", ['55' . $localPhone]);
+                })
+                ->value('phone');
+
+            if ($phone !== null && ($looksExplicitlyLikePhone || strlen($digits) !== 11 || ! static::query()->where('cpf', $digits)->exists())) {
+                return ['phone' => $phone, 'password' => $password];
+            }
+        }
+
+        if (strlen($digits) === 11) {
+            return ['cpf' => $digits, 'password' => $password];
         }
 
         return ['user_name' => $identifier, 'password' => $password];
