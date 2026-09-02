@@ -2,9 +2,9 @@ name: API CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
-    branches: [main]
+    branches: [main, staging]
   workflow_dispatch:
 
 jobs:
@@ -52,6 +52,7 @@ jobs:
           QUEUE_CONNECTION=sync
           MAIL_MAILER=array
           JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          CUTINAPP_ENFORCE_PRODUCER_CONTRACT=false
           EOF
           touch /tmp/api.sqlite
 
@@ -67,12 +68,15 @@ jobs:
       - name: Audit migration history
         run: php artisan platform:audit-migrations
 
-      - name: Verify versioned API routes
+      - name: Verify critical API routes
         shell: bash
         run: |
           php artisan route:list | grep -q 'api/v1/apps/{application}'
           php artisan route:list | grep -q 'api/cutinapp/events'
           php artisan route:list | grep -q 'api/cutinapp/checkin'
+          php artisan route:list | grep -q 'api/admin/ecosystem/command/overview'
+          php artisan route:list | grep -q 'api/admin/ecosystem/financial/dashboard'
+          php artisan route:list | grep -q 'api/admin/ecosystem/financial/orders'
 
       - name: Run tests
         run: php artisan test
