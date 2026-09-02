@@ -81,8 +81,8 @@ class CommerceFulfillmentController extends Controller
     private function manageable(Request $request, int $establishmentId): Establishment
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($establishmentId)
-            ->where('app_id', $this->context->id())
             ->where('is_cancelled', false)
             ->firstOrFail();
 
@@ -100,8 +100,8 @@ class CommerceFulfillmentController extends Controller
     private function serialize(Order $order): array
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
             ->first();
 
         return [
