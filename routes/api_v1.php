@@ -25,8 +25,6 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}/ordering', [PlatOrderController::class, 'ordering']);
         Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
-        // First-class developer authentication. This group is intentionally
-        // additive so the existing JWT contracts used by Peter products remain intact.
         Route::middleware(['api.project', 'api.quota', 'api.usage', 'actor.context'])->prefix('platform')->group(function () {
             Route::get('/establishments', [EstablishmentController::class, 'index'])->middleware('api.scope:establishments.read');
             Route::get('/items', [ItemController::class, 'index'])->middleware('api.scope:catalog.read');
@@ -36,13 +34,12 @@ Route::prefix('v1/apps/{application}')
         Route::middleware(['auth:api', 'token.version', 'actor.context'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
-            Route::post('/establishments', [EstablishmentController::class, 'store']);
-            Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);
-            Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy']);
+            Route::post('/establishments', [EstablishmentController::class, 'store'])->middleware('idempotent');
+            Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update'])->middleware('idempotent');
+            Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy'])->middleware('idempotent');
             Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
 
             Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
-            Route::post('/items', [ItemController::class, 'store']);
             Route::post('/items', [ItemController::class, 'store'])->middleware('idempotent');
             Route::patch('/items/{item}', [ItemController::class, 'update'])->middleware('idempotent');
             Route::delete('/items/{item}', [ItemController::class, 'destroy'])->middleware('idempotent');
@@ -68,14 +65,14 @@ Route::prefix('v1/apps/{application}')
 
             Route::prefix('developer')->group(function () {
                 Route::get('/projects', [DeveloperProjectController::class, 'index']);
-                Route::post('/projects', [DeveloperProjectController::class, 'store']);
-                Route::post('/projects/{project}/api-keys', [DeveloperProjectController::class, 'issueApiKey']);
-                Route::post('/projects/{project}/oauth-clients', [DeveloperProjectController::class, 'issueOauthClient']);
+                Route::post('/projects', [DeveloperProjectController::class, 'store'])->middleware('idempotent');
+                Route::post('/projects/{project}/api-keys', [DeveloperProjectController::class, 'issueApiKey'])->middleware('idempotent');
+                Route::post('/projects/{project}/oauth-clients', [DeveloperProjectController::class, 'issueOauthClient'])->middleware('idempotent');
                 Route::get('/projects/{project}/usage', [DeveloperProjectController::class, 'usage']);
                 Route::get('/projects/{project}/webhooks', [WebhookController::class, 'index']);
-                Route::post('/projects/{project}/webhooks', [WebhookController::class, 'store']);
-                Route::patch('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'update']);
-                Route::delete('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy']);
+                Route::post('/projects/{project}/webhooks', [WebhookController::class, 'store'])->middleware('idempotent');
+                Route::patch('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'update'])->middleware('idempotent');
+                Route::delete('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('idempotent');
             });
         });
     });
