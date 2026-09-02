@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -10,6 +11,16 @@ Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+
+    Route::get('/command/overview', [CommandCenterController::class, 'overview']);
+    Route::get('/command/search', [CommandCenterController::class, 'globalSearch']);
+    Route::get('/command/security', [CommandCenterController::class, 'security']);
+    Route::get('/command/queues', [CommandCenterController::class, 'queues']);
+    Route::post('/command/queues/{uuid}/retry', [CommandCenterController::class, 'retryJob']);
+    Route::get('/command/applications/{application}', [CommandCenterController::class, 'application'])->whereNumber('application');
+    Route::get('/command/incidents', [CommandCenterController::class, 'incidents']);
+    Route::post('/command/incidents', [CommandCenterController::class, 'storeIncident']);
+    Route::patch('/command/incidents/{incident}', [CommandCenterController::class, 'updateIncident'])->whereNumber('incident');
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
