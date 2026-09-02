@@ -11,6 +11,7 @@ class Kernel extends ConsoleKernel
     {
         $schedule->command('forecasts:evaluate')->everyFiveMinutes();
         $schedule->command('cutinapp:remind-events')->everyFiveMinutes()->withoutOverlapping();
+        $schedule->command('cutinapp:reconcile-payments --limit=50')->everyMinute()->withoutOverlapping();
     }
 
     protected function commands()
