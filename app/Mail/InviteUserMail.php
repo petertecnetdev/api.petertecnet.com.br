@@ -18,8 +18,14 @@ class InviteUserMail extends Mailable
     public $appUrl;
     public $activationUrl;
 
-    public function __construct($user, string $code, string $appName, ?string $appUrl, ?int $appId = null)
-    {
+    public function __construct(
+        $user,
+        string $code,
+        string $appName,
+        ?string $appUrl,
+        ?int $appId = null,
+        ?string $invitationToken = null
+    ) {
         $this->user = $user;
         $this->code = $code;
 
@@ -41,16 +47,22 @@ class InviteUserMail extends Mailable
             $activationBaseUrl = 'https://petertecnet.com.br';
         }
 
-        $query = [
-            'email' => $user->email,
-            'app_name' => $this->appName,
-        ];
+        if ($invitationToken) {
+            $this->activationUrl = $activationBaseUrl.'/account/activate?'.http_build_query([
+                'token' => $invitationToken,
+            ]);
+        } else {
+            $query = [
+                'email' => $user->email,
+                'app_name' => $this->appName,
+            ];
 
-        if ($this->appId) {
-            $query['app_id'] = $this->appId;
+            if ($this->appId) {
+                $query['app_id'] = $this->appId;
+            }
+
+            $this->activationUrl = $activationBaseUrl.'/invite-complete?'.http_build_query($query);
         }
-
-        $this->activationUrl = $activationBaseUrl.'/invite-complete?'.http_build_query($query);
     }
 
     public function build()
