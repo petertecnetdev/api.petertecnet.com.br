@@ -51,6 +51,12 @@ class Kernel extends HttpKernel
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'actor.context' => \App\Http\Middleware\ResolveActorContext::class,
+        'api.project' => \App\Http\Middleware\AuthenticateApiProject::class,
+        'api.scope' => \App\Http\Middleware\RequireApiScope::class,
+        'api.quota' => \App\Http\Middleware\EnforceProjectQuota::class,
+        'api.usage' => \App\Http\Middleware\TrackApiUsage::class,
+        'idempotent' => \App\Http\Middleware\IdempotentRequest::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
     ];
 }
