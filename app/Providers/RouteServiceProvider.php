@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Infrastructure\Http\LegacyV1RouteRegistrar;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Http\Request;
@@ -32,6 +33,19 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp.php'));
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp_history.php'));
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/laora.php'));
+
+            // Product-specific legacy contracts are mirrored below /v1 as temporary
+            // adapters. Canonical v1 routes registered above always take precedence.
+            // This allows frontends to migrate their base URL without a flag-day cutover.
+            app(LegacyV1RouteRegistrar::class)->register([
+                'cutinapp',
+                'rasoio',
+                'nexus',
+                'plat',
+                'payflow',
+                'inkap',
+                'laora',
+            ]);
 
             Route::middleware('web')->group(base_path('routes/web.php'));
         });
