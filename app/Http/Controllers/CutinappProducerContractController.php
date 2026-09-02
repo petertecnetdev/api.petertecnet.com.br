@@ -31,6 +31,7 @@ class CutinappProducerContractController extends Controller
                 'text' => $text,
                 'accepted' => (bool) $acceptance,
                 'accepted_at' => $acceptance?->accepted_at,
+                'email_sent_at' => $acceptance?->email_sent_at,
                 'signer_name' => $acceptance?->signer_name,
                 'signer_document' => $acceptance?->signer_document,
                 'production' => $production->only(['id','name','cnpj','slug']),
@@ -81,18 +82,35 @@ class CutinappProducerContractController extends Controller
             return DB::table('cutinapp_producer_contract_acceptances')->find($id);
         });
 
-        $this->sendCopy($production, $user->email, $acceptance);
+        $emailSent = $acceptance->email_sent_at || $this->sendCopy($production, $user->email, $acceptance);
 
         return response()->json([
-            'message' => 'Contrato assinado com sucesso. Enviamos uma cópia para o seu e-mail.',
+            'message' => $emailSent
+                ? 'Contrato assinado com sucesso. Enviamos uma cópia para o seu e-mail.'
+                : 'Contrato assinado com sucesso. A cópia por e-mail ainda não pôde ser enviada; você poderá tentar novamente pela área de contratos.',
             'contract' => [
                 'version' => $acceptance->contract_version,
                 'hash' => $acceptance->contract_hash,
                 'accepted' => true,
                 'accepted_at' => $acceptance->accepted_at,
+                'email_sent_at' => $emailSent ? now()->toIso8601String() : null,
                 'signer_name' => $acceptance->signer_name,
             ],
         ]);
+    }
+
+    public function resend(Request $request, int $productionId, CutinappProducerContractService $contracts)
+    {
+        $production = $this->ownedProduction($request, $productionId);
+        $acceptance = DB::table('cutinapp_producer_contract_acceptances')
+            ->where('production_id', $production->id)
+            ->where('contract_version', $contracts->version())
+            ->firstOrFail();
+
+        $sent = $this->sendCopy($production, $request->user()->email, $acceptance);
+        abort_unless($sent, 502, 'Não foi possível enviar a cópia do contrato agora. Tente novamente em alguns minutos.');
+
+        return response()->json(['message' => 'Cópia do contrato enviada para o seu e-mail.']);
     }
 
     public function pdf(Request $request, int $productionId, CutinappProducerContractService $contracts)
@@ -108,7 +126,7 @@ class CutinappProducerContractController extends Controller
             ->download('cutinapp-contrato-produtor-' . $production->id . '.pdf');
     }
 
-    private function sendCopy(Production $production, string $email, object $acceptance): void
+    private function sendCopy(Production $production, string $email, object $acceptance): bool
     {
         try {
             $pdf = Pdf::loadView('pdf.cutinapp-producer-contract', compact('production', 'acceptance'))->output();
@@ -118,8 +136,10 @@ class CutinappProducerContractController extends Controller
                     ->attachData($pdf, 'contrato-cutinapp-' . $production->id . '.pdf', ['mime' => 'application/pdf']);
             });
             DB::table('cutinapp_producer_contract_acceptances')->where('id', $acceptance->id)->update(['email_sent_at' => now(), 'updated_at' => now()]);
+            return true;
         } catch (\Throwable $e) {
             report($e);
+            return false;
         }
     }
 
