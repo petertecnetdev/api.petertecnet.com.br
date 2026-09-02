@@ -30,7 +30,6 @@ class CommerceController extends Controller
     {
         $establishment = $this->publicEstablishment($slug);
         $items = Item::query()
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
@@ -64,10 +63,9 @@ class CommerceController extends Controller
 
         [$order, $establishment] = DB::transaction(function () use ($data, $user) {
             $establishment = Establishment::query()
+                ->forApplication($this->context->id())
                 ->whereKey($data['establishment_id'])
-                ->where('app_id', $this->context->id())
                 ->where('is_cancelled', false)
-                ->where('is_published', true)
                 ->lockForUpdate()
                 ->firstOrFail();
 
@@ -83,7 +81,6 @@ class CommerceController extends Controller
             $requested = collect($data['items'])->groupBy('item_id')->map(fn ($rows) => $rows->sum('quantity'));
             $catalog = Item::query()
                 ->whereIn('id', $requested->keys()->map(fn ($id) => (int) $id))
-                ->where('app_id', $this->context->id())
                 ->where('entity_name', 'establishment')
                 ->where('entity_id', $establishment->id)
                 ->where('status', true)
@@ -171,8 +168,8 @@ class CommerceController extends Controller
         abort_if($order->payment_status === 'paid', 422, 'Esta compra já está paga.');
 
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
             ->firstOrFail();
 
         abort_unless(in_array($data['payment_method'], $this->commerceConfig($establishment)['payment_methods'], true), 422, 'Forma de pagamento indisponível.');
@@ -259,6 +256,29 @@ class CommerceController extends Controller
         ])->save();
 
         return response()->json(['success' => true, 'data' => $this->serializeOrder($order->fresh(['items.item']), true)]);
+    }
+
+    public function verifyFulfillment(Request $request, string $publicId): JsonResponse
+    {
+        $data = $request->validate(['token' => ['required', 'string', 'max:128']]);
+
+        $order = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('public_id', $publicId)
+            ->where('type', 'commerce')
+            ->with(['items.item'])
+            ->firstOrFail();
+
+        $this->manageable($request, (int) $order->entity_id);
+        abort_unless($order->payment_status === 'paid', 422, 'Pagamento ainda não confirmado.');
+        abort_unless(hash_equals($this->claimToken($order), $data['token']), 403, 'QR Code inválido.');
+        abort_if(in_array($order->fulfillment_status, ['fulfilled', 'delivered'], true), 409, 'Este QR Code já foi utilizado.');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Compra validada e pronta para recebimento.',
+            'data' => $this->serializeOrder($order, true),
+        ]);
     }
 
     public function redeem(Request $request, string $publicId): JsonResponse
@@ -513,7 +533,11 @@ class CommerceController extends Controller
 
     private function serializeOrder(Order $order, bool $seller = false): array
     {
-        $establishment = Establishment::query()->whereKey($order->entity_id)->where('app_id', $this->context->id())->first();
+        $establishment = Establishment::query()
+            ->forApplication($this->context->id())
+            ->whereKey($order->entity_id)
+            ->first();
+
         $claim = ! $seller
             && $order->payment_status === 'paid'
             && ! in_array($order->fulfillment_status, ['fulfilled', 'delivered', 'blocked'], true)
@@ -570,13 +594,14 @@ class CommerceController extends Controller
     private function manageable(Request $request, int $establishmentId): Establishment
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($establishmentId)
-            ->where('app_id', $this->context->id())
             ->where('is_cancelled', false)
             ->firstOrFail();
 
         $userId = (int) $request->user()->id;
-        $isOwner = (int) $establishment->user_id === $userId;
+        $isOwner = (int) $establishment->user_id === $userId
+            || (int) $establishment->created_by === $userId;
         $isEmployee = Employer::query()->where('establishment_id', $establishment->id)->where('user_id', $userId)->exists();
         abort_unless($isOwner || $isEmployee, 403, 'Você não possui acesso a esta operação.');
         return $establishment;
@@ -585,10 +610,9 @@ class CommerceController extends Controller
     private function publicEstablishment(string $slug): Establishment
     {
         return Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
-            ->where('is_published', true)
             ->firstOrFail();
     }
 
