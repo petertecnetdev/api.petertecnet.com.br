@@ -100,13 +100,17 @@ class EcosystemSsoController extends Controller
             return;
         }
 
-        $user->applications()->syncWithoutDetaching([
-            $application->id => [
+        $alreadyMember = $user->applications()
+            ->where('applications.id', $application->id)
+            ->exists();
+
+        if (! $alreadyMember) {
+            $user->applications()->attach($application->id, [
                 'status' => 'active',
                 'role' => 'member',
                 'joined_at' => now(),
-            ],
-        ]);
+            ]);
+        }
     }
 
     private function hasAccess(User $user, Application $application): bool
