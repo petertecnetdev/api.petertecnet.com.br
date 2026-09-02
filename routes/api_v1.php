@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\CommerceController;
+use App\Http\Controllers\Api\V1\CommerceFulfillmentController;
+use App\Http\Controllers\Api\V1\CommercePaymentController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -54,11 +56,12 @@ Route::prefix('v1/apps/{application}')
             Route::post('/commerce/orders', [CommerceController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/commerce/orders/mine', [CommerceController::class, 'myOrders']);
             Route::get('/commerce/orders/{publicId}', [CommerceController::class, 'show']);
-            Route::get('/commerce/orders/{publicId}/payment', [CommerceController::class, 'payment']);
+            Route::get('/commerce/orders/{publicId}/payment', [CommercePaymentController::class, 'show']);
             Route::post('/commerce/orders/{publicId}/payment', [CommerceController::class, 'retryPayment'])->middleware('throttle:20,1');
             Route::get('/commerce/establishments/{establishment}/orders', [CommerceController::class, 'establishmentOrders'])->whereNumber('establishment');
             Route::patch('/commerce/orders/{publicId}/status', [CommerceController::class, 'updateStatus']);
-            Route::post('/commerce/orders/{publicId}/redeem', [CommerceController::class, 'redeem'])->middleware('throttle:30,1');
+            Route::get('/commerce/orders/{publicId}/fulfillment', [CommerceFulfillmentController::class, 'verify'])->middleware('throttle:60,1');
+            Route::post('/commerce/orders/{publicId}/redeem', [CommerceFulfillmentController::class, 'redeem'])->middleware('throttle:30,1');
 
             Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
