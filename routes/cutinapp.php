@@ -3,6 +3,7 @@
 use App\Http\Controllers\CutinappArtistClaimController;
 use App\Http\Controllers\CutinappArtistMemberController;
 use App\Http\Controllers\CutinappCommerceController;
+use App\Http\Controllers\CutinappContractProtectedEventController;
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
@@ -69,7 +70,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::match(['post', 'put'], '/productions/{id}', [CutinappController::class, 'updateProduction'])->whereNumber('id');
     Route::get('/events/mine', [CutinappEventController::class, 'mine']);
     Route::get('/events/show/{id}', [CutinappEventController::class, 'show'])->whereNumber('id');
-    Route::post('/events', [CutinappEventController::class, 'store']);
+    Route::post('/events', [CutinappContractProtectedEventController::class, 'store']);
     Route::match(['post', 'put'], '/events/{id}', [CutinappEventController::class, 'update'])->whereNumber('id');
     Route::post('/events/{id}/publish', [CutinappEventController::class, 'publish'])->whereNumber('id');
     Route::post('/events/{id}/unpublish', [CutinappEventController::class, 'unpublish'])->whereNumber('id');
