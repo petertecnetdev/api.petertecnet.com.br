@@ -8,6 +8,7 @@ use App\Models\Application;
 use App\Models\Establishment;
 use App\Models\Item;
 use App\Models\User;
+use App\Services\InvitationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -72,9 +73,8 @@ class OnboardingController extends Controller
 
         $application = Application::query()->findOrFail($data['app_id']);
         $email = strtolower(trim($data['email']));
-        $rawCode = $this->newCode(8);
 
-        [$user, $establishment, $items, $createdUser] = DB::transaction(function () use ($data, $email, $rawCode, $actor, $application) {
+        [$user, $establishment, $items, $createdUser, $issued] = DB::transaction(function () use ($data, $email, $actor, $application) {
             $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
             $createdUser = ! $user;
 
@@ -85,14 +85,7 @@ class OnboardingController extends Controller
                     'email' => $email,
                     'user_name' => $this->uniqueUsername($email),
                     'password' => Hash::make(Str::random(64)),
-                    'verification_code' => Hash::make($rawCode),
-                    'verification_code_expires_at' => now()->addDay(),
                 ]);
-            } else {
-                $user->forceFill([
-                    'verification_code' => Hash::make($rawCode),
-                    'verification_code_expires_at' => now()->addDay(),
-                ])->save();
             }
 
             $existingAccess = $user->applications()->whereKey($application->id)->first();
@@ -120,6 +113,13 @@ class OnboardingController extends Controller
                     'joined_at' => $existingStatus === 'active' ? ($existingAccess?->pivot?->joined_at ?: now()) : null,
                 ],
             ]);
+
+            $issued = app(InvitationService::class)->issue(
+                $user,
+                $application,
+                $actor,
+                ['source' => 'admin_managed_onboarding']
+            );
 
             $establishment = null;
             $createdItems = collect();
@@ -176,16 +176,17 @@ class OnboardingController extends Controller
                 }
             }
 
-            return [$user, $establishment, $createdItems, $createdUser];
+            return [$user, $establishment, $createdItems, $createdUser, $issued];
         });
 
         try {
             Mail::to($user->email)->send(new InviteUserMail(
                 $user,
-                $rawCode,
+                $issued['code'],
                 $application->name,
                 $application->url,
-                $application->id
+                $application->id,
+                $issued['token']
             ));
         } catch (\Throwable $e) {
             return response()->json([
@@ -200,14 +201,15 @@ class OnboardingController extends Controller
 
         return response()->json([
             'message' => $createdUser
-                ? 'Cliente criado e convite de ativação enviado por e-mail.'
-                : 'Usuário existente reutilizado e novo convite de ativação enviado por e-mail.',
+                ? 'Cliente criado e convite seguro de ativação enviado por e-mail.'
+                : 'Usuário existente reutilizado e novo convite seguro enviado por e-mail.',
             'user' => $user->load('applications:id,name,slug,url'),
             'application' => $application->only(['id', 'name', 'slug', 'url']),
             'establishment' => $establishment,
             'items_count' => $items->count(),
             'created_user' => $createdUser,
             'mail_sent' => true,
+            'invitation_expires_at' => $issued['invitation']->expires_at?->toIso8601String(),
         ], 201);
     }
 
@@ -230,17 +232,5 @@ class OnboardingController extends Controller
         $local = Str::before($email, '@');
         $label = Str::of($local)->replace(['.', '_', '-'], ' ')->squish()->title()->toString();
         return Str::limit($label ?: 'Cliente', 100, '');
-    }
-
-    private function newCode(int $length): string
-    {
-        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-        $code = '';
-
-        for ($i = 0; $i < $length; $i++) {
-            $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
-        }
-
-        return $code;
     }
 }
