@@ -6,6 +6,7 @@ use App\Services\CutinappEventAudienceService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class Ticket extends Model
@@ -21,6 +22,12 @@ class Ticket extends Model
         'price' => 'decimal:2',
         'quantity' => 'integer',
         'limit_date' => 'datetime',
+    ];
+
+    protected $appends = [
+        'remaining',
+        'available',
+        'expired',
     ];
 
     protected $table = 'tickets';
@@ -53,6 +60,37 @@ class Ticket extends Model
                 throw ValidationException::withMessages(['limit_date' => ["O prazo de retirada não pode ultrapassar o início do evento ({$eventStart})."]]);
             }
         });
+    }
+
+    public function getExpiredAttribute(): bool
+    {
+        return (bool) ($this->limit_date && now()->greaterThan($this->limit_date));
+    }
+
+    public function getRemainingAttribute(): int
+    {
+        $total = max(0, (int) $this->quantity);
+        if ($this->app_slug !== 'cutinapp' || ! $this->exists) {
+            return $total;
+        }
+
+        $issued = EventPass::query()
+            ->where('ticket_id', $this->id)
+            ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
+            ->count();
+
+        $reserved = (int) DB::table('cutinapp_inventory_reservations')
+            ->where('ticket_id', $this->id)
+            ->whereNull('released_at')
+            ->where('expires_at', '>', now())
+            ->sum('quantity');
+
+        return max(0, $total - $issued - $reserved);
+    }
+
+    public function getAvailableAttribute(): bool
+    {
+        return ! $this->expired && $this->remaining > 0;
     }
 
     public function application(){ return $this->belongsTo(Application::class, 'app_id'); }
