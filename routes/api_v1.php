@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\CommerceController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -17,6 +18,15 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
+
+        // Generic commerce capabilities. These routes are intentionally app-agnostic;
+        // the {application} context decides which platform owns each request.
+        Route::get('/commerce/catalog/{slug}', [CommerceController::class, 'catalog']);
+        Route::post('/commerce/payments/mercadopago/webhook', [CommerceController::class, 'mercadoPagoWebhook'])
+            ->middleware('throttle:120,1');
+
+        // Legacy Plat routes are kept during the multi-platform migration so the
+        // existing application keeps working while clients move to /commerce/*.
         Route::get('/establishments/{slug}/ordering', [PlatOrderController::class, 'ordering']);
         Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
@@ -40,6 +50,15 @@ Route::prefix('v1/apps/{application}')
             Route::get('/employers/{employer}/items', [EmployerController::class, 'items']);
             Route::put('/employers/{employer}/items', [EmployerController::class, 'syncItems']);
             Route::get('/employers/{employer}/metrics', [EmployerController::class, 'metrics']);
+
+            Route::post('/commerce/orders', [CommerceController::class, 'checkout'])->middleware('throttle:30,1');
+            Route::get('/commerce/orders/mine', [CommerceController::class, 'myOrders']);
+            Route::get('/commerce/orders/{publicId}', [CommerceController::class, 'show']);
+            Route::get('/commerce/orders/{publicId}/payment', [CommerceController::class, 'payment']);
+            Route::post('/commerce/orders/{publicId}/payment', [CommerceController::class, 'retryPayment'])->middleware('throttle:20,1');
+            Route::get('/commerce/establishments/{establishment}/orders', [CommerceController::class, 'establishmentOrders'])->whereNumber('establishment');
+            Route::patch('/commerce/orders/{publicId}/status', [CommerceController::class, 'updateStatus']);
+            Route::post('/commerce/orders/{publicId}/redeem', [CommerceController::class, 'redeem'])->middleware('throttle:30,1');
 
             Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
