@@ -32,6 +32,7 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\NormalizeHomeLocationFilters::class,
             \App\Http\Middleware\EnsureOrderContext::class,
+            \App\Http\Middleware\EnsureVerifiedFinancialRecipient::class,
             \App\Http\Middleware\TrackApiInteraction::class,
         ],
     ];
