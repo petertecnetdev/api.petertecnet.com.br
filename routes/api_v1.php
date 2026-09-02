@@ -58,6 +58,7 @@ Route::prefix('v1/apps/{application}')
             Route::post('/commerce/orders/{publicId}/payment', [CommerceController::class, 'retryPayment'])->middleware('throttle:20,1');
             Route::get('/commerce/establishments/{establishment}/orders', [CommerceController::class, 'establishmentOrders'])->whereNumber('establishment');
             Route::patch('/commerce/orders/{publicId}/status', [CommerceController::class, 'updateStatus']);
+            Route::get('/commerce/orders/{publicId}/fulfillment', [CommerceController::class, 'verifyFulfillment'])->middleware('throttle:60,1');
             Route::post('/commerce/orders/{publicId}/redeem', [CommerceController::class, 'redeem'])->middleware('throttle:30,1');
 
             Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
