@@ -6,6 +6,7 @@
     "license": "proprietary",
     "require": {
         "php": "^8.2",
+        "aws/aws-sdk-php": "^3.0",
         "barryvdh/laravel-dompdf": "^3.1",
         "google/apiclient": "^2.18",
         "guzzlehttp/guzzle": "^7.2",
@@ -26,13 +27,13 @@
     "autoload": {
         "psr-4": {
             "App\\": "app/",
-            "Database\\Factories\\": "database/factories/",
-            "Database\\Seeders\\": "database/seeders/"
+            "Database\\Factories\\": "database/factories\\",
+            "Database\\Seeders\\": "database/seeders\\"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "Tests\\": "tests/"
+            "Tests\\": "tests\\"
         }
     },
     "scripts": {
