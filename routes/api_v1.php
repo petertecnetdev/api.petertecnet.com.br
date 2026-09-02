@@ -17,8 +17,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('v1/oauth/token', [OauthTokenController::class, 'store'])->middleware('throttle:30,1');
 
-// Central Identity contract. Product-scoped aliases below keep existing frontend
-// URLs compatible while registration is automatically linked to the app context.
 Route::prefix('v1/identity')->group(function () {
     Route::post('/login', [IdentityController::class, 'login'])->middleware('throttle:10,1');
     Route::post('/register', [IdentityController::class, 'register'])->middleware('throttle:5,1');
@@ -40,8 +38,6 @@ Route::prefix('v1/identity')->group(function () {
 Route::prefix('v1/apps/{application}')
     ->middleware('app.context')
     ->group(function () {
-        // Compatibility-shaped Identity endpoints let current Peter frontends move
-        // their base URL to /v1 without changing every auth call at once.
         Route::prefix('auth')->group(function () {
             Route::post('/login', [IdentityController::class, 'login'])->middleware('throttle:10,1');
             Route::post('/register', [IdentityController::class, 'register'])->middleware('throttle:5,1');
@@ -67,7 +63,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}/ordering', [OrderController::class, 'ordering']);
         Route::post('/payments/mercadopago/webhook', [OrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
-        Route::middleware(['api.project', 'api.quota', 'api.usage', 'actor.context'])->prefix('platform')->group(function () {
+        Route::middleware(['api.project', 'api.quota', 'actor.context'])->prefix('platform')->group(function () {
             Route::middleware('api.production')->group(function () {
                 Route::get('/establishments', [EstablishmentController::class, 'index'])->middleware('api.scope:establishments.read');
                 Route::get('/items', [ItemController::class, 'index'])->middleware('api.scope:catalog.read');
