@@ -23,8 +23,9 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/api.php'));
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/account.php'));
 
-            // Stable Peter Platform contract. Never inherits legacy deprecation headers.
-            Route::middleware('api')->prefix('api')->group(base_path('routes/api_v1.php'));
+            // Every v1 request is metered, including Peter first-party JWT traffic.
+            // External projects add project identity/quota middleware at route level.
+            Route::middleware(['api', 'api.usage'])->prefix('api')->group(base_path('routes/api_v1.php'));
 
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/rasoio.php'));
             Route::middleware($legacy)->prefix('api')->group(base_path('routes/ecosystem.php'));
@@ -36,7 +37,6 @@ class RouteServiceProvider extends ServiceProvider
 
             // Product-specific legacy contracts are mirrored below /v1 as temporary
             // adapters. Canonical v1 routes registered above always take precedence.
-            // This allows frontends to migrate their base URL without a flag-day cutover.
             app(LegacyV1RouteRegistrar::class)->register([
                 'cutinapp',
                 'rasoio',
