@@ -37,25 +37,17 @@ class DiscoveryController extends Controller
         $baseEstablishments = Establishment::query()
             ->forApplication($targetAppId)
             ->where('is_cancelled', false)
-            ->where('is_published', true)
             ->whereNull('source_establishment_id');
 
         $locations = (clone $baseEstablishments)
-            ->whereNotNull('city')
-            ->whereNotNull('uf')
-            ->where('city', '!=', '')
-            ->where('uf', '!=', '')
-            ->select('city', 'uf')
-            ->distinct()
-            ->orderBy('uf')
-            ->orderBy('city')
-            ->get()
-            ->map(fn ($row) => [
+            ->whereNotNull('city')->whereNotNull('uf')
+            ->where('city', '!=', '')->where('uf', '!=', '')
+            ->select('city', 'uf')->distinct()->orderBy('uf')->orderBy('city')
+            ->get()->map(fn ($row) => [
                 'city' => $row->city,
                 'uf' => strtoupper((string) $row->uf),
                 'label' => $row->city . ' - ' . strtoupper((string) $row->uf),
-            ])
-            ->values();
+            ])->values();
 
         $establishmentQuery = (clone $baseEstablishments)
             ->when($targetCity !== '', fn ($query) => $query->where('city', $targetCity))
@@ -74,10 +66,7 @@ class DiscoveryController extends Controller
             ->with([
                 'app:id,name,slug,logo',
                 'applications:id,name,slug,logo',
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')]);
 
@@ -89,10 +78,7 @@ class DiscoveryController extends Controller
         }
 
         $establishments = $establishmentQuery
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get()
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get()
             ->map(function (Establishment $establishment) use ($targetAppId) {
                 $establishment->setAttribute('catalog_active', true);
                 $establishment->setAttribute('native_to_application', (int) $establishment->app_id === $targetAppId);
@@ -102,28 +88,19 @@ class DiscoveryController extends Controller
                     'slug' => $establishment->app->slug,
                     'logo' => $establishment->app->logo,
                 ] : null);
-
                 return $establishment;
-            })
-            ->values();
+            })->values();
 
-        $establishmentIds = $establishments->pluck('id');
         $items = Item::query()
             ->where('entity_name', 'establishment')
             ->where('status', true)
-            ->whereIn('entity_id', $establishmentIds)
+            ->whereIn('entity_id', $establishments->pluck('id'))
             ->with([
-                'files' => fn ($query) => $query
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
+                'files' => fn ($query) => $query->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'establishment:id,app_id,name,fantasy,slug,city,uf',
             ])
             ->withCount(['views as total_views' => fn ($query) => $query->where('interaction_type', 'view')])
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
 
         return response()->json([
             'success' => true,
@@ -148,7 +125,6 @@ class DiscoveryController extends Controller
             'q' => 'required|string|min:2|max:120',
             'limit' => 'nullable|integer|min:1|max:20',
         ]);
-
         $term = trim($data['q']);
         $like = '%' . $term . '%';
         $limit = (int) ($data['limit'] ?? 8);
@@ -156,41 +132,30 @@ class DiscoveryController extends Controller
         $companies = Establishment::query()
             ->forApplication($targetAppId)
             ->where('is_cancelled', false)
-            ->where('is_published', true)
             ->whereNull('source_establishment_id')
             ->where(function ($query) use ($like) {
-                $query->where('name', 'like', $like)
-                    ->orWhere('fantasy', 'like', $like)
-                    ->orWhere('category', 'like', $like)
-                    ->orWhere('description', 'like', $like)
-                    ->orWhere('city', 'like', $like)
-                    ->orWhere('uf', 'like', $like);
+                $query->where('name', 'like', $like)->orWhere('fantasy', 'like', $like)
+                    ->orWhere('category', 'like', $like)->orWhere('description', 'like', $like)
+                    ->orWhere('city', 'like', $like)->orWhere('uf', 'like', $like);
             })
             ->select('id', 'app_id', 'name', 'fantasy', 'slug', 'category', 'city', 'uf')
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
 
-        $companyIds = $companies->pluck('id');
         $items = Item::query()
             ->where('status', true)
             ->where('entity_name', 'establishment')
-            ->whereIn('entity_id', $companyIds)
             ->where(function ($query) use ($like) {
-                $query->where('name', 'like', $like)
-                    ->orWhere('description', 'like', $like)
-                    ->orWhere('category', 'like', $like)
-                    ->orWhere('subcategory', 'like', $like)
-                    ->orWhere('brand', 'like', $like)
-                    ->orWhere('sku', 'like', $like);
+                $query->where('name', 'like', $like)->orWhere('description', 'like', $like)
+                    ->orWhere('category', 'like', $like)->orWhere('subcategory', 'like', $like)
+                    ->orWhere('brand', 'like', $like)->orWhere('sku', 'like', $like);
             })
+            ->whereHas('establishment', fn ($query) => $query
+                ->forApplication($targetAppId)
+                ->where('is_cancelled', false)
+                ->whereNull('source_establishment_id'))
             ->with('establishment:id,name,fantasy,slug,city,uf')
             ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'price')
-            ->orderByDesc('is_featured')
-            ->orderByDesc('updated_at')
-            ->limit($limit)
-            ->get();
+            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get();
 
         return response()->json([
             'success' => true,
@@ -204,14 +169,7 @@ class DiscoveryController extends Controller
 
     private function applicationId(Request $request): int
     {
-        if ($this->context->has()) {
-            return $this->context->id();
-        }
-
-        $data = $request->validate([
-            'app_id' => 'required|integer|exists:applications,id',
-        ]);
-
-        return (int) $data['app_id'];
+        if ($this->context->has()) return $this->context->id();
+        return (int) $request->validate(['app_id' => 'required|integer|exists:applications,id'])['app_id'];
     }
 }
