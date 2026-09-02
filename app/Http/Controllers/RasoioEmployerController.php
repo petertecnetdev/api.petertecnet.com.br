@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Mail\NewEmployerCollaborator;
 use App\Mail\OwnerNotifiedNewCollaborator;
+use App\Models\Application;
 use App\Models\Employer;
 use App\Models\Establishment;
 use Illuminate\Http\Request;
@@ -12,21 +13,27 @@ use Illuminate\Support\Facades\Mail;
 
 class RasoioEmployerController extends Controller
 {
-    private const APP_ID = 1;
-
     public function store(Request $request)
     {
         $data = $request->validate([
             'user_id' => 'required|integer|exists:users,id',
             'establishment_id' => 'required|integer|exists:establishments,id',
-            'app_id' => 'required|integer|in:' . self::APP_ID,
+            'app_id' => 'required|integer',
             'role' => 'required|string|max:255',
             'permissions' => 'nullable|array',
             'permissions.*' => 'string|max:100',
         ]);
 
+        $rasoioAppId = $this->rasoioAppId();
+
+        abort_unless(
+            (int) $data['app_id'] === $rasoioAppId,
+            422,
+            'A aplicação informada não corresponde à Rasoio.'
+        );
+
         $establishment = Establishment::with('user')
-            ->where('app_id', self::APP_ID)
+            ->where('app_id', $rasoioAppId)
             ->findOrFail($data['establishment_id']);
 
         $actor = Auth::user();
@@ -82,5 +89,16 @@ class RasoioEmployerController extends Controller
             'employer' => $employer,
             'is_owner' => $isOwnerBecomingEmployer,
         ], 201);
+    }
+
+    private function rasoioAppId(): int
+    {
+        $appId = Application::query()
+            ->where('slug', 'rasoio')
+            ->value('id');
+
+        abort_if(! $appId, 503, 'Aplicação Rasoio não está registrada na API.');
+
+        return (int) $appId;
     }
 }
