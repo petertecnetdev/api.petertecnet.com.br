@@ -26,7 +26,7 @@ class CutinappMultiplePaidPassesTest extends TestCase
         $appId = DB::table('applications')->insertGetId([
             'name' => 'Cutinapp Test',
             'slug' => 'cutinapp',
-            'status' => 1,
+            'is_active' => true,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
