@@ -21,20 +21,28 @@ class InviteUserMail extends Mailable
         $this->user = $user;
         $this->code = $code;
         $this->appName = trim($appName) ?: 'Plataforma Peter Tecnet';
+
         $candidateUrl = rtrim(trim((string) $appUrl), '/');
         $this->appUrl = filter_var($candidateUrl, FILTER_VALIDATE_URL)
             ? $candidateUrl
             : rtrim((string) config('app.frontend_url', 'https://petertecnet.com.br'), '/');
-        $this->activationUrl = $this->appUrl.'/invite-complete?'.http_build_query([
+
+        $frontendUrl = rtrim((string) config('app.frontend_url', 'https://petertecnet.com.br'), '/');
+        if (! filter_var($frontendUrl, FILTER_VALIDATE_URL)) {
+            $frontendUrl = 'https://petertecnet.com.br';
+        }
+
+        $this->activationUrl = $frontendUrl.'/invite-complete?'.http_build_query([
             'email' => $user->email,
-            'code' => $code,
+            'app_url' => $this->appUrl,
+            'app_name' => $this->appName,
         ]);
     }
 
     public function build()
     {
         return $this
-            ->subject("Sua nova conta no {$this->appName}")
+            ->subject("Ative seu acesso ao {$this->appName}")
             ->view('emails.invite-user')
             ->with([
                 'user' => $this->user,

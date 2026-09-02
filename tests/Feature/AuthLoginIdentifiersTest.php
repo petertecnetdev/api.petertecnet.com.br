@@ -11,7 +11,7 @@ class AuthLoginIdentifiersTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_login_accepts_email_username_and_cpf(): void
+    public function test_login_accepts_email_username_cpf_and_phone(): void
     {
         $password = 'Test1234!';
 
@@ -37,6 +37,14 @@ class AuthLoginIdentifiersTest extends TestCase
             'password' => Hash::make($password),
         ]);
 
+        $phoneUser = User::create([
+            'first_name' => 'Phone',
+            'email' => 'phone-login@example.test',
+            'user_name' => 'phone-login-user',
+            'phone' => '(31) 99999-1234',
+            'password' => Hash::make($password),
+        ]);
+
         $this->postJson('/api/auth/login', [
             'username' => strtoupper($emailUser->email),
             'password' => $password,
@@ -51,9 +59,19 @@ class AuthLoginIdentifiersTest extends TestCase
             'username' => '123.456.789-01',
             'password' => $password,
         ])->assertOk()->assertJsonPath('token.user.id', $cpfUser->id);
+
+        $this->postJson('/api/auth/login', [
+            'username' => '31999991234',
+            'password' => $password,
+        ])->assertOk()->assertJsonPath('token.user.id', $phoneUser->id);
+
+        $this->postJson('/api/auth/login', [
+            'username' => '+55 (31) 99999-1234',
+            'password' => $password,
+        ])->assertOk()->assertJsonPath('token.user.id', $phoneUser->id);
     }
 
-    public function test_non_email_non_cpf_identifier_is_treated_as_username(): void
+    public function test_non_email_non_cpf_non_phone_identifier_is_treated_as_username(): void
     {
         $credentials = User::credentials('  peter-user  ', 'secret');
 

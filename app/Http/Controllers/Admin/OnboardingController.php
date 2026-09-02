@@ -1,0 +1,240 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Mail\InviteUserMail;
+use App\Models\Application;
+use App\Models\Establishment;
+use App\Models\Item;
+use App\Models\User;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+
+class OnboardingController extends Controller
+{
+    public function store(Request $request): JsonResponse
+    {
+        $actor = $request->user();
+        abort_unless(
+            $actor && ($actor->hasProfile('Administrador') || $actor->hasPermission('user_create') || $actor->hasPermission('application_manage')),
+            403,
+            'Você não tem permissão para realizar onboarding de clientes.'
+        );
+
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+            'app_id' => ['required', 'integer', 'exists:applications,id'],
+            'establishment' => ['nullable', 'array'],
+            'establishment.name' => ['required_with:establishment', 'string', 'max:255'],
+            'establishment.fantasy' => ['nullable', 'string', 'max:255'],
+            'establishment.cnpj' => ['nullable', 'string', 'max:30'],
+            'establishment.phone' => ['nullable', 'string', 'max:40'],
+            'establishment.email' => ['nullable', 'email', 'max:255'],
+            'establishment.description' => ['nullable', 'string', 'max:5000'],
+            'establishment.category' => ['nullable', 'string', 'max:150'],
+            'establishment.type' => ['nullable', 'string', 'max:100'],
+            'establishment.city' => ['nullable', 'string', 'max:120'],
+            'establishment.uf' => ['nullable', 'string', 'size:2'],
+            'establishment.address' => ['nullable', 'string', 'max:500'],
+            'establishment.cep' => ['nullable', 'string', 'max:20'],
+            'establishment.is_published' => ['nullable', 'boolean'],
+            'establishment.is_approved' => ['nullable', 'boolean'],
+            'items' => ['nullable', 'array', 'max:100'],
+            'items.*.name' => ['required', 'string', 'max:255'],
+            'items.*.type' => ['required', Rule::in(['service', 'product', 'item', 'ticket'])],
+            'items.*.price' => ['required', 'numeric', 'min:0'],
+            'items.*.description' => ['nullable', 'string', 'max:5000'],
+            'items.*.category' => ['nullable', 'string', 'max:150'],
+            'items.*.subcategory' => ['nullable', 'string', 'max:150'],
+            'items.*.brand' => ['nullable', 'string', 'max:150'],
+            'items.*.duration' => ['nullable', 'integer', 'min:0', 'max:1440'],
+            'items.*.stock' => ['nullable', 'integer', 'min:0'],
+            'items.*.status' => ['nullable', 'boolean'],
+            'items.*.is_featured' => ['nullable', 'boolean'],
+        ], [
+            'email.required' => 'Informe o e-mail do cliente.',
+            'email.email' => 'Informe um e-mail válido.',
+            'app_id.required' => 'Selecione o aplicativo.',
+            'app_id.exists' => 'O aplicativo selecionado não existe.',
+            'establishment.name.required_with' => 'Informe o nome da empresa.',
+            'establishment.uf.size' => 'A UF deve ter exatamente 2 caracteres.',
+        ]);
+
+        if (! empty($data['items']) && empty($data['establishment'])) {
+            return response()->json(['message' => 'Crie o estabelecimento antes de adicionar itens.'], 422);
+        }
+
+        $application = Application::query()->findOrFail($data['app_id']);
+        $email = strtolower(trim($data['email']));
+        $rawCode = $this->newCode(8);
+
+        [$user, $establishment, $items, $createdUser] = DB::transaction(function () use ($data, $email, $rawCode, $actor, $application) {
+            $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+            $createdUser = ! $user;
+
+            if (! $user) {
+                $label = $this->labelFromEmail($email);
+                $user = User::create([
+                    'first_name' => $label,
+                    'email' => $email,
+                    'user_name' => $this->uniqueUsername($email),
+                    'password' => Hash::make(Str::random(64)),
+                    'verification_code' => Hash::make($rawCode),
+                    'verification_code_expires_at' => now()->addDay(),
+                ]);
+            } else {
+                $user->forceFill([
+                    'verification_code' => Hash::make($rawCode),
+                    'verification_code_expires_at' => now()->addDay(),
+                ])->save();
+            }
+
+            $existingAccess = $user->applications()->whereKey($application->id)->first();
+            $existingStatus = $existingAccess?->pivot?->status;
+            $existingRole = $existingAccess?->pivot?->role;
+            $metadata = $existingAccess?->pivot?->metadata;
+            if (is_string($metadata)) {
+                $metadata = json_decode($metadata, true) ?: [];
+            }
+            if (! is_array($metadata)) {
+                $metadata = [];
+            }
+
+            $metadata = array_merge($metadata, [
+                'invited_by' => $actor->id,
+                'invited_at' => now()->toIso8601String(),
+                'source' => 'admin_managed_onboarding',
+            ]);
+
+            $user->applications()->syncWithoutDetaching([
+                $application->id => [
+                    'status' => $existingStatus === 'active' ? 'active' : 'pending',
+                    'role' => $existingRole ?: 'client',
+                    'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE),
+                    'joined_at' => $existingStatus === 'active' ? ($existingAccess?->pivot?->joined_at ?: now()) : null,
+                ],
+            ]);
+
+            $establishment = null;
+            $createdItems = collect();
+
+            if (! empty($data['establishment'])) {
+                $company = $data['establishment'];
+                $establishment = Establishment::create([
+                    'name' => trim($company['name']),
+                    'fantasy' => trim((string) ($company['fantasy'] ?? '')) ?: trim($company['name']),
+                    'cnpj' => $company['cnpj'] ?? null,
+                    'phone' => $company['phone'] ?? null,
+                    'email' => $company['email'] ?? $email,
+                    'description' => $company['description'] ?? null,
+                    'category' => $company['category'] ?? null,
+                    'type' => $company['type'] ?? null,
+                    'city' => $company['city'] ?? null,
+                    'uf' => ! empty($company['uf']) ? strtoupper($company['uf']) : null,
+                    'address' => $company['address'] ?? null,
+                    'cep' => $company['cep'] ?? null,
+                    'user_id' => $user->id,
+                    'app_id' => $application->id,
+                    'is_published' => (bool) ($company['is_published'] ?? true),
+                    'is_approved' => (bool) ($company['is_approved'] ?? true),
+                    'is_featured' => false,
+                    'is_cancelled' => false,
+                    'created_by' => $actor->id,
+                    'updated_by' => $actor->id,
+                ]);
+
+                $establishment->applications()->syncWithoutDetaching([
+                    $application->id => ['is_primary' => true],
+                ]);
+
+                foreach ($data['items'] ?? [] as $itemData) {
+                    $createdItems->push(Item::create([
+                        'user_id' => $user->id,
+                        'app_id' => $application->id,
+                        'entity_id' => $establishment->id,
+                        'entity_name' => 'establishment',
+                        'name' => trim($itemData['name']),
+                        'type' => $itemData['type'],
+                        'price' => $itemData['price'],
+                        'description' => $itemData['description'] ?? null,
+                        'category' => $itemData['category'] ?? null,
+                        'subcategory' => $itemData['subcategory'] ?? null,
+                        'brand' => $itemData['brand'] ?? null,
+                        'duration' => $itemData['duration'] ?? null,
+                        'stock' => $itemData['stock'] ?? null,
+                        'status' => (bool) ($itemData['status'] ?? true),
+                        'is_featured' => (bool) ($itemData['is_featured'] ?? false),
+                        'created_by' => $actor->id,
+                        'updated_by' => $actor->id,
+                    ]));
+                }
+            }
+
+            return [$user, $establishment, $createdItems, $createdUser];
+        });
+
+        try {
+            Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name, $application->url));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => 'O cadastro foi preparado, mas o e-mail de ativação não pôde ser enviado.',
+                'user' => $user,
+                'establishment' => $establishment,
+                'items_count' => $items->count(),
+                'created_user' => $createdUser,
+                'mail_sent' => false,
+            ], 201);
+        }
+
+        return response()->json([
+            'message' => $createdUser
+                ? 'Cliente criado e convite de ativação enviado por e-mail.'
+                : 'Usuário existente reutilizado e novo convite de ativação enviado por e-mail.',
+            'user' => $user->load('applications:id,name,slug,url'),
+            'application' => $application->only(['id', 'name', 'slug', 'url']),
+            'establishment' => $establishment,
+            'items_count' => $items->count(),
+            'created_user' => $createdUser,
+            'mail_sent' => true,
+        ], 201);
+    }
+
+    private function uniqueUsername(string $email): string
+    {
+        $local = Str::before($email, '@');
+        $base = Str::slug($local, '_') ?: 'cliente';
+        $candidate = $base;
+        $counter = 1;
+
+        while (User::query()->where('user_name', $candidate)->exists()) {
+            $candidate = $base . '_' . $counter++;
+        }
+
+        return $candidate;
+    }
+
+    private function labelFromEmail(string $email): string
+    {
+        $local = Str::before($email, '@');
+        $label = Str::of($local)->replace(['.', '_', '-'], ' ')->squish()->title()->toString();
+        return Str::limit($label ?: 'Cliente', 100, '');
+    }
+
+    private function newCode(int $length): string
+    {
+        $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        $code = '';
+
+        for ($i = 0; $i < $length; $i++) {
+            $code .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        }
+
+        return $code;
+    }
+}

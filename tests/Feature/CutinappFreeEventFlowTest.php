@@ -61,6 +61,7 @@ class CutinappFreeEventFlowTest extends TestCase
         $this->assertDatabaseHas('event_passes', ['id' => $passId, 'checked_in_at' => null]);
 
         $this->travelTo(Carbon::parse($event['start_date'])->addMinute());
+        $producerHeaders = $this->headersFor($producer);
 
         $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/checkin', ['event_id' => $eventId, 'token' => $qrToken])
             ->assertOk()->assertJsonPath('message', 'Entrada validada com sucesso.');
@@ -84,6 +85,7 @@ class CutinappFreeEventFlowTest extends TestCase
         $token = $this->withHeaders($this->headersFor($participant))->postJson('/api/cutinapp/passes/claim/' . $event['ticket_id'])->assertCreated()->json('pass.token');
 
         $this->travelTo(Carbon::parse($event['end_date'])->addMinute());
+        $headers = $this->headersFor($producer);
         $this->withHeaders($headers)->postJson('/api/cutinapp/checkin', ['event_id'=>$event['event_id'],'token'=>$token])->assertStatus(422);
         $this->travelBack();
     }
