@@ -42,6 +42,24 @@ class AsaasPayoutService
         }
     }
 
+    public function availableBalance(): float
+    {
+        $this->assertConfigured();
+
+        try {
+            $response = $this->client->get('finance/balance', [
+                'headers' => ['access_token' => $this->apiKey],
+            ]);
+            $payload = json_decode($response->getBody()->getContents(), true);
+            if (!is_array($payload) || !is_numeric($payload['balance'] ?? null)) {
+                throw new RuntimeException('O provedor não retornou um saldo disponível válido.');
+            }
+            return round((float) $payload['balance'], 2);
+        } catch (RequestException $e) {
+            $this->throwProviderException('Não foi possível consultar o saldo operacional para repasses.', $e);
+        }
+    }
+
     public function lookupPixKey(string $type, string $key): array
     {
         $this->assertConfigured();
