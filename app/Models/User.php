@@ -63,6 +63,29 @@ class User extends Authenticatable implements JWTSubject
         });
     }
 
+    public function setEmailAttribute($value): void
+    {
+        $this->attributes['email'] = strtolower(trim((string) $value));
+    }
+
+    public function setCpfAttribute($value): void
+    {
+        $digits = self::digits($value);
+        $this->attributes['cpf'] = $digits !== '' ? $digits : null;
+    }
+
+    public function setPhoneAttribute($value): void
+    {
+        $digits = self::digits($value);
+        $this->attributes['phone'] = $digits !== '' ? $digits : null;
+    }
+
+    public function setUserNameAttribute($value): void
+    {
+        $username = trim((string) $value);
+        $this->attributes['user_name'] = $username !== '' ? $username : null;
+    }
+
     public function getJWTIdentifier()
     {
         return $this->getKey();
@@ -234,12 +257,32 @@ class User extends Authenticatable implements JWTSubject
             return ['email' => strtolower($identifier), 'password' => $password];
         }
 
-        $cpf = preg_replace('/[^0-9]/', '', $identifier);
-        if (strlen($cpf) === 11) {
-            return ['cpf' => $cpf, 'password' => $password];
+        $digits = self::digits($identifier);
+
+        if ($digits !== '') {
+            $cpfMatch = static::query()->where('cpf', $digits)->first();
+            if ($cpfMatch) {
+                return ['cpf' => $cpfMatch->cpf, 'password' => $password];
+            }
+
+            $phoneMatch = static::query()
+                ->where(function ($query) use ($digits) {
+                    $query->where('phone', $digits)
+                        ->orWhereRaw("REGEXP_REPLACE(phone, '[^0-9]', '') = ?", [$digits]);
+                })
+                ->first();
+
+            if ($phoneMatch) {
+                return ['phone' => $phoneMatch->phone, 'password' => $password];
+            }
         }
 
         return ['user_name' => $identifier, 'password' => $password];
+    }
+
+    private static function digits($value): string
+    {
+        return preg_replace('/\D+/', '', (string) $value) ?: '';
     }
 
     public function files()
