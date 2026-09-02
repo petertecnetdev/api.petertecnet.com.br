@@ -53,6 +53,7 @@ class Kernel extends HttpKernel
         'app.fixed' => \App\Http\Middleware\ResolveFixedApplicationContext::class,
         'tenant.context' => \App\Http\Middleware\ResolveTenantContext::class,
         'actor.context' => \App\Http\Middleware\ResolveActorContext::class,
+        'actor.scope' => \App\Http\Middleware\RequireActorScope::class,
         'api.project' => \App\Http\Middleware\AuthenticateApiProject::class,
         'api.scope' => \App\Http\Middleware\RequireApiScope::class,
         'api.quota' => \App\Http\Middleware\EnforceProjectQuota::class,
