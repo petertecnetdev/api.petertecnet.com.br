@@ -1,6 +1,8 @@
 <?php
 
 use App\Http\Controllers\LaoraController;
+use App\Http\Controllers\LaoraModerationController;
+use App\Http\Controllers\LaoraPrivacyController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('laora')->middleware(['api', 'auth:api'])->group(function () {
@@ -20,4 +22,10 @@ Route::prefix('laora')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/users/{targetUserId}/block', [LaoraController::class, 'block'])->whereNumber('targetUserId')->middleware('throttle:30,1');
     Route::delete('/users/{targetUserId}/block', [LaoraController::class, 'unblock'])->whereNumber('targetUserId')->middleware('throttle:30,1');
     Route::post('/reports', [LaoraController::class, 'report'])->middleware('throttle:10,1');
+
+    Route::get('/privacy/export', [LaoraPrivacyController::class, 'export'])->middleware('throttle:5,1');
+    Route::delete('/privacy/profile', [LaoraPrivacyController::class, 'destroyProfile'])->middleware('throttle:3,1');
+
+    Route::get('/admin/reports', [LaoraModerationController::class, 'reports'])->middleware('throttle:60,1');
+    Route::post('/admin/reports/{reportId}/action', [LaoraModerationController::class, 'act'])->whereNumber('reportId')->middleware('throttle:30,1');
 });
