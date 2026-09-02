@@ -13,6 +13,7 @@ class Order extends Model
     use HasFactory;
 
     protected $fillable = [
+        'public_id',
         'app_id',
         'entity_name',
         'entity_id',
@@ -28,11 +29,17 @@ class Order extends Model
         'access_code',
         'origin',
         'fulfillment',
+        'fulfillment_status',
         'payment_status',
         'payment_method',
+        'payment_reference',
+        'subtotal',
+        'delivery_fee',
+        'delivery_address',
         'total_price',
         'total_duration',
         'status',
+        'status_updated_at',
         'notes',
         'type',
         'appointment_status',
@@ -40,20 +47,23 @@ class Order extends Model
         'cancelled_by',
         'cancelled_reason',
         'attended_at',
+        'fulfilled_at',
+        'fulfilled_by',
     ];
 
     protected $casts = [
         'order_datetime' => 'datetime',
+        'status_updated_at' => 'datetime',
         'attended_at' => 'datetime',
+        'fulfilled_at' => 'datetime',
+        'subtotal' => 'decimal:2',
+        'delivery_fee' => 'decimal:2',
+        'total_price' => 'decimal:2',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
 
     protected $appends = ['attendant_user', 'client_user'];
-
-    /* ===============================
-       RELACIONAMENTOS DIRETOS
-    ================================ */
 
     public function items(): HasMany
     {
@@ -95,31 +105,16 @@ class Order extends Model
         return $this->entity;
     }
 
-    /* ===============================
-       ATTENDANT USER (EMPLOYER -> USER)
-    ================================ */
-
     public function getAttendantUserAttribute()
     {
-        if (empty($this->attendant_id)) {
-            return null;
-        }
+        if (empty($this->attendant_id)) return null;
 
         $this->loadMissing([
             'attendant' => function ($q) {
                 $q->select([
-                    'id',
-                    'user_id',
-                    'establishment_id',
-                    'role',
-                    'permissions',
-                    'created_by',
-                    'updated_by',
-                    'created_at',
-                    'updated_at',
-                ])->with([
-                            'user:id,first_name,last_name,user_name,avatar,email',
-                        ]);
+                    'id', 'user_id', 'establishment_id', 'role', 'permissions',
+                    'created_by', 'updated_by', 'created_at', 'updated_at',
+                ])->with(['user:id,first_name,last_name,user_name,avatar,email']);
             },
         ]);
 
@@ -128,30 +123,17 @@ class Order extends Model
 
     public function getClientUserAttribute()
     {
-        if (empty($this->client_id)) {
-            return null;
-        }
+        if (empty($this->client_id)) return null;
 
         $this->loadMissing([
             'client' => function ($q) {
-                $q->select([
-                    'id',
-                    'first_name',
-                    'last_name',
-                    'user_name',
-                    'email',
-                    'avatar',
-                ])->with([
-                            'avatarFile:id,entity_id,path',
-                        ]);
+                $q->select(['id', 'first_name', 'last_name', 'user_name', 'email', 'avatar'])
+                    ->with(['avatarFile:id,entity_id,path']);
             },
         ]);
 
         $user = $this->client;
-
-        if (!$user) {
-            return null;
-        }
+        if (!$user) return null;
 
         return [
             'id' => $user->id,
@@ -162,11 +144,6 @@ class Order extends Model
             'avatar' => $user->avatarFile?->path ?? $user->avatar,
         ];
     }
-
-
-    /* ===============================
-       M�TODOS EST�TICOS AUXILIARES
-    ================================ */
 
     public static function hasScheduleConflict($attendantId, $start, $end): bool
     {
@@ -230,16 +207,12 @@ class Order extends Model
             $additions = $entry['additions'] ?? [];
             $removals = $entry['removals'] ?? [];
 
-            $item = \App\Models\Item::findOrFail($itemId);
-
+            $item = Item::findOrFail($itemId);
             $orderEntityName = strtolower(trim($this->entity_name));
             $itemEntityName = strtolower(trim($item->entity_name));
 
-            if (
-                $itemEntityName !== $orderEntityName ||
-                (int) $item->entity_id !== (int) $this->entity_id
-            ) {
-                throw new \Exception("O item '{$item->name}' n�o pertence ao estabelecimento desta ordem.");
+            if ($itemEntityName !== $orderEntityName || (int) $item->entity_id !== (int) $this->entity_id) {
+                throw new \Exception("O item '{$item->name}' não pertence ao estabelecimento desta ordem.");
             }
 
             $unitPrice = (float) $item->price;
@@ -261,22 +234,14 @@ class Order extends Model
             }
 
             foreach ($removals as $remId) {
-                $orderItem->modifiers()->create([
-                    'modifier_id' => $remId,
-                    'type' => 'removal',
-                ]);
+                $orderItem->modifiers()->create(['modifier_id' => $remId, 'type' => 'removal']);
             }
         }
     }
 
-    /* ===============================
-       INTERA��ES E M�TRICAS
-    ================================ */
-
     public function interactions(): HasMany
     {
-        return $this->hasMany(Interaction::class, 'entity_id')
-            ->where('entity_type', 'Order');
+        return $this->hasMany(Interaction::class, 'entity_id')->where('entity_type', 'Order');
     }
 
     public function views(): HasMany
@@ -291,20 +256,13 @@ class Order extends Model
 
     public function uniqueViewers()
     {
-        return $this->views()
-            ->select('user_id')
-            ->distinct()
-            ->with('user:id,first_name,last_name,user_name,avatar,email');
+        return $this->views()->select('user_id')->distinct()->with('user:id,first_name,last_name,user_name,avatar,email');
     }
 
     public function mostActiveViewer()
     {
-        return $this->views()
-            ->selectRaw('user_id, COUNT(*) as total')
-            ->groupBy('user_id')
-            ->orderByDesc('total')
-            ->with('user:id,first_name,last_name,user_name,avatar,email')
-            ->first();
+        return $this->views()->selectRaw('user_id, COUNT(*) as total')->groupBy('user_id')->orderByDesc('total')
+            ->with('user:id,first_name,last_name,user_name,avatar,email')->first();
     }
 
     public function totalViewsCount(): int
@@ -314,14 +272,9 @@ class Order extends Model
 
     public function itemsViews(): int
     {
-        return $this->items()
-            ->withCount([
-                'interactions as total_views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                }
-            ])
-            ->get()
-            ->sum('total_views');
+        return $this->items()->withCount([
+            'interactions as total_views' => fn ($q) => $q->where('interaction_type', 'view'),
+        ])->get()->sum('total_views');
     }
 
     public function metrics(): array
@@ -345,55 +298,21 @@ class Order extends Model
                 'most_active_user' => $this->mostActiveViewer()?->user ?? null,
             ],
             'items' => $this->items()->withCount([
-                'interactions as views' => function ($q) {
-                    $q->where('interaction_type', 'view');
-                }
+                'interactions as views' => fn ($q) => $q->where('interaction_type', 'view'),
             ])->get(['id', 'item_id', 'quantity', 'views']),
         ];
     }
 
-    /* ===============================
-       STATUS E UTILIT�RIOS
-    ================================ */
-
-    public function isPaid(): bool
-    {
-        return $this->payment_status === 'paid';
-    }
-
-    public function isPending(): bool
-    {
-        return $this->payment_status === 'pending' || $this->status === 'pending';
-    }
-
-    public function isCancelled(): bool
-    {
-        return $this->status === 'cancelled';
-    }
-
-    public function isConfirmed(): bool
-    {
-        return $this->appointment_status === 'confirmed' || $this->status === 'confirmed';
-    }
-
-    public function isCompleted(): bool
-    {
-        return $this->appointment_status === 'completed' || $this->status === 'completed';
-    }
-
-    public function isAwaitingConfirmation(): bool
-    {
-        return $this->appointment_status === 'awaiting_confirmation';
-    }
-
-    public function isRefunded(): bool
-    {
-        return $this->payment_status === 'refunded';
-    }
+    public function isPaid(): bool { return $this->payment_status === 'paid'; }
+    public function isPending(): bool { return $this->payment_status === 'pending' || $this->status === 'pending'; }
+    public function isCancelled(): bool { return $this->status === 'cancelled'; }
+    public function isConfirmed(): bool { return $this->appointment_status === 'confirmed' || $this->status === 'confirmed'; }
+    public function isCompleted(): bool { return $this->appointment_status === 'completed' || $this->status === 'completed'; }
+    public function isAwaitingConfirmation(): bool { return $this->appointment_status === 'awaiting_confirmation'; }
+    public function isRefunded(): bool { return $this->payment_status === 'refunded'; }
 
     public function establishment()
-{
-    return $this->belongsTo(Establishment::class, 'entity_id')
-        ->where('entity_name', 'establishment');
-}
+    {
+        return $this->belongsTo(Establishment::class, 'entity_id')->where('entity_name', 'establishment');
+    }
 }
