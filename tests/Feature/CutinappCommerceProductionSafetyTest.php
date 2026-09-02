@@ -16,9 +16,10 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_paid_sales_are_disabled_until_producer_connects_mercado_pago(): void
+    public function test_paid_sales_are_disabled_until_producer_has_verified_pix_recipient(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', false);
+        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
 
         [, $event, $ticket] = $this->paidEventFixture('sales-disabled');
 
@@ -37,29 +38,32 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 'payment_method' => 'pix',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'As vendas pagas ainda não estão habilitadas. O produtor precisa conectar sua conta Mercado Pago.');
+            ->assertJsonPath('message', 'Esta produção ainda não ativou os recebimentos. O produtor precisa verificar a identidade e cadastrar uma chave Pix.');
 
         $this->assertDatabaseCount('cutinapp_orders', 0);
         $this->assertDatabaseCount('cutinapp_inventory_reservations', 0);
     }
 
-    public function test_pix_expiration_matches_inventory_reservation_and_uses_split(): void
+    public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', false);
+        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
         config()->set('services.cutinapp.order_expiration_minutes', 30);
         config()->set('services.cutinapp.platform_fee_percent', 8);
 
-        [, $event, $ticket, $productionId] = $this->paidEventFixture('pix-expiration');
+        [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('pix-expiration');
+        $this->verifyFinancialRecipient($producer, $productionId);
 
+        // Regression guard: an old OAuth account must never reactivate seller split.
         DB::table('cutinapp_producer_payment_accounts')->insert([
             'production_id' => $productionId,
             'provider' => 'mercadopago',
             'status' => 'connected',
-            'provider_recipient_id' => 'seller-test',
-            'access_token' => Crypt::encryptString('seller-access-token'),
+            'provider_recipient_id' => 'legacy-seller-test',
+            'access_token' => Crypt::encryptString('legacy-seller-access-token'),
             'refresh_token' => null,
             'token_expires_at' => null,
-            'metadata' => json_encode(['public_key' => 'APP_USR-test-public-key'], JSON_THROW_ON_ERROR),
+            'metadata' => json_encode(['public_key' => 'APP_USR-legacy-public-key'], JSON_THROW_ON_ERROR),
             'connected_at' => now(),
             'verified_at' => now(),
             'created_at' => now(),
@@ -70,11 +74,11 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $mercadoPago->shouldReceive('createPayment')
             ->once()
             ->withArgs(function (string $token, array $payload, string $idempotencyKey): bool {
-                $this->assertSame('seller-access-token', $token);
+                $this->assertSame('platform-access-token', $token);
                 $this->assertNotSame('', $idempotencyKey);
                 $this->assertSame('pix', $payload['payment_method_id']);
-                $this->assertSame('automatic_split', $payload['metadata']['settlement_mode']);
-                $this->assertEqualsWithDelta(1.60, (float) $payload['application_fee'], 0.001);
+                $this->assertSame('platform_collection', $payload['metadata']['settlement_mode']);
+                $this->assertArrayNotHasKey('application_fee', $payload);
                 $this->assertArrayHasKey('date_of_expiration', $payload);
                 $expiration = \Carbon\Carbon::parse($payload['date_of_expiration']);
                 $this->assertGreaterThan(now()->addMinutes(29), $expiration);
@@ -111,34 +115,102 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $orderId = $response->json('order.id');
         $orderExpiration = DB::table('cutinapp_orders')->where('id', $orderId)->value('expires_at');
         $reservationExpiration = DB::table('cutinapp_inventory_reservations')->where('order_id', $orderId)->value('expires_at');
+        $orderMetadata = json_decode((string) DB::table('cutinapp_orders')->where('id', $orderId)->value('metadata'), true);
+
         $this->assertSame((string) $orderExpiration, (string) $reservationExpiration);
+        $this->assertSame('platform_collection', $orderMetadata['settlement_mode'] ?? null);
+        $this->assertDatabaseHas('cutinapp_producer_payment_accounts', [
+            'production_id' => $productionId,
+            'status' => 'legacy_disabled',
+        ]);
     }
 
-    public function test_catalog_only_exposes_card_when_seller_public_key_exists(): void
+    public function test_catalog_uses_platform_public_key_only_after_verified_pix_recipient(): void
+    {
+        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
+        config()->set('services.mercadopago.public_key', '');
+
+        [$producer, $event, , $productionId] = $this->paidEventFixture('payment-methods');
+        $this->verifyFinancialRecipient($producer, $productionId);
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('payment_config.available', true)
+            ->assertJsonPath('payment_config.producer_connected', false)
+            ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
+            ->assertJsonPath('payment_config.methods', ['pix'])
+            ->assertJsonPath('payment_config.public_key', '');
+
+        config()->set('services.mercadopago.public_key', 'APP_USR-platform-public-key');
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('payment_config.available', true)
+            ->assertJsonPath('payment_config.methods', ['pix', 'card'])
+            ->assertJsonPath('payment_config.public_key', 'APP_USR-platform-public-key');
+    }
+
+    public function test_verified_recipient_is_not_enough_when_platform_collection_is_disabled(): void
     {
         config()->set('services.cutinapp.allow_platform_collection', false);
-        [, $event, , $productionId] = $this->paidEventFixture('payment-methods');
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
 
-        DB::table('cutinapp_producer_payment_accounts')->insert([
-            'production_id' => $productionId,
-            'provider' => 'mercadopago',
-            'status' => 'connected',
-            'provider_recipient_id' => 'seller-methods',
-            'access_token' => Crypt::encryptString('seller-token'),
-            'refresh_token' => null,
-            'token_expires_at' => null,
-            'metadata' => json_encode([], JSON_THROW_ON_ERROR),
-            'connected_at' => now(),
+        [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('platform-disabled');
+        $this->verifyFinancialRecipient($producer, $productionId);
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('payment_config.available', false)
+            ->assertJsonPath('payment_config.methods', []);
+
+        $buyer = $this->user('Comprador Plataforma Off', 'buyer-platform-off@cutinapp.test');
+        $this->withHeaders($this->headersFor($buyer))
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Os recebimentos desta produção estão verificados, mas a plataforma de pagamentos ainda não está habilitada.');
+    }
+
+    private function verifyFinancialRecipient(User $producer, int $productionId): void
+    {
+        $cpf = '52998224725';
+        $fingerprint = hash_hmac('sha256', $cpf, (string) config('app.key'));
+        $beneficiaryId = DB::table('financial_beneficiaries')->insertGetId([
+            'user_id' => $producer->id,
+            'legal_name' => 'Produtor Teste Verificado',
+            'document_type' => 'CPF',
+            'document_number' => Crypt::encryptString($cpf),
+            'document_number_hash' => $fingerprint,
+            'birthdate' => '1990-01-01',
+            'status' => 'verified',
+            'verification_level' => 'document_face_liveness',
             'verified_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
 
-        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
-            ->assertOk()
-            ->assertJsonPath('payment_config.available', true)
-            ->assertJsonPath('payment_config.methods', ['pix'])
-            ->assertJsonPath('payment_config.public_key', '');
+        DB::table('financial_payout_destinations')->insert([
+            'beneficiary_id' => $beneficiaryId,
+            'source_type' => 'production',
+            'source_id' => $productionId,
+            'provider' => 'asaas',
+            'type' => 'pix',
+            'pix_key_type' => 'CPF',
+            'pix_key' => Crypt::encryptString($cpf),
+            'pix_key_hash' => hash_hmac('sha256', 'CPF:' . $cpf, (string) config('app.key')),
+            'pix_key_masked' => '***.982.247-**',
+            'holder_name' => 'Produtor Teste Verificado',
+            'holder_document_masked' => '***.982.247-**',
+            'status' => 'active',
+            'verified_at' => now(),
+            'changed_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     private function paidEventFixture(string $suffix): array
