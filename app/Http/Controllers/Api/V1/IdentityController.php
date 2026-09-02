@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\V1;
 use App\Http\Controllers\AuthController as LegacyAuthController;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\GoogleAuthRequest;
+use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 
 /**
@@ -16,7 +17,10 @@ use Illuminate\Http\Request;
  */
 final class IdentityController extends Controller
 {
-    public function __construct(private readonly LegacyAuthController $identity) {}
+    public function __construct(
+        private readonly LegacyAuthController $identity,
+        private readonly ApplicationContext $applicationContext,
+    ) {}
 
     public function login(Request $request)
     {
@@ -25,12 +29,27 @@ final class IdentityController extends Controller
 
     public function register(Request $request)
     {
+        if ($this->applicationContext->has()) {
+            $request->merge(['app_id' => $this->applicationContext->id()]);
+        }
+
         return $this->identity->register($request);
     }
 
     public function google(GoogleAuthRequest $request)
     {
-        return $this->identity->googleAuth($request);
+        $response = $this->identity->googleAuth($request);
+
+        if ($this->applicationContext->has() && auth('api')->check()) {
+            auth('api')->user()->applications()->syncWithoutDetaching([
+                $this->applicationContext->id() => [
+                    'status' => 'active',
+                    'joined_at' => now(),
+                ],
+            ]);
+        }
+
+        return $response;
     }
 
     public function refresh(Request $request)
