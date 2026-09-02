@@ -7,9 +7,9 @@ use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
 use App\Http\Controllers\Api\V1\OauthTokenController;
-use App\Http\Controllers\Api\V1\PlatOrderController;
-use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
-use App\Http\Controllers\Api\V1\PlatPaymentController;
+use App\Http\Controllers\Api\V1\OrderController;
+use App\Http\Controllers\Api\V1\OrderingSettingsController;
+use App\Http\Controllers\Api\V1\PaymentController;
 use App\Http\Controllers\Api\V1\SandboxResourceController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
@@ -23,8 +23,8 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
-        Route::get('/establishments/{slug}/ordering', [PlatOrderController::class, 'ordering']);
-        Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
+        Route::get('/establishments/{slug}/ordering', [OrderController::class, 'ordering']);
+        Route::post('/payments/mercadopago/webhook', [OrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
         Route::middleware(['api.project', 'api.quota', 'api.usage', 'actor.context'])->prefix('platform')->group(function () {
             Route::middleware('api.production')->group(function () {
@@ -53,9 +53,9 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
                 Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
                 Route::get('/establishments/{establishment}/employers', [EmployerController::class, 'index']);
-                Route::get('/establishments/{establishment}/orders', [PlatOrderController::class, 'establishmentOrders'])->whereNumber('establishment');
-                Route::get('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'show'])->whereNumber('establishment');
-                Route::patch('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'update'])->whereNumber('establishment')->middleware('idempotent');
+                Route::get('/establishments/{establishment}/orders', [OrderController::class, 'establishmentOrders'])->whereNumber('establishment');
+                Route::get('/establishments/{establishment}/ordering-settings', [OrderingSettingsController::class, 'show'])->whereNumber('establishment');
+                Route::patch('/establishments/{establishment}/ordering-settings', [OrderingSettingsController::class, 'update'])->whereNumber('establishment')->middleware('idempotent');
             });
 
             Route::post('/items', [ItemController::class, 'store'])->middleware('idempotent');
@@ -69,12 +69,12 @@ Route::prefix('v1/apps/{application}')
             Route::put('/employers/{employer}/items', [EmployerController::class, 'syncItems'])->middleware('idempotent');
             Route::get('/employers/{employer}/metrics', [EmployerController::class, 'metrics']);
 
-            Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware(['throttle:30,1', 'idempotent']);
-            Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
-            Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
-            Route::get('/me/orders/{order}/payment', [PlatPaymentController::class, 'show'])->whereNumber('order');
-            Route::patch('/orders/{order}/status', [PlatOrderController::class, 'updateStatus'])->whereNumber('order')->middleware('idempotent');
-            Route::get('/dashboard', [PlatOrderController::class, 'dashboard']);
+            Route::post('/orders', [OrderController::class, 'checkout'])->middleware(['throttle:30,1', 'idempotent']);
+            Route::get('/me/orders', [OrderController::class, 'myOrders']);
+            Route::get('/me/orders/{order}', [OrderController::class, 'myOrder'])->whereNumber('order');
+            Route::get('/me/orders/{order}/payment', [PaymentController::class, 'show'])->whereNumber('order');
+            Route::patch('/orders/{order}/status', [OrderController::class, 'updateStatus'])->whereNumber('order')->middleware('idempotent');
+            Route::get('/dashboard', [OrderController::class, 'dashboard']);
 
             Route::prefix('developer')->group(function () {
                 Route::get('/projects', [DeveloperProjectController::class, 'index']);
@@ -85,7 +85,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/projects/{project}/webhooks', [WebhookController::class, 'index']);
                 Route::post('/projects/{project}/webhooks', [WebhookController::class, 'store'])->middleware('idempotent');
                 Route::patch('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'update'])->middleware('idempotent');
-                Route::delete('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('idempotent');
+                Route::delete('/developer/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('idempotent');
             });
         });
     });
