@@ -96,6 +96,7 @@ class CommerceController extends Controller
             $subtotal = 0.0;
             foreach ($requested as $itemId => $quantity) {
                 $item = $catalog->get((int) $itemId);
+                abort_if((float) $item->price <= 0, 422, "O item {$item->name} não está disponível para compra online.");
                 $subtotal += (float) $item->price * (int) $quantity;
 
                 $stock = $item->stock;
@@ -368,26 +369,39 @@ class CommerceController extends Controller
                 $transaction = $remote['point_of_interaction']['transaction_data'] ?? [];
                 $payment->forceFill([
                     'provider_payment_id' => (string) ($remote['id'] ?? ''),
-                    'metadata' => array_merge($payment->metadata ?? [], ['remote_status' => $remote['status'] ?? null]),
+                    'metadata' => array_merge($payment->metadata ?? [], [
+                        'remote_status' => $remote['status'] ?? null,
+                        'qr_code' => $transaction['qr_code'] ?? null,
+                        'qr_code_base64' => $transaction['qr_code_base64'] ?? null,
+                        'ticket_url' => $transaction['ticket_url'] ?? null,
+                    ]),
                 ])->save();
                 $order->forceFill(['payment_reference' => $payment->provider_payment_id])->save();
 
-                return array_merge($this->serializePayment($payment), [
-                    'qr_code' => $transaction['qr_code'] ?? null,
-                    'qr_code_base64' => $transaction['qr_code_base64'] ?? null,
-                    'ticket_url' => $transaction['ticket_url'] ?? null,
-                ]);
+                return $this->serializePayment($payment);
+            }
+
+            $preferenceItems = $order->items->map(fn ($line) => [
+                'id' => (string) $line->item_id,
+                'title' => $line->item?->name ?: 'Item',
+                'quantity' => (int) $line->quantity,
+                'currency_id' => 'BRL',
+                'unit_price' => (float) $line->unit_price,
+            ])->values()->all();
+
+            if ((float) $order->delivery_fee > 0) {
+                $preferenceItems[] = [
+                    'id' => 'delivery-fee',
+                    'title' => 'Taxa de entrega',
+                    'quantity' => 1,
+                    'currency_id' => 'BRL',
+                    'unit_price' => (float) $order->delivery_fee,
+                ];
             }
 
             $returnUrl = rtrim((string) $this->context->application()->url, '/') . '/purchase/' . $order->public_id;
             $remote = $this->mercadoPago->createPreference($token, [
-                'items' => $order->items->map(fn ($line) => [
-                    'id' => (string) $line->item_id,
-                    'title' => $line->item?->name ?: 'Item',
-                    'quantity' => (int) $line->quantity,
-                    'currency_id' => 'BRL',
-                    'unit_price' => (float) $line->unit_price,
-                ])->values()->all(),
+                'items' => $preferenceItems,
                 'payer' => ['email' => $user->email],
                 'external_reference' => $reference,
                 'notification_url' => $this->notificationUrl(),
@@ -400,16 +414,28 @@ class CommerceController extends Controller
                 'metadata' => ['app_slug' => $this->context->slug(), 'order_public_id' => $order->public_id],
             ], 'commerce-card-' . $order->public_id . '-' . $payment->public_id);
 
-            $payment->forceFill(['metadata' => array_merge($payment->metadata ?? [], ['preference_id' => $remote['id'] ?? null])])->save();
-            return array_merge($this->serializePayment($payment), [
-                'checkout_url' => $remote['init_point'] ?? null,
-                'sandbox_checkout_url' => $remote['sandbox_init_point'] ?? null,
-            ]);
+            $payment->forceFill([
+                'metadata' => array_merge($payment->metadata ?? [], [
+                    'preference_id' => $remote['id'] ?? null,
+                    'checkout_url' => $remote['init_point'] ?? null,
+                    'sandbox_checkout_url' => $remote['sandbox_init_point'] ?? null,
+                ]),
+            ])->save();
+
+            return $this->serializePayment($payment);
         } catch (\Throwable $exception) {
             report($exception);
-            $payment->forceFill(['status' => 'failed', 'failed_at' => now(), 'metadata' => array_merge($payment->metadata ?? [], ['error' => $exception->getMessage()])])->save();
+            $payment->forceFill([
+                'status' => 'failed',
+                'failed_at' => now(),
+                'metadata' => array_merge($payment->metadata ?? [], ['error' => $exception->getMessage()]),
+            ])->save();
             $order->forceFill(['payment_status' => 'failed'])->save();
-            return array_merge($this->serializePayment($payment), ['retryable' => true, 'message' => 'Não foi possível iniciar o pagamento. Tente novamente.']);
+
+            return array_merge($this->serializePayment($payment), [
+                'retryable' => true,
+                'message' => 'Não foi possível iniciar o pagamento. Tente novamente.',
+            ]);
         }
     }
 
@@ -434,6 +460,7 @@ class CommerceController extends Controller
 
         DB::transaction(function () use ($payment, $remote, $mapped) {
             $providerFee = (float) collect($remote['fee_details'] ?? [])->sum('amount');
+            $transaction = $remote['point_of_interaction']['transaction_data'] ?? [];
             $payment->forceFill([
                 'provider_payment_id' => (string) ($remote['id'] ?? $payment->provider_payment_id),
                 'status' => $mapped,
@@ -442,7 +469,12 @@ class CommerceController extends Controller
                 'paid_at' => $mapped === 'paid' ? now() : $payment->paid_at,
                 'refunded_at' => $mapped === 'refunded' ? now() : $payment->refunded_at,
                 'failed_at' => $mapped === 'failed' ? now() : $payment->failed_at,
-                'metadata' => array_merge($payment->metadata ?? [], ['remote_status' => $remote['status'] ?? null]),
+                'metadata' => array_merge($payment->metadata ?? [], [
+                    'remote_status' => $remote['status'] ?? null,
+                    'qr_code' => $transaction['qr_code'] ?? data_get($payment->metadata, 'qr_code'),
+                    'qr_code_base64' => $transaction['qr_code_base64'] ?? data_get($payment->metadata, 'qr_code_base64'),
+                    'ticket_url' => $transaction['ticket_url'] ?? data_get($payment->metadata, 'ticket_url'),
+                ]),
             ])->save();
 
             if ($payment->source_type === 'order' && $payment->source_id) {
@@ -462,6 +494,8 @@ class CommerceController extends Controller
 
     private function serializePayment(EcosystemPayment $payment): array
     {
+        $metadata = is_array($payment->metadata) ? $payment->metadata : [];
+
         return [
             'public_id' => $payment->public_id,
             'provider' => $payment->provider,
@@ -469,15 +503,22 @@ class CommerceController extends Controller
             'status' => $payment->status,
             'amount' => (float) $payment->gross_amount,
             'paid_at' => optional($payment->paid_at)->toIso8601String(),
+            'qr_code' => $metadata['qr_code'] ?? null,
+            'qr_code_base64' => $metadata['qr_code_base64'] ?? null,
+            'ticket_url' => $metadata['ticket_url'] ?? null,
+            'checkout_url' => $metadata['checkout_url'] ?? null,
+            'sandbox_checkout_url' => $metadata['sandbox_checkout_url'] ?? null,
         ];
     }
 
     private function serializeOrder(Order $order, bool $seller = false): array
     {
         $establishment = Establishment::query()->whereKey($order->entity_id)->where('app_id', $this->context->id())->first();
-        $claim = $order->payment_status === 'paid' && ! in_array($order->fulfillment_status, ['fulfilled', 'delivered', 'blocked'], true)
-            ? ['token' => $this->claimToken($order), 'public_id' => $order->public_id]
-            : null;
+        $claim = ! $seller
+            && $order->payment_status === 'paid'
+            && ! in_array($order->fulfillment_status, ['fulfilled', 'delivered', 'blocked'], true)
+                ? ['token' => $this->claimToken($order), 'public_id' => $order->public_id]
+                : null;
 
         return [
             'id' => $seller ? $order->id : null,
