@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use Illuminate\Support\Facades\Route;
 
@@ -9,6 +10,11 @@ Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+
+    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
+    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
+    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
+    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
