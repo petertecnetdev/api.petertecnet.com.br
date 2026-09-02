@@ -43,6 +43,7 @@ class NexusShareController extends Controller
         $safeDescription = $esc($description);
         $safeUrl = $esc($catalogUrl);
         $safeImage = $esc($image);
+        $jsonCatalogUrl = $this->json($catalogUrl);
 
         $html = <<<HTML
 <!doctype html>
@@ -69,7 +70,7 @@ class NexusShareController extends Controller
 </head>
 <body>
 <p>Abrindo <a href="{$safeUrl}">{$safeTitle}</a>…</p>
-<script>window.location.replace({$this->json($catalogUrl)});</script>
+<script>window.location.replace({$jsonCatalogUrl});</script>
 </body>
 </html>
 HTML;
@@ -83,6 +84,9 @@ HTML;
 
     private function json(string $value): string
     {
-        return json_encode($value, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES);
+        return json_encode(
+            $value,
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_SLASHES
+        );
     }
 }
