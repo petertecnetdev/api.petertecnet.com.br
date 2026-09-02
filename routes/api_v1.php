@@ -10,6 +10,7 @@ use App\Http\Controllers\Api\V1\OauthTokenController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
 use App\Http\Controllers\Api\V1\PlatPaymentController;
+use App\Http\Controllers\Api\V1\SandboxResourceController;
 use App\Http\Controllers\Api\V1\WebhookController;
 use Illuminate\Support\Facades\Route;
 
@@ -26,26 +27,42 @@ Route::prefix('v1/apps/{application}')
         Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
         Route::middleware(['api.project', 'api.quota', 'api.usage', 'actor.context'])->prefix('platform')->group(function () {
-            Route::get('/establishments', [EstablishmentController::class, 'index'])->middleware('api.scope:establishments.read');
-            Route::get('/items', [ItemController::class, 'index'])->middleware('api.scope:catalog.read');
-            Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog'])->middleware('api.scope:catalog.read');
+            Route::middleware('api.production')->group(function () {
+                Route::get('/establishments', [EstablishmentController::class, 'index'])->middleware('api.scope:establishments.read');
+                Route::get('/items', [ItemController::class, 'index'])->middleware('api.scope:catalog.read');
+                Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog'])->middleware('api.scope:catalog.read');
+            });
+
+            Route::prefix('sandbox')->group(function () {
+                Route::get('/{resourceType}', [SandboxResourceController::class, 'index'])->middleware('api.scope:sandbox.read');
+                Route::post('/{resourceType}', [SandboxResourceController::class, 'store'])->middleware(['api.scope:sandbox.write', 'idempotent']);
+                Route::get('/{resourceType}/{publicId}', [SandboxResourceController::class, 'show'])->middleware('api.scope:sandbox.read');
+                Route::patch('/{resourceType}/{publicId}', [SandboxResourceController::class, 'update'])->middleware(['api.scope:sandbox.write', 'idempotent']);
+                Route::delete('/{resourceType}/{publicId}', [SandboxResourceController::class, 'destroy'])->middleware(['api.scope:sandbox.write', 'idempotent']);
+            });
         });
 
         Route::middleware(['auth:api', 'token.version', 'actor.context'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
             Route::post('/establishments', [EstablishmentController::class, 'store'])->middleware('idempotent');
-            Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update'])->middleware('idempotent');
-            Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy'])->middleware('idempotent');
-            Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
 
-            Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
+            Route::middleware('tenant.context')->group(function () {
+                Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update'])->middleware('idempotent');
+                Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy'])->middleware('idempotent');
+                Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
+                Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
+                Route::get('/establishments/{establishment}/employers', [EmployerController::class, 'index']);
+                Route::get('/establishments/{establishment}/orders', [PlatOrderController::class, 'establishmentOrders'])->whereNumber('establishment');
+                Route::get('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'show'])->whereNumber('establishment');
+                Route::patch('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'update'])->whereNumber('establishment')->middleware('idempotent');
+            });
+
             Route::post('/items', [ItemController::class, 'store'])->middleware('idempotent');
             Route::patch('/items/{item}', [ItemController::class, 'update'])->middleware('idempotent');
             Route::delete('/items/{item}', [ItemController::class, 'destroy'])->middleware('idempotent');
             Route::get('/items/{item}/metrics', [MetricsController::class, 'item']);
 
-            Route::get('/establishments/{establishment}/employers', [EmployerController::class, 'index']);
             Route::post('/employers', [EmployerController::class, 'store'])->middleware('idempotent');
             Route::delete('/employers/{employer}', [EmployerController::class, 'destroy'])->middleware('idempotent');
             Route::get('/employers/{employer}/items', [EmployerController::class, 'items']);
@@ -56,12 +73,8 @@ Route::prefix('v1/apps/{application}')
             Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
             Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
             Route::get('/me/orders/{order}/payment', [PlatPaymentController::class, 'show'])->whereNumber('order');
-            Route::get('/establishments/{establishment}/orders', [PlatOrderController::class, 'establishmentOrders'])->whereNumber('establishment');
             Route::patch('/orders/{order}/status', [PlatOrderController::class, 'updateStatus'])->whereNumber('order')->middleware('idempotent');
             Route::get('/dashboard', [PlatOrderController::class, 'dashboard']);
-
-            Route::get('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'show'])->whereNumber('establishment');
-            Route::patch('/establishments/{establishment}/ordering-settings', [PlatOrderingSettingsController::class, 'update'])->whereNumber('establishment')->middleware('idempotent');
 
             Route::prefix('developer')->group(function () {
                 Route::get('/projects', [DeveloperProjectController::class, 'index']);
