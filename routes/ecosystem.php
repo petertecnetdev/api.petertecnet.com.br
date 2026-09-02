@@ -13,8 +13,10 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
+    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction']);
+    Route::get('/financial/orders', [FinancialController::class, 'orders']);
     Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+    Route::get('/financial/health', [FinancialController::class, 'health']);
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
