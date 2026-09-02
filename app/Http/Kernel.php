@@ -50,6 +50,7 @@ class Kernel extends HttpKernel
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'app.fixed' => \App\Http\Middleware\ResolveFixedApplicationContext::class,
         'tenant.context' => \App\Http\Middleware\ResolveTenantContext::class,
         'actor.context' => \App\Http\Middleware\ResolveActorContext::class,
         'api.project' => \App\Http\Middleware\AuthenticateApiProject::class,
