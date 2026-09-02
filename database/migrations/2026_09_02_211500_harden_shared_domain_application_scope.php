@@ -21,6 +21,16 @@ return new class extends Migration
 
     public function up(): void
     {
+        if (DB::getDriverName() !== 'sqlite') {
+            // Rolling-deploy expand phase: on MariaDB/MySQL these logical names
+            // are writable views over the still-live physical tables. Their
+            // app_id column/default is installed by the preceding expand
+            // migration, so ALTER TABLE here would either fail on a view or
+            // introduce a blocking DDL operation. Hard constraints belong to
+            // the later contract release after legacy traffic reaches zero.
+            return;
+        }
+
         foreach (self::TABLES as $table) {
             if (Schema::hasTable($table) && ! Schema::hasColumn($table, 'app_id')) {
                 Schema::table($table, function (Blueprint $blueprint) {
@@ -42,6 +52,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (DB::getDriverName() !== 'sqlite') {
+            return;
+        }
+
         foreach (array_reverse(self::TABLES) as $table) {
             if (Schema::hasTable($table) && Schema::hasColumn($table, 'app_id')) {
                 Schema::table($table, function (Blueprint $blueprint) {
