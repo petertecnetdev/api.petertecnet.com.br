@@ -49,6 +49,10 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/cutinapp.php'));
 
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/cutinapp_history.php'));
+
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));
         });
