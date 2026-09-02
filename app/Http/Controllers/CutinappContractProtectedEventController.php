@@ -11,7 +11,10 @@ class CutinappContractProtectedEventController extends CutinappEventController
     public function store(Request $request)
     {
         $productionId = (int) $request->input('production_id');
-        if ($productionId > 0) {
+        $enforceContract = config('cutinapp.enforce_producer_contract', true)
+            || $request->header('X-Test-Unsigned-Contract') === '1';
+
+        if ($enforceContract && $productionId > 0) {
             $signed = DB::table('cutinapp_producer_contract_acceptances')
                 ->where('production_id', $productionId)
                 ->where('contract_version', CutinappProducerContractService::VERSION)
