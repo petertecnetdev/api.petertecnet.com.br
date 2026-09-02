@@ -48,14 +48,25 @@ class NexusShareController extends Controller
     {
         $appId = $this->validatedAppId($request);
 
-        $item = Item::query()
+        $itemQuery = Item::query()
             ->where('entity_name', 'establishment')
             ->where('status', true)
             ->when(
                 is_numeric($identifier),
                 fn ($query) => $query->where('id', (int) $identifier),
                 fn ($query) => $query->where('slug', $identifier)
-            )
+            );
+
+        // Keep social-preview resolution identical to the public item endpoint.
+        // Item slugs are unique per application, not globally, so a Nexus-native
+        // item wins and otherwise the most recently updated matching item is used.
+        if (! is_numeric($identifier)) {
+            $itemQuery
+                ->orderByRaw('CASE WHEN app_id = ? THEN 0 ELSE 1 END', [$appId])
+                ->orderByDesc('updated_at');
+        }
+
+        $item = $itemQuery
             ->with(['files' => fn ($query) => $query
                 ->where('visibility', 'public')
                 ->where('status', 'active')
