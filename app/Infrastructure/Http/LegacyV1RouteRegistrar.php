@@ -3,23 +3,19 @@
 namespace App\Infrastructure\Http;
 
 use Illuminate\Routing\Route as LaravelRoute;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Route;
 
 final class LegacyV1RouteRegistrar
 {
     /**
-     * Mirrors product-specific legacy routes below /api/v1/apps/{slug} without
-     * changing the original controllers. These are migration adapters only;
-     * canonical v1 routes registered before this method always win.
+     * Mirrors product-prefixed legacy routes below /api/v1/apps/{slug}.
+     * Canonical v1 routes registered before this method always win.
      */
     public function register(array $applicationSlugs): void
     {
         $snapshot = collect(Route::getRoutes()->getRoutes());
-        $reserved = $snapshot
-            ->filter(fn (LaravelRoute $route) => str_starts_with($route->uri(), 'api/v1/'))
-            ->flatMap(fn (LaravelRoute $route) => collect($route->methods())
-                ->map(fn (string $method) => $method . ' ' . $route->uri()))
-            ->flip();
+        $reserved = $this->reservedV1($snapshot);
 
         foreach ($snapshot as $source) {
             $uri = $source->uri();
@@ -40,7 +36,52 @@ final class LegacyV1RouteRegistrar
         }
     }
 
-    private function mirror(LaravelRoute $source, string $target, string $slug, $reserved): void
+    /**
+     * Mirrors explicitly-approved shared legacy route families for first-party
+     * applications. This is what allows a frontend to switch its Axios base to
+     * /v1/apps/{slug} without a flag-day rewrite of every historical path.
+     *
+     * The fixed application middleware overwrites app_id and rejects conflicting
+     * route/input app identifiers, so these adapters cannot be used to escape the
+     * application's isolation boundary.
+     */
+    public function registerShared(array $prefixesByApplication): void
+    {
+        $snapshot = collect(Route::getRoutes()->getRoutes());
+        $reserved = $this->reservedV1($snapshot);
+
+        foreach ($snapshot as $source) {
+            $uri = $source->uri();
+            if (! str_starts_with($uri, 'api/') || str_starts_with($uri, 'api/v1/')) {
+                continue;
+            }
+
+            $suffix = substr($uri, 4);
+            $family = explode('/', $suffix, 2)[0] ?? '';
+            if ($family === '') {
+                continue;
+            }
+
+            foreach ($prefixesByApplication as $slug => $families) {
+                if (! in_array($family, $families, true)) {
+                    continue;
+                }
+
+                $this->mirror($source, 'api/v1/apps/' . $slug . '/' . $suffix, $slug, $reserved);
+            }
+        }
+    }
+
+    private function reservedV1(Collection $routes): Collection
+    {
+        return $routes
+            ->filter(fn (LaravelRoute $route) => str_starts_with($route->uri(), 'api/v1/'))
+            ->flatMap(fn (LaravelRoute $route) => collect($route->methods())
+                ->map(fn (string $method) => $method . ' ' . $route->uri()))
+            ->flip();
+    }
+
+    private function mirror(LaravelRoute $source, string $target, string $slug, Collection $reserved): void
     {
         $methods = array_values(array_diff($source->methods(), ['HEAD']));
         if ($methods === []) {
@@ -73,5 +114,9 @@ final class LegacyV1RouteRegistrar
 
         $alias->middleware(array_values(array_unique($middleware)));
         $alias->defaults('_peter_v1_adapter', true);
+
+        foreach ($methods as $method) {
+            $reserved->put($method . ' ' . $target, true);
+        }
     }
 }
