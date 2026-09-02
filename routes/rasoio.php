@@ -1,10 +1,10 @@
 <?php
 
+use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Scheduling\Http\Controllers\AppointmentWorkflowController;
 use App\Domain\Scheduling\Http\Controllers\AvailabilityController;
 use App\Domain\Workforce\Http\Controllers\TeamMemberController;
 use App\Http\Controllers\AppNotificationController;
-use App\Http\Controllers\RasoioDashboardController;
 use Illuminate\Support\Facades\Route;
 
 // Compatibility routes for the current frontend. Application context is bound
@@ -23,7 +23,7 @@ Route::prefix('rasoio')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/orders/employer', [AppointmentWorkflowController::class, 'employerOrders']);
     Route::get('/orders/{id}', [AppointmentWorkflowController::class, 'orderDetail'])->whereNumber('id');
     Route::get('/establishments/{slug}/orders', [AppointmentWorkflowController::class, 'establishmentOrders']);
-    Route::get('/establishments/{slug}/overview', [RasoioDashboardController::class, 'overview']);
+    Route::get('/establishments/{slug}/overview', [AppointmentDashboardController::class, 'overview']);
     Route::patch('/orders/{id}/transition', [AppointmentWorkflowController::class, 'transition'])->whereNumber('id');
     Route::patch('/orders/{id}/assign', [AppointmentWorkflowController::class, 'assign'])->whereNumber('id');
     Route::get('/users/{userName}', [AppointmentWorkflowController::class, 'userProfile']);
