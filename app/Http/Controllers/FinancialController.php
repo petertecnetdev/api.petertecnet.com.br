@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Production;
+use App\Services\AsaasPayoutService;
 use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
@@ -15,6 +16,7 @@ class FinancialController extends Controller
     public function __construct(
         private FinancialIdentityService $identity,
         private FinancialPayoutService $payouts,
+        private AsaasPayoutService $asaas,
         private AsaasWithdrawalAuthorizationService $withdrawalAuthorization,
     ) {}
 
@@ -122,10 +124,39 @@ class FinancialController extends Controller
     {
         $production = $this->ownedProduction($request, $productionId);
         $data = $request->validate(['amount' => 'required|numeric|min:0.01|max:999999999.99']);
+        $amount = round((float) $data['amount'], 2);
+
+        // Só consultamos liquidez externa quando identidade, destino e saldo local
+        // já permitem o repasse. Assim uma configuração operacional não mascara
+        // erros de KYC, cooling period ou saldo insuficiente do próprio produtor.
+        $overview = $this->payouts->overview($production, $request->user());
+        $locallyEligible = (bool) ($overview['ready_for_payout'] ?? false)
+            && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
+
+        if ($locallyEligible) {
+            if ((string) config('services.finance.payout_provider', 'asaas') !== 'asaas' || !$this->asaas->isConfigured()) {
+                return response()->json([
+                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
+                ], 503);
+            }
+
+            try {
+                if ($this->asaas->availableBalance() + 0.00001 < $amount) {
+                    return response()->json([
+                        'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
+                    ], 503);
+                }
+            } catch (RuntimeException $e) {
+                report($e);
+                return response()->json([
+                    'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
+                ], 503);
+            }
+        }
 
         try {
             return response()->json(
-                $this->payouts->requestPayout($production, $request->user(), (float) $data['amount']),
+                $this->payouts->requestPayout($production, $request->user(), $amount),
                 201
             );
         } catch (RuntimeException $e) {
