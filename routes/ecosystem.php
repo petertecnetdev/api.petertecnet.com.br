@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
+use App\Http\Controllers\Admin\OnboardingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -10,6 +11,7 @@ Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
     Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
