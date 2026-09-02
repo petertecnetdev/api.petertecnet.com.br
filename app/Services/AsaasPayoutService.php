@@ -2,12 +2,13 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\Contracts\PayoutProvider;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class AsaasPayoutService
+class AsaasPayoutService implements PayoutProvider
 {
     private Client $client;
     private string $apiKey;
@@ -30,6 +31,11 @@ class AsaasPayoutService
         ]);
     }
 
+    public function name(): string
+    {
+        return 'asaas';
+    }
+
     public function isConfigured(): bool
     {
         return $this->apiKey !== '';
@@ -38,7 +44,7 @@ class AsaasPayoutService
     private function assertConfigured(): void
     {
         if (!$this->isConfigured()) {
-            throw new RuntimeException('Asaas não está configurado para repasses Pix.');
+            throw new RuntimeException('O provedor de repasses Pix não está configurado.');
         }
     }
 
@@ -150,7 +156,8 @@ class AsaasPayoutService
             ? (string) (data_get($decoded, 'errors.0.description') ?: data_get($decoded, 'errors.0.message') ?: data_get($decoded, 'message', ''))
             : '';
 
-        Log::warning('Falha no provider Asaas.', [
+        Log::warning('Falha no provider de payout.', [
+            'provider' => $this->name(),
             'status' => $status,
             'message' => $e->getMessage(),
             'provider_message' => $providerMessage,
