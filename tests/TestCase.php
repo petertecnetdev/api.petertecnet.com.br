@@ -29,12 +29,12 @@ abstract class TestCase extends BaseTestCase
             $this->app['auth']->forgetGuards();
         }
 
-        $this->provisionCutinappContractFixture($method, $uri, $parameters, $server);
+        $this->provisionCutinappContractFixture($method, $uri, $parameters, $server, $content);
 
         return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
     }
 
-    private function provisionCutinappContractFixture($method, $uri, $parameters, $server): void
+    private function provisionCutinappContractFixture($method, $uri, $parameters, $server, $content): void
     {
         if (strtoupper((string) $method) !== 'POST' || parse_url((string) $uri, PHP_URL_PATH) !== '/api/cutinapp/events') {
             return;
@@ -44,7 +44,15 @@ abstract class TestCase extends BaseTestCase
             return;
         }
 
-        $productionId = (int) ($parameters['production_id'] ?? 0);
+        $payload = is_array($parameters) ? $parameters : [];
+        if (empty($payload['production_id']) && is_string($content) && $content !== '') {
+            $decoded = json_decode($content, true);
+            if (is_array($decoded)) {
+                $payload = $decoded;
+            }
+        }
+
+        $productionId = (int) ($payload['production_id'] ?? 0);
         if ($productionId <= 0 || !Schema::hasTable('cutinapp_producer_contract_acceptances')) {
             return;
         }
