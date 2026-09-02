@@ -7,6 +7,10 @@ Route::prefix('finance')->group(function () {
     Route::post('/webhooks/asaas', [FinancialController::class, 'asaasWebhook'])
         ->middleware('throttle:240,1')
         ->name('finance.webhooks.asaas');
+
+    Route::post('/webhooks/asaas/withdrawal-validation', [FinancialController::class, 'asaasWithdrawalValidation'])
+        ->middleware('throttle:120,1')
+        ->name('finance.webhooks.asaas.withdrawal-validation');
 });
 
 Route::prefix('finance')->middleware('auth:api')->group(function () {
