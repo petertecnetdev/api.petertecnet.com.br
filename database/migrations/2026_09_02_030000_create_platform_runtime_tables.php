@@ -90,7 +90,7 @@ return new class extends Migration {
                 $table->id();
                 $table->foreignId('api_project_id')->constrained('api_projects')->cascadeOnDelete();
                 $table->string('url', 2048);
-                $table->string('secret_hash', 255);
+                $table->text('secret');
                 $table->json('events')->nullable();
                 $table->boolean('is_active')->default(true)->index();
                 $table->unsignedInteger('failure_count')->default(0);
@@ -141,6 +141,7 @@ return new class extends Migration {
                 $table->foreignId('api_project_id')->nullable()->constrained('api_projects')->cascadeOnDelete();
                 $table->foreignId('application_id')->nullable()->constrained('applications')->cascadeOnDelete();
                 $table->foreignId('user_id')->nullable()->constrained('users')->cascadeOnDelete();
+                $table->string('context_key', 190);
                 $table->string('key', 190);
                 $table->string('request_fingerprint', 64);
                 $table->unsignedSmallInteger('response_status')->nullable();
@@ -148,7 +149,7 @@ return new class extends Migration {
                 $table->timestamp('locked_at')->nullable();
                 $table->timestamp('expires_at')->index();
                 $table->timestamps();
-                $table->unique(['application_id', 'api_project_id', 'user_id', 'key'], 'idempotency_context_key_unique');
+                $table->unique(['context_key', 'key'], 'idempotency_context_key_unique');
             });
         }
 
