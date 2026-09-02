@@ -31,8 +31,8 @@ Route::prefix('rasoio')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/availability/times', [AvailabilityController::class, 'times']);
     Route::post('/availability/dates', [AvailabilityController::class, 'dates']);
 
-    Route::get('/notifications', [AppNotificationController::class, 'rasoioIndex']);
-    Route::get('/notifications/unread-count', [AppNotificationController::class, 'rasoioUnreadCount']);
-    Route::patch('/notifications/read-all', [AppNotificationController::class, 'rasoioMarkAllRead']);
-    Route::patch('/notifications/{id}/read', [AppNotificationController::class, 'rasoioMarkRead'])->whereNumber('id');
+    Route::get('/notifications', [AppNotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [AppNotificationController::class, 'unreadCount']);
+    Route::patch('/notifications/read-all', [AppNotificationController::class, 'markAllRead']);
+    Route::patch('/notifications/{id}/read', [AppNotificationController::class, 'markRead'])->whereNumber('id');
 });
