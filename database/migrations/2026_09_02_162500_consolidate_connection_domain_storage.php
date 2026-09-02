@@ -76,19 +76,27 @@ return new class extends Migration
         }
 
         $this->replaceLegacyUniqueIndexes();
+        $sqlite = DB::getDriverName() === 'sqlite';
 
         foreach (self::TABLES as $tableName) {
             if (! Schema::hasTable($tableName)) {
                 continue;
             }
 
-            DB::statement(sprintf(
-                'ALTER TABLE `%s` MODIFY `app_id` BIGINT UNSIGNED NOT NULL',
-                str_replace('`', '``', $tableName)
-            ));
+            // SQLite is used by CI and cannot add a foreign key to an existing
+            // table with ALTER TABLE. Production runs MariaDB and gets the full
+            // NOT NULL + FK invariant. Runtime writes always supply app_id.
+            if (! $sqlite) {
+                DB::statement(sprintf(
+                    'ALTER TABLE `%s` MODIFY `app_id` BIGINT UNSIGNED NOT NULL',
+                    str_replace('`', '``', $tableName)
+                ));
+            }
 
-            Schema::table($tableName, function (Blueprint $table) {
-                $table->foreign('app_id')->references('id')->on('applications')->cascadeOnDelete();
+            Schema::table($tableName, function (Blueprint $table) use ($sqlite) {
+                if (! $sqlite) {
+                    $table->foreign('app_id')->references('id')->on('applications')->cascadeOnDelete();
+                }
                 $table->index('app_id');
             });
         }
@@ -96,13 +104,17 @@ return new class extends Migration
 
     public function down(): void
     {
+        $sqlite = DB::getDriverName() === 'sqlite';
+
         foreach (array_reverse(self::TABLES) as $tableName) {
             if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'app_id')) {
                 continue;
             }
 
-            Schema::table($tableName, function (Blueprint $table) {
-                $table->dropForeign(['app_id']);
+            Schema::table($tableName, function (Blueprint $table) use ($sqlite) {
+                if (! $sqlite) {
+                    $table->dropForeign(['app_id']);
+                }
                 $table->dropIndex(['app_id']);
             });
         }
