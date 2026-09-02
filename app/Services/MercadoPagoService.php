@@ -11,14 +11,11 @@ class MercadoPagoService
 
     public function authorizationUrl(string $state): string
     {
-        $clientId = $this->clientId();
-        $redirect = $this->redirectUri();
-
         return 'https://auth.mercadopago.com.br/authorization?' . http_build_query([
-            'client_id' => $clientId,
+            'client_id' => $this->clientId(),
             'response_type' => 'code',
             'platform_id' => 'mp',
-            'redirect_uri' => $redirect,
+            'redirect_uri' => $this->redirectUri(),
             'state' => $state,
         ]);
     }
@@ -52,12 +49,6 @@ class MercadoPagoService
             return $response->json();
         }
 
-        // Mercado Pago does not allow application_fee when the seller OAuth
-        // account is the same account that owns the platform credentials.
-        // This is a valid setup for Peter Tecnet's own productions: all funds
-        // already settle into the same Mercado Pago account, so there is no
-        // marketplace split to perform. Real third-party producers keep using
-        // application_fee and automatic split normally.
         if (
             array_key_exists('application_fee', $payload)
             && $this->isApplicationFeeNotAllowed($response->json())
@@ -66,13 +57,10 @@ class MercadoPagoService
             unset($payload['application_fee']);
             data_set($payload, 'metadata.settlement_mode', 'same_account');
 
-            // The rejected request created no payment. Because the retry has a
-            // different payload, use a fresh idempotency key instead of reusing
-            // the key tied to the rejected split attempt.
-            $retryKey = $idempotencyKey . '-same-account';
-            $retry = $this->postPayment($sellerAccessToken, $payload, $retryKey);
+            $retry = $this->postPayment($sellerAccessToken, $payload, $idempotencyKey . '-same-account');
             if ($retry->successful()) {
                 $result = $retry->json();
+                $result['_same_account'] = true;
                 $result['_cutinapp_same_account'] = true;
                 return $result;
             }
@@ -81,6 +69,21 @@ class MercadoPagoService
         }
 
         throw new RuntimeException('Mercado Pago recusou a criação do pagamento: ' . $response->body());
+    }
+
+    public function createPreference(string $accessToken, array $payload, string $idempotencyKey): array
+    {
+        $response = Http::acceptJson()
+            ->withToken($accessToken)
+            ->withHeaders(['X-Idempotency-Key' => $idempotencyKey])
+            ->timeout(20)
+            ->post($this->baseUrl . '/checkout/preferences', $payload);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Mercado Pago recusou a criação do checkout: ' . $response->body());
+        }
+
+        return $response->json();
     }
 
     public function getPayment(string $sellerAccessToken, string $paymentId): array
@@ -93,6 +96,24 @@ class MercadoPagoService
         }
 
         return $response->json();
+    }
+
+    public function findPaymentByExternalReference(string $accessToken, string $externalReference): ?array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->get($this->baseUrl . '/v1/payments/search', [
+                'external_reference' => $externalReference,
+                'sort' => 'date_created',
+                'criteria' => 'desc',
+                'limit' => 1,
+            ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível sincronizar o pagamento no Mercado Pago.');
+        }
+
+        $results = $response->json('results', []);
+        return is_array($results) && isset($results[0]) && is_array($results[0]) ? $results[0] : null;
     }
 
     public function validateWebhookSignature(?string $xSignature, ?string $xRequestId, ?string $dataId): bool
@@ -146,14 +167,10 @@ class MercadoPagoService
 
     private function currentUser(string $accessToken): array
     {
-        $response = Http::acceptJson()
-            ->withToken($accessToken)
-            ->timeout(20)
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
             ->get($this->baseUrl . '/users/me');
 
-        if (!$response->successful()) return [];
-
-        return $response->json();
+        return $response->successful() ? $response->json() : [];
     }
 
     private function oauthToken(array $form): array
