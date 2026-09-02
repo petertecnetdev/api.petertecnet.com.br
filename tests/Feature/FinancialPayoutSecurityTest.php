@@ -29,6 +29,8 @@ class FinancialPayoutSecurityTest extends TestCase
         $this->credit($productionId, 100.00);
 
         $asaas = Mockery::mock(AsaasPayoutService::class);
+        $asaas->shouldReceive('isConfigured')->once()->andReturn(true);
+        $asaas->shouldReceive('availableBalance')->once()->andReturn(1000.00);
         $asaas->shouldReceive('transferPix')
             ->once()
             ->withArgs(function (string $reference, float $amount, string $key, string $type): bool {
@@ -121,6 +123,30 @@ class FinancialPayoutSecurityTest extends TestCase
             (string) $paidAt,
             (string) DB::table('financial_payouts')->where('provider_transfer_id', 'transfer-security-1')->value('paid_at')
         );
+    }
+
+    public function test_provider_liquidity_is_checked_before_a_payout_is_reserved(): void
+    {
+        config()->set('services.finance.payout_hold_hours', 0);
+        config()->set('services.finance.payout_reserve_percent', 0);
+        config()->set('services.finance.step_up_amount', 0);
+
+        [$producer, $productionId] = $this->productionFixture('provider-liquidity');
+        $this->verifiedRecipient($producer, $productionId);
+        $this->credit($productionId, 100.00);
+
+        $asaas = Mockery::mock(AsaasPayoutService::class);
+        $asaas->shouldReceive('isConfigured')->once()->andReturn(true);
+        $asaas->shouldReceive('availableBalance')->once()->andReturn(5.00);
+        $asaas->shouldNotReceive('transferPix');
+        $this->app->instance(AsaasPayoutService::class, $asaas);
+
+        $this->withHeaders($this->headersFor($producer))
+            ->postJson("/api/finance/productions/{$productionId}/payouts", ['amount' => 10])
+            ->assertStatus(503)
+            ->assertJsonPath('message', 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.');
+
+        $this->assertDatabaseCount('financial_payouts', 0);
     }
 
     public function test_pix_destination_in_cooling_period_blocks_payout(): void
