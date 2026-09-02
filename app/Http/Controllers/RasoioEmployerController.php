@@ -12,24 +12,22 @@ use Illuminate\Support\Facades\Mail;
 
 class RasoioEmployerController extends Controller
 {
+    private const APP_ID = 1;
+
     public function store(Request $request)
     {
         $data = $request->validate([
             'user_id' => 'required|integer|exists:users,id',
             'establishment_id' => 'required|integer|exists:establishments,id',
-            'app_id' => 'required|integer',
+            'app_id' => 'required|integer|in:' . self::APP_ID,
             'role' => 'required|string|max:255',
             'permissions' => 'nullable|array',
             'permissions.*' => 'string|max:100',
         ]);
 
-        $establishment = Establishment::with('user')->findOrFail($data['establishment_id']);
-
-        abort_unless(
-            (int) $establishment->app_id === (int) $data['app_id'],
-            422,
-            'Esta empresa não pertence à aplicação informada.'
-        );
+        $establishment = Establishment::with('user')
+            ->where('app_id', self::APP_ID)
+            ->findOrFail($data['establishment_id']);
 
         $actor = Auth::user();
         $isOwner = $actor && (int) $actor->id === (int) $establishment->user_id;
