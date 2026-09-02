@@ -53,8 +53,8 @@ class CommercePaymentController extends Controller
     private function serializeOrder(Order $order): array
     {
         $establishment = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
             ->first();
 
         $claim = $order->payment_status === 'paid'
