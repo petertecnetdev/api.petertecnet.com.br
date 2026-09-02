@@ -180,7 +180,13 @@ class OnboardingController extends Controller
         });
 
         try {
-            Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name, $application->url));
+            Mail::to($user->email)->send(new InviteUserMail(
+                $user,
+                $rawCode,
+                $application->name,
+                $application->url,
+                $application->id
+            ));
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'O cadastro foi preparado, mas o e-mail de ativação não pôde ser enviado.',
