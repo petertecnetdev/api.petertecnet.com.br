@@ -1,0 +1,10 @@
+{
+  "name": "@petertecnet/sdk",
+  "version": "1.0.0",
+  "description": "Official JavaScript SDK for Peter Platform API v1",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": "./src/index.js",
+  "engines": { "node": ">=18" },
+  "license": "PROPRIETARY"
+}

@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Infrastructure\Http\LegacyV1RouteRegistrar;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Http\Request;
@@ -17,48 +18,36 @@ class RouteServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
 
         $this->routes(function () {
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api.php'));
+            $legacy = ['api', 'legacy.deprecated'];
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/account.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/api.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/account.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api_v1.php'));
+            // Every v1 request is metered, including Peter first-party JWT traffic.
+            // External projects add project identity/quota middleware at route level.
+            Route::middleware(['api', 'api.usage'])->prefix('api')->group(base_path('routes/api_v1.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/rasoio.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/rasoio.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/ecosystem.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/nexus.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/payflow.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/cutinapp_history.php'));
+            Route::middleware($legacy)->prefix('api')->group(base_path('routes/laora.php'));
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/ecosystem.php'));
+            // Product-specific legacy contracts are mirrored below /v1 as temporary
+            // adapters. Canonical v1 routes registered above always take precedence.
+            app(LegacyV1RouteRegistrar::class)->register([
+                'cutinapp',
+                'rasoio',
+                'nexus',
+                'plat',
+                'payflow',
+                'inkap',
+                'laora',
+            ]);
 
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/nexus.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/payflow.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp_history.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/laora.php'));
-
-            Route::middleware('web')
-                ->group(base_path('routes/web.php'));
+            Route::middleware('web')->group(base_path('routes/web.php'));
         });
     }
 

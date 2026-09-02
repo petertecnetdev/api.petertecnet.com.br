@@ -26,7 +26,6 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-
         'api' => [
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
@@ -51,6 +50,17 @@ class Kernel extends HttpKernel
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'app.fixed' => \App\Http\Middleware\ResolveFixedApplicationContext::class,
+        'tenant.context' => \App\Http\Middleware\ResolveTenantContext::class,
+        'actor.context' => \App\Http\Middleware\ResolveActorContext::class,
+        'actor.scope' => \App\Http\Middleware\RequireActorScope::class,
+        'api.project' => \App\Http\Middleware\AuthenticateApiProject::class,
+        'api.scope' => \App\Http\Middleware\RequireApiScope::class,
+        'api.quota' => \App\Http\Middleware\EnforceProjectQuota::class,
+        'api.usage' => \App\Http\Middleware\TrackApiUsage::class,
+        'api.production' => \App\Http\Middleware\RequireProductionProject::class,
+        'idempotent' => \App\Http\Middleware\IdempotentRequest::class,
+        'legacy.deprecated' => \App\Http\Middleware\LegacyApiDeprecation::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
         'admin.permission' => \App\Http\Middleware\RequireAdminPermission::class,
     ];
