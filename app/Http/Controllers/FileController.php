@@ -27,12 +27,13 @@ class FileController extends Controller
 
         if (! empty($data['external_url'])) {
             $url = trim($data['external_url']);
-            $path = (string) parse_url($url, PHP_URL_PATH);
-            $name = basename($path) ?: 'external-image';
+            $urlPath = (string) parse_url($url, PHP_URL_PATH);
+            $name = basename($urlPath) ?: 'external-image';
             $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+            $uuid = (string) Str::uuid();
 
             $file = File::create([
-                'uuid' => (string) Str::uuid(),
+                'uuid' => $uuid,
                 'app_id' => $data['app_id'],
                 'entity_id' => $data['entity_id'],
                 'entity_name' => $data['entity_name'],
@@ -44,7 +45,7 @@ class FileController extends Controller
                 'file_size' => 0,
                 'type' => 'image',
                 'storage' => 'external',
-                'path' => null,
+                'path' => 'external/' . $uuid,
                 'storage_path' => null,
                 'public_url' => $url,
                 'group' => $data['group'] ?? null,
@@ -135,7 +136,7 @@ class FileController extends Controller
             return response()->json(['error' => 'Você não tem permissão para excluir este arquivo.'], 403);
         }
 
-        if ($file->path) {
+        if ($file->storage !== 'external' && $file->path) {
             Storage::disk('public')->delete($file->path);
         }
         $file->delete();
@@ -179,6 +180,9 @@ class FileController extends Controller
 
         if ($file->visibility !== 'public' && ! $this->canManage($file)) {
             return response()->json(['error' => 'Arquivo privado.'], 403);
+        }
+        if ($file->storage === 'external') {
+            return response()->json(['error' => 'Imagens externas não são armazenadas para download.'], 422);
         }
         if ($file->status !== 'active' || ! $file->path || ! Storage::disk('public')->exists($file->path)) {
             return response()->json(['error' => 'Arquivo não encontrado no servidor.'], 404);
