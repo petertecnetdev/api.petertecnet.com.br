@@ -6,8 +6,8 @@ use App\Models\IdempotencyKey;
 use App\Support\ApiResponse;
 use App\Support\ApplicationContext;
 use Closure;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 
 class IdempotentRequest
@@ -32,45 +32,47 @@ class IdempotentRequest
         $project = $request->attributes->get('api_project');
         $applicationId = $this->applicationContext->has() ? $this->applicationContext->id() : null;
         $userId = $request->user()?->id;
+        $contextKey = implode('|', [
+            'project:' . ($project?->id ?? '-'),
+            'app:' . ($applicationId ?? '-'),
+            'user:' . ($userId ?? '-'),
+        ]);
+
         $fingerprint = hash('sha256', implode('|', [
             $request->method(),
             $request->path(),
             hash('sha256', $request->getContent()),
-            (string) $project?->id,
-            (string) $applicationId,
-            (string) $userId,
+            $contextKey,
         ]));
 
-        $query = IdempotencyKey::query()
+        $find = fn () => IdempotencyKey::query()
+            ->where('context_key', $contextKey)
             ->where('key', $key)
-            ->when($project, fn ($q) => $q->where('api_project_id', $project->id), fn ($q) => $q->whereNull('api_project_id'))
-            ->when($applicationId, fn ($q) => $q->where('application_id', $applicationId), fn ($q) => $q->whereNull('application_id'))
-            ->when($userId, fn ($q) => $q->where('user_id', $userId), fn ($q) => $q->whereNull('user_id'));
+            ->first();
 
-        $existing = $query->first();
+        $existing = $find();
         if ($existing) {
-            if (! hash_equals($existing->request_fingerprint, $fingerprint)) {
-                return ApiResponse::error('IDEMPOTENCY_CONFLICT', 'A mesma chave foi reutilizada com uma requisição diferente.', 409, [], $request);
-            }
-
-            if ($existing->response_status !== null && $existing->response_body !== null) {
-                return response($existing->response_body, $existing->response_status)
-                    ->header('Content-Type', 'application/json')
-                    ->header('Idempotency-Replayed', 'true');
-            }
-
-            return ApiResponse::error('IDEMPOTENCY_IN_PROGRESS', 'Uma requisição com esta chave ainda está sendo processada.', 409, [], $request);
+            return $this->replayOrConflict($request, $existing, $fingerprint);
         }
 
-        $record = DB::transaction(fn () => IdempotencyKey::create([
-            'api_project_id' => $project?->id,
-            'application_id' => $applicationId,
-            'user_id' => $userId,
-            'key' => $key,
-            'request_fingerprint' => $fingerprint,
-            'locked_at' => now(),
-            'expires_at' => now()->addDay(),
-        ]));
+        try {
+            $record = IdempotencyKey::create([
+                'api_project_id' => $project?->id,
+                'application_id' => $applicationId,
+                'user_id' => $userId,
+                'context_key' => $contextKey,
+                'key' => $key,
+                'request_fingerprint' => $fingerprint,
+                'locked_at' => now(),
+                'expires_at' => now()->addDay(),
+            ]);
+        } catch (QueryException $e) {
+            $record = $find();
+            if ($record) {
+                return $this->replayOrConflict($request, $record, $fingerprint);
+            }
+            throw $e;
+        }
 
         $response = $next($request);
         $record->update([
@@ -80,5 +82,21 @@ class IdempotentRequest
         ]);
 
         return $response->header('Idempotency-Key', $key);
+    }
+
+    private function replayOrConflict(Request $request, IdempotencyKey $record, string $fingerprint): Response
+    {
+        if (! hash_equals($record->request_fingerprint, $fingerprint)) {
+            return ApiResponse::error('IDEMPOTENCY_CONFLICT', 'A mesma chave foi reutilizada com uma requisição diferente.', 409, [], $request);
+        }
+
+        if ($record->response_status !== null && $record->response_body !== null) {
+            return response($record->response_body, $record->response_status)
+                ->header('Content-Type', 'application/json')
+                ->header('Idempotency-Replayed', 'true')
+                ->header('Idempotency-Key', $record->key);
+        }
+
+        return ApiResponse::error('IDEMPOTENCY_IN_PROGRESS', 'Uma requisição com esta chave ainda está sendo processada.', 409, [], $request);
     }
 }
