@@ -16,7 +16,7 @@ class LaoraProductionTest extends TestCase
         $user = User::factory()->create();
         $profileId = $this->profile($user, ['latitude' => -19.9167000, 'longitude' => -43.9345000]);
 
-        $this->actingAs($user, 'api')->putJson('/api/laora/profile', [
+        $this->asJwt($user)->putJson('/api/laora/profile', [
             'display_name' => 'Pessoa Teste', 'birthdate' => '1995-05-10', 'gender' => 'woman', 'orientation' => 'bisexual',
             'bio' => 'Perfil de teste', 'interests' => ['música'], 'city' => 'Belo Horizonte', 'uf' => 'MG',
             'age_min' => 18, 'age_max' => 60, 'max_distance_km' => 80, 'preferred_genders' => ['man'], 'discovery_enabled' => true,
@@ -35,12 +35,12 @@ class LaoraProductionTest extends TestCase
         $candidateProfile = $this->profile($candidate, ['gender' => 'woman', 'preferred_genders' => json_encode(['woman'])]);
         $this->approvedPhoto($candidateProfile);
 
-        $this->actingAs($me, 'api')->getJson('/api/laora/discover')
+        $this->asJwt($me)->getJson('/api/laora/discover')
             ->assertOk()
             ->assertJsonCount(0, 'data');
 
         DB::table('laora_profiles')->where('id', $candidateProfile)->update(['preferred_genders' => json_encode(['man'])]);
-        $this->actingAs($me, 'api')->getJson('/api/laora/discover')
+        $this->asJwt($me)->getJson('/api/laora/discover')
             ->assertOk()
             ->assertJsonPath('data.0.user_id', $candidate->id);
     }
@@ -53,13 +53,13 @@ class LaoraProductionTest extends TestCase
         $p2 = $this->profile($two, ['gender' => 'woman', 'preferred_genders' => json_encode(['man'])]);
         $this->approvedPhoto($p1); $this->approvedPhoto($p2);
 
-        $this->actingAs($one, 'api')->postJson('/api/laora/swipes', ['target_user_id' => $two->id, 'action' => 'like'])
+        $this->asJwt($one)->postJson('/api/laora/swipes', ['target_user_id' => $two->id, 'action' => 'like'])
             ->assertOk()->assertJsonPath('data.matched', false);
-        $this->actingAs($two, 'api')->postJson('/api/laora/swipes', ['target_user_id' => $one->id, 'action' => 'like'])
+        $this->asJwt($two)->postJson('/api/laora/swipes', ['target_user_id' => $one->id, 'action' => 'like'])
             ->assertOk()->assertJsonPath('data.matched', true);
 
-        $this->actingAs($one, 'api')->getJson('/api/laora/matches')->assertOk()->assertJsonCount(1, 'data');
-        $this->actingAs($two, 'api')->getJson('/api/laora/matches')->assertOk()->assertJsonCount(1, 'data');
+        $this->asJwt($one)->getJson('/api/laora/matches')->assertOk()->assertJsonCount(1, 'data');
+        $this->asJwt($two)->getJson('/api/laora/matches')->assertOk()->assertJsonCount(1, 'data');
     }
 
     public function test_unverified_user_cannot_use_discovery(): void
@@ -68,7 +68,12 @@ class LaoraProductionTest extends TestCase
         $profile = $this->profile($user);
         $this->approvedPhoto($profile);
 
-        $this->actingAs($user, 'api')->getJson('/api/laora/discover')->assertForbidden();
+        $this->asJwt($user)->getJson('/api/laora/discover')->assertForbidden();
+    }
+
+    private function asJwt(User $user): static
+    {
+        return $this->withHeader('Authorization', 'Bearer ' . auth('api')->login($user));
     }
 
     private function profile(User $user, array $overrides = []): int
