@@ -32,6 +32,31 @@ return [
         'payout_source_pix_key' => env('EFI_PAYOUT_SOURCE_PIX_KEY', env('EFI_PIX_KEY')),
     ],
 
+    'asaas' => [
+        'base_url' => env('ASAAS_API_BASE_URL', 'https://api.asaas.com/v3'),
+        'api_key' => env('ASAAS_API_KEY'),
+        'webhook_token' => env('ASAAS_WEBHOOK_TOKEN'),
+        'timeout' => (int) env('ASAAS_API_TIMEOUT', 20),
+    ],
+
+    'identity' => [
+        'aws_region' => env('AWS_REKOGNITION_REGION', env('AWS_DEFAULT_REGION', 'us-east-1')),
+        'aws_access_key_id' => env('AWS_ACCESS_KEY_ID'),
+        'aws_secret_access_key' => env('AWS_SECRET_ACCESS_KEY'),
+        'liveness_role_arn' => env('AWS_REKOGNITION_LIVENESS_ROLE_ARN'),
+        'liveness_threshold' => (float) env('IDENTITY_LIVENESS_THRESHOLD', 90),
+        'face_similarity_threshold' => (float) env('IDENTITY_FACE_SIMILARITY_THRESHOLD', 92),
+        'reverify_hours' => (int) env('IDENTITY_REVERIFY_HOURS', 24),
+    ],
+
+    'finance' => [
+        'payout_provider' => env('FINANCE_PAYOUT_PROVIDER', 'asaas'),
+        'payout_hold_hours' => (int) env('FINANCE_PAYOUT_HOLD_HOURS', 24),
+        'payout_reserve_percent' => (float) env('FINANCE_PAYOUT_RESERVE_PERCENT', 10),
+        'payout_destination_cooling_hours' => (int) env('FINANCE_PIX_CHANGE_COOLING_HOURS', 24),
+        'step_up_amount' => (float) env('FINANCE_STEP_UP_AMOUNT', 5000),
+    ],
+
     'mercadopago' => [
         'client_id' => env('MERCADOPAGO_CLIENT_ID'),
         'client_secret' => env('MERCADOPAGO_CLIENT_SECRET'),
@@ -44,13 +69,10 @@ return [
     'cutinapp' => [
         'platform_fee_percent' => (float) env('CUTINAPP_PLATFORM_FEE_PERCENT', 8),
         'frontend_url' => env('CUTINAPP_FRONTEND_URL', 'https://cutinapp.petertecnet.com.br'),
-        // Safe production default: paid sales require the producer's connected
-        // Mercado Pago account. Central collection is opt-in until automatic
-        // payout settlement is implemented and operationally approved.
+        // No novo fluxo o comprador continua pagando via Mercado Pago, enquanto
+        // o produtor recebe em qualquer chave Pix verificada pelo módulo financeiro.
         'allow_platform_collection' => filter_var(env('CUTINAPP_ALLOW_PLATFORM_COLLECTION', false), FILTER_VALIDATE_BOOL),
         'manual_payout_requests_enabled' => filter_var(env('CUTINAPP_ENABLE_MANUAL_PAYOUT_REQUESTS', false), FILTER_VALIDATE_BOOL),
-        // Mercado Pago documents a 30-minute minimum for configurable Pix
-        // expiration. Keep the local inventory reservation aligned with it.
         'order_expiration_minutes' => max(30, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 30), 60)),
     ],
 
