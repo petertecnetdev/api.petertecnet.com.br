@@ -20,16 +20,20 @@ class IdempotentRequest
             return $next($request);
         }
 
+        $project = $request->attributes->get('api_project');
         $key = trim((string) $request->header('Idempotency-Key'));
         if ($key === '') {
-            return ApiResponse::error('IDEMPOTENCY_KEY_REQUIRED', 'Envie o header Idempotency-Key para operações de escrita.', 400, [], $request);
+            // Existing first-party JWT consumers remain backwards compatible.
+            // Developer-project writes must always be replay-safe.
+            return $project
+                ? ApiResponse::error('IDEMPOTENCY_KEY_REQUIRED', 'Envie o header Idempotency-Key para operações de escrita.', 400, [], $request)
+                : $next($request);
         }
 
         if (strlen($key) > 190) {
             return ApiResponse::error('IDEMPOTENCY_KEY_INVALID', 'Idempotency-Key excede o tamanho permitido.', 422, [], $request);
         }
 
-        $project = $request->attributes->get('api_project');
         $applicationId = $this->applicationContext->has() ? $this->applicationContext->id() : null;
         $userId = $request->user()?->id;
         $contextKey = implode('|', [
@@ -37,23 +41,12 @@ class IdempotentRequest
             'app:' . ($applicationId ?? '-'),
             'user:' . ($userId ?? '-'),
         ]);
-
         $fingerprint = hash('sha256', implode('|', [
-            $request->method(),
-            $request->path(),
-            hash('sha256', $request->getContent()),
-            $contextKey,
+            $request->method(), $request->path(), hash('sha256', $request->getContent()), $contextKey,
         ]));
 
-        $find = fn () => IdempotencyKey::query()
-            ->where('context_key', $contextKey)
-            ->where('key', $key)
-            ->first();
-
-        $existing = $find();
-        if ($existing) {
-            return $this->replayOrConflict($request, $existing, $fingerprint);
-        }
+        $find = fn () => IdempotencyKey::query()->where('context_key', $contextKey)->where('key', $key)->first();
+        if ($existing = $find()) return $this->replayOrConflict($request, $existing, $fingerprint);
 
         try {
             $record = IdempotencyKey::create([
@@ -67,10 +60,7 @@ class IdempotentRequest
                 'expires_at' => now()->addDay(),
             ]);
         } catch (QueryException $e) {
-            $record = $find();
-            if ($record) {
-                return $this->replayOrConflict($request, $record, $fingerprint);
-            }
+            if ($record = $find()) return $this->replayOrConflict($request, $record, $fingerprint);
             throw $e;
         }
 
@@ -89,14 +79,12 @@ class IdempotentRequest
         if (! hash_equals($record->request_fingerprint, $fingerprint)) {
             return ApiResponse::error('IDEMPOTENCY_CONFLICT', 'A mesma chave foi reutilizada com uma requisição diferente.', 409, [], $request);
         }
-
         if ($record->response_status !== null && $record->response_body !== null) {
             return response($record->response_body, $record->response_status)
                 ->header('Content-Type', 'application/json')
                 ->header('Idempotency-Replayed', 'true')
                 ->header('Idempotency-Key', $record->key);
         }
-
         return ApiResponse::error('IDEMPOTENCY_IN_PROGRESS', 'Uma requisição com esta chave ainda está sendo processada.', 409, [], $request);
     }
 }
