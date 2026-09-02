@@ -21,7 +21,8 @@ class FinancialPayoutSecurityTest extends TestCase
         config()->set('services.finance.payout_hold_hours', 0);
         config()->set('services.finance.payout_reserve_percent', 0);
         config()->set('services.finance.step_up_amount', 0);
-        config()->set('services.asaas.webhook_token', 'webhook-secret-test');
+        config()->set('services.asaas.webhook_token', 'webhook-secret-test-with-more-than-32-characters');
+        config()->set('services.asaas.withdrawal_auth_token', 'withdrawal-secret-test-with-more-than-32-characters');
 
         [$producer, $productionId] = $this->productionFixture('reserve');
         $this->verifiedRecipient($producer, $productionId);
@@ -41,11 +42,12 @@ class FinancialPayoutSecurityTest extends TestCase
         $this->app->instance(AsaasPayoutService::class, $asaas);
 
         $headers = $this->headersFor($producer);
-        $this->withHeaders($headers)
+        $response = $this->withHeaders($headers)
             ->postJson("/api/finance/productions/{$productionId}/payouts", ['amount' => 80])
             ->assertCreated()
             ->assertJsonPath('payout.status', 'processing')
             ->assertJsonPath('balance.available', 20);
+        $reference = (string) $response->json('payout.reference');
 
         // The first request is already reserved even before the provider confirms it.
         $this->withHeaders($headers)
@@ -59,6 +61,32 @@ class FinancialPayoutSecurityTest extends TestCase
             'status' => 'processing',
         ]);
 
+        $withdrawalValidation = [
+            'type' => 'TRANSFER',
+            'transfer' => [
+                'id' => 'transfer-security-1',
+                'status' => 'PENDING',
+                'operationType' => 'PIX',
+                'value' => 80.00,
+                'externalReference' => $reference,
+            ],
+        ];
+
+        $this->postJson('/api/finance/webhooks/asaas/withdrawal-validation', $withdrawalValidation)
+            ->assertUnauthorized();
+
+        $this->withHeader('asaas-access-token', 'withdrawal-secret-test-with-more-than-32-characters')
+            ->postJson('/api/finance/webhooks/asaas/withdrawal-validation', $withdrawalValidation)
+            ->assertOk()
+            ->assertJsonPath('status', 'APPROVED');
+
+        $unknownWithdrawal = $withdrawalValidation;
+        $unknownWithdrawal['transfer']['id'] = 'transfer-not-created-by-peter';
+        $this->withHeader('asaas-access-token', 'withdrawal-secret-test-with-more-than-32-characters')
+            ->postJson('/api/finance/webhooks/asaas/withdrawal-validation', $unknownWithdrawal)
+            ->assertOk()
+            ->assertJsonPath('status', 'REFUSED');
+
         $webhook = [
             'id' => 'evt-transfer-done-1',
             'event' => 'TRANSFER_DONE',
@@ -71,7 +99,7 @@ class FinancialPayoutSecurityTest extends TestCase
         $this->postJson('/api/finance/webhooks/asaas', $webhook)
             ->assertUnauthorized();
 
-        $this->withHeader('asaas-access-token', 'webhook-secret-test')
+        $this->withHeader('asaas-access-token', 'webhook-secret-test-with-more-than-32-characters')
             ->postJson('/api/finance/webhooks/asaas', $webhook)
             ->assertOk()
             ->assertJsonPath('ok', true);
@@ -84,7 +112,7 @@ class FinancialPayoutSecurityTest extends TestCase
         ]);
 
         // Replaying the same event must be a no-op.
-        $this->withHeader('asaas-access-token', 'webhook-secret-test')
+        $this->withHeader('asaas-access-token', 'webhook-secret-test-with-more-than-32-characters')
             ->postJson('/api/finance/webhooks/asaas', $webhook)
             ->assertOk();
 
