@@ -34,7 +34,6 @@ class InviteUserMail extends Mailable
 
         $this->activationUrl = $frontendUrl.'/invite-complete?'.http_build_query([
             'email' => $user->email,
-            'code' => $code,
             'app_url' => $this->appUrl,
             'app_name' => $this->appName,
         ]);
@@ -43,7 +42,7 @@ class InviteUserMail extends Mailable
     public function build()
     {
         return $this
-            ->subject("Seu acesso ao {$this->appName} está pronto")
+            ->subject("Ative seu acesso ao {$this->appName}")
             ->view('emails.invite-user')
             ->with([
                 'user' => $this->user,
