@@ -134,9 +134,15 @@ class LaoraModerationController extends Controller
     public function user(Request $request, int $userId)
     {
         $this->authorizeAdmin($request);
-        $user = DB::table('users')->where('id', $userId)->first();
+        $user = DB::table('users')->where('id', $userId)->first([
+            'id', 'first_name', 'last_name', 'user_name', 'email', 'phone', 'avatar', 'city', 'uf',
+            'email_verified_at', 'created_at', 'updated_at',
+        ]);
         abort_unless($user, 404, 'Usuário não encontrado.');
         $profile = DB::table('laora_profiles')->where('user_id', $userId)->first();
+        if ($profile) {
+            unset($profile->latitude, $profile->longitude);
+        }
 
         $photos = $profile ? DB::table('laora_photos')->where('profile_id', $profile->id)->orderBy('position')->get()->map(function ($photo) {
             $photo->url = Storage::disk('public')->url($photo->path);
