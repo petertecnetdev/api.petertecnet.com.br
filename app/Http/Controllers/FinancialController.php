@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Production;
+use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
@@ -15,6 +15,7 @@ class FinancialController extends Controller
     public function __construct(
         private FinancialIdentityService $identity,
         private FinancialPayoutService $payouts,
+        private AsaasWithdrawalAuthorizationService $withdrawalAuthorization,
     ) {}
 
     public function overview(Request $request, int $productionId)
@@ -135,9 +136,7 @@ class FinancialController extends Controller
 
     public function asaasWebhook(Request $request)
     {
-        $expected = trim((string) config('services.asaas.webhook_token'));
-        $provided = trim((string) $request->header('asaas-access-token'));
-        abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 401, 'Webhook não autenticado.');
+        $this->assertAsaasToken($request, 'webhook_token');
 
         try {
             $this->payouts->processWebhook($request->all());
@@ -147,6 +146,19 @@ class FinancialController extends Controller
         }
 
         return response()->json(['ok' => true]);
+    }
+
+    public function asaasWithdrawalValidation(Request $request)
+    {
+        $this->assertAsaasToken($request, 'withdrawal_auth_token');
+        return response()->json($this->withdrawalAuthorization->authorize($request->all()));
+    }
+
+    private function assertAsaasToken(Request $request, string $configKey): void
+    {
+        $expected = trim((string) config('services.asaas.' . $configKey));
+        $provided = trim((string) $request->header('asaas-access-token'));
+        abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 401, 'Webhook não autenticado.');
     }
 
     private function ownedProduction(Request $request, int $productionId): Production
