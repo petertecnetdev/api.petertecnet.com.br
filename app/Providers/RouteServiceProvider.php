@@ -31,6 +31,10 @@ class RouteServiceProvider extends ServiceProvider
 
             Route::middleware('api')
                 ->prefix('api')
+                ->group(base_path('routes/finance.php'));
+
+            Route::middleware('api')
+                ->prefix('api')
                 ->group(base_path('routes/rasoio.php'));
 
             Route::middleware('api')
