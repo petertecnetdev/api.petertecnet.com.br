@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Application;
 use App\Models\Production;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -9,6 +10,8 @@ use Illuminate\Support\Str;
 
 class CutinappPayoutController extends Controller
 {
+    private const APP = 'cutinapp';
+
     public function summary(Request $request, int $productionId)
     {
         $this->ownedProduction($request, $productionId);
@@ -20,6 +23,8 @@ class CutinappPayoutController extends Controller
 
         $connected = (bool) ($account && $account->status === 'connected' && $account->access_token);
         $balance = $this->balance($productionId);
+        $manualPayoutsEnabled = (bool) config('services.cutinapp.manual_payout_requests_enabled', false);
+        $allowPlatformCollection = (bool) config('services.cutinapp.allow_platform_collection', false);
 
         $history = DB::table('cutinapp_payout_requests')
             ->where('production_id', $productionId)
@@ -30,7 +35,11 @@ class CutinappPayoutController extends Controller
         return response()->json([
             'provider' => 'mercadopago',
             'producer_connected' => $connected,
-            'current_settlement_mode' => $connected ? 'automatic_split' : 'platform_collection',
+            'current_settlement_mode' => $connected
+                ? 'automatic_split'
+                : ($allowPlatformCollection ? 'platform_collection' : 'sales_disabled'),
+            'manual_payout_requests_enabled' => $manualPayoutsEnabled,
+            'platform_collection_enabled' => $allowPlatformCollection,
             'platform_collected_credit' => $balance['credit'],
             'available_for_payout' => $balance['available'],
             'payout_pending' => $balance['pending'],
@@ -41,6 +50,12 @@ class CutinappPayoutController extends Controller
 
     public function requestPayout(Request $request, int $productionId)
     {
+        abort_unless(
+            (bool) config('services.cutinapp.manual_payout_requests_enabled', false),
+            503,
+            'Solicitações automáticas de repasse ainda não estão habilitadas. As novas vendas devem usar o split do Mercado Pago.'
+        );
+
         $production = $this->ownedProduction($request, $productionId);
         $data = $request->validate([
             'amount' => 'required|numeric|min:0.01|max:999999999.99',
@@ -81,7 +96,7 @@ class CutinappPayoutController extends Controller
         });
 
         return response()->json([
-            'message' => 'Repasse solicitado. O valor ficou reservado até a liquidação.',
+            'message' => 'Solicitação registrada. O valor ficou reservado até a liquidação operacional.',
             'payout' => $payout,
             'balance' => $this->balance($productionId),
         ], 201);
@@ -137,7 +152,14 @@ class CutinappPayoutController extends Controller
 
     private function ownedProduction(Request $request, int $productionId): Production
     {
-        $production = Production::query()->findOrFail($productionId);
+        $application = Application::query()->where('slug', self::APP)->where('is_active', true)->first();
+        abort_unless($application, 503, 'A Cutinapp não está registrada corretamente na API.');
+
+        $production = Production::query()
+            ->where('id', $productionId)
+            ->where('app_id', $application->id)
+            ->where('app_slug', self::APP)
+            ->firstOrFail();
         $user = $request->user();
         $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
         abort_unless($user && ($admin || (int) $production->user_id === (int) $user->id), 403);

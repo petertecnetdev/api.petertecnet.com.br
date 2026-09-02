@@ -108,12 +108,13 @@ class CutinappMercadoPagoController extends Controller
         if (!$payment || !$payment->order) return response()->json(['ok' => true]);
 
         try {
-            $token = $this->paymentAccessToken($payment, $payment->order);
-            $remote = $this->mercadoPago->getPayment($token, $dataId);
-            $this->syncPayment($payment, $remote);
+            $this->reconcilePaymentId((int) $payment->id);
         } catch (Throwable $e) {
             report($e);
-            return response()->json(['ok' => false], 502);
+            // A resposta não-2xx faz o provedor tentar o webhook novamente. O
+            // estado financeiro aprovado já é persistido antes da emissão dos
+            // ingressos, portanto uma falha de fulfillment nunca apaga o pago.
+            return response()->json(['ok' => false, 'retry' => true], 502);
         }
 
         return response()->json(['ok' => true]);
@@ -125,27 +126,64 @@ class CutinappMercadoPagoController extends Controller
         abort_unless((int) $order->user_id === (int) $request->user()->id || $this->isProductionOwner($request, (int) $order->production_id), 403);
 
         $payment = $order->payments()->where('provider', 'mercadopago')->latest('id')->first();
-        if (!$payment || !$payment->provider_payment_id) return response()->json(['order' => $order->fresh(['payments'])]);
-
-        try {
-            $token = $this->paymentAccessToken($payment, $order);
-            $remote = $this->mercadoPago->getPayment($token, (string) $payment->provider_payment_id);
-            $this->syncPayment($payment, $remote);
-        } catch (Throwable $e) {
-            report($e);
+        if (!$payment || !$payment->provider_payment_id) {
+            return response()->json(['order' => $order->fresh(['items','event','payments']), 'reconciliation' => 'no_payment']);
         }
 
-        return response()->json(['order' => $order->fresh(['items','event','payments'])]);
+        try {
+            $this->reconcilePaymentId((int) $payment->id);
+            return response()->json([
+                'order' => $order->fresh(['items','event','payments']),
+                'reconciliation' => 'ok',
+            ]);
+        } catch (Throwable $e) {
+            report($e);
+            $fresh = $order->fresh(['items','event','payments']);
+
+            // Não escondemos mais a falha do frontend. Se o provedor já marcou
+            // como pago, o pedido permanece pago e a emissão fica explicitamente
+            // recuperável; o usuário nunca volta a parecer "não pago".
+            return response()->json([
+                'order' => $fresh,
+                'reconciliation' => 'retrying',
+                'message' => $fresh->status === 'paid'
+                    ? 'Pagamento confirmado. Estamos finalizando a emissão do ingresso.'
+                    : 'Ainda não foi possível confirmar o pagamento. Tentaremos novamente automaticamente.',
+            ], 202);
+        }
+    }
+
+    /**
+     * Reconciles one local Mercado Pago payment against the provider.
+     * Public so the recovery Artisan command can reuse exactly the same path.
+     */
+    public function reconcilePaymentId(int $paymentId): CutinappOrder
+    {
+        $payment = CutinappPayment::query()->with('order')->findOrFail($paymentId);
+        if (!$payment->order || !$payment->provider_payment_id) {
+            throw new RuntimeException('Pagamento local sem vínculo válido com o Mercado Pago.');
+        }
+
+        $token = $this->paymentAccessToken($payment, $payment->order);
+        $remote = $this->mercadoPago->getPayment($token, (string) $payment->provider_payment_id);
+        $this->syncPayment($payment, $remote);
+
+        return $payment->order->fresh(['items','event','payments']);
     }
 
     private function syncPayment(CutinappPayment $payment, array $remote): void
     {
-        DB::transaction(function () use ($payment, $remote) {
+        $status = (string) ($remote['status'] ?? 'pending');
+        $approvedOrderId = null;
+
+        // Fase 1: verdade financeira. Esta transação NÃO cria ingressos.
+        // Se o Mercado Pago aprovou, esse fato fica gravado de forma durável
+        // mesmo que qualquer etapa posterior de emissão falhe.
+        DB::transaction(function () use ($payment, $remote, $status, &$approvedOrderId) {
             $payment = CutinappPayment::query()->lockForUpdate()->findOrFail($payment->id);
             $order = CutinappOrder::query()->with(['items','event','user'])->lockForUpdate()->findOrFail($payment->order_id);
 
             $remoteId = (string) ($remote['id'] ?? '');
-            $status = (string) ($remote['status'] ?? 'pending');
             $amount = round((float) ($remote['transaction_amount'] ?? 0), 2);
             $externalReference = (string) ($remote['external_reference'] ?? '');
             $providerFee = collect($remote['fee_details'] ?? [])->sum(fn ($fee) => (float) ($fee['amount'] ?? 0));
@@ -181,28 +219,20 @@ class CutinappMercadoPagoController extends Controller
                 return;
             }
 
-            if ($payment->status === 'paid' && $order->status === 'paid') return;
+            $metadata = $order->metadata ?? [];
+            if (($metadata['fulfillment_status'] ?? null) !== 'completed') {
+                $metadata['fulfillment_status'] = 'processing';
+                $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
+                unset($metadata['fulfillment_error'], $metadata['fulfillment_failed_at']);
+            }
 
             $payment->update(['status' => 'paid', 'paid_at' => $payment->paid_at ?: now(), 'failed_at' => null]);
-            $order->update(['status' => 'paid', 'paid_at' => $order->paid_at ?: now(), 'cancelled_at' => null]);
-
-            foreach ($order->items->where('type', 'ticket') as $line) {
-                $alreadyIssued = EventPass::query()->where('cutinapp_order_item_id', $line->id)->count();
-                $toIssue = max(0, (int) $line->quantity - $alreadyIssued);
-
-                for ($i = 0; $i < $toIssue; $i++) {
-                    EventPass::create([
-                        'event_id' => $order->event_id,
-                        'ticket_id' => $line->ticket_id,
-                        'cutinapp_order_item_id' => $line->id,
-                        'user_id' => $order->user_id,
-                        'holder_name' => trim(($order->user->first_name ?? '') . ' ' . ($order->user->last_name ?? '')) ?: null,
-                        'holder_email' => $order->user->email ?? null,
-                        'token' => 'CUT-' . Str::upper(Str::replace('-', '', (string) Str::uuid())),
-                        'status' => 'issued',
-                    ]);
-                }
-            }
+            $order->update([
+                'status' => 'paid',
+                'paid_at' => $order->paid_at ?: now(),
+                'cancelled_at' => null,
+                'metadata' => $metadata,
+            ]);
 
             DB::table('cutinapp_inventory_reservations')->where('order_id', $order->id)->whereNull('released_at')->update(['released_at' => now(), 'updated_at' => now()]);
 
@@ -221,7 +251,77 @@ class CutinappMercadoPagoController extends Controller
                     ]));
                 }
             }
+
+            $approvedOrderId = (int) $order->id;
         });
+
+        // Fase 2: fulfillment idempotente e recuperável.
+        if ($status === 'approved' && $approvedOrderId) {
+            $this->fulfillPaidOrder($approvedOrderId);
+        }
+    }
+
+    private function fulfillPaidOrder(int $orderId): void
+    {
+        try {
+            DB::transaction(function () use ($orderId) {
+                $order = CutinappOrder::query()
+                    ->with(['items','event','user'])
+                    ->lockForUpdate()
+                    ->findOrFail($orderId);
+
+                abort_unless($order->status === 'paid', 409, 'O pedido ainda não está pago.');
+
+                foreach ($order->items->where('type', 'ticket') as $line) {
+                    $alreadyIssued = EventPass::query()
+                        ->where('cutinapp_order_item_id', $line->id)
+                        ->count();
+                    $toIssue = max(0, (int) $line->quantity - $alreadyIssued);
+
+                    for ($i = 0; $i < $toIssue; $i++) {
+                        EventPass::create([
+                            'event_id' => $order->event_id,
+                            'ticket_id' => $line->ticket_id,
+                            'cutinapp_order_item_id' => $line->id,
+                            'user_id' => $order->user_id,
+                            'holder_name' => trim(($order->user->first_name ?? '') . ' ' . ($order->user->last_name ?? '')) ?: null,
+                            'holder_email' => $order->user->email ?? null,
+                            'token' => 'CUT-' . Str::upper(Str::replace('-', '', (string) Str::uuid())),
+                            'status' => 'issued',
+                        ]);
+                    }
+                }
+
+                // Só consideramos concluído quando a quantidade emitida bate com
+                // exatamente o que foi comprado em todas as linhas de ingresso.
+                foreach ($order->items->where('type', 'ticket') as $line) {
+                    $issued = EventPass::query()->where('cutinapp_order_item_id', $line->id)->count();
+                    if ($issued < (int) $line->quantity) {
+                        throw new RuntimeException("Emissão incompleta para o item do pedido {$line->id}.");
+                    }
+                }
+
+                $metadata = $order->metadata ?? [];
+                $metadata['fulfillment_status'] = 'completed';
+                $metadata['fulfilled_at'] = now()->toIso8601String();
+                $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
+                unset($metadata['fulfillment_error'], $metadata['fulfillment_failed_at']);
+                $order->update(['metadata' => $metadata]);
+            });
+        } catch (Throwable $e) {
+            // Esta atualização fica fora da transação que falhou. Assim temos um
+            // registro operacional explícito para suporte e reprocessamento.
+            $order = CutinappOrder::query()->find($orderId);
+            if ($order) {
+                $metadata = $order->metadata ?? [];
+                $metadata['fulfillment_status'] = 'failed';
+                $metadata['fulfillment_failed_at'] = now()->toIso8601String();
+                $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
+                $metadata['fulfillment_error'] = Str::limit($e->getMessage(), 500);
+                $order->update(['metadata' => $metadata]);
+            }
+            throw $e;
+        }
     }
 
     private function reversePayment(CutinappPayment $payment, CutinappOrder $order, string $status): void

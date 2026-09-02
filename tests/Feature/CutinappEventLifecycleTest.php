@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Application;
 use App\Models\Production;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -38,17 +39,23 @@ class CutinappEventLifecycleTest extends TestCase
 
     public function test_same_day_future_event_is_allowed_but_past_and_invalid_dates_are_rejected(): void
     {
-        $user=$this->user('Produtor Datas','event-dates@cutinapp.test');$headers=$this->headersFor($user);$productionId=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Datas'])->assertCreated()->json('production.id');
-        $base=['production_id'=>$productionId,'title'=>'Evento Datas','description'=>'Validação de datas.','address'=>'Rua Datas, 1','city'=>'São Paulo','uf'=>'SP'];
-        $sameDay=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>now()->addHours(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addHours(4)->format('Y-m-d H:i:s')])->assertCreated()->assertJsonPath('event.is_published',false);
-        $eventId=(int)$sameDay->json('event.id');
-        $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',['event_id'=>$eventId,'name'=>'Cortesia Hoje','quantity'=>5])->assertCreated();
-        $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk()->assertJsonPath('event.is_published',true);
-        $this->getJson('/api/cutinapp/events?period=today')->assertOk()->assertJsonFragment(['id'=>$eventId,'title'=>'Evento Datas']);
-        $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Passado','start_date'=>now()->subHour()->format('Y-m-d H:i:s'),'end_date'=>now()->addHour()->format('Y-m-d H:i:s')])->assertStatus(422)->assertJsonPath('errors.start_date.0','O horário de início do evento precisa estar no futuro.');
-        $same=now()->addDays(2)->format('Y-m-d H:i:s');$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>$same,'end_date'=>$same])->assertStatus(422)->assertJsonPath('errors.end_date.0','O término do evento precisa ser posterior ao início.');
-        $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>'data-invalida','end_date'=>now()->addDays(2)->format('Y-m-d H:i:s')])->assertStatus(422)->assertJsonPath('errors.start_date.0','Informe uma data de início válida.');
-        $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['google_maps_url'=>'maps-sem-protocolo','start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(2)->addHours(2)->format('Y-m-d H:i:s')])->assertStatus(422);
+        $this->travelTo(Carbon::create(2026, 9, 1, 12, 0, 0, 'America/Sao_Paulo'));
+
+        try {
+            $user=$this->user('Produtor Datas','event-dates@cutinapp.test');$headers=$this->headersFor($user);$productionId=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Datas'])->assertCreated()->json('production.id');
+            $base=['production_id'=>$productionId,'title'=>'Evento Datas','description'=>'Validação de datas.','address'=>'Rua Datas, 1','city'=>'São Paulo','uf'=>'SP'];
+            $sameDay=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>now()->addHours(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addHours(4)->format('Y-m-d H:i:s')])->assertCreated()->assertJsonPath('event.is_published',false);
+            $eventId=(int)$sameDay->json('event.id');
+            $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',['event_id'=>$eventId,'name'=>'Cortesia Hoje','quantity'=>5])->assertCreated();
+            $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk()->assertJsonPath('event.is_published',true);
+            $this->getJson('/api/cutinapp/events?period=today')->assertOk()->assertJsonFragment(['id'=>$eventId,'title'=>'Evento Datas']);
+            $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Passado','start_date'=>now()->subHour()->format('Y-m-d H:i:s'),'end_date'=>now()->addHour()->format('Y-m-d H:i:s')])->assertStatus(422)->assertJsonPath('errors.start_date.0','O horário de início do evento precisa estar no futuro.');
+            $same=now()->addDays(2)->format('Y-m-d H:i:s');$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>$same,'end_date'=>$same])->assertStatus(422)->assertJsonPath('errors.end_date.0','O término do evento precisa ser posterior ao início.');
+            $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>'data-invalida','end_date'=>now()->addDays(2)->format('Y-m-d H:i:s')])->assertStatus(422)->assertJsonPath('errors.start_date.0','Informe uma data de início válida.');
+            $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['google_maps_url'=>'maps-sem-protocolo','start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(2)->addHours(2)->format('Y-m-d H:i:s')])->assertStatus(422);
+        } finally {
+            $this->travelBack();
+        }
     }
 
     public function test_event_cannot_be_created_with_production_from_another_application(): void

@@ -3,6 +3,7 @@
 use App\Http\Controllers\CutinappArtistClaimController;
 use App\Http\Controllers\CutinappArtistMemberController;
 use App\Http\Controllers\CutinappCommerceController;
+use App\Http\Controllers\CutinappContractProtectedEventController;
 use App\Http\Controllers\CutinappController;
 use App\Http\Controllers\CutinappCourtesyController;
 use App\Http\Controllers\CutinappDiscoveryController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\CutinappModerationController;
 use App\Http\Controllers\CutinappNotificationController;
 use App\Http\Controllers\CutinappPassClaimController;
 use App\Http\Controllers\CutinappPayoutController;
+use App\Http\Controllers\CutinappProducerContractController;
 use App\Http\Controllers\CutinappPublicProductionController;
 use App\Http\Controllers\CutinappPublicSocialController;
 use App\Http\Controllers\CutinappSocialController;
@@ -50,6 +52,10 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/orders/{publicId}', [CutinappCommerceController::class, 'show']);
     Route::post('/orders/{publicId}/sync-payment', [CutinappMercadoPagoController::class, 'sync'])->middleware('throttle:30,1');
     Route::get('/productions/{productionId}/mercadopago/connect', [CutinappMercadoPagoController::class, 'connect'])->whereNumber('productionId');
+    Route::get('/productions/{productionId}/contract', [CutinappProducerContractController::class, 'show'])->whereNumber('productionId');
+    Route::post('/productions/{productionId}/contract/sign', [CutinappProducerContractController::class, 'sign'])->whereNumber('productionId')->middleware('throttle:10,1');
+    Route::post('/productions/{productionId}/contract/resend', [CutinappProducerContractController::class, 'resend'])->whereNumber('productionId')->middleware('throttle:5,1');
+    Route::get('/productions/{productionId}/contract/pdf', [CutinappProducerContractController::class, 'pdf'])->whereNumber('productionId');
     Route::post('/events/{eventId}/items', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
     Route::match(['put','post'], '/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'upsertEventItem'])->whereNumber('eventId')->whereNumber('itemId');
     Route::delete('/events/{eventId}/items/{itemId}', [CutinappCommerceController::class, 'deleteEventItem'])->whereNumber('eventId')->whereNumber('itemId');
@@ -65,7 +71,7 @@ Route::prefix('cutinapp')->middleware(['api', 'auth:api'])->group(function () {
     Route::match(['post', 'put'], '/productions/{id}', [CutinappController::class, 'updateProduction'])->whereNumber('id');
     Route::get('/events/mine', [CutinappEventController::class, 'mine']);
     Route::get('/events/show/{id}', [CutinappEventController::class, 'show'])->whereNumber('id');
-    Route::post('/events', [CutinappEventController::class, 'store']);
+    Route::post('/events', [CutinappContractProtectedEventController::class, 'store']);
     Route::match(['post', 'put'], '/events/{id}', [CutinappEventController::class, 'update'])->whereNumber('id');
     Route::post('/events/{id}/publish', [CutinappEventController::class, 'publish'])->whereNumber('id');
     Route::post('/events/{id}/unpublish', [CutinappEventController::class, 'unpublish'])->whereNumber('id');

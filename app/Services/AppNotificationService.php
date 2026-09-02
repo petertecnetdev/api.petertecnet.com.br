@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Events\AppNotificationCreated;
 use App\Models\AppNotification;
 use Illuminate\Support\Collection;
 
@@ -9,7 +10,7 @@ class AppNotificationService
 {
     public function sendToUser(int $appId, int $userId, array $payload): AppNotification
     {
-        return AppNotification::create([
+        $notification = AppNotification::create([
             'app_id' => $appId,
             'user_id' => $userId,
             'type' => $payload['type'] ?? 'general',
@@ -20,6 +21,10 @@ class AppNotificationService
             'reference_url' => $payload['reference_url'] ?? null,
             'data' => $payload['data'] ?? null,
         ]);
+
+        event(new AppNotificationCreated($notification));
+
+        return $notification;
     }
 
     public function sendToUsers(int $appId, iterable $userIds, array $payload, ?int $excludeUserId = null): Collection
