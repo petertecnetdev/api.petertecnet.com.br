@@ -8,6 +8,7 @@ use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
@@ -36,9 +37,46 @@ class FinancialController extends Controller
             'birthdate' => 'nullable|date|before:-18 years',
         ]);
 
+        $before = DB::table('financial_beneficiaries')
+            ->where('user_id', $request->user()->id)
+            ->first();
+
+        $this->identity->saveProfile($request->user(), $data);
+
+        $after = DB::table('financial_beneficiaries')
+            ->where('user_id', $request->user()->id)
+            ->first();
+
+        if ($before && $after && $this->identityRecordChanged($before, $after)) {
+            DB::transaction(function () use ($after) {
+                // Uma identidade financeira alterada perde a aprovação anterior.
+                // Isso cobre inclusive mudança de data de nascimento, que pode não
+                // alterar o fingerprint do CPF, e impede reuso de uma chave Pix que
+                // havia sido validada para dados anteriores.
+                DB::table('financial_beneficiaries')->where('id', $after->id)->update([
+                    'status' => 'pending',
+                    'verification_level' => 'profile',
+                    'verified_at' => null,
+                    'updated_at' => now(),
+                ]);
+
+                DB::table('financial_payout_destinations')
+                    ->where('beneficiary_id', $after->id)
+                    ->update([
+                        'status' => 'identity_changed',
+                        'verified_at' => null,
+                        'cooling_until' => null,
+                        'changed_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+            });
+        }
+
         return response()->json([
-            'message' => 'Dados de identidade salvos.',
-            'identity' => $this->identity->saveProfile($request->user(), $data),
+            'message' => $before && $after && $this->identityRecordChanged($before, $after)
+                ? 'Dados de identidade alterados. Por segurança, refaça a verificação e confirme novamente sua chave Pix.'
+                : 'Dados de identidade salvos.',
+            'identity' => $this->identity->overview($request->user()->fresh()),
         ]);
     }
 
@@ -190,6 +228,13 @@ class FinancialController extends Controller
         $expected = trim((string) config('services.asaas.' . $configKey));
         $provided = trim((string) $request->header('asaas-access-token'));
         abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 401, 'Webhook não autenticado.');
+    }
+
+    private function identityRecordChanged(object $before, object $after): bool
+    {
+        return (string) $before->document_number_hash !== (string) $after->document_number_hash
+            || mb_strtolower(trim((string) $before->legal_name)) !== mb_strtolower(trim((string) $after->legal_name))
+            || (string) ($before->birthdate ?? '') !== (string) ($after->birthdate ?? '');
     }
 
     private function ownedProduction(Request $request, int $productionId): Production
