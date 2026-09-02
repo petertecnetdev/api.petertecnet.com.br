@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\DeveloperProjectController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
+use App\Http\Controllers\Api\V1\IdentityController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
 use App\Http\Controllers\Api\V1\OauthTokenController;
@@ -16,9 +17,49 @@ use Illuminate\Support\Facades\Route;
 
 Route::post('v1/oauth/token', [OauthTokenController::class, 'store'])->middleware('throttle:30,1');
 
+// Central Identity contract. Product-scoped aliases below keep existing frontend
+// URLs compatible while registration is automatically linked to the app context.
+Route::prefix('v1/identity')->group(function () {
+    Route::post('/login', [IdentityController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/register', [IdentityController::class, 'register'])->middleware('throttle:5,1');
+    Route::post('/google', [IdentityController::class, 'google'])->middleware('throttle:10,1');
+    Route::post('/refresh', [IdentityController::class, 'refresh'])->middleware('throttle:30,1');
+    Route::post('/password-email', [IdentityController::class, 'requestPasswordReset'])->middleware('throttle:5,1');
+    Route::post('/password-reset', [IdentityController::class, 'resetPassword'])->middleware('throttle:10,1');
+
+    Route::middleware(['auth:api', 'token.version', 'actor.context'])->group(function () {
+        Route::post('/logout', [IdentityController::class, 'logout']);
+        Route::get('/me', [IdentityController::class, 'me']);
+        Route::get('/check-auth', [IdentityController::class, 'check']);
+        Route::post('/email-verify', [IdentityController::class, 'verifyEmail']);
+        Route::post('/change-password', [IdentityController::class, 'changePassword']);
+        Route::post('/resend-code-email-verification', [IdentityController::class, 'resendVerification'])->middleware('throttle:5,1');
+    });
+});
+
 Route::prefix('v1/apps/{application}')
     ->middleware('app.context')
     ->group(function () {
+        // Compatibility-shaped Identity endpoints let current Peter frontends move
+        // their base URL to /v1 without changing every auth call at once.
+        Route::prefix('auth')->group(function () {
+            Route::post('/login', [IdentityController::class, 'login'])->middleware('throttle:10,1');
+            Route::post('/register', [IdentityController::class, 'register'])->middleware('throttle:5,1');
+            Route::post('/google', [IdentityController::class, 'google'])->middleware('throttle:10,1');
+            Route::post('/refresh', [IdentityController::class, 'refresh'])->middleware('throttle:30,1');
+            Route::post('/password-email', [IdentityController::class, 'requestPasswordReset'])->middleware('throttle:5,1');
+            Route::post('/password-reset', [IdentityController::class, 'resetPassword'])->middleware('throttle:10,1');
+
+            Route::middleware(['auth:api', 'token.version', 'actor.context'])->group(function () {
+                Route::post('/logout', [IdentityController::class, 'logout']);
+                Route::get('/me', [IdentityController::class, 'me']);
+                Route::get('/check-auth', [IdentityController::class, 'check']);
+                Route::post('/email-verify', [IdentityController::class, 'verifyEmail']);
+                Route::post('/change-password', [IdentityController::class, 'changePassword']);
+                Route::post('/resend-code-email-verification', [IdentityController::class, 'resendVerification'])->middleware('throttle:5,1');
+            });
+        });
+
         Route::get('/establishments', [EstablishmentController::class, 'index']);
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
@@ -85,7 +126,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/projects/{project}/webhooks', [WebhookController::class, 'index']);
                 Route::post('/projects/{project}/webhooks', [WebhookController::class, 'store'])->middleware('idempotent');
                 Route::patch('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'update'])->middleware('idempotent');
-                Route::delete('/developer/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('idempotent');
+                Route::delete('/projects/{project}/webhooks/{webhook}', [WebhookController::class, 'destroy'])->middleware('idempotent');
             });
         });
     });
