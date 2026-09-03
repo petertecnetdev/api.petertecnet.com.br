@@ -145,7 +145,7 @@ class ContentManagementController extends Controller
         if ($status === 'published' && empty($data['published_at']) && ! $current?->published_at) {
             $data['published_at'] = now();
         }
-        if ($status === 'scheduled' && empty($data['scheduled_at'])) {
+        if ($status === 'scheduled' && empty($data['scheduled_at']) && ! $current?->scheduled_at) {
             abort(422, 'scheduled_at é obrigatório para conteúdo agendado.');
         }
         if ($status !== 'scheduled' && array_key_exists('scheduled_at', $data) && empty($data['scheduled_at'])) {
@@ -160,7 +160,7 @@ class ContentManagementController extends Controller
         $counter = 2;
 
         while (ContentEntry::query()
-            ->when($ignore, fn ($query) => $query->whereKeyNot($ignore))
+            ->when($ignore, fn ($query) => $query->where('id', '!=', $ignore))
             ->where('type', $type)
             ->where('application_id', $applicationId)
             ->where('slug', $slug)
