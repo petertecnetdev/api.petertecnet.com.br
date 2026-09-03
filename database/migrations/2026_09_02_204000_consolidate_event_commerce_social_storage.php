@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 return new class extends Migration
 {
@@ -43,7 +42,7 @@ return new class extends Migration
             ->value('id');
 
         if (! $applicationId) {
-            throw new RuntimeException('Cannot expand event commerce storage: source application is not registered.');
+            throw new \RuntimeException('Cannot expand event commerce storage: source application is not registered.');
         }
 
         // Expand-only production migration. Old physical names stay online;
@@ -207,7 +206,7 @@ SQL);
     {
         $database = DB::connection()->getDatabaseName();
         if (! $database) {
-            throw new RuntimeException('Database name is required to inspect compatibility views.');
+            throw new \RuntimeException('Database name is required to inspect compatibility views.');
         }
 
         $value = DB::table('information_schema.tables')
