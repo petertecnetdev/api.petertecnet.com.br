@@ -58,7 +58,7 @@ class DiscoveryController extends Controller
             ->get();
 
         $items->each(function (Item $item) {
-            $item->setAppends(['image_url']);
+            $this->decorateItem($item);
             if ($item->establishment) {
                 $item->setAttribute('seo', $this->discovery->itemSeo($item, $item->establishment));
             }
@@ -100,7 +100,7 @@ class DiscoveryController extends Controller
             ->get();
 
         $items->each(function (Item $item) use ($establishment) {
-            $item->setAppends(['image_url']);
+            $this->decorateItem($item);
             $item->setAttribute('seo', $this->discovery->itemSeo($item, $establishment));
         });
 
@@ -122,6 +122,7 @@ class DiscoveryController extends Controller
         $item = $this->discovery->publicItem($identifier, $application);
         $establishment = $item->establishment()->firstOrFail();
         $establishment->setAppends([]);
+        $this->decorateItem($item, 1280);
         $item->setAttribute('seo', $this->discovery->itemSeo($item, $establishment));
 
         $related = Item::query()
@@ -134,7 +135,7 @@ class DiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->limit(8)
             ->get();
-        $related->each(fn (Item $candidate) => $candidate->setAppends(['image_url']));
+        $related->each(fn (Item $candidate) => $this->decorateItem($candidate));
 
         return response()->json([
             'success' => true,
@@ -144,6 +145,19 @@ class DiscoveryController extends Controller
                 'related_items' => $related,
             ],
         ]);
+    }
+
+    private function decorateItem(Item $item, int $width = 960): void
+    {
+        $item->setAppends(['image_url']);
+        $files = $item->relationLoaded('files') ? $item->files : collect();
+        $files->each(fn ($file) => $file->setAppends([]));
+        $image = $files->first(fn ($file) => $file->is_primary && $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')))
+            ?? $files->first(fn ($file) => $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')));
+        if ($image?->uuid) {
+            $url = rtrim((string) config('app.url'), '/') . '/api/v1/discovery/media/' . rawurlencode($image->uuid) . '?width=' . $width . '&format=auto&quality=78';
+            $item->setAttribute('image_url', $url);
+        }
     }
 
     private function publicItems(?Application $application): Builder
