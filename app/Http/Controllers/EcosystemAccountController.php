@@ -21,6 +21,7 @@ class EcosystemAccountController extends Controller
         $applications = Application::query()
             ->active()
             ->visibleInLauncher()
+            ->orderByDesc('is_default')
             ->orderBy('launcher_order')
             ->orderBy('name')
             ->get()
@@ -41,6 +42,7 @@ class EcosystemAccountController extends Controller
                     'version' => $application->version,
                     'category' => $application->category,
                     'launcher_order' => (int) $application->launcher_order,
+                    'is_default' => (bool) $application->is_default,
                     'operational_status' => $application->operational_status ?: 'operational',
                     'maintenance_message' => $application->maintenance_message,
                     'ecosystem_sdk_version' => $application->ecosystem_sdk_version,
@@ -65,6 +67,7 @@ class EcosystemAccountController extends Controller
                     'telemetry_schema' => self::TELEMETRY_SCHEMA,
                 ],
                 'generated_at' => now()->toIso8601String(),
+                'default_application' => $applications->firstWhere('is_default', true),
                 'account' => [
                     'id' => (int) $user->id,
                     'user_name' => $user->user_name,
