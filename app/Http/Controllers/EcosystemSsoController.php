@@ -19,14 +19,16 @@ class EcosystemSsoController extends Controller
             'application' => ['required', 'string', 'max:120'],
         ]);
 
-        $application = Application::query()
-            ->where('slug', $data['application'])
-            ->where('is_active', true)
-            ->firstOrFail();
+        $application = $this->application($data['application']);
+        $this->ensureAvailable($application);
 
         $user = $request->user();
         $this->ensureSelfServiceMembership($user, $application);
-        abort_unless($this->hasAccess($user, $application), 403, 'Sua Conta Peter Tecnet não possui acesso a este aplicativo.');
+        abort_unless(
+            $this->hasAccess($user, $application),
+            403,
+            'Sua Conta Peter Tecnet não possui acesso a este aplicativo.'
+        );
 
         $code = Str::random(64);
         Cache::put($this->cacheKey($code), [
@@ -40,7 +42,13 @@ class EcosystemSsoController extends Controller
             'data' => [
                 'handoff_code' => $code,
                 'expires_in' => self::HANDOFF_TTL_SECONDS,
-                'application' => $application->only(['id', 'slug', 'name', 'url']),
+                'application' => $application->only([
+                    'id',
+                    'slug',
+                    'name',
+                    'url',
+                    'operational_status',
+                ]),
             ],
         ]);
     }
@@ -52,10 +60,8 @@ class EcosystemSsoController extends Controller
             'application' => ['required', 'string', 'max:120'],
         ]);
 
-        $application = Application::query()
-            ->where('slug', $data['application'])
-            ->where('is_active', true)
-            ->firstOrFail();
+        $application = $this->application($data['application']);
+        $this->ensureAvailable($application);
 
         $handoff = Cache::pull($this->cacheKey($data['handoff_code']));
 
@@ -78,7 +84,11 @@ class EcosystemSsoController extends Controller
         }
 
         $this->ensureSelfServiceMembership($user, $application);
-        abort_unless($this->hasAccess($user, $application), 403, 'Sua Conta Peter Tecnet não possui mais acesso a este aplicativo.');
+        abort_unless(
+            $this->hasAccess($user, $application),
+            403,
+            'Sua Conta Peter Tecnet não possui mais acesso a este aplicativo.'
+        );
 
         $token = auth('api')->login($user);
 
@@ -89,9 +99,36 @@ class EcosystemSsoController extends Controller
                 'token_type' => 'bearer',
                 'expires_in' => auth('api')->factory()->getTTL() * 60,
                 'user' => $user,
-                'application' => $application->only(['id', 'slug', 'name', 'url']),
+                'application' => $application->only([
+                    'id',
+                    'slug',
+                    'name',
+                    'url',
+                    'operational_status',
+                ]),
             ],
         ]);
+    }
+
+    private function application(string $slug): Application
+    {
+        return Application::query()
+            ->where('slug', $slug)
+            ->where('is_active', true)
+            ->firstOrFail();
+    }
+
+    private function ensureAvailable(Application $application): void
+    {
+        if ($application->isOperational()) {
+            return;
+        }
+
+        abort(
+            503,
+            $application->maintenance_message
+                ?: 'Este aplicativo está temporariamente indisponível. Tente novamente em instantes.'
+        );
     }
 
     private function ensureSelfServiceMembership(User $user, Application $application): void
