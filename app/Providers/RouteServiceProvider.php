@@ -36,6 +36,13 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Application branding is a shared platform capability. Keeping it in a
+            // dedicated contract avoids app-specific controllers and lets every UI
+            // migrate from hard-coded assets without changing legacy endpoints.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/branding.php'));
+
             // Temporary expand/contract boundary. The file owns its middleware
             // groups so each legacy URL can bind the appropriate application
             // context without duplicating the global API middleware stack.
