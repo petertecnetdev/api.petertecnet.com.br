@@ -92,6 +92,9 @@ class EstablishmentController extends Controller
     {
         $user = $request->user();
         $data = $request->validated();
+        $businessProfile = $data['business_profile'] ?? null;
+        unset($data['business_profile']);
+
         $data['app_id'] = $this->context->id();
         $data['user_id'] = $user->id;
         $data['created_by'] = $user->id;
@@ -103,6 +106,9 @@ class EstablishmentController extends Controller
         $data['is_published'] = false;
 
         $establishment = Establishment::create($data);
+        if ($businessProfile !== null) {
+            $this->persistBusinessProfile($establishment, $businessProfile);
+        }
 
         $user->applications()->syncWithoutDetaching([
             $this->context->id() => [
@@ -124,9 +130,16 @@ class EstablishmentController extends Controller
     {
         $model = $this->owned($request, $establishment);
         $data = $request->validated();
+        $hasBusinessProfile = array_key_exists('business_profile', $data);
+        $businessProfile = $data['business_profile'] ?? null;
+        unset($data['business_profile']);
         $data['updated_by'] = $request->user()->id;
 
         $model->fill($data)->save();
+        if ($hasBusinessProfile) {
+            $this->persistBusinessProfile($model, $businessProfile);
+        }
+
         $fresh = $model->fresh();
         $fresh->setAppends([]);
 
@@ -160,6 +173,15 @@ class EstablishmentController extends Controller
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();
+    }
+
+    private function persistBusinessProfile(Establishment $establishment, ?array $profile): void
+    {
+        $establishment->setAttribute(
+            'business_profile',
+            $profile === null ? null : json_encode($profile, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+        $establishment->save();
     }
 
     private function uniqueSlug(string $value): string
