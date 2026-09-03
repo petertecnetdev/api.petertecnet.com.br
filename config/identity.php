@@ -1,9 +1,22 @@
 <?php
 
 return [
+    'access_token_ttl_minutes' => (int) env('IDENTITY_ACCESS_TOKEN_TTL_MINUTES', 30),
+
     'session' => [
         'ttl_minutes' => (int) env('IDENTITY_SESSION_TTL_MINUTES', 43200),
         'touch_interval_minutes' => (int) env('IDENTITY_SESSION_TOUCH_INTERVAL_MINUTES', 5),
+    ],
+
+    'global_sso' => [
+        'cache_store' => env('IDENTITY_CACHE_STORE', env('APP_ENV') === 'testing' ? 'array' : 'redis'),
+        'session_cookie' => env('IDENTITY_SESSION_COOKIE', 'peter_ecosystem_session'),
+        'refresh_cookie' => env('IDENTITY_REFRESH_COOKIE', 'peter_ecosystem_refresh'),
+        'session_ttl_minutes' => (int) env('IDENTITY_GLOBAL_SESSION_TTL_MINUTES', 10080),
+        'refresh_ttl_minutes' => (int) env('IDENTITY_REFRESH_TTL_MINUTES', 43200),
+        'refresh_grace_seconds' => (int) env('IDENTITY_REFRESH_GRACE_SECONDS', 30),
+        'csrf_ttl_seconds' => (int) env('IDENTITY_CSRF_TTL_SECONDS', 300),
+        'require_https_origin' => filter_var(env('IDENTITY_REQUIRE_HTTPS_ORIGIN', true), FILTER_VALIDATE_BOOL),
     ],
 
     'magic_link' => [
