@@ -4,6 +4,7 @@ namespace App\Services\Operations;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Throwable;
 
 /**
@@ -45,23 +46,56 @@ class ResilientOperationalIssueService extends OperationalIssueService
     public function intelligence(): array
     {
         try {
-            return parent::intelligence();
+            if (! $this->hasIntelligenceSchema()) {
+                $this->recordSchemaDrift('issue_intelligence');
+
+                return $this->degradedIntelligence();
+            }
+
+            return array_merge(parent::intelligence(), ['degraded' => false]);
         } catch (Throwable $exception) {
             $this->recordFailure('issue_intelligence', $exception);
 
-            return [
-                'summary' => [
-                    'active_alerts' => 0,
-                    'critical_alerts' => 0,
-                    'deployments_24h' => 0,
-                    'repair_plans' => 0,
-                ],
-                'alerts' => [],
-                'deployments' => [],
-                'slos' => [],
-                'degraded' => true,
-            ];
+            return $this->degradedIntelligence();
         }
+    }
+
+    private function hasIntelligenceSchema(): bool
+    {
+        if (! Schema::hasTable('operational_issues')) {
+            return false;
+        }
+
+        foreach (['id', 'fingerprint', 'status', 'priority', 'title', 'impact_score', 'repair_plan'] as $column) {
+            if (! Schema::hasColumn('operational_issues', $column)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function degradedIntelligence(): array
+    {
+        return [
+            'summary' => [
+                'active_alerts' => 0,
+                'critical_alerts' => 0,
+                'deployments_24h' => 0,
+                'repair_plans' => 0,
+            ],
+            'alerts' => [],
+            'deployments' => [],
+            'slos' => [],
+            'degraded' => true,
+        ];
+    }
+
+    private function recordSchemaDrift(string $component): void
+    {
+        Log::warning('mission_control.issue_component_schema_drift', [
+            'component' => $component,
+        ]);
     }
 
     private function recordFailure(string $component, Throwable $exception): void
