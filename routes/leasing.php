@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Leasing\Http\Controllers\LeasePaymentController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
 
@@ -31,6 +32,6 @@ Route::prefix('v1/apps/{application}')
         Route::get('/leases/{leaseId}/charges', [LeasingController::class, 'charges'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges', [LeasingController::class, 'storeCharge'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasingController::class, 'preparePayment'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
+        Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasePaymentController::class, 'checkout'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
         Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeasingController::class, 'markChargePaid'])->whereNumber('leaseId')->whereNumber('chargeId');
     });
