@@ -100,6 +100,50 @@ class EcosystemLauncherSsoTest extends TestCase
             ->assertJsonPath('code', 'SSO_HANDOFF_INVALID');
     }
 
+    public function test_account_can_navigate_nexus_to_cutinapp_to_rasoio_without_reauthentication(): void
+    {
+        $nexus = $this->application('Nexus', 'nexus', 10);
+        $cutinapp = $this->application('Cutinapp', 'cutinapp', 20);
+        $rasoio = $this->application('Rasoio', 'rasoio', 30);
+        $this->user->applications()->attach([$nexus->id, $cutinapp->id, $rasoio->id], [
+            'status' => 'active',
+            'role' => 'member',
+            'joined_at' => now(),
+        ]);
+
+        $firstHandoff = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+            'X-Peter-App' => 'nexus',
+        ])->postJson('/api/account/sso/handoff', ['application' => 'cutinapp']);
+        $firstHandoff->assertOk();
+
+        $cutinappSession = $this->withHeader('X-Peter-App', 'cutinapp')
+            ->postJson('/api/account/sso/exchange', [
+                'handoff_code' => $firstHandoff->json('data.handoff_code'),
+                'application' => 'cutinapp',
+            ]);
+        $cutinappSession->assertOk()
+            ->assertJsonPath('data.user.id', $this->user->id);
+
+        $secondHandoff = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $cutinappSession->json('data.access_token'),
+            'X-Peter-App' => 'cutinapp',
+        ])->postJson('/api/account/sso/handoff', ['application' => 'rasoio']);
+        $secondHandoff->assertOk()
+            ->assertJsonPath('data.application.slug', 'rasoio')
+            ->assertJsonMissingPath('data.access_token');
+
+        $rasoioSession = $this->withHeader('X-Peter-App', 'rasoio')
+            ->postJson('/api/account/sso/exchange', [
+                'handoff_code' => $secondHandoff->json('data.handoff_code'),
+                'application' => 'rasoio',
+            ]);
+        $rasoioSession->assertOk()
+            ->assertJsonPath('data.application.slug', 'rasoio')
+            ->assertJsonPath('data.user.id', $this->user->id)
+            ->assertJsonStructure(['data' => ['access_token']]);
+    }
+
     public function test_launcher_handoff_refuses_application_in_maintenance(): void
     {
         $destination = $this->application(
