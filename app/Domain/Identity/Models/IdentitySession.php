@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Model;
 class IdentitySession extends Model
 {
     protected $fillable = [
-        'session_id', 'user_id', 'app_id', 'auth_method', 'device_label',
+        'session_id', 'user_id', 'app_id', 'device_id', 'auth_method', 'device_label',
         'ip_address', 'user_agent', 'last_seen_at', 'expires_at', 'revoked_at', 'revoke_reason',
     ];
 
@@ -27,6 +27,11 @@ class IdentitySession extends Model
     public function application()
     {
         return $this->belongsTo(Application::class, 'app_id');
+    }
+
+    public function device()
+    {
+        return $this->belongsTo(IdentityDevice::class, 'device_id');
     }
 
     public function isActive(): bool
