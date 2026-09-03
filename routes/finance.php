@@ -2,6 +2,7 @@
 
 use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PayoutController;
+use App\Domain\Finance\Http\Controllers\RecipientFinanceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('finance/webhooks')->group(function () {
@@ -13,6 +14,18 @@ Route::prefix('finance/webhooks')->group(function () {
         ->middleware('throttle:120,1')
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });
+
+Route::prefix('v1/apps/{application}/finance/recipient')
+    ->middleware(['app.context', 'app.capability:payouts', 'auth:api', 'token.version'])
+    ->group(function () {
+        Route::get('/', [RecipientFinanceController::class, 'overview']);
+        Route::put('/identity', [RecipientFinanceController::class, 'saveIdentity'])->middleware('throttle:10,1');
+        Route::post('/identity/document', [RecipientFinanceController::class, 'uploadDocument'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-session', [RecipientFinanceController::class, 'startLiveness'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-complete', [RecipientFinanceController::class, 'completeLiveness'])->middleware('throttle:10,1');
+        Route::put('/pix', [RecipientFinanceController::class, 'savePix'])->middleware('throttle:5,1');
+        Route::post('/payouts', [RecipientFinanceController::class, 'requestPayout'])->middleware('throttle:5,1');
+    });
 
 Route::prefix('v1/apps/{application}/organizations/{organizationId}/payouts')
     ->middleware(['app.context', 'app.capability:payouts', 'auth:api', 'token.version'])
