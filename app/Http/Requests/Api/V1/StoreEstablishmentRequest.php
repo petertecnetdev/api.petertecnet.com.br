@@ -34,6 +34,16 @@ class StoreEstablishmentRequest extends FormRequest
             'twitter_url' => ['nullable', 'url', 'max:255'],
             'youtube_url' => ['nullable', 'url', 'max:255'],
             'segments' => ['nullable', 'array'],
+            'business_profile' => ['nullable', 'array'],
+            'business_profile.opening_hours' => ['nullable', 'array'],
+            'business_profile.payment_methods' => ['nullable', 'array', 'max:30'],
+            'business_profile.payment_methods.*' => ['string', 'max:80'],
+            'business_profile.delivery_available' => ['nullable', 'boolean'],
+            'business_profile.pickup_available' => ['nullable', 'boolean'],
+            'business_profile.open_24_hours' => ['nullable', 'boolean'],
+            'business_profile.service_area' => ['nullable', 'string', 'max:255'],
+            'business_profile.accessibility' => ['nullable', 'boolean'],
+            'business_profile.parking' => ['nullable', 'boolean'],
         ];
     }
 }
