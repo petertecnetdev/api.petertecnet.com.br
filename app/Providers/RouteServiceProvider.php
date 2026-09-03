@@ -36,6 +36,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Shared workforce contract. Read/delete operations live here while the
+            // canonical create route remains in api_v1.php during migration.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/workforce.php'));
+
             // Generic property, lease, document, signature and recurring billing
             // contract. Applications opt in through the leasing capability.
             Route::middleware('api')
