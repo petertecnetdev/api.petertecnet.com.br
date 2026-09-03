@@ -19,6 +19,8 @@ class PlatformArchitectureTest extends TestCase
         'camquick',
     ];
 
+    private const STORAGE_CONTRACT_MIGRATION = '2026_09_03_204500_contract_application_specific_storage_to_generic_tables.php';
+
     public function test_runtime_architecture_contains_no_product_specific_names(): void
     {
         $roots = [
@@ -182,6 +184,69 @@ class PlatformArchitectureTest extends TestCase
             [],
             $violations,
             'Final clean-database schema still contains application-prefixed operational tables: '.implode(', ', $violations)
+        );
+    }
+
+    public function test_final_database_schema_has_no_product_prefixed_operational_columns(): void
+    {
+        $schema = DB::connection()->getSchemaBuilder();
+        $prefixPattern = '/^('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_/i';
+        $violations = [];
+
+        foreach ($schema->getTableListing() as $table) {
+            $tableName = is_object($table) ? (string) ($table->name ?? '') : (string) $table;
+            if ($tableName === '') continue;
+
+            foreach ($schema->getColumnListing($tableName) as $column) {
+                if (preg_match($prefixPattern, (string) $column) === 1) {
+                    $violations[] = $tableName.'.'.$column;
+                }
+            }
+        }
+
+        sort($violations);
+
+        $this->assertSame(
+            [],
+            $violations,
+            'Final clean-database schema still contains application-prefixed operational columns: '.implode(', ', $violations)
+        );
+    }
+
+    public function test_future_migrations_cannot_reintroduce_product_prefixed_storage(): void
+    {
+        $files = collect(File::files(database_path('migrations')))
+            ->sortBy(fn ($file) => $file->getFilename())
+            ->values();
+        $contractSeen = false;
+        $violations = [];
+        $storagePattern = '/\\b(?:Schema::(?:create|table)|DB::table)\\s*\\(\\s*[\'\"](?:'.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_/i';
+        $columnPattern = '/(?:->(?:string|text|integer|unsignedBigInteger|foreignId|uuid|boolean|decimal|timestamp|dateTime|json)\\s*\\(\\s*[\'\"](?:'.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_)/i';
+
+        foreach ($files as $file) {
+            if ($file->getFilename() === self::STORAGE_CONTRACT_MIGRATION) {
+                $contractSeen = true;
+                continue;
+            }
+
+            if (! $contractSeen) continue;
+
+            $contents = File::get($file->getPathname());
+            if (preg_match($storagePattern, $contents, $matches)) {
+                $violations[] = $file->getFilename().' [storage:'.$matches[0].']';
+            }
+            if (preg_match($columnPattern, $contents, $matches)) {
+                $violations[] = $file->getFilename().' [column:'.$matches[0].']';
+            }
+        }
+
+        $this->assertTrue($contractSeen, 'Generic storage contract migration is missing.');
+        sort($violations);
+
+        $this->assertSame(
+            [],
+            $violations,
+            'Migrations after the storage contract cannot reintroduce application-prefixed physical storage: '.implode(', ', $violations)
         );
     }
 
