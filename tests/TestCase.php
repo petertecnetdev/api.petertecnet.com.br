@@ -2,7 +2,7 @@
 
 namespace Tests;
 
-use App\Services\CutinappProducerContractService;
+use App\Services\ProducerAgreementService;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -17,11 +17,11 @@ abstract class TestCase extends BaseTestCase
      * requests start with a fresh guard. Reset guards before each simulated
      * request so every Authorization header is authenticated independently.
      *
-     * Cutinapp now requires a signed producer contract before event creation.
-     * Legacy feature tests predate that requirement, so the shared test
+     * Applications may require a signed producer agreement before event
+     * creation. Legacy feature tests predate that requirement, so the shared
      * harness provisions a realistic acceptance row for event-creation
-     * requests. Tests that explicitly verify the unsigned-contract behavior
-     * can opt out with the X-Test-Unsigned-Contract header.
+     * requests. Tests that explicitly verify the unsigned behavior can opt
+     * out with the X-Test-Unsigned-Contract header.
      */
     public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
     {
@@ -29,18 +29,25 @@ abstract class TestCase extends BaseTestCase
             $this->app['auth']->forgetGuards();
         }
 
-        $this->provisionCutinappContractFixture($method, $uri, $parameters, $server, $content);
+        $this->provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content);
 
         return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
     }
 
-    private function provisionCutinappContractFixture($method, $uri, $parameters, $server, $content): void
+    private function provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content): void
     {
-        if (strtoupper((string) $method) !== 'POST' || parse_url((string) $uri, PHP_URL_PATH) !== '/api/cutinapp/events') {
+        if (strtoupper((string) $method) !== 'POST') {
             return;
         }
 
-        if (!empty($server['HTTP_X_TEST_UNSIGNED_CONTRACT'])) {
+        $path = (string) parse_url((string) $uri, PHP_URL_PATH);
+        $isLegacyEventCreate = preg_match('#^/api/[^/]+/events$#', $path) === 1;
+        $isV1EventCreate = preg_match('#^/api/v1/apps/[^/]+/events$#', $path) === 1;
+        if (! $isLegacyEventCreate && ! $isV1EventCreate) {
+            return;
+        }
+
+        if (! empty($server['HTTP_X_TEST_UNSIGNED_CONTRACT'])) {
             return;
         }
 
@@ -53,19 +60,19 @@ abstract class TestCase extends BaseTestCase
         }
 
         $productionId = (int) ($payload['production_id'] ?? 0);
-        if ($productionId <= 0 || !Schema::hasTable('cutinapp_producer_contract_acceptances')) {
+        if ($productionId <= 0 || ! Schema::hasTable('contract_acceptances')) {
             return;
         }
 
         $production = DB::table('productions')->where('id', $productionId)->first();
-        if (!$production || empty($production->user_id)) {
+        if (! $production || empty($production->user_id)) {
             return;
         }
 
-        DB::table('cutinapp_producer_contract_acceptances')->insertOrIgnore([
+        $row = [
             'production_id' => $productionId,
             'user_id' => (int) $production->user_id,
-            'contract_version' => CutinappProducerContractService::VERSION,
+            'contract_version' => ProducerAgreementService::VERSION,
             'contract_hash' => hash('sha256', 'test-contract-' . $productionId),
             'contract_snapshot' => 'Contrato de teste aceito automaticamente pela infraestrutura de testes.',
             'signer_name' => 'Assinante de Teste',
@@ -76,6 +83,12 @@ abstract class TestCase extends BaseTestCase
             'accepted_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
+        ];
+
+        if (Schema::hasColumn('contract_acceptances', 'app_id')) {
+            $row['app_id'] = $production->app_id ?? null;
+        }
+
+        DB::table('contract_acceptances')->insertOrIgnore($row);
     }
 }
