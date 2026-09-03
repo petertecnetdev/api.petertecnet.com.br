@@ -55,9 +55,15 @@ class ApplicationBrandingController extends Controller
 
         $uploaded = $request->file('file');
         $extension = strtolower((string) $uploaded->getClientOriginalExtension());
+        $filename = $this->branding->assetFilename($application, $data['asset'], $extension);
+
+        // Each upload receives its own directory so the public URL changes immediately,
+        // while the actual filename remains predictable (e.g. nexus-logo.png).
+        // This avoids browsers/CDNs reusing the previous logo after a new publication
+        // and keeps historical branding revisions rollback-safe.
         $path = $uploaded->storeAs(
-            'branding/' . $application->slug . '/' . $data['asset'],
-            Str::uuid() . '.' . $extension,
+            'branding/' . $application->slug . '/' . $data['asset'] . '/' . Str::uuid(),
+            $filename,
             'public'
         );
         $storedUrl = Storage::disk('public')->url($path);
@@ -73,6 +79,7 @@ class ApplicationBrandingController extends Controller
         return response()->json([
             'message' => 'Imagem adicionada ao rascunho.',
             'asset' => $data['asset'],
+            'filename' => $filename,
             'url' => $url,
             ...$this->adminPayload($application->fresh()),
         ], 201);
