@@ -12,9 +12,23 @@ final class BindApplicationContext
 {
     public function __construct(private readonly ApplicationContext $context) {}
 
-    public function handle(Request $request, Closure $next, string $applicationSlug): Response
+    public function handle(Request $request, Closure $next, ?string $applicationSlug = null): Response
     {
-        $slug = mb_strtolower(trim($applicationSlug));
+        $candidate = $applicationSlug
+            ?: $request->route('application')
+            ?: $request->header('X-Peter-App');
+        $slug = mb_strtolower(trim((string) $candidate));
+
+        if ($slug === '') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Informe o contexto da aplicação.',
+                'error' => 'Application context is required.',
+                'code' => 'APPLICATION_CONTEXT_REQUIRED',
+                'request_id' => $request->attributes->get('request_id'),
+            ], 400);
+        }
+
         $application = Application::query()
             ->whereRaw('LOWER(slug) = ?', [$slug])
             ->where('is_active', true)
