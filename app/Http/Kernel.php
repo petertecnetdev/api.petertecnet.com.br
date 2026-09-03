@@ -57,5 +57,6 @@ class Kernel extends HttpKernel
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
         'identity.step-up' => \App\Http\Middleware\RequireIdentityStepUp::class,
         'identity.operator' => \App\Http\Middleware\EnsureIdentityOperator::class,
+        'identity.access-ttl' => \App\Http\Middleware\UseIdentityAccessTokenTtl::class,
     ];
 }
