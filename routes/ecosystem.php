@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\AdministrativeReportController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -22,6 +23,8 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::get('/reports', [AdministrativeReportController::class, 'index']);
+    Route::get('/reports/{report}/pdf', [AdministrativeReportController::class, 'pdf'])->where('report', '[a-z]+');
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
 
     Route::get('/command/overview', [CommandCenterController::class, 'overview']);
