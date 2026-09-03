@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Application;
+use Illuminate\Support\Str;
 
 class ApplicationBrandingService
 {
@@ -65,6 +66,23 @@ class ApplicationBrandingService
             ...self::ASSET_FIELDS,
             ...self::COLOR_FIELDS,
         ]));
+    }
+
+    public function assetFilename(Application $application, string $asset, string $extension): string
+    {
+        $slug = Str::slug((string) ($application->slug ?: $application->name)) ?: 'application';
+        $suffix = match ($asset) {
+            'logo' => 'logo',
+            'logo_light' => 'logo-light',
+            'logo_dark' => 'logo-dark',
+            'icon' => 'icon',
+            'favicon' => 'favicon',
+            'social_image' => 'social-image',
+            default => Str::slug($asset) ?: 'asset',
+        };
+        $safeExtension = strtolower(ltrim($extension, '.')) ?: 'png';
+
+        return "{$slug}-{$suffix}.{$safeExtension}";
     }
 
     public function publicPayload(Application $application): array
