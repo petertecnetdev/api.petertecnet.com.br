@@ -8,6 +8,13 @@ use Carbon\CarbonImmutable;
 
 class MercadoPagoFinancialStatementGateway implements ProviderFinancialStatementGateway
 {
+    private const REQUIRED_COLUMNS = [
+        'DATE', 'SOURCE_ID', 'EXTERNAL_REFERENCE', 'RECORD_TYPE', 'DESCRIPTION',
+        'NET_CREDIT_AMOUNT', 'NET_DEBIT_AMOUNT', 'SELLER_AMOUNT', 'GROSS_AMOUNT',
+        'MP_FEE_AMOUNT', 'BALANCE_AMOUNT', 'PAYOUT_BANK_ACCOUNT_NUMBER', 'CURRENCY',
+        'IS_RELEASED',
+    ];
+
     public function __construct(private readonly MercadoPagoService $mercadoPago) {}
 
     public function name(): string
@@ -22,22 +29,24 @@ class MercadoPagoFinancialStatementGateway implements ProviderFinancialStatement
 
     public function ensureReportConfiguration(): void
     {
-        if ($this->mercadoPago->getReleaseReportConfiguration($this->token())) return;
+        $current = $this->mercadoPago->getReleaseReportConfiguration($this->token());
+        $payload = $this->configurationPayload($current ?? []);
 
-        $this->mercadoPago->createReleaseReportConfiguration($this->token(), [
-            'columns' => collect([
-                'DATE', 'SOURCE_ID', 'EXTERNAL_REFERENCE', 'RECORD_TYPE', 'DESCRIPTION',
-                'NET_CREDIT_AMOUNT', 'NET_DEBIT_AMOUNT', 'SELLER_AMOUNT', 'GROSS_AMOUNT',
-                'MP_FEE_AMOUNT', 'BALANCE_AMOUNT', 'PAYOUT_BANK_ACCOUNT_NUMBER', 'CURRENCY',
-                'IS_RELEASED',
-            ])->map(fn (string $key) => ['key' => $key])->all(),
-            'file_name_prefix' => 'peter-tecnet-released-money',
-            'frequency' => ['hour' => 0, 'value' => 1, 'type' => 'monthly'],
-            'separator' => ';',
-            'include_withdrawal_at_end' => true,
-            'check_available_balance' => true,
-            'scheduled' => false,
-        ]);
+        if (! $current) {
+            $this->mercadoPago->createReleaseReportConfiguration($this->token(), $payload);
+            return;
+        }
+
+        $currentColumns = collect($current['columns'] ?? [])->pluck('key')->map(fn ($key) => strtoupper((string) $key))->filter()->values();
+        $missingColumns = collect(self::REQUIRED_COLUMNS)->diff($currentColumns);
+        $requiresUpdate = $missingColumns->isNotEmpty()
+            || strtoupper((string) ($current['display_timezone'] ?? '')) !== 'GMT-03'
+            || ! (bool) ($current['include_withdrawal_at_end'] ?? false)
+            || ! (bool) ($current['check_available_balance'] ?? false);
+
+        if ($requiresUpdate) {
+            $this->mercadoPago->updateReleaseReportConfiguration($this->token(), $payload);
+        }
     }
 
     public function requestReleasedMoneyReport(CarbonImmutable $from, CarbonImmutable $to): array
@@ -62,6 +71,24 @@ class MercadoPagoFinancialStatementGateway implements ProviderFinancialStatement
     public function downloadReport(string $fileName): string
     {
         return $this->mercadoPago->downloadReleaseReport($this->token(), $fileName);
+    }
+
+    private function configurationPayload(array $current): array
+    {
+        $existingColumns = collect($current['columns'] ?? [])->pluck('key')->map(fn ($key) => strtoupper((string) $key))->filter();
+        $columns = $existingColumns->merge(self::REQUIRED_COLUMNS)->unique()->values();
+
+        return [
+            'columns' => $columns->map(fn (string $key) => ['key' => $key])->all(),
+            'file_name_prefix' => trim((string) ($current['file_name_prefix'] ?? '')) ?: 'peter-tecnet-released-money',
+            'frequency' => is_array($current['frequency'] ?? null) ? $current['frequency'] : ['hour' => 0, 'value' => 1, 'type' => 'monthly'],
+            'separator' => (string) ($current['separator'] ?? ';'),
+            'display_timezone' => 'GMT-03',
+            'include_withdrawal_at_end' => true,
+            'check_available_balance' => true,
+            'compensate_detail' => (bool) ($current['compensate_detail'] ?? true),
+            'execute_after_withdrawal' => (bool) ($current['execute_after_withdrawal'] ?? false),
+        ];
     }
 
     private function token(): string
