@@ -74,7 +74,11 @@ class AvailabilityController extends Controller
     {
         $exists = Employer::query()
             ->whereKey($employerId)
-            ->whereHas('establishment', fn ($query) => $query->where('app_id', $this->context->id()))
+            ->whereHas('establishment', function ($query) {
+                $query
+                    ->forApplication($this->context->id())
+                    ->where('is_cancelled', false);
+            })
             ->exists();
 
         if (! $exists) {
@@ -99,14 +103,18 @@ class AvailabilityController extends Controller
             ->where('is_active', true)
             ->orderBy('start_time')
             ->get();
-        if ($workSchedules->isEmpty()) return [];
+        if ($workSchedules->isEmpty()) {
+            return [];
+        }
 
         $reservations = EmployerSchedule::query()
             ->where('employer_id', $employerId)
             ->whereDate('reserved_date', $dateString)
             ->whereIn('type', ['break', 'holiday'])
             ->get();
-        if ($reservations->contains(fn ($reservation) => $reservation->type === 'holiday')) return [];
+        if ($reservations->contains(fn ($reservation) => $reservation->type === 'holiday')) {
+            return [];
+        }
 
         $breaks = $reservations->where('type', 'break')->values();
         $orders = Order::query()
@@ -140,7 +148,9 @@ class AvailabilityController extends Controller
                     return $slotStart->lt($orderEnd) && $slotEnd->gt($orderStart);
                 });
 
-                if (! $isPast && ! $hitsBreak && ! $hitsOrder) $available[] = $slotStart->format('H:i');
+                if (! $isPast && ! $hitsBreak && ! $hitsOrder) {
+                    $available[] = $slotStart->format('H:i');
+                }
                 $pointer->addMinutes(15);
             }
         }
