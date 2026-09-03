@@ -6,12 +6,17 @@ use App\Models\Application;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Str;
 
 class EcosystemSsoController extends Controller
 {
     private const HANDOFF_TTL_SECONDS = 60;
+    private const GLOBAL_SESSION_COOKIE = 'peter_ecosystem_session';
+    private const GLOBAL_SESSION_TTL_MINUTES = 10080;
+    private const GLOBAL_SESSION_COOKIE_DOMAIN = '.petertecnet.com.br';
 
     public function createHandoff(Request $request): JsonResponse
     {
@@ -110,6 +115,102 @@ class EcosystemSsoController extends Controller
         ]);
     }
 
+    public function establishGlobalSession(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $currentToken = (string) $request->cookie(self::GLOBAL_SESSION_COOKIE, '');
+        $currentSession = $this->readGlobalSession($currentToken);
+
+        if ($this->globalSessionBelongsTo($currentSession, $user)) {
+            $this->storeGlobalSession($currentToken, $user);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'authenticated' => true,
+                    'expires_in' => self::GLOBAL_SESSION_TTL_MINUTES * 60,
+                ],
+            ])->withCookie($this->globalSessionCookie($currentToken));
+        }
+
+        if ($currentToken !== '') {
+            Cache::forget($this->globalSessionCacheKey($currentToken));
+        }
+
+        $sessionToken = Str::random(64);
+        $this->storeGlobalSession($sessionToken, $user);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'authenticated' => true,
+                'expires_in' => self::GLOBAL_SESSION_TTL_MINUTES * 60,
+            ],
+        ])->withCookie($this->globalSessionCookie($sessionToken));
+    }
+
+    public function exchangeGlobalSession(Request $request): JsonResponse|Response
+    {
+        $data = $request->validate([
+            'application' => ['required', 'string', 'max:120'],
+        ]);
+
+        $sessionToken = (string) $request->cookie(self::GLOBAL_SESSION_COOKIE, '');
+        if ($sessionToken === '') {
+            return response()->noContent();
+        }
+
+        $session = $this->readGlobalSession($sessionToken);
+        $user = User::query()->find($session['user_id'] ?? null);
+
+        if (! $user || ! $this->globalSessionBelongsTo($session, $user)) {
+            Cache::forget($this->globalSessionCacheKey($sessionToken));
+
+            return response()->noContent()
+                ->withCookie($this->forgetGlobalSessionCookie());
+        }
+
+        $application = $this->application($data['application']);
+        $this->ensureAvailable($application);
+        $this->ensureSelfServiceMembership($user, $application);
+        abort_unless(
+            $this->hasAccess($user, $application),
+            403,
+            'Sua Conta Peter Tecnet não possui acesso a este aplicativo.'
+        );
+
+        $this->storeGlobalSession($sessionToken, $user);
+        $token = auth('api')->login($user);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'access_token' => $token,
+                'token_type' => 'bearer',
+                'expires_in' => auth('api')->factory()->getTTL() * 60,
+                'user' => $user,
+                'application' => $application->only([
+                    'id',
+                    'slug',
+                    'name',
+                    'url',
+                    'operational_status',
+                ]),
+            ],
+        ])->withCookie($this->globalSessionCookie($sessionToken));
+    }
+
+    public function revokeGlobalSession(Request $request): Response
+    {
+        $sessionToken = (string) $request->cookie(self::GLOBAL_SESSION_COOKIE, '');
+        if ($sessionToken !== '') {
+            Cache::forget($this->globalSessionCacheKey($sessionToken));
+        }
+
+        return response()->noContent()
+            ->withCookie($this->forgetGlobalSessionCookie());
+    }
+
     private function application(string $slug): Application
     {
         return Application::query()
@@ -161,8 +262,63 @@ class EcosystemSsoController extends Controller
             ->exists();
     }
 
+    private function storeGlobalSession(string $sessionToken, User $user): void
+    {
+        Cache::put($this->globalSessionCacheKey($sessionToken), [
+            'user_id' => (int) $user->id,
+            'auth_version' => (int) ($user->auth_version ?? 0),
+        ], now()->addMinutes(self::GLOBAL_SESSION_TTL_MINUTES));
+    }
+
+    private function readGlobalSession(string $sessionToken): ?array
+    {
+        if ($sessionToken === '') {
+            return null;
+        }
+
+        $session = Cache::get($this->globalSessionCacheKey($sessionToken));
+
+        return is_array($session) ? $session : null;
+    }
+
+    private function globalSessionBelongsTo(?array $session, User $user): bool
+    {
+        return is_array($session)
+            && (int) ($session['user_id'] ?? 0) === (int) $user->id
+            && (int) ($session['auth_version'] ?? -1) === (int) ($user->auth_version ?? 0);
+    }
+
+    private function globalSessionCookie(string $sessionToken)
+    {
+        return Cookie::make(
+            self::GLOBAL_SESSION_COOKIE,
+            $sessionToken,
+            self::GLOBAL_SESSION_TTL_MINUTES,
+            '/',
+            self::GLOBAL_SESSION_COOKIE_DOMAIN,
+            true,
+            true,
+            false,
+            'lax'
+        );
+    }
+
+    private function forgetGlobalSessionCookie()
+    {
+        return Cookie::forget(
+            self::GLOBAL_SESSION_COOKIE,
+            '/',
+            self::GLOBAL_SESSION_COOKIE_DOMAIN
+        );
+    }
+
     private function cacheKey(string $code): string
     {
         return 'ecosystem:sso:' . hash('sha256', $code);
+    }
+
+    private function globalSessionCacheKey(string $sessionToken): string
+    {
+        return 'ecosystem:global-session:' . hash('sha256', $sessionToken);
     }
 }
