@@ -16,7 +16,6 @@ class EcosystemSsoController extends Controller
     private const HANDOFF_TTL_SECONDS = 60;
     private const GLOBAL_SESSION_COOKIE = 'peter_ecosystem_session';
     private const GLOBAL_SESSION_TTL_MINUTES = 10080;
-    private const GLOBAL_SESSION_COOKIE_DOMAIN = '.petertecnet.com.br';
 
     public function createHandoff(Request $request): JsonResponse
     {
@@ -171,6 +170,7 @@ class EcosystemSsoController extends Controller
         }
 
         $application = $this->application($data['application']);
+        $this->ensureRequestMatchesApplication($request, $application);
         $this->ensureAvailable($application);
         $this->ensureSelfServiceMembership($user, $application);
         abort_unless(
@@ -217,6 +217,38 @@ class EcosystemSsoController extends Controller
             ->where('slug', $slug)
             ->where('is_active', true)
             ->firstOrFail();
+    }
+
+    private function ensureRequestMatchesApplication(Request $request, Application $application): void
+    {
+        $requestedApp = Str::lower(trim((string) $request->header('X-Peter-App', '')));
+        abort_unless(
+            hash_equals(Str::lower((string) $application->slug), $requestedApp),
+            403,
+            'O aplicativo solicitante não corresponde à sessão requisitada.'
+        );
+
+        $origin = trim((string) $request->header('Origin', ''));
+        if ($origin === '') {
+            return;
+        }
+
+        $originParts = parse_url($origin);
+        $applicationParts = parse_url((string) $application->url);
+        $originHost = Str::lower((string) ($originParts['host'] ?? ''));
+        $applicationHost = Str::lower((string) ($applicationParts['host'] ?? ''));
+        $originScheme = Str::lower((string) ($originParts['scheme'] ?? ''));
+
+        if ($originScheme === 'https' && $originHost !== '' && hash_equals($applicationHost, $originHost)) {
+            return;
+        }
+
+        if (app()->environment(['local', 'testing'])
+            && in_array($originHost, ['localhost', '127.0.0.1'], true)) {
+            return;
+        }
+
+        abort(403, 'A origem não corresponde ao aplicativo solicitado.');
     }
 
     private function ensureAvailable(Application $application): void
@@ -295,7 +327,7 @@ class EcosystemSsoController extends Controller
             $sessionToken,
             self::GLOBAL_SESSION_TTL_MINUTES,
             '/',
-            self::GLOBAL_SESSION_COOKIE_DOMAIN,
+            null,
             true,
             true,
             false,
@@ -305,11 +337,7 @@ class EcosystemSsoController extends Controller
 
     private function forgetGlobalSessionCookie()
     {
-        return Cookie::forget(
-            self::GLOBAL_SESSION_COOKIE,
-            '/',
-            self::GLOBAL_SESSION_COOKIE_DOMAIN
-        );
+        return Cookie::forget(self::GLOBAL_SESSION_COOKIE, '/', null);
     }
 
     private function cacheKey(string $code): string
