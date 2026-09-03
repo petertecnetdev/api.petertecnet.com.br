@@ -37,10 +37,9 @@ class EcosystemGlobalSessionSsoTest extends TestCase
     {
         $source = $this->application('Nexus', 'nexus', 10);
         $destination = $this->application('Cutinapp', 'cutinapp', 20);
-        $this->user->applications()->attach([$source->id, $destination->id], [
-            'status' => 'active',
-            'role' => 'member',
-            'joined_at' => now(),
+        $this->user->applications()->syncWithoutDetaching([
+            $source->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
+            $destination->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
         ]);
 
         $sessionResponse = $this->withHeaders([
@@ -59,7 +58,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $this->assertNull($cookie->getDomain());
         $this->assertSame('lax', strtolower((string) $cookie->getSameSite()));
 
-        $exchange = $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $exchange = $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->withHeaders([
                 'X-Peter-App' => 'cutinapp',
                 'Origin' => 'https://cutinapp.petertecnet.com.br',
@@ -77,10 +76,9 @@ class EcosystemGlobalSessionSsoTest extends TestCase
     {
         $source = $this->application('Nexus', 'nexus', 10);
         $destination = $this->application('Cutinapp', 'cutinapp', 20);
-        $this->user->applications()->attach([$source->id, $destination->id], [
-            'status' => 'active',
-            'role' => 'member',
-            'joined_at' => now(),
+        $this->user->applications()->syncWithoutDetaching([
+            $source->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
+            $destination->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
         ]);
 
         $sessionResponse = $this->withHeaders([
@@ -90,7 +88,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $cookie = $this->globalSessionCookie($sessionResponse->headers->getCookies());
         $this->assertNotNull($cookie);
 
-        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->withHeaders([
                 'X-Peter-App' => 'cutinapp',
                 'Origin' => 'https://nexus.petertecnet.com.br',
@@ -104,10 +102,8 @@ class EcosystemGlobalSessionSsoTest extends TestCase
     public function test_global_session_exchange_rejects_a_different_application_header(): void
     {
         $application = $this->application('Nexus', 'nexus', 10);
-        $this->user->applications()->attach($application->id, [
-            'status' => 'active',
-            'role' => 'member',
-            'joined_at' => now(),
+        $this->user->applications()->syncWithoutDetaching([
+            $application->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
         ]);
 
         $sessionResponse = $this->withHeaders([
@@ -117,7 +113,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $cookie = $this->globalSessionCookie($sessionResponse->headers->getCookies());
         $this->assertNotNull($cookie);
 
-        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->withHeaders([
                 'X-Peter-App' => 'cutinapp',
                 'Origin' => 'https://nexus.petertecnet.com.br',
@@ -131,10 +127,8 @@ class EcosystemGlobalSessionSsoTest extends TestCase
     public function test_global_session_is_invalidated_when_auth_version_changes(): void
     {
         $destination = $this->application('Nexus', 'nexus', 10);
-        $this->user->applications()->attach($destination->id, [
-            'status' => 'active',
-            'role' => 'member',
-            'joined_at' => now(),
+        $this->user->applications()->syncWithoutDetaching([
+            $destination->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
         ]);
 
         $sessionResponse = $this->withHeaders([
@@ -149,7 +143,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
             'auth_version' => (int) ($this->user->auth_version ?? 0) + 1,
         ])->save();
 
-        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->withHeaders([
                 'X-Peter-App' => 'nexus',
                 'Origin' => 'https://nexus.petertecnet.com.br',
@@ -162,10 +156,8 @@ class EcosystemGlobalSessionSsoTest extends TestCase
     public function test_global_logout_revokes_the_shared_session(): void
     {
         $application = $this->application('Nexus', 'nexus', 10);
-        $this->user->applications()->attach($application->id, [
-            'status' => 'active',
-            'role' => 'member',
-            'joined_at' => now(),
+        $this->user->applications()->syncWithoutDetaching([
+            $application->id => ['status' => 'active', 'role' => 'member', 'joined_at' => now()],
         ]);
 
         $sessionResponse = $this->withHeaders([
@@ -176,11 +168,11 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $cookie = $this->globalSessionCookie($sessionResponse->headers->getCookies());
         $this->assertNotNull($cookie);
 
-        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->deleteJson('/api/account/sso/session')
             ->assertNoContent();
 
-        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+        $this->withUnencryptedCookie('peter_ecosystem_session', $cookie->getValue())
             ->withHeaders([
                 'X-Peter-App' => 'nexus',
                 'Origin' => 'https://nexus.petertecnet.com.br',
@@ -203,16 +195,18 @@ class EcosystemGlobalSessionSsoTest extends TestCase
 
     private function application(string $name, string $slug, int $order): Application
     {
-        return Application::create([
-            'name' => $name,
-            'slug' => $slug,
-            'url' => "https://{$slug}.petertecnet.com.br",
-            'logo' => "https://{$slug}.petertecnet.com.br/logo.png",
-            'is_active' => true,
-            'is_visible' => true,
-            'launcher_order' => $order,
-            'operational_status' => 'operational',
-            'ecosystem_sdk_version' => '2.0.0',
-        ]);
+        return Application::query()->updateOrCreate(
+            ['slug' => $slug],
+            [
+                'name' => $name,
+                'url' => "https://{$slug}.petertecnet.com.br",
+                'logo' => "https://{$slug}.petertecnet.com.br/logo.png",
+                'is_active' => true,
+                'is_visible' => true,
+                'launcher_order' => $order,
+                'operational_status' => 'operational',
+                'ecosystem_sdk_version' => '2.0.0',
+            ]
+        );
     }
 }
