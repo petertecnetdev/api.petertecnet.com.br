@@ -18,6 +18,22 @@ return [
 
     'google' => ['client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID'))],
 
+    'search_console' => [
+        'site_url' => env('GOOGLE_SEARCH_CONSOLE_SITE_URL'),
+        'access_token' => env('GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN'),
+        'service_account_json' => env('GOOGLE_SEARCH_CONSOLE_SERVICE_ACCOUNT_JSON'),
+    ],
+
+    'bing_webmaster' => [
+        'site_url' => env('BING_WEBMASTER_SITE_URL'),
+        'stats_url' => env('BING_WEBMASTER_STATS_URL'),
+        'access_token' => env('BING_WEBMASTER_ACCESS_TOKEN'),
+        'api_key' => env('BING_WEBMASTER_API_KEY'),
+        'client_id' => env('BING_WEBMASTER_CLIENT_ID'),
+        'client_secret' => env('BING_WEBMASTER_CLIENT_SECRET'),
+        'refresh_token' => env('BING_WEBMASTER_REFRESH_TOKEN'),
+    ],
+
     'efi' => [
         'base_url' => env('EFI_API_BASE_URL'),
         'client_id' => env('EFI_CLIENT_ID'),
