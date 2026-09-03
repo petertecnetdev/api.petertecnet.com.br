@@ -8,6 +8,7 @@ use App\Http\Requests\Api\V1\UpdateItemRequest;
 use App\Models\Establishment;
 use App\Models\Item;
 use App\Support\ApplicationContext;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -27,15 +28,15 @@ class ItemController extends Controller
 
         $query = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('status', true)
             ->where('entity_name', 'establishment')
             ->whereIn('entity_id', function ($subquery) use ($requiresApproval) {
-                $subquery->select('id')
+                $subquery->select('establishments.id')
                     ->from('establishments')
-                    ->where('app_id', $this->context->id())
                     ->where('is_cancelled', false)
                     ->where('is_published', true);
+
+                $this->scopeEstablishmentsToApplication($subquery);
 
                 if ($requiresApproval) {
                     $subquery->where('is_approved', true);
@@ -76,10 +77,10 @@ class ItemController extends Controller
 
         $items = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
+            ->orderByDesc('is_featured')
             ->orderBy('category')
             ->orderBy('name')
             ->get();
@@ -107,7 +108,6 @@ class ItemController extends Controller
 
         $items = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $owned->id)
             ->latest('id')
@@ -122,7 +122,11 @@ class ItemController extends Controller
     {
         $establishment = $this->ownedEstablishment($request, (int) $request->validated('establishment_id'));
         $data = $request->safe()->except('establishment_id');
-        $data['app_id'] = $this->context->id();
+
+        // Items stay attached to the establishment's source application so the
+        // catalog remains one reusable source of truth when the company is linked
+        // to additional applications.
+        $data['app_id'] = $establishment->app_id ?: $this->context->id();
         $data['entity_name'] = 'establishment';
         $data['entity_id'] = $establishment->id;
         $data['user_id'] = $request->user()->id;
@@ -174,7 +178,7 @@ class ItemController extends Controller
     {
         return Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();
@@ -184,14 +188,13 @@ class ItemController extends Controller
     {
         return Item::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->whereIn('entity_id', function ($query) use ($request) {
-                $query->select('id')
+                $query->select('establishments.id')
                     ->from('establishments')
-                    ->where('app_id', $this->context->id())
                     ->where('user_id', $request->user()->id)
                     ->where('is_cancelled', false);
+                $this->scopeEstablishmentsToApplication($query);
             })
             ->firstOrFail();
     }
@@ -199,7 +202,7 @@ class ItemController extends Controller
     private function publicEstablishment(string $slug): Establishment
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
             ->where('is_published', true);
@@ -209,5 +212,24 @@ class ItemController extends Controller
         }
 
         return $query->firstOrFail();
+    }
+
+    private function scopeEstablishmentsToApplication(QueryBuilder $query): void
+    {
+        $applicationId = $this->context->id();
+
+        $query->where(function ($applicationQuery) use ($applicationId) {
+            $applicationQuery
+                ->where('establishments.app_id', $applicationId)
+                ->orWhereExists(function ($pivot) use ($applicationId) {
+                    $pivot->selectRaw('1')
+                        ->from('application_establishment')
+                        ->whereColumn(
+                            'application_establishment.establishment_id',
+                            'establishments.id'
+                        )
+                        ->where('application_establishment.application_id', $applicationId);
+                });
+        });
     }
 }
