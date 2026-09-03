@@ -10,8 +10,10 @@ use Illuminate\Support\Str;
 
 class OperationalIssueService
 {
-    public function __construct(private readonly OperationalIssueClassifier $classifier)
-    {
+    public function __construct(
+        private readonly OperationalIssueClassifier $classifier,
+        private readonly OperationalIntelligenceService $intelligence,
+    ) {
     }
 
     public function sync(Collection $events): void
@@ -65,6 +67,8 @@ class OperationalIssueService
 
     private function syncEvent(array $event, int $interactionId, string $fingerprint): void
     {
+        $this->intelligence->ensureDeploymentFromIssue($event);
+
         $occurredAt = $event['occurred_at'] ?? now();
         $category = $event['category'] ?? $this->classifier->category($event);
         $domain = $event['domain'] ?? $this->classifier->domain($event);
@@ -131,6 +135,7 @@ class OperationalIssueService
                 'route_name' => $event['route_name'] ?? null,
                 'frontend_page' => $event['frontend_page'] ?? null,
                 'environment' => $event['environment'] ?? null,
+                'technical' => $event['technical'] ?? null,
             ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
         ]);
@@ -242,6 +247,8 @@ class OperationalIssueService
             'frontend_page' => $event['frontend_page'] ?? null,
             'route_name' => $event['route_name'] ?? null,
             'environment' => $event['environment'] ?? null,
+            'technical' => $event['technical'] ?? null,
+            'request_context' => $event['request_context'] ?? null,
         ], fn ($value) => $value !== null && $value !== [] && $value !== '');
     }
 
