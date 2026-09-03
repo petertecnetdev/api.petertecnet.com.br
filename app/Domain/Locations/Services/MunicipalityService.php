@@ -36,7 +36,24 @@ class MunicipalityService
             $query = BrazilianMunicipality::query()->where('normalized_name', $this->normalizedName($legacyCity));
             if ($uf !== '') $query->where('uf', $uf);
             $matches = $query->limit(2)->get();
-            if ($matches->count() === 1) $cityId = (int) $matches->first()->ibge_code;
+
+            if ($matches->count() === 1) {
+                $cityId = (int) $matches->first()->ibge_code;
+            } else {
+                // Older clients only sent city/UF text. During the transition we
+                // preserve that valid human-readable location rather than make
+                // the endpoint unavailable when the municipality catalog is not
+                // populated yet. New clients should still send city_id.
+                if ($uf === '' || strlen($uf) !== 2) {
+                    throw ValidationException::withMessages(['uf' => ['Informe uma UF válida.']]);
+                }
+
+                $data['city_id'] = null;
+                $data['city'] = $legacyCity;
+                $data['uf'] = $uf;
+                $data['state'] = $uf;
+                return;
+            }
         }
 
         if (! $cityId) {
