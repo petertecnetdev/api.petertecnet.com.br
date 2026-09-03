@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Finance\Http\Controllers\FinancialController;
+use App\Domain\Finance\Http\Controllers\PayoutController;
 use Illuminate\Support\Facades\Route;
 
 // Provider callbacks are global integration endpoints. They are intentionally
@@ -15,6 +16,19 @@ Route::prefix('finance/webhooks')->group(function () {
         ->middleware('throttle:120,1')
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });
+
+// Canonical reusable payout lifecycle. The application selects tenant context;
+// payout rules stay in the Finance domain and are reusable by any application.
+Route::prefix('v1/apps/{application}/organizations/{organizationId}/payouts')
+    ->middleware(['api', 'app.context', 'auth:api', 'token.version'])
+    ->whereNumber('organizationId')
+    ->group(function () {
+        Route::get('/', [PayoutController::class, 'summary']);
+        Route::post('/', [PayoutController::class, 'requestPayout'])->middleware('throttle:10,1');
+        Route::post('/{payoutId}/cancel', [PayoutController::class, 'cancel'])
+            ->whereNumber('payoutId')
+            ->middleware('throttle:10,1');
+    });
 
 // Temporary compatibility for already-deployed clients that used the shared
 // finance capability before it moved under /api/v1/apps/{application}.
