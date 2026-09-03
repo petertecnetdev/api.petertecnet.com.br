@@ -57,7 +57,8 @@ class CommandCenterController extends Controller
         $score = 100;
         $score -= min($criticalApps * 12, 36);
         $score -= min(($queues['failed'] ?? 0) * 4, 20);
-        $score -= min(($security['critical_events_24h'] ?? 0) * 3, 18);
+        $score -= min(($security['critical_events_24h'] ?? 0) * 4, 20);
+        $score -= min(($security['suspicious_24h'] ?? 0) * 1, 8);
         $score -= min($incidents->where('severity','critical')->count() * 8, 24);
         if (($runtime['scheduler']['status'] ?? 'unknown') !== 'healthy') $score -= 15;
         $score = max(0, $score);
@@ -251,13 +252,31 @@ class CommandCenterController extends Controller
 
     private function securitySnapshot(bool $detail=false): array
     {
-        if (! Schema::hasTable('interactions')) return ['critical_events_24h'=>0,'denied_24h'=>0,'errors_24h'=>0,'events'=>[]];
+        if (! Schema::hasTable('interactions')) {
+            return [
+                'critical_events_24h'=>0,
+                'suspicious_24h'=>0,
+                'attention_24h'=>0,
+                'denied_24h'=>0,
+                'errors_24h'=>0,
+                'events'=>[],
+            ];
+        }
+
         $columns = Schema::getColumnListing('interactions');
         $base = DB::table('interactions')->where('created_at','>=',now()->subDay());
-        $denied = in_array('outcome',$columns,true) ? (clone $base)->where('outcome','denied')->count() : 0;
+        $denied = in_array('outcome',$columns,true) ? (clone $base)->whereIn('outcome',['denied','refused'])->count() : 0;
         $errors = in_array('outcome',$columns,true) ? (clone $base)->where('outcome','error')->count() : 0;
-        $critical = in_array('severity',$columns,true) ? (clone $base)->whereIn('severity',['suspicious','critical'])->count() : 0;
-        $payload=['critical_events_24h'=>$critical,'denied_24h'=>$denied,'errors_24h'=>$errors];
+        $critical = in_array('severity',$columns,true) ? (clone $base)->where('severity','critical')->count() : 0;
+        $suspicious = in_array('severity',$columns,true) ? (clone $base)->where('severity','suspicious')->count() : 0;
+        $attention = in_array('severity',$columns,true) ? (clone $base)->where('severity','attention')->count() : 0;
+        $payload=[
+            'critical_events_24h'=>$critical,
+            'suspicious_24h'=>$suspicious,
+            'attention_24h'=>$attention,
+            'denied_24h'=>$denied,
+            'errors_24h'=>$errors,
+        ];
         if($detail){
             $query=(clone $base)->orderByDesc('id')->limit(100);
             if(in_array('severity',$columns,true))$query->whereIn('severity',['attention','suspicious','critical']);
