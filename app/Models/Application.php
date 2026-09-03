@@ -20,6 +20,7 @@ class Application extends Model
         'launcher_order',
         'category',
         'is_visible',
+        'is_default',
         'operational_status',
         'maintenance_message',
         'ecosystem_sdk_version',
@@ -32,6 +33,7 @@ class Application extends Model
         'is_active' => 'boolean',
         'self_service_access' => 'boolean',
         'is_visible' => 'boolean',
+        'is_default' => 'boolean',
         'launcher_order' => 'integer',
         'release_date' => 'datetime',
     ];
