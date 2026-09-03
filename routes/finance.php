@@ -15,3 +15,20 @@ Route::prefix('finance/webhooks')->group(function () {
         ->middleware('throttle:120,1')
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });
+
+// Temporary compatibility for already-deployed clients that used the shared
+// finance capability before it moved under /api/v1/apps/{application}.
+// The application is resolved generically from X-Peter-App; no product slug or
+// business rule lives in this adapter.
+Route::prefix('finance/productions/{organizationId}')
+    ->middleware(['api', 'app.bind', 'compatibility.route', 'auth:api', 'token.version'])
+    ->whereNumber('organizationId')
+    ->group(function () {
+        Route::get('/', [FinancialController::class, 'overview']);
+        Route::put('/identity', [FinancialController::class, 'saveIdentity'])->middleware('throttle:10,1');
+        Route::post('/identity/document', [FinancialController::class, 'uploadDocument'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-session', [FinancialController::class, 'startLiveness'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-complete', [FinancialController::class, 'completeLiveness'])->middleware('throttle:10,1');
+        Route::put('/pix', [FinancialController::class, 'savePix'])->middleware('throttle:5,1');
+        Route::post('/payouts', [FinancialController::class, 'requestPayout'])->middleware('throttle:5,1');
+    });
