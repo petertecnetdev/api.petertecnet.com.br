@@ -12,6 +12,7 @@ use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
 use App\Http\Controllers\Api\V1\PlatPaymentController;
 use App\Http\Controllers\Api\V1\SchedulingAvailabilityController;
+use App\Http\Controllers\Api\V1\SchedulingCatalogController;
 use App\Http\Controllers\Api\V1\SchedulingDashboardController;
 use App\Http\Controllers\Api\V1\SchedulingResourceController;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,9 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
+
+        Route::get('/scheduling/catalog/business-categories', [SchedulingCatalogController::class, 'businessCategories']);
+        Route::get('/scheduling/catalog/resource-types', [SchedulingCatalogController::class, 'resourceTypes']);
 
         // Generic commerce capabilities. These routes are intentionally app-agnostic;
         // the {application} context decides which platform owns each request.
