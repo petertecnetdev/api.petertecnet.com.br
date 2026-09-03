@@ -32,6 +32,8 @@ class UpdateItemRequest extends FormRequest
             'discount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'expiration_date' => ['sometimes', 'nullable', 'date'],
             'notes' => ['sometimes', 'nullable', 'string'],
+            'is_featured' => ['sometimes', 'boolean'],
+            'display_order' => ['sometimes', 'integer', 'min:0', 'max:100000'],
         ];
     }
 }
