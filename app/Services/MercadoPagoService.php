@@ -161,6 +161,18 @@ class MercadoPagoService
         return $response->json();
     }
 
+    public function updateReleaseReportConfiguration(string $accessToken, array $payload): array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->put($this->baseUrl . '/v1/account/release_report/config', $payload);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível atualizar a configuração do relatório de liberações do Mercado Pago: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
     public function requestReleaseReport(string $accessToken, string $beginDate, string $endDate): array
     {
         $response = Http::acceptJson()->withToken($accessToken)->timeout(25)
