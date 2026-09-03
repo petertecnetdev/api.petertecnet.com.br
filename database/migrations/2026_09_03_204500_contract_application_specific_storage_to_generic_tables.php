@@ -238,19 +238,14 @@ return new class extends Migration
     private function assertNoApplicationSpecificPhysicalStorage(): void
     {
         $database = $this->databaseName();
-        $prefixes = array_map(
-            static fn (string $prefix) => strtolower($prefix).'\\_%',
+        $regexp = '^('.implode('|', array_map(
+            static fn (string $prefix) => preg_quote(strtolower($prefix), '/'),
             self::PRODUCT_PREFIXES
-        );
+        )).')_';
 
         $tables = DB::table('information_schema.tables')
             ->where('table_schema', $database)
-            ->where(function ($query) use ($prefixes) {
-                foreach ($prefixes as $index => $pattern) {
-                    $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-                    $query->{$method}('LOWER(table_name) LIKE ? ESCAPE \'\\\\\'', [$pattern]);
-                }
-            })
+            ->whereRaw('LOWER(table_name) REGEXP ?', [$regexp])
             ->pluck('table_name')
             ->map(fn ($name) => (string) $name)
             ->values()
@@ -258,12 +253,7 @@ return new class extends Migration
 
         $columns = DB::table('information_schema.columns')
             ->where('table_schema', $database)
-            ->where(function ($query) use ($prefixes) {
-                foreach ($prefixes as $index => $pattern) {
-                    $method = $index === 0 ? 'whereRaw' : 'orWhereRaw';
-                    $query->{$method}('LOWER(column_name) LIKE ? ESCAPE \'\\\\\'', [$pattern]);
-                }
-            })
+            ->whereRaw('LOWER(column_name) REGEXP ?', [$regexp])
             ->get(['table_name', 'column_name'])
             ->map(fn ($row) => $row->table_name.'.'.$row->column_name)
             ->values()
