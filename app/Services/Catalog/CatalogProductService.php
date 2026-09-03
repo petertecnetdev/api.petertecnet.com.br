@@ -27,8 +27,6 @@ class CatalogProductService
             $product = $this->resolveProduct($normalizedName, $brand, $input, $gtin);
             $variant = $this->resolveVariant($product, $input, $gtin, $sku);
 
-            // Item remains the establishment offer/listing for backward compatibility,
-            // while Product/ProductVariant own reusable identity and technical data.
             $item->forceFill([
                 'name' => $canonicalName ?: $item->name,
                 'sku' => $sku ?: $item->sku,
@@ -78,9 +76,9 @@ class CatalogProductService
             return null;
         }
 
-        $alias = ProductAlias::query()->where('normalized_alias', $normalized)->with('product.variants')->first();
-        if ($alias) {
-            return $alias->product->variants->first();
+        $aliasProduct = $this->resolveAliasProduct($normalized, (string) $brand);
+        if ($aliasProduct) {
+            return $aliasProduct->variants()->first();
         }
 
         $key = $this->productKey($normalized, (string) $brand);
@@ -108,9 +106,9 @@ class CatalogProductService
             }
         }
 
-        $alias = ProductAlias::query()->where('normalized_alias', $normalizedName)->with('product')->first();
-        if ($alias) {
-            return $alias->product;
+        $aliasProduct = $this->resolveAliasProduct($normalizedName, $brand);
+        if ($aliasProduct) {
+            return $aliasProduct;
         }
 
         $key = $this->productKey($normalizedName, $brand);
@@ -161,6 +159,28 @@ class CatalogProductService
                 'metadata' => ['provenance' => $input['provenance'] ?? []],
             ]
         );
+    }
+
+    private function resolveAliasProduct(string $normalizedAlias, string $brand = ''): ?Product
+    {
+        $aliases = ProductAlias::query()
+            ->where('normalized_alias', $normalizedAlias)
+            ->with('product')
+            ->get();
+
+        if ($aliases->isEmpty()) {
+            return null;
+        }
+
+        if (filled($brand)) {
+            $normalizedBrand = $this->normalize($brand);
+            $matches = $aliases->filter(fn (ProductAlias $alias) => $this->normalize((string) $alias->product?->brand) === $normalizedBrand);
+            if ($matches->count() === 1) {
+                return $matches->first()->product;
+            }
+        }
+
+        return $aliases->count() === 1 ? $aliases->first()->product : null;
     }
 
     private function normalizeSpecifications(array $specifications): array
