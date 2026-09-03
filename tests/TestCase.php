@@ -6,16 +6,18 @@ use App\Services\ProducerAgreementService;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 abstract class TestCase extends BaseTestCase
 {
     use CreatesApplication;
 
     /**
-     * The HTTP test kernel reuses the same application instance between
-     * requests. JWT guards cache the resolved user, while real PHP-FPM
-     * requests start with a fresh guard. Reset guards before each simulated
-     * request so every Authorization header is authenticated independently.
+     * Laravel's HTTP test kernel reuses the same application instance between
+     * requests, while production PHP-FPM requests resolve authentication from
+     * scratch. Reset both Laravel guards and JWTAuth's cached token before and
+     * after every simulated request so each Authorization header is evaluated
+     * independently.
      *
      * Applications may require a signed producer agreement before event
      * creation. Legacy feature tests predate that requirement, so the shared
@@ -25,13 +27,33 @@ abstract class TestCase extends BaseTestCase
      */
     public function call($method, $uri, $parameters = [], $cookies = [], $files = [], $server = [], $content = null)
     {
+        $this->resetAuthenticationState();
+        $this->provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content);
+
+        try {
+            return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+        } finally {
+            $this->resetAuthenticationState();
+        }
+    }
+
+    protected function tearDown(): void
+    {
+        $this->resetAuthenticationState();
+        parent::tearDown();
+    }
+
+    private function resetAuthenticationState(): void
+    {
         if (isset($this->app) && $this->app->bound('auth')) {
             $this->app['auth']->forgetGuards();
         }
 
-        $this->provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content);
-
-        return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
+        try {
+            JWTAuth::unsetToken();
+        } catch (\Throwable) {
+            // Authentication may not have been bootstrapped for this test yet.
+        }
     }
 
     private function provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content): void
