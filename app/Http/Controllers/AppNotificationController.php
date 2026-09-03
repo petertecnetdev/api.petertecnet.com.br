@@ -13,13 +13,16 @@ class AppNotificationController extends ApiController
     public function index(Request $request)
     {
         $userId = (int) $request->user()->id;
-        $limit = max(1, min(50, (int) $request->query('limit', 20)));
+        $perPage = max(1, min(50, (int) $request->query('per_page', $request->query('limit', 20))));
 
         $query = AppNotification::query()
             ->where('app_id', $this->context->id())
             ->where('user_id', $userId);
 
-        $notifications = (clone $query)->latest('id')->limit($limit)->get();
+        $notifications = (clone $query)
+            ->latest('id')
+            ->paginate($perPage)
+            ->appends($request->query());
         $unreadCount = (clone $query)->whereNull('read_at')->count();
 
         return response()->json([
