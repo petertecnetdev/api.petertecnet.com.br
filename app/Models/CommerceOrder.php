@@ -27,4 +27,5 @@ class CommerceOrder extends Model
     public function user(){return $this->belongsTo(User::class);}
     public function items(){return $this->hasMany(CommerceOrderItem::class,'order_id');}
     public function payments(){return $this->hasMany(CommercePayment::class,'order_id');}
+    public function refunds(){return $this->hasMany(CommerceRefund::class,'order_id');}
 }
