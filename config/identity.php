@@ -3,8 +3,25 @@
 return [
     'access_token_ttl_minutes' => (int) env('IDENTITY_ACCESS_TOKEN_TTL_MINUTES', 30),
 
+    'features' => [
+        'password' => filter_var(env('IDENTITY_FEATURE_PASSWORD', true), FILTER_VALIDATE_BOOL),
+        'google' => filter_var(env('IDENTITY_FEATURE_GOOGLE', true), FILTER_VALIDATE_BOOL),
+        'magic_link' => filter_var(env('IDENTITY_FEATURE_MAGIC_LINK', true), FILTER_VALIDATE_BOOL),
+        'passkeys' => filter_var(env('IDENTITY_FEATURE_PASSKEYS', true), FILTER_VALIDATE_BOOL),
+        'totp' => filter_var(env('IDENTITY_FEATURE_TOTP', true), FILTER_VALIDATE_BOOL),
+        'trusted_devices' => filter_var(env('IDENTITY_FEATURE_TRUSTED_DEVICES', true), FILTER_VALIDATE_BOOL),
+        'phone' => filter_var(env('IDENTITY_FEATURE_PHONE', true), FILTER_VALIDATE_BOOL),
+        'step_up' => filter_var(env('IDENTITY_FEATURE_STEP_UP', true), FILTER_VALIDATE_BOOL),
+        'global_sso' => filter_var(env('IDENTITY_FEATURE_GLOBAL_SSO', true), FILTER_VALIDATE_BOOL),
+        'duplicate_merge' => filter_var(env('IDENTITY_FEATURE_DUPLICATE_MERGE', true), FILTER_VALIDATE_BOOL),
+        'security_alerts' => filter_var(env('IDENTITY_FEATURE_SECURITY_ALERTS', true), FILTER_VALIDATE_BOOL),
+    ],
+
     'session' => [
         'ttl_minutes' => (int) env('IDENTITY_SESSION_TTL_MINUTES', 43200),
+        'absolute_ttl_minutes' => (int) env('IDENTITY_SESSION_ABSOLUTE_TTL_MINUTES', 43200),
+        'idle_ttl_minutes' => (int) env('IDENTITY_SESSION_IDLE_TTL_MINUTES', 10080),
+        'admin_idle_ttl_minutes' => (int) env('IDENTITY_ADMIN_IDLE_TTL_MINUTES', 120),
         'touch_interval_minutes' => (int) env('IDENTITY_SESSION_TOUCH_INTERVAL_MINUTES', 5),
     ],
 
@@ -13,10 +30,32 @@ return [
         'session_cookie' => env('IDENTITY_SESSION_COOKIE', 'peter_ecosystem_session'),
         'refresh_cookie' => env('IDENTITY_REFRESH_COOKIE', 'peter_ecosystem_refresh'),
         'session_ttl_minutes' => (int) env('IDENTITY_GLOBAL_SESSION_TTL_MINUTES', 10080),
+        'absolute_ttl_minutes' => (int) env('IDENTITY_GLOBAL_ABSOLUTE_TTL_MINUTES', 43200),
+        'idle_ttl_minutes' => (int) env('IDENTITY_GLOBAL_IDLE_TTL_MINUTES', 10080),
         'refresh_ttl_minutes' => (int) env('IDENTITY_REFRESH_TTL_MINUTES', 43200),
         'refresh_grace_seconds' => (int) env('IDENTITY_REFRESH_GRACE_SECONDS', 30),
+        'refresh_reuse_history' => (int) env('IDENTITY_REFRESH_REUSE_HISTORY', 8),
         'csrf_ttl_seconds' => (int) env('IDENTITY_CSRF_TTL_SECONDS', 300),
         'require_https_origin' => filter_var(env('IDENTITY_REQUIRE_HTTPS_ORIGIN', true), FILTER_VALIDATE_BOOL),
+    ],
+
+    'step_up' => [
+        'ttl_seconds' => (int) env('IDENTITY_STEP_UP_TTL_SECONDS', 600),
+        'high_risk_score' => (int) env('IDENTITY_HIGH_RISK_SCORE', 55),
+        'critical_risk_score' => (int) env('IDENTITY_CRITICAL_RISK_SCORE', 80),
+    ],
+
+    'trusted_devices' => [
+        'cookie' => env('IDENTITY_TRUSTED_DEVICE_COOKIE', 'peter_trusted_device'),
+        'ttl_days' => (int) env('IDENTITY_TRUSTED_DEVICE_TTL_DAYS', 90),
+    ],
+
+    'contacts' => [
+        'verification_ttl_minutes' => (int) env('IDENTITY_CONTACT_VERIFICATION_TTL_MINUTES', 10),
+    ],
+
+    'security_alerts' => [
+        'token_ttl_minutes' => (int) env('IDENTITY_SECURITY_ALERT_TTL_MINUTES', 1440),
     ],
 
     'magic_link' => [
