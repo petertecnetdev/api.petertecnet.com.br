@@ -41,6 +41,11 @@ return [
             'revoke_device',
             'identity_rollout',
             'change_password',
+            'financial_operation',
+            'admin_user_manage',
+            'admin_access_change',
+            'admin_profile_change',
+            'ecosystem_settings',
         ],
     ],
 
