@@ -12,57 +12,24 @@ class RouteServiceProvider extends ServiceProvider
 {
     public const HOME = '/home';
 
-    public function boot()
+    public function boot(): void
     {
         $this->configureRateLimiting();
 
         $this->routes(function () {
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/account.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/api_v1.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/rasoio.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/ecosystem.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/catalog.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/payflow.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp_history.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/laora.php'));
-
-            Route::middleware('web')
-                ->group(base_path('routes/web.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/api.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/account.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/api_v1.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/catalog.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/compatibility.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/finance.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/ecosystem.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/application_directory.php'));
+            Route::middleware('web')->group(base_path('routes/web.php'));
         });
     }
 
-    protected function configureRateLimiting()
+    protected function configureRateLimiting(): void
     {
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
