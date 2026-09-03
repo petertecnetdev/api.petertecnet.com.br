@@ -1,13 +1,19 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
 use App\Http\Controllers\Api\V1\PlatPaymentController;
+use App\Http\Controllers\Api\V1\SchedulingAvailabilityController;
+use App\Http\Controllers\Api\V1\SchedulingCatalogController;
+use App\Http\Controllers\Api\V1\SchedulingDashboardController;
+use App\Http\Controllers\Api\V1\SchedulingResourceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -17,6 +23,11 @@ Route::prefix('v1/apps/{application}')
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
         Route::get('/items', [ItemController::class, 'index']);
+
+        // Shared appointment taxonomy for any Peter Tecnet application.
+        Route::get('/scheduling/catalog/business-categories', [SchedulingCatalogController::class, 'businessCategories']);
+        Route::get('/scheduling/catalog/resource-types', [SchedulingCatalogController::class, 'resourceTypes']);
+
         Route::get('/establishments/{slug}/ordering', [PlatOrderController::class, 'ordering']);
         Route::post('/payments/mercadopago/webhook', [PlatOrderController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
 
@@ -41,6 +52,37 @@ Route::prefix('v1/apps/{application}')
             Route::put('/employers/{employer}/items', [EmployerController::class, 'syncItems']);
             Route::get('/employers/{employer}/metrics', [EmployerController::class, 'metrics']);
 
+            // Generic scheduling capabilities. The {application} context provides
+            // tenant/application isolation; no scheduling rule is coupled to Rasoio.
+            Route::get('/scheduling/establishments/{establishment}/resources', [SchedulingResourceController::class, 'index'])
+                ->whereNumber('establishment');
+            Route::post('/scheduling/resources', [SchedulingResourceController::class, 'store']);
+            Route::patch('/scheduling/resources/{resource}', [SchedulingResourceController::class, 'update'])->whereNumber('resource');
+            Route::delete('/scheduling/resources/{resource}', [SchedulingResourceController::class, 'destroy'])->whereNumber('resource');
+            Route::get('/scheduling/resources/{resource}/schedules', [SchedulingResourceController::class, 'schedules'])->whereNumber('resource');
+            Route::put('/scheduling/resources/{resource}/schedules', [SchedulingResourceController::class, 'syncSchedules'])->whereNumber('resource');
+
+            Route::get('/scheduling/availability/times', [SchedulingAvailabilityController::class, 'times']);
+            Route::get('/scheduling/availability/dates', [SchedulingAvailabilityController::class, 'dates']);
+
+            Route::post('/scheduling/appointments', [AppointmentController::class, 'store'])->middleware('throttle:30,1');
+            Route::get('/scheduling/appointments/mine', [AppointmentController::class, 'mine']);
+            Route::get('/scheduling/appointments/provider', [AppointmentController::class, 'provider']);
+            Route::get('/scheduling/establishments/{establishment}/appointments', [AppointmentController::class, 'establishment'])
+                ->whereNumber('establishment');
+            Route::get('/scheduling/appointments/{appointment}', [AppointmentController::class, 'show'])->whereNumber('appointment');
+            Route::patch('/scheduling/appointments/{appointment}/transition', [AppointmentController::class, 'transition'])->whereNumber('appointment');
+            Route::patch('/scheduling/appointments/{appointment}/assignment', [AppointmentController::class, 'assign'])->whereNumber('appointment');
+            Route::get('/scheduling/establishments/{establishment}/dashboard', [SchedulingDashboardController::class, 'overview'])
+                ->whereNumber('establishment');
+
+            Route::get('/notifications', [NotificationController::class, 'index']);
+            Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+            Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+            Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereNumber('notification');
+
+            // Existing platform-specific ordering routes remain temporarily for
+            // backwards compatibility and are outside the scheduling domain.
             Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
             Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
