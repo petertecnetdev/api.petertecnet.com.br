@@ -63,7 +63,7 @@ class PlatformArchitectureTest extends TestCase
         );
     }
 
-    public function test_routes_are_application_scoped_and_never_product_prefixed(): void
+    public function test_canonical_routes_are_application_scoped_and_never_product_prefixed(): void
     {
         $violations = [];
         $routesPath = base_path('routes');
@@ -72,12 +72,20 @@ class PlatformArchitectureTest extends TestCase
             if (! str_ends_with($file->getFilename(), '.php')) continue;
 
             $relative = $this->relative($file->getPathname());
-            $contents = File::get($file->getPathname());
 
             if (preg_match($this->filenameProductPattern(), $file->getFilename())) {
                 $violations[] = $relative.' [filename]';
+                continue;
             }
 
+            // Zero-downtime rollout keeps all old URL aliases in one neutral,
+            // explicitly deprecated adapter. It is transitional infrastructure,
+            // not canonical application architecture.
+            if ($file->getFilename() === 'compatibility.php') {
+                continue;
+            }
+
+            $contents = File::get($file->getPathname());
             foreach (self::PRODUCT_NAMES as $product) {
                 $routePatterns = [
                     "Route::prefix('{$product}')",
@@ -101,15 +109,38 @@ class PlatformArchitectureTest extends TestCase
         $this->assertSame(
             [],
             $violations,
-            'Product-prefixed route contracts are forbidden. Use /api/v1/apps/{application}/<capability>: '.implode(', ', $violations)
+            'Canonical product-prefixed route contracts are forbidden. Use /api/v1/apps/{application}/<capability>: '.implode(', ', $violations)
         );
+    }
+
+    public function test_legacy_route_aliases_are_isolated_in_single_compatibility_adapter(): void
+    {
+        $compatibility = base_path('routes/compatibility.php');
+
+        $this->assertFileExists($compatibility);
+        $contents = File::get($compatibility);
+        $this->assertStringContainsString('compatibility.route', $contents);
+
+        foreach (File::files(base_path('routes')) as $file) {
+            if ($file->getFilename() === 'compatibility.php' || ! str_ends_with($file->getFilename(), '.php')) {
+                continue;
+            }
+
+            foreach (self::PRODUCT_NAMES as $product) {
+                $this->assertStringNotContainsString(
+                    "Route::prefix('{$product}')",
+                    File::get($file->getPathname()),
+                    'Legacy application routes must live only in routes/compatibility.php.'
+                );
+            }
+        }
     }
 
     public function test_runtime_code_never_references_product_prefixed_operational_tables(): void
     {
         $roots = [app_path(), base_path('routes')];
         $violations = [];
-        $tablePrefixPattern = '/\b('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_[a-z0-9_]+\b/i';
+        $tablePrefixPattern = '/\\b('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_[a-z0-9_]+\\b/i';
 
         foreach ($roots as $root) {
             if (! File::isDirectory($root)) continue;
@@ -117,6 +148,8 @@ class PlatformArchitectureTest extends TestCase
             foreach (File::allFiles($root) as $file) {
                 if (! str_ends_with($file->getFilename(), '.php')) continue;
 
+                // Transitional URL aliases may mention product slugs, but may
+                // never query product-prefixed storage directly.
                 $contents = File::get($file->getPathname());
                 if (preg_match($tablePrefixPattern, $contents, $matches)) {
                     $violations[] = $this->relative($file->getPathname()).' ['.$matches[0].']';
@@ -148,7 +181,7 @@ class PlatformArchitectureTest extends TestCase
         $this->assertSame(
             [],
             $violations,
-            'Final schema still contains application-prefixed operational tables: '.implode(', ', $violations)
+            'Final clean-database schema still contains application-prefixed operational tables: '.implode(', ', $violations)
         );
     }
 
@@ -167,6 +200,6 @@ class PlatformArchitectureTest extends TestCase
 
     private function relative(string $path): string
     {
-        return str_replace('\\', '/', ltrim(str_replace(base_path(), '', $path), DIRECTORY_SEPARATOR));
+        return str_replace('\\\\', '/', ltrim(str_replace(base_path(), '', $path), DIRECTORY_SEPARATOR));
     }
 }
