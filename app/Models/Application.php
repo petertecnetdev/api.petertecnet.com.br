@@ -15,6 +15,11 @@ class Application extends Model
         'slug',
         'url',
         'logo',
+        'branding',
+        'branding_draft',
+        'branding_version',
+        'branding_updated_at',
+        'branding_published_at',
         'is_active',
         'self_service_access',
         'launcher_order',
@@ -30,6 +35,11 @@ class Application extends Model
     ];
 
     protected $casts = [
+        'branding' => 'array',
+        'branding_draft' => 'array',
+        'branding_version' => 'integer',
+        'branding_updated_at' => 'datetime',
+        'branding_published_at' => 'datetime',
         'is_active' => 'boolean',
         'self_service_access' => 'boolean',
         'is_visible' => 'boolean',
@@ -73,5 +83,10 @@ class Application extends Model
         return $this->belongsToMany(User::class, 'application_user')
             ->withPivot(['role', 'status', 'metadata', 'joined_at'])
             ->withTimestamps();
+    }
+
+    public function brandingRevisions()
+    {
+        return $this->hasMany(ApplicationBrandingRevision::class);
     }
 }
