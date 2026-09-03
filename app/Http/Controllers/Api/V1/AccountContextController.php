@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employer;
+use App\Models\Establishment;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,19 +20,22 @@ class AccountContextController extends Controller
         $user = $request->user();
         $user->load('profile');
 
-        $establishments = $user->establishments()
-            ->where('app_id', $this->context->id())
+        // Application membership is a relationship, not a numeric app_id equality.
+        // This keeps one establishment reusable across multiple applications.
+        $establishments = Establishment::query()
+            ->forApplication($this->context->id())
+            ->where('user_id', $user->id)
             ->where('is_cancelled', false)
+            ->latest('id')
             ->get();
         $establishments->each->setAppends([]);
 
         $employments = Employer::query()
-            ->with(['establishment' => fn ($query) => $query->where('app_id', $this->context->id())])
+            ->with('establishment')
             ->where('user_id', $user->id)
-            ->whereIn('establishment_id', function ($query) {
-                $query->select('id')
-                    ->from('establishments')
-                    ->where('app_id', $this->context->id())
+            ->whereHas('establishment', function ($query) {
+                $query
+                    ->forApplication($this->context->id())
                     ->where('is_cancelled', false);
             })
             ->get();
