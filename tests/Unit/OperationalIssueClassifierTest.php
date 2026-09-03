@@ -36,6 +36,7 @@ class OperationalIssueClassifierTest extends TestCase
         $this->assertSame('payments', $classifier->domain(['route' => '/api/payments/pix']));
         $this->assertSame('scheduling', $classifier->domain(['route_name' => 'appointments.reserve']));
         $this->assertSame('identity', $classifier->domain(['path' => '/auth/login']));
+        $this->assertSame('fulfillment', $classifier->domain(['route' => '/api/fulfillment/pickup/redeem']));
     }
 
     public function test_critical_payment_server_failure_receives_higher_priority(): void
