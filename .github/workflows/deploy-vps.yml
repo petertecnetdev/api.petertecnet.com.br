@@ -1,5 +1,6 @@
 name: Deploy VPS
 
+# Deployment workflow for the central Peter Tecnet API.
 on:
   push:
     branches:
