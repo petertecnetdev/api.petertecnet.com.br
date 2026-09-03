@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
+use App\Http\Controllers\Admin\OperationalRealtimeController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -24,6 +25,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
 
     Route::prefix('command')->group(function () {
         Route::get('/overview', [CommandCenterController::class, 'overview']);
+        Route::get('/realtime-config', OperationalRealtimeController::class);
         Route::get('/search', [CommandCenterController::class, 'globalSearch']);
         Route::get('/security', [CommandCenterController::class, 'security']);
         Route::get('/queues', [CommandCenterController::class, 'queues']);
