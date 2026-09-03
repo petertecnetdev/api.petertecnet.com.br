@@ -74,8 +74,10 @@ return new class extends Migration
 
         Schema::table('identity_global_sessions', function (Blueprint $table) {
             $table->foreignId('trusted_device_id')->nullable()->after('user_id')->constrained('identity_trusted_devices')->nullOnDelete();
-            $table->json('risk_reasons')->nullable()->after('risk_score');
             $table->string('country_code', 8)->nullable()->after('ip_address');
+            $table->string('accept_language', 180)->nullable()->after('user_agent');
+            $table->unsignedSmallInteger('risk_score')->default(0)->after('accept_language')->index();
+            $table->json('risk_reasons')->nullable()->after('risk_score');
             $table->timestamp('idle_expires_at')->nullable()->after('last_seen_at')->index();
             $table->timestamp('absolute_expires_at')->nullable()->after('expires_at')->index();
         });
@@ -94,7 +96,7 @@ return new class extends Migration
         });
         Schema::table('identity_global_sessions', function (Blueprint $table) {
             $table->dropConstrainedForeignId('trusted_device_id');
-            $table->dropColumn(['risk_reasons', 'country_code', 'idle_expires_at', 'absolute_expires_at']);
+            $table->dropColumn(['country_code', 'accept_language', 'risk_score', 'risk_reasons', 'idle_expires_at', 'absolute_expires_at']);
         });
         Schema::table('identity_sessions', function (Blueprint $table) {
             $table->dropConstrainedForeignId('trusted_device_id');
