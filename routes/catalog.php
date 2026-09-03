@@ -22,6 +22,14 @@ Route::prefix('v1/apps/{application}/directory')
             ->where('identifier', '[A-Za-z0-9\-]+')
             ->middleware('throttle:120,1')
             ->name('v1.directory.share.catalog');
+        Route::get('/share/establishment/{identifier}', [CatalogShareController::class, 'establishment'])
+            ->where('identifier', '[A-Za-z0-9\-]+')
+            ->middleware('throttle:120,1')
+            ->name('v1.directory.share.establishment');
+        Route::get('/share/item/{identifier}', [CatalogShareController::class, 'item'])
+            ->where('identifier', '[A-Za-z0-9\-]+')
+            ->middleware('throttle:120,1')
+            ->name('v1.directory.share.item');
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/companies', [CatalogDirectoryController::class, 'companies'])
