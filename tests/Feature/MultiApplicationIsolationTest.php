@@ -131,9 +131,8 @@ class MultiApplicationIsolationTest extends TestCase
 
     private function application(string $name, string $slug): Application
     {
-        return Application::create([
+        return $this->applicationFixture($slug, [
             'name' => $name,
-            'slug' => $slug,
             'is_active' => true,
         ]);
     }
