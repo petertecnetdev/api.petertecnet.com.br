@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use LogicException;
@@ -29,6 +30,30 @@ class ProviderStatementEntry extends Model
     public function report(): BelongsTo
     {
         return $this->belongsTo(ProviderStatementReport::class, 'report_id');
+    }
+
+    public function setOccurredAtAttribute(mixed $value): void
+    {
+        if ($value === null || $value === '') {
+            $this->attributes['occurred_at'] = null;
+            return;
+        }
+
+        $this->attributes['occurred_at'] = CarbonImmutable::parse($value)
+            ->setTimezone((string) config('app.timezone', 'UTC'))
+            ->format('Y-m-d H:i:s');
+    }
+
+    public function setRawAttribute(mixed $value): void
+    {
+        $data = is_array($value) ? $value : (json_decode((string) $value, true) ?: []);
+        $description = strtolower((string) ($this->attributes['description'] ?? ''));
+
+        if ($description !== 'payment' && ! array_key_exists('_matched_payment_id', $data)) {
+            $data['_matched_payment_id'] = 'not_applicable';
+        }
+
+        $this->attributes['raw'] = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
 
     protected static function booted(): void
