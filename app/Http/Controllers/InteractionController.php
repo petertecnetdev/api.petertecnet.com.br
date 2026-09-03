@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Events\EcosystemUpdated;
+use App\Models\Establishment;
 use App\Models\Interaction;
+use App\Models\Item;
 use App\Services\ApplicationContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +17,8 @@ class InteractionController extends Controller
     private const TYPES = [
         'session_start', 'session_end', 'navigation', 'click', 'form_submit',
         'field_change', 'search', 'filter', 'scroll', 'frontend_error',
+        'api_request', 'api_error', 'company_profile_view', 'catalog_open',
+        'contact_click', 'share', 'external_link_click', 'qr_action', 'item_open',
     ];
 
     private const SENSITIVE = [
@@ -57,13 +61,17 @@ class InteractionController extends Controller
         foreach ($data['events'] as $event) {
             if ($existingIds->has($event['id'])) continue;
             $metadata = $this->sanitize($event['metadata'] ?? []);
+            [$entityType, $entityId] = $this->entityContext($metadata, (int) $application->id);
             $type = $event['type'];
+
             Interaction::withoutEvents(fn () => Interaction::create([
                 'user_id' => $user?->id,
-                'app_id' => $application?->id,
+                'app_id' => $application->id,
+                'entity_type' => $entityType,
+                'entity_id' => $entityId,
                 'interaction_type' => 'frontend_'.$type,
-                'outcome' => $type === 'frontend_error' ? 'error' : 'success',
-                'severity' => $type === 'frontend_error' ? 'attention' : 'normal',
+                'outcome' => in_array($type, ['frontend_error', 'api_error'], true) ? 'error' : 'success',
+                'severity' => in_array($type, ['frontend_error', 'api_error'], true) ? 'attention' : 'normal',
                 'environment' => app()->environment(),
                 'request_id' => $event['id'],
                 'correlation_id' => $data['session_id'],
@@ -79,7 +87,7 @@ class InteractionController extends Controller
                     'label' => $event['label'] ?? null,
                     'client_timestamp' => $event['timestamp'],
                     'metadata' => $metadata,
-                    'status' => $type === 'frontend_error' ? null : 200,
+                    'status' => in_array($type, ['frontend_error', 'api_error'], true) ? null : 200,
                     'origin' => $request->header('Origin'),
                     'referer' => $request->header('Referer'),
                     'app_slug' => $application->slug,
@@ -104,6 +112,35 @@ class InteractionController extends Controller
         ], 202);
     }
 
+    private function entityContext(array $metadata, int $appId): array
+    {
+        $type = strtolower(trim((string) ($metadata['entity_type'] ?? '')));
+        $id = filter_var($metadata['entity_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+        if (! $id) return [null, null];
+
+        if ($type === 'establishment') {
+            $exists = Establishment::query()->forApplication($appId)->whereKey($id)->where('is_cancelled', false)->exists();
+            return $exists ? ['Establishment', $id] : [null, null];
+        }
+
+        if ($type === 'item') {
+            $exists = Item::query()
+                ->whereKey($id)
+                ->where('entity_name', 'establishment')
+                ->whereIn('entity_id', fn ($query) => $query->select('id')->from('establishments')->where(function ($scope) use ($appId) {
+                    $scope->where('app_id', $appId)->orWhereExists(function ($pivot) use ($appId) {
+                        $pivot->selectRaw('1')->from('application_establishment')
+                            ->whereColumn('application_establishment.establishment_id', 'establishments.id')
+                            ->where('application_establishment.application_id', $appId);
+                    });
+                }))
+                ->exists();
+            return $exists ? ['Item', $id] : [null, null];
+        }
+
+        return [null, null];
+    }
+
     private function description(string $type, array $event): string
     {
         $label = trim((string) ($event['label'] ?? ''));
@@ -119,6 +156,15 @@ class InteractionController extends Controller
             'filter' => 'Aplicou um filtro',
             'scroll' => 'Visualizou '.($label ?: 'parte da página'),
             'frontend_error' => 'Encontrou um erro na interface',
+            'api_request' => 'Realizou uma requisição de API',
+            'api_error' => 'Recebeu um erro de API',
+            'company_profile_view' => 'Visualizou o perfil público de uma empresa',
+            'catalog_open' => 'Abriu o catálogo de uma empresa',
+            'contact_click' => 'Iniciou contato com uma empresa',
+            'share' => 'Compartilhou conteúdo',
+            'external_link_click' => 'Abriu um link externo',
+            'qr_action' => 'Interagiu com um QR Code',
+            'item_open' => 'Abriu um item do catálogo',
             default => ucfirst(str_replace('_', ' ', $type)),
         };
     }
