@@ -30,7 +30,8 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
 
     Route::middleware(['auth:api', 'token.version'])->group(function () {
         Route::post('/logout', [IdentityAuthenticationController::class, 'logout'])->name('logout');
-        Route::post('/refresh', [IdentityAuthenticationController::class, 'refresh'])->name('refresh');
+        Route::post('/refresh', [IdentityAuthenticationController::class, 'refresh'])
+            ->middleware('identity.access-ttl')->name('refresh');
         Route::post('/password/change', [IdentityPasswordController::class, 'change'])
             ->middleware('identity.step-up:change_password')->name('password.change');
         Route::post('/sso/session', [IdentityGlobalSsoController::class, 'establish'])->middleware('throttle:60,1')->name('sso.establish');
