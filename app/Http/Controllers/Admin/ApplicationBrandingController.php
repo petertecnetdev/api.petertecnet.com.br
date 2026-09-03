@@ -60,7 +60,8 @@ class ApplicationBrandingController extends Controller
             Str::uuid() . '.' . $extension,
             'public'
         );
-        $url = Storage::disk('public')->url($path);
+        $storedUrl = Storage::disk('public')->url($path);
+        $url = Str::startsWith($storedUrl, ['http://', 'https://']) ? $storedUrl : url($storedUrl);
         $draft = $application->branding_draft ?? $application->branding ?? [];
         $draft[$data['asset']] = $url;
 
