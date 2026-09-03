@@ -102,11 +102,18 @@ class IdentityGlobalSsoController extends Controller
         }
 
         $this->globalSessions->touch($session, $request, $application);
+        $session->loadMissing('device');
+        if ($session->device) {
+            // The global browser session is the canonical device identity across subdomains.
+            // This prevents the same physical browser from appearing as a new device in every app.
+            $request->attributes->set('identity_device', $session->device);
+        }
         $issued = $this->sessions->issue($session->user, $request, 'global_sso', $application);
         $this->audit->record('global_sso_exchanged', $session->user, $request, $application, [
             'global_session_id' => $session->session_id,
             'application_session_id' => $issued['session']['id'],
             'refresh_rotated' => (bool) $rotation['rotated'],
+            'device_id' => $session->device?->device_id,
         ]);
 
         $response = response()->json([
