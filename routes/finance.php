@@ -1,11 +1,9 @@
 <?php
 
 use App\Domain\Finance\Http\Controllers\FinancialController;
+use App\Domain\Finance\Http\Controllers\PayoutController;
 use Illuminate\Support\Facades\Route;
 
-// Provider callbacks are global integration endpoints. They are intentionally
-// not tied to an application slug; application/tenant ownership is resolved
-// from the persisted financial operation itself.
 Route::prefix('finance/webhooks')->group(function () {
     Route::post('/asaas', [FinancialController::class, 'providerWebhook'])
         ->middleware('throttle:240,1')
@@ -16,13 +14,20 @@ Route::prefix('finance/webhooks')->group(function () {
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });
 
-// Temporary compatibility for already-deployed clients that used the shared
-// finance capability before it moved under /api/v1/apps/{application}.
-// The application is resolved generically from X-Peter-App; no product slug or
-// business rule lives in this adapter.
+Route::prefix('v1/apps/{application}/organizations/{organizationId}/payouts')
+    ->middleware(['app.context', 'app.capability:payouts', 'auth:api', 'token.version'])
+    ->where(['organizationId' => '[0-9]+'])
+    ->group(function () {
+        Route::get('/', [PayoutController::class, 'summary']);
+        Route::post('/', [PayoutController::class, 'requestPayout'])->middleware('throttle:10,1');
+        Route::post('/{payoutId}/cancel', [PayoutController::class, 'cancel'])
+            ->whereNumber('payoutId')
+            ->middleware('throttle:10,1');
+    });
+
 Route::prefix('finance/productions/{organizationId}')
     ->middleware(['api', 'app.bind', 'compatibility.route', 'auth:api', 'token.version'])
-    ->whereNumber('organizationId')
+    ->where(['organizationId' => '[0-9]+'])
     ->group(function () {
         Route::get('/', [FinancialController::class, 'overview']);
         Route::put('/identity', [FinancialController::class, 'saveIdentity'])->middleware('throttle:10,1');

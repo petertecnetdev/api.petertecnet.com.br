@@ -2,24 +2,29 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Application;
 use App\Support\ApplicationContext;
+use App\Support\ApplicationResolver;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 final class BindApplicationContext
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ApplicationResolver $resolver,
+    ) {
+    }
 
-    public function handle(Request $request, Closure $next, ?string $applicationSlug = null): Response
+    public function handle(Request $request, Closure $next, ?string $applicationIdentifier = null): Response
     {
-        $candidate = $applicationSlug
+        $candidate = $applicationIdentifier
             ?: $request->route('application')
-            ?: $request->header('X-Peter-App');
-        $slug = mb_strtolower(trim((string) $candidate));
+            ?: $request->header('X-Peter-App')
+            ?: $request->header('X-App-Slug')
+            ?: $request->header('X-Application-Slug');
 
-        if ($slug === '') {
+        if (trim((string) $candidate) === '') {
             return response()->json([
                 'success' => false,
                 'message' => 'Informe o contexto da aplicação.',
@@ -29,11 +34,7 @@ final class BindApplicationContext
             ], 400);
         }
 
-        $application = Application::query()
-            ->whereRaw('LOWER(slug) = ?', [$slug])
-            ->where('is_active', true)
-            ->first();
-
+        $application = $this->resolver->fromIdentifier($candidate);
         if (! $application) {
             return response()->json([
                 'success' => false,
@@ -46,11 +47,16 @@ final class BindApplicationContext
 
         $this->context->set($application);
         $request->attributes->set('peter.application_slug', (string) $application->slug);
+        $request->attributes->set('application_slug', (string) $application->slug);
         $request->attributes->set('application', $application);
         $request->attributes->set('app_id', (int) $application->id);
 
         try {
-            return $next($request);
+            $response = $next($request);
+            $response->headers->set('X-Peter-Application', (string) $application->slug);
+            $response->headers->set('X-Peter-Application-Id', (string) $application->id);
+
+            return $response;
         } finally {
             $this->context->clear();
         }
