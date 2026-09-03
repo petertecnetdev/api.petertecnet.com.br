@@ -43,14 +43,25 @@ class ApplicationContext
         return (string) $this->application()->slug;
     }
 
+    /** @return list<string> */
+    public function capabilities(): array
+    {
+        $configured = (array) config('platform.applications.'.$this->slug().'.capabilities', []);
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($capability) => trim((string) $capability),
+            $configured,
+        ))));
+    }
+
     public function supports(string $capability): bool
     {
-        return in_array($capability, (array) config('platform.applications.' . $this->slug() . '.capabilities', []), true);
+        return in_array(trim($capability), $this->capabilities(), true);
     }
 
     public function option(string $path, mixed $default = null): mixed
     {
-        return config('platform.applications.' . $this->slug() . '.' . $path, $default);
+        return config('platform.applications.'.$this->slug().'.'.$path, $default);
     }
 
     public function requireCapability(string $capability): void
