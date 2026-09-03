@@ -69,7 +69,7 @@ class PublicResourceController extends Controller
             return $this->sandbox->items($request);
         }
 
-        $query = Item::query()->with('files')->active();
+        $query = $this->publicItemsQuery();
 
         $this->applySearch($query, $request, ['name', 'description', 'category', 'subcategory', 'brand']);
 
@@ -80,8 +80,7 @@ class PublicResourceController extends Controller
         }
 
         if ($request->filled('establishment_id')) {
-            $query->where('entity_name', 'establishment')
-                ->where('entity_id', (int) $request->input('establishment_id'));
+            $query->where('entity_id', (int) $request->input('establishment_id'));
         }
 
         $this->applySort($query, $request, ['name', 'price', 'created_at'], '-created_at');
@@ -97,13 +96,26 @@ class PublicResourceController extends Controller
             return $this->sandbox->item($request, $slug);
         }
 
-        $item = Item::query()->with('files')->active()->where('slug', $slug)->first();
+        $item = $this->publicItemsQuery()->where('slug', $slug)->first();
 
         if (!$item) {
             return ApiResponse::error($request, 'resource_not_found', 'Item não encontrado.', 404);
         }
 
         return ApiResponse::data($this->serializeItem($item));
+    }
+
+    private function publicItemsQuery(): Builder
+    {
+        return Item::query()
+            ->with('files')
+            ->active()
+            ->where('entity_name', 'establishment')
+            ->whereHas('establishment', function (Builder $query) {
+                $query->where('is_published', true)
+                    ->where('is_approved', true)
+                    ->where('is_cancelled', false);
+            });
     }
 
     private function isSandbox(Request $request): bool
