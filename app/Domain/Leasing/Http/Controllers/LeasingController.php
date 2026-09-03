@@ -138,6 +138,7 @@ final class LeasingController extends Controller
     {
         $data = $this->validateLease($request, false);
         $property = $this->assertPropertyOwner($request, (int) $data['property_id']);
+        abort_if($property->status === 'occupied', 422, 'Este imóvel já está ocupado por uma locação ativa.');
         $depositMonths = (int) ($data['deposit_months'] ?? 0);
         $rent = (float) $data['rent_amount'];
         $id = DB::table('leases')->insertGetId([
@@ -145,7 +146,7 @@ final class LeasingController extends Controller
             'landlord_user_id' => $request->user()->id, 'tenant_user_id' => $data['tenant_user_id'] ?? null,
             'tenant_name' => $data['tenant_name'], 'tenant_email' => $data['tenant_email'] ?? null,
             'tenant_phone' => $data['tenant_phone'] ?? null, 'tenant_tax_id' => $data['tenant_tax_id'] ?? null,
-            'purpose' => $data['purpose'], 'status' => $data['status'] ?? 'draft', 'starts_on' => $data['starts_on'], 'ends_on' => $data['ends_on'],
+            'purpose' => $data['purpose'], 'status' => 'draft', 'starts_on' => $data['starts_on'], 'ends_on' => $data['ends_on'],
             'rent_amount' => $rent, 'due_day' => $data['due_day'], 'deposit_months' => $depositMonths,
             'deposit_amount' => $data['deposit_amount'] ?? round($rent * $depositMonths, 2), 'guarantee_type' => $data['guarantee_type'] ?? ($depositMonths > 0 ? 'deposit' : 'none'),
             'adjustment_index' => $data['adjustment_index'] ?? null, 'adjustment_frequency_months' => $data['adjustment_frequency_months'] ?? 12,
@@ -153,7 +154,6 @@ final class LeasingController extends Controller
             'tenant_expenses' => $this->json($data['tenant_expenses'] ?? []), 'metadata' => $this->json($data['metadata'] ?? null),
             'created_at' => now(), 'updated_at' => now(),
         ]);
-        DB::table('properties')->where('id', $property->id)->update(['status' => 'occupied', 'updated_at' => now()]);
         return response()->json($this->leasePayload($request, $id), 201);
     }
 
@@ -175,8 +175,14 @@ final class LeasingController extends Controller
             $months = (int) ($data['deposit_months'] ?? $lease->deposit_months);
             if (! array_key_exists('deposit_amount', $data)) $data['deposit_amount'] = round($rent * $months, 2);
         }
+        if (isset($data['status']) && in_array($data['status'], ['ended', 'cancelled'], true)) $data['ended_at'] = now();
         $data['updated_at'] = now();
-        DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update($data);
+        DB::transaction(function () use ($lease, $data, $leaseId) {
+            DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update($data);
+            if (isset($data['status']) && in_array($data['status'], ['ended', 'cancelled'], true)) {
+                DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'available', 'updated_at' => now()]);
+            }
+        });
         return response()->json($this->leasePayload($request, $leaseId));
     }
 
@@ -184,9 +190,12 @@ final class LeasingController extends Controller
     {
         $this->assertLeaseManager($request, $leaseId);
         $payload = $this->leasePayload($request, $leaseId);
+        $lease = $payload['lease'];
+        $nextVersion = $lease->contract_generated_at ? ((int) $lease->contract_version + 1) : max(1, (int) $lease->contract_version);
+        $lease->contract_version = $nextVersion;
         $contract = $this->buildContract($payload);
         DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update([
-            'contract_text' => $contract, 'contract_generated_at' => now(), 'contract_version' => DB::raw('contract_version + 1'),
+            'contract_text' => $contract, 'contract_generated_at' => now(), 'contract_version' => $nextVersion,
             'status' => 'awaiting_signature', 'updated_at' => now(),
         ]);
         DB::table('lease_signatures')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->delete();
@@ -233,7 +242,10 @@ final class LeasingController extends Controller
         );
         $parties = DB::table('lease_signatures')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->pluck('party')->all();
         if (in_array('landlord', $parties, true) && in_array('tenant', $parties, true)) {
-            DB::table('leases')->where('id', $leaseId)->update(['status' => 'active', 'activated_at' => now(), 'updated_at' => now()]);
+            DB::transaction(function () use ($lease, $leaseId) {
+                DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update(['status' => 'active', 'activated_at' => now(), 'updated_at' => now()]);
+                DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'occupied', 'updated_at' => now()]);
+            });
             $this->ensureRentSchedule($leaseId);
         }
         return response()->json($this->leasePayload($request, $leaseId));
@@ -369,9 +381,9 @@ final class LeasingController extends Controller
         return $request->validate([
             'property_id' => $required.'|integer', 'tenant_user_id' => 'nullable|integer|exists:users,id',
             'tenant_name' => $required.'|string|max:190', 'tenant_email' => 'nullable|email|max:190', 'tenant_phone' => 'nullable|string|max:40', 'tenant_tax_id' => 'nullable|string|max:32',
-            'purpose' => $required.'|in:residential,commercial,mixed', 'status' => 'sometimes|in:draft,awaiting_documents,awaiting_signature,active,ended,cancelled',
+            'purpose' => $required.'|in:residential,commercial,mixed', 'status' => 'sometimes|in:draft,awaiting_documents,awaiting_signature,ended,cancelled',
             'starts_on' => $required.'|date', 'ends_on' => $required.'|date|after:starts_on', 'rent_amount' => $required.'|numeric|min:0.01',
-            'due_day' => $required.'|integer|min:1|max:31', 'deposit_months' => 'nullable|integer|min:0|max:24', 'deposit_amount' => 'nullable|numeric|min:0',
+            'due_day' => $required.'|integer|min:1|max:31', 'deposit_months' => 'nullable|integer|min:0|max:3', 'deposit_amount' => 'nullable|numeric|min:0',
             'guarantee_type' => 'nullable|in:none,deposit,guarantor,insurance,other', 'adjustment_index' => 'nullable|string|max:40',
             'adjustment_frequency_months' => 'nullable|integer|min:1|max:120', 'clauses' => 'nullable|array', 'included_expenses' => 'nullable|array', 'tenant_expenses' => 'nullable|array', 'metadata' => 'nullable|array',
         ]);
@@ -447,7 +459,7 @@ final class LeasingController extends Controller
             $reference = $cursor->toDateString();
             $exists = DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('type', 'rent')->whereDate('reference_date', $reference)->exists();
             if (! $exists) {
-                DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'rent', 'description' => 'Aluguel '.$cursor->format('m/Y'), 'reference_date' => $reference, 'due_date' => $due->toDateString(), 'amount' => $lease->rent_amount, 'status' => $due->isBefore(today()) ? 'pending' : 'pending', 'created_at' => now(), 'updated_at' => now()]);
+                DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'rent', 'description' => 'Aluguel '.$cursor->format('m/Y'), 'reference_date' => $reference, 'due_date' => $due->toDateString(), 'amount' => $lease->rent_amount, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
                 $created++;
             }
             $cursor = $cursor->addMonth();
@@ -468,7 +480,9 @@ final class LeasingController extends Controller
         $included = implode(', ', $l->included_expenses ?: ['nenhuma despesa adicional informada']);
         $tenant = implode(', ', $l->tenant_expenses ?: ['consumos e encargos não expressamente incluídos']);
         $clauses = collect($l->clauses ?: [])->values()->map(fn ($clause, $i) => ($i + 8).'. '.(is_array($clause) ? ($clause['text'] ?? json_encode($clause, JSON_UNESCAPED_UNICODE)) : $clause))->implode("\n\n");
-        $deposit = (int) $l->deposit_months > 0 ? sprintf('A garantia será caução equivalente a %d aluguel(is), no valor de R$ %s.', $l->deposit_months, number_format((float) $l->deposit_amount, 2, ',', '.')) : 'As partes declaram que não haverá caução em dinheiro, salvo outra garantia expressamente indicada.';
+        $deposit = (int) $l->deposit_months > 0
+            ? sprintf('A garantia será caução em dinheiro equivalente a %d aluguel(is), no valor de R$ %s, limitada a três meses e a ser depositada em caderneta de poupança, com as vantagens revertidas ao locatário por ocasião do levantamento, conforme a legislação aplicável.', $l->deposit_months, number_format((float) $l->deposit_amount, 2, ',', '.'))
+            : 'As partes declaram que não haverá caução em dinheiro, salvo outra garantia expressamente indicada.';
         return trim("CONTRATO DE LOCAÇÃO\n\nLOCADOR: {$landlordName}.\nLOCATÁRIO: {$l->tenant_name}".($l->tenant_tax_id ? ", documento {$l->tenant_tax_id}" : '').($l->tenant_email ? ", e-mail {$l->tenant_email}" : '').".\n\n1. OBJETO. O LOCADOR entrega ao LOCATÁRIO o imóvel denominado {$p->name}, situado em {$address}, para uso {$l->purpose}.\n\n2. PRAZO. A locação vigorará de {$l->starts_on} até {$l->ends_on}.\n\n3. ALUGUEL. O aluguel mensal é de R$ ".number_format((float) $l->rent_amount, 2, ',', '.').", com vencimento no dia {$l->due_day} de cada mês.\n\n4. GARANTIA. {$deposit}\n\n5. REAJUSTE. O aluguel poderá ser reajustado a cada {$l->adjustment_frequency_months} meses".($l->adjustment_index ? " pelo índice {$l->adjustment_index}, observada a legislação aplicável" : ', conforme índice e legislação aplicáveis na data do reajuste').".\n\n6. DESPESAS INCLUÍDAS. {$included}.\n\n7. DESPESAS DO LOCATÁRIO. {$tenant}.".($clauses ? "\n\n{$clauses}" : '')."\n\nO LOCATÁRIO declara ter recebido as condições desta locação e se compromete a preservar o imóvel e cumprir as obrigações pactuadas. As assinaturas eletrônicas registradas pelo sistema identificam o signatário, data, hora, IP e integridade da versão aceita.\n\nDocumento gerado eletronicamente. Versão {$l->contract_version}.");
     }
 
