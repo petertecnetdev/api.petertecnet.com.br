@@ -3,10 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\Application;
-use App\Models\CutinappArtist;
-use App\Models\Event;
+use App\Models\Artist;
 use App\Models\Production;
-use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
@@ -53,8 +51,8 @@ class CutinappSocialGraphTest extends TestCase
         $this->withHeaders($participantHeaders)->postJson('/api/cutinapp/follow', ['target_type' => 'artist', 'target_id' => $artistOne['id']])->assertOk()->assertJsonPath('following', true);
         $this->withHeaders($participantHeaders)->postJson('/api/cutinapp/follow', ['target_type' => 'production', 'target_id' => $production['id']])->assertOk()->assertJsonPath('following', true);
 
-        $this->assertDatabaseHas('cutinapp_follows', ['app_id' => $app->id, 'user_id' => $participant->id, 'target_type' => 'artist', 'target_id' => $artistOne['id']]);
-        $this->assertDatabaseHas('cutinapp_follows', ['app_id' => $app->id, 'user_id' => $participant->id, 'target_type' => 'production', 'target_id' => $production['id']]);
+        $this->assertDatabaseHas('follows', ['app_id' => $app->id, 'user_id' => $participant->id, 'target_type' => 'artist', 'target_id' => $artistOne['id']]);
+        $this->assertDatabaseHas('follows', ['app_id' => $app->id, 'user_id' => $participant->id, 'target_type' => 'production', 'target_id' => $production['id']]);
 
         $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/courtesies', ['event_id' => $event['id'], 'name' => 'Cortesia', 'quantity' => 30])->assertCreated();
         $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
@@ -67,7 +65,7 @@ class CutinappSocialGraphTest extends TestCase
         $this->assertSame($event['id'], $feed->json('feed.data.0.id'));
 
         $this->withHeaders($participantHeaders)->deleteJson('/api/cutinapp/follow', ['target_type' => 'artist', 'target_id' => $artistOne['id']])->assertOk()->assertJsonPath('following', false);
-        $this->assertDatabaseMissing('cutinapp_follows', ['user_id' => $participant->id, 'target_type' => 'artist', 'target_id' => $artistOne['id']]);
+        $this->assertDatabaseMissing('follows', ['user_id' => $participant->id, 'target_type' => 'artist', 'target_id' => $artistOne['id']]);
     }
 
     public function test_artist_link_does_not_grant_event_admin_and_other_app_targets_are_rejected(): void
@@ -84,7 +82,7 @@ class CutinappSocialGraphTest extends TestCase
             'city' => 'Goiânia', 'uf' => 'GO', 'start_date' => now()->addDays(3)->format('Y-m-d H:i:s'), 'end_date' => now()->addDays(3)->addHours(2)->format('Y-m-d H:i:s'),
         ])->assertCreated()->json('event');
 
-        $artist = CutinappArtist::create(['app_id' => $app->id, 'user_id' => $artistUser->id, 'slug' => 'artist-user', 'stage_name' => 'Artist User', 'is_published' => true]);
+        $artist = Artist::create(['app_id' => $app->id, 'user_id' => $artistUser->id, 'slug' => 'artist-user', 'stage_name' => 'Artist User', 'is_published' => true]);
         $this->withHeaders($ownerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', ['artist_id' => $artist->id, 'participation_type' => 'show'])->assertOk();
 
         $this->withHeaders($artistHeaders)->postJson('/api/cutinapp/events/' . $event['id'], ['title' => 'Tentativa indevida'])->assertForbidden();
@@ -112,7 +110,7 @@ class CutinappSocialGraphTest extends TestCase
         $this->withHeaders($ph)->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')->assertOk();
         $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])->assertOk();
 
-        $this->assertDatabaseHas('cutinapp_event_engagements', ['user_id' => $participant->id, 'event_id' => $event['id'], 'is_favorite' => 1, 'is_interested' => 1]);
+        $this->assertDatabaseHas('event_engagements', ['user_id' => $participant->id, 'event_id' => $event['id'], 'is_favorite' => 1, 'is_interested' => 1]);
         $this->withHeaders($uh)->getJson('/api/cutinapp/notifications')->assertOk()->assertJsonPath('notifications.data.0.reference_id', $event['id']);
     }
 
