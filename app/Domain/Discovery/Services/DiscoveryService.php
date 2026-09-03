@@ -2,6 +2,7 @@
 
 namespace App\Domain\Discovery\Services;
 
+use App\Domain\Catalog\Services\PublicCatalogQuery;
 use App\Models\Application;
 use App\Models\ContentEntry;
 use App\Models\Establishment;
@@ -12,6 +13,10 @@ use Illuminate\Support\Str;
 
 class DiscoveryService
 {
+    public function __construct(private readonly PublicCatalogQuery $publicCatalog)
+    {
+    }
+
     public function resolveApplication(int|string|null $identifier): ?Application
     {
         if ($identifier === null || $identifier === '') {
@@ -19,6 +24,7 @@ class DiscoveryService
         }
 
         return Application::query()
+            ->where('is_active', true)
             ->when(is_numeric($identifier), fn (Builder $query) => $query->whereKey((int) $identifier))
             ->when(! is_numeric($identifier), fn (Builder $query) => $query->where('slug', (string) $identifier))
             ->first();
@@ -26,21 +32,34 @@ class DiscoveryService
 
     public function publicEstablishment(string $identifier, ?Application $application = null): Establishment
     {
-        $query = Establishment::query()
-            ->where('is_cancelled', false)
-            ->where('is_published', true)
+        $query = $application
+            ? $this->publicCatalog->establishments($application)
+            : Establishment::query()
+                ->with('applications:id,slug,is_active')
+                ->where('is_cancelled', false)
+                ->where('is_published', true);
+
+        $establishment = $query
             ->where(function (Builder $lookup) use ($identifier) {
                 $lookup->where('slug', $identifier);
                 if (is_numeric($identifier)) {
                     $lookup->orWhereKey((int) $identifier);
                 }
-            });
+            })
+            ->firstOrFail();
 
-        if ($application) {
-            $query->forApplication($application->id);
+        if (! $application) {
+            $activeApplications = Application::query()
+                ->where('is_active', true)
+                ->get()
+                ->keyBy(fn (Application $candidate) => (int) $candidate->id);
+
+            abort_unless(
+                $this->publicCatalog->publicApplicationIds($establishment, $activeApplications) !== [],
+                404
+            );
         }
 
-        $establishment = $query->firstOrFail();
         $establishment->setAppends([]);
 
         return $establishment;
@@ -48,31 +67,40 @@ class DiscoveryService
 
     public function publicItem(string $identifier, ?Application $application = null): Item
     {
-        $query = Item::query()
-            ->with('files')
-            ->where('status', true)
-            ->where('entity_name', 'establishment')
+        $query = $application
+            ? $this->publicCatalog->items($application)
+            : Item::query()
+                ->where('status', true)
+                ->where('entity_name', 'establishment')
+                ->whereHas('establishment', fn (Builder $establishments) => $establishments
+                    ->where('is_cancelled', false)
+                    ->where('is_published', true));
+
+        $item = $query
+            ->with(['files', 'establishment.applications:id,slug,is_active'])
             ->where(function (Builder $lookup) use ($identifier) {
                 $lookup->where('slug', $identifier);
                 if (is_numeric($identifier)) {
                     $lookup->orWhereKey((int) $identifier);
                 }
             })
-            ->whereHas('establishment', function (Builder $establishments) use ($application) {
-                $establishments->where('is_cancelled', false)->where('is_published', true);
-                if ($application) {
-                    $establishments->forApplication($application->id);
-                }
-            });
+            ->firstOrFail();
 
-        if ($application) {
-            $query->where(function (Builder $apps) use ($application) {
-                $apps->where('app_id', $application->id)
-                    ->orWhereHas('establishment', fn (Builder $establishments) => $establishments->forApplication($application->id));
-            });
+        if (! $application) {
+            $establishment = $item->establishment;
+            abort_unless($establishment, 404);
+
+            $activeApplications = Application::query()
+                ->where('is_active', true)
+                ->get()
+                ->keyBy(fn (Application $candidate) => (int) $candidate->id);
+
+            abort_unless(
+                $this->publicCatalog->publicApplicationIds($establishment, $activeApplications) !== [],
+                404
+            );
         }
 
-        $item = $query->firstOrFail();
         $item->setAppends(['image_url']);
 
         return $item;
