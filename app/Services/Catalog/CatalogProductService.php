@@ -18,7 +18,8 @@ class CatalogProductService
     public function attach(Item $item, array $input): array
     {
         return DB::transaction(function () use ($item, $input) {
-            $normalizedName = $this->normalize((string) ($input['canonical_name'] ?? $item->name));
+            $canonicalName = trim((string) ($input['canonical_name'] ?? $item->name));
+            $normalizedName = $this->normalize($canonicalName);
             $brand = trim((string) ($input['brand'] ?? $item->brand ?? ''));
             $gtin = $this->digits($input['gtin'] ?? null);
             $sku = trim((string) ($input['sku'] ?? $item->sku ?? '')) ?: null;
@@ -26,7 +27,20 @@ class CatalogProductService
             $product = $this->resolveProduct($normalizedName, $brand, $input, $gtin);
             $variant = $this->resolveVariant($product, $input, $gtin, $sku);
 
-            $quality = $this->quality->evaluate($item, $variant->loadMissing('product'));
+            // Item remains the establishment offer/listing for backward compatibility,
+            // while Product/ProductVariant own reusable identity and technical data.
+            $item->forceFill([
+                'name' => $canonicalName ?: $item->name,
+                'sku' => $sku ?: $item->sku,
+                'brand' => $brand ?: $item->brand,
+                'category' => $input['category'] ?? $item->category,
+                'subcategory' => $input['subcategory'] ?? $item->subcategory,
+                'product_variant_id' => $variant->id,
+                'sale_unit' => $input['sale_unit'] ?? 'un',
+                'data_source' => $input['source'] ?? 'manual',
+            ])->save();
+
+            $quality = $this->quality->evaluate($item->fresh(), $variant->loadMissing('product'));
             $metadata = [
                 'quality' => $quality,
                 'provenance' => $input['provenance'] ?? [],
@@ -34,11 +48,8 @@ class CatalogProductService
             ];
 
             $item->forceFill([
-                'product_variant_id' => $variant->id,
-                'sale_unit' => $input['sale_unit'] ?? 'un',
                 'quality_score' => $quality['score'],
                 'quality_status' => $quality['status'],
-                'data_source' => $input['source'] ?? 'manual',
                 'catalog_metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ])->save();
 
