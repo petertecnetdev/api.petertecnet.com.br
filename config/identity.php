@@ -1,9 +1,59 @@
 <?php
 
 return [
+    'protocol' => [
+        'version' => env('IDENTITY_PROTOCOL_VERSION', '3.0'),
+        'sdk_min_version' => env('IDENTITY_SDK_MIN_VERSION', '3.0.0'),
+    ],
+
+    'access_token' => [
+        'ttl_minutes' => (int) env('IDENTITY_ACCESS_TOKEN_TTL_MINUTES', 30),
+    ],
+
     'session' => [
         'ttl_minutes' => (int) env('IDENTITY_SESSION_TTL_MINUTES', 43200),
         'touch_interval_minutes' => (int) env('IDENTITY_SESSION_TOUCH_INTERVAL_MINUTES', 5),
+    ],
+
+    'global_sso' => [
+        'cache_store' => env('IDENTITY_CACHE_STORE', app()->environment('testing') ? 'array' : 'redis'),
+        'session_cookie' => 'peter_ecosystem_session',
+        'refresh_cookie' => 'peter_ecosystem_refresh',
+        'session_ttl_minutes' => (int) env('IDENTITY_GLOBAL_SESSION_TTL_MINUTES', 10080),
+        'refresh_ttl_minutes' => (int) env('IDENTITY_GLOBAL_REFRESH_TTL_MINUTES', 43200),
+        'refresh_grace_seconds' => (int) env('IDENTITY_GLOBAL_REFRESH_GRACE_SECONDS', 30),
+        'csrf_ttl_seconds' => (int) env('IDENTITY_CSRF_TTL_SECONDS', 300),
+    ],
+
+    'rollout' => [
+        'global_sso_enabled' => filter_var(env('IDENTITY_GLOBAL_SSO_ENABLED', false), FILTER_VALIDATE_BOOL),
+        'default_percentage' => (int) env('IDENTITY_GLOBAL_SSO_PERCENTAGE', 0),
+    ],
+
+    'step_up' => [
+        'ttl_minutes' => (int) env('IDENTITY_STEP_UP_TTL_MINUTES', 10),
+        'actions' => [
+            'revoke_all_sessions',
+            'logout_everywhere',
+            'disable_2fa',
+            'manage_passkeys',
+            'trust_device',
+            'revoke_device',
+            'identity_rollout',
+            'change_password',
+        ],
+    ],
+
+    'legacy_tokens' => [
+        // observe -> emit Deprecation/Sunset and metrics; enforce -> reject JWTs without sid.
+        'mode' => env('IDENTITY_LEGACY_TOKEN_MODE', 'observe'),
+        'sunset_at' => env('IDENTITY_LEGACY_TOKEN_SUNSET_AT', '2026-12-01T00:00:00-03:00'),
+        'reject_after_sunset' => filter_var(env('IDENTITY_LEGACY_TOKEN_REJECT_AFTER_SUNSET', false), FILTER_VALIDATE_BOOL),
+    ],
+
+    'client_circuit_breaker' => [
+        'failure_threshold' => (int) env('IDENTITY_CLIENT_FAILURE_THRESHOLD', 3),
+        'cooldown_seconds' => (int) env('IDENTITY_CLIENT_COOLDOWN_SECONDS', 60),
     ],
 
     'magic_link' => [
