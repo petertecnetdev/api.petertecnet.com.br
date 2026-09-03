@@ -110,8 +110,10 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 'event_id' => $event['id'],
                 'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
                 'payment_method' => 'pix',
-            ])
-            ->assertCreated()
+            ]);
+
+        $this->assertSame(201, $response->status(), $response->getContent());
+        $response
             ->assertJsonPath('order.status', 'pending')
             ->assertJsonPath('payment.status', 'pending');
 
@@ -138,9 +140,13 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         [$producer, $event, , $productionId] = $this->paidEventFixture('payment-methods');
         $this->verifyFinancialRecipient($producer, $productionId);
 
-        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
-            ->assertOk()
-            ->assertJsonPath('payment_config.available', true)
+        $catalog = $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk();
+        $this->assertTrue(
+            (bool) $catalog->json('payment_config.available'),
+            json_encode($catalog->json('payment_config'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+        $catalog
             ->assertJsonPath('payment_config.producer_connected', false)
             ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
             ->assertJsonPath('payment_config.methods', ['pix'])
