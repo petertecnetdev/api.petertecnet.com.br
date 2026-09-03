@@ -6,6 +6,8 @@ use App\Domain\Identity\Models\IdentitySession;
 use App\Domain\Identity\Services\IdentityAuditService;
 use App\Domain\Identity\Services\IdentityGlobalSessionService;
 use App\Domain\Identity\Services\IdentitySessionService;
+use App\Domain\Identity\Services\IdentityStepUpService;
+use App\Domain\Identity\Services\IdentityTrustedDeviceService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -15,6 +17,8 @@ class IdentitySessionController extends Controller
     public function __construct(
         private readonly IdentitySessionService $sessions,
         private readonly IdentityGlobalSessionService $globalSessions,
+        private readonly IdentityTrustedDeviceService $trustedDevices,
+        private readonly IdentityStepUpService $stepUp,
         private readonly IdentityAuditService $audit,
     ) {
     }
@@ -34,6 +38,19 @@ class IdentitySessionController extends Controller
         ]);
     }
 
+    public function rename(Request $request, string $sessionId): JsonResponse
+    {
+        $data = $request->validate(['nickname' => ['required', 'string', 'max:120']]);
+        $session = $this->sessions->rename($request->user('api'), $sessionId, $data['nickname']);
+        $session->load('application');
+        $this->audit->record('session_renamed', $request->user('api'), $request, $session->application, [
+            'session_id' => $session->session_id,
+            'nickname' => $session->nickname,
+        ]);
+
+        return response()->json(['success' => true, 'data' => $this->sessions->present($session)]);
+    }
+
     public function destroy(Request $request, string $sessionId): JsonResponse
     {
         $session = IdentitySession::query()
@@ -45,7 +62,7 @@ class IdentitySessionController extends Controller
         $this->audit->record('session_revoked', $request->user('api'), $request, $session->application, [
             'session_id' => $session->session_id,
             'device' => $session->device_label,
-        ]);
+        ], true);
 
         return response()->json(['success' => true, 'message' => 'Sessão encerrada.']);
     }
@@ -77,9 +94,9 @@ class IdentitySessionController extends Controller
         $current = $this->sessions->current();
         $appCount = $this->sessions->revokeAll($user, 'user_revoked_all');
         $globalCount = $this->globalSessions->revokeAll($user, 'user_revoked_all');
+        $trustedCount = $this->trustedDevices->revokeAll($user, 'user_revoked_all');
+        $this->stepUp->revokeAll($user);
 
-        // Invalidate legacy JWTs that have no sid as well as every already issued
-        // application JWT. This makes "all sessions" mean the whole account.
         $user->forceFill([
             'auth_version' => max((int) ($user->auth_version ?? 1), 1) + 1,
         ])->save();
@@ -87,6 +104,7 @@ class IdentitySessionController extends Controller
         $this->audit->record('all_sessions_revoked', $user, $request, $current?->application, [
             'revoked_count' => $appCount,
             'global_sessions_revoked' => $globalCount,
+            'trusted_devices_revoked' => $trustedCount,
             'kept_current' => false,
         ], true);
 
@@ -97,9 +115,9 @@ class IdentitySessionController extends Controller
 
         $response = response()->json([
             'success' => true,
-            'message' => 'Todas as sessões foram encerradas.',
-            'revoked' => $appCount + $globalCount,
-        ]);
+            'message' => 'Todas as sessões e dispositivos confiáveis foram encerrados.',
+            'revoked' => $appCount + $globalCount + $trustedCount,
+        ])->withCookie($this->trustedDevices->forgetCookie());
 
         foreach ($this->globalSessions->forgetCookies() as $cookie) {
             $response->withCookie($cookie);
