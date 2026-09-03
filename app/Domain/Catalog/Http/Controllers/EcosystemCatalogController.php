@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog\Http\Controllers;
 
+use App\Domain\Catalog\Support\CatalogAvailability;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\Interaction;
@@ -14,7 +15,10 @@ use Illuminate\Support\Facades\DB;
 
 final class EcosystemCatalogController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly CatalogAvailability $availability
+    ) {}
 
     public function companies(Request $request)
     {
@@ -55,6 +59,12 @@ final class EcosystemCatalogController extends Controller
                 'catalog_slug' => $active ? $company->slug : null,
                 'catalog_files' => $active ? $company->files : [],
                 'is_context_native' => (int) $company->app_id === $appId,
+                'availability' => $this->availability->evaluate(
+                    $company,
+                    Auth::id(),
+                    $this->approvalRequired(),
+                    false
+                ),
             ];
         })->values();
 
@@ -69,26 +79,38 @@ final class EcosystemCatalogController extends Controller
         $appId = $this->context->id();
         $application = $this->context->application();
 
-        $query = $this->catalogEstablishmentQuery($appId)
-            ->where('is_cancelled', false)
+        $company = $this->catalogEstablishmentQuery($appId)
             ->when(
                 is_numeric($identifier),
                 fn (Builder $builder) => $builder->where('id', (int) $identifier),
                 fn (Builder $builder) => $builder->where('slug', $identifier)
-            );
+            )
+            ->first();
 
-        $company = $query
-            ->with([
-                'files' => fn ($builder) => $builder
-                    ->where('visibility', 'public')
-                    ->where('status', 'active')
-                    ->orderBy('position'),
-                'app:id,name,slug',
-                'applications:id,name,slug',
-            ])
-            ->firstOrFail();
+        $availability = $this->availability->evaluate(
+            $company,
+            Auth::id(),
+            $this->approvalRequired(),
+            $request->boolean('preview')
+        );
 
-        Interaction::registerView($company, Auth::user());
+        if ($availability['http_status'] !== 200) {
+            $this->registerRestrictedAttempt($company, $availability, 'catalog');
+            return $this->availabilityResponse($availability);
+        }
+
+        $company->load([
+            'files' => fn ($builder) => $builder
+                ->where('visibility', 'public')
+                ->where('status', 'active')
+                ->orderBy('position'),
+            'app:id,name,slug',
+            'applications:id,name,slug',
+        ]);
+
+        if (! $availability['preview']) {
+            Interaction::registerView($company, Auth::user());
+        }
 
         $items = Item::query()
             ->where('app_id', $appId)
@@ -120,13 +142,15 @@ final class EcosystemCatalogController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Catálogo carregado com sucesso.',
-            // Keep the established top-level compatibility contract while the
-            // canonical V1 response also exposes explicit application context.
+            'message' => $availability['preview']
+                ? 'Pré-visualização privada do catálogo carregada com sucesso.'
+                : 'Catálogo carregado com sucesso.',
+            'availability' => $availability,
             'establishment' => $establishment,
             'items' => $items,
             'data' => [
                 'application' => $applicationPayload,
+                'availability' => $availability,
                 'establishment' => $establishment,
                 'items' => $items,
             ],
@@ -155,14 +179,41 @@ final class EcosystemCatalogController extends Controller
                 'app:id,name,slug',
             ])
             ->withCount(['views as total_views' => fn ($builder) => $builder->where('interaction_type', 'view')])
-            ->firstOrFail();
+            ->first();
+
+        if (! $item) {
+            return $this->availabilityResponse(
+                $this->availability->evaluate(null, Auth::id(), $this->approvalRequired(), false)
+            );
+        }
 
         $company = $this->catalogEstablishmentQuery($appId)
-            ->where('is_cancelled', false)
-            ->with(['files', 'app:id,name,slug', 'applications:id,name,slug'])
-            ->findOrFail($item->entity_id);
+            ->find($item->entity_id);
 
-        Interaction::registerView($item, Auth::user());
+        $availability = $this->availability->evaluate(
+            $company,
+            Auth::id(),
+            $this->approvalRequired(),
+            $request->boolean('preview')
+        );
+
+        if ($availability['http_status'] !== 200) {
+            $this->registerRestrictedAttempt($company, $availability, 'catalog_item');
+            return $this->availabilityResponse($availability);
+        }
+
+        $company->load([
+            'files' => fn ($builder) => $builder
+                ->where('visibility', 'public')
+                ->where('status', 'active')
+                ->orderBy('position'),
+            'app:id,name,slug',
+            'applications:id,name,slug',
+        ]);
+
+        if (! $availability['preview']) {
+            Interaction::registerView($item, Auth::user());
+        }
 
         $otherItems = Item::query()
             ->where('app_id', $appId)
@@ -192,12 +243,16 @@ final class EcosystemCatalogController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Item carregado com sucesso.',
+            'message' => $availability['preview']
+                ? 'Pré-visualização privada do item carregada com sucesso.'
+                : 'Item carregado com sucesso.',
+            'availability' => $availability,
             'item' => $item,
             'establishment' => $establishment,
             'other_items' => $otherItems,
             'data' => [
                 'application' => $application->only(['id', 'name', 'slug']),
+                'availability' => $availability,
                 'item' => $item,
                 'establishment' => $establishment,
                 'other_items' => $otherItems,
@@ -243,5 +298,42 @@ final class EcosystemCatalogController extends Controller
             $builder->where('app_id', $appId)
                 ->orWhereHas('applications', fn (Builder $applicationQuery) => $applicationQuery->whereKey($appId));
         });
+    }
+
+    private function approvalRequired(): bool
+    {
+        return in_array(
+            $this->context->slug(),
+            config('platform.approval_required_apps', []),
+            true
+        );
+    }
+
+    private function availabilityResponse(array $availability)
+    {
+        return response()->json([
+            'success' => false,
+            'message' => $availability['message'],
+            'availability' => $availability,
+            'data' => [
+                'availability' => $availability,
+            ],
+        ], $availability['http_status']);
+    }
+
+    private function registerRestrictedAttempt(
+        ?Establishment $company,
+        array $availability,
+        string $resource
+    ): void {
+        if (! $company || ! in_array($availability['status'], ['restricted', 'unavailable'], true)) {
+            return;
+        }
+
+        Interaction::registerRestrictedAccess($company, Auth::user(), [
+            'resource' => $resource,
+            'availability_status' => $availability['status'],
+            'availability_reason' => $availability['reason'],
+        ]);
     }
 }
