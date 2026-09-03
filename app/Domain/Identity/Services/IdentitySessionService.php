@@ -2,6 +2,7 @@
 
 namespace App\Domain\Identity\Services;
 
+use App\Domain\Identity\Models\IdentityDevice;
 use App\Domain\Identity\Models\IdentitySession;
 use App\Models\Application;
 use App\Models\User;
@@ -17,7 +18,17 @@ class IdentitySessionService
 
     public function issue(User $user, Request $request, string $authMethod, ?Application $application = null): array
     {
-        $device = $this->devices->resolve($user, $request, $application);
+        $device = $request->attributes->get('identity_device');
+        if (! $device instanceof IdentityDevice || (int) $device->user_id !== (int) $user->id) {
+            $device = $this->devices->resolve($user, $request, $application);
+        } else {
+            $device->forceFill([
+                'last_application_id' => $application?->id ?: $device->last_application_id,
+                'last_ip_address' => $request->ip(),
+                'last_seen_at' => now(),
+            ])->save();
+        }
+
         $session = IdentitySession::query()->create([
             'session_id' => (string) Str::uuid(),
             'user_id' => $user->id,
@@ -75,9 +86,17 @@ class IdentitySessionService
         $interval = max((int) config('identity.session.touch_interval_minutes', 5), 1);
         if ($session->last_seen_at && $session->last_seen_at->gt(now()->subMinutes($interval))) return;
 
-        $device = $session->user
-            ? $this->devices->resolve($session->user, $request, $session->application)
-            : null;
+        $device = $session->device;
+        if (! $device && $session->user) {
+            $device = $this->devices->resolve($session->user, $request, $session->application);
+        }
+        if ($device) {
+            $device->forceFill([
+                'last_application_id' => $session->application?->id ?: $device->last_application_id,
+                'last_ip_address' => $request->ip(),
+                'last_seen_at' => now(),
+            ])->save();
+        }
 
         $session->forceFill([
             'device_id' => $device?->id ?: $session->device_id,
