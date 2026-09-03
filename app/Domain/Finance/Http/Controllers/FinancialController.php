@@ -1,9 +1,10 @@
 <?php
 
-namespace App\Http\Controllers;
+namespace App\Domain\Finance\Http\Controllers;
 
+use App\Domain\Finance\Contracts\PayoutProvider;
+use App\Http\Controllers\Controller;
 use App\Models\Production;
-use App\Services\AsaasPayoutService;
 use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
@@ -17,7 +18,7 @@ class FinancialController extends Controller
     public function __construct(
         private FinancialIdentityService $identity,
         private FinancialPayoutService $payouts,
-        private AsaasPayoutService $asaas,
+        private PayoutProvider $payoutProvider,
         private AsaasWithdrawalAuthorizationService $withdrawalAuthorization,
     ) {}
 
@@ -37,43 +38,31 @@ class FinancialController extends Controller
             'birthdate' => 'nullable|date|before:-18 years',
         ]);
 
-        $before = DB::table('financial_beneficiaries')
-            ->where('user_id', $request->user()->id)
-            ->first();
-
+        $before = DB::table('financial_beneficiaries')->where('user_id', $request->user()->id)->first();
         $this->identity->saveProfile($request->user(), $data);
+        $after = DB::table('financial_beneficiaries')->where('user_id', $request->user()->id)->first();
+        $changed = $before && $after && $this->identityRecordChanged($before, $after);
 
-        $after = DB::table('financial_beneficiaries')
-            ->where('user_id', $request->user()->id)
-            ->first();
-
-        if ($before && $after && $this->identityRecordChanged($before, $after)) {
+        if ($changed) {
             DB::transaction(function () use ($after) {
-                // Uma identidade financeira alterada perde a aprovação anterior.
-                // Isso cobre inclusive mudança de data de nascimento, que pode não
-                // alterar o fingerprint do CPF, e impede reuso de uma chave Pix que
-                // havia sido validada para dados anteriores.
                 DB::table('financial_beneficiaries')->where('id', $after->id)->update([
                     'status' => 'pending',
                     'verification_level' => 'profile',
                     'verified_at' => null,
                     'updated_at' => now(),
                 ]);
-
-                DB::table('financial_payout_destinations')
-                    ->where('beneficiary_id', $after->id)
-                    ->update([
-                        'status' => 'identity_changed',
-                        'verified_at' => null,
-                        'cooling_until' => null,
-                        'changed_at' => now(),
-                        'updated_at' => now(),
-                    ]);
+                DB::table('financial_payout_destinations')->where('beneficiary_id', $after->id)->update([
+                    'status' => 'identity_changed',
+                    'verified_at' => null,
+                    'cooling_until' => null,
+                    'changed_at' => now(),
+                    'updated_at' => now(),
+                ]);
             });
         }
 
         return response()->json([
-            'message' => $before && $after && $this->identityRecordChanged($before, $after)
+            'message' => $changed
                 ? 'Dados de identidade alterados. Por segurança, refaça a verificação e confirme novamente sua chave Pix.'
                 : 'Dados de identidade salvos.',
             'identity' => $this->identity->overview($request->user()->fresh()),
@@ -120,9 +109,7 @@ class FinancialController extends Controller
             $identity = $this->identity->completeLiveness($request->user(), $data['session_id']);
             $verified = data_get($identity, 'beneficiary.status') === 'verified';
             return response()->json([
-                'message' => $verified
-                    ? 'Identidade confirmada com sucesso.'
-                    : 'A verificação precisa ser refeita ou analisada.',
+                'message' => $verified ? 'Identidade confirmada com sucesso.' : 'A verificação precisa ser refeita ou analisada.',
                 'identity' => $identity,
             ], $verified ? 200 : 422);
         } catch (RuntimeException $e) {
@@ -140,12 +127,7 @@ class FinancialController extends Controller
         ]);
 
         try {
-            $overview = $this->payouts->savePixDestination(
-                $production,
-                $request->user(),
-                $data['pix_key_type'],
-                $data['pix_key'],
-            );
+            $overview = $this->payouts->savePixDestination($production, $request->user(), $data['pix_key_type'], $data['pix_key']);
             return response()->json([
                 'message' => data_get($overview, 'destination.status') === 'cooling'
                     ? 'Nova chave Pix verificada. Por segurança, os repasses ficarão bloqueados durante o período indicado.'
@@ -163,23 +145,17 @@ class FinancialController extends Controller
         $production = $this->ownedProduction($request, $productionId);
         $data = $request->validate(['amount' => 'required|numeric|min:0.01|max:999999999.99']);
         $amount = round((float) $data['amount'], 2);
-
-        // Só consultamos liquidez externa quando identidade, destino e saldo local
-        // já permitem o repasse. Assim uma configuração operacional não mascara
-        // erros de KYC, cooling period ou saldo insuficiente do próprio produtor.
         $overview = $this->payouts->overview($production, $request->user());
         $locallyEligible = (bool) ($overview['ready_for_payout'] ?? false)
             && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
 
         if ($locallyEligible) {
-            if ((string) config('services.finance.payout_provider', 'asaas') !== 'asaas' || !$this->asaas->isConfigured()) {
-                return response()->json([
-                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
-                ], 503);
+            if (! $this->payoutProvider->isConfigured()) {
+                return response()->json(['message' => 'O serviço de repasses Pix ainda não está configurado para operação.'], 503);
             }
 
             try {
-                if ($this->asaas->availableBalance() + 0.00001 < $amount) {
+                if ($this->payoutProvider->availableBalance() + 0.00001 < $amount) {
                     return response()->json([
                         'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
                     ], 503);
@@ -193,38 +169,35 @@ class FinancialController extends Controller
         }
 
         try {
-            return response()->json(
-                $this->payouts->requestPayout($production, $request->user(), $amount),
-                201
-            );
+            return response()->json($this->payouts->requestPayout($production, $request->user(), $amount), 201);
         } catch (RuntimeException $e) {
             report($e);
             return response()->json(['message' => $e->getMessage()], 502);
         }
     }
 
-    public function asaasWebhook(Request $request)
+    public function providerWebhook(Request $request)
     {
-        $this->assertAsaasToken($request, 'webhook_token');
-
+        $this->assertProviderToken($request, 'webhook_token');
         try {
             $this->payouts->processWebhook($request->all());
         } catch (Throwable $e) {
             report($e);
             return response()->json(['ok' => false], 500);
         }
-
         return response()->json(['ok' => true]);
     }
 
-    public function asaasWithdrawalValidation(Request $request)
+    public function withdrawalValidation(Request $request)
     {
-        $this->assertAsaasToken($request, 'withdrawal_auth_token');
+        $this->assertProviderToken($request, 'withdrawal_auth_token');
         return response()->json($this->withdrawalAuthorization->authorize($request->all()));
     }
 
-    private function assertAsaasToken(Request $request, string $configKey): void
+    private function assertProviderToken(Request $request, string $configKey): void
     {
+        // The current adapter uses Asaas' access-token header. Provider-specific
+        // transport belongs at this integration boundary, never in consuming apps.
         $expected = trim((string) config('services.asaas.' . $configKey));
         $provided = trim((string) $request->header('asaas-access-token'));
         abort_unless($expected !== '' && $provided !== '' && hash_equals($expected, $provided), 401, 'Webhook não autenticado.');

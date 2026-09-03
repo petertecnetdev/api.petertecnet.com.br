@@ -1,14 +1,16 @@
 <?php
 
-use App\Http\Controllers\FinancialController;
+use App\Domain\Finance\Http\Controllers\FinancialController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('finance')->group(function () {
-    Route::post('/webhooks/asaas', [FinancialController::class, 'asaasWebhook'])
+    // Provider name remains in the external webhook URL because it is an
+    // integration endpoint, not application business architecture.
+    Route::post('/webhooks/asaas', [FinancialController::class, 'providerWebhook'])
         ->middleware('throttle:240,1')
         ->name('finance.webhooks.asaas');
 
-    Route::post('/webhooks/asaas/withdrawal-validation', [FinancialController::class, 'asaasWithdrawalValidation'])
+    Route::post('/webhooks/asaas/withdrawal-validation', [FinancialController::class, 'withdrawalValidation'])
         ->middleware('throttle:120,1')
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });

@@ -47,6 +47,15 @@ class ApplicationContextService
     {
         $request ??= request();
 
+        // A route may explicitly bind an application context. This is the generic
+        // compatibility bridge used by old product-prefixed URLs. Domain code does
+        // not need to know which product supplied the context.
+        $boundSlug = $request?->attributes->get('peter.application_slug');
+        if (is_string($boundSlug) && trim($boundSlug) !== '') {
+            $app = $this->findBySlug($boundSlug);
+            if ($app) return $app;
+        }
+
         // Exact browser origin is the strongest source signal. Headers remain
         // authoritative for native/mobile clients whose origin is local.
         foreach ([
@@ -123,7 +132,8 @@ class ApplicationContextService
             'source_application' => $source,
             'origin' => $request?->headers->get('Origin'),
             'referer' => $request?->headers->get('Referer'),
-            'declared_app' => $request?->header('X-Peter-App')
+            'declared_app' => $request?->attributes->get('peter.application_slug')
+                ?: $request?->header('X-Peter-App')
                 ?: $request?->header('X-App-Slug')
                 ?: $request?->header('X-Application-Slug'),
             'resolution' => $source ? 'source' : ($application ? 'target_fallback' : 'unresolved'),
