@@ -1,0 +1,118 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Peter Tecnet Platform API",
+    "version": "1.0.0",
+    "description": "Canonical application-scoped API contract. Product slugs are runtime parameters, never backend domains."
+  },
+  "servers": [
+    {"url": "https://api.petertecnet.com.br"}
+  ],
+  "paths": {
+    "/api/v1/apps/{application}/config": {
+      "get": {
+        "operationId": "getApplicationConfig",
+        "parameters": [{"$ref": "#/components/parameters/Application"}],
+        "responses": {"200": {"description": "Application configuration"}}
+      }
+    },
+    "/api/v1/apps/{application}/events": {
+      "get": {
+        "operationId": "listEvents",
+        "parameters": [{"$ref": "#/components/parameters/Application"}],
+        "responses": {"200": {"description": "Application-scoped events"}}
+      }
+    },
+    "/api/v1/apps/{application}/commerce/checkout": {
+      "post": {
+        "operationId": "checkoutEventCommerce",
+        "parameters": [
+          {"$ref": "#/components/parameters/Application"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "responses": {
+          "201": {"description": "Order created"},
+          "409": {"description": "Idempotency conflict"},
+          "422": {"description": "Validation or business rule failure"}
+        }
+      }
+    },
+    "/api/v1/apps/{application}/commerce/orders/{publicId}/sync-payment": {
+      "post": {
+        "operationId": "syncCommercePayment",
+        "parameters": [
+          {"$ref": "#/components/parameters/Application"},
+          {"name": "publicId", "in": "path", "required": true, "schema": {"type": "string"}},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "responses": {"200": {"description": "Payment synchronized"}, "202": {"description": "Reconciliation pending"}}
+      }
+    },
+    "/api/v1/apps/{application}/organizations/{organizationId}/payouts": {
+      "get": {
+        "operationId": "getPayoutSummary",
+        "parameters": [
+          {"$ref": "#/components/parameters/Application"},
+          {"$ref": "#/components/parameters/OrganizationId"}
+        ],
+        "responses": {"200": {"description": "Payout summary"}}
+      },
+      "post": {
+        "operationId": "requestPayout",
+        "parameters": [
+          {"$ref": "#/components/parameters/Application"},
+          {"$ref": "#/components/parameters/OrganizationId"},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "responses": {"201": {"description": "Payout requested"}, "409": {"description": "Idempotency conflict"}}
+      }
+    },
+    "/api/v1/apps/{application}/organizations/{organizationId}/payouts/{payoutId}/cancel": {
+      "post": {
+        "operationId": "cancelPayout",
+        "parameters": [
+          {"$ref": "#/components/parameters/Application"},
+          {"$ref": "#/components/parameters/OrganizationId"},
+          {"name": "payoutId", "in": "path", "required": true, "schema": {"type": "integer"}},
+          {"$ref": "#/components/parameters/IdempotencyKey"}
+        ],
+        "responses": {"200": {"description": "Payout cancelled"}, "422": {"description": "Payout cannot be cancelled"}}
+      }
+    }
+  },
+  "components": {
+    "parameters": {
+      "Application": {
+        "name": "application",
+        "in": "path",
+        "required": true,
+        "description": "Active application slug or identifier resolved by ApplicationContext.",
+        "schema": {"type": "string"}
+      },
+      "OrganizationId": {
+        "name": "organizationId",
+        "in": "path",
+        "required": true,
+        "schema": {"type": "integer"}
+      },
+      "IdempotencyKey": {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "description": "Stable key for safely retrying mutating requests.",
+        "schema": {"type": "string", "maxLength": 128}
+      }
+    },
+    "schemas": {
+      "ApplicationError": {
+        "type": "object",
+        "properties": {
+          "success": {"type": "boolean"},
+          "message": {"type": "string"},
+          "code": {"type": "string"},
+          "request_id": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}
