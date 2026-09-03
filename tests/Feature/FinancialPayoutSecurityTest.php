@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Application;
 use App\Models\User;
 use App\Services\AsaasPayoutService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -51,7 +52,6 @@ class FinancialPayoutSecurityTest extends TestCase
             ->assertJsonPath('balance.available', 20);
         $reference = (string) $response->json('payout.reference');
 
-        // The first request is already reserved even before the provider confirms it.
         $this->withHeaders($headers)
             ->postJson("/api/finance/productions/{$productionId}/payouts", ['amount' => 30])
             ->assertStatus(422)
@@ -113,7 +113,6 @@ class FinancialPayoutSecurityTest extends TestCase
             'status' => 'paid',
         ]);
 
-        // Replaying the same event must be a no-op.
         $this->withHeader('asaas-access-token', 'webhook-secret-test-with-more-than-32-characters')
             ->postJson('/api/finance/webhooks/asaas', $webhook)
             ->assertOk();
@@ -263,7 +262,9 @@ class FinancialPayoutSecurityTest extends TestCase
 
     private function credit(int $productionId, float $amount): void
     {
-        DB::table('cutinapp_ledger_entries')->insert([
+        $appId = (int) Application::query()->where('slug', 'cutinapp')->value('id');
+        DB::table('ledger_entries')->insert([
+            'app_id' => $appId,
             'production_id' => $productionId,
             'type' => 'producer_credit',
             'status' => 'posted',

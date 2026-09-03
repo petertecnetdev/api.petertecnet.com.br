@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Application;
 use App\Models\User;
 use App\Services\MercadoPagoService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -18,7 +19,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_paid_sales_are_disabled_until_producer_has_verified_pix_recipient(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
 
         [, $event, $ticket] = $this->paidEventFixture('sales-disabled');
@@ -38,24 +39,26 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 'payment_method' => 'pix',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Esta produção ainda não ativou os recebimentos. O produtor precisa verificar a identidade e cadastrar uma chave Pix.');
+            ->assertJsonPath('message', 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.');
 
-        $this->assertDatabaseCount('cutinapp_orders', 0);
-        $this->assertDatabaseCount('cutinapp_inventory_reservations', 0);
+        $this->assertDatabaseCount('commerce_orders', 0);
+        $this->assertDatabaseCount('inventory_reservations', 0);
     }
 
     public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.order_expiration_minutes', 30);
+        config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
-        config()->set('services.cutinapp.order_expiration_minutes', 30);
-        config()->set('services.cutinapp.platform_fee_percent', 8);
 
         [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('pix-expiration');
         $this->verifyFinancialRecipient($producer, $productionId);
+        $applicationId = Application::query()->where('slug', 'cutinapp')->value('id');
 
         // Regression guard: an old OAuth account must never reactivate seller split.
-        DB::table('cutinapp_producer_payment_accounts')->insert([
+        DB::table('merchant_payment_accounts')->insert([
+            'app_id' => $applicationId,
             'production_id' => $productionId,
             'provider' => 'mercadopago',
             'status' => 'connected',
@@ -113,13 +116,14 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('payment.status', 'pending');
 
         $orderId = $response->json('order.id');
-        $orderExpiration = DB::table('cutinapp_orders')->where('id', $orderId)->value('expires_at');
-        $reservationExpiration = DB::table('cutinapp_inventory_reservations')->where('order_id', $orderId)->value('expires_at');
-        $orderMetadata = json_decode((string) DB::table('cutinapp_orders')->where('id', $orderId)->value('metadata'), true);
+        $orderExpiration = DB::table('commerce_orders')->where('id', $orderId)->value('expires_at');
+        $reservationExpiration = DB::table('inventory_reservations')->where('order_id', $orderId)->value('expires_at');
+        $orderMetadata = json_decode((string) DB::table('commerce_orders')->where('id', $orderId)->value('metadata'), true);
 
         $this->assertSame((string) $orderExpiration, (string) $reservationExpiration);
         $this->assertSame('platform_collection', $orderMetadata['settlement_mode'] ?? null);
-        $this->assertDatabaseHas('cutinapp_producer_payment_accounts', [
+        $this->assertDatabaseHas('merchant_payment_accounts', [
+            'app_id' => $applicationId,
             'production_id' => $productionId,
             'status' => 'legacy_disabled',
         ]);
@@ -127,7 +131,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_catalog_uses_platform_public_key_only_after_verified_pix_recipient(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
         config()->set('services.mercadopago.public_key', '');
 
@@ -153,7 +157,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_verified_recipient_is_not_enough_when_platform_collection_is_disabled(): void
     {
-        config()->set('services.cutinapp.allow_platform_collection', false);
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', false);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
 
         [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('platform-disabled');
@@ -172,7 +176,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 'payment_method' => 'pix',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Os recebimentos desta produção estão verificados, mas a plataforma de pagamentos ainda não está habilitada.');
+            ->assertJsonPath('message', 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.');
     }
 
     private function verifyFinancialRecipient(User $producer, int $productionId): void

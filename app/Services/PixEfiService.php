@@ -85,7 +85,7 @@ class PixEfiService
                 'calendario' => ['expiracao' => 900],
                 'valor' => ['original' => number_format((float) $amount, 2, '.', '')],
                 'chave' => $pixKey,
-                'solicitacaoPagador' => $requestMessage ?: 'Pagamento Cutinapp.',
+                'solicitacaoPagador' => $requestMessage ?: 'Pagamento da compra.',
             ];
             if ($additionalInfo !== []) $body['infoAdicionais'] = $additionalInfo;
             $response = $this->client->post('/v2/cob', [

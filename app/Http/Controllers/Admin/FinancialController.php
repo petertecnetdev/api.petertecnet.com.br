@@ -82,12 +82,15 @@ class FinancialController extends Controller
 
     public function payouts(Request $request)
     {
-        if (!Schema::hasTable('cutinapp_payout_requests')) {
+        if (! Schema::hasTable('payout_requests')) {
             return response()->json(['data'=>[], 'summary'=>['total'=>0,'pending'=>0,'paid'=>0]]);
         }
 
-        $q = DB::table('cutinapp_payout_requests')->orderByDesc('created_at');
+        $q = DB::table('payout_requests')->orderByDesc('created_at');
         if ($request->filled('status')) $q->where('status',$request->string('status'));
+        if ($request->filled('app_id') && Schema::hasColumn('payout_requests', 'app_id')) {
+            $q->where('app_id', $request->integer('app_id'));
+        }
 
         $summary = [
             'total' => (clone $q)->count(),

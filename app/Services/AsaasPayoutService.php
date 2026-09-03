@@ -2,12 +2,14 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\Contracts\PayoutProvider;
+use App\Domain\Finance\Contracts\PayoutWebhookInterpreter;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
-class AsaasPayoutService
+class AsaasPayoutService implements PayoutProvider, PayoutWebhookInterpreter
 {
     private Client $client;
     private string $apiKey;
@@ -30,16 +32,14 @@ class AsaasPayoutService
         ]);
     }
 
+    public function name(): string
+    {
+        return 'asaas';
+    }
+
     public function isConfigured(): bool
     {
         return $this->apiKey !== '';
-    }
-
-    private function assertConfigured(): void
-    {
-        if (!$this->isConfigured()) {
-            throw new RuntimeException('Asaas não está configurado para repasses Pix.');
-        }
     }
 
     public function availableBalance(): float
@@ -71,25 +71,16 @@ class AsaasPayoutService
                 'headers' => ['access_token' => $this->apiKey],
                 'query' => ['type' => $type, 'key' => $key],
             ]);
-
             $payload = json_decode($response->getBody()->getContents(), true);
-            if (!is_array($payload)) {
-                throw new RuntimeException('Resposta inválida ao consultar chave Pix.');
-            }
-
+            if (!is_array($payload)) throw new RuntimeException('Resposta inválida ao consultar chave Pix.');
             return $payload;
         } catch (RequestException $e) {
             $this->throwProviderException('Não foi possível validar a chave Pix.', $e);
         }
     }
 
-    public function transferPix(
-        string $reference,
-        float $amount,
-        string $key,
-        string $keyType,
-        string $description
-    ): array {
+    public function transferPix(string $reference, float $amount, string $key, string $keyType, string $description): array
+    {
         $this->assertConfigured();
         $keyType = strtoupper(trim($keyType));
         $key = $this->normalizePixKey($keyType, $key);
@@ -106,12 +97,10 @@ class AsaasPayoutService
                     'externalReference' => $reference,
                 ],
             ]);
-
             $payload = json_decode($response->getBody()->getContents(), true);
             if (!is_array($payload) || empty($payload['id'])) {
                 throw new RuntimeException('O provedor não retornou uma transferência Pix válida.');
             }
-
             return $payload;
         } catch (RequestException $e) {
             $this->throwProviderException('Não foi possível enviar o Pix.', $e);
@@ -126,19 +115,43 @@ class AsaasPayoutService
         return match ($type) {
             'CPF', 'CNPJ' => preg_replace('/\D+/', '', $key),
             'PHONE' => $this->normalizePhone($key),
-            'EMAIL' => mb_strtolower($key),
-            'EVP' => mb_strtolower($key),
+            'EMAIL', 'EVP' => mb_strtolower($key),
             default => throw new RuntimeException('Tipo de chave Pix inválido.'),
         };
+    }
+
+    public function normalizeWebhook(array $payload): ?array
+    {
+        $eventId = trim((string) ($payload['id'] ?? ''));
+        $eventType = strtoupper(trim((string) ($payload['event'] ?? '')));
+        $transferId = trim((string) data_get($payload, 'transfer.id', ''));
+        if ($eventId === '' || $transferId === '') return null;
+
+        return [
+            'event_id' => $eventId,
+            'event_type' => $eventType,
+            'transfer_id' => $transferId,
+            'status' => match ($eventType) {
+                'TRANSFER_DONE' => 'paid',
+                'TRANSFER_FAILED' => 'failed',
+                'TRANSFER_CANCELLED' => 'cancelled',
+                default => 'processing',
+            },
+            'provider_status' => data_get($payload, 'transfer.status'),
+            'provider_fail_reason' => data_get($payload, 'transfer.failReason'),
+        ];
     }
 
     private function normalizePhone(string $key): string
     {
         $digits = preg_replace('/\D+/', '', $key);
-        if (str_starts_with($digits, '55') && strlen($digits) >= 12) {
-            $digits = substr($digits, 2);
-        }
+        if (str_starts_with($digits, '55') && strlen($digits) >= 12) $digits = substr($digits, 2);
         return $digits;
+    }
+
+    private function assertConfigured(): void
+    {
+        if (!$this->isConfigured()) throw new RuntimeException('O provedor de repasses Pix não está configurado.');
     }
 
     private function throwProviderException(string $fallback, RequestException $e): never
@@ -150,7 +163,8 @@ class AsaasPayoutService
             ? (string) (data_get($decoded, 'errors.0.description') ?: data_get($decoded, 'errors.0.message') ?: data_get($decoded, 'message', ''))
             : '';
 
-        Log::warning('Falha no provider Asaas.', [
+        Log::warning('Falha no provider de payout.', [
+            'provider' => $this->name(),
             'status' => $status,
             'message' => $e->getMessage(),
             'provider_message' => $providerMessage,
