@@ -20,7 +20,7 @@ class EstablishmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('is_cancelled', false)
             ->where('is_published', true);
 
@@ -59,7 +59,7 @@ class EstablishmentController extends Controller
     public function show(string $slug): JsonResponse
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
             ->where('is_published', true);
@@ -77,7 +77,7 @@ class EstablishmentController extends Controller
     public function mine(Request $request): JsonResponse
     {
         $items = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->latest('id')
@@ -168,7 +168,7 @@ class EstablishmentController extends Controller
     {
         return Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();
