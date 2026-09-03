@@ -28,6 +28,43 @@ class ApiV1ApplicationContextTest extends TestCase
             ->assertJsonPath('code', 'APPLICATION_NOT_AVAILABLE');
     }
 
+    public function test_application_context_accepts_numeric_identifier_without_leaving_generic_routes(): void
+    {
+        $app = $this->application('Catalog App', 'catalog-app');
+
+        $this->getJson('/api/v1/apps/' . $app->id . '/establishments')
+            ->assertOk()
+            ->assertHeader('X-Peter-Application', 'catalog-app')
+            ->assertHeader('X-Peter-Application-Id', (string) $app->id)
+            ->assertJsonPath('success', true);
+    }
+
+    public function test_application_context_resolves_canonical_url_alias_during_slug_migration(): void
+    {
+        $app = $this->applicationFixture('legacy-commerce-directory', [
+            'name' => 'Commerce Directory',
+            'url' => 'https://catalog-alias.petertecnet.test',
+            'is_active' => true,
+        ]);
+
+        $this->getJson('/api/v1/apps/catalog-alias/establishments')
+            ->assertOk()
+            ->assertHeader('X-Peter-Application', 'legacy-commerce-directory')
+            ->assertHeader('X-Peter-Application-Id', (string) $app->id)
+            ->assertJsonPath('success', true);
+    }
+
+    public function test_application_context_slug_lookup_is_case_insensitive(): void
+    {
+        $app = $this->application('Mixed Case', 'mixed-case');
+
+        $this->getJson('/api/v1/apps/MIXED-CASE/establishments')
+            ->assertOk()
+            ->assertHeader('X-Peter-Application', 'mixed-case')
+            ->assertHeader('X-Peter-Application-Id', (string) $app->id)
+            ->assertJsonPath('success', true);
+    }
+
     public function test_public_catalog_is_isolated_by_application_slug(): void
     {
         $user = $this->user();

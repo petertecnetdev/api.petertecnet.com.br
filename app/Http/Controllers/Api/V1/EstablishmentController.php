@@ -20,7 +20,7 @@ class EstablishmentController extends Controller
     public function index(Request $request): JsonResponse
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('is_cancelled', false)
             ->where('is_published', true);
 
@@ -59,7 +59,7 @@ class EstablishmentController extends Controller
     public function show(string $slug): JsonResponse
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
             ->where('is_published', true);
@@ -77,7 +77,7 @@ class EstablishmentController extends Controller
     public function mine(Request $request): JsonResponse
     {
         $items = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->latest('id')
@@ -92,6 +92,9 @@ class EstablishmentController extends Controller
     {
         $user = $request->user();
         $data = $request->validated();
+        $businessProfile = $data['business_profile'] ?? null;
+        unset($data['business_profile']);
+
         $data['app_id'] = $this->context->id();
         $data['user_id'] = $user->id;
         $data['created_by'] = $user->id;
@@ -103,6 +106,16 @@ class EstablishmentController extends Controller
         $data['is_published'] = false;
 
         $establishment = Establishment::create($data);
+
+        // Keep the source application in the same generic relationship used by
+        // cross-application discovery and catalog scoping.
+        $establishment->applications()->syncWithoutDetaching([
+            $this->context->id() => ['is_primary' => true],
+        ]);
+
+        if ($businessProfile !== null) {
+            $this->persistBusinessProfile($establishment, $businessProfile);
+        }
 
         $user->applications()->syncWithoutDetaching([
             $this->context->id() => [
@@ -124,9 +137,16 @@ class EstablishmentController extends Controller
     {
         $model = $this->owned($request, $establishment);
         $data = $request->validated();
+        $hasBusinessProfile = array_key_exists('business_profile', $data);
+        $businessProfile = $data['business_profile'] ?? null;
+        unset($data['business_profile']);
         $data['updated_by'] = $request->user()->id;
 
         $model->fill($data)->save();
+        if ($hasBusinessProfile) {
+            $this->persistBusinessProfile($model, $businessProfile);
+        }
+
         $fresh = $model->fresh();
         $fresh->setAppends([]);
 
@@ -156,10 +176,19 @@ class EstablishmentController extends Controller
     {
         return Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();
+    }
+
+    private function persistBusinessProfile(Establishment $establishment, ?array $profile): void
+    {
+        $establishment->setAttribute(
+            'business_profile',
+            $profile === null ? null : json_encode($profile, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)
+        );
+        $establishment->save();
     }
 
     private function uniqueSlug(string $value): string
