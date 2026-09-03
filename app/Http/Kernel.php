@@ -56,5 +56,10 @@ class Kernel extends HttpKernel
         'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
         'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
+        'developer.key' => \App\Http\Middleware\AuthenticateDeveloperKey::class,
+        'developer.scope' => \App\Http\Middleware\RequireDeveloperScope::class,
+        'developer.origin' => \App\Http\Middleware\ValidateDeveloperOrigin::class,
+        'developer.track' => \App\Http\Middleware\TrackDeveloperRequest::class,
+        'api.version' => \App\Http\Middleware\ApiVersionHeaders::class,
     ];
 }
