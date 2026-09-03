@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\CRM\Http\Controllers\PublicInquiryController;
 use App\Domain\Discovery\Http\Controllers\ContentController;
 use App\Domain\Discovery\Http\Controllers\ContentManagementController;
 use App\Domain\Discovery\Http\Controllers\DiscoveryAnalyticsController;
@@ -16,6 +17,12 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1')->group(function () {
     Route::get('/content', [ContentController::class, 'index'])->middleware('throttle:120,1');
     Route::get('/content/{slug}', [ContentController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->middleware('throttle:120,1');
+
+    Route::prefix('apps/{application}')
+        ->middleware(['app.context', 'app.capability:crm'])
+        ->group(function () {
+            Route::post('/crm/inquiries', [PublicInquiryController::class, 'store'])->middleware('throttle:12,1');
+        });
 
     Route::prefix('discovery')->group(function () {
         Route::get('/search', [DiscoverySearchController::class, 'search'])->middleware('throttle:120,1');
