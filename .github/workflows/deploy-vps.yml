@@ -1,17 +1,30 @@
 name: Deploy VPS
 
-# Deployment workflow for the central Peter Tecnet API.
+# Production deploys are released only after the central API CI completes successfully.
 on:
-  push:
-    branches:
-      - main
+  workflow_run:
+    workflows: ['API CI']
+    types: [completed]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: api-production-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
+    if: >-
+      ${{
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.head_branch == 'main' &&
+          github.event.workflow_run.event == 'push'
+        )
+      }}
     uses: petertecnetdev/petertecnet.com.br/.github/workflows/reusable-vps-deploy.yml@main
     with:
       deploy_path: /var/www/api.petertecnet.com.br
