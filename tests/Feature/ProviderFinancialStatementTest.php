@@ -161,11 +161,12 @@ class ProviderFinancialStatementTest extends TestCase
 
         Http::assertSent(function ($request) {
             if ($request->method() !== 'PUT' || ! str_ends_with($request->url(), '/v1/account/release_report/config')) return false;
-            $keys = collect($request->data('columns', []))->pluck('key');
+            $data = $request->data();
+            $keys = collect($data['columns'] ?? [])->pluck('key');
             return $keys->contains('BALANCE_AMOUNT')
                 && $keys->contains('PAYOUT_BANK_ACCOUNT_NUMBER')
-                && $request->data('display_timezone') === 'GMT-03'
-                && $request->data('include_withdrawal_at_end') === true;
+                && ($data['display_timezone'] ?? null) === 'GMT-03'
+                && ($data['include_withdrawal_at_end'] ?? null) === true;
         });
     }
 
