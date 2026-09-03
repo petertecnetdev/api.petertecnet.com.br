@@ -187,15 +187,16 @@ class PlatformArchitectureTest extends TestCase
 
     private function filenameProductPattern(): string
     {
-        // Plat is special because "Platform" is a legitimate architecture term.
-        return '/^(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form))/i';
+        // Plat is an application slug, but Platform/Plataforma are legitimate
+        // generic architecture/product terms and must never be false positives.
+        return '/^(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form|aform))/i';
     }
 
     private function sourceProductPattern(): string
     {
-        // Catch both standalone slugs/branding literals and CamelCase classes,
-        // while explicitly avoiding the legitimate word "Platform".
-        return '/(?<![A-Za-z0-9_])(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form))/i';
+        // Catch standalone slugs/branding literals and CamelCase classes while
+        // allowing the generic words Platform and Plataforma.
+        return '/(?<![A-Za-z0-9_])(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form|aform))/i';
     }
 
     private function relative(string $path): string
