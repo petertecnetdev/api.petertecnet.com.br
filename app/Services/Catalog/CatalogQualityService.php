@@ -25,23 +25,44 @@ class CatalogQualityService
 
     public function evaluate(Item $item, ?ProductVariant $variant = null): array
     {
+        return $this->score([
+            'name' => $item->name,
+            'price' => $item->price,
+            'category' => $item->category,
+            'brand' => $item->brand ?: $variant?->product?->brand,
+            'sku' => $item->sku,
+            'gtin' => $variant?->gtin,
+            'description' => $item->description,
+            'package_quantity' => $variant?->package_quantity,
+            'package_unit' => $variant?->package_unit,
+            'specifications' => $variant?->specifications ?? [],
+        ]);
+    }
+
+    public function evaluateRow(array $row): array
+    {
+        return $this->score($row);
+    }
+
+    private function score(array $data): array
+    {
         $score = 0;
         $issues = [];
-        $specs = $variant?->specifications ?? [];
-        $profile = $this->profileFor($item->category, $item->name);
+        $specs = is_array($data['specifications'] ?? null) ? $data['specifications'] : [];
+        $profile = $this->profileFor($data['category'] ?? null, $data['name'] ?? null);
         $rules = config("catalog.specification_profiles.{$profile}", config('catalog.specification_profiles.default_product', []));
 
-        $this->award($score, $issues, filled($item->name), 20, 'Nome do produto ausente.');
-        $this->award($score, $issues, is_numeric($item->price) && (float) $item->price >= 0, 15, 'Preço ausente ou inválido.');
-        $this->award($score, $issues, filled($item->category), 10, 'Categoria não informada.');
-        $this->award($score, $issues, filled($item->brand) || filled($variant?->product?->brand), 10, 'Marca não informada.');
-        $this->award($score, $issues, filled($variant?->gtin) || filled($item->sku), 10, 'EAN/GTIN ou SKU não informado.');
-        $this->award($score, $issues, filled($item->description), 10, 'Descrição ausente.');
+        $this->award($score, $issues, filled($data['name'] ?? null), 20, 'Nome do produto ausente.');
+        $this->award($score, $issues, is_numeric($data['price'] ?? null) && (float) $data['price'] >= 0, 15, 'Preço ausente ou inválido.');
+        $this->award($score, $issues, filled($data['category'] ?? null), 10, 'Categoria não informada.');
+        $this->award($score, $issues, filled($data['brand'] ?? null), 10, 'Marca não informada.');
+        $this->award($score, $issues, filled($data['gtin'] ?? null) || filled($data['sku'] ?? null), 10, 'EAN/GTIN ou SKU não informado.');
+        $this->award($score, $issues, filled($data['description'] ?? null), 10, 'Descrição ausente.');
 
         $required = $rules['required'] ?? [];
         $requiredComplete = true;
         foreach ($required as $field) {
-            $value = $this->valueFor($field, $variant, $specs);
+            $value = $this->rowValue($field, $data, $specs);
             if (! filled($value)) {
                 $requiredComplete = false;
                 $issues[] = "Especificação obrigatória ausente: {$field}.";
@@ -53,7 +74,7 @@ class CatalogQualityService
 
         $recommended = $rules['recommended'] ?? [];
         $recommendedHits = collect($recommended)
-            ->filter(fn ($field) => filled($this->valueFor($field, $variant, $specs)))
+            ->filter(fn ($field) => filled($this->rowValue($field, $data, $specs)))
             ->count();
         if (count($recommended) === 0 || $recommendedHits === count($recommended)) {
             $score += 5;
@@ -75,12 +96,10 @@ class CatalogQualityService
         ];
     }
 
-    private function valueFor(string $field, ?ProductVariant $variant, array $specs): mixed
+    private function rowValue(string $field, array $data, array $specs): mixed
     {
         return match ($field) {
-            'package_quantity' => $variant?->package_quantity,
-            'package_unit' => $variant?->package_unit,
-            'brand' => $variant?->product?->brand,
+            'package_quantity', 'package_unit', 'brand' => $data[$field] ?? null,
             default => $specs[$field] ?? null,
         };
     }
