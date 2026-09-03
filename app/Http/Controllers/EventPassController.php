@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AppNotification;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
@@ -112,6 +113,28 @@ class EventPassController extends Controller
 
         $this->registerParticipation($appId, (int) $user->id, 'participant');
 
+        if (! $alreadyIssued) {
+            AppNotification::firstOrCreate(
+                [
+                    'app_id' => $appId,
+                    'user_id' => (int) $user->id,
+                    'type' => 'ticket_issued',
+                    'reference_type' => 'event_pass',
+                    'reference_id' => (int) $pass->id,
+                ],
+                [
+                    'title' => 'Ingresso emitido',
+                    'message' => 'Seu ingresso para '.($pass->event?->title ?: 'o evento').' está disponível.',
+                    'reference_url' => '/passes/'.$pass->id,
+                    'data' => [
+                        'event_id' => (int) $pass->event_id,
+                        'ticket_id' => (int) $pass->ticket_id,
+                        'pass_id' => (int) $pass->id,
+                    ],
+                ]
+            );
+        }
+
         return response()->json([
             'message' => $alreadyIssued
                 ? 'Você já possui esta cortesia. Abrimos o ingresso já emitido.'
@@ -216,7 +239,14 @@ class EventPassController extends Controller
             }
 
             if (in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true)) {
-                return ['status' => 422, 'message' => 'Este ingresso não está válido para entrada.', 'pass' => $pass];
+                $message = match ((string) $pass->status) {
+                    'refunded' => 'Este ingresso foi reembolsado e não pode ser utilizado.',
+                    'charged_back' => 'Este ingresso foi invalidado por contestação do pagamento.',
+                    'cancelled' => 'Este ingresso foi cancelado e não pode ser utilizado.',
+                    default => 'Este ingresso não está válido para entrada.',
+                };
+
+                return ['status' => 422, 'message' => $message, 'pass' => $pass];
             }
 
             if ($pass->event->is_cancelled || ! $pass->event->is_published) {
