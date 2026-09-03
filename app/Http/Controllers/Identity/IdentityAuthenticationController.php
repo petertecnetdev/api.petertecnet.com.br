@@ -3,12 +3,18 @@
 namespace App\Http\Controllers\Identity;
 
 use App\Domain\Identity\Models\IdentitySecuritySetting;
+use App\Domain\Identity\Models\IdentitySession;
 use App\Domain\Identity\Rules\IdentityPassword;
 use App\Domain\Identity\Services\CompromisedPasswordService;
 use App\Domain\Identity\Services\IdentityApplicationResolver;
 use App\Domain\Identity\Services\IdentityAuditService;
 use App\Domain\Identity\Services\IdentityChallengeService;
+use App\Domain\Identity\Services\IdentityGlobalSessionService;
+use App\Domain\Identity\Services\IdentityIdentifierService;
+use App\Domain\Identity\Services\IdentitySecurityAlertService;
 use App\Domain\Identity\Services\IdentitySessionService;
+use App\Domain\Identity\Services\IdentityStepUpService;
+use App\Domain\Identity\Services\IdentityTrustedDeviceService;
 use App\Domain\Identity\Services\TotpService;
 use App\Http\Controllers\Controller;
 use App\Models\Application;
@@ -27,6 +33,11 @@ class IdentityAuthenticationController extends Controller
         private readonly IdentityApplicationResolver $applications,
         private readonly IdentityChallengeService $challenges,
         private readonly IdentitySessionService $sessions,
+        private readonly IdentityGlobalSessionService $globalSessions,
+        private readonly IdentityTrustedDeviceService $trustedDevices,
+        private readonly IdentityStepUpService $stepUp,
+        private readonly IdentityIdentifierService $identifiers,
+        private readonly IdentitySecurityAlertService $alerts,
         private readonly IdentityAuditService $audit,
         private readonly TotpService $totp,
         private readonly CompromisedPasswordService $compromisedPasswords,
@@ -35,6 +46,8 @@ class IdentityAuthenticationController extends Controller
 
     public function login(Request $request): JsonResponse
     {
+        abort_unless(config('identity.features.password', true), 404);
+
         $data = $request->validate([
             'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string', 'max:255'],
@@ -44,8 +57,15 @@ class IdentityAuthenticationController extends Controller
         $rateKey = 'identity:login:' . hash('sha256', mb_strtolower(trim($data['username'])) . '|' . $request->ip());
         $maxAttempts = max((int) config('identity.rate_limits.login_attempts', 8), 3);
         $decay = max((int) config('identity.rate_limits.login_decay_seconds', 60), 30);
+        $attempts = RateLimiter::attempts($rateKey);
 
         if (RateLimiter::tooManyAttempts($rateKey, $maxAttempts)) {
+            $application = $this->applications->resolve($request, $data['application'] ?? null);
+            $this->audit->record('login_rate_limited', null, $request, $application, [
+                'retry_after' => RateLimiter::availableIn($rateKey),
+                'attempts' => $attempts,
+            ], true);
+
             return response()->json([
                 'success' => false,
                 'message' => 'Muitas tentativas. Aguarde antes de tentar novamente.',
@@ -54,10 +74,18 @@ class IdentityAuthenticationController extends Controller
             ], 429);
         }
 
-        $user = $this->findUser($data['username']);
+        $user = $this->identifiers->resolve($data['username']);
         if (! $user || ! Hash::check($data['password'], (string) $user->password)) {
             RateLimiter::hit($rateKey, $decay);
-            $this->audit->record('login_failed', $user, $request, $this->applications->resolve($request, $data['application'] ?? null));
+            $this->audit->record(
+                'login_failed',
+                $user,
+                $request,
+                $this->applications->resolve($request, $data['application'] ?? null),
+                ['attempts' => $attempts + 1],
+                ($attempts + 1) >= max(3, intdiv($maxAttempts, 2))
+            );
+
             return response()->json([
                 'success' => false,
                 'message' => 'Credenciais inválidas.',
@@ -66,6 +94,7 @@ class IdentityAuthenticationController extends Controller
         }
 
         RateLimiter::clear($rateKey);
+        $this->identifiers->syncUser($user);
         $application = $this->applications->resolve($request, $data['application'] ?? null);
         $settings = IdentitySecuritySetting::query()->firstOrCreate(['user_id' => $user->id]);
 
@@ -79,7 +108,7 @@ class IdentityAuthenticationController extends Controller
                 $request
             );
 
-            $this->audit->record('two_factor_challenge', $user, $request, $application);
+            $this->audit->record('two_factor_challenge', $user, $request, $application, ['auth_method' => 'password']);
 
             return response()->json([
                 'success' => true,
@@ -101,10 +130,13 @@ class IdentityAuthenticationController extends Controller
             'application' => ['nullable', 'string', 'max:120'],
         ]);
 
+        $email = Str::lower(trim($data['email']));
+        abort_if($this->identifiers->resolve($email), 409, 'Este e-mail já pertence a uma Conta Peter Tecnet.');
+
         $application = $this->applications->resolve($request, $data['application'] ?? null);
         $user = User::query()->create([
             'first_name' => trim($data['first_name']),
-            'email' => strtolower(trim($data['email'])),
+            'email' => $email,
             'password' => Hash::make($data['password']),
             'user_name' => $this->uniqueUsername($data['first_name']),
             'email_verified_at' => now(),
@@ -116,19 +148,23 @@ class IdentityAuthenticationController extends Controller
             ]);
         }
 
-        $this->audit->record('registered', $user, $request, $application);
+        $this->identifiers->syncUser($user);
+        $this->audit->record('registered', $user, $request, $application, [], true);
 
         return $this->successfulLogin($user, $request, $application, 'password', 201);
     }
 
     public function requestMagicLink(Request $request): JsonResponse
     {
+        abort_unless(config('identity.features.magic_link', true), 404);
+
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
             'application' => ['nullable', 'string', 'max:120'],
         ]);
 
-        $rateKey = 'identity:magic:' . hash('sha256', strtolower($data['email']) . '|' . $request->ip());
+        $email = Str::lower(trim($data['email']));
+        $rateKey = 'identity:magic:' . hash('sha256', $email . '|' . $request->ip());
         if (RateLimiter::tooManyAttempts($rateKey, max((int) config('identity.rate_limits.magic_link_attempts', 5), 2))) {
             return response()->json([
                 'success' => true,
@@ -137,10 +173,10 @@ class IdentityAuthenticationController extends Controller
         }
         RateLimiter::hit($rateKey, max((int) config('identity.rate_limits.magic_link_decay_seconds', 300), 60));
 
-        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
+        $user = $this->identifiers->resolve($email);
         $application = $this->applications->resolve($request, $data['application'] ?? null);
 
-        if ($user) {
+        if ($user && Str::lower((string) $user->email) === $email) {
             $issued = $this->challenges->issue(
                 'magic_login',
                 $user,
@@ -204,24 +240,36 @@ class IdentityAuthenticationController extends Controller
         }
 
         $valid = $this->totp->verify($settings->two_factor_secret, preg_replace('/\D/', '', $data['code']) ?? '');
+        $usedRecoveryCode = false;
         if (! $valid) {
             $hash = hash('sha256', strtoupper(trim($data['code'])));
             $codes = $settings->two_factor_recovery_codes ?: [];
             $index = array_search($hash, $codes, true);
             if ($index !== false) {
                 unset($codes[$index]);
-                $settings->forceFill(['two_factor_recovery_codes' => array_values($codes)])->save();
+                $settings->forceFill([
+                    'two_factor_recovery_codes' => array_values($codes),
+                    'last_recovery_code_used_at' => now(),
+                ])->save();
                 $valid = true;
+                $usedRecoveryCode = true;
             }
         }
 
         if (! $valid) {
-            $this->audit->record('two_factor_failed', $challenge->user, $request, $challenge->application);
+            $this->audit->record('two_factor_failed', $challenge->user, $request, $challenge->application, [], true);
             return response()->json(['success' => false, 'message' => 'Código 2FA inválido.', 'code' => 'TWO_FACTOR_INVALID'], 401);
         }
 
-        $this->audit->record('two_factor_verified', $challenge->user, $request, $challenge->application);
-        $method = (($challenge->payload['auth_method'] ?? 'password') . '+totp');
+        $method = (($challenge->payload['auth_method'] ?? 'password') . ($usedRecoveryCode ? '+recovery_code' : '+totp'));
+        $this->audit->record(
+            $usedRecoveryCode ? 'recovery_code_used' : 'two_factor_verified',
+            $challenge->user,
+            $request,
+            $challenge->application,
+            ['auth_method' => $method],
+            $usedRecoveryCode
+        );
 
         return $this->successfulLogin($challenge->user, $request, $challenge->application, $method);
     }
@@ -233,10 +281,11 @@ class IdentityAuthenticationController extends Controller
             'application' => ['nullable', 'string', 'max:120'],
         ]);
 
-        $user = User::query()->where('email', strtolower(trim($data['email'])))->first();
+        $email = Str::lower(trim($data['email']));
+        $user = $this->identifiers->resolve($email);
         $application = $this->applications->resolve($request, $data['application'] ?? null);
 
-        if ($user) {
+        if ($user && Str::lower((string) $user->email) === $email) {
             $issued = $this->challenges->issue(
                 'password_reset',
                 $user,
@@ -247,7 +296,7 @@ class IdentityAuthenticationController extends Controller
             );
             $url = $this->actionUrl($application, 'identity_reset', $issued['token']);
             $this->sendActionEmail($user, 'Redefinir sua senha · Peter Tecnet', "Use o link abaixo para escolher uma nova senha. O link é de uso único e expira em 10 minutos.\n\n{$url}");
-            $this->audit->record('password_reset_requested', $user, $request, $application);
+            $this->audit->record('password_reset_requested', $user, $request, $application, [], true);
         }
 
         return response()->json([
@@ -275,13 +324,26 @@ class IdentityAuthenticationController extends Controller
 
         $user = $challenge->user;
         $user->forceFill(['password' => Hash::make($data['password'])])->save();
-        $this->sessions->revokeAll($user, 'password_changed');
-        $this->audit->record('password_changed', $user, $request, $challenge->application, [], true);
+        $appSessions = $this->sessions->revokeAll($user, 'password_changed');
+        $globalSessions = $this->globalSessions->revokeAll($user, 'password_changed');
+        $trustedDevices = $this->trustedDevices->revokeAll($user, 'password_changed');
+        $this->stepUp->revokeAll($user);
+        $this->audit->record('password_changed', $user, $request, $challenge->application, [
+            'application_sessions_revoked' => $appSessions,
+            'global_sessions_revoked' => $globalSessions,
+            'trusted_devices_revoked' => $trustedDevices,
+        ], true);
 
-        return response()->json([
+        $response = response()->json([
             'success' => true,
-            'message' => 'Senha redefinida com sucesso. Entre novamente nos seus dispositivos.',
-        ]);
+            'message' => 'Senha redefinida com sucesso. Todas as sessões anteriores foram encerradas.',
+        ])->withCookie($this->trustedDevices->forgetCookie());
+
+        foreach ($this->globalSessions->forgetCookies() as $cookie) {
+            $response->withCookie($cookie);
+        }
+
+        return $response;
     }
 
     public function logout(Request $request): JsonResponse
@@ -313,6 +375,7 @@ class IdentityAuthenticationController extends Controller
                 'sid' => $session->session_id,
                 'amr' => [$session->auth_method],
                 'ver' => max((int) $session->user->auth_version, 1),
+                'risk' => (int) $session->risk_score,
             ])->refresh();
         } catch (\Throwable) {
             return response()->json(['success' => false, 'message' => 'Token não renovável.', 'code' => 'TOKEN_NOT_REFRESHABLE'], 401);
@@ -328,39 +391,33 @@ class IdentityAuthenticationController extends Controller
 
     private function successfulLogin(User $user, Request $request, ?Application $application, string $method, int $status = 200): JsonResponse
     {
-        $knownDevice = \App\Domain\Identity\Models\IdentitySession::query()
+        $knownDevice = IdentitySession::query()
             ->where('user_id', $user->id)
             ->where('user_agent', $request->userAgent())
             ->exists();
 
+        $this->identifiers->syncUser($user);
         $issued = $this->sessions->issue($user, $request, $method, $application);
+        $riskScore = (int) data_get($issued, 'risk.score', 0);
+        $important = ! $knownDevice || $riskScore >= (int) config('identity.step_up.high_risk_score', 55);
+
         $this->audit->record('new_session', $user, $request, $application, [
-            'device' => $issued['session']['device'],
+            'device' => $issued['session']['display_name'] ?? $issued['session']['device'],
             'session_id' => $issued['session']['id'],
             'auth_method' => $method,
             'new_device' => ! $knownDevice,
-        ], ! $knownDevice);
+            'risk' => $issued['risk'] ?? null,
+        ], $important);
+
+        if ($important) {
+            $this->alerts->newSession($user, $request, $application, $issued['session']['id'], $issued['risk'] ?? []);
+        }
 
         return response()->json(array_merge([
             'success' => true,
             'user' => $user,
             'application' => $application?->only(['id', 'name', 'slug', 'url']),
         ], $issued), $status);
-    }
-
-    private function findUser(string $identifier): ?User
-    {
-        $identifier = trim($identifier);
-        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-            return User::query()->where('email', strtolower($identifier))->first();
-        }
-
-        $digits = preg_replace('/\D/', '', $identifier) ?? '';
-        if (strlen($digits) === 11) {
-            return User::query()->where('cpf', $digits)->orWhere('phone', $digits)->first();
-        }
-
-        return User::query()->where('user_name', $identifier)->first();
     }
 
     private function uniqueUsername(string $name): string
@@ -376,7 +433,7 @@ class IdentityAuthenticationController extends Controller
 
     private function actionUrl(?Application $application, string $parameter, string $token): string
     {
-        $base = rtrim((string) ($application?->url ?: config('app.frontend_url', 'https://petertecnet.com.br')), '/');
+        $base = rtrim((string) ($application?->url ?: config('identity.account_url', config('app.frontend_url', 'https://petertecnet.com.br'))), '/');
         return $base . '/?' . http_build_query([$parameter => $token, 'application' => $application?->slug]);
     }
 
