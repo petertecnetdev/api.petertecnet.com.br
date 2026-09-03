@@ -1,0 +1,30 @@
+name: Public Experience Monitor
+
+on:
+  schedule:
+    - cron: '17 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-experience-monitor
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    name: Multiplatform public contract smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify public application contracts
+        env:
+          API_BASE_URL: https://api.petertecnet.com.br
+          PUBLIC_APP_SLUGS: ${{ vars.PUBLIC_APP_SLUGS }}
+          PUBLIC_CATALOG_MONITOR_MAX_RESPONSE_MS: 2500
+          PUBLIC_CATALOG_MONITOR_MAX_PAYLOAD_BYTES: 1048576
+        run: bash scripts/smoke-public-platforms.sh

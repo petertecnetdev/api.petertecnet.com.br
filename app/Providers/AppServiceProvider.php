@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Domain\Catalog\Observers\EstablishmentPublicCatalogObserver;
+use App\Domain\Catalog\Observers\ItemPublicCatalogObserver;
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Events\EcosystemUpdated;
 use App\Models\Application;
@@ -16,8 +18,11 @@ use App\Models\User;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
 use App\Support\ApplicationContext;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -51,6 +56,11 @@ class AppServiceProvider extends ServiceProvider
             $auditedModel::observe(InteractionAuditObserver::class);
         }
 
+        Establishment::observe(EstablishmentPublicCatalogObserver::class);
+        Item::observe(ItemPublicCatalogObserver::class);
+
+        $this->registerSlowQueryLogging();
+
         $this->broadcastModelChanges(Interaction::class, ['dashboard', 'activity', 'audit']);
         $this->broadcastModelChanges(Order::class, ['dashboard', 'activity', 'audit']);
         $this->broadcastModelChanges(User::class, ['dashboard', 'users', 'activity', 'audit']);
@@ -59,6 +69,35 @@ class AppServiceProvider extends ServiceProvider
         $this->broadcastModelChanges(Establishment::class, ['dashboard', 'establishments', 'users', 'audit']);
         $this->broadcastModelChanges(EcosystemSetting::class, ['site', 'audit']);
         $this->broadcastModelChanges(EcosystemAuditLog::class, ['dashboard', 'audit']);
+    }
+
+    private function registerSlowQueryLogging(): void
+    {
+        $threshold = max(1, (float) config('observability.slow_query_ms', 250));
+
+        DB::listen(function (QueryExecuted $query) use ($threshold) {
+            if ($query->time < $threshold) {
+                return;
+            }
+
+            $context = [
+                'duration_ms' => round((float) $query->time, 2),
+                'connection' => $query->connectionName,
+                'sql' => $query->sql,
+            ];
+
+            if ($this->app->bound('request')) {
+                $request = $this->app->make('request');
+                $context += [
+                    'request_id' => $request->attributes->get('request_id'),
+                    'application_id' => $request->attributes->get('app_id'),
+                    'application_slug' => $request->attributes->get('application_slug'),
+                    'route' => $request->route()?->getName(),
+                ];
+            }
+
+            Log::warning('slow_database_query', $context);
+        });
     }
 
     private function broadcastModelChanges(string $model, array $modules): void
