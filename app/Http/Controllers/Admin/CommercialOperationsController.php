@@ -40,7 +40,7 @@ class CommercialOperationsController extends Controller
 
     public function storeEstablishment(Request $request, EstablishmentDuplicateDetectionService $duplicates): JsonResponse
     {
-        $this->authorize($request, 'establishment_manage', 'onboarding_manage');
+        $this->authorizeCommercialPermission($request, 'establishment_manage', 'onboarding_manage');
         $data = $this->validateEstablishment($request);
         $match = $duplicates->detect($data, null, 1)->first();
         if (($match['score'] ?? 0) === 100) {
@@ -64,7 +64,7 @@ class CommercialOperationsController extends Controller
 
     public function updateEstablishment(Request $request, Establishment $establishment, EstablishmentDuplicateDetectionService $duplicates): JsonResponse
     {
-        $this->authorize($request, 'establishment_manage', 'onboarding_manage');
+        $this->authorizeCommercialPermission($request, 'establishment_manage', 'onboarding_manage');
         $data = $this->validateEstablishment($request, $establishment);
         $match = $duplicates->detect($data + $establishment->only(['name', 'fantasy', 'phone', 'email', 'country_code', 'tax_id', 'cnpj']), $establishment->id, 1)->first();
         if (($match['score'] ?? 0) === 100) {
@@ -90,7 +90,7 @@ class CommercialOperationsController extends Controller
 
     public function storeItem(Request $request): JsonResponse
     {
-        $this->authorize($request, 'catalog_manage');
+        $this->authorizeCommercialPermission($request, 'catalog_manage');
         $data = $this->validateItem($request);
         $establishment = Establishment::query()->with('applications:id')->findOrFail($data['entity_id']);
         $this->assertApplicationLinked($establishment, (int) $data['app_id']);
@@ -106,7 +106,7 @@ class CommercialOperationsController extends Controller
 
     public function updateItem(Request $request, Item $item): JsonResponse
     {
-        $this->authorize($request, 'catalog_manage');
+        $this->authorizeCommercialPermission($request, 'catalog_manage');
         $data = $this->validateItem($request, $item);
         $entityId = (int) ($data['entity_id'] ?? $item->entity_id);
         $appId = (int) ($data['app_id'] ?? $item->app_id);
@@ -250,7 +250,7 @@ class CommercialOperationsController extends Controller
         ), 403, 'Usuário sem permissão para acessar operações comerciais.');
     }
 
-    private function authorize(Request $request, string ...$permissions): void
+    private function authorizeCommercialPermission(Request $request, string ...$permissions): void
     {
         $actor = $request->user();
         abort_unless($actor && (
