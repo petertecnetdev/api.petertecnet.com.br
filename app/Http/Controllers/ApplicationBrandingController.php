@@ -15,7 +15,6 @@ class ApplicationBrandingController extends Controller
     {
         $application = Application::query()
             ->where('is_active', true)
-            ->where('is_visible', true)
             ->where('slug', $slug)
             ->firstOrFail();
 
@@ -36,6 +35,6 @@ class ApplicationBrandingController extends Controller
                 'branding' => $payload,
             ])
             ->header('Cache-Control', 'public, max-age=300, stale-while-revalidate=600')
-            ->setEtag('"branding-' . $application->id . '-' . $version . '"');
+            ->setEtag('branding-' . $application->id . '-' . $version);
     }
 }
