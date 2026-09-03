@@ -71,7 +71,11 @@ class ItemController extends Controller
             config('platform.max_page_size', 100)
         );
 
-        $result = $query->latest('id')->paginate($pageSize);
+        $result = $query
+            ->orderByDesc('is_featured')
+            ->orderBy('display_order')
+            ->latest('id')
+            ->paginate($pageSize);
         $result->getCollection()->each(fn (Item $item) => $item->setAppends(['image_url']));
 
         return response()->json(['success' => true, 'data' => $result]);
@@ -81,14 +85,13 @@ class ItemController extends Controller
     {
         $establishment = $this->publicEstablishment($establishmentSlug);
 
-        // Items belong to the shared establishment domain entity. An establishment
-        // exposed to another application through the application_establishment pivot
-        // must keep the same catalog instead of duplicating items per frontend app.
         $items = Item::query()
             ->with('files')
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
+            ->orderByDesc('is_featured')
+            ->orderBy('display_order')
             ->orderBy('category')
             ->orderBy('name')
             ->get();
@@ -119,6 +122,8 @@ class ItemController extends Controller
             ->with('files')
             ->where('entity_name', 'establishment')
             ->where('entity_id', $owned->id)
+            ->orderByDesc('is_featured')
+            ->orderBy('display_order')
             ->latest('id')
             ->get();
 
@@ -131,6 +136,8 @@ class ItemController extends Controller
     {
         $establishment = $this->ownedEstablishment($request, (int) $request->validated('establishment_id'));
         $data = $request->safe()->except('establishment_id');
+        $displayOrder = (int) ($data['display_order'] ?? 0);
+        unset($data['display_order']);
         $data['app_id'] = $establishment->app_id ?: $this->context->id();
         $data['entity_name'] = 'establishment';
         $data['entity_id'] = $establishment->id;
@@ -138,9 +145,10 @@ class ItemController extends Controller
         $data['created_by'] = $request->user()->id;
         $data['updated_by'] = $request->user()->id;
         $data['status'] = $data['status'] ?? true;
-        $data['is_featured'] = false;
+        $data['is_featured'] = $data['is_featured'] ?? false;
 
         $item = Item::create($data);
+        $item->forceFill(['display_order' => $displayOrder])->save();
         $item->load('files')->setAppends(['image_url']);
 
         return response()->json([
@@ -154,8 +162,14 @@ class ItemController extends Controller
     {
         $model = $this->ownedItem($request, $item);
         $data = $request->validated();
+        $displayOrder = array_key_exists('display_order', $data) ? (int) $data['display_order'] : null;
+        unset($data['display_order']);
         $data['updated_by'] = $request->user()->id;
-        $model->fill($data)->save();
+        $model->fill($data);
+        if ($displayOrder !== null) {
+            $model->forceFill(['display_order' => $displayOrder]);
+        }
+        $model->save();
         $model->load('files')->setAppends(['image_url']);
 
         return response()->json([
