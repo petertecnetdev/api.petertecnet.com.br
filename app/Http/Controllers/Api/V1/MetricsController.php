@@ -24,9 +24,20 @@ class MetricsController extends Controller
             ->where('is_cancelled', false)
             ->firstOrFail();
 
+        $metrics = $model->getMetricsAttribute();
+        $restrictedAttempts = $model->interactions()
+            ->where('interaction_type', 'restricted_access');
+
+        $metrics['restricted_access_attempts'] = (clone $restrictedAttempts)->count();
+        $metrics['restricted_access_attempts_30d'] = (clone $restrictedAttempts)
+            ->where('created_at', '>=', now()->subDays(30))
+            ->count();
+        $metrics['restricted_access_last_at'] = (clone $restrictedAttempts)
+            ->max('created_at');
+
         return response()->json([
             'success' => true,
-            'data' => $model->getMetricsAttribute(),
+            'data' => $metrics,
         ]);
     }
 
