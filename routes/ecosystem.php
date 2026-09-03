@@ -2,9 +2,12 @@
 
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\EstablishmentDuplicateController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
+use App\Http\Controllers\Admin\OnboardingSessionController;
+use App\Http\Controllers\Admin\PrimaryFileController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -20,10 +23,15 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+
+    Route::get('/onboarding-sessions', [OnboardingSessionController::class, 'index']);
+    Route::post('/onboarding-sessions', [OnboardingSessionController::class, 'store'])->middleware('throttle:60,1');
+    Route::put('/onboarding-sessions/{session}', [OnboardingSessionController::class, 'update'])->whereNumber('session');
+    Route::post('/onboarding-sessions/{session}/complete', [OnboardingSessionController::class, 'complete'])->whereNumber('session');
+    Route::post('/onboarding-sessions/{session}/abandon', [OnboardingSessionController::class, 'abandon'])->whereNumber('session');
+
+    Route::post('/establishment-duplicates', EstablishmentDuplicateController::class)->middleware('throttle:120,1');
+    Route::post('/files/primary', [PrimaryFileController::class, 'store'])->middleware('throttle:60,1');
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
