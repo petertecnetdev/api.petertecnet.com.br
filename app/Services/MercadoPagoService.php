@@ -38,8 +38,6 @@ class MercadoPagoService
         $response = $this->postPayment($sellerAccessToken, $payload, $idempotencyKey);
         if ($response->successful()) return $response->json();
 
-        // When seller and platform are the same provider account there is no
-        // marketplace split to perform, so retry without application_fee.
         if (array_key_exists('application_fee',$payload) && $this->isApplicationFeeNotAllowed($response->json()) && $this->sellerIsPlatformAccount($sellerAccessToken)) {
             unset($payload['application_fee']); data_set($payload,'metadata.settlement_mode','same_account');
             $retry = $this->postPayment($sellerAccessToken,$payload,$idempotencyKey.'-same-account');
@@ -47,6 +45,25 @@ class MercadoPagoService
             throw new RuntimeException('Mercado Pago recusou a criação do pagamento sem split para a conta própria da plataforma: '.$retry->body());
         }
         throw new RuntimeException('Mercado Pago recusou a criação do pagamento: '.$response->body());
+    }
+
+    public function refundPayment(string $accessToken, string $paymentId, float $amount, string $idempotencyKey): array
+    {
+        if ($amount <= 0) throw new RuntimeException('O valor do reembolso precisa ser maior que zero.');
+
+        $response = Http::acceptJson()
+            ->withToken($accessToken)
+            ->withHeaders(['X-Idempotency-Key' => $idempotencyKey])
+            ->timeout(30)
+            ->post($this->baseUrl.'/v1/payments/'.rawurlencode($paymentId).'/refunds', [
+                'amount' => round($amount, 2),
+            ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('O provedor recusou o reembolso: '.$response->body());
+        }
+
+        return $response->json();
     }
 
     public function getPayment(string $sellerAccessToken,string $paymentId):array
