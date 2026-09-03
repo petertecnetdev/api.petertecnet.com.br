@@ -2,49 +2,66 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Application;
+use App\Models\AppNotification;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Tymon\JWTAuth\Facades\JWTAuth;
 
 class EventPassController extends Controller
 {
-    private const APP = 'cutinapp';
     private const INVALID_PASS_STATUSES = ['cancelled', 'refunded', 'charged_back'];
+
+    public function __construct(private readonly ApplicationContext $context) {}
 
     public function claim(Request $request, int $ticketId)
     {
-        $user = $this->requestUser($request);
-        $application = $this->application();
+        $user = $request->user();
+        $appId = $this->context->id();
         $alreadyIssued = false;
 
-        $pass = DB::transaction(function () use ($ticketId, $user, $application, &$alreadyIssued) {
+        $pass = DB::transaction(function () use ($ticketId, $user, $appId, &$alreadyIssued) {
+            // Resolve the event first and lock it before the ticket. Every admission
+            // claim for the same event therefore serializes on one row, including
+            // claims made against different ticket batches. This prevents two
+            // concurrent requests from exceeding max_attendees.
+            $ticketReference = Ticket::query()
+                ->where('app_id', $appId)
+                ->select(['id', 'event_id'])
+                ->findOrFail($ticketId);
+
+            $event = Event::query()
+                ->where('app_id', $appId)
+                ->with('production')
+                ->lockForUpdate()
+                ->findOrFail($ticketReference->event_id);
+
             $ticket = Ticket::query()
-                ->where('app_id', $application->id)
-                ->where('app_slug', self::APP)
-                ->with('event.production')
+                ->where('app_id', $appId)
+                ->where('event_id', $event->id)
                 ->lockForUpdate()
                 ->findOrFail($ticketId);
 
             abort_unless(
-                $ticket->event
-                    && (int) $ticket->event->app_id === (int) $application->id
-                    && $ticket->event->app_slug === self::APP
-                    && $ticket->event->production
-                    && (int) $ticket->event->production->app_id === (int) $application->id
-                    && ! $ticket->event->is_cancelled
-                    && $ticket->event->is_published
-                    && ! $ticket->event->is_private,
+                $event->production
+                    && (int) $event->production->app_id === $appId
+                    && ! $event->is_cancelled
+                    && $event->is_published
+                    && ! $event->is_private,
                 422,
                 'Este evento não está disponível para retirada pública de cortesias.'
             );
+
             abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
-            abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, 'O prazo para retirada desta cortesia terminou.');
+            abort_if(
+                $ticket->limit_date && now()->greaterThan($ticket->limit_date),
+                422,
+                'O prazo para retirada desta cortesia terminou.'
+            );
 
             $existing = EventPass::query()
                 ->where('ticket_id', $ticket->id)
@@ -54,27 +71,69 @@ class EventPassController extends Controller
 
             if ($existing) {
                 $alreadyIssued = true;
+
                 return $existing->load(['ticket', 'event.production']);
             }
 
-            $issued = EventPass::query()
+            $issuedForTicket = EventPass::query()
                 ->where('ticket_id', $ticket->id)
                 ->whereNotIn('status', self::INVALID_PASS_STATUSES)
                 ->count();
-            abort_if((int) $ticket->quantity <= 0 || $issued >= (int) $ticket->quantity, 422, 'As cortesias deste lote estão esgotadas.');
+
+            abort_if(
+                (int) $ticket->quantity <= 0 || $issuedForTicket >= (int) $ticket->quantity,
+                422,
+                'As cortesias deste lote estão esgotadas.'
+            );
+
+            $eventCapacity = (int) ($event->max_attendees ?? 0);
+            if ($eventCapacity > 0) {
+                $issuedForEvent = EventPass::query()
+                    ->where('event_id', $event->id)
+                    ->whereNotIn('status', self::INVALID_PASS_STATUSES)
+                    ->count();
+
+                abort_if(
+                    $issuedForEvent >= $eventCapacity,
+                    422,
+                    'A capacidade máxima deste evento foi atingida.'
+                );
+            }
 
             return EventPass::create([
                 'ticket_id' => $ticket->id,
-                'event_id' => $ticket->event_id,
+                'event_id' => $event->id,
                 'user_id' => $user->id,
                 'holder_name' => trim((string) ($user->first_name ?? $user->name ?? 'Participante')),
                 'holder_email' => strtolower(trim((string) $user->email)),
-                'token' => 'CUT-' . Str::upper(Str::random(16)) . '-' . Str::uuid(),
+                'token' => 'PASS-'.Str::upper(Str::random(16)).'-'.Str::uuid(),
                 'status' => 'issued',
             ])->load(['ticket', 'event.production']);
         });
 
-        $this->registerParticipation($application, $user->id, 'participant');
+        $this->registerParticipation($appId, (int) $user->id, 'participant');
+
+        if (! $alreadyIssued) {
+            AppNotification::firstOrCreate(
+                [
+                    'app_id' => $appId,
+                    'user_id' => (int) $user->id,
+                    'type' => 'ticket_issued',
+                    'reference_type' => 'event_pass',
+                    'reference_id' => (int) $pass->id,
+                ],
+                [
+                    'title' => 'Ingresso emitido',
+                    'message' => 'Seu ingresso para '.($pass->event?->title ?: 'o evento').' está disponível.',
+                    'reference_url' => '/passes/'.$pass->id,
+                    'data' => [
+                        'event_id' => (int) $pass->event_id,
+                        'ticket_id' => (int) $pass->ticket_id,
+                        'pass_id' => (int) $pass->id,
+                    ],
+                ]
+            );
+        }
 
         return response()->json([
             'message' => $alreadyIssued
@@ -87,13 +146,10 @@ class EventPassController extends Controller
 
     public function mine(Request $request)
     {
-        $user = $this->requestUser($request);
-        $appId = $this->applicationId();
+        $appId = $this->context->id();
         $passes = EventPass::query()
-            ->where('user_id', $user->id)
-            ->whereHas('event', fn ($query) => $query
-                ->where('app_id', $appId)
-                ->where('app_slug', self::APP))
+            ->where('user_id', $request->user()->id)
+            ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
             ->with(['ticket', 'event.production'])
             ->latest()
             ->get();
@@ -103,12 +159,10 @@ class EventPassController extends Controller
 
     public function show(Request $request, int $passId)
     {
-        $user = $this->requestUser($request);
-        $appId = $this->applicationId();
+        $user = $request->user();
+        $appId = $this->context->id();
         $pass = EventPass::query()
-            ->whereHas('event', fn ($query) => $query
-                ->where('app_id', $appId)
-                ->where('app_slug', self::APP))
+            ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
             ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar'])
             ->findOrFail($passId);
 
@@ -122,43 +176,43 @@ class EventPassController extends Controller
 
     public function participants(Request $request, int $eventId)
     {
-        $operator = $this->requestUser($request);
-        $event = $this->manageableEvent($eventId, $operator);
+        $event = $this->manageableEvent($eventId, $request->user());
         $passes = EventPass::query()
             ->where('event_id', $event->id)
-            ->with(['ticket:id,app_id,name,event_id,app_slug', 'user:id,first_name,last_name,email,avatar'])
+            ->with([
+                'ticket:id,app_id,name,event_id,app_slug',
+                'user:id,first_name,last_name,email,avatar',
+            ])
             ->orderBy('holder_name')
             ->get();
 
         $passes->each->makeHidden('token');
-        $validPasses = $passes->whereNotIn('status', self::INVALID_PASS_STATUSES);
+        $valid = $passes->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published']),
             'passes' => $passes,
             'stats' => [
-                'issued' => $validPasses->count(),
-                'checked_in' => $validPasses->whereNotNull('checked_in_at')->count(),
+                'issued' => $valid->count(),
+                'checked_in' => $valid->whereNotNull('checked_in_at')->count(),
             ],
         ]);
     }
 
     public function validateToken(Request $request)
     {
-        $operator = $this->requestUser($request);
+        $operator = $request->user();
         $data = $request->validate([
             'token' => 'required|string|max:180',
             'event_id' => 'required|integer|exists:events,id',
-        ], [
-            'token.required' => 'Leia ou informe o código do ingresso.',
-            'event_id.required' => 'Selecione o evento da portaria antes de validar ingressos.',
-            'event_id.exists' => 'O evento selecionado não foi encontrado.',
         ]);
-
         $selectedEvent = $this->manageableEvent((int) $data['event_id'], $operator);
-        abort_if($selectedEvent->is_cancelled || ! $selectedEvent->is_published, 422, 'A portaria só pode validar um evento publicado e não cancelado.');
-
-        $appId = $this->applicationId();
+        abort_if(
+            $selectedEvent->is_cancelled || ! $selectedEvent->is_published,
+            422,
+            'A portaria só pode validar um evento publicado e não cancelado.'
+        );
+        $appId = $this->context->id();
 
         $result = DB::transaction(function () use ($data, $operator, $selectedEvent, $appId) {
             $pass = EventPass::query()
@@ -167,13 +221,17 @@ class EventPassController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            if (! $pass
+            if (
+                ! $pass
                 || (int) ($pass->ticket?->app_id ?? 0) !== $appId
                 || (int) ($pass->event?->app_id ?? 0) !== $appId
                 || (int) ($pass->event?->production?->app_id ?? 0) !== $appId
-                || $pass->ticket?->app_slug !== self::APP
-                || $pass->event?->app_slug !== self::APP) {
-                return ['status' => 404, 'message' => 'QR Code inválido. Nenhum ingresso Cutinapp encontrado.', 'pass' => null];
+            ) {
+                return [
+                    'status' => 404,
+                    'message' => 'QR Code inválido. Nenhum ingresso deste contexto foi encontrado.',
+                    'pass' => null,
+                ];
             }
 
             if ((int) $pass->event_id !== (int) $selectedEvent->id) {
@@ -181,12 +239,14 @@ class EventPassController extends Controller
             }
 
             if (in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true)) {
-                $messages = [
-                    'cancelled' => 'Este ingresso foi cancelado e não pode ser utilizado.',
+                $message = match ((string) $pass->status) {
                     'refunded' => 'Este ingresso foi reembolsado e não pode ser utilizado.',
                     'charged_back' => 'Este ingresso foi invalidado por contestação do pagamento.',
-                ];
-                return ['status' => 422, 'message' => $messages[$pass->status] ?? 'Este ingresso não está válido para entrada.', 'pass' => $pass];
+                    'cancelled' => 'Este ingresso foi cancelado e não pode ser utilizado.',
+                    default => 'Este ingresso não está válido para entrada.',
+                };
+
+                return ['status' => 422, 'message' => $message, 'pass' => $pass];
             }
 
             if ($pass->event->is_cancelled || ! $pass->event->is_published) {
@@ -194,28 +254,20 @@ class EventPassController extends Controller
             }
 
             if (! $this->canOperateEvent($operator, $pass->event, $appId)) {
-                return ['status' => 403, 'message' => 'Você não tem permissão para validar entradas deste evento.', 'pass' => null];
+                return [
+                    'status' => 403,
+                    'message' => 'Você não tem permissão para validar entradas deste evento.',
+                    'pass' => null,
+                ];
             }
 
             $now = now();
             if ($pass->event->start_date && $now->lt($pass->event->start_date)) {
-                $startsAt = $pass->event->start_date->timezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
-                return [
-                    'status' => 422,
-                    'message' => "Este ingresso ainda não pode ser utilizado. A entrada será liberada no início do evento, em {$startsAt}.",
-                    'pass' => $pass,
-                ];
+                return ['status' => 422, 'message' => 'Este ingresso ainda não pode ser utilizado.', 'pass' => $pass];
             }
-
             if ($pass->event->end_date && $now->gt($pass->event->end_date)) {
-                $endedAt = $pass->event->end_date->timezone(config('app.timezone'))->format('d/m/Y \à\s H:i');
-                return [
-                    'status' => 422,
-                    'message' => "Este ingresso não pode mais ser utilizado. O evento terminou em {$endedAt}.",
-                    'pass' => $pass,
-                ];
+                return ['status' => 422, 'message' => 'Este ingresso não pode mais ser utilizado.', 'pass' => $pass];
             }
-
             if ($pass->checked_in_at) {
                 return ['status' => 409, 'message' => 'Este ingresso já foi utilizado anteriormente.', 'pass' => $pass];
             }
@@ -237,14 +289,18 @@ class EventPassController extends Controller
             $result['pass']->makeHidden('token');
         }
 
-        return response()->json(['message' => $result['message'], 'pass' => $result['pass']], $result['status']);
+        return response()->json([
+            'message' => $result['message'],
+            'pass' => $result['pass'],
+        ], $result['status']);
     }
 
     public function eventStats(Request $request, int $eventId)
     {
-        $operator = $this->requestUser($request);
-        $event = $this->manageableEvent($eventId, $operator);
-        $valid = EventPass::query()->where('event_id', $eventId)->whereNotIn('status', self::INVALID_PASS_STATUSES);
+        $event = $this->manageableEvent($eventId, $request->user());
+        $valid = EventPass::query()
+            ->where('event_id', $eventId)
+            ->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
             'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled', 'start_date', 'end_date']),
@@ -255,16 +311,22 @@ class EventPassController extends Controller
 
     private function manageableEvent(int $eventId, User $operator): Event
     {
-        $appId = $this->applicationId();
+        $appId = $this->context->id();
         $event = Event::query()
             ->where('app_id', $appId)
-            ->where('app_slug', self::APP)
             ->with('production')
             ->findOrFail($eventId);
-        $production = $event->production;
 
-        abort_unless($production && (int) $production->app_id === $appId, 404, 'Evento não encontrado na Cutinapp.');
-        abort_unless($this->canOperateEvent($operator, $event, $appId), 403, 'Sem permissão para acessar a operação deste evento.');
+        abort_unless(
+            $event->production && (int) $event->production->app_id === $appId,
+            404,
+            'Evento não encontrado neste contexto.'
+        );
+        abort_unless(
+            $this->canOperateEvent($operator, $event, $appId),
+            403,
+            'Sem permissão para acessar a operação deste evento.'
+        );
 
         return $event;
     }
@@ -276,11 +338,9 @@ class EventPassController extends Controller
         if ($operator->hasProfile('Administrador')) {
             return true;
         }
-
         if ($production && (int) $production->user_id === (int) $operator->id) {
             return true;
         }
-
         if (! $operator->hasPermission('ticket_checkin') && ! $operator->hasPermission('event_checkin')) {
             return false;
         }
@@ -290,7 +350,6 @@ class EventPassController extends Controller
             ->where('user_id', $operator->id)
             ->where('status', 'active')
             ->first();
-
         if (! $membership) {
             return false;
         }
@@ -301,7 +360,6 @@ class EventPassController extends Controller
         } elseif (is_object($metadata)) {
             $metadata = (array) $metadata;
         }
-
         if (! is_array($metadata)) {
             return false;
         }
@@ -313,65 +371,44 @@ class EventPassController extends Controller
             || ($production && in_array((int) $production->id, $productionIds, true));
     }
 
-    private function requestUser(Request $request): User
-    {
-        $token = trim((string) $request->bearerToken());
-        abort_if($token === '', 401, 'Sessão inválida ou expirada. Faça login novamente.');
-
-        try {
-            $user = JWTAuth::setToken($token)->authenticate();
-        } catch (\Throwable) {
-            $user = null;
-        }
-
-        abort_unless($user instanceof User, 401, 'Sessão inválida ou expirada. Faça login novamente.');
-        return $user;
-    }
-
-    private function application(): Application
-    {
-        $application = Application::query()
-            ->where('slug', self::APP)
-            ->where('is_active', true)
-            ->first();
-
-        abort_unless($application, 503, 'A Cutinapp não está registrada corretamente na API. Execute as migrations e tente novamente.');
-        return $application;
-    }
-
-    private function applicationId(): int
-    {
-        return (int) $this->application()->id;
-    }
-
-    private function registerParticipation(Application $application, int $userId, string $role): void
+    private function registerParticipation(int $appId, int $userId, string $role): void
     {
         $existing = DB::table('application_user')
-            ->where('application_id', $application->id)
+            ->where('application_id', $appId)
             ->where('user_id', $userId)
             ->first();
 
-        $priority = ['participant' => 10, 'staff' => 20, 'promoter' => 30, 'producer' => 40, 'admin' => 50];
+        $priority = [
+            'participant' => 10,
+            'staff' => 20,
+            'promoter' => 30,
+            'producer' => 40,
+            'admin' => 50,
+        ];
         $existingRole = (string) ($existing->role ?? '');
-        $effectiveRole = ($priority[$existingRole] ?? 0) > ($priority[$role] ?? 0) ? $existingRole : $role;
+        $effective = ($priority[$existingRole] ?? 0) > ($priority[$role] ?? 0)
+            ? $existingRole
+            : $role;
 
         if ($existing) {
             DB::table('application_user')
-                ->where('application_id', $application->id)
+                ->where('application_id', $appId)
                 ->where('user_id', $userId)
                 ->update([
-                    'role' => $effectiveRole,
+                    'role' => $effective,
                     'status' => 'active',
                     'updated_at' => now(),
                 ]);
+
             return;
         }
 
         DB::table('application_user')->insert([
-            'application_id' => $application->id,
+            'application_id' => $appId,
             'user_id' => $userId,
-            'role' => $effectiveRole,
+            'role' => $effective,
             'status' => 'active',
+            'metadata' => json_encode([], JSON_UNESCAPED_UNICODE),
             'joined_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),

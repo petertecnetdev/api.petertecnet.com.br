@@ -54,8 +54,8 @@ class CutinappEventCommunityTest extends TestCase
         $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/report', ['reason' => 'misleading', 'details' => 'Informação a ser conferida pela moderação.'])->assertOk();
         $this->withHeaders($uh)->postJson('/api/cutinapp/events/' . $event['id'] . '/report', ['reason' => 'harassment', 'details' => 'Atualização da denúncia.'])->assertOk();
 
-        $this->assertDatabaseCount('cutinapp_event_reports', 1);
-        $this->assertDatabaseHas('cutinapp_event_reports', ['app_id'=>$app->id,'event_id'=>$event['id'],'user_id'=>$participant->id,'status'=>'open','reason'=>'harassment']);
+        $this->assertDatabaseCount('event_reports', 1);
+        $this->assertDatabaseHas('event_reports', ['app_id'=>$app->id,'event_id'=>$event['id'],'user_id'=>$participant->id,'status'=>'open','reason'=>'harassment']);
 
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/community')
             ->assertOk()
@@ -106,10 +106,10 @@ class CutinappEventCommunityTest extends TestCase
         ])->assertCreated()->json('post_id');
 
         $this->withHeaders($oh)->deleteJson('/api/cutinapp/community/' . $postId)->assertForbidden();
-        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'status'=>'published']);
+        $this->assertDatabaseHas('event_posts', ['id'=>$postId,'status'=>'published']);
 
         $this->withHeaders($ph)->deleteJson('/api/cutinapp/community/' . $postId)->assertOk();
-        $this->assertDatabaseHas('cutinapp_event_posts', ['id'=>$postId,'status'=>'hidden']);
+        $this->assertDatabaseHas('event_posts', ['id'=>$postId,'status'=>'hidden']);
     }
 
     private function headersFor(User $user): array

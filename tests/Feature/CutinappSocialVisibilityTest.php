@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Application;
-use App\Models\CutinappArtist;
+use App\Models\Artist;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
@@ -36,7 +36,7 @@ class CutinappSocialVisibilityTest extends TestCase
         Event::whereKey($visible['id'])->update(['is_published' => true, 'is_cancelled' => false]);
         Event::whereKey($cancelled['id'])->update(['is_published' => true, 'is_cancelled' => true]);
 
-        $artist = CutinappArtist::create([
+        $artist = Artist::create([
             'app_id' => $app->id,
             'user_id' => $producer->id,
             'slug' => 'visibility-artist',
@@ -59,7 +59,7 @@ class CutinappSocialVisibilityTest extends TestCase
             ->assertJsonPath('artists.data.0.total_events_count', 1)
             ->assertJsonPath('artists.data.0.upcoming_events_count', 1);
 
-        $hiddenArtist = CutinappArtist::create([
+        $hiddenArtist = Artist::create([
             'app_id' => $app->id,
             'user_id' => $producer->id,
             'slug' => 'hidden-artist',
@@ -97,7 +97,7 @@ class CutinappSocialVisibilityTest extends TestCase
             ->postJson('/api/cutinapp/follow', ['target_type' => 'production', 'target_id' => $cancelledProduction->id])
             ->assertNotFound();
 
-        $this->assertDatabaseMissing('cutinapp_follows', [
+        $this->assertDatabaseMissing('follows', [
             'app_id' => $app->id,
             'user_id' => $participant->id,
             'target_type' => 'artist',
@@ -114,9 +114,9 @@ class CutinappSocialVisibilityTest extends TestCase
             ->putJson('/api/cutinapp/events/' . $visible['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])
             ->assertOk();
 
-        $this->assertDatabaseMissing('cutinapp_event_engagements', ['user_id' => $participant->id, 'event_id' => $draft['id']]);
-        $this->assertDatabaseMissing('cutinapp_event_engagements', ['user_id' => $participant->id, 'event_id' => $cancelled['id']]);
-        $this->assertDatabaseHas('cutinapp_event_engagements', [
+        $this->assertDatabaseMissing('event_engagements', ['user_id' => $participant->id, 'event_id' => $draft['id']]);
+        $this->assertDatabaseMissing('event_engagements', ['user_id' => $participant->id, 'event_id' => $cancelled['id']]);
+        $this->assertDatabaseHas('event_engagements', [
             'app_id' => $app->id,
             'user_id' => $participant->id,
             'event_id' => $visible['id'],
@@ -130,7 +130,7 @@ class CutinappSocialVisibilityTest extends TestCase
         return $this->withHeaders($headers)->postJson('/api/cutinapp/events', [
             'production_id' => $productionId,
             'title' => $title,
-            'description' => 'Evento usado para validar os limites sociais da Cutinapp.',
+            'description' => 'Evento usado para validar os limites sociais do produto.',
             'address' => 'Rua Visibilidade, 10',
             'city' => 'São Paulo',
             'uf' => 'SP',

@@ -42,4 +42,19 @@ class ApplicationContext
     {
         return (string) $this->application()->slug;
     }
+
+    public function supports(string $capability): bool
+    {
+        return in_array($capability, (array) config('platform.applications.' . $this->slug() . '.capabilities', []), true);
+    }
+
+    public function option(string $path, mixed $default = null): mixed
+    {
+        return config('platform.applications.' . $this->slug() . '.' . $path, $default);
+    }
+
+    public function requireCapability(string $capability): void
+    {
+        abort_unless($this->supports($capability), 404, 'Esta capacidade não está habilitada para a aplicação atual.');
+    }
 }
