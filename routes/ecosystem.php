@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\CommandCenterController;
+use App\Http\Controllers\Admin\CompatibilityController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -26,6 +27,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/command/overview', [CommandCenterController::class, 'overview']);
     Route::get('/command/search', [CommandCenterController::class, 'globalSearch']);
     Route::get('/command/security', [OperationalDiagnosticsController::class, 'security']);
+    Route::get('/command/compatibility-routes', [CompatibilityController::class, 'index'])->middleware('admin.permission:audit_view');
     Route::get('/command/queues', [CommandCenterController::class, 'queues']);
     Route::post('/command/queues/{uuid}/retry', [CommandCenterController::class, 'retryJob']);
     Route::get('/command/applications/{application}', [CommandCenterController::class, 'application'])->whereNumber('application');
