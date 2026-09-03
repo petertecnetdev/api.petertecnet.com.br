@@ -25,6 +25,7 @@ final class ApplicationConfigController extends Controller
                 'url' => $application->url,
                 'logo' => $application->logo,
                 'version' => $application->version,
+                'capabilities' => $this->context->capabilities(),
             ],
         ]);
     }
