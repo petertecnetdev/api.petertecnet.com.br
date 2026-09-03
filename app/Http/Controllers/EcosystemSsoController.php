@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Identity\Services\IdentityAuditService;
+use App\Domain\Identity\Services\IdentitySessionService;
 use App\Models\Application;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -12,6 +14,12 @@ use Illuminate\Support\Str;
 class EcosystemSsoController extends Controller
 {
     private const HANDOFF_TTL_SECONDS = 60;
+
+    public function __construct(
+        private readonly IdentitySessionService $sessions,
+        private readonly IdentityAuditService $audit,
+    ) {
+    }
 
     public function createHandoff(Request $request): JsonResponse
     {
@@ -37,17 +45,15 @@ class EcosystemSsoController extends Controller
             'auth_version' => (int) ($user->auth_version ?? 0),
         ], now()->addSeconds(self::HANDOFF_TTL_SECONDS));
 
+        $this->audit->record('sso_handoff_created', $user, $request, $application);
+
         return response()->json([
             'success' => true,
             'data' => [
                 'handoff_code' => $code,
                 'expires_in' => self::HANDOFF_TTL_SECONDS,
                 'application' => $application->only([
-                    'id',
-                    'slug',
-                    'name',
-                    'url',
-                    'operational_status',
+                    'id', 'slug', 'name', 'url', 'operational_status',
                 ]),
             ],
         ]);
@@ -90,23 +96,24 @@ class EcosystemSsoController extends Controller
             'Sua Conta Peter Tecnet não possui mais acesso a este aplicativo.'
         );
 
-        $token = auth('api')->login($user);
+        $issued = $this->sessions->issue($user, $request, 'sso', $application);
+        $this->audit->record('sso_exchanged', $user, $request, $application, [
+            'session_id' => $issued['session']['id'],
+            'device' => $issued['session']['device'],
+        ]);
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'access_token' => $token,
-                'token_type' => 'bearer',
-                'expires_in' => auth('api')->factory()->getTTL() * 60,
+            'data' => array_merge($issued, [
+                // Compatibility aliases for clients already consuming this response.
+                'access_token' => $issued['access_token'],
+                'token_type' => $issued['token_type'],
+                'expires_in' => $issued['expires_in'],
                 'user' => $user,
                 'application' => $application->only([
-                    'id',
-                    'slug',
-                    'name',
-                    'url',
-                    'operational_status',
+                    'id', 'slug', 'name', 'url', 'operational_status',
                 ]),
-            ],
+            ]),
         ]);
     }
 

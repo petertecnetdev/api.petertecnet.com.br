@@ -25,6 +25,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/account.php'));
 
+            // Generic identity contract. New authentication capabilities live here
+            // while legacy /auth routes remain available during the migration.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/identity.php'));
+
             // Canonical shared platform contract.
             Route::middleware('api')
                 ->prefix('api')

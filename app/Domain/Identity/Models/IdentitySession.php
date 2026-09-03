@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Domain\Identity\Models;
+
+use App\Models\Application;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+
+class IdentitySession extends Model
+{
+    protected $fillable = [
+        'session_id', 'user_id', 'app_id', 'auth_method', 'device_label',
+        'ip_address', 'user_agent', 'last_seen_at', 'expires_at', 'revoked_at', 'revoke_reason',
+    ];
+
+    protected $casts = [
+        'last_seen_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'revoked_at' => 'datetime',
+    ];
+
+    public function user()
+    {
+        return $this->belongsTo(User::class);
+    }
+
+    public function application()
+    {
+        return $this->belongsTo(Application::class, 'app_id');
+    }
+
+    public function isActive(): bool
+    {
+        return $this->revoked_at === null && ($this->expires_at === null || $this->expires_at->isFuture());
+    }
+}
