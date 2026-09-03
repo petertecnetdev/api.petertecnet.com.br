@@ -13,7 +13,7 @@ return new class extends Migration
             'name' => 'Locaio',
             'description' => 'Gestão de imóveis, locações, contratos, documentos, cobranças e obrigações recorrentes.',
             'url' => 'https://locaio.petertecnet.com.br',
-            'logo' => 'https://locaio.petertecnet.com.br/logo.svg',
+            'logo' => 'https://locaio.petertecnet.com.br/logo-locaio.png',
             'is_active' => true,
             'version' => '0.1.0',
             'author' => 'Peter Tecnet',
