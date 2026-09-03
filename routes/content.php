@@ -9,6 +9,7 @@ use App\Domain\Discovery\Http\Controllers\DiscoveryEventController;
 use App\Domain\Discovery\Http\Controllers\DiscoverySearchController;
 use App\Domain\Discovery\Http\Controllers\OptimizedMediaController;
 use App\Domain\Discovery\Http\Controllers\SeoDiagnosticsController;
+use App\Domain\Discovery\Http\Controllers\SitemapController;
 use App\Domain\Discovery\Http\Controllers\SocialCardController;
 use App\Domain\Discovery\Http\Controllers\WebVitalAnalyticsController;
 use App\Domain\Discovery\Http\Controllers\WebVitalController;
@@ -25,6 +26,7 @@ Route::prefix('v1')->group(function () {
         });
 
     Route::prefix('discovery')->group(function () {
+        Route::get('/sitemap.xml', [SitemapController::class, 'show'])->middleware('throttle:30,1');
         Route::get('/search', [DiscoverySearchController::class, 'search'])->middleware('throttle:120,1');
         Route::get('/landing', [DiscoverySearchController::class, 'landing'])->middleware('throttle:120,1');
         Route::get('/landing-candidates', [DiscoverySearchController::class, 'candidates'])->middleware('throttle:60,1');
