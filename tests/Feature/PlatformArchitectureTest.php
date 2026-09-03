@@ -19,38 +19,27 @@ class PlatformArchitectureTest extends TestCase
         'camquick',
     ];
 
+    private const GENERIC_MIGRATION_CUTOFF = '2026_09_03_000000';
+
     public function test_runtime_architecture_contains_no_product_specific_names(): void
     {
-        $roots = [
-            app_path('Domain'),
-            app_path('Http/Controllers'),
-            app_path('Models'),
-            app_path('Services'),
-            app_path('Console/Commands'),
-            app_path('Mail'),
-        ];
-
         $violations = [];
         $sourcePattern = $this->sourceProductPattern();
         $filenamePattern = $this->filenameProductPattern();
 
-        foreach ($roots as $root) {
-            if (! File::isDirectory($root)) continue;
+        foreach (File::allFiles(app_path()) as $file) {
+            if (! str_ends_with($file->getFilename(), '.php')) continue;
 
-            foreach (File::allFiles($root) as $file) {
-                if (! str_ends_with($file->getFilename(), '.php')) continue;
+            $relative = $this->relative($file->getPathname());
+            $contents = File::get($file->getPathname());
 
-                $relative = $this->relative($file->getPathname());
-                $contents = File::get($file->getPathname());
+            if (preg_match($filenamePattern, $file->getFilename())) {
+                $violations[] = $relative.' [filename]';
+                continue;
+            }
 
-                if (preg_match($filenamePattern, $file->getFilename())) {
-                    $violations[] = $relative.' [filename]';
-                    continue;
-                }
-
-                if (preg_match($sourcePattern, $contents)) {
-                    $violations[] = $relative.' [source]';
-                }
+            if (preg_match($sourcePattern, $contents)) {
+                $violations[] = $relative.' [source]';
             }
         }
 
@@ -59,8 +48,39 @@ class PlatformArchitectureTest extends TestCase
         $this->assertSame(
             [],
             $violations,
-            'Application names are forbidden in runtime architecture. Put product differences in application context/configuration only: '.implode(', ', $violations)
+            'Application names are forbidden anywhere in runtime architecture. Put product differences in application data/configuration only: '.implode(', ', $violations)
         );
+    }
+
+    public function test_new_migrations_cannot_introduce_product_specific_schema_or_names(): void
+    {
+        $violations = [];
+        $sourcePattern = $this->sourceProductPattern();
+        $filenamePattern = $this->filenameProductPattern();
+        $tablePrefixPattern = '/\\b('.implode('|', array_map('preg_quote', self::PRODUCT_NAMES)).')_[a-z0-9_]+\\b/i';
+
+        foreach (File::files(database_path('migrations')) as $file) {
+            if (! str_ends_with($file->getFilename(), '.php')) continue;
+
+            $timestamp = substr($file->getFilename(), 0, 17);
+            if ($timestamp < self::GENERIC_MIGRATION_CUTOFF) continue;
+
+            $contents = File::get($file->getPathname());
+            $relative = $this->relative($file->getPathname());
+
+            if (preg_match($filenamePattern, $file->getFilename())) {
+                $violations[] = $relative.' [filename]';
+            }
+            if (preg_match($sourcePattern, $contents)) {
+                $violations[] = $relative.' [source]';
+            }
+            if (preg_match($tablePrefixPattern, $contents, $matches)) {
+                $violations[] = $relative.' [table:'.$matches[0].']';
+            }
+        }
+
+        sort($violations);
+        $this->assertSame([], $violations, 'New migrations must be application-agnostic: '.implode(', ', $violations));
     }
 
     public function test_canonical_routes_are_application_scoped_and_never_product_prefixed(): void
@@ -78,9 +98,6 @@ class PlatformArchitectureTest extends TestCase
                 continue;
             }
 
-            // Zero-downtime rollout keeps all old URL aliases in one neutral,
-            // explicitly deprecated adapter. It is transitional infrastructure,
-            // not canonical application architecture.
             if ($file->getFilename() === 'compatibility.php') {
                 continue;
             }
@@ -148,8 +165,6 @@ class PlatformArchitectureTest extends TestCase
             foreach (File::allFiles($root) as $file) {
                 if (! str_ends_with($file->getFilename(), '.php')) continue;
 
-                // Transitional URL aliases may mention product slugs, but may
-                // never query product-prefixed storage directly.
                 $contents = File::get($file->getPathname());
                 if (preg_match($tablePrefixPattern, $contents, $matches)) {
                     $violations[] = $this->relative($file->getPathname()).' ['.$matches[0].']';
@@ -187,15 +202,11 @@ class PlatformArchitectureTest extends TestCase
 
     private function filenameProductPattern(): string
     {
-        // Plat is an application slug, but Platform/Plataforma are legitimate
-        // generic architecture/product terms and must never be false positives.
         return '/^(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form|aform))/i';
     }
 
     private function sourceProductPattern(): string
     {
-        // Catch standalone slugs/branding literals and CamelCase classes while
-        // allowing the generic words Platform and Plataforma.
         return '/(?<![A-Za-z0-9_])(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form|aform))/i';
     }
 
