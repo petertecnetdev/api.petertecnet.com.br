@@ -52,6 +52,7 @@ return [
         'payout_reserve_percent' => (float) env('FINANCE_PAYOUT_RESERVE_PERCENT', 10),
         'payout_destination_cooling_hours' => (int) env('FINANCE_PIX_CHANGE_COOLING_HOURS', 24),
         'step_up_amount' => (float) env('FINANCE_STEP_UP_AMOUNT', 5000),
+        'allow_platform_collection' => (bool) env('FINANCE_ALLOW_PLATFORM_COLLECTION', false),
     ],
 
     'mercadopago' => [
