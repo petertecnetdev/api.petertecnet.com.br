@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Identity;
 
 use App\Domain\Identity\Models\IdentitySession;
 use App\Domain\Identity\Services\IdentityAuditService;
+use App\Domain\Identity\Services\IdentityGlobalSessionService;
 use App\Domain\Identity\Services\IdentitySessionService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -13,6 +14,7 @@ class IdentitySessionController extends Controller
 {
     public function __construct(
         private readonly IdentitySessionService $sessions,
+        private readonly IdentityGlobalSessionService $globalSessions,
         private readonly IdentityAuditService $audit,
     ) {
     }
@@ -71,10 +73,20 @@ class IdentitySessionController extends Controller
 
     public function destroyAll(Request $request): JsonResponse
     {
+        $user = $request->user('api');
         $current = $this->sessions->current();
-        $count = $this->sessions->revokeAll($request->user('api'), 'user_revoked_all');
-        $this->audit->record('all_sessions_revoked', $request->user('api'), $request, $current?->application, [
-            'revoked_count' => $count,
+        $appCount = $this->sessions->revokeAll($user, 'user_revoked_all');
+        $globalCount = $this->globalSessions->revokeAll($user, 'user_revoked_all');
+
+        // Invalidate legacy JWTs that have no sid as well as every already issued
+        // application JWT. This makes "all sessions" mean the whole account.
+        $user->forceFill([
+            'auth_version' => max((int) ($user->auth_version ?? 1), 1) + 1,
+        ])->save();
+
+        $this->audit->record('all_sessions_revoked', $user, $request, $current?->application, [
+            'revoked_count' => $appCount,
+            'global_sessions_revoked' => $globalCount,
             'kept_current' => false,
         ], true);
 
@@ -83,10 +95,16 @@ class IdentitySessionController extends Controller
         } catch (\Throwable) {
         }
 
-        return response()->json([
+        $response = response()->json([
             'success' => true,
             'message' => 'Todas as sessões foram encerradas.',
-            'revoked' => $count,
+            'revoked' => $appCount + $globalCount,
         ]);
+
+        foreach ($this->globalSessions->forgetCookies() as $cookie) {
+            $response->withCookie($cookie);
+        }
+
+        return $response;
     }
 }
