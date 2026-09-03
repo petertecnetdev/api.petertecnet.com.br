@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\CatalogImport;
 use App\Models\Establishment;
 use App\Models\Item;
-use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Services\Catalog\CatalogImportService;
 use App\Services\Catalog\CatalogProductService;
@@ -57,6 +56,25 @@ class CatalogIntelligenceController extends Controller
         return response()->json(['success' => true, 'data' => $variant?->load('product')]);
     }
 
+    public function showItem(Request $request, int $item): JsonResponse
+    {
+        $model = $this->ownedItem($request, $item);
+        $variant = $model->product_variant_id
+            ? ProductVariant::query()->with('product')->find($model->product_variant_id)
+            : null;
+
+        $metadata = is_string($model->catalog_metadata)
+            ? json_decode($model->catalog_metadata, true)
+            : ($model->catalog_metadata ?? []);
+
+        return response()->json(['success' => true, 'data' => [
+            'item_id' => $model->id,
+            'variant' => $variant,
+            'quality' => data_get($metadata, 'quality'),
+            'provenance' => data_get($metadata, 'provenance', []),
+        ]]);
+    }
+
     public function enrich(Request $request, int $item): JsonResponse
     {
         $model = $this->ownedItem($request, $item);
@@ -102,6 +120,7 @@ class CatalogIntelligenceController extends Controller
             $metadata = is_string($item->catalog_metadata)
                 ? json_decode($item->catalog_metadata, true)
                 : ($item->catalog_metadata ?? []);
+
             return [
                 'id' => $item->id,
                 'name' => $item->name,
@@ -153,6 +172,7 @@ class CatalogIntelligenceController extends Controller
     public function showImport(Request $request, string $publicId): JsonResponse
     {
         $import = $this->ownedImport($request, $publicId);
+
         return response()->json(['success' => true, 'data' => $import->load('rows.matchedVariant.product')]);
     }
 
@@ -167,23 +187,6 @@ class CatalogIntelligenceController extends Controller
             'message' => 'Linhas aprovadas publicadas no catálogo.',
             'data' => $published,
         ]);
-    }
-
-    public function rememberAlias(Request $request): JsonResponse
-    {
-        $data = $request->validate([
-            'product_id' => ['required', 'integer', 'exists:products,id'],
-            'alias' => ['required', 'string', 'max:255'],
-        ]);
-
-        $product = Product::query()->findOrFail($data['product_id']);
-        $alias = $this->products->rememberAlias($product, $data['alias'], 'manual_correction');
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Correção memorizada para futuras importações.',
-            'data' => $alias,
-        ], 201);
     }
 
     private function enrichmentRules(): array
@@ -225,6 +228,7 @@ class CatalogIntelligenceController extends Controller
     {
         $item = Item::query()->whereKey($id)->where('entity_name', 'establishment')->firstOrFail();
         $this->ownedEstablishment($request, (int) $item->entity_id);
+
         return $item;
     }
 
@@ -235,6 +239,7 @@ class CatalogIntelligenceController extends Controller
             ->where('application_id', $this->context->id())
             ->firstOrFail();
         $this->ownedEstablishment($request, (int) $import->establishment_id);
+
         return $import;
     }
 
