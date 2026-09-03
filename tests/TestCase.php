@@ -22,13 +22,16 @@ abstract class TestCase extends BaseTestCase
             return;
         }
 
-        foreach (array_keys((array) config('platform.applications', [])) as $slug) {
+        foreach ((array) config('platform.applications', []) as $slug => $applicationConfig) {
+            $applicationConfig = (array) $applicationConfig;
+
             Application::query()->firstOrCreate(
                 ['slug' => (string) $slug],
                 [
-                    'name' => Str::headline((string) $slug),
-                    'is_active' => true,
-                    'self_service_access' => true,
+                    'name' => (string) ($applicationConfig['name'] ?? Str::headline((string) $slug)),
+                    'url' => $applicationConfig['url'] ?? null,
+                    'is_active' => (bool) ($applicationConfig['is_active'] ?? true),
+                    'self_service_access' => (bool) ($applicationConfig['self_service_access'] ?? false),
                 ]
             );
         }
@@ -46,10 +49,10 @@ abstract class TestCase extends BaseTestCase
         return Application::query()->updateOrCreate(
             ['slug' => $slug],
             array_merge([
-                'name' => Str::headline($slug),
+                'name' => (string) ($configured['name'] ?? Str::headline($slug)),
                 'url' => $configured['url'] ?? null,
-                'is_active' => true,
-                'self_service_access' => true,
+                'is_active' => (bool) ($configured['is_active'] ?? true),
+                'self_service_access' => (bool) ($configured['self_service_access'] ?? false),
             ], $attributes)
         );
     }
