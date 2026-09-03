@@ -45,19 +45,13 @@ class IdentityStepUpService
     {
         $this->assertAction($action);
         $raw = trim((string) $request->header('X-Peter-Step-Up', ''));
-        if ($raw === '') {
-            return null;
-        }
+        if ($raw === '') return null;
 
-        $challenge = $this->challenges->consume('step_up_grant', $raw);
-        if (! $challenge || (int) $challenge->user_id !== (int) $request->user('api')?->id) {
-            return null;
-        }
+        $challenge = $this->challenges->consume('step_up_grant', $raw, false);
+        if (! $challenge || (int) $challenge->user_id !== (int) $request->user('api')?->id) return null;
 
         $payload = is_array($challenge->payload) ? $challenge->payload : [];
-        if (! hash_equals($action, (string) ($payload['action'] ?? ''))) {
-            return null;
-        }
+        if (! hash_equals($action, (string) ($payload['action'] ?? ''))) return null;
 
         $current = $this->sessions->current();
         $expectedSessionId = (string) ($payload['session_id'] ?? '');
@@ -65,7 +59,7 @@ class IdentityStepUpService
             return null;
         }
 
-        return $challenge;
+        return $this->challenges->consumeModel($challenge) ? $challenge->fresh() : null;
     }
 
     public function allowedActions(): array
