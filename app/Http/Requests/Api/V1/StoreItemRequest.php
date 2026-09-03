@@ -33,6 +33,8 @@ class StoreItemRequest extends FormRequest
             'discount' => ['nullable', 'numeric', 'min:0'],
             'expiration_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            'is_featured' => ['nullable', 'boolean'],
+            'display_order' => ['nullable', 'integer', 'min:0', 'max:100000'],
         ];
     }
 }
