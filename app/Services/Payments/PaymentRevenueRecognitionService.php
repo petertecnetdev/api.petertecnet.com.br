@@ -8,7 +8,7 @@ class PaymentRevenueRecognitionService
 {
     public const REALIZED_STATUSES = ['paid', 'approved'];
     public const OPEN_STATUSES = ['pending', 'in_process', 'authorized'];
-    public const FAILED_STATUSES = ['failed', 'rejected', 'cancelled'];
+    public const FAILED_STATUSES = ['failed', 'rejected', 'cancelled', 'expired'];
     public const REVERSED_STATUSES = ['refunded', 'charged_back'];
 
     public function normalize(array $row): array
