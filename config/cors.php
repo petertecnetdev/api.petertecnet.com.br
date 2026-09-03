@@ -8,6 +8,8 @@ $officialFrontendOrigins = [
     'https://plat.petertecnet.com.br',
     'https://cutinapp.petertecnet.com.br',
     'https://inkap.petertecnet.com.br',
+    'https://payflow.petertecnet.com.br',
+    'https://laora.petertecnet.com.br',
 ];
 
 $extraOrigins = array_values(array_filter(array_map(
@@ -15,10 +17,7 @@ $extraOrigins = array_values(array_filter(array_map(
     explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))
 )));
 
-$allowedOrigins = array_values(array_unique(array_merge(
-    $officialFrontendOrigins,
-    $extraOrigins
-)));
+$allowedOrigins = array_values(array_unique(array_merge($officialFrontendOrigins, $extraOrigins)));
 
 return [
     'paths' => ['api/*', 'broadcasting/auth'],
@@ -29,25 +28,16 @@ return [
         '#^https?://(localhost|127\\.0\\.0\\.1)(:\\d{1,5})?$#i',
     ],
     'allowed_headers' => [
-        'Accept',
-        'Authorization',
-        'Content-Type',
-        'Origin',
-        'Referer',
-        'X-Requested-With',
-        'X-Request-ID',
-        'X-App-ID',
-        'X-Application-Id',
-        'X-App-Slug',
-        'X-Application-Slug',
-        'X-Peter-App',
-        'X-Peter-Ecosystem-SDK',
-        'X-Telemetry-Schema',
-        'X-Frontend-Page',
-        'X-Correlation-ID',
+        'Accept', 'Authorization', 'Content-Type', 'Origin', 'Referer', 'X-Requested-With',
+        'X-Request-ID', 'X-App-ID', 'X-Application-Id', 'X-App-Slug', 'X-Application-Slug',
+        'X-Peter-App', 'X-Peter-Application', 'X-Peter-Ecosystem-SDK', 'X-Peter-Identity-SDK',
+        'X-Peter-Device', 'X-Peter-Device-Name', 'X-Peter-CSRF', 'X-Peter-Step-Up',
+        'X-Peter-Sso-Retry', 'X-Telemetry-Schema', 'X-Frontend-Page', 'X-Correlation-ID',
         'X-Parent-Interaction-ID',
     ],
-    'exposed_headers' => ['X-Request-ID'],
+    'exposed_headers' => [
+        'X-Request-ID', 'Deprecation', 'Sunset', 'X-Peter-Identity-Migration',
+    ],
     'max_age' => 600,
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 ];
