@@ -126,7 +126,7 @@ class TeamMemberController extends Controller
         $establishment = Establishment::query()
             ->with('user')
             ->whereKey($establishmentId)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('is_cancelled', false)
             ->firstOrFail();
 
