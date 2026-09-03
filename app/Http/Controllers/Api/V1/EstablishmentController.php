@@ -124,9 +124,21 @@ class EstablishmentController extends Controller
     {
         $model = $this->owned($request, $establishment);
         $data = $request->validated();
+        $hasProfileSettings = array_key_exists('profile_settings', $data);
+        $profileSettings = $data['profile_settings'] ?? null;
+        unset($data['profile_settings']);
         $data['updated_by'] = $request->user()->id;
 
-        $model->fill($data)->save();
+        $model->fill($data);
+        if ($hasProfileSettings) {
+            $model->forceFill([
+                'profile_settings' => $profileSettings === null
+                    ? null
+                    : json_encode($profileSettings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            ]);
+        }
+        $model->save();
+
         $fresh = $model->fresh();
         $fresh->setAppends([]);
 
