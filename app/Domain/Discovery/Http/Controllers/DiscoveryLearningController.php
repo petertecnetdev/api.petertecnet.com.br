@@ -28,16 +28,46 @@ class DiscoveryLearningController extends Controller
             'application' => ['nullable', 'string', 'max:120'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:20'],
         ]);
-        $application = isset($data['application']) ? $this->discovery->resolveApplication($data['application']) : null;
-        if (isset($data['application']) && ! $application) abort(422, 'Aplicação inválida.');
-        return response()->json(['success' => true, 'data' => $this->searchIndex->search($data['q'], $data['city'] ?? null, $application?->id, (int) ($data['limit'] ?? 8))]);
+        $application = isset($data['application'])
+            ? $this->discovery->resolveApplication($data['application'])
+            : null;
+        if (isset($data['application']) && ! $application) {
+            abort(422, 'Aplicação inválida.');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->searchIndex->search(
+                $data['q'],
+                $data['city'] ?? null,
+                $application?->id,
+                (int) ($data['limit'] ?? 8)
+            ),
+        ]);
     }
 
     public function recommendations(Request $request): JsonResponse
     {
-        $data = $request->validate(['session_id' => ['nullable', 'string', 'max:100'], 'limit' => ['nullable', 'integer', 'min:1', 'max:20']]);
-        if (! DB::table('discovery_search_documents')->exists()) $this->searchIndex->rebuild();
-        return response()->json(['success' => true, 'data' => $this->learning->recommendations($data['session_id'] ?? null, (int) ($data['limit'] ?? 8))]);
+        $data = $request->validate([
+            'session_id' => ['nullable', 'string', 'max:100'],
+            'application' => ['nullable', 'string', 'max:120'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:20'],
+        ]);
+        $application = isset($data['application'])
+            ? $this->discovery->resolveApplication($data['application'])
+            : null;
+        if (isset($data['application']) && ! $application) {
+            abort(422, 'Aplicação inválida.');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->learning->recommendations(
+                $data['session_id'] ?? null,
+                (int) ($data['limit'] ?? 8),
+                $application?->id
+            ),
+        ]);
     }
 
     public function experiment(Request $request): JsonResponse
@@ -48,8 +78,18 @@ class DiscoveryLearningController extends Controller
             'application' => ['nullable', 'string', 'max:120'],
         ]);
         $application = isset($data['application']) ? $this->discovery->resolveApplication($data['application']) : null;
-        if (isset($data['application']) && ! $application) abort(422, 'Aplicação inválida.');
-        return response()->json(['success' => true, 'data' => $this->learning->resolveExperiment($data['surface'], $data['session_id'], $application?->id)]);
+        if (isset($data['application']) && ! $application) {
+            abort(422, 'Aplicação inválida.');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->learning->resolveExperiment(
+                $data['surface'],
+                $data['session_id'],
+                $application?->id
+            ),
+        ]);
     }
 
     public function experimentEvent(Request $request): JsonResponse
@@ -62,7 +102,15 @@ class DiscoveryLearningController extends Controller
             'conversion_value' => ['nullable', 'numeric', 'min:0', 'max:999999999'],
             'metadata' => ['nullable', 'array'],
         ]);
-        $this->learning->experimentEvent((int) $data['experiment_id'], $data['variant_key'], $data['session_id'], $data['event_type'], isset($data['conversion_value']) ? (float) $data['conversion_value'] : null, $data['metadata'] ?? []);
+        $this->learning->experimentEvent(
+            (int) $data['experiment_id'],
+            $data['variant_key'],
+            $data['session_id'],
+            $data['event_type'],
+            isset($data['conversion_value']) ? (float) $data['conversion_value'] : null,
+            $data['metadata'] ?? []
+        );
+
         return response()->json(['success' => true], 202);
     }
 
@@ -80,7 +128,9 @@ class DiscoveryLearningController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
         $application = isset($data['application']) ? $this->discovery->resolveApplication($data['application']) : null;
-        if (isset($data['application']) && ! $application) abort(422, 'Aplicação inválida.');
+        if (isset($data['application']) && ! $application) {
+            abort(422, 'Aplicação inválida.');
+        }
         DB::table('experience_audits')->insert([
             'application_id' => $application?->id,
             'session_id' => $data['session_id'] ?? null,
@@ -88,9 +138,14 @@ class DiscoveryLearningController extends Controller
             'score' => (int) $data['score'],
             'device_class' => $data['device_class'] ?? null,
             'issues' => isset($data['issues']) ? json_encode($data['issues']) : null,
-            'metadata' => isset($data['metadata']) ? json_encode(Arr::only($data['metadata'], ['viewport', 'reduced_motion'])) : null,
-            'audited_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            'metadata' => isset($data['metadata'])
+                ? json_encode(Arr::only($data['metadata'], ['viewport', 'reduced_motion']))
+                : null,
+            'audited_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
+
         return response()->json(['success' => true], 202);
     }
 }
