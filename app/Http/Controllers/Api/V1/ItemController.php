@@ -27,15 +27,22 @@ class ItemController extends Controller
 
         $query = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('status', true)
             ->where('entity_name', 'establishment')
             ->whereIn('entity_id', function ($subquery) use ($requiresApproval) {
-                $subquery->select('id')
+                $subquery->select('establishments.id')
                     ->from('establishments')
-                    ->where('app_id', $this->context->id())
                     ->where('is_cancelled', false)
-                    ->where('is_published', true);
+                    ->where('is_published', true)
+                    ->where(function ($query) {
+                        $query->where('establishments.app_id', $this->context->id())
+                            ->orWhereExists(function ($pivot) {
+                                $pivot->selectRaw('1')
+                                    ->from('application_establishment')
+                                    ->whereColumn('application_establishment.establishment_id', 'establishments.id')
+                                    ->where('application_establishment.application_id', $this->context->id());
+                            });
+                    });
 
                 if ($requiresApproval) {
                     $subquery->where('is_approved', true);
@@ -74,9 +81,11 @@ class ItemController extends Controller
     {
         $establishment = $this->publicEstablishment($establishmentSlug);
 
+        // Items belong to the shared establishment domain entity. An establishment
+        // exposed to another application through the application_establishment pivot
+        // must keep the same catalog instead of duplicating items per frontend app.
         $items = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
@@ -85,6 +94,7 @@ class ItemController extends Controller
             ->get();
 
         $items->each(fn (Item $item) => $item->setAppends(['image_url']));
+        $establishment->load(['files', 'app:id,name,slug', 'applications:id,name,slug']);
         $establishment->setAppends([]);
 
         return response()->json([
@@ -107,7 +117,6 @@ class ItemController extends Controller
 
         $items = Item::query()
             ->with('files')
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->where('entity_id', $owned->id)
             ->latest('id')
@@ -122,7 +131,7 @@ class ItemController extends Controller
     {
         $establishment = $this->ownedEstablishment($request, (int) $request->validated('establishment_id'));
         $data = $request->safe()->except('establishment_id');
-        $data['app_id'] = $this->context->id();
+        $data['app_id'] = $establishment->app_id ?: $this->context->id();
         $data['entity_name'] = 'establishment';
         $data['entity_id'] = $establishment->id;
         $data['user_id'] = $request->user()->id;
@@ -174,9 +183,12 @@ class ItemController extends Controller
     {
         return Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
+            ->where(function ($query) {
+                $query->where('app_id', $this->context->id())
+                    ->orWhereHas('applications', fn ($apps) => $apps->where('applications.id', $this->context->id()));
+            })
             ->firstOrFail();
     }
 
@@ -184,14 +196,21 @@ class ItemController extends Controller
     {
         return Item::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
             ->whereIn('entity_id', function ($query) use ($request) {
-                $query->select('id')
+                $query->select('establishments.id')
                     ->from('establishments')
-                    ->where('app_id', $this->context->id())
                     ->where('user_id', $request->user()->id)
-                    ->where('is_cancelled', false);
+                    ->where('is_cancelled', false)
+                    ->where(function ($scope) {
+                        $scope->where('establishments.app_id', $this->context->id())
+                            ->orWhereExists(function ($pivot) {
+                                $pivot->selectRaw('1')
+                                    ->from('application_establishment')
+                                    ->whereColumn('application_establishment.establishment_id', 'establishments.id')
+                                    ->where('application_establishment.application_id', $this->context->id());
+                            });
+                    });
             })
             ->firstOrFail();
     }
@@ -199,10 +218,12 @@ class ItemController extends Controller
     private function publicEstablishment(string $slug): Establishment
     {
         $query = Establishment::query()
-            ->where('app_id', $this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
-            ->where('is_published', true);
+            ->where(function ($scope) {
+                $scope->where('app_id', $this->context->id())
+                    ->orWhereHas('applications', fn ($apps) => $apps->where('applications.id', $this->context->id()));
+            });
 
         if (in_array($this->context->slug(), config('platform.approval_required_apps', []), true)) {
             $query->where('is_approved', true);
