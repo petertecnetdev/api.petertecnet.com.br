@@ -17,6 +17,12 @@ class Application extends Model
         'logo',
         'is_active',
         'self_service_access',
+        'launcher_order',
+        'category',
+        'is_visible',
+        'operational_status',
+        'maintenance_message',
+        'ecosystem_sdk_version',
         'version',
         'author',
         'release_date',
@@ -25,12 +31,24 @@ class Application extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'self_service_access' => 'boolean',
+        'is_visible' => 'boolean',
+        'launcher_order' => 'integer',
         'release_date' => 'datetime',
     ];
 
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    public function scopeVisibleInLauncher($query)
+    {
+        return $query->where('is_visible', true);
+    }
+
+    public function isOperational(): bool
+    {
+        return ! in_array($this->operational_status, ['maintenance', 'down'], true);
     }
 
     public function appointments()
