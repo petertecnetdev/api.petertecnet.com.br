@@ -48,4 +48,20 @@ class ApplicationBrandingServiceTest extends TestCase
         $this->assertSame('https://cdn.example.com/new.png', $payload['logo_light']);
         $this->assertSame('https://cdn.example.com/icon.png', $payload['favicon']);
     }
+
+    public function test_uploaded_assets_receive_application_based_filenames(): void
+    {
+        $application = new Application([
+            'name' => 'Rasoio',
+            'slug' => 'rasoio',
+        ]);
+        $service = new ApplicationBrandingService();
+
+        $this->assertSame('rasoio-logo.png', $service->assetFilename($application, 'logo', 'png'));
+        $this->assertSame('rasoio-logo-light.webp', $service->assetFilename($application, 'logo_light', 'webp'));
+        $this->assertSame('rasoio-logo-dark.jpg', $service->assetFilename($application, 'logo_dark', 'jpg'));
+        $this->assertSame('rasoio-icon.png', $service->assetFilename($application, 'icon', 'png'));
+        $this->assertSame('rasoio-favicon.png', $service->assetFilename($application, 'favicon', 'png'));
+        $this->assertSame('rasoio-social-image.png', $service->assetFilename($application, 'social_image', 'png'));
+    }
 }
