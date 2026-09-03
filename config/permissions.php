@@ -6,6 +6,31 @@ return [
         'name' => 'Administrar ecossistema',
         'description' => 'Permite acessar a central Peter Tecnet, usuários, atividade, segurança, aplicações e governança do ecossistema.',
     ],
+    'operations_view' => [
+        'category' => 'Operações',
+        'name' => 'Visualizar Mission Control',
+        'description' => 'Permite visualizar saúde, observabilidade, SLOs, filas e problemas operacionais do ecossistema.',
+    ],
+    'incident_manage' => [
+        'category' => 'Operações',
+        'name' => 'Gerenciar incidentes',
+        'description' => 'Permite criar, reconhecer, investigar e resolver incidentes operacionais.',
+    ],
+    'queue_retry' => [
+        'category' => 'Operações',
+        'name' => 'Reprocessar jobs',
+        'description' => 'Permite reenviar jobs falhos para processamento após investigação.',
+    ],
+    'security_view' => [
+        'category' => 'Operações',
+        'name' => 'Visualizar segurança operacional',
+        'description' => 'Permite consultar eventos críticos, negados, suspeitos e erros de segurança.',
+    ],
+    'repair_plan_manage' => [
+        'category' => 'Operações',
+        'name' => 'Preparar planos de correção',
+        'description' => 'Permite preparar planos supervisionados de correção sem executar alterações automáticas em produção.',
+    ],
     'application_manage' => [
         'category' => 'Aplicações',
         'name' => 'Gerenciar aplicações',
@@ -56,7 +81,7 @@ return [
     'item_list' => ['category' => 'Item', 'name' => 'Listar itens', 'description' => 'Permite ao usuário listar itens.'],
     'item_config' => ['category' => 'Item', 'name' => 'Configurar item', 'description' => 'Permite ao usuário configurar itens.'],
     'item_create' => ['category' => 'Item', 'name' => 'Criar item', 'description' => 'Permite ao usuário criar itens.'],
-    'item_edit' => ['category' => 'Item', 'name' => 'Editar item', 'description' => 'Permite ao usuário editar itens.'],
+    'item_edit' => ['category' => 'Item', 'name' => 'Editar item', 'description' => 'Permite ao usuário editar informações de um item existente.'],
     'item_delete' => ['category' => 'Item', 'name' => 'Excluir item', 'description' => 'Permite ao usuário excluir itens.'],
 
     'user_list' => ['category' => 'Usuário', 'name' => 'Listar usuários', 'description' => 'Permite ao usuário listar usuários.'],
@@ -88,7 +113,7 @@ return [
     'profile_create' => ['category' => 'Perfil', 'name' => 'Criar perfil', 'description' => 'Permite criar um novo perfil.'],
     'profile_view' => ['category' => 'Perfil', 'name' => 'Ver perfis', 'description' => 'Permite visualizar perfis.'],
     'profile_show' => ['category' => 'Perfil', 'name' => 'Ver perfil específico', 'description' => 'Permite visualizar um perfil específico.'],
-    'profile_delete' => ['category' => 'Perfil', 'name' => 'Excluir perfil', 'description' => 'Permite excluir perfis.'],
+    'profile_delete' => ['category' => 'Perfil', 'name' => 'Excluir perfis', 'description' => 'Permite excluir perfis.'],
     'profile_edit' => ['category' => 'Perfil', 'name' => 'Editar perfil', 'description' => 'Permite editar perfis.'],
 
     'permission_management' => ['category' => 'Sistema', 'name' => 'Gerenciamento de permissões', 'description' => 'Permite gerenciar as permissões dos perfis.'],
