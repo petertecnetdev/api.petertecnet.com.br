@@ -36,6 +36,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Reusable property/lease capability. Applications select context by
+            // slug; the domain stays independent from any frontend product name.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/property_management.php'));
+
             // Application branding is a shared platform capability. Keeping it in a
             // dedicated contract avoids app-specific controllers and lets every UI
             // migrate from hard-coded assets without changing legacy endpoints.
