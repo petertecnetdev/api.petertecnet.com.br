@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Identity\IdentityAuthenticationController;
+use App\Http\Controllers\Identity\IdentityFederatedController;
 use App\Http\Controllers\Identity\IdentityPasskeyController;
 use App\Http\Controllers\Identity\IdentitySecurityController;
 use App\Http\Controllers\Identity\IdentitySessionController;
@@ -9,6 +10,8 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('account/identity')->name('identity.')->group(function () {
     Route::post('/login', [IdentityAuthenticationController::class, 'login'])
         ->middleware('throttle:30,1')->name('login');
+    Route::post('/google', [IdentityFederatedController::class, 'google'])
+        ->middleware('throttle:20,1')->name('google');
     Route::post('/register', [IdentityAuthenticationController::class, 'register'])
         ->middleware('throttle:10,1')->name('register');
 
@@ -55,3 +58,11 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
             ->whereNumber('credentialId')->name('passkeys.destroy');
     });
 });
+
+// Compatibility aliases are intentionally registered after routes/api.php by
+// RouteServiceProvider. Existing clients keep their URLs while authentication
+// is handled by the generic Identity Platform, preventing 2FA/session bypasses.
+Route::post('auth/login', [IdentityAuthenticationController::class, 'login'])
+    ->middleware('throttle:30,1')->name('identity.compat.login');
+Route::post('auth/google', [IdentityFederatedController::class, 'google'])
+    ->middleware('throttle:20,1')->name('identity.compat.google');
