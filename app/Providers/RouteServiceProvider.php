@@ -42,6 +42,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/workforce.php'));
 
+            // Generic fulfillment extends the canonical commerce contract without
+            // adding application-specific controllers or legacy URL namespaces.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/commerce_fulfillment.php'));
+
             // Generic property, lease, document, signature and recurring billing
             // contract. Applications opt in through the leasing capability.
             Route::middleware('api')
