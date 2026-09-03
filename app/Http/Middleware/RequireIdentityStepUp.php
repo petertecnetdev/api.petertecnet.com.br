@@ -22,14 +22,16 @@ class RequireIdentityStepUp
             return response()->json(['success' => false, 'code' => 'UNAUTHENTICATED', 'message' => 'Autenticação necessária.'], 401);
         }
 
-        $grant = $this->stepUp->validate($user, $request, $action);
+        $normalized = $this->stepUp->normalizeAction($action);
+        $grant = $this->stepUp->validate($user, $request, $normalized);
         if (! $grant) {
-            $this->audit->record('step_up_required', $user, $request, null, ['action' => $action]);
+            $this->audit->record('step_up_required', $user, $request, null, ['action' => $normalized]);
             return response()->json([
                 'success' => false,
                 'code' => 'STEP_UP_REQUIRED',
                 'message' => 'Confirme sua identidade para continuar esta operação sensível.',
-                'action' => $this->stepUp->normalizeAction($action),
+                'action' => $normalized,
+                'step_up_action' => $normalized,
             ], 428);
         }
 
