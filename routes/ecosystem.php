@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\CommercialOperationsController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EstablishmentDuplicateController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -32,6 +33,14 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
 
     Route::post('/establishment-duplicates', EstablishmentDuplicateController::class)->middleware('throttle:120,1');
     Route::post('/files/primary', [PrimaryFileController::class, 'store'])->middleware('throttle:60,1');
+
+    Route::prefix('operations')->group(function () {
+        Route::get('/context', [CommercialOperationsController::class, 'context']);
+        Route::post('/establishments', [CommercialOperationsController::class, 'storeEstablishment']);
+        Route::put('/establishments/{establishment}', [CommercialOperationsController::class, 'updateEstablishment'])->whereNumber('establishment');
+        Route::post('/items', [CommercialOperationsController::class, 'storeItem']);
+        Route::put('/items/{item}', [CommercialOperationsController::class, 'updateItem'])->whereNumber('item');
+    });
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
