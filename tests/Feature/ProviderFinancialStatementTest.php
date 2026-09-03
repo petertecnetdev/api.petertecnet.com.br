@@ -68,6 +68,7 @@ class ProviderFinancialStatementTest extends TestCase
         $this->assertSame(215.0, $snapshot['current_balance']);
         $this->assertSame(30.0, $snapshot['bank_withdrawals']);
         $this->assertSame(1, $snapshot['settled_payment_count']);
+        $this->assertSame(0, $snapshot['unmatched_release_entries']);
     }
 
     public function test_reimport_is_idempotent_and_preserves_first_settlement_timestamp(): void
@@ -120,7 +121,7 @@ class ProviderFinancialStatementTest extends TestCase
         $this->assertSame(0, FinancialLedgerEntry::query()->where('payment_id', $payment->id)->where('event_type', 'funds_settled')->count());
     }
 
-    public function test_maintenance_requests_only_one_report_per_window(): void
+    public function test_maintenance_completes_existing_report_config_and_requests_only_one_report_per_window(): void
     {
         Carbon::setTestNow('2026-09-03 12:10:00');
         config(['services.mercadopago.access_token' => 'test-token']);
@@ -128,8 +129,18 @@ class ProviderFinancialStatementTest extends TestCase
 
         Http::fake(function ($request) use (&$nextTask) {
             $url = $request->url();
-            if (str_ends_with($url, '/v1/account/release_report/config')) {
-                return Http::response(['file_name_prefix' => 'existing', 'columns' => [['key'=>'SOURCE_ID']]], 200);
+            if ($request->method() === 'GET' && str_ends_with($url, '/v1/account/release_report/config')) {
+                return Http::response([
+                    'file_name_prefix' => 'existing',
+                    'columns' => [['key'=>'SOURCE_ID']],
+                    'frequency' => ['hour'=>0,'value'=>1,'type'=>'monthly'],
+                    'display_timezone' => 'GMT-04',
+                    'include_withdrawal_at_end' => false,
+                    'check_available_balance' => false,
+                ], 200);
+            }
+            if ($request->method() === 'PUT' && str_ends_with($url, '/v1/account/release_report/config')) {
+                return Http::response($request->data(), 200);
             }
             if ($request->method() === 'POST' && str_ends_with($url, '/v1/account/release_report')) {
                 return Http::response(['id' => $nextTask++, 'status' => 'pending'], 202);
@@ -147,6 +158,15 @@ class ProviderFinancialStatementTest extends TestCase
         $this->assertSame(2, $first['requested']);
         $this->assertSame(0, $second['requested']);
         $this->assertDatabaseCount('provider_statement_reports', 2);
+
+        Http::assertSent(function ($request) {
+            if ($request->method() !== 'PUT' || ! str_ends_with($request->url(), '/v1/account/release_report/config')) return false;
+            $keys = collect($request->data('columns', []))->pluck('key');
+            return $keys->contains('BALANCE_AMOUNT')
+                && $keys->contains('PAYOUT_BANK_ACCOUNT_NUMBER')
+                && $request->data('display_timezone') === 'GMT-03'
+                && $request->data('include_withdrawal_at_end') === true;
+        });
     }
 
     private function payment(array $overrides = []): EcosystemPayment
