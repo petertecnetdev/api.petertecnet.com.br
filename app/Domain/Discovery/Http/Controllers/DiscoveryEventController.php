@@ -58,6 +58,12 @@ class DiscoveryEventController extends Controller
             'position',
             'destination',
             'device_class',
+            'goal',
+            'experiment_id',
+            'variant_key',
+            'conversion_value',
+            'lead_id',
+            'opportunity_id',
         ]);
 
         DiscoveryEvent::create([
