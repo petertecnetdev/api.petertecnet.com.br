@@ -143,8 +143,8 @@ final class PublicInquiryController extends Controller
 
     private function opportunityTitle(array $data): string
     {
-        $service = trim((string) ($data['need'] ?? 'Novo projeto'));
-        return mb_substr('Site Peter Tecnet · ' . $service, 0, 255);
+        $need = trim((string) ($data['need'] ?? 'Nova solicitação'));
+        return mb_substr('Inbound · ' . $need, 0, 255);
     }
 
     private function opportunityNotes(array $data, array $attachments): string
