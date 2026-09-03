@@ -10,11 +10,11 @@ use App\Models\Item;
 use App\Models\Order;
 use App\Services\Commerce\CommerceCheckoutService;
 use App\Services\Commerce\CommerceConfigurationService;
+use App\Services\Commerce\CommerceFulfillmentService;
 use App\Services\Commerce\CommercePaymentService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class CommerceController extends Controller
@@ -26,6 +26,7 @@ class CommerceController extends Controller
         private readonly CommerceCheckoutService $checkout,
         private readonly CommerceConfigurationService $configuration,
         private readonly CommercePaymentService $payments,
+        private readonly CommerceFulfillmentService $fulfillment,
     ) {}
 
     public function catalog(string $slug): JsonResponse
@@ -229,10 +230,14 @@ class CommerceController extends Controller
         ]);
     }
 
+    /**
+     * Temporary compatibility endpoint. New clients use CommerceFulfillmentController.
+     */
     public function verifyFulfillment(Request $request, string $publicId): JsonResponse
     {
         $data = $request->validate([
-            'token' => ['required', 'string', 'max:128'],
+            'token' => ['nullable', 'string', 'max:128', 'required_without:code'],
+            'code' => ['nullable', 'string', 'max:32', 'required_without:token'],
         ]);
 
         $order = Order::query()
@@ -243,64 +248,53 @@ class CommerceController extends Controller
             ->firstOrFail();
 
         $this->manageable($request, (int) $order->entity_id);
-        abort_unless($order->payment_status === 'paid', 422, 'Pagamento ainda não confirmado.');
-        abort_unless(hash_equals($this->claimToken($order), $data['token']), 403, 'QR Code inválido.');
-        abort_if(
-            in_array($order->fulfillment_status, ['fulfilled', 'delivered'], true),
-            409,
-            'Este QR Code já foi utilizado.'
+        $verified = $this->fulfillment->verify(
+            $order,
+            $data['token'] ?? null,
+            $data['code'] ?? null,
+            $request->user(),
+            $this->fulfillment->requestContext($request, ['compatibility_endpoint' => true])
         );
 
         return response()->json([
             'success' => true,
             'message' => 'Compra validada e pronta para recebimento.',
-            'data' => $this->serializeOrder($order, true),
+            'data' => $this->serializeOrder($verified, true),
         ]);
     }
 
+    /**
+     * Temporary compatibility method. The public route now points to CommerceFulfillmentController.
+     */
     public function redeem(Request $request, string $publicId): JsonResponse
     {
         $data = $request->validate([
-            'token' => ['required', 'string', 'max:128'],
+            'token' => ['nullable', 'string', 'max:128', 'required_without:code'],
+            'code' => ['nullable', 'string', 'max:32', 'required_without:token'],
         ]);
 
-        $order = DB::transaction(function () use ($request, $publicId, $data) {
-            $order = Order::query()
-                ->where('app_id', $this->context->id())
-                ->where('public_id', $publicId)
-                ->where('type', 'commerce')
-                ->lockForUpdate()
-                ->firstOrFail();
+        $order = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('public_id', $publicId)
+            ->where('type', 'commerce')
+            ->with(['items.item'])
+            ->firstOrFail();
 
-            $this->manageable($request, (int) $order->entity_id);
-            abort_unless($order->payment_status === 'paid', 422, 'Pagamento ainda não confirmado.');
-            abort_unless(hash_equals($this->claimToken($order), $data['token']), 403, 'QR Code inválido.');
-            abort_if(
-                in_array($order->fulfillment_status, ['fulfilled', 'delivered'], true),
-                409,
-                'Este QR Code já foi utilizado.'
-            );
-
-            $fulfillmentStatus = $order->fulfillment === 'delivery' ? 'delivered' : 'fulfilled';
-
-            $order->forceFill([
-                'fulfillment_status' => $fulfillmentStatus,
-                'fulfilled_at' => now(),
-                'fulfilled_by' => $request->user()->id,
-                'status' => 'completed',
-                'status_updated_at' => now(),
-                'attended_at' => now(),
-            ])->save();
-
-            return $order->fresh(['items.item']);
-        }, 3);
+        $this->manageable($request, (int) $order->entity_id);
+        $redeemed = $this->fulfillment->redeem(
+            $order,
+            $data['token'] ?? null,
+            $data['code'] ?? null,
+            $request->user(),
+            $this->fulfillment->requestContext($request, ['compatibility_method' => true])
+        );
 
         return response()->json([
             'success' => true,
-            'message' => $order->fulfillment === 'delivery'
+            'message' => $redeemed->fulfillment === 'delivery'
                 ? 'Entrega confirmada.'
                 : 'Retirada confirmada.',
-            'data' => $this->serializeOrder($order, true),
+            'data' => $this->serializeOrder($redeemed, true),
         ]);
     }
 
@@ -335,11 +329,7 @@ class CommerceController extends Controller
             ->whereKey($order->entity_id)
             ->first();
 
-        $claim = ! $seller
-            && $order->payment_status === 'paid'
-            && ! in_array($order->fulfillment_status, ['fulfilled', 'delivered', 'blocked'], true)
-                ? ['token' => $this->claimToken($order), 'public_id' => $order->public_id]
-                : null;
+        $claim = $seller ? null : $this->fulfillment->claimPayload($order);
 
         return [
             'id' => $seller ? $order->id : null,
@@ -381,15 +371,6 @@ class CommerceController extends Controller
                 : [],
             'claim' => $claim,
         ];
-    }
-
-    private function claimToken(Order $order): string
-    {
-        return hash_hmac(
-            'sha256',
-            implode('|', [$order->public_id, $order->id, $order->app_id, $order->client_id]),
-            (string) config('app.key')
-        );
     }
 
     private function buyerOrder(Request $request, string $publicId): Order
