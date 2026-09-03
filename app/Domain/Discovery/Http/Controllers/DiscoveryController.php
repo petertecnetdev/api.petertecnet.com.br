@@ -151,6 +151,7 @@ class DiscoveryController extends Controller
     {
         $item->setAppends(['image_url']);
         $files = $item->relationLoaded('files') ? $item->files : collect();
+        $files->each(fn ($file) => $file->setAppends([]));
         $image = $files->first(fn ($file) => $file->is_primary && $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')))
             ?? $files->first(fn ($file) => $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')));
         if ($image?->uuid) {
