@@ -11,6 +11,7 @@ return new class extends Migration
         Schema::create('request_deduplication_records', function (Blueprint $table) {
             $table->id();
             $table->foreignId('app_id')->constrained('applications')->cascadeOnDelete();
+            $table->char('principal_hash', 64);
             $table->char('scope_hash', 64);
             $table->char('token_hash', 64);
             $table->char('request_hash', 64);
@@ -21,7 +22,10 @@ return new class extends Migration
             $table->timestamp('expires_at')->index();
             $table->timestamps();
 
-            $table->unique(['app_id', 'scope_hash', 'token_hash'], 'request_deduplication_unique');
+            $table->unique(
+                ['app_id', 'principal_hash', 'scope_hash', 'token_hash'],
+                'request_deduplication_unique'
+            );
         });
     }
 
