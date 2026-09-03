@@ -14,8 +14,11 @@ use App\Models\Profile;
 use App\Models\User;
 use App\Observers\InteractionAuditObserver;
 use App\Support\ApplicationContext;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -27,6 +30,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
+        $this->configureIdentityRateLimiters();
+
         Relation::morphMap([
             'establishment' => 'App\Models\Establishment',
             'event' => 'App\Models\Event',
@@ -49,6 +54,30 @@ class AppServiceProvider extends ServiceProvider
         $this->broadcastModelChanges(Establishment::class, ['dashboard', 'establishments', 'users', 'audit']);
         $this->broadcastModelChanges(EcosystemSetting::class, ['site', 'audit']);
         $this->broadcastModelChanges(EcosystemAuditLog::class, ['dashboard', 'audit']);
+    }
+
+    private function configureIdentityRateLimiters(): void
+    {
+        RateLimiter::for('identity-exchange', function (Request $request) {
+            $app = strtolower(trim((string) $request->header('X-Peter-App', 'unknown')));
+            return [
+                Limit::perMinute(60)->by('identity-exchange:'.$request->ip().':'.$app),
+                Limit::perHour(600)->by('identity-exchange-hour:'.$request->ip()),
+            ];
+        });
+
+        RateLimiter::for('identity-session', function (Request $request) {
+            $actor = $request->user()?->id ?: $request->ip();
+            return Limit::perMinute(120)->by('identity-session:'.$actor);
+        });
+
+        RateLimiter::for('identity-security', function (Request $request) {
+            $actor = $request->user()?->id ?: $request->ip();
+            return [
+                Limit::perMinute(20)->by('identity-security:'.$actor),
+                Limit::perHour(120)->by('identity-security-hour:'.$actor),
+            ];
+        });
     }
 
     private function broadcastModelChanges(string $model, array $modules): void
