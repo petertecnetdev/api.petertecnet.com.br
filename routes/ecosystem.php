@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalDiagnosticsController;
 use App\Http\Controllers\Admin\OperationalIssueController;
+use App\Http\Controllers\Admin\ProviderFinancialStatementController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -53,6 +54,13 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::get('/orders', [FinancialController::class, 'orders']);
         Route::get('/payouts', [FinancialController::class, 'payouts']);
         Route::get('/health', [FinancialController::class, 'health']);
+
+        Route::get('/provider-statements/summary', [ProviderFinancialStatementController::class, 'summary']);
+        Route::get('/provider-statements/reports', [ProviderFinancialStatementController::class, 'reports']);
+        Route::get('/provider-statements/entries', [ProviderFinancialStatementController::class, 'entries']);
+        Route::get('/provider-statements/payments/{payment}', [ProviderFinancialStatementController::class, 'payment'])->whereNumber('payment');
+        Route::post('/provider-statements/sync', [ProviderFinancialStatementController::class, 'sync'])
+            ->middleware(['admin.permission:finance_manage', 'throttle:5,1']);
     });
 
     Route::get('/users', [EcosystemController::class, 'users']);
