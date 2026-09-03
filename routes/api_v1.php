@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\ApplicationDirectoryController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -23,6 +24,11 @@ Route::prefix('v1/apps/{application}')
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
             Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
+
+            Route::get('/directory/companies', [ApplicationDirectoryController::class, 'companies']);
+            Route::post('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'activateCompany'])->whereNumber('sourceId');
+            Route::delete('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'deactivateCompany'])->whereNumber('sourceId');
+
             Route::post('/establishments', [EstablishmentController::class, 'store']);
             Route::patch('/establishments/{establishment}', [EstablishmentController::class, 'update']);
             Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy']);
