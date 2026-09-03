@@ -58,7 +58,7 @@ class ApplicationBrandingController extends Controller
         $filename = $this->branding->assetFilename($application, $data['asset'], $extension);
 
         // Each upload receives its own directory so the public URL changes immediately,
-        // while the actual filename remains predictable (e.g. nexus-logo.png).
+        // while the actual filename remains predictable (e.g. application-logo.png).
         // This avoids browsers/CDNs reusing the previous logo after a new publication
         // and keeps historical branding revisions rollback-safe.
         $path = $uploaded->storeAs(
