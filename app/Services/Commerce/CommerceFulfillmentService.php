@@ -172,9 +172,10 @@ class CommerceFulfillmentService
 
     public function claimToken(Order $order): string
     {
+        // Keep the original token formula so QR codes issued before this lifecycle upgrade remain valid.
         return hash_hmac(
             'sha256',
-            implode('|', ['fulfillment', $order->public_id, $order->id, $order->app_id, $order->client_id]),
+            implode('|', [$order->public_id, $order->id, $order->app_id, $order->client_id]),
             (string) config('app.key')
         );
     }
