@@ -25,7 +25,11 @@ class AppointmentWorkflowController extends Controller
         $employers = Employer::query()
             ->with(['establishment:id,app_id,user_id,created_by,name,slug'])
             ->where('user_id', $userId)
-            ->whereHas('establishment', fn ($q) => $q->where('app_id', $this->context->id()))
+            ->whereHas('establishment', function ($query) {
+                $query
+                    ->forApplication($this->context->id())
+                    ->where('is_cancelled', false);
+            })
             ->get();
         $employerIds = $employers->pluck('id')->map(fn ($id) => (int) $id)->all();
         $orders = empty($employerIds)
@@ -44,11 +48,16 @@ class AppointmentWorkflowController extends Controller
     {
         $actorId = (int) $request->user()->id;
         $establishment = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
+            ->where('is_cancelled', false)
             ->firstOrFail();
 
-        abort_unless($this->isEstablishmentManager($establishment, $actorId), 403, 'Somente a gestão do estabelecimento pode acessar esta agenda operacional.');
+        abort_unless(
+            $this->isEstablishmentManager($establishment, $actorId),
+            403,
+            'Somente a gestão do estabelecimento pode acessar esta agenda operacional.'
+        );
 
         $employers = Employer::query()
             ->where('establishment_id', $establishment->id)
@@ -79,7 +88,10 @@ class AppointmentWorkflowController extends Controller
         $actorId = (int) $request->user()->id;
         $this->authorizeOrderVisibility($order, $actorId);
         $establishment = $order->entity_name === 'establishment'
-            ? Establishment::query()->where('app_id', $this->context->id())->with(['employers.user'])->find($order->entity_id)
+            ? Establishment::query()
+                ->forApplication($this->context->id())
+                ->with(['employers.user'])
+                ->find($order->entity_id)
             : null;
 
         $creator = $order->creator;
@@ -137,7 +149,10 @@ class AppointmentWorkflowController extends Controller
             'action' => 'required|string|in:accept,reject,cancel,complete,no_show',
             'reason' => 'nullable|string|max:1000',
         ]);
-        $order = Order::query()->where('app_id', $this->context->id())->where('type', 'appointment')->findOrFail($id);
+        $order = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('type', 'appointment')
+            ->findOrFail($id);
         $actorId = (int) $request->user()->id;
         $this->authorizeOrderManagement($order, $actorId);
 
@@ -146,7 +161,11 @@ class AppointmentWorkflowController extends Controller
             'pending' => ['accept', 'reject', 'cancel'],
             'confirmed' => ['cancel', 'complete', 'no_show'],
         ];
-        abort_unless(in_array($data['action'], $allowed[$current] ?? [], true), 422, 'Esta ação não é permitida para o estado atual do agendamento.');
+        abort_unless(
+            in_array($data['action'], $allowed[$current] ?? [], true),
+            422,
+            'Esta ação não é permitida para o estado atual do agendamento.'
+        );
 
         $start = $order->order_datetime ? Carbon::parse($order->order_datetime, self::TZ) : null;
         $end = $start ? $start->copy()->addMinutes(max(1, (int) ($order->total_duration ?: 30))) : null;
@@ -163,12 +182,16 @@ class AppointmentWorkflowController extends Controller
             'no_show' => 'no_show',
         ][$data['action']];
         $changes = ['appointment_status' => $next, 'status' => $next];
-        if ($data['action'] === 'accept') $changes['confirmed_by'] = $actorId;
+        if ($data['action'] === 'accept') {
+            $changes['confirmed_by'] = $actorId;
+        }
         if (in_array($data['action'], ['reject', 'cancel'], true)) {
             $changes['cancelled_by'] = $actorId;
             $changes['cancelled_reason'] = $data['reason'] ?? ($data['action'] === 'reject' ? 'Agendamento recusado.' : null);
         }
-        if ($data['action'] === 'complete') $changes['attended_at'] = $now;
+        if ($data['action'] === 'complete') {
+            $changes['attended_at'] = $now;
+        }
 
         $order->update($changes);
         $freshOrder = $order->fresh()->load(['items.item', 'client', 'attendant.user']);
@@ -195,20 +218,40 @@ class AppointmentWorkflowController extends Controller
             $actorId
         );
 
-        return response()->json(['success' => true, 'message' => 'Agendamento atualizado com sucesso.', 'order' => $freshOrder]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Agendamento atualizado com sucesso.',
+            'order' => $freshOrder,
+        ]);
     }
 
     public function assign(Request $request, int $id, AppNotificationService $notifications)
     {
         $data = $request->validate(['attendant_id' => 'required|integer|exists:employers,id']);
-        $order = Order::query()->where('app_id', $this->context->id())->where('type', 'appointment')->findOrFail($id);
+        $order = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('type', 'appointment')
+            ->findOrFail($id);
         $actorId = (int) $request->user()->id;
-        $establishment = Establishment::query()->where('app_id', $this->context->id())->findOrFail($order->entity_id);
+        $establishment = Establishment::query()
+            ->forApplication($this->context->id())
+            ->where('is_cancelled', false)
+            ->findOrFail($order->entity_id);
 
-        abort_unless($this->isEstablishmentManager($establishment, $actorId), 403, 'Somente a gestão do estabelecimento pode redirecionar este agendamento.');
-        abort_unless(in_array($order->appointment_status, ['pending', 'confirmed'], true), 422, 'Este agendamento não pode mais ser redirecionado.');
+        abort_unless(
+            $this->isEstablishmentManager($establishment, $actorId),
+            403,
+            'Somente a gestão do estabelecimento pode redirecionar este agendamento.'
+        );
+        abort_unless(
+            in_array($order->appointment_status, ['pending', 'confirmed'], true),
+            422,
+            'Este agendamento não pode mais ser redirecionado.'
+        );
 
-        $oldAttendantUserId = $order->attendant_id ? Employer::query()->whereKey($order->attendant_id)->value('user_id') : null;
+        $oldAttendantUserId = $order->attendant_id
+            ? Employer::query()->whereKey($order->attendant_id)->value('user_id')
+            : null;
         $employer = Employer::query()
             ->whereKey((int) $data['attendant_id'])
             ->where('establishment_id', $establishment->id)
@@ -218,13 +261,19 @@ class AppointmentWorkflowController extends Controller
         $start = Carbon::parse($order->order_datetime, self::TZ);
         $end = $start->copy()->addMinutes(max(1, (int) ($order->total_duration ?: 30)));
         if (method_exists(Order::class, 'hasScheduleConflict')) {
-            abort_if(Order::hasScheduleConflict($employer->id, $start, $end, $order->id), 422, 'O colaborador selecionado já possui outro agendamento nesse horário.');
+            abort_if(
+                Order::hasScheduleConflict($employer->id, $start, $end, $order->id),
+                422,
+                'O colaborador selecionado já possui outro agendamento nesse horário.'
+            );
         }
 
         $order->update(['attendant_id' => $employer->id]);
         $freshOrder = $order->fresh()->load(['client', 'attendant.user']);
         $recipients = $this->appointmentStakeholderUserIds($freshOrder);
-        if ($oldAttendantUserId) $recipients[] = (int) $oldAttendantUserId;
+        if ($oldAttendantUserId) {
+            $recipients[] = (int) $oldAttendantUserId;
+        }
 
         $professionalName = trim(($employer->user?->first_name ?? '') . ' ' . ($employer->user?->last_name ?? '')) ?: 'novo profissional';
         $notifications->sendToUsers(
@@ -242,7 +291,11 @@ class AppointmentWorkflowController extends Controller
             $actorId
         );
 
-        return response()->json(['success' => true, 'message' => 'Agendamento direcionado para o colaborador.', 'order' => $freshOrder]);
+        return response()->json([
+            'success' => true,
+            'message' => 'Agendamento direcionado para o colaborador.',
+            'order' => $freshOrder,
+        ]);
     }
 
     public function userProfile(Request $request, string $userName)
@@ -256,20 +309,36 @@ class AppointmentWorkflowController extends Controller
         $employers = Employer::query()
             ->with(['establishment:id,app_id,user_id,created_by,name,slug,city,uf'])
             ->where('user_id', $user->id)
-            ->whereHas('establishment', fn ($q) => $q->where('app_id', $this->context->id()))
+            ->whereHas('establishment', function ($query) {
+                $query
+                    ->forApplication($this->context->id())
+                    ->where('is_cancelled', false);
+            })
             ->get();
         $ownedEstablishments = Establishment::query()
-            ->where('app_id', $this->context->id())
-            ->where(function ($q) use ($user) {
-                $q->where('user_id', $user->id)->orWhere('created_by', $user->id);
+            ->forApplication($this->context->id())
+            ->where('is_cancelled', false)
+            ->where(function ($query) use ($user) {
+                $query
+                    ->where('user_id', $user->id)
+                    ->orWhere('created_by', $user->id);
             })
             ->get(['id', 'name', 'slug', 'city', 'uf']);
 
         $employerIds = $employers->pluck('id');
-        $clientQuery = Order::query()->where('app_id', $this->context->id())->where('type', 'appointment')->where('client_id', $user->id);
-        $professionalQuery = Order::query()->where('app_id', $this->context->id())->where('type', 'appointment')->whereIn('attendant_id', $employerIds);
+        $clientQuery = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('type', 'appointment')
+            ->where('client_id', $user->id);
+        $professionalQuery = Order::query()
+            ->where('app_id', $this->context->id())
+            ->where('type', 'appointment')
+            ->whereIn('attendant_id', $employerIds);
         $countStatuses = function ($query): array {
-            $rows = (clone $query)->select('appointment_status', DB::raw('COUNT(*) as total'))->groupBy('appointment_status')->pluck('total', 'appointment_status');
+            $rows = (clone $query)
+                ->select('appointment_status', DB::raw('COUNT(*) as total'))
+                ->groupBy('appointment_status')
+                ->pluck('total', 'appointment_status');
             return [
                 'requested' => (int) $rows->sum(),
                 'pending' => (int) ($rows['pending'] ?? 0),
@@ -282,8 +351,15 @@ class AppointmentWorkflowController extends Controller
         };
 
         $roles = ['Cliente'];
-        if ($employers->isNotEmpty()) $roles[] = 'Profissional';
-        if ($ownedEstablishments->isNotEmpty() || $employers->contains(fn ($e) => in_array(strtolower((string) $e->role), ['gerente', 'manager'], true))) $roles[] = 'Gestor';
+        if ($employers->isNotEmpty()) {
+            $roles[] = 'Profissional';
+        }
+        if (
+            $ownedEstablishments->isNotEmpty()
+            || $employers->contains(fn ($employer) => in_array(strtolower((string) $employer->role), ['gerente', 'manager'], true))
+        ) {
+            $roles[] = 'Gestor';
+        }
         $professionalMetrics = $employerIds->isEmpty() ? null : $countStatuses($professionalQuery);
 
         return response()->json([
@@ -319,10 +395,16 @@ class AppointmentWorkflowController extends Controller
             : false;
         $isManager = false;
         if ($order->entity_name === 'establishment') {
-            $establishment = Establishment::query()->where('app_id', $this->context->id())->find($order->entity_id);
+            $establishment = Establishment::query()
+                ->forApplication($this->context->id())
+                ->find($order->entity_id);
             $isManager = $establishment ? $this->isEstablishmentManager($establishment, $actorId) : false;
         }
-        abort_unless($isClient || $isCreator || $isAttendant || $isManager, 403, 'Você não pode visualizar este agendamento.');
+        abort_unless(
+            $isClient || $isCreator || $isAttendant || $isManager,
+            403,
+            'Você não pode visualizar este agendamento.'
+        );
     }
 
     private function authorizeOrderManagement(Order $order, int $actorId): void
@@ -332,7 +414,9 @@ class AppointmentWorkflowController extends Controller
             : false;
         $isManager = false;
         if ($order->entity_name === 'establishment') {
-            $establishment = Establishment::query()->where('app_id', $this->context->id())->find($order->entity_id);
+            $establishment = Establishment::query()
+                ->forApplication($this->context->id())
+                ->find($order->entity_id);
             $isManager = $establishment ? $this->isEstablishmentManager($establishment, $actorId) : false;
         }
         abort_unless($isAttendant || $isManager, 403, 'Você não pode alterar este agendamento.');
@@ -340,7 +424,9 @@ class AppointmentWorkflowController extends Controller
 
     private function isEstablishmentManager(Establishment $establishment, int $userId): bool
     {
-        if ((int) $establishment->user_id === $userId || (int) $establishment->created_by === $userId) return true;
+        if ((int) $establishment->user_id === $userId || (int) $establishment->created_by === $userId) {
+            return true;
+        }
 
         return Employer::query()
             ->where('establishment_id', $establishment->id)
@@ -352,16 +438,26 @@ class AppointmentWorkflowController extends Controller
     private function appointmentStakeholderUserIds(Order $order): array
     {
         $ids = [];
-        if ($order->client_id) $ids[] = (int) $order->client_id;
+        if ($order->client_id) {
+            $ids[] = (int) $order->client_id;
+        }
         if ($order->attendant_id) {
             $attendantUserId = Employer::query()->whereKey($order->attendant_id)->value('user_id');
-            if ($attendantUserId) $ids[] = (int) $attendantUserId;
+            if ($attendantUserId) {
+                $ids[] = (int) $attendantUserId;
+            }
         }
         if ($order->entity_name === 'establishment') {
-            $establishment = Establishment::query()->where('app_id', $this->context->id())->find($order->entity_id);
+            $establishment = Establishment::query()
+                ->forApplication($this->context->id())
+                ->find($order->entity_id);
             if ($establishment) {
-                if ($establishment->user_id) $ids[] = (int) $establishment->user_id;
-                if ($establishment->created_by) $ids[] = (int) $establishment->created_by;
+                if ($establishment->user_id) {
+                    $ids[] = (int) $establishment->user_id;
+                }
+                if ($establishment->created_by) {
+                    $ids[] = (int) $establishment->created_by;
+                }
                 $managerIds = Employer::query()
                     ->where('establishment_id', $establishment->id)
                     ->whereIn('role', ['gerente', 'manager', 'gestor', 'administrador'])
