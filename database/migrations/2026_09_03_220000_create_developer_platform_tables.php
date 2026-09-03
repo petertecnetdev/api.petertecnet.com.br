@@ -19,8 +19,8 @@ return new class extends Migration
             $table->json('allowed_origins')->nullable();
             $table->unsignedInteger('rate_limit_per_minute')->default(60);
             $table->timestamp('last_used_at')->nullable();
-            $table->timestamp('terms_accepted_at');
-            $table->timestamp('privacy_acknowledged_at');
+            $table->timestamp('terms_accepted_at')->useCurrent();
+            $table->timestamp('privacy_acknowledged_at')->useCurrent();
             $table->timestamps();
 
             $table->index(['user_id', 'environment', 'status']);
