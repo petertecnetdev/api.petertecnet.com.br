@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\ApplicationDirectoryController;
 use App\Http\Controllers\Api\V1\CommerceController;
+use App\Http\Controllers\Api\V1\CommerceFulfillmentController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -52,9 +53,16 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::post('/commerce/orders/{publicId}/payment', [CommerceController::class, 'retryPayment'])->middleware('throttle:20,1');
         Route::get('/commerce/establishments/{establishment}/orders', [CommerceController::class, 'establishmentOrders'])->whereNumber('establishment');
         Route::patch('/commerce/orders/{publicId}/status', [CommerceController::class, 'updateStatus']);
-        Route::post('/commerce/orders/{publicId}/fulfillment/verify', [CommerceController::class, 'verifyFulfillment'])->middleware('throttle:60,1');
+
+        Route::get('/commerce/orders/{publicId}/fulfillment/credential', [CommerceFulfillmentController::class, 'credential'])->middleware('throttle:60,1');
+        Route::patch('/commerce/orders/{publicId}/fulfillment/status', [CommerceFulfillmentController::class, 'updateStatus'])->middleware('throttle:30,1');
+        Route::post('/commerce/orders/{publicId}/fulfillment/verify', [CommerceFulfillmentController::class, 'verify'])->middleware('throttle:30,1');
+        Route::post('/commerce/orders/{publicId}/redeem', [CommerceFulfillmentController::class, 'redeem'])->middleware('throttle:15,1');
+        Route::get('/commerce/orders/{publicId}/fulfillment/events', [CommerceFulfillmentController::class, 'history'])->middleware('throttle:60,1');
+
+        // Temporary compatibility route for clients created before the fulfillment controller split.
         Route::get('/commerce/orders/{publicId}/fulfillment', [CommerceController::class, 'verifyFulfillment'])->middleware('throttle:60,1');
-        Route::post('/commerce/orders/{publicId}/redeem', [CommerceController::class, 'redeem'])->middleware('throttle:30,1');
+
         Route::post('/orders', [PlatOrderController::class, 'checkout'])->middleware('throttle:30,1');
         Route::get('/me/orders', [PlatOrderController::class, 'myOrders']);
         Route::get('/me/orders/{order}', [PlatOrderController::class, 'myOrder'])->whereNumber('order');
