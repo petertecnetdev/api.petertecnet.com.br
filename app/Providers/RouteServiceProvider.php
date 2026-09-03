@@ -36,6 +36,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Generic property, lease, document, signature and recurring billing
+            // contract. Applications opt in through the leasing capability.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/leasing.php'));
+
             // Application branding is a shared platform capability. Keeping it in a
             // dedicated contract avoids app-specific controllers and lets every UI
             // migrate from hard-coded assets without changing legacy endpoints.
