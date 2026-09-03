@@ -17,7 +17,11 @@ class ApplicationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        return response()->json(['applications' => Application::query()->orderBy('name')->get()]);
+
+        return response()->json([
+            'applications' => Application::query()->orderBy('name')->get(),
+            'available_capabilities' => config('platform.available_capabilities', []),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -26,8 +30,10 @@ class ApplicationController extends Controller
         $data = $this->validated($request);
         $data['slug'] = $this->uniqueSlug($data['slug'] ?? $data['name']);
         $data['logo'] = $this->logo($data);
+        $data['capabilities'] ??= [];
         $application = Application::query()->create($data);
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(['application' => $application], 201);
     }
 
@@ -39,6 +45,7 @@ class ApplicationController extends Controller
         $data['logo'] = $this->logo(array_merge($application->toArray(), $data));
         $application->update($data);
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(['application' => $application->fresh()]);
     }
 
@@ -47,6 +54,7 @@ class ApplicationController extends Controller
         $this->authorizeAccess($request);
         $application->delete();
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(null, 204);
     }
 
@@ -64,6 +72,8 @@ class ApplicationController extends Controller
             'url' => ['required', 'url', 'max:2048'],
             'logo' => ['nullable', 'url', 'max:2048'],
             'is_active' => ['sometimes', 'boolean'],
+            'capabilities' => ['sometimes', 'array'],
+            'capabilities.*' => ['string', 'distinct', Rule::in(config('platform.available_capabilities', []))],
             'version' => ['nullable', 'string', 'max:100'],
             'author' => ['nullable', 'string', 'max:255'],
             'release_date' => ['nullable', 'date'],
@@ -83,6 +93,7 @@ class ApplicationController extends Controller
         while (Application::query()->where('slug', $slug)->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists()) {
             $slug = $base . '-' . $number++;
         }
+
         return $slug;
     }
 }
