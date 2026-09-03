@@ -1,0 +1,26 @@
+<?php
+
+return [
+    ['key' => 'beauty_aesthetics', 'label' => 'Beleza e estética', 'examples' => ['Salão de beleza', 'Barbearia', 'Manicure', 'Estética', 'Spa', 'Tatuagem'], 'resource_types' => ['professional', 'room', 'station', 'equipment']],
+    ['key' => 'health_wellness', 'label' => 'Saúde e bem-estar', 'examples' => ['Clínica', 'Consultório', 'Odontologia', 'Fisioterapia', 'Psicologia', 'Nutrição'], 'resource_types' => ['professional', 'room', 'equipment']],
+    ['key' => 'pet_care', 'label' => 'Saúde e cuidados para animais', 'examples' => ['Clínica veterinária', 'Banho e tosa', 'Adestramento', 'Hotel para animais'], 'resource_types' => ['professional', 'room', 'station', 'equipment']],
+    ['key' => 'automotive', 'label' => 'Automotivo', 'examples' => ['Oficina', 'Autoelétrica', 'Troca de óleo', 'Estética automotiva', 'Funilaria'], 'resource_types' => ['professional', 'station', 'equipment']],
+    ['key' => 'home_services', 'label' => 'Serviços residenciais', 'examples' => ['Eletricista', 'Encanador', 'Ar-condicionado', 'Limpeza', 'Jardinagem', 'Reformas'], 'resource_types' => ['professional', 'equipment', 'vehicle']],
+    ['key' => 'technical_assistance', 'label' => 'Tecnologia e assistência técnica', 'examples' => ['Computadores', 'Celulares', 'Redes', 'Câmeras', 'Suporte presencial'], 'resource_types' => ['professional', 'station', 'equipment']],
+    ['key' => 'education', 'label' => 'Educação e treinamento', 'examples' => ['Aulas particulares', 'Idiomas', 'Música', 'Autoescola', 'Cursos'], 'resource_types' => ['professional', 'room', 'vehicle', 'equipment']],
+    ['key' => 'sports_fitness', 'label' => 'Esportes e condicionamento', 'examples' => ['Academia', 'Personal trainer', 'Quadra', 'Natação', 'Artes marciais', 'Yoga'], 'resource_types' => ['professional', 'space', 'room', 'equipment']],
+    ['key' => 'photo_audiovisual', 'label' => 'Fotografia e audiovisual', 'examples' => ['Fotografia', 'Filmagem', 'Estúdio', 'Podcast', 'Áudio'], 'resource_types' => ['professional', 'room', 'space', 'equipment']],
+    ['key' => 'events', 'label' => 'Eventos', 'examples' => ['DJ', 'Cerimonial', 'Decoração', 'Buffet', 'Som e iluminação'], 'resource_types' => ['professional', 'space', 'equipment', 'vehicle']],
+    ['key' => 'professional_services', 'label' => 'Consultoria e serviços profissionais', 'examples' => ['Advocacia', 'Contabilidade', 'Consultoria', 'Arquitetura', 'Engenharia', 'Design'], 'resource_types' => ['professional', 'room']],
+    ['key' => 'real_estate', 'label' => 'Imobiliário', 'examples' => ['Imobiliária', 'Visita a imóveis', 'Avaliação', 'Vistoria'], 'resource_types' => ['professional', 'vehicle']],
+    ['key' => 'financial_services', 'label' => 'Serviços financeiros', 'examples' => ['Consultoria financeira', 'Seguros', 'Crédito', 'Planejamento financeiro'], 'resource_types' => ['professional', 'room']],
+    ['key' => 'resource_rental', 'label' => 'Locação de espaços e recursos', 'examples' => ['Coworking', 'Sala', 'Auditório', 'Estúdio', 'Equipamentos', 'Veículos'], 'resource_types' => ['room', 'space', 'equipment', 'vehicle']],
+    ['key' => 'tourism_leisure', 'label' => 'Turismo e lazer', 'examples' => ['Passeios', 'Guias', 'Excursões', 'Mergulho', 'Experiências'], 'resource_types' => ['professional', 'vehicle', 'equipment', 'space']],
+    ['key' => 'gastronomy', 'label' => 'Gastronomia e experiências', 'examples' => ['Chef particular', 'Degustação', 'Workshop culinário', 'Buffet'], 'resource_types' => ['professional', 'room', 'space', 'equipment']],
+    ['key' => 'fashion', 'label' => 'Moda e imagem', 'examples' => ['Alfaiataria', 'Costura', 'Prova de roupas', 'Consultoria de imagem'], 'resource_types' => ['professional', 'room', 'equipment']],
+    ['key' => 'weddings', 'label' => 'Casamentos e celebrações', 'examples' => ['Vestidos', 'Maquiagem', 'Fotografia', 'Decoração', 'Cerimonial'], 'resource_types' => ['professional', 'room', 'space', 'equipment']],
+    ['key' => 'institutional', 'label' => 'Atendimento institucional', 'examples' => ['Atendimento presencial', 'Entrevistas', 'Orientação', 'Emissão de documentos'], 'resource_types' => ['professional', 'room']],
+    ['key' => 'b2b_services', 'label' => 'Serviços empresariais B2B', 'examples' => ['Demonstração', 'Implantação', 'Onboarding', 'Treinamento', 'Auditoria'], 'resource_types' => ['professional', 'room', 'equipment']],
+    ['key' => 'independent_professional', 'label' => 'Profissional autônomo', 'examples' => ['Consultor', 'Terapeuta', 'Professor', 'Técnico', 'Artista'], 'resource_types' => ['professional', 'room', 'equipment']],
+    ['key' => 'other', 'label' => 'Outro negócio com agendamento', 'examples' => [], 'resource_types' => ['professional', 'room', 'station', 'equipment', 'vehicle', 'space', 'other']],
+];
