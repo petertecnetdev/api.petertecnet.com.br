@@ -61,7 +61,7 @@ class ApiV1BusinessProfileTest extends TestCase
         ];
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->putJson('/api/v1/apps/commerce/establishments/' . $establishmentId, $payload)
+            ->patchJson('/api/v1/apps/commerce/establishments/' . $establishmentId, $payload)
             ->assertOk()
             ->assertJsonPath('data.id', $establishmentId);
 
@@ -106,7 +106,7 @@ class ApiV1BusinessProfileTest extends TestCase
         $token = auth('api')->login($user);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->putJson('/api/v1/apps/commerce/establishments/' . $establishmentId, [
+            ->patchJson('/api/v1/apps/commerce/establishments/' . $establishmentId, [
                 'business_profile' => [
                     'payment_methods' => [['unsafe' => 'shape']],
                 ],
