@@ -78,6 +78,8 @@ class MercadoPagoPaymentGateway implements PaymentGateway
                 'checkout_url' => $remote['init_point'] ?? null,
                 'sandbox_checkout_url' => $remote['sandbox_init_point'] ?? null,
             ],
+            grossAmount: $intent->amount,
+            expiresAt: $remote['expiration_date_to'] ?? null,
         );
     }
 
@@ -113,8 +115,10 @@ class MercadoPagoPaymentGateway implements PaymentGateway
         $providerStatus = (string) ($remote['status'] ?? '');
         $status = match ($providerStatus) {
             'approved' => 'paid',
-            'refunded', 'charged_back' => 'refunded',
-            'rejected', 'cancelled' => 'failed',
+            'refunded' => 'refunded',
+            'charged_back' => 'charged_back',
+            'rejected' => 'rejected',
+            'cancelled' => 'cancelled',
             default => 'pending',
         };
 
@@ -131,7 +135,11 @@ class MercadoPagoPaymentGateway implements PaymentGateway
                 'qr_code' => $transaction['qr_code'] ?? null,
                 'qr_code_base64' => $transaction['qr_code_base64'] ?? null,
                 'ticket_url' => $transaction['ticket_url'] ?? null,
+                'remote_status_detail' => $remote['status_detail'] ?? null,
             ],
+            grossAmount: isset($remote['transaction_amount']) ? (float) $remote['transaction_amount'] : null,
+            expiresAt: $remote['date_of_expiration'] ?? null,
+            availableAt: $remote['money_release_date'] ?? null,
         );
     }
 
