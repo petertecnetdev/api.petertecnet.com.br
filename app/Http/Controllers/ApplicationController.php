@@ -23,6 +23,7 @@ class ApplicationController extends Controller
                     ->where('is_active', true)
                     ->where('is_visible', true)
                     ->select($this->publicFields())
+                    ->orderByDesc('is_default')
                     ->orderBy('launcher_order')
                     ->orderBy('name')
                     ->get()
@@ -79,6 +80,7 @@ class ApplicationController extends Controller
             'release_date',
             'category',
             'launcher_order',
+            'is_default',
             'operational_status',
             'maintenance_message',
         ];
