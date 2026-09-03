@@ -43,11 +43,11 @@ class ApiV1ApplicationContextTest extends TestCase
     {
         $app = $this->applicationFixture('legacy-commerce-directory', [
             'name' => 'Commerce Directory',
-            'url' => 'https://nexus.petertecnet.com.br',
+            'url' => 'https://catalog-alias.petertecnet.test',
             'is_active' => true,
         ]);
 
-        $this->getJson('/api/v1/apps/nexus/establishments')
+        $this->getJson('/api/v1/apps/catalog-alias/establishments')
             ->assertOk()
             ->assertHeader('X-Peter-Application', 'legacy-commerce-directory')
             ->assertHeader('X-Peter-Application-Id', (string) $app->id)
