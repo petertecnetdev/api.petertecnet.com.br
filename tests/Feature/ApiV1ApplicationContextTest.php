@@ -32,11 +32,11 @@ class ApiV1ApplicationContextTest extends TestCase
     {
         $app = $this->application('Catalog App', 'catalog-app');
 
-        $this->getJson('/api/v1/apps/' . $app->id . '/directory')
+        $this->getJson('/api/v1/apps/' . $app->id . '/establishments')
             ->assertOk()
             ->assertHeader('X-Peter-Application', 'catalog-app')
             ->assertHeader('X-Peter-Application-Id', (string) $app->id)
-            ->assertJsonPath('scope.application_id', $app->id);
+            ->assertJsonPath('success', true);
     }
 
     public function test_application_context_resolves_canonical_url_alias_during_slug_migration(): void
@@ -47,19 +47,22 @@ class ApiV1ApplicationContextTest extends TestCase
             'is_active' => true,
         ]);
 
-        $this->getJson('/api/v1/apps/nexus/directory')
+        $this->getJson('/api/v1/apps/nexus/establishments')
             ->assertOk()
             ->assertHeader('X-Peter-Application', 'legacy-commerce-directory')
-            ->assertJsonPath('scope.application_id', $app->id);
+            ->assertHeader('X-Peter-Application-Id', (string) $app->id)
+            ->assertJsonPath('success', true);
     }
 
     public function test_application_context_slug_lookup_is_case_insensitive(): void
     {
         $app = $this->application('Mixed Case', 'mixed-case');
 
-        $this->getJson('/api/v1/apps/MIXED-CASE/directory')
+        $this->getJson('/api/v1/apps/MIXED-CASE/establishments')
             ->assertOk()
-            ->assertJsonPath('scope.application_id', $app->id);
+            ->assertHeader('X-Peter-Application', 'mixed-case')
+            ->assertHeader('X-Peter-Application-Id', (string) $app->id)
+            ->assertJsonPath('success', true);
     }
 
     public function test_public_catalog_is_isolated_by_application_slug(): void
