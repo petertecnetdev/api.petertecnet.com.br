@@ -2,9 +2,11 @@
 
 namespace App\Domain\Leasing\Http\Controllers;
 
+use App\Domain\Leasing\Services\LeaseChargePaymentService;
+use App\Domain\Leasing\Services\LeaseChargeScheduleService;
+use App\Domain\Leasing\Services\LeaseLifecycleService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
-use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -14,7 +16,12 @@ use Throwable;
 
 final class LeasingController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly LeaseLifecycleService $lifecycle,
+        private readonly LeaseChargeScheduleService $chargeSchedule,
+        private readonly LeaseChargePaymentService $chargePayments,
+    ) {}
 
     public function dashboard(Request $request)
     {
@@ -177,12 +184,7 @@ final class LeasingController extends Controller
         }
         if (isset($data['status']) && in_array($data['status'], ['ended', 'cancelled'], true)) $data['ended_at'] = now();
         $data['updated_at'] = now();
-        DB::transaction(function () use ($lease, $data, $leaseId) {
-            DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update($data);
-            if (isset($data['status']) && in_array($data['status'], ['ended', 'cancelled'], true)) {
-                DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'available', 'updated_at' => now()]);
-            }
-        });
+        $this->lifecycle->update($this->context->id(), $lease, $data);
         return response()->json($this->leasePayload($request, $leaseId));
     }
 
@@ -194,11 +196,7 @@ final class LeasingController extends Controller
         $nextVersion = $lease->contract_generated_at ? ((int) $lease->contract_version + 1) : max(1, (int) $lease->contract_version);
         $lease->contract_version = $nextVersion;
         $contract = $this->buildContract($payload);
-        DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update([
-            'contract_text' => $contract, 'contract_generated_at' => now(), 'contract_version' => $nextVersion,
-            'status' => 'awaiting_signature', 'updated_at' => now(),
-        ]);
-        DB::table('lease_signatures')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->delete();
+        $this->lifecycle->publishContract($this->context->id(), $leaseId, $contract, $nextVersion);
         return response()->json($this->leasePayload($request, $leaseId));
     }
 
@@ -242,11 +240,8 @@ final class LeasingController extends Controller
         );
         $parties = DB::table('lease_signatures')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->pluck('party')->all();
         if (in_array('landlord', $parties, true) && in_array('tenant', $parties, true)) {
-            DB::transaction(function () use ($lease, $leaseId) {
-                DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->update(['status' => 'active', 'activated_at' => now(), 'updated_at' => now()]);
-                DB::table('properties')->where('app_id', $this->context->id())->where('id', $lease->property_id)->update(['status' => 'occupied', 'updated_at' => now()]);
-            });
-            $this->ensureRentSchedule($leaseId);
+            $this->lifecycle->activate($this->context->id(), $lease);
+            $this->chargeSchedule->ensure($this->context->id(), $leaseId);
         }
         return response()->json($this->leasePayload($request, $leaseId));
     }
@@ -316,7 +311,7 @@ final class LeasingController extends Controller
     public function generateRentSchedule(Request $request, int $leaseId)
     {
         $this->assertLeaseManager($request, $leaseId);
-        $created = $this->ensureRentSchedule($leaseId);
+        $created = $this->chargeSchedule->ensure($this->context->id(), $leaseId);
         return response()->json(['created' => $created, 'charges' => DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->orderBy('due_date')->get()]);
     }
 
@@ -325,18 +320,15 @@ final class LeasingController extends Controller
         $lease = $this->assertLeaseAccess($request, $leaseId);
         $data = $request->validate(['method' => 'required|in:pix,boleto,card']);
         $charge = DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('id', $chargeId)->firstOrFail();
-        abort_if($charge->status === 'paid', 422, 'Esta cobrança já está paga.');
-        $publicId = (string) Str::uuid();
-        DB::table('ecosystem_payments')->updateOrInsert(
-            ['app_slug' => $this->context->slug(), 'source_type' => 'lease_charge', 'source_reference' => $charge->public_id],
-            ['public_id' => $publicId, 'app_id' => $this->context->id(), 'provider' => 'mercadopago', 'source_id' => $charge->id,
-             'user_id' => $lease->tenant_user_id ?: $request->user()->id, 'currency' => 'BRL', 'method' => $data['method'], 'status' => 'pending',
-             'gross_amount' => $charge->amount, 'platform_fee' => 0, 'provider_fee' => 0, 'seller_net' => $charge->amount,
-             'metadata' => $this->json(['lease_id' => $leaseId, 'charge_id' => $chargeId]), 'updated_at' => now(), 'created_at' => now()]
-        );
-        $payment = DB::table('ecosystem_payments')->where('app_slug', $this->context->slug())->where('source_type', 'lease_charge')->where('source_reference', $charge->public_id)->first();
-        DB::table('lease_charges')->where('id', $chargeId)->update(['ecosystem_payment_id' => $payment->id, 'payment_method' => $data['method'], 'provider' => 'mercadopago', 'status' => 'processing', 'updated_at' => now()]);
-        return response()->json(['payment' => $payment, 'charge' => DB::table('lease_charges')->find($chargeId), 'provider_checkout_required' => true]);
+
+        return response()->json($this->chargePayments->prepare(
+            $this->context->id(),
+            $this->context->slug(),
+            $lease,
+            $charge,
+            (int) $request->user()->id,
+            $data['method']
+        ));
     }
 
     public function markChargePaid(Request $request, int $leaseId, int $chargeId)
@@ -344,20 +336,15 @@ final class LeasingController extends Controller
         $this->assertLeaseManager($request, $leaseId);
         $data = $request->validate(['payment_method' => 'nullable|in:pix,boleto,card,cash,transfer,other']);
         $charge = DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('id', $chargeId)->firstOrFail();
-        DB::transaction(function () use ($charge, $data, $request) {
-            DB::table('lease_charges')->where('id', $charge->id)->update(['status' => 'paid', 'paid_at' => now(), 'payment_method' => $data['payment_method'] ?? $charge->payment_method ?? 'other', 'updated_at' => now()]);
-            $publicId = (string) Str::uuid();
-            DB::table('ecosystem_payments')->updateOrInsert(
-                ['app_slug' => $this->context->slug(), 'source_type' => 'lease_charge', 'source_reference' => $charge->public_id],
-                ['public_id' => $publicId, 'app_id' => $this->context->id(), 'provider' => $charge->provider ?: 'manual', 'provider_payment_id' => $charge->provider_payment_id,
-                 'source_id' => $charge->id, 'user_id' => $request->user()->id, 'currency' => 'BRL', 'method' => $data['payment_method'] ?? $charge->payment_method ?? 'other',
-                 'status' => 'paid', 'gross_amount' => $charge->amount, 'platform_fee' => 0, 'provider_fee' => 0, 'seller_net' => $charge->amount,
-                 'paid_at' => now(), 'updated_at' => now(), 'created_at' => now()]
-            );
-            $payment = DB::table('ecosystem_payments')->where('app_slug', $this->context->slug())->where('source_type', 'lease_charge')->where('source_reference', $charge->public_id)->first();
-            DB::table('lease_charges')->where('id', $charge->id)->update(['ecosystem_payment_id' => $payment->id]);
-        });
-        return response()->json(DB::table('lease_charges')->find($chargeId));
+        $method = $data['payment_method'] ?? $charge->payment_method ?? 'other';
+
+        return response()->json($this->chargePayments->markPaid(
+            $this->context->id(),
+            $this->context->slug(),
+            $charge,
+            (int) $request->user()->id,
+            $method
+        ));
     }
 
     public function inspections(Request $request, int $propertyId)
@@ -445,30 +432,6 @@ final class LeasingController extends Controller
     private function json(mixed $value): ?string
     {
         return $value === null ? null : json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-    }
-
-    private function ensureRentSchedule(int $leaseId): int
-    {
-        $lease = DB::table('leases')->where('app_id', $this->context->id())->where('id', $leaseId)->firstOrFail();
-        $cursor = CarbonImmutable::parse($lease->starts_on)->startOfMonth();
-        $end = CarbonImmutable::parse($lease->ends_on)->startOfMonth();
-        $created = 0;
-        while ($cursor <= $end) {
-            $dueDay = min((int) $lease->due_day, $cursor->daysInMonth);
-            $due = $cursor->setDay($dueDay);
-            $reference = $cursor->toDateString();
-            $exists = DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('type', 'rent')->whereDate('reference_date', $reference)->exists();
-            if (! $exists) {
-                DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'rent', 'description' => 'Aluguel '.$cursor->format('m/Y'), 'reference_date' => $reference, 'due_date' => $due->toDateString(), 'amount' => $lease->rent_amount, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
-                $created++;
-            }
-            $cursor = $cursor->addMonth();
-        }
-        if ((float) $lease->deposit_amount > 0 && ! DB::table('lease_charges')->where('app_id', $this->context->id())->where('lease_id', $leaseId)->where('type', 'deposit')->exists()) {
-            DB::table('lease_charges')->insert(['public_id' => (string) Str::uuid(), 'app_id' => $this->context->id(), 'lease_id' => $leaseId, 'type' => 'deposit', 'description' => 'Caução / garantia locatícia', 'reference_date' => $lease->starts_on, 'due_date' => $lease->starts_on, 'amount' => $lease->deposit_amount, 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
-            $created++;
-        }
-        return $created;
     }
 
     private function buildContract(array $payload): string
