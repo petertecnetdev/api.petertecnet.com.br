@@ -42,14 +42,14 @@ final class MerchantPaymentAccountService
     {
         $organization = Production::query()->where('app_id', $this->context->id())->find($organizationId);
         if (! $organization) {
-            return [
-                'available' => false,
-                'merchant_connected' => false,
-                'settlement_mode' => 'unavailable',
-                'public_key' => '',
-                'methods' => [],
-                'message' => 'A organização não é válida neste contexto.',
-            ];
+            return $this->readinessPayload(
+                available: false,
+                merchantConnected: false,
+                settlementMode: 'unavailable',
+                publicKey: '',
+                methods: [],
+                message: 'A organização não é válida neste contexto.',
+            );
         }
 
         $platformToken = trim((string) config('services.mercadopago.access_token'));
@@ -65,14 +65,14 @@ final class MerchantPaymentAccountService
             $methods = ['pix'];
             if ($platformPublicKey !== '') $methods[] = 'card';
 
-            return [
-                'available' => true,
-                'merchant_connected' => false,
-                'settlement_mode' => 'platform_collection',
-                'public_key' => $platformPublicKey,
-                'methods' => $methods,
-                'message' => 'Pagamentos habilitados com recebimento e repasse pela plataforma.',
-            ];
+            return $this->readinessPayload(
+                available: true,
+                merchantConnected: false,
+                settlementMode: 'platform_collection',
+                publicKey: $platformPublicKey,
+                methods: $methods,
+                message: 'Pagamentos habilitados com recebimento e repasse pela plataforma.',
+            );
         }
 
         $account = $this->account($organizationId, 'mercadopago', true);
@@ -87,37 +87,37 @@ final class MerchantPaymentAccountService
             $methods = ['pix'];
             if ($merchantPublicKey !== '') $methods[] = 'card';
 
-            return [
-                'available' => true,
-                'merchant_connected' => true,
-                'settlement_mode' => 'automatic_split',
-                'public_key' => $merchantPublicKey,
-                'methods' => $methods,
-                'message' => $merchantPublicKey !== ''
+            return $this->readinessPayload(
+                available: true,
+                merchantConnected: true,
+                settlementMode: 'automatic_split',
+                publicKey: $merchantPublicKey,
+                methods: $methods,
+                message: $merchantPublicKey !== ''
                     ? 'Pagamentos habilitados com split automático.'
                     : 'PIX habilitado. Reconecte o provedor para atualizar a chave necessária ao cartão.',
-            ];
+            );
         }
 
         if (! $recipientReady) {
-            return [
-                'available' => false,
-                'merchant_connected' => false,
-                'settlement_mode' => 'sales_disabled',
-                'public_key' => '',
-                'methods' => [],
-                'message' => 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.',
-            ];
+            return $this->readinessPayload(
+                available: false,
+                merchantConnected: false,
+                settlementMode: 'sales_disabled',
+                publicKey: '',
+                methods: [],
+                message: 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.',
+            );
         }
 
-        return [
-            'available' => false,
-            'merchant_connected' => false,
-            'settlement_mode' => 'sales_disabled',
-            'public_key' => '',
-            'methods' => [],
-            'message' => 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.',
-        ];
+        return $this->readinessPayload(
+            available: false,
+            merchantConnected: false,
+            settlementMode: 'sales_disabled',
+            publicKey: '',
+            methods: [],
+            message: 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.',
+        );
     }
 
     public function disableLegacyMerchantAccount(int $organizationId, string $provider = 'mercadopago'): void
@@ -164,6 +164,31 @@ final class MerchantPaymentAccountService
         return [
             DB::table('merchant_payment_accounts')->where('app_id', $this->context->id())->find($account->id),
             $newAccess,
+        ];
+    }
+
+    /**
+     * Build one stable payment-readiness contract for every application.
+     * `merchant_connected` is canonical. `producer_connected` remains a
+     * compatibility alias for older event clients and contains no policy of
+     * its own, so payment readiness continues to have a single source of truth.
+     */
+    private function readinessPayload(
+        bool $available,
+        bool $merchantConnected,
+        string $settlementMode,
+        string $publicKey,
+        array $methods,
+        string $message,
+    ): array {
+        return [
+            'available' => $available,
+            'merchant_connected' => $merchantConnected,
+            'producer_connected' => $merchantConnected,
+            'settlement_mode' => $settlementMode,
+            'public_key' => $publicKey,
+            'methods' => $methods,
+            'message' => $message,
         ];
     }
 
