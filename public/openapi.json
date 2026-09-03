@@ -1,0 +1,291 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Peter Tecnet Public API",
+    "version": "1.0.0",
+    "summary": "API pública, versionada e multiplataforma da Peter Tecnet.",
+    "description": "Contrato estável para integrações externas. Rotas internas dos aplicativos Peter Tecnet não fazem parte deste contrato público.",
+    "termsOfService": "https://api.petertecnet.com.br/terms",
+    "contact": {
+      "name": "Peter Tecnet Developer Platform",
+      "url": "https://api.petertecnet.com.br/developers"
+    }
+  },
+  "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
+  "servers": [
+    {
+      "url": "https://api.petertecnet.com.br/api/v1",
+      "description": "Production"
+    },
+    {
+      "url": "https://api.petertecnet.com.br/api/sandbox/v1",
+      "description": "Sandbox"
+    }
+  ],
+  "tags": [
+    {"name": "Status", "description": "Disponibilidade da plataforma."},
+    {"name": "Establishments", "description": "Descoberta de estabelecimentos públicos."},
+    {"name": "Catalog", "description": "Produtos e serviços públicos."}
+  ],
+  "paths": {
+    "/status": {
+      "get": {
+        "tags": ["Status"],
+        "operationId": "getPlatformStatus",
+        "summary": "Consulta o status da API",
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Plataforma operacional.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/StatusResponse"}
+              }
+            }
+          },
+          "503": {
+            "description": "Um componente essencial está degradado.",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/StatusResponse"}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/establishments": {
+      "get": {
+        "tags": ["Establishments"],
+        "operationId": "listEstablishments",
+        "summary": "Lista estabelecimentos publicados",
+        "description": "Requer o scope `establishments:read`.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Search"},
+          {"$ref": "#/components/parameters/Page"},
+          {"$ref": "#/components/parameters/PerPage"},
+          {"name": "city", "in": "query", "schema": {"type": "string"}},
+          {"name": "uf", "in": "query", "schema": {"type": "string", "maxLength": 2}},
+          {"name": "type", "in": "query", "schema": {"type": "string"}},
+          {"name": "category", "in": "query", "schema": {"type": "string"}},
+          {"name": "sort", "in": "query", "description": "Campos: name, fantasy, city, created_at. Prefixe com - para ordem descendente.", "schema": {"type": "string", "default": "-created_at"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Lista paginada.",
+            "headers": {
+              "X-RateLimit-Limit": {"$ref": "#/components/headers/RateLimitLimit"},
+              "X-RateLimit-Remaining": {"$ref": "#/components/headers/RateLimitRemaining"},
+              "X-Request-ID": {"$ref": "#/components/headers/RequestId"}
+            },
+            "content": {"application/json": {"schema": {"$ref": "#/components/schemas/EstablishmentListResponse"}}}
+          },
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/establishments/{slug}": {
+      "get": {
+        "tags": ["Establishments"],
+        "operationId": "getEstablishment",
+        "summary": "Consulta um estabelecimento por slug",
+        "description": "Requer o scope `establishments:read`.",
+        "parameters": [
+          {"name": "slug", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Estabelecimento.", "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Establishment"}}, "required": ["data"]}}}},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/items": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "listItems",
+        "summary": "Lista produtos e serviços ativos",
+        "description": "Requer o scope `catalog:read`.",
+        "parameters": [
+          {"$ref": "#/components/parameters/Search"},
+          {"$ref": "#/components/parameters/Page"},
+          {"$ref": "#/components/parameters/PerPage"},
+          {"name": "type", "in": "query", "schema": {"type": "string"}},
+          {"name": "category", "in": "query", "schema": {"type": "string"}},
+          {"name": "brand", "in": "query", "schema": {"type": "string"}},
+          {"name": "establishment_id", "in": "query", "schema": {"type": "integer", "minimum": 1}},
+          {"name": "sort", "in": "query", "description": "Campos: name, price, created_at. Prefixe com - para ordem descendente.", "schema": {"type": "string", "default": "-created_at"}}
+        ],
+        "responses": {
+          "200": {"description": "Lista paginada.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ItemListResponse"}}}},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    },
+    "/items/{slug}": {
+      "get": {
+        "tags": ["Catalog"],
+        "operationId": "getItem",
+        "summary": "Consulta um item por slug",
+        "description": "Requer o scope `catalog:read`.",
+        "parameters": [
+          {"name": "slug", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"description": "Item.", "content": {"application/json": {"schema": {"type": "object", "properties": {"data": {"$ref": "#/components/schemas/Item"}}, "required": ["data"]}}}},
+          "401": {"$ref": "#/components/responses/Unauthorized"},
+          "403": {"$ref": "#/components/responses/Forbidden"},
+          "404": {"$ref": "#/components/responses/NotFound"},
+          "429": {"$ref": "#/components/responses/RateLimited"}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Chave criada no Peter Tecnet Developer Portal. Nunca coloque chaves live em código público."
+      }
+    },
+    "parameters": {
+      "Search": {"name": "q", "in": "query", "description": "Busca textual.", "schema": {"type": "string", "maxLength": 200}},
+      "Page": {"name": "page", "in": "query", "schema": {"type": "integer", "minimum": 1, "default": 1}},
+      "PerPage": {"name": "per_page", "in": "query", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20}}
+    },
+    "headers": {
+      "RateLimitLimit": {"description": "Limite máximo da janela atual.", "schema": {"type": "integer"}},
+      "RateLimitRemaining": {"description": "Requisições restantes na janela atual.", "schema": {"type": "integer"}},
+      "RequestId": {"description": "Identificador de correlação da requisição.", "schema": {"type": "string"}}
+    },
+    "responses": {
+      "Unauthorized": {"description": "API key ausente, inválida, revogada ou expirada.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "Forbidden": {"description": "Scope, origem ou ambiente incompatível.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "NotFound": {"description": "Recurso não encontrado.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}},
+      "RateLimited": {"description": "Rate limit excedido.", "headers": {"Retry-After": {"description": "Segundos até uma nova tentativa.", "schema": {"type": "integer"}}}, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/ErrorResponse"}}}}
+    },
+    "schemas": {
+      "StatusResponse": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "object",
+            "properties": {
+              "service": {"type": "string"},
+              "status": {"type": "string", "enum": ["operational", "degraded"]},
+              "version": {"type": "string"},
+              "timestamp": {"type": "string", "format": "date-time"},
+              "checks": {"type": "object", "additionalProperties": {"type": "string"}}
+            },
+            "required": ["service", "status", "version", "timestamp", "checks"]
+          }
+        },
+        "required": ["data"]
+      },
+      "Establishment": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "slug": {"type": "string"},
+          "name": {"type": "string"},
+          "legal_name": {"type": ["string", "null"]},
+          "type": {"type": ["string", "null"]},
+          "category": {"type": ["string", "null"]},
+          "description": {"type": ["string", "null"]},
+          "city": {"type": ["string", "null"]},
+          "state": {"type": ["string", "null"]},
+          "segments": {"type": "array", "items": {"type": "string"}},
+          "featured": {"type": "boolean"},
+          "links": {"type": "object", "additionalProperties": {"type": "string", "format": "uri"}},
+          "created_at": {"type": ["string", "null"], "format": "date-time"},
+          "updated_at": {"type": ["string", "null"], "format": "date-time"}
+        },
+        "required": ["id", "slug", "name", "featured"]
+      },
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "slug": {"type": "string"},
+          "name": {"type": "string"},
+          "type": {"type": ["string", "null"]},
+          "description": {"type": ["string", "null"]},
+          "price": {"type": ["string", "null"], "description": "Valor decimal serializado como string."},
+          "category": {"type": ["string", "null"]},
+          "subcategory": {"type": ["string", "null"]},
+          "brand": {"type": ["string", "null"]},
+          "tags": {"type": "array", "items": {"type": "string"}},
+          "featured": {"type": "boolean"},
+          "image_url": {"type": ["string", "null"], "format": "uri"},
+          "owner": {"type": "object", "properties": {"type": {"type": ["string", "null"]}, "id": {"type": ["integer", "null"]}}},
+          "availability": {"type": "object", "properties": {"starts_at": {"type": ["string", "null"], "format": "date-time"}, "ends_at": {"type": ["string", "null"], "format": "date-time"}}}
+        },
+        "required": ["id", "slug", "name", "featured"]
+      },
+      "PaginationMeta": {
+        "type": "object",
+        "properties": {
+          "current_page": {"type": "integer"},
+          "per_page": {"type": "integer"},
+          "total": {"type": "integer"},
+          "last_page": {"type": "integer"}
+        },
+        "required": ["current_page", "per_page", "total", "last_page"]
+      },
+      "PaginationLinks": {
+        "type": "object",
+        "properties": {
+          "first": {"type": ["string", "null"], "format": "uri"},
+          "last": {"type": ["string", "null"], "format": "uri"},
+          "prev": {"type": ["string", "null"], "format": "uri"},
+          "next": {"type": ["string", "null"], "format": "uri"}
+        }
+      },
+      "EstablishmentListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {"type": "array", "items": {"$ref": "#/components/schemas/Establishment"}},
+          "meta": {"$ref": "#/components/schemas/PaginationMeta"},
+          "links": {"$ref": "#/components/schemas/PaginationLinks"}
+        },
+        "required": ["data", "meta", "links"]
+      },
+      "ItemListResponse": {
+        "type": "object",
+        "properties": {
+          "data": {"type": "array", "items": {"$ref": "#/components/schemas/Item"}},
+          "meta": {"$ref": "#/components/schemas/PaginationMeta"},
+          "links": {"$ref": "#/components/schemas/PaginationLinks"}
+        },
+        "required": ["data", "meta", "links"]
+      },
+      "ErrorResponse": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "object",
+            "properties": {
+              "code": {"type": "string", "examples": ["invalid_api_key"]},
+              "message": {"type": "string"},
+              "details": {"type": "object"},
+              "request_id": {"type": ["string", "null"]}
+            },
+            "required": ["code", "message", "details", "request_id"]
+          }
+        },
+        "required": ["error"]
+      }
+    }
+  },
+  "security": [
+    {"ApiKeyAuth": []}
+  ]
+}
