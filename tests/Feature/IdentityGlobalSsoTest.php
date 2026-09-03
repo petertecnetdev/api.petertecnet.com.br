@@ -221,8 +221,8 @@ class IdentityGlobalSsoTest extends TestCase
     private function withIdentityCookies(array $cookies): static
     {
         return $this
-            ->withUnencryptedCookie('peter_ecosystem_session', $cookies['session']->getValue())
-            ->withUnencryptedCookie('peter_ecosystem_refresh', $cookies['refresh']->getValue());
+            ->withCookie('peter_ecosystem_session', $cookies['session']->getValue())
+            ->withCookie('peter_ecosystem_refresh', $cookies['refresh']->getValue());
     }
 
     private function identityCookies(array $cookies): array
