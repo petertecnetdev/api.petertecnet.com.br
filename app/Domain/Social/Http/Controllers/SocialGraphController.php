@@ -49,7 +49,23 @@ final class SocialGraphController extends Controller
     private function followersCount(string $type,int $id):int{return DB::table('follows')->where(['app_id'=>$this->context->id(),'target_type'=>$type,'target_id'=>$id])->count();}
     private function isFollowing(Request $request,string $type,int $id):bool{$user=$request->user();return$user?(bool)DB::table('follows')->where(['app_id'=>$this->context->id(),'user_id'=>$user->id,'target_type'=>$type,'target_id'=>$id])->exists():false;}
     private function decorateArtist(Artist $artist,Request $request):Artist{$artist->setAttribute('followers_count',$this->followersCount('artist',$artist->id));$artist->setAttribute('is_following',$this->isFollowing($request,'artist',$artist->id));return$artist;}
-    private function assertTarget(string $type,int $id):void{if($type==='artist')abort_unless(Artist::where('app_id',$this->context->id())->whereKey($id)->exists(),404,'Artista não encontrado.');else abort_unless(Production::where('app_id',$this->context->id())->whereKey($id)->exists(),404,'Organização não encontrada.');}
+    private function assertTarget(string $type,int $id):void
+    {
+        if($type==='artist'){
+            abort_unless(
+                Artist::query()->where('app_id',$this->context->id())->whereKey($id)->where('is_published',true)->exists(),
+                404,
+                'Artista não encontrado.'
+            );
+            return;
+        }
+
+        abort_unless(
+            Production::query()->where('app_id',$this->context->id())->whereKey($id)->where('is_published',true)->where('is_cancelled',false)->exists(),
+            404,
+            'Organização não encontrada.'
+        );
+    }
     private function ownedEvent(int $id,User $user):Event{$event=Event::where('app_id',$this->context->id())->with('production')->findOrFail($id);abort_unless($event->production&&($user->hasProfile('Administrador')||(int)$event->production->user_id===(int)$user->id),403,'Você não pode gerenciar este evento.');return$event;}
     private function managedArtist(int $id,User $user):Artist{$artist=Artist::where('app_id',$this->context->id())->findOrFail($id);abort_unless($user->hasProfile('Administrador')||(int)$artist->user_id===(int)$user->id||(int)$artist->created_by_user_id===(int)$user->id,403,'Você não pode administrar este artista.');return$artist;}
     private function artistData(Request $request,bool $creating=true):array{$required=$creating?'required|':'sometimes|';return$request->validate(['artist_type'=>'sometimes|in:solo,band,group,duo,collective,orchestra','stage_name'=>$required.'string|min:2|max:255','bio'=>'nullable|string|max:20000','city'=>'nullable|string|max:120','uf'=>'nullable|string|size:2','genres'=>'nullable|array|max:30','genres.*'=>'string|max:80','photo'=>'nullable|string|max:2048','cover'=>'nullable|string|max:2048','instagram_url'=>'nullable|url|max:2048','youtube_url'=>'nullable|url|max:2048','spotify_url'=>'nullable|url|max:2048','website_url'=>'nullable|url|max:2048','is_published'=>'nullable|boolean']);}
