@@ -8,6 +8,7 @@ use App\Models\Order;
 use App\Models\SchedulingResource;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class SchedulingAvailabilityService
@@ -261,12 +262,14 @@ class SchedulingAvailabilityService
             ->where('app_id', $appId)
             ->where('type', 'appointment')
             ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->when($excludeOrderId, fn ($q) => $q->whereKeyNot($excludeOrderId));
+            ->when($excludeOrderId, fn ($q) => $q->where('id', '!=', $excludeOrderId));
 
         if ($subject['kind'] === 'provider') {
             $query->where('attendant_id', $subject['model']->id);
         } else {
-            $query->whereHas('schedulingResources', fn ($q) => $q->where('scheduling_resources.id', $subject['model']->id));
+            $query->whereIn('id', DB::table('order_scheduling_resource')
+                ->select('order_id')
+                ->where('scheduling_resource_id', $subject['model']->id));
         }
 
         return $query
