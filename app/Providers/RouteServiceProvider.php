@@ -31,6 +31,13 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/identity.php'));
 
+            // Production Peter Identity SDK aliases are loaded after the core so
+            // stronger policies can replace compatibility routes without duplicating
+            // business logic in each frontend application.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/identity_experience.php'));
+
             // Canonical shared platform contract.
             Route::middleware('api')
                 ->prefix('api')

@@ -3,6 +3,8 @@
 namespace App\Http\Middleware;
 
 use App\Domain\Identity\Models\IdentitySession;
+use App\Domain\Identity\Services\IdentityAuditService;
+use App\Domain\Identity\Services\IdentityRiskService;
 use App\Domain\Identity\Services\IdentitySessionService;
 use App\Models\User;
 use Closure;
@@ -11,8 +13,11 @@ use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTokenVersion
 {
-    public function __construct(private readonly IdentitySessionService $sessions)
-    {
+    public function __construct(
+        private readonly IdentitySessionService $sessions,
+        private readonly IdentityRiskService $risk,
+        private readonly IdentityAuditService $audit,
+    ) {
     }
 
     public function handle(Request $request, Closure $next): Response
@@ -45,9 +50,11 @@ class EnsureTokenVersion
         }
 
         // Compatibility boundary: legacy tokens issued before centralized sessions
-        // do not contain sid and remain valid until their normal JWT expiration.
+        // do not contain sid and remain valid until their normal JWT expiration or
+        // until auth_version is incremented by a security event/global logout.
         if (is_string($sessionId) && $sessionId !== '') {
             $session = IdentitySession::query()
+                ->with('application')
                 ->where('session_id', $sessionId)
                 ->where('user_id', $user->getKey())
                 ->first();
@@ -58,6 +65,30 @@ class EnsureTokenVersion
                     'Esta sessão foi encerrada ou expirou.',
                     'SESSION_REVOKED'
                 );
+            }
+
+            if ($this->risk->hasHighRiskContextChange($session, $request)) {
+                $this->sessions->revoke($session, 'device_context_changed');
+                $this->audit->record('session_context_rejected', $user, $request, $session->application, [
+                    'session_id' => $session->session_id,
+                    'expected_device' => $session->device_label,
+                    'observed_device' => $this->risk->deviceLabel($request->userAgent()),
+                ], true);
+
+                return $this->unauthorized(
+                    $request,
+                    'O contexto desta sessão mudou de forma incompatível. Entre novamente.',
+                    'SESSION_CONTEXT_CHANGED'
+                );
+            }
+
+            $touchInterval = max((int) config('identity.session.touch_interval_minutes', 5), 1);
+            if ($this->risk->ipChanged($session, $request)
+                && (! $session->last_seen_at || $session->last_seen_at->lte(now()->subMinutes($touchInterval)))) {
+                $this->audit->record('session_ip_changed', $user, $request, $session->application, [
+                    'session_id' => $session->session_id,
+                    'previous_ip' => $session->ip_address,
+                ]);
             }
 
             $request->attributes->set('identity_session', $session);

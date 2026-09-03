@@ -25,11 +25,17 @@ class IdentitySecurityController extends Controller
     {
         $user = $request->user('api');
         $settings = IdentitySecuritySetting::query()->firstOrCreate(['user_id' => $user->id]);
+        $recoveryCount = count($settings->two_factor_recovery_codes ?: []);
 
         return response()->json([
             'success' => true,
             'data' => [
                 'two_factor_enabled' => (bool) $settings->two_factor_enabled,
+                'two_factor_confirmed_at' => $settings->two_factor_confirmed_at?->toIso8601String(),
+                'recovery_codes_remaining' => $recoveryCount,
+                'recovery_codes_generated_at' => $settings->recovery_codes_generated_at?->toIso8601String(),
+                'last_recovery_code_used_at' => $settings->last_recovery_code_used_at?->toIso8601String(),
+                'last_step_up_at' => $settings->last_step_up_at?->toIso8601String(),
                 'passkeys' => IdentityCredential::query()
                     ->where('user_id', $user->id)
                     ->where('type', 'passkey')
@@ -49,8 +55,8 @@ class IdentitySecurityController extends Controller
                     'password_require_number' => (bool) config('identity.password.require_number', true),
                     'password_require_symbol' => (bool) config('identity.password.require_symbol', true),
                     'compromised_password_check' => (bool) config('identity.password.compromised_check', true),
-                    'passkeys_available' => extension_loaded('openssl'),
-                    'magic_links_available' => true,
+                    'passkeys_available' => extension_loaded('openssl') && (bool) config('identity.features.passkeys', true),
+                    'magic_links_available' => (bool) config('identity.features.magic_link', true),
                 ],
             ],
         ]);
@@ -58,10 +64,10 @@ class IdentitySecurityController extends Controller
 
     public function beginTwoFactor(Request $request): JsonResponse
     {
-        $data = $request->validate(['current_password' => ['required', 'string', 'max:255']]);
+        $data = $request->validate(['current_password' => ['nullable', 'string', 'max:255']]);
         $user = $request->user('api');
 
-        if (! Hash::check($data['current_password'], (string) $user->password)) {
+        if (isset($data['current_password']) && ! Hash::check($data['current_password'], (string) $user->password)) {
             return response()->json(['success' => false, 'message' => 'Senha atual incorreta.', 'code' => 'PASSWORD_INVALID'], 401);
         }
 
@@ -71,10 +77,12 @@ class IdentitySecurityController extends Controller
             'two_factor_enabled' => false,
             'two_factor_secret' => $secret,
             'two_factor_recovery_codes' => null,
+            'recovery_codes_generated_at' => null,
+            'last_recovery_code_used_at' => null,
             'two_factor_confirmed_at' => null,
         ])->save();
 
-        $this->audit->record('two_factor_setup_started', $user, $request, $this->sessions->current()?->application);
+        $this->audit->record('two_factor_setup_started', $user, $request, $this->sessions->current()?->application, [], true);
 
         return response()->json([
             'success' => true,
@@ -105,10 +113,12 @@ class IdentitySecurityController extends Controller
         $settings->forceFill([
             'two_factor_enabled' => true,
             'two_factor_recovery_codes' => $this->totp->hashRecoveryCodes($recovery),
+            'recovery_codes_generated_at' => now(),
+            'last_recovery_code_used_at' => null,
             'two_factor_confirmed_at' => now(),
         ])->save();
 
-        $this->audit->record('two_factor_enabled', $user, $request, $this->sessions->current()?->application, [], true);
+        $this->audit->record('two_factor_enabled', $user, $request, $this->sessions->current()?->application, ['recovery_codes' => count($recovery)], true);
 
         return response()->json([
             'success' => true,
@@ -120,12 +130,12 @@ class IdentitySecurityController extends Controller
     public function disableTwoFactor(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'current_password' => ['required', 'string', 'max:255'],
-            'code' => ['required', 'string', 'max:32'],
+            'current_password' => ['nullable', 'string', 'max:255'],
+            'code' => ['nullable', 'string', 'max:32'],
         ]);
         $user = $request->user('api');
 
-        if (! Hash::check($data['current_password'], (string) $user->password)) {
+        if (isset($data['current_password']) && ! Hash::check($data['current_password'], (string) $user->password)) {
             return response()->json(['success' => false, 'message' => 'Senha atual incorreta.', 'code' => 'PASSWORD_INVALID'], 401);
         }
 
@@ -134,21 +144,24 @@ class IdentitySecurityController extends Controller
             return response()->json(['success' => true, 'message' => '2FA já está desativado.']);
         }
 
-        $code = preg_replace('/\D/', '', $data['code']) ?? '';
-        $valid = $this->totp->verify($settings->two_factor_secret, $code);
-        if (! $valid) {
-            $hash = hash('sha256', strtoupper(trim($data['code'])));
-            $valid = in_array($hash, $settings->two_factor_recovery_codes ?: [], true);
-        }
-
-        if (! $valid) {
-            return response()->json(['success' => false, 'message' => 'Código 2FA inválido.', 'code' => 'TWO_FACTOR_INVALID'], 422);
+        if (! empty($data['code'])) {
+            $code = preg_replace('/\D/', '', $data['code']) ?? '';
+            $valid = $this->totp->verify($settings->two_factor_secret, $code);
+            if (! $valid) {
+                $hash = hash('sha256', strtoupper(trim((string) $data['code'])));
+                $valid = in_array($hash, $settings->two_factor_recovery_codes ?: [], true);
+            }
+            if (! $valid) {
+                return response()->json(['success' => false, 'message' => 'Código 2FA inválido.', 'code' => 'TWO_FACTOR_INVALID'], 422);
+            }
         }
 
         $settings->forceFill([
             'two_factor_enabled' => false,
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
+            'recovery_codes_generated_at' => null,
+            'last_recovery_code_used_at' => null,
             'two_factor_confirmed_at' => null,
         ])->save();
 

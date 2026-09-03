@@ -8,6 +8,8 @@ $officialFrontendOrigins = [
     'https://plat.petertecnet.com.br',
     'https://cutinapp.petertecnet.com.br',
     'https://inkap.petertecnet.com.br',
+    'https://payflow.petertecnet.com.br',
+    'https://laora.petertecnet.com.br',
 ];
 
 $extraOrigins = array_values(array_filter(array_map(
@@ -41,6 +43,11 @@ return [
         'X-App-Slug',
         'X-Application-Slug',
         'X-Peter-App',
+        'X-Peter-Application',
+        'X-Peter-CSRF',
+        'X-Peter-Auth-Session',
+        'X-Peter-Device',
+        'X-Peter-Device-Name',
         'X-Peter-Ecosystem-SDK',
         'X-Telemetry-Schema',
         'X-Frontend-Page',
@@ -49,5 +56,5 @@ return [
     ],
     'exposed_headers' => ['X-Request-ID'],
     'max_age' => 600,
-    'supports_credentials' => false,
+    'supports_credentials' => true,
 ];
