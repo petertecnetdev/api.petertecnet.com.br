@@ -60,11 +60,20 @@ class ContentEntry extends Model
 
     public function scopePublished(Builder $query): Builder
     {
-        return $query
-            ->where('status', 'published')
-            ->where(function (Builder $published) {
-                $published->whereNull('published_at')->orWhere('published_at', '<=', now());
-            });
+        return $query->where(function (Builder $visibility) {
+            $visibility
+                ->where(function (Builder $published) {
+                    $published->where('status', 'published')
+                        ->where(function (Builder $date) {
+                            $date->whereNull('published_at')->orWhere('published_at', '<=', now());
+                        });
+                })
+                ->orWhere(function (Builder $scheduled) {
+                    $scheduled->where('status', 'scheduled')
+                        ->whereNotNull('scheduled_at')
+                        ->where('scheduled_at', '<=', now());
+                });
+        });
     }
 
     public function scopeForApplication(Builder $query, Application|int|string|null $application): Builder
