@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog\Http\Controllers;
 
+use App\Domain\Access\Services\ResourceAccessTelemetry;
 use App\Domain\Catalog\Support\CatalogAvailability;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
@@ -17,7 +18,8 @@ final class EcosystemCatalogController extends Controller
 {
     public function __construct(
         private readonly ApplicationContext $context,
-        private readonly CatalogAvailability $availability
+        private readonly CatalogAvailability $availability,
+        private readonly ResourceAccessTelemetry $accessTelemetry
     ) {}
 
     public function companies(Request $request)
@@ -95,7 +97,13 @@ final class EcosystemCatalogController extends Controller
         );
 
         if ($availability['http_status'] !== 200) {
-            $this->registerRestrictedAttempt($company, $availability, 'catalog');
+            $this->accessTelemetry->registerRestrictedAttempt(
+                $company,
+                $availability,
+                'catalog',
+                Auth::user(),
+                $request->ip()
+            );
             return $this->availabilityResponse($availability);
         }
 
@@ -113,7 +121,6 @@ final class EcosystemCatalogController extends Controller
         }
 
         $items = Item::query()
-            ->where('app_id', $appId)
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
             ->where('status', true)
@@ -163,9 +170,9 @@ final class EcosystemCatalogController extends Controller
         $application = $this->context->application();
 
         $item = Item::query()
-            ->where('app_id', $appId)
             ->where('entity_name', 'establishment')
             ->where('status', true)
+            ->whereHas('establishment', fn (Builder $builder) => $builder->forApplication($appId))
             ->when(
                 is_numeric($identifier),
                 fn (Builder $builder) => $builder->where('id', (int) $identifier),
@@ -187,8 +194,7 @@ final class EcosystemCatalogController extends Controller
             );
         }
 
-        $company = $this->catalogEstablishmentQuery($appId)
-            ->find($item->entity_id);
+        $company = $this->catalogEstablishmentQuery($appId)->find($item->entity_id);
 
         $availability = $this->availability->evaluate(
             $company,
@@ -198,7 +204,13 @@ final class EcosystemCatalogController extends Controller
         );
 
         if ($availability['http_status'] !== 200) {
-            $this->registerRestrictedAttempt($company, $availability, 'catalog_item');
+            $this->accessTelemetry->registerRestrictedAttempt(
+                $company,
+                $availability,
+                'catalog_item',
+                Auth::user(),
+                $request->ip()
+            );
             return $this->availabilityResponse($availability);
         }
 
@@ -216,7 +228,6 @@ final class EcosystemCatalogController extends Controller
         }
 
         $otherItems = Item::query()
-            ->where('app_id', $appId)
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
             ->where('status', true)
@@ -294,10 +305,7 @@ final class EcosystemCatalogController extends Controller
 
     private function catalogEstablishmentQuery(int $appId): Builder
     {
-        return Establishment::query()->where(function (Builder $builder) use ($appId) {
-            $builder->where('app_id', $appId)
-                ->orWhereHas('applications', fn (Builder $applicationQuery) => $applicationQuery->whereKey($appId));
-        });
+        return Establishment::query()->forApplication($appId);
     }
 
     private function approvalRequired(): bool
@@ -319,42 +327,5 @@ final class EcosystemCatalogController extends Controller
                 'availability' => $availability,
             ],
         ], $availability['http_status']);
-    }
-
-    private function registerRestrictedAttempt(
-        ?Establishment $company,
-        array $availability,
-        string $resource
-    ): void {
-        if (! $company || ! in_array($availability['status'], ['restricted', 'unavailable'], true)) {
-            return;
-        }
-
-        $ip = request()->ip();
-        $userId = Auth::id();
-        $recent = Interaction::query()
-            ->where('entity_type', class_basename($company))
-            ->where('entity_id', $company->id)
-            ->where('interaction_type', 'restricted_access')
-            ->where('created_at', '>=', now()->subMinute())
-            ->where(function ($query) use ($userId, $ip) {
-                if ($userId) {
-                    $query->where('user_id', $userId);
-                }
-                if ($ip) {
-                    $query->orWhereJsonContains('content->ip', $ip);
-                }
-            })
-            ->exists();
-
-        if ($recent) {
-            return;
-        }
-
-        Interaction::register('restricted_access', $company, Auth::user(), [
-            'resource' => $resource,
-            'availability_status' => $availability['status'],
-            'availability_reason' => $availability['reason'],
-        ], 'Tentativa de acesso a recurso restrito');
     }
 }
