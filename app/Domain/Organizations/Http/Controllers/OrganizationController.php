@@ -180,10 +180,26 @@ final class OrganizationController extends Controller
         foreach (['name','fantasy','phone','description','city','address'] as $field) if ($request->exists($field)) $merge[$field] = trim((string) $request->input($field));
         if ($request->exists('uf')) $merge['uf'] = strtoupper(trim((string) $request->input('uf')));
         if ($request->filled('cnpj')) $merge['cnpj'] = preg_replace('/\D+/', '', (string) $request->input('cnpj'));
-        foreach (['website_url','instagram_url'] as $field) if ($request->exists($field)) {
-            $value = trim((string) $request->input($field));
-            $merge[$field] = $value === '' ? null : (preg_match('#^https?://#i', $value) ? $value : 'https://' . ltrim($value, '@'));
+
+        if ($request->exists('website_url')) {
+            $value = trim((string) $request->input('website_url'));
+            $merge['website_url'] = $value === '' ? null : (preg_match('#^https?://#i', $value) ? $value : 'https://' . ltrim($value, '/'));
         }
+
+        if ($request->exists('instagram_url')) {
+            $value = trim((string) $request->input('instagram_url'));
+            if ($value === '') {
+                $merge['instagram_url'] = null;
+            } elseif (preg_match('#^https?://#i', $value)) {
+                $merge['instagram_url'] = $value;
+            } else {
+                $handle = ltrim($value, '@/');
+                $merge['instagram_url'] = str_contains($handle, 'instagram.com/')
+                    ? 'https://' . $handle
+                    : 'https://instagram.com/' . $handle;
+            }
+        }
+
         if ($merge) $request->merge($merge);
     }
 
