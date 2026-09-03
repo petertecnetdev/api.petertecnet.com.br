@@ -3,6 +3,7 @@
 namespace App\Domain\Discovery\Http\Controllers;
 
 use App\Domain\Discovery\Services\DiscoveryLearningService;
+use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\DiscoveryService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -14,6 +15,7 @@ class DiscoveryLearningController extends Controller
 {
     public function __construct(
         private readonly DiscoveryLearningService $learning,
+        private readonly DiscoverySearchIndexService $searchIndex,
         private readonly DiscoveryService $discovery,
     ) {
     }
@@ -28,12 +30,13 @@ class DiscoveryLearningController extends Controller
         ]);
         $application = isset($data['application']) ? $this->discovery->resolveApplication($data['application']) : null;
         if (isset($data['application']) && ! $application) abort(422, 'Aplicação inválida.');
-        return response()->json(['success' => true, 'data' => $this->learning->rankedSearch($data['q'], $data['city'] ?? null, $application?->id, (int) ($data['limit'] ?? 8))]);
+        return response()->json(['success' => true, 'data' => $this->searchIndex->search($data['q'], $data['city'] ?? null, $application?->id, (int) ($data['limit'] ?? 8))]);
     }
 
     public function recommendations(Request $request): JsonResponse
     {
         $data = $request->validate(['session_id' => ['nullable', 'string', 'max:100'], 'limit' => ['nullable', 'integer', 'min:1', 'max:20']]);
+        if (! DB::table('discovery_search_documents')->exists()) $this->searchIndex->rebuild();
         return response()->json(['success' => true, 'data' => $this->learning->recommendations($data['session_id'] ?? null, (int) ($data['limit'] ?? 8))]);
     }
 
