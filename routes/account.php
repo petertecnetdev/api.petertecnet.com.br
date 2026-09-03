@@ -17,7 +17,7 @@ Route::get('account/sso/session/csrf', [EcosystemSsoController::class, 'globalSe
     ->name('account.sso.session.csrf');
 
 Route::post('account/sso/session/exchange', [EcosystemSsoController::class, 'exchangeGlobalSession'])
-    ->middleware(['api', 'throttle:identity-exchange'])
+    ->middleware(['api', 'identity.risk', 'throttle:identity-exchange'])
     ->name('account.sso.session.exchange');
 
 Route::delete('account/sso/session', [EcosystemSsoController::class, 'revokeGlobalSession'])
@@ -32,7 +32,7 @@ Route::prefix('identity/v1')->middleware('api')->group(function () {
         ->middleware('throttle:identity-session')
         ->name('identity.v1.session.csrf');
     Route::post('/session/exchange', [EcosystemSsoController::class, 'exchangeGlobalSession'])
-        ->middleware('throttle:identity-exchange')
+        ->middleware(['identity.risk', 'throttle:identity-exchange'])
         ->name('identity.v1.session.exchange');
     Route::delete('/session', [EcosystemSsoController::class, 'revokeGlobalSession'])
         ->middleware('throttle:identity-security')
