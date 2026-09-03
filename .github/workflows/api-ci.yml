@@ -115,12 +115,15 @@ jobs:
       - name: Audit migration history
         run: php artisan platform:audit-migrations
 
-      - name: Verify versioned API routes
+      - name: Verify canonical API routes
         shell: bash
         run: |
-          php artisan route:list | grep -q 'api/v1/apps/{application}'
-          php artisan route:list | grep -q 'api/cutinapp/events'
-          php artisan route:list | grep -q 'api/cutinapp/checkin'
+          set -euo pipefail
+          routes="$(php artisan route:list)"
+          grep -q 'api/v1/apps/{application}' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/events' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/checkin' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/commerce/checkout' <<< "$routes"
 
       - name: Run architecture gate
         shell: bash
