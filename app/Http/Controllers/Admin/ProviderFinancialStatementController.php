@@ -22,7 +22,7 @@ class ProviderFinancialStatementController extends Controller
 
         return response()->json([
             'statement' => $this->statements->snapshot($from, $to, $provider),
-            'rule' => 'Saldo do provedor e saques bancários vêm do extrato oficial importado; pagamento confirmado e saldo liquidado permanecem estados distintos.',
+            'rule' => 'Saldo e saques são os valores informados no extrato oficial do provedor. Eles servem para conciliação do gateway; comprovante de crédito em conta bancária exige fonte bancária própria.',
             'generated_at' => now()->toIso8601String(),
         ]);
     }
