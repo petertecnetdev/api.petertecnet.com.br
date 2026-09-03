@@ -16,8 +16,8 @@ abstract class TestCase extends BaseTestCase
      * Laravel's HTTP test kernel reuses the same application instance between
      * requests, while production PHP-FPM requests resolve authentication from
      * scratch. Reset both Laravel guards and JWTAuth's cached token before and
-     * after every simulated request so each Authorization header is evaluated
-     * independently.
+     * after every simulated request, then explicitly bind the API guard to the
+     * Bearer token from the request being executed.
      *
      * Applications may require a signed producer agreement before event
      * creation. Legacy feature tests predate that requirement, so the shared
@@ -29,6 +29,7 @@ abstract class TestCase extends BaseTestCase
     {
         $this->resetAuthenticationState();
         $this->provisionProducerAgreementFixture($method, $uri, $parameters, $server, $content);
+        $this->bindRequestBearerToken($server);
 
         try {
             return parent::call($method, $uri, $parameters, $cookies, $files, $server, $content);
@@ -53,6 +54,30 @@ abstract class TestCase extends BaseTestCase
             JWTAuth::unsetToken();
         } catch (\Throwable) {
             // Authentication may not have been bootstrapped for this test yet.
+        }
+    }
+
+    private function bindRequestBearerToken(array $server): void
+    {
+        $authorization = (string) ($server['HTTP_AUTHORIZATION'] ?? $server['Authorization'] ?? '');
+        if (! preg_match('/^Bearer\s+(.+)$/i', trim($authorization), $matches)) {
+            return;
+        }
+
+        $token = trim((string) ($matches[1] ?? ''));
+        if ($token === '' || ! isset($this->app) || ! $this->app->bound('auth')) {
+            return;
+        }
+
+        $guard = $this->app['auth']->guard('api');
+        if (method_exists($guard, 'setToken')) {
+            $guard->setToken($token);
+        }
+
+        try {
+            JWTAuth::setToken($token);
+        } catch (\Throwable) {
+            // The guard is authoritative; the facade binding is only defensive.
         }
     }
 
