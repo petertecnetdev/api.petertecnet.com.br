@@ -19,7 +19,7 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
     ->where('token', '[A-Za-z0-9]{40,128}')
     ->middleware(['api', 'throttle:10,1']);
 
-Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/ecosystem')->middleware(['auth:api', 'token.version'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
@@ -45,21 +45,36 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::get('/intelligence', [CommandCenterController::class, 'intelligence']);
     });
 
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+    Route::prefix('financial')->group(function () {
+        Route::get('/dashboard', [FinancialController::class, 'dashboard']);
+        Route::get('/transactions', [FinancialController::class, 'transactions']);
+        Route::get('/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
+        Route::get('/orders', [FinancialController::class, 'orders']);
+        Route::get('/payouts', [FinancialController::class, 'payouts']);
+        Route::get('/health', [FinancialController::class, 'health']);
+        Route::get('/ledger', [FinancialController::class, 'ledger']);
+        Route::get('/reconciliations', [FinancialController::class, 'reconciliations']);
+        Route::post('/reconcile', [FinancialController::class, 'reconcileNow'])
+            ->middleware(['throttle:10,1', 'identity.step-up:financial_operation']);
+        Route::get('/closing', [FinancialController::class, 'closing']);
+        Route::get('/reports/{format}', [FinancialController::class, 'export'])->whereIn('format', ['csv', 'pdf']);
+    });
 
     Route::get('/users', [EcosystemController::class, 'users']);
-    Route::post('/users', [EcosystemController::class, 'storeUser']);
+    Route::post('/users', [EcosystemController::class, 'storeUser'])->middleware('identity.step-up:admin_user_manage');
     Route::get('/users/{user}', [EcosystemController::class, 'userDetail'])->whereNumber('user');
-    Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])->whereNumber('user');
-    Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
-    Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
-    Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])->whereNumber('user')->whereNumber('application');
+    Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])
+        ->middleware('identity.step-up:admin_user_manage')->whereNumber('user');
+    Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])
+        ->middleware('identity.step-up:admin_user_manage')->whereNumber('user');
+    Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])
+        ->middleware('identity.step-up:admin_access_change')->whereNumber('user')->whereNumber('application');
+    Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])
+        ->middleware('identity.step-up:admin_access_change')->whereNumber('user')->whereNumber('application');
     Route::get('/profiles', [EcosystemController::class, 'profiles']);
-    Route::post('/profiles', [EcosystemController::class, 'storeProfile']);
-    Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])->whereNumber('profile');
+    Route::post('/profiles', [EcosystemController::class, 'storeProfile'])->middleware('identity.step-up:admin_profile_change');
+    Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])
+        ->middleware('identity.step-up:admin_profile_change')->whereNumber('profile');
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
@@ -69,11 +84,11 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::put('/items/{item}', [EcosystemController::class, 'updateItem'])->whereNumber('item');
     Route::delete('/items/{item}', [EcosystemController::class, 'destroyItem'])->whereNumber('item');
     Route::get('/settings', [EcosystemController::class, 'settings']);
-    Route::put('/settings', [EcosystemController::class, 'updateSettings']);
+    Route::put('/settings', [EcosystemController::class, 'updateSettings'])->middleware('identity.step-up:ecosystem_settings');
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
 });
 
-Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/marketing')->middleware(['auth:api', 'token.version'])->group(function () {
     Route::get('/context', [MarketingController::class, 'context']);
     Route::get('/dashboard', [MarketingController::class, 'dashboard']);
     Route::get('/activity', [MarketingController::class, 'activity']);
