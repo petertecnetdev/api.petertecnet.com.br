@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AppNotification;
 use App\Models\Application;
-use App\Models\CutinappArtist;
+use App\Models\Artist;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
@@ -33,7 +33,7 @@ class CutinappPrivateEventVisibilityTest extends TestCase
             'is_cancelled' => false,
         ]);
 
-        $artist = CutinappArtist::create([
+        $artist = Artist::create([
             'app_id' => $app->id,
             'user_id' => $owner->id,
             'slug' => 'private-event-artist',

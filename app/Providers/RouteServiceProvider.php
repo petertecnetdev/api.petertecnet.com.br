@@ -25,41 +25,33 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/account.php'));
 
+            // Canonical shared platform contract.
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Generic cross-application directory capability introduced after
+            // the architecture refactor base. Kept separate to preserve the
+            // current main behavior without reintroducing product-specific routes.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/application_directory.php'));
+
+            // Temporary expand/contract boundary. The file owns its middleware
+            // groups so each legacy URL can bind the appropriate application
+            // context without duplicating the global API middleware stack.
+            Route::prefix('api')
+                ->group(base_path('routes/compatibility.php'));
+
+            // Global provider callbacks only. User-facing finance operations are
+            // application-scoped under /api/v1/apps/{application}/... .
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/finance.php'));
 
             Route::middleware('api')
                 ->prefix('api')
-                ->group(base_path('routes/rasoio.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
                 ->group(base_path('routes/ecosystem.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/nexus.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/payflow.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/cutinapp_history.php'));
-
-            Route::middleware('api')
-                ->prefix('api')
-                ->group(base_path('routes/laora.php'));
 
             Route::middleware('web')
                 ->group(base_path('routes/web.php'));

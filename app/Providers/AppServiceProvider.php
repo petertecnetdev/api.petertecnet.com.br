@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Events\EcosystemUpdated;
 use App\Models\Application;
 use App\Models\EcosystemAuditLog;
@@ -13,16 +14,25 @@ use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use App\Observers\InteractionAuditObserver;
+use App\Services\AsaasPayoutService;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
+use LogicException;
 
 class AppServiceProvider extends ServiceProvider
 {
     public function register()
     {
         $this->app->singleton(ApplicationContext::class, fn () => new ApplicationContext());
+
+        $this->app->bind(PayoutProvider::class, function ($app) {
+            return match (mb_strtolower((string) config('services.finance.payout_provider', 'asaas'))) {
+                'asaas' => $app->make(AsaasPayoutService::class),
+                default => throw new LogicException('O provider de payout configurado não possui adapter registrado.'),
+            };
+        });
     }
 
     public function boot()

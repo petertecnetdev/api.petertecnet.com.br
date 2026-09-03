@@ -1,50 +1,34 @@
 <?php
 
-use App\Http\Controllers\FinancialController;
+use App\Domain\Finance\Http\Controllers\FinancialController;
 use Illuminate\Support\Facades\Route;
 
-Route::prefix('finance')->group(function () {
-    Route::post('/webhooks/asaas', [FinancialController::class, 'asaasWebhook'])
+// Provider callbacks are global integration endpoints. They are intentionally
+// not tied to an application slug; application/tenant ownership is resolved
+// from the persisted financial operation itself.
+Route::prefix('finance/webhooks')->group(function () {
+    Route::post('/asaas', [FinancialController::class, 'providerWebhook'])
         ->middleware('throttle:240,1')
         ->name('finance.webhooks.asaas');
 
-    Route::post('/webhooks/asaas/withdrawal-validation', [FinancialController::class, 'asaasWithdrawalValidation'])
+    Route::post('/asaas/withdrawal-validation', [FinancialController::class, 'withdrawalValidation'])
         ->middleware('throttle:120,1')
         ->name('finance.webhooks.asaas.withdrawal-validation');
 });
 
-Route::prefix('finance')->middleware('auth:api')->group(function () {
-    Route::get('/productions/{productionId}', [FinancialController::class, 'overview'])
-        ->whereNumber('productionId')
-        ->name('finance.production.overview');
-
-    Route::put('/productions/{productionId}/identity', [FinancialController::class, 'saveIdentity'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:10,1')
-        ->name('finance.identity.save');
-
-    Route::post('/productions/{productionId}/identity/document', [FinancialController::class, 'uploadDocument'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:10,1')
-        ->name('finance.identity.document');
-
-    Route::post('/productions/{productionId}/identity/liveness-session', [FinancialController::class, 'startLiveness'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:10,1')
-        ->name('finance.identity.liveness.start');
-
-    Route::post('/productions/{productionId}/identity/liveness-complete', [FinancialController::class, 'completeLiveness'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:10,1')
-        ->name('finance.identity.liveness.complete');
-
-    Route::put('/productions/{productionId}/pix', [FinancialController::class, 'savePix'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:5,1')
-        ->name('finance.pix.save');
-
-    Route::post('/productions/{productionId}/payouts', [FinancialController::class, 'requestPayout'])
-        ->whereNumber('productionId')
-        ->middleware('throttle:5,1')
-        ->name('finance.payouts.create');
-});
+// Temporary compatibility for already-deployed clients that used the shared
+// finance capability before it moved under /api/v1/apps/{application}.
+// The application is resolved generically from X-Peter-App; no product slug or
+// business rule lives in this adapter.
+Route::prefix('finance/productions/{organizationId}')
+    ->middleware(['api', 'app.bind', 'compatibility.route', 'auth:api', 'token.version'])
+    ->whereNumber('organizationId')
+    ->group(function () {
+        Route::get('/', [FinancialController::class, 'overview']);
+        Route::put('/identity', [FinancialController::class, 'saveIdentity'])->middleware('throttle:10,1');
+        Route::post('/identity/document', [FinancialController::class, 'uploadDocument'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-session', [FinancialController::class, 'startLiveness'])->middleware('throttle:10,1');
+        Route::post('/identity/liveness-complete', [FinancialController::class, 'completeLiveness'])->middleware('throttle:10,1');
+        Route::put('/pix', [FinancialController::class, 'savePix'])->middleware('throttle:5,1');
+        Route::post('/payouts', [FinancialController::class, 'requestPayout'])->middleware('throttle:5,1');
+    });

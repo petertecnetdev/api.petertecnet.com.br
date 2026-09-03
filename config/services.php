@@ -8,9 +8,7 @@ return [
         'scheme' => 'https',
     ],
 
-    'postmark' => [
-        'token' => env('POSTMARK_TOKEN'),
-    ],
+    'postmark' => ['token' => env('POSTMARK_TOKEN')],
 
     'ses' => [
         'key' => env('AWS_ACCESS_KEY_ID'),
@@ -18,9 +16,7 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
-    'google' => [
-        'client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID')),
-    ],
+    'google' => ['client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID'))],
 
     'efi' => [
         'base_url' => env('EFI_API_BASE_URL'),
@@ -56,6 +52,7 @@ return [
         'payout_reserve_percent' => (float) env('FINANCE_PAYOUT_RESERVE_PERCENT', 10),
         'payout_destination_cooling_hours' => (int) env('FINANCE_PIX_CHANGE_COOLING_HOURS', 24),
         'step_up_amount' => (float) env('FINANCE_STEP_UP_AMOUNT', 5000),
+        'allow_platform_collection' => (bool) env('FINANCE_ALLOW_PLATFORM_COLLECTION', false),
     ],
 
     'mercadopago' => [
@@ -63,21 +60,9 @@ return [
         'client_secret' => env('MERCADOPAGO_CLIENT_SECRET'),
         'public_key' => env('MERCADOPAGO_PUBLIC_KEY'),
         'access_token' => env('MERCADOPAGO_ACCESS_TOKEN'),
-        'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/cutinapp/payments/mercadopago/oauth/callback'),
+        'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/payments/mercadopago/oauth/callback'),
         'webhook_secret' => env('MERCADOPAGO_WEBHOOK_SECRET'),
     ],
 
-    'cutinapp' => [
-        'platform_fee_percent' => (float) env('CUTINAPP_PLATFORM_FEE_PERCENT', 8),
-        'frontend_url' => env('CUTINAPP_FRONTEND_URL', 'https://cutinapp.petertecnet.com.br'),
-        // No novo fluxo o comprador continua pagando via Mercado Pago, enquanto
-        // o produtor recebe em qualquer chave Pix verificada pelo módulo financeiro.
-        'allow_platform_collection' => filter_var(env('CUTINAPP_ALLOW_PLATFORM_COLLECTION', false), FILTER_VALIDATE_BOOL),
-        'manual_payout_requests_enabled' => filter_var(env('CUTINAPP_ENABLE_MANUAL_PAYOUT_REQUESTS', false), FILTER_VALIDATE_BOOL),
-        'order_expiration_minutes' => max(30, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 30), 60)),
-    ],
-
-    'geo_ip' => [
-        'endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}'),
-    ],
+    'geo_ip' => ['endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}')],
 ];

@@ -94,7 +94,7 @@ class CutinappCourtesyLifecycleTest extends TestCase
         $this->withHeaders($headers)
             ->deleteJson("/api/cutinapp/courtesies/{$ticketId}")
             ->assertStatus(409)
-            ->assertJsonPath('message', 'Esta cortesia já possui ingressos emitidos e não pode ser excluída.');
+            ->assertJsonPath('message', 'Este ingresso já possui emissões e não pode ser excluído.');
 
         $this->assertDatabaseHas('tickets', [
             'id' => $ticketId,

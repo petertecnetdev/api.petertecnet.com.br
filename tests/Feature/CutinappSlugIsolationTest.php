@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Application;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
@@ -17,7 +18,9 @@ class CutinappSlugIsolationTest extends TestCase
     public function test_production_slug_collision_with_another_app_is_resolved(): void
     {
         $legacyUser = $this->user('Legado', 'legacy-production@example.test');
+        $otherApp = Application::query()->where('slug', 'rasoio')->firstOrFail();
         Production::create([
+            'app_id' => $otherApp->id,
             'name' => 'Peter Eventos',
             'slug' => 'peter-eventos',
             'app_slug' => 'rasoio',
@@ -42,7 +45,9 @@ class CutinappSlugIsolationTest extends TestCase
     public function test_event_slug_collision_with_another_app_is_resolved(): void
     {
         $legacyUser = $this->user('Legado', 'legacy-event@example.test');
+        $otherApp = Application::query()->where('slug', 'rasoio')->firstOrFail();
         $legacyProduction = Production::create([
+            'app_id' => $otherApp->id,
             'name' => 'Produção Legada',
             'slug' => 'producao-legada',
             'app_slug' => 'rasoio',
@@ -50,10 +55,12 @@ class CutinappSlugIsolationTest extends TestCase
         ]);
 
         Event::create([
+            'app_id' => $otherApp->id,
             'production_id' => $legacyProduction->id,
             'title' => 'Festival Peter',
             'description' => 'Evento legado.',
-            'address' => 'Rua Antiga, 1',
+            'event_format' => 'online',
+            'online_url' => 'https://example.test/legacy-event',
             'start_date' => now()->addDay(),
             'end_date' => now()->addDay()->addHours(2),
             'slug' => 'festival-peter',
@@ -78,6 +85,8 @@ class CutinappSlugIsolationTest extends TestCase
                 'title' => 'Festival Peter',
                 'description' => 'Evento Cutinapp.',
                 'address' => 'Rua Nova, 2',
+                'city' => 'São Paulo',
+                'uf' => 'SP',
                 'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
                 'end_date' => now()->addDays(2)->addHours(2)->format('Y-m-d H:i:s'),
             ])
