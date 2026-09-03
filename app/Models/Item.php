@@ -80,7 +80,13 @@ class Item extends Model
 
     public function scopeForApplication($query, int $appId)
     {
-        return $query->where('app_id', $appId);
+        return $query->where(function ($applicationQuery) use ($appId) {
+            $applicationQuery->where('app_id', $appId)
+                ->orWhere(function ($sharedResource) use ($appId) {
+                    $sharedResource->where('entity_name', 'establishment')
+                        ->whereHas('establishment', fn ($establishment) => $establishment->forApplication($appId));
+                });
+        });
     }
 
     public function scopeActive($query)
