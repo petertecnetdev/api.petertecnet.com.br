@@ -36,6 +36,13 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Event lifecycle is a shared domain contract used by any application
+            // with events/commerce capabilities. It intentionally contains no
+            // application-specific controller or route namespace.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/event_lifecycle.php'));
+
             // Shared workforce contract. Read/delete operations live here while the
             // canonical create route remains in api_v1.php during migration.
             Route::middleware('api')
