@@ -21,10 +21,9 @@ class ApplicationController extends Controller
                 self::CACHE_TTL_SECONDS,
                 fn () => Application::query()
                     ->where('is_active', true)
-                    ->where('is_visible', true)
                     ->select($this->publicFields())
-                    ->orderByDesc('is_default')
-                    ->orderBy('launcher_order')
+                    ->orderByRaw('release_date IS NULL')
+                    ->orderByDesc('release_date')
                     ->orderBy('name')
                     ->get()
             );
@@ -46,7 +45,6 @@ class ApplicationController extends Controller
         try {
             $application = Application::query()
                 ->where('is_active', true)
-                ->where('is_visible', true)
                 ->where('slug', $slug)
                 ->select($this->publicFields())
                 ->firstOrFail();
@@ -78,11 +76,6 @@ class ApplicationController extends Controller
             'version',
             'author',
             'release_date',
-            'category',
-            'launcher_order',
-            'is_default',
-            'operational_status',
-            'maintenance_message',
         ];
     }
 }

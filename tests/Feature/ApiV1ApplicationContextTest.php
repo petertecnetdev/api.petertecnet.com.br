@@ -18,9 +18,8 @@ class ApiV1ApplicationContextTest extends TestCase
 
     public function test_inactive_application_cannot_be_used_as_api_context(): void
     {
-        Application::create([
+        $this->applicationFixture('inactive', [
             'name' => 'Inactive',
-            'slug' => 'inactive',
             'is_active' => false,
         ]);
 
@@ -133,9 +132,8 @@ class ApiV1ApplicationContextTest extends TestCase
 
     private function application(string $name, string $slug): Application
     {
-        return Application::create([
+        return $this->applicationFixture($slug, [
             'name' => $name,
-            'slug' => $slug,
             'is_active' => true,
         ]);
     }

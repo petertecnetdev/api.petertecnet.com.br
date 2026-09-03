@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Application;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -45,9 +44,8 @@ class EcosystemSsoTest extends TestCase
     public function test_account_cannot_create_handoff_for_application_without_membership(): void
     {
         [$user] = $this->accountWithApplication();
-        $nexus = Application::create([
+        $nexus = $this->applicationFixture('nexus', [
             'name' => 'Nexus',
-            'slug' => 'nexus',
             'url' => 'https://nexus.petertecnet.com.br',
             'is_active' => true,
         ]);
@@ -68,9 +66,8 @@ class EcosystemSsoTest extends TestCase
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,
         ]);
-        $application = Application::create([
+        $application = $this->applicationFixture('rasoio', [
             'name' => 'Rasoio',
-            'slug' => 'rasoio',
             'url' => 'https://rasoio.petertecnet.com.br',
             'is_active' => true,
         ]);

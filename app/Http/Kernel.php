@@ -32,7 +32,6 @@ class Kernel extends HttpKernel
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\NormalizeHomeLocationFilters::class,
             \App\Http\Middleware\EnsureOrderContext::class,
-            \App\Http\Middleware\EnsureVerifiedFinancialRecipient::class,
             \App\Http\Middleware\TrackApiInteraction::class,
         ],
     ];
@@ -52,6 +51,9 @@ class Kernel extends HttpKernel
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'app.bind' => \App\Http\Middleware\BindApplicationContext::class,
+        'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
+        'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
     ];
 }

@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Application;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -28,11 +27,7 @@ class JwtVersionRevocationTest extends TestCase
             'profile_id' => $profile->id,
         ]);
 
-        Application::create([
-            'name' => 'Nexus',
-            'slug' => 'nexus',
-            'is_active' => true,
-        ]);
+        $this->applicationFixture('nexus', ['name' => 'Nexus']);
 
         $token = auth('api')->login($user);
 

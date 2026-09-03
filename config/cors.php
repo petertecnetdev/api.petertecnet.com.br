@@ -41,8 +41,6 @@ return [
         'X-App-Slug',
         'X-Application-Slug',
         'X-Peter-App',
-        'X-Peter-Ecosystem-SDK',
-        'X-Telemetry-Schema',
         'X-Frontend-Page',
         'X-Correlation-ID',
         'X-Parent-Interaction-ID',
