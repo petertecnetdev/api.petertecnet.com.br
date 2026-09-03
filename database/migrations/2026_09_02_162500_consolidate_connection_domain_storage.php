@@ -4,7 +4,6 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 return new class extends Migration
 {
@@ -31,18 +30,15 @@ return new class extends Migration
             ->value('id');
 
         if (! $applicationId) {
-            throw new RuntimeException('Cannot expand connection storage: source application is not registered.');
+            throw new \RuntimeException('Cannot expand connection storage: source application is not registered.');
         }
 
         // Expand only. Physical legacy names remain intact for old PHP workers.
-        // The dynamic DEFAULT ensures a legacy INSERT that does not know app_id
-        // is immediately visible to V1 during a rolling deployment.
+        // The default keeps legacy writes visible to V1 during a rolling deploy.
         foreach (array_keys(self::ALIASES) as $legacy) {
-            if (! Schema::hasTable($legacy)) {
-                continue;
+            if (Schema::hasTable($legacy)) {
+                $this->addInstantApplicationColumn($legacy, (int) $applicationId);
             }
-
-            $this->addInstantApplicationColumn($legacy, (int) $applicationId);
         }
 
         $views = [
@@ -58,11 +54,7 @@ return new class extends Migration
 
         foreach ($views as $domain => $select) {
             $legacy = array_search($domain, self::ALIASES, true);
-            if (! $legacy || ! Schema::hasTable($legacy)) {
-                continue;
-            }
-
-            if ($this->objectType($domain) === 'BASE TABLE') {
+            if (! $legacy || ! Schema::hasTable($legacy) || $this->objectType($domain) === 'BASE TABLE') {
                 continue;
             }
 
@@ -120,7 +112,7 @@ return new class extends Migration
         );
 
         if ($hasRows && ! $applicationId) {
-            throw new RuntimeException('Cannot scope existing connection data: source application is not registered.');
+            throw new \RuntimeException('Cannot scope existing connection data: source application is not registered.');
         }
 
         if ($applicationId) {
@@ -132,6 +124,7 @@ return new class extends Migration
         }
 
         $this->replaceLegacyUniqueIndexesForCi();
+
         foreach (array_values(self::ALIASES) as $tableName) {
             if (Schema::hasTable($tableName) && Schema::hasColumn($tableName, 'app_id')) {
                 Schema::table($tableName, fn (Blueprint $table) => $table->index('app_id'));
@@ -142,12 +135,14 @@ return new class extends Migration
     private function restoreCiLegacyNames(): void
     {
         foreach (array_reverse(array_values(self::ALIASES)) as $tableName) {
-            if (Schema::hasTable($tableName) && Schema::hasColumn($tableName, 'app_id')) {
-                try {
-                    Schema::table($tableName, fn (Blueprint $table) => $table->dropIndex([$tableName === 'connections' ? 'app_id' : 'app_id']));
-                } catch (Throwable) {
-                    // Rollback compatibility: index naming differs between SQLite versions.
-                }
+            if (! Schema::hasTable($tableName) || ! Schema::hasColumn($tableName, 'app_id')) {
+                continue;
+            }
+
+            try {
+                Schema::table($tableName, fn (Blueprint $table) => $table->dropIndex(['app_id']));
+            } catch (\Throwable) {
+                // SQLite index names vary across versions.
             }
         }
 
@@ -193,7 +188,7 @@ return new class extends Migration
     {
         $database = DB::connection()->getDatabaseName();
         if (! $database) {
-            throw new RuntimeException('Database name is required to inspect compatibility views.');
+            throw new \RuntimeException('Database name is required to inspect compatibility views.');
         }
 
         $value = DB::table('information_schema.tables')
