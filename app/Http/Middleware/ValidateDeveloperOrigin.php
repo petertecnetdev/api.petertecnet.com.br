@@ -32,6 +32,11 @@ class ValidateDeveloperOrigin
             );
         }
 
-        return $next($request);
+        $response = $next($request);
+        $response->headers->set('Access-Control-Allow-Origin', $origin);
+        $response->headers->set('Access-Control-Expose-Headers', 'X-Request-ID, X-RateLimit-Limit, X-RateLimit-Remaining, Retry-After, X-Peter-API-Version, X-Peter-API-Environment');
+        $response->headers->set('Vary', 'Origin');
+
+        return $response;
     }
 }
