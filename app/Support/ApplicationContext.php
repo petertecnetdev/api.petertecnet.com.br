@@ -43,9 +43,29 @@ class ApplicationContext
         return (string) $this->application()->slug;
     }
 
+    public function capabilities(): array
+    {
+        $configured = $this->application()->capabilities;
+
+        // Existing applications predate capability declarations. Null means
+        // legacy-compatible during rollout; an explicit [] means no optional
+        // capability is enabled. New applications are created with [].
+        if ($configured === null && (bool) config('platform.legacy_unconfigured_capabilities', true)) {
+            return ['*'];
+        }
+
+        return array_values(array_unique(array_filter(array_map(
+            static fn ($capability) => is_string($capability) ? trim($capability) : '',
+            is_array($configured) ? $configured : []
+        ))));
+    }
+
     public function supports(string $capability): bool
     {
-        return in_array($capability, (array) config('platform.applications.' . $this->slug() . '.capabilities', []), true);
+        $capabilities = $this->capabilities();
+
+        return in_array('*', $capabilities, true)
+            || in_array($capability, $capabilities, true);
     }
 
     public function option(string $path, mixed $default = null): mixed
