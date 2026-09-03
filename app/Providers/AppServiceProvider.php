@@ -15,6 +15,10 @@ use App\Models\Profile;
 use App\Models\User;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
+use App\Services\Operations\OperationalIssueService;
+use App\Services\Operations\OperationalTelemetryService;
+use App\Services\Operations\ResilientOperationalIssueService;
+use App\Services\Operations\ResilientOperationalTelemetryService;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\File;
@@ -26,6 +30,9 @@ class AppServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->singleton(ApplicationContext::class, fn () => new ApplicationContext());
+
+        $this->app->bind(OperationalTelemetryService::class, ResilientOperationalTelemetryService::class);
+        $this->app->bind(OperationalIssueService::class, ResilientOperationalIssueService::class);
 
         $this->app->bind(PayoutProvider::class, function ($app) {
             return match (mb_strtolower((string) config('services.finance.payout_provider', 'asaas'))) {
