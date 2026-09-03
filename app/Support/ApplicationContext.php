@@ -46,11 +46,13 @@ class ApplicationContext
     /** @return list<string> */
     public function capabilities(): array
     {
-        $configured = (array) config('platform.applications.'.$this->slug().'.capabilities', []);
+        $persisted = $this->application()->capabilities;
+        $configured = config('platform.applications.'.$this->slug().'.capabilities', []);
+        $source = is_array($persisted) ? $persisted : (array) $configured;
 
         return array_values(array_unique(array_filter(array_map(
             static fn ($capability) => trim((string) $capability),
-            $configured,
+            $source,
         ))));
     }
 
