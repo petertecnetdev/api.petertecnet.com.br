@@ -133,6 +133,104 @@ class MercadoPagoService
         return hash_equals($expected, $parts['v1']);
     }
 
+    public function getReleaseReportConfiguration(string $accessToken): ?array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->get($this->baseUrl . '/v1/account/release_report/config');
+
+        if ($response->status() === 404) return null;
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível consultar a configuração do relatório de liberações do Mercado Pago.');
+        }
+
+        return $response->json();
+    }
+
+    public function createReleaseReportConfiguration(string $accessToken, array $payload): array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->post($this->baseUrl . '/v1/account/release_report/config', $payload);
+
+        if ($response->status() === 409) {
+            return $this->getReleaseReportConfiguration($accessToken) ?? [];
+        }
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível configurar o relatório de liberações do Mercado Pago: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    public function updateReleaseReportConfiguration(string $accessToken, array $payload): array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->put($this->baseUrl . '/v1/account/release_report/config', $payload);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível atualizar a configuração do relatório de liberações do Mercado Pago: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    public function requestReleaseReport(string $accessToken, string $beginDate, string $endDate): array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(25)
+            ->post($this->baseUrl . '/v1/account/release_report', [
+                'begin_date' => $beginDate,
+                'end_date' => $endDate,
+            ]);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível solicitar o relatório de liberações do Mercado Pago: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    public function getReleaseReportTask(string $accessToken, string $taskId): array
+    {
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->get($this->baseUrl . '/v1/account/release_report/task/' . rawurlencode($taskId));
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível consultar a tarefa do relatório de liberações do Mercado Pago.');
+        }
+
+        return $response->json();
+    }
+
+    public function searchReleaseReport(string $accessToken, ?string $reportId = null, ?string $fileName = null): ?array
+    {
+        $query = array_filter(['id' => $reportId, 'file_name' => $fileName], fn ($value) => $value !== null && $value !== '');
+        if ($query === []) return null;
+
+        $response = Http::acceptJson()->withToken($accessToken)->timeout(20)
+            ->get($this->baseUrl . '/v1/account/release_report/search', $query);
+
+        if ($response->status() === 404) return null;
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível localizar o relatório de liberações do Mercado Pago.');
+        }
+
+        $json = $response->json();
+        if (isset($json['results'][0]) && is_array($json['results'][0])) return $json['results'][0];
+        if (isset($json['data'][0]) && is_array($json['data'][0])) return $json['data'][0];
+        return is_array($json) && (isset($json['id']) || isset($json['file_name'])) ? $json : null;
+    }
+
+    public function downloadReleaseReport(string $accessToken, string $fileName): string
+    {
+        $response = Http::withToken($accessToken)->timeout(30)
+            ->get($this->baseUrl . '/v1/account/release_report/' . rawurlencode($fileName));
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Não foi possível baixar o relatório de liberações do Mercado Pago.');
+        }
+
+        return $response->body();
+    }
+
     private function postPayment(string $accessToken, array $payload, string $idempotencyKey)
     {
         return Http::acceptJson()

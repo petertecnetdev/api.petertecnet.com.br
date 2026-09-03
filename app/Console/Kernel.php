@@ -17,6 +17,7 @@ class Kernel extends ConsoleKernel
         $schedule->command('cutinapp:remind-events')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('cutinapp:reconcile-payments --limit=50')->everyMinute()->withoutOverlapping();
         $schedule->command('ecosystem:sync-payments')->everyMinute()->withoutOverlapping();
+        $schedule->command('ecosystem:sync-provider-statements')->everyFifteenMinutes()->withoutOverlapping();
     }
 
     protected function commands()
