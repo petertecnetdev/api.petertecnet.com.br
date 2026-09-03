@@ -26,7 +26,6 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\VerifyCsrfToken::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
         ],
-
         'api' => [
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
@@ -51,6 +50,11 @@ class Kernel extends HttpKernel
         'order.access' => \App\Http\Middleware\EnsureOrderAccess::class,
         'order.context' => \App\Http\Middleware\EnsureOrderContext::class,
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'application.context' => \App\Http\Middleware\ResolveApplicationContext::class,
+        'application.bind' => \App\Http\Middleware\BindApplicationContext::class,
+        'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
+        'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
+        'verified.financial.recipient' => \App\Http\Middleware\EnsureVerifiedFinancialRecipient::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
         'admin.permission' => \App\Http\Middleware\RequireAdminPermission::class,
     ];

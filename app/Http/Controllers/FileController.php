@@ -157,8 +157,7 @@ class FileController extends Controller
             ->where('visibility', 'public')
             ->where('status', 'active')
             ->orderBy('position')
-            ->get()
-            ->each(fn (File $file) => $this->prepareForPublicResponse($file));
+            ->get();
 
         return response()->json(['message' => 'Arquivos carregados com sucesso.', 'files' => $files]);
     }
@@ -172,8 +171,6 @@ class FileController extends Controller
             ->firstOrFail();
 
         Interaction::registerView($file, Auth::user());
-        $this->prepareForPublicResponse($file);
-
         return response()->json(['file' => $file]);
     }
 
@@ -193,15 +190,6 @@ class FileController extends Controller
 
         $file->incrementDownload();
         return Storage::disk('public')->download($file->path, basename((string) $file->original_name));
-    }
-
-    private function prepareForPublicResponse(File $file): File
-    {
-        return $file->makeHidden([
-            'interaction_summary',
-            'created_by',
-            'updated_by',
-        ]);
     }
 
     private function canManage(File $file): bool
