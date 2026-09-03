@@ -2,15 +2,37 @@
 
 namespace Tests;
 
+use App\Models\Application;
 use App\Services\ProducerAgreementService;
 use Illuminate\Foundation\Testing\TestCase as BaseTestCase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 abstract class TestCase extends BaseTestCase
 {
     use CreatesApplication;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        if (! Schema::hasTable('applications')) {
+            return;
+        }
+
+        foreach (array_keys((array) config('platform.applications', [])) as $slug) {
+            Application::query()->firstOrCreate(
+                ['slug' => (string) $slug],
+                [
+                    'name' => Str::headline((string) $slug),
+                    'is_active' => true,
+                    'self_service_access' => true,
+                ]
+            );
+        }
+    }
 
     /**
      * Laravel's HTTP test kernel reuses the same application instance between
