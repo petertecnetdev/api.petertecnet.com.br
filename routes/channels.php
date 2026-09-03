@@ -2,21 +2,13 @@
 
 use Illuminate\Support\Facades\Broadcast;
 
-/*
-|--------------------------------------------------------------------------
-| Broadcast Channels
-|--------------------------------------------------------------------------
-|
-| Here you may register all of the event broadcasting channels that your
-| application supports. The given channel authorization callbacks are
-| used to check if an authenticated user can listen to the channel.
-|
-*/
-
 Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
     return (int) $user->id === (int) $id;
 });
 
 Broadcast::channel('ecosystem.admin', function ($user) {
-    return $user->hasPermission('ecosystem_manage') || strtolower((string) $user->profile?->name) === 'administrador';
+    return $user->hasProfile('Administrador')
+        || $user->hasPermission('ecosystem_manage')
+        || $user->hasPermission('operations_view')
+        || $user->hasPermission('security_view');
 });
