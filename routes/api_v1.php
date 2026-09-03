@@ -32,6 +32,7 @@ use App\Domain\Social\Http\Controllers\FeedController;
 use App\Domain\Social\Http\Controllers\SocialGraphController;
 use App\Domain\Workforce\Http\Controllers\TeamMemberController;
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\ApplicationDirectoryController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
@@ -63,6 +64,9 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         // Application/runtime configuration.
         Route::get('/config', [ApplicationConfigController::class, 'show']);
+
+        // Generic company directory for any application context.
+        Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
 
         // Shared location capability.
         Route::get('/locations/states', [LocationController::class, 'states']);
@@ -100,6 +104,10 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
+
+            Route::get('/directory/companies', [ApplicationDirectoryController::class, 'companies']);
+            Route::post('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'activateCompany'])->whereNumber('sourceId');
+            Route::delete('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'deactivateCompany'])->whereNumber('sourceId');
 
             // Catalog activation and ownership.
             Route::get('/catalog-companies', [EcosystemCatalogController::class, 'companies']);
