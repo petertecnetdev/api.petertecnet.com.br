@@ -94,6 +94,16 @@ class ContentController extends Controller
                     'type' => $item->type,
                     'price' => $item->price,
                     'image_url' => $item->image_url,
+                    'files' => $item->files->filter(fn ($file) => $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')))
+                        ->map(fn ($file) => [
+                            'uuid' => $file->uuid,
+                            'type' => $file->type,
+                            'mime_type' => $file->mime_type,
+                            'public_url' => $file->public_url,
+                            'width' => $file->width,
+                            'height' => $file->height,
+                            'is_primary' => (bool) $file->is_primary,
+                        ])->values(),
                     'establishment' => $item->establishment,
                 ])->values();
         }
