@@ -241,9 +241,7 @@ final class CatalogDiscoveryController extends Controller
 
     private function publicEstablishmentsQuery(): Builder
     {
-        return $this->applyPublicVisibility(
-            Establishment::query()->forApplication($this->context->id())
-        );
+        return $this->applyPublicVisibility(Establishment::query());
     }
 
     private function applyPublicVisibility(Builder $query): Builder
