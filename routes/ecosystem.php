@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalDiagnosticsController;
+use App\Http\Controllers\Admin\OperationalIssueController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -26,6 +27,10 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/command/overview', [CommandCenterController::class, 'overview']);
     Route::get('/command/search', [CommandCenterController::class, 'globalSearch']);
     Route::get('/command/security', [OperationalDiagnosticsController::class, 'security']);
+    Route::get('/command/issues', [OperationalIssueController::class, 'index']);
+    Route::get('/command/issues/{issue}', [OperationalIssueController::class, 'show'])->whereNumber('issue');
+    Route::patch('/command/issues/{issue}', [OperationalIssueController::class, 'update'])->whereNumber('issue');
+    Route::post('/command/issues/{issue}/incident', [OperationalIssueController::class, 'createIncident'])->whereNumber('issue');
     Route::get('/command/queues', [CommandCenterController::class, 'queues']);
     Route::post('/command/queues/{uuid}/retry', [CommandCenterController::class, 'retryJob']);
     Route::get('/command/applications/{application}', [CommandCenterController::class, 'application'])->whereNumber('application');
