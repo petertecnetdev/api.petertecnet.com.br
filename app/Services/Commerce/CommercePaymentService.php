@@ -85,7 +85,7 @@ class CommercePaymentService
 
             $payment->forceFill([
                 'status' => 'failed',
-                'failed_at' => now(),
+                'failed_at' => $payment->failed_at ?: now(),
                 'metadata' => array_merge($payment->metadata ?? [], ['error' => $exception->getMessage()]),
             ])->save();
 
@@ -160,6 +160,10 @@ class CommercePaymentService
                 ...$result->metadata,
             ], static fn ($value) => $value !== null);
 
+            $isPaid = $result->status === 'paid';
+            $isReversed = in_array($result->status, ['refunded', 'charged_back'], true);
+            $isFailed = in_array($result->status, ['failed', 'rejected', 'cancelled'], true);
+
             $payment->forceFill([
                 'provider_payment_id' => $result->providerPaymentId ?: $payment->provider_payment_id,
                 'status' => $result->status,
@@ -168,9 +172,11 @@ class CommercePaymentService
                     0,
                     (float) $payment->gross_amount - $result->providerFee - (float) $payment->platform_fee
                 ),
-                'paid_at' => $result->status === 'paid' ? now() : $payment->paid_at,
-                'refunded_at' => $result->status === 'refunded' ? now() : $payment->refunded_at,
-                'failed_at' => $result->status === 'failed' ? now() : $payment->failed_at,
+                // Financial event timestamps must be immutable after the first provider confirmation.
+                // Repeated webhook/sync deliveries therefore cannot move revenue between accounting periods.
+                'paid_at' => $isPaid ? ($payment->paid_at ?: now()) : $payment->paid_at,
+                'refunded_at' => $isReversed ? ($payment->refunded_at ?: now()) : $payment->refunded_at,
+                'failed_at' => $isFailed ? ($payment->failed_at ?: now()) : $payment->failed_at,
                 'metadata' => array_merge($payment->metadata ?? [], $metadata),
             ])->save();
 
@@ -193,7 +199,7 @@ class CommercePaymentService
                 'payment_reference' => $payment->provider_payment_id,
                 'fulfillment_status' => $result->status === 'paid'
                     ? 'available'
-                    : ($result->status === 'refunded' ? 'blocked' : $order->fulfillment_status),
+                    : ($isReversed ? 'blocked' : $order->fulfillment_status),
                 'status' => $result->status === 'paid' && $order->status === 'pending'
                     ? 'confirmed'
                     : $order->status,
