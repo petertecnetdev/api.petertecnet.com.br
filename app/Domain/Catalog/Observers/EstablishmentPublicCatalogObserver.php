@@ -10,8 +10,19 @@ final class EstablishmentPublicCatalogObserver
 {
     public function __construct(private readonly PublicCatalogCache $cache) {}
 
+    public function retrieved(Establishment $establishment): void
+    {
+        $this->disableImplicitMetrics($establishment);
+    }
+
+    public function creating(Establishment $establishment): void
+    {
+        $this->disableImplicitMetrics($establishment);
+    }
+
     public function saved(Establishment $establishment): void
     {
+        $this->disableImplicitMetrics($establishment);
         $this->invalidate($establishment);
     }
 
@@ -22,7 +33,18 @@ final class EstablishmentPublicCatalogObserver
 
     public function restored(Establishment $establishment): void
     {
+        $this->disableImplicitMetrics($establishment);
         $this->invalidate($establishment);
+    }
+
+    private function disableImplicitMetrics(Establishment $establishment): void
+    {
+        $establishment->setAppends(
+            collect($establishment->getAppends())
+                ->reject(fn ($append) => $append === 'metrics')
+                ->values()
+                ->all()
+        );
     }
 
     private function invalidate(Establishment $establishment): void
