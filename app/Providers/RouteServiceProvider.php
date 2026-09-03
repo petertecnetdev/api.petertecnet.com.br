@@ -43,6 +43,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/branding.php'));
 
+            // Content, SEO discovery and acquisition analytics are ecosystem-wide
+            // capabilities. Applications opt into context instead of owning routes.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/content.php'));
+
             // Temporary expand/contract boundary. The file owns its middleware
             // groups so each legacy URL can bind the appropriate application
             // context without duplicating the global API middleware stack.
