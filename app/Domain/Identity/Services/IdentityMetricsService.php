@@ -29,8 +29,7 @@ class IdentityMetricsService
         $failedLogins = $count(['identity.login_failed', 'identity.sso_exchange_failed', 'identity.global_sso_failed']);
         $attempts = $successfulLogins + $failedLogins;
         $legacy = $count(['identity.legacy_token_seen']);
-        $stepUpGranted = $count(['identity.step_up_granted']);
-        $stepUpFailed = $count(['identity.step_up_failed']);
+        $redisLatency = $this->globalSessions->cacheLatencyMs();
 
         $apps = [];
         foreach ($events as $event) {
@@ -51,8 +50,8 @@ class IdentityMetricsService
                 'failed' => $failedLogins,
                 'success_rate' => $attempts > 0 ? round(($successfulLogins / $attempts) * 100, 2) : 100.0,
                 'sso_restores' => $count(['identity.global_sso_exchanged']),
-                'step_up_granted' => $stepUpGranted,
-                'step_up_failed' => $stepUpFailed,
+                'step_up_granted' => $count(['identity.step_up_granted']),
+                'step_up_failed' => $count(['identity.step_up_failed']),
             ],
             'sessions' => [
                 'application_active' => IdentitySession::query()->whereNull('revoked_at')->where(fn ($q) => $q->whereNull('expires_at')->orWhere('expires_at', '>', now()))->count(),
@@ -67,8 +66,8 @@ class IdentityMetricsService
                 'ready_to_enforce' => $legacy === 0,
             ],
             'infrastructure' => [
-                'redis_latency_ms' => $this->globalSessions->cacheLatencyMs(),
-                'redis_available' => $this->globalSessions->cacheLatencyMs() !== null,
+                'redis_latency_ms' => $redisLatency,
+                'redis_available' => $redisLatency !== null,
                 'database_fallback' => true,
             ],
             'applications' => $apps,
