@@ -2,6 +2,7 @@
 
 namespace App\Domain\DeveloperPlatform\Http\Controllers;
 
+use App\Domain\DeveloperPlatform\Services\SandboxDataService;
 use App\Domain\DeveloperPlatform\Support\ApiResponse;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
@@ -12,8 +13,16 @@ use Illuminate\Http\Request;
 
 class PublicResourceController extends Controller
 {
+    public function __construct(private readonly SandboxDataService $sandbox)
+    {
+    }
+
     public function establishments(Request $request): JsonResponse
     {
+        if ($this->isSandbox($request)) {
+            return $this->sandbox->establishments($request);
+        }
+
         $query = Establishment::query()
             ->where('is_published', true)
             ->where('is_approved', true)
@@ -36,6 +45,10 @@ class PublicResourceController extends Controller
 
     public function establishment(Request $request, string $slug): JsonResponse
     {
+        if ($this->isSandbox($request)) {
+            return $this->sandbox->establishment($request, $slug);
+        }
+
         $establishment = Establishment::query()
             ->where('slug', $slug)
             ->where('is_published', true)
@@ -52,6 +65,10 @@ class PublicResourceController extends Controller
 
     public function items(Request $request): JsonResponse
     {
+        if ($this->isSandbox($request)) {
+            return $this->sandbox->items($request);
+        }
+
         $query = Item::query()->with('files')->active();
 
         $this->applySearch($query, $request, ['name', 'description', 'category', 'subcategory', 'brand']);
@@ -76,6 +93,10 @@ class PublicResourceController extends Controller
 
     public function item(Request $request, string $slug): JsonResponse
     {
+        if ($this->isSandbox($request)) {
+            return $this->sandbox->item($request, $slug);
+        }
+
         $item = Item::query()->with('files')->active()->where('slug', $slug)->first();
 
         if (!$item) {
@@ -83,6 +104,11 @@ class PublicResourceController extends Controller
         }
 
         return ApiResponse::data($this->serializeItem($item));
+    }
+
+    private function isSandbox(Request $request): bool
+    {
+        return $request->is('api/sandbox/v1*');
     }
 
     private function perPage(Request $request): int
@@ -142,8 +168,8 @@ class PublicResourceController extends Controller
                 'facebook' => $establishment->facebook_url,
                 'youtube' => $establishment->youtube_url,
             ]),
-            'created_at' => optional($establishment->created_at)?->toISOString(),
-            'updated_at' => optional($establishment->updated_at)?->toISOString(),
+            'created_at' => $establishment->created_at?->toISOString(),
+            'updated_at' => $establishment->updated_at?->toISOString(),
         ];
     }
 
@@ -167,11 +193,11 @@ class PublicResourceController extends Controller
                 'id' => $item->entity_id,
             ],
             'availability' => [
-                'starts_at' => optional($item->availability_start)?->toISOString(),
-                'ends_at' => optional($item->availability_end)?->toISOString(),
+                'starts_at' => $item->availability_start?->toISOString(),
+                'ends_at' => $item->availability_end?->toISOString(),
             ],
-            'created_at' => optional($item->created_at)?->toISOString(),
-            'updated_at' => optional($item->updated_at)?->toISOString(),
+            'created_at' => $item->created_at?->toISOString(),
+            'updated_at' => $item->updated_at?->toISOString(),
         ];
     }
 }
