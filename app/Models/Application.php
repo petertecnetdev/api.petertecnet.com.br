@@ -17,6 +17,7 @@ class Application extends Model
         'logo',
         'is_active',
         'self_service_access',
+        'capabilities',
         'version',
         'author',
         'release_date',
@@ -25,6 +26,7 @@ class Application extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'self_service_access' => 'boolean',
+        'capabilities' => 'array',
         'release_date' => 'datetime',
     ];
 
