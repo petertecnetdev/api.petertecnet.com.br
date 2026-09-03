@@ -5,6 +5,7 @@ use App\Http\Controllers\Identity\IdentityDeviceController;
 use App\Http\Controllers\Identity\IdentityGlobalSsoController;
 use App\Http\Controllers\Identity\IdentityOperationsController;
 use App\Http\Controllers\Identity\IdentityPasskeyController;
+use App\Http\Controllers\Identity\IdentityPasswordController;
 use App\Http\Controllers\Identity\IdentitySecurityController;
 use App\Http\Controllers\Identity\IdentitySessionController;
 use App\Http\Controllers\Identity\IdentityStepUpController;
@@ -23,8 +24,6 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
     Route::post('/passkeys/options', [IdentityPasskeyController::class, 'authenticationOptions'])->middleware('throttle:30,1')->name('passkeys.options');
     Route::post('/passkeys/authenticate', [IdentityPasskeyController::class, 'authenticate'])->middleware('throttle:30,1')->name('passkeys.authenticate');
 
-    // Browser-wide SSO. Authentication comes from opaque API cookies; exchange is
-    // protected by exact Origin/app binding, rotating refresh and signed CSRF.
     Route::get('/sso/csrf', [IdentityGlobalSsoController::class, 'csrf'])->middleware('throttle:60,1')->name('sso.csrf');
     Route::post('/sso/exchange', [IdentityGlobalSsoController::class, 'exchange'])->middleware('throttle:60,1')->name('sso.exchange');
     Route::delete('/sso/session', [IdentityGlobalSsoController::class, 'revokeCurrent'])->middleware('throttle:20,1')->name('sso.revoke');
@@ -32,6 +31,8 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
     Route::middleware(['auth:api', 'token.version'])->group(function () {
         Route::post('/logout', [IdentityAuthenticationController::class, 'logout'])->name('logout');
         Route::post('/refresh', [IdentityAuthenticationController::class, 'refresh'])->name('refresh');
+        Route::post('/password/change', [IdentityPasswordController::class, 'change'])
+            ->middleware('identity.step-up:change_password')->name('password.change');
         Route::post('/sso/session', [IdentityGlobalSsoController::class, 'establish'])->middleware('throttle:60,1')->name('sso.establish');
         Route::post('/logout-everywhere', [IdentityGlobalSsoController::class, 'logoutEverywhere'])
             ->middleware(['throttle:10,1', 'identity.step-up:logout_everywhere'])->name('logout-everywhere');
