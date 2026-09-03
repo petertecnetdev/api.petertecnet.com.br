@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog\Http\Controllers;
 
+use App\Domain\Catalog\Support\CatalogPublicPayload;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\Item;
@@ -11,7 +12,10 @@ use Illuminate\Http\Request;
 
 final class CatalogDiscoveryController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly CatalogPublicPayload $publicPayload
+    ) {}
 
     public function index(Request $request)
     {
@@ -93,7 +97,7 @@ final class CatalogDiscoveryController extends Controller
                 );
                 $establishment->setAttribute('is_context_native', (int) $establishment->app_id === $appId);
 
-                return $this->preparePublicEstablishment($establishment);
+                return $this->publicPayload->establishment($establishment);
             })
             ->values();
 
@@ -113,7 +117,7 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('updated_at')
             ->limit($limit)
             ->get()
-            ->map(fn (Item $item) => $this->preparePublicItem($item))
+            ->map(fn (Item $item) => $this->publicPayload->item($item))
             ->values();
 
         return response()->json([
@@ -156,7 +160,7 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('updated_at')
             ->limit($limit)
             ->get()
-            ->map(fn (Establishment $establishment) => $this->preparePublicEstablishment($establishment))
+            ->map(fn (Establishment $establishment) => $this->publicPayload->establishment($establishment))
             ->values();
 
         $items = Item::query()
@@ -179,7 +183,7 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('updated_at')
             ->limit($limit)
             ->get()
-            ->map(fn (Item $item) => $this->preparePublicItem($item))
+            ->map(fn (Item $item) => $this->publicPayload->item($item))
             ->values();
 
         return response()->json([
@@ -189,36 +193,6 @@ final class CatalogDiscoveryController extends Controller
             'items' => $items,
             'total' => $companies->count() + $items->count(),
         ]);
-    }
-
-    private function preparePublicEstablishment(Establishment $establishment): Establishment
-    {
-        // Metrics are administrative/analytical data. They are intentionally excluded
-        // from discovery so catalog browsing never depends on cache writes or order analytics.
-        $establishment->makeHidden(['metrics']);
-
-        if ($establishment->relationLoaded('files')) {
-            $establishment->files->each(
-                fn ($file) => $file->makeHidden(['metrics', 'interaction_summary'])
-            );
-        }
-
-        return $establishment;
-    }
-
-    private function preparePublicItem(Item $item): Item
-    {
-        if ($item->relationLoaded('files')) {
-            $item->files->each(
-                fn ($file) => $file->makeHidden(['metrics', 'interaction_summary'])
-            );
-        }
-
-        if ($item->relationLoaded('establishment') && $item->establishment) {
-            $item->establishment->makeHidden(['metrics']);
-        }
-
-        return $item;
     }
 
     private function publicEstablishmentsQuery(): Builder
