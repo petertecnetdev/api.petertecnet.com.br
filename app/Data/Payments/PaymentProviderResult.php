@@ -11,5 +11,8 @@ final readonly class PaymentProviderResult
         public float $providerFee = 0.0,
         public ?string $externalReference = null,
         public array $metadata = [],
+        public ?float $grossAmount = null,
+        public ?string $expiresAt = null,
+        public ?string $availableAt = null,
     ) {}
 }

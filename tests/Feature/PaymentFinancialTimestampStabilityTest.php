@@ -4,11 +4,10 @@ namespace Tests\Feature;
 
 use App\Data\Payments\PaymentProviderResult;
 use App\Models\EcosystemPayment;
-use App\Services\Commerce\CommercePaymentService;
+use App\Services\Payments\PaymentStateSynchronizer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
-use ReflectionClass;
 use Tests\TestCase;
 
 class PaymentFinancialTimestampStabilityTest extends TestCase
@@ -31,7 +30,7 @@ class PaymentFinancialTimestampStabilityTest extends TestCase
         ]);
 
         Carbon::setTestNow('2026-09-03 12:00:00');
-        $this->applyProviderResult($payment, new PaymentProviderResult(
+        app(PaymentStateSynchronizer::class)->apply($payment, new PaymentProviderResult(
             providerPaymentId: 'provider-123',
             status: 'paid',
             providerStatus: 'approved',
@@ -60,11 +59,11 @@ class PaymentFinancialTimestampStabilityTest extends TestCase
             providerStatus: 'refunded',
             providerFee: 2.50,
         );
-        $this->applyProviderResult($payment, $refund);
+        app(PaymentStateSynchronizer::class)->apply($payment, $refund);
         $firstRefundAt = $payment->fresh()->refunded_at;
 
         Carbon::setTestNow('2026-09-03 14:00:00');
-        $this->applyProviderResult($payment->fresh(), $refund);
+        app(PaymentStateSynchronizer::class)->apply($payment->fresh(), $refund);
         $payment->refresh();
 
         $this->assertTrue($payment->refunded_at->equalTo($firstRefundAt));
@@ -94,13 +93,5 @@ class PaymentFinancialTimestampStabilityTest extends TestCase
             'seller_net' => 90,
             'metadata' => [],
         ], $overrides));
-    }
-
-    private function applyProviderResult(EcosystemPayment $payment, PaymentProviderResult $result): void
-    {
-        $service = (new ReflectionClass(CommercePaymentService::class))->newInstanceWithoutConstructor();
-        $method = (new ReflectionClass(CommercePaymentService::class))->getMethod('applyProviderResult');
-        $method->setAccessible(true);
-        $method->invoke($service, $payment, $result);
     }
 }

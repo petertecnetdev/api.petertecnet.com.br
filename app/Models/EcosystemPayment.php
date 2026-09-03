@@ -11,7 +11,8 @@ class EcosystemPayment extends Model
         'source_type', 'source_reference', 'source_id', 'user_id', 'production_id',
         'establishment_id', 'currency', 'method', 'status', 'gross_amount',
         'platform_fee', 'provider_fee', 'seller_net', 'metadata', 'paid_at',
-        'refunded_at', 'failed_at',
+        'refunded_at', 'failed_at', 'expires_at', 'available_at', 'reconciled_at',
+        'reconciliation_status', 'reconciliation_message',
     ];
 
     protected $casts = [
@@ -23,5 +24,8 @@ class EcosystemPayment extends Model
         'paid_at' => 'datetime',
         'refunded_at' => 'datetime',
         'failed_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'available_at' => 'datetime',
+        'reconciled_at' => 'datetime',
     ];
 }

@@ -3,14 +3,13 @@
 namespace App\Services\Commerce;
 
 use App\Data\Payments\PaymentIntent;
-use App\Data\Payments\PaymentProviderResult;
 use App\Models\EcosystemPayment;
 use App\Models\Establishment;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\Payments\PaymentGatewayManager;
+use App\Services\Payments\PaymentStateSynchronizer;
 use App\Support\ApplicationContext;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class CommercePaymentService
@@ -18,6 +17,7 @@ class CommercePaymentService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly PaymentGatewayManager $gateways,
+        private readonly PaymentStateSynchronizer $synchronizer,
     ) {}
 
     public function create(Order $order, Establishment $establishment, User $user, string $method): array
@@ -73,7 +73,7 @@ class CommercePaymentService
             );
 
             $result = $gateway->initiate($intent);
-            $this->applyProviderResult($payment, $result);
+            $this->synchronizer->apply($payment, $result);
 
             if ($result->providerPaymentId) {
                 $order->forceFill(['payment_reference' => $result->providerPaymentId])->save();
@@ -104,7 +104,7 @@ class CommercePaymentService
         $result = $gateway->retrieve($payment->provider_payment_id, $payment->source_reference);
 
         if ($result) {
-            $this->applyProviderResult($payment, $result);
+            $this->synchronizer->apply($payment, $result);
         }
     }
 
@@ -129,7 +129,7 @@ class CommercePaymentService
             ->first();
 
         if ($payment) {
-            $this->applyProviderResult($payment, $result);
+            $this->synchronizer->apply($payment, $result);
         }
     }
 
@@ -144,68 +144,14 @@ class CommercePaymentService
             'status' => $payment->status,
             'amount' => (float) $payment->gross_amount,
             'paid_at' => optional($payment->paid_at)->toIso8601String(),
+            'available_at' => optional($payment->available_at)->toIso8601String(),
+            'expires_at' => optional($payment->expires_at)->toIso8601String(),
             'qr_code' => $metadata['qr_code'] ?? null,
             'qr_code_base64' => $metadata['qr_code_base64'] ?? null,
             'ticket_url' => $metadata['ticket_url'] ?? null,
             'checkout_url' => $metadata['checkout_url'] ?? null,
             'sandbox_checkout_url' => $metadata['sandbox_checkout_url'] ?? null,
         ];
-    }
-
-    private function applyProviderResult(EcosystemPayment $payment, PaymentProviderResult $result): void
-    {
-        DB::transaction(function () use ($payment, $result) {
-            $metadata = array_filter([
-                'remote_status' => $result->providerStatus,
-                ...$result->metadata,
-            ], static fn ($value) => $value !== null);
-
-            $isPaid = $result->status === 'paid';
-            $isReversed = in_array($result->status, ['refunded', 'charged_back'], true);
-            $isFailed = in_array($result->status, ['failed', 'rejected', 'cancelled'], true);
-
-            $payment->forceFill([
-                'provider_payment_id' => $result->providerPaymentId ?: $payment->provider_payment_id,
-                'status' => $result->status,
-                'provider_fee' => $result->providerFee,
-                'seller_net' => max(
-                    0,
-                    (float) $payment->gross_amount - $result->providerFee - (float) $payment->platform_fee
-                ),
-                // Financial event timestamps must be immutable after the first provider confirmation.
-                // Repeated webhook/sync deliveries therefore cannot move revenue between accounting periods.
-                'paid_at' => $isPaid ? ($payment->paid_at ?: now()) : $payment->paid_at,
-                'refunded_at' => $isReversed ? ($payment->refunded_at ?: now()) : $payment->refunded_at,
-                'failed_at' => $isFailed ? ($payment->failed_at ?: now()) : $payment->failed_at,
-                'metadata' => array_merge($payment->metadata ?? [], $metadata),
-            ])->save();
-
-            if ($payment->source_type !== 'order' || ! $payment->source_id) {
-                return;
-            }
-
-            $order = Order::query()
-                ->whereKey($payment->source_id)
-                ->where('app_id', $this->context->id())
-                ->lockForUpdate()
-                ->first();
-
-            if (! $order) {
-                return;
-            }
-
-            $order->forceFill([
-                'payment_status' => $result->status,
-                'payment_reference' => $payment->provider_payment_id,
-                'fulfillment_status' => $result->status === 'paid'
-                    ? 'available'
-                    : ($isReversed ? 'blocked' : $order->fulfillment_status),
-                'status' => $result->status === 'paid' && $order->status === 'pending'
-                    ? 'confirmed'
-                    : $order->status,
-                'status_updated_at' => now(),
-            ])->save();
-        });
     }
 
     private function checkoutItems(Order $order): array
