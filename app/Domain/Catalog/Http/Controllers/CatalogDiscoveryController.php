@@ -2,6 +2,7 @@
 
 namespace App\Domain\Catalog\Http\Controllers;
 
+use App\Domain\Catalog\Support\CatalogPublicPayload;
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\Item;
@@ -11,7 +12,10 @@ use Illuminate\Http\Request;
 
 final class CatalogDiscoveryController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly CatalogPublicPayload $publicPayload
+    ) {}
 
     public function index(Request $request)
     {
@@ -92,7 +96,8 @@ final class CatalogDiscoveryController extends Controller
                     (int) $establishment->app_id === $appId || $applicationIds->contains($appId)
                 );
                 $establishment->setAttribute('is_context_native', (int) $establishment->app_id === $appId);
-                return $establishment;
+
+                return $this->publicPayload->establishment($establishment);
             })
             ->values();
 
@@ -111,7 +116,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Item $item) => $this->publicPayload->item($item))
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -152,7 +159,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Establishment $establishment) => $this->publicPayload->establishment($establishment))
+            ->values();
 
         $items = Item::query()
             ->where('status', true)
@@ -173,7 +182,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Item $item) => $this->publicPayload->item($item))
+            ->values();
 
         return response()->json([
             'success' => true,

@@ -9,6 +9,10 @@ class Kernel extends ConsoleKernel
 {
     protected function schedule(Schedule $schedule)
     {
+        $schedule->command('operations:monitor')
+            ->everyMinute()
+            ->withoutOverlapping(10);
+
         $schedule->command('forecasts:evaluate')->everyFiveMinutes();
         $schedule->command('platform:remind-events')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('platform:reconcile-payments --limit=50')->everyMinute()->withoutOverlapping();
