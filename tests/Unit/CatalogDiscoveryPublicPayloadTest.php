@@ -2,14 +2,12 @@
 
 namespace Tests\Unit;
 
-use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
+use App\Domain\Catalog\Support\CatalogPublicPayload;
 use App\Models\Establishment;
 use App\Models\File;
 use App\Models\Item;
-use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Collection;
 use PHPUnit\Framework\TestCase;
-use ReflectionMethod;
 
 class CatalogDiscoveryPublicPayloadTest extends TestCase
 {
@@ -29,8 +27,9 @@ class CatalogDiscoveryPublicPayloadTest extends TestCase
         $establishment->setAttribute('id', 7);
         $establishment->setRelation('files', new Collection([$file]));
 
-        $prepared = $this->invoke('preparePublicEstablishment', $establishment);
-        $payload = $prepared->toArray();
+        $payload = (new CatalogPublicPayload())
+            ->establishment($establishment)
+            ->toArray();
 
         $this->assertArrayNotHasKey('metrics', $payload);
         $this->assertArrayHasKey('files', $payload);
@@ -63,21 +62,13 @@ class CatalogDiscoveryPublicPayloadTest extends TestCase
         $item->setRelation('files', new Collection([$file]));
         $item->setRelation('establishment', $establishment);
 
-        $prepared = $this->invoke('preparePublicItem', $item);
-        $payload = $prepared->toArray();
+        $payload = (new CatalogPublicPayload())
+            ->item($item)
+            ->toArray();
 
         $this->assertSame('https://example.test/item.webp', $payload['image_url']);
         $this->assertArrayNotHasKey('metrics', $payload['files'][0]);
         $this->assertArrayNotHasKey('interaction_summary', $payload['files'][0]);
         $this->assertArrayNotHasKey('metrics', $payload['establishment']);
-    }
-
-    private function invoke(string $method, object $argument): object
-    {
-        $controller = new CatalogDiscoveryController(new ApplicationContext());
-        $reflection = new ReflectionMethod($controller, $method);
-        $reflection->setAccessible(true);
-
-        return $reflection->invoke($controller, $argument);
     }
 }
