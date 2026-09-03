@@ -21,8 +21,21 @@ final class MerchantPaymentAccountService
             ->where('app_id', $this->context->id())
             ->where('production_id', $organizationId)
             ->where('provider', $provider);
-        if ($connectedOnly) $query->where('status', 'connected');
-        return $query->first();
+
+        if (! $connectedOnly) {
+            return $query->first();
+        }
+
+        $account = (clone $query)->where('status', 'connected')->first();
+        if ($account && $provider === 'mercadopago' && $this->platformCollectionReady($organizationId)) {
+            (clone $query)->where('id', $account->id)->update([
+                'status' => 'legacy_disabled',
+                'updated_at' => now(),
+            ]);
+            return null;
+        }
+
+        return $account;
     }
 
     public function readiness(int $organizationId): array
@@ -39,10 +52,6 @@ final class MerchantPaymentAccountService
             ];
         }
 
-        $account = $this->account($organizationId, 'mercadopago', true);
-        $metadata = $account?->metadata ? json_decode($account->metadata, true) : [];
-        $merchantConnected = (bool) ($account && $account->access_token);
-        $merchantPublicKey = trim((string) ($metadata['public_key'] ?? ''));
         $platformToken = trim((string) config('services.mercadopago.access_token'));
         $platformPublicKey = trim((string) config('services.mercadopago.public_key'));
         $platformConfigured = (bool) $this->context->option('commerce.allow_platform_collection', false) && $platformToken !== '';
@@ -52,6 +61,7 @@ final class MerchantPaymentAccountService
         // completed KYC/Pix verification. This prevents a stale OAuth account
         // from silently reactivating an obsolete seller-split settlement path.
         if ($platformConfigured && $recipientReady) {
+            $this->account($organizationId, 'mercadopago', true);
             $methods = ['pix'];
             if ($platformPublicKey !== '') $methods[] = 'card';
 
@@ -64,6 +74,11 @@ final class MerchantPaymentAccountService
                 'message' => 'Pagamentos habilitados com recebimento e repasse pela plataforma.',
             ];
         }
+
+        $account = $this->account($organizationId, 'mercadopago', true);
+        $metadata = $account?->metadata ? json_decode($account->metadata, true) : [];
+        $merchantConnected = (bool) ($account && $account->access_token);
+        $merchantPublicKey = trim((string) ($metadata['public_key'] ?? ''));
 
         // Automatic split remains a zero-downtime fallback for already-active
         // generic merchant accounts while organizations migrate to platform
@@ -150,6 +165,20 @@ final class MerchantPaymentAccountService
             DB::table('merchant_payment_accounts')->where('app_id', $this->context->id())->find($account->id),
             $newAccess,
         ];
+    }
+
+    private function platformCollectionReady(int $organizationId): bool
+    {
+        if (! (bool) $this->context->option('commerce.allow_platform_collection', false)) {
+            return false;
+        }
+
+        if (trim((string) config('services.mercadopago.access_token')) === '') {
+            return false;
+        }
+
+        $organization = Production::query()->where('app_id', $this->context->id())->find($organizationId);
+        return (bool) ($organization && $this->hasVerifiedPayoutRecipient((int) $organization->id, (int) $organization->user_id));
     }
 
     private function hasVerifiedPayoutRecipient(int $organizationId, int $ownerUserId): bool
