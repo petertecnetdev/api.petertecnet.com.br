@@ -8,7 +8,9 @@ use App\Models\Application;
 use App\Models\Establishment;
 use App\Models\Item;
 use App\Models\User;
+use App\Services\EstablishmentDuplicateDetectionService;
 use App\Services\InvitationService;
+use App\Support\TaxIdentifier;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,11 +21,11 @@ use Illuminate\Validation\Rule;
 
 class OnboardingController extends Controller
 {
-    public function store(Request $request): JsonResponse
+    public function store(Request $request, EstablishmentDuplicateDetectionService $duplicates): JsonResponse
     {
         $actor = $request->user();
         abort_unless(
-            $actor && ($actor->hasProfile('Administrador') || $actor->hasPermission('user_create') || $actor->hasPermission('application_manage')),
+            $actor && ($actor->hasProfile('Administrador') || $actor->hasPermission('onboarding_manage') || $actor->hasPermission('marketing_user_invite')),
             403,
             'Você não tem permissão para realizar onboarding de clientes.'
         );
@@ -34,7 +36,10 @@ class OnboardingController extends Controller
             'establishment' => ['nullable', 'array'],
             'establishment.name' => ['required_with:establishment', 'string', 'max:255'],
             'establishment.fantasy' => ['nullable', 'string', 'max:255'],
-            'establishment.cnpj' => ['nullable', 'string', 'max:30'],
+            'establishment.cnpj' => ['nullable', 'string', 'max:64'],
+            'establishment.tax_id' => ['nullable', 'string', 'max:64'],
+            'establishment.tax_id_type' => ['nullable', 'string', 'max:32'],
+            'establishment.country_code' => ['nullable', 'string', 'size:2'],
             'establishment.phone' => ['nullable', 'string', 'max:40'],
             'establishment.email' => ['nullable', 'email', 'max:255'],
             'establishment.description' => ['nullable', 'string', 'max:5000'],
@@ -69,6 +74,23 @@ class OnboardingController extends Controller
 
         if (! empty($data['items']) && empty($data['establishment'])) {
             return response()->json(['message' => 'Crie o estabelecimento antes de adicionar itens.'], 422);
+        }
+
+        if (! empty($data['establishment'])) {
+            $company = $data['establishment'];
+            $countryCode = strtoupper((string) ($company['country_code'] ?? 'BR'));
+            $taxId = $company['tax_id'] ?? $company['cnpj'] ?? null;
+            if ($taxId && ! TaxIdentifier::isValid($taxId, $countryCode)) {
+                return response()->json(['message' => 'O identificador fiscal informado não é válido para o país selecionado.'], 422);
+            }
+
+            $matches = $duplicates->detect($company + ['country_code' => $countryCode], null, 1);
+            if (($matches->first()['score'] ?? 0) === 100) {
+                return response()->json([
+                    'message' => 'Já existe um estabelecimento com o mesmo identificador fiscal.',
+                    'duplicate' => $matches->first(),
+                ], 422);
+            }
         }
 
         $application = Application::query()->findOrFail($data['app_id']);
@@ -126,10 +148,15 @@ class OnboardingController extends Controller
 
             if (! empty($data['establishment'])) {
                 $company = $data['establishment'];
+                $countryCode = strtoupper((string) ($company['country_code'] ?? 'BR'));
+                $taxId = TaxIdentifier::normalizeForCountry($company['tax_id'] ?? $company['cnpj'] ?? null, $countryCode);
                 $establishment = Establishment::create([
                     'name' => trim($company['name']),
                     'fantasy' => trim((string) ($company['fantasy'] ?? '')) ?: trim($company['name']),
-                    'cnpj' => $company['cnpj'] ?? null,
+                    'cnpj' => $countryCode === 'BR' ? $taxId : null,
+                    'tax_id' => $taxId,
+                    'tax_id_type' => TaxIdentifier::type($taxId, $countryCode),
+                    'country_code' => $countryCode,
                     'phone' => $company['phone'] ?? null,
                     'email' => $company['email'] ?? $email,
                     'description' => $company['description'] ?? null,
