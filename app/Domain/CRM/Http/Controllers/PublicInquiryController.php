@@ -131,10 +131,13 @@ final class PublicInquiryController extends Controller
 
     private function contactNotes(array $data): string
     {
+        $company = $data['company'] ?? null;
+        $sourceUrl = $data['source_url'] ?? null;
+
         return collect([
-            $data['company'] ? 'Empresa: ' . $data['company'] : null,
+            $company ? 'Empresa: ' . $company : null,
             'Origem: ' . ($data['source'] ?? 'website'),
-            $data['source_url'] ? 'URL: ' . $data['source_url'] : null,
+            $sourceUrl ? 'URL: ' . $sourceUrl : null,
         ])->filter()->join("\n");
     }
 
@@ -146,14 +149,21 @@ final class PublicInquiryController extends Controller
 
     private function opportunityNotes(array $data, array $attachments): string
     {
+        $serviceSlug = $data['service_slug'] ?? null;
+        $budget = $data['budget'] ?? null;
+        $urgency = $data['urgency'] ?? null;
+        $company = $data['company'] ?? null;
+        $sourcePath = $data['source_path'] ?? null;
+        $sourceUrl = $data['source_url'] ?? null;
+
         return collect([
             $data['message'] ?? null,
-            $data['service_slug'] ? 'Serviço: ' . $data['service_slug'] : null,
-            $data['budget'] ? 'Orçamento informado: ' . $data['budget'] : null,
-            $data['urgency'] ? 'Urgência: ' . $data['urgency'] : null,
-            $data['company'] ? 'Empresa: ' . $data['company'] : null,
-            $data['source_path'] ? 'Página de origem: ' . $data['source_path'] : null,
-            $data['source_url'] ? 'URL de origem: ' . $data['source_url'] : null,
+            $serviceSlug ? 'Serviço: ' . $serviceSlug : null,
+            $budget ? 'Orçamento informado: ' . $budget : null,
+            $urgency ? 'Urgência: ' . $urgency : null,
+            $company ? 'Empresa: ' . $company : null,
+            $sourcePath ? 'Página de origem: ' . $sourcePath : null,
+            $sourceUrl ? 'URL de origem: ' . $sourceUrl : null,
             $attachments ? 'Anexos internos: ' . implode(', ', $attachments) : null,
         ])->filter()->join("\n\n");
     }
