@@ -2,8 +2,10 @@
 
 namespace App\Domain\Catalog\Http\Controllers;
 
+use App\Domain\Catalog\Services\PublicCatalogQuery;
 use App\Domain\Catalog\Support\CatalogPublicPayload;
 use App\Http\Controllers\Controller;
+use App\Models\Application;
 use App\Models\Establishment;
 use App\Models\Item;
 use App\Support\ApplicationContext;
@@ -14,7 +16,8 @@ final class CatalogDiscoveryController extends Controller
 {
     public function __construct(
         private readonly ApplicationContext $context,
-        private readonly CatalogPublicPayload $publicPayload
+        private readonly CatalogPublicPayload $publicPayload,
+        private readonly PublicCatalogQuery $publicCatalog,
     ) {}
 
     public function index(Request $request)
@@ -101,9 +104,7 @@ final class CatalogDiscoveryController extends Controller
             })
             ->values();
 
-        $items = Item::query()
-            ->where('entity_name', 'establishment')
-            ->where('status', true)
+        $items = $this->publicCatalog->items($this->application())
             ->whereIn('entity_id', $establishments->pluck('id'))
             ->with([
                 'files' => fn ($q) => $q
@@ -163,9 +164,7 @@ final class CatalogDiscoveryController extends Controller
             ->map(fn (Establishment $establishment) => $this->publicPayload->establishment($establishment))
             ->values();
 
-        $items = Item::query()
-            ->where('status', true)
-            ->where('entity_name', 'establishment')
+        $items = $this->publicCatalog->items($this->application())
             ->where(fn ($q) => $q
                 ->where('name', 'like', $like)
                 ->orWhere('description', 'like', $like)
@@ -173,10 +172,7 @@ final class CatalogDiscoveryController extends Controller
                 ->orWhere('subcategory', 'like', $like)
                 ->orWhere('brand', 'like', $like)
                 ->orWhere('sku', 'like', $like))
-            ->whereHas('establishment', function (Builder $query) {
-                $this->applyPublicVisibility($query);
-                $query->whereNull('source_establishment_id');
-            })
+            ->whereHas('establishment', fn (Builder $query) => $query->whereNull('source_establishment_id'))
             ->with('establishment:id,name,fantasy,slug,city,uf')
             ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'price')
             ->orderByDesc('is_featured')
@@ -197,19 +193,14 @@ final class CatalogDiscoveryController extends Controller
 
     private function publicEstablishmentsQuery(): Builder
     {
-        return $this->applyPublicVisibility(Establishment::query());
+        return $this->publicCatalog->establishments($this->application());
     }
 
-    private function applyPublicVisibility(Builder $query): Builder
+    private function application(): Application
     {
-        $query
-            ->where('is_cancelled', false)
-            ->where('is_published', true);
-
-        if (in_array($this->context->slug(), config('platform.approval_required_apps', []), true)) {
-            $query->where('is_approved', true);
-        }
-
-        return $query;
+        return Application::query()
+            ->whereKey($this->context->id())
+            ->where('is_active', true)
+            ->firstOrFail();
     }
 }
