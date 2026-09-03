@@ -48,6 +48,7 @@ class OperationalIssueClassifier
         $domains = [
             'payments' => ['payment', 'payments', 'pix', 'checkout', 'refund', 'charge', 'billing'],
             'commerce' => ['order', 'orders', 'cart', 'commerce', 'purchase'],
+            'fulfillment' => ['fulfillment', 'pickup', 'delivery', 'redeem', 'redemption', 'withdrawal', 'retirada', 'entrega'],
             'scheduling' => ['appointment', 'appointments', 'schedule', 'availability', 'booking'],
             'establishments' => ['establishment', 'establishments', 'company', 'business'],
             'catalog' => ['item', 'items', 'catalog', 'menu', 'product', 'service'],
@@ -56,7 +57,7 @@ class OperationalIssueClassifier
             'events' => ['event', 'events', 'ticket', 'tickets', 'production'],
             'files' => ['file', 'files', 'storage', 'upload', 'media'],
             'runtime' => ['queue', 'queues', 'job', 'jobs', 'scheduler', 'backup', 'heartbeat'],
-            'operations' => ['admin/ecosystem', 'command', 'incident', 'diagnostic'],
+            'operations' => ['admin/ecosystem', 'command', 'incident', 'diagnostic', 'operational'],
         ];
 
         foreach ($domains as $domain => $needles) {
@@ -88,6 +89,7 @@ class OperationalIssueClassifier
 
         $domain = $event['domain'] ?? $this->domain($event);
         if ($domain === 'payments') $score += 10;
+        if ($domain === 'fulfillment') $score += 5;
 
         $score += min(20, (int) ceil(log10(max(1, $occurrences)) * 8));
         $score += min(10, $users);
