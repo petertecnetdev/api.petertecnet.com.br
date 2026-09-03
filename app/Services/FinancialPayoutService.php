@@ -272,7 +272,7 @@ class FinancialPayoutService
 
     public function balance(Production $production): array
     {
-        $query = DB::table('cutinapp_ledger_entries')
+        $query = DB::table('ledger_entries')
             ->where('production_id', $production->id)
             ->where('type', 'producer_credit')
             ->where('status', 'posted')
@@ -294,10 +294,11 @@ class FinancialPayoutService
             ->where('source_type', 'production')->where('source_id', $production->id)
             ->where('status', 'paid')->sum('amount');
 
-        // Compatibilidade com repasses já registrados antes da migração do módulo.
-        $legacyInFlight = (float) DB::table('cutinapp_payout_requests')
+        // Compatibility records from the previous payout module are exposed
+        // through the same generic storage during the expand/contract rollout.
+        $legacyInFlight = (float) DB::table('payout_requests')
             ->where('production_id', $production->id)->whereIn('status', ['pending', 'processing'])->sum('amount');
-        $legacyPaid = (float) DB::table('cutinapp_payout_requests')
+        $legacyPaid = (float) DB::table('payout_requests')
             ->where('production_id', $production->id)->where('status', 'paid')->sum('amount');
 
         $inFlight = $newInFlight + $legacyInFlight;

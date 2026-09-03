@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Application;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,11 +22,7 @@ class AccountContextAuthorizationTest extends TestCase
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,
         ]);
-        $application = Application::create([
-            'name' => 'Nexus',
-            'slug' => 'nexus',
-            'is_active' => true,
-        ]);
+        $application = $this->applicationFixture('nexus', ['name' => 'Nexus']);
         $token = auth('api')->login($user);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)

@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Services\CutinappLocationService;
+use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Config;
 
@@ -14,8 +14,6 @@ class Production extends Model
     protected static function booted(): void
     {
         static::saving(function (Production $production) {
-            if ($production->app_slug !== 'cutinapp') return;
-
             foreach (['city_id','cep','address_number','neighborhood','address_complement','address_reference','formatted_address','latitude','longitude','place_id','google_maps_url','location_public'] as $field) {
                 if (request()->exists($field)) $production->setAttribute($field, request()->input($field));
             }
@@ -30,7 +28,7 @@ class Production extends Model
             $locationDirty = ! $production->exists || $production->isDirty(['city_id','city','uf','cep']);
             if (! $locationDirty) return;
 
-            $service = app(CutinappLocationService::class);
+            $service = app(LocationService::class);
             if ($production->cep) $production->cep = $service->normalizeCep($production->cep);
             if ($production->city_id || $production->city || $production->uf) {
                 $data = ['city_id'=>$production->city_id,'city'=>$production->city,'uf'=>$production->uf];

@@ -33,16 +33,15 @@ class AppNotification extends Model
                 return;
             }
 
-            $isPublicCutinappEvent = Event::query()
+            $isPublicEvent = Event::query()
                 ->whereKey($notification->reference_id)
                 ->where('app_id', $notification->app_id)
-                ->where('app_slug', 'cutinapp')
                 ->where('is_published', true)
                 ->where('is_cancelled', false)
                 ->where('is_private', false)
                 ->exists();
 
-            if (! $isPublicCutinappEvent) {
+            if (! $isPublicEvent) {
                 return false;
             }
         });

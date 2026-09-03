@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\Application;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -23,15 +22,13 @@ class EcosystemAccountTest extends TestCase
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,
         ]);
-        $rasoio = Application::create([
+        $rasoio = $this->applicationFixture('rasoio', [
             'name' => 'Rasoio',
-            'slug' => 'rasoio',
             'url' => 'https://rasoio.petertecnet.com.br',
             'is_active' => true,
         ]);
-        Application::create([
+        $this->applicationFixture('nexus', [
             'name' => 'Nexus',
-            'slug' => 'nexus',
             'url' => 'https://nexus.petertecnet.com.br',
             'is_active' => true,
         ]);

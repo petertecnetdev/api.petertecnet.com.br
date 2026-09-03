@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -20,10 +21,25 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+
+    Route::prefix('command')->group(function () {
+        Route::get('/overview', [CommandCenterController::class, 'overview']);
+        Route::get('/search', [CommandCenterController::class, 'globalSearch']);
+        Route::get('/security', [CommandCenterController::class, 'security']);
+        Route::get('/queues', [CommandCenterController::class, 'queues']);
+        Route::post('/queues/{uuid}/retry', [CommandCenterController::class, 'retryJob']);
+        Route::get('/applications/{application}', [CommandCenterController::class, 'application'])->whereNumber('application');
+        Route::get('/incidents', [CommandCenterController::class, 'incidents']);
+        Route::post('/incidents', [CommandCenterController::class, 'storeIncident']);
+        Route::patch('/incidents/{incident}', [CommandCenterController::class, 'updateIncident'])->whereNumber('incident');
+        Route::get('/issues', [CommandCenterController::class, 'issues']);
+        Route::get('/issues/{issue}', [CommandCenterController::class, 'issue'])->whereNumber('issue');
+        Route::patch('/issues/{issue}', [CommandCenterController::class, 'updateIssue'])->whereNumber('issue');
+        Route::post('/issues/{issue}/incident', [CommandCenterController::class, 'createIssueIncident'])->whereNumber('issue');
+        Route::get('/issues/{issue}/intelligence', [CommandCenterController::class, 'issueIntelligence'])->whereNumber('issue');
+        Route::post('/issues/{issue}/repair-plan', [CommandCenterController::class, 'repairPlan'])->whereNumber('issue');
+        Route::get('/intelligence', [CommandCenterController::class, 'intelligence']);
+    });
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
