@@ -22,3 +22,20 @@ jobs:
       VPS_PORT: ${{ secrets.VPS_PORT }}
       VPS_USER: ${{ secrets.VPS_USER }}
       VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
+  public-contract-smoke:
+    name: Production multiplatform public contract smoke
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify public application contracts
+        env:
+          API_BASE_URL: https://api.petertecnet.com.br
+          PUBLIC_APP_SLUGS: ${{ vars.PUBLIC_APP_SLUGS }}
+          PUBLIC_CATALOG_MONITOR_MAX_RESPONSE_MS: 2500
+          PUBLIC_CATALOG_MONITOR_MAX_PAYLOAD_BYTES: 1048576
+        run: bash scripts/smoke-public-platforms.sh
