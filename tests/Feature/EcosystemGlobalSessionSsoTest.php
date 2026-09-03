@@ -138,11 +138,12 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $this->assertNotNull(IdentitySession::query()->first()->revoked_at);
     }
 
-    public function test_global_logout_revokes_every_identity_session_and_existing_jwt(): void
+    public function test_global_logout_revokes_every_identity_session_and_other_existing_jwt(): void
     {
         $application = $this->application('Nexus', 'nexus', 10);
         $this->grant($application);
         $cookies = $this->identityCookies($this->establish('nexus')->headers->getCookies());
+        $otherExistingToken = auth('api')->login($this->user);
 
         $this->withIdentityCookies($cookies)
             ->withHeaders(['Authorization' => 'Bearer '.$this->token])
@@ -155,7 +156,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
             'revoked_at' => null,
         ]);
 
-        $this->withHeaders(['Authorization' => 'Bearer '.$this->token])
+        $this->withHeaders(['Authorization' => 'Bearer '.$otherExistingToken])
             ->getJson('/api/account/context')
             ->assertUnauthorized()
             ->assertJsonPath('code', 'TOKEN_REVOKED');
@@ -183,6 +184,32 @@ class EcosystemGlobalSessionSsoTest extends TestCase
             ->withHeaders($this->appHeaders('nexus') + ['X-Peter-CSRF' => $csrf])
             ->postJson('/api/identity/v1/session/exchange', ['application' => 'nexus'])
             ->assertOk();
+    }
+
+    public function test_high_risk_browser_and_platform_change_requires_reauthentication(): void
+    {
+        $application = $this->application('Nexus', 'nexus', 10);
+        $this->grant($application);
+        $cookies = $this->identityCookies($this->establish('nexus')->headers->getCookies());
+        $csrf = $this->csrf($cookies, 'nexus');
+
+        $headers = array_merge($this->appHeaders('nexus'), [
+            'X-Peter-CSRF' => $csrf,
+            'User-Agent' => 'Mozilla/5.0 (X11; Linux x86_64; rv:143.0) Gecko/20100101 Firefox/143.0',
+        ]);
+
+        $this->withIdentityCookies($cookies)
+            ->withHeaders($headers)
+            ->postJson('/api/identity/v1/session/exchange', ['application' => 'nexus'])
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'IDENTITY_REAUTH_REQUIRED');
+
+        $this->assertNotNull(IdentitySession::query()->first()->revoked_at);
+        $this->assertDatabaseHas('identity_auth_events', [
+            'user_id' => $this->user->id,
+            'event_type' => 'session_risk_detected',
+            'outcome' => 'challenge_required',
+        ]);
     }
 
     private function establish(string $slug)
