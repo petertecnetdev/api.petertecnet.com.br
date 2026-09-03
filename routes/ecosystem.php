@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\CommercialOperationsController;
+use App\Http\Controllers\Admin\CommercialUserController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EstablishmentDuplicateController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -36,6 +37,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
 
     Route::prefix('operations')->group(function () {
         Route::get('/context', [CommercialOperationsController::class, 'context']);
+        Route::put('/users/{user}/identity', [CommercialUserController::class, 'updateIdentity'])->whereNumber('user');
         Route::post('/establishments', [CommercialOperationsController::class, 'storeEstablishment']);
         Route::put('/establishments/{establishment}', [CommercialOperationsController::class, 'updateEstablishment'])->whereNumber('establishment');
         Route::post('/items', [CommercialOperationsController::class, 'storeItem']);
