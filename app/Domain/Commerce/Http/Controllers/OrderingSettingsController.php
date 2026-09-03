@@ -32,18 +32,21 @@ class OrderingSettingsController extends Controller
             'minimum_order'=>['sometimes','numeric','min:0','max:999999.99'],
             'estimated_delivery_minutes'=>['nullable','integer','min:1','max:1440'],
             'opening_hours'=>['nullable','array'],
-            'payment_methods'=>['required','array','min:1'],
+            'payment_methods'=>['sometimes','array','max:3'],
             'payment_methods.*'=>[Rule::in(['pix','cash','card_on_delivery'])],
             'pix_key'=>['nullable','string','max:255'],
         ]);
 
-        $methods = array_values(array_unique($data['payment_methods'] ?? []));
+        $currentMethods = $this->decode($est->payment_methods, []);
+        $methods = array_key_exists('payment_methods', $data)
+            ? array_values(array_unique($data['payment_methods'] ?? []))
+            : $currentMethods;
         $providerConfigured = trim((string) config('services.mercadopago.access_token')) !== '';
         $pixKey = trim((string) ($data['pix_key'] ?? $est->pix_key ?? ''));
         abort_if(in_array('pix', $methods, true) && ! $providerConfigured && $pixKey === '', 422, 'Para aceitar Pix, configure um provedor de pagamento na API ou informe uma chave Pix do estabelecimento.');
 
         if (array_key_exists('opening_hours', $data)) $data['opening_hours'] = json_encode($data['opening_hours']);
-        $data['payment_methods'] = json_encode($methods);
+        if (array_key_exists('payment_methods', $data)) $data['payment_methods'] = json_encode($methods);
         $data['updated_by'] = $request->user()->id;
         $est->forceFill($data)->save();
 
