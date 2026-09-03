@@ -2,9 +2,9 @@ name: API CI
 
 on:
   push:
-    branches: [main, staging]
+    branches: [main, staging, develop, 'refactor/**']
   pull_request:
-    branches: [main, staging]
+    branches: [main, staging, develop]
   workflow_dispatch:
 
 permissions:
