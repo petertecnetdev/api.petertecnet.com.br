@@ -92,7 +92,8 @@ final class CatalogDiscoveryController extends Controller
                     (int) $establishment->app_id === $appId || $applicationIds->contains($appId)
                 );
                 $establishment->setAttribute('is_context_native', (int) $establishment->app_id === $appId);
-                return $establishment;
+
+                return $this->preparePublicEstablishment($establishment);
             })
             ->values();
 
@@ -111,7 +112,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Item $item) => $this->preparePublicItem($item))
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -152,7 +155,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Establishment $establishment) => $this->preparePublicEstablishment($establishment))
+            ->values();
 
         $items = Item::query()
             ->where('status', true)
@@ -173,7 +178,9 @@ final class CatalogDiscoveryController extends Controller
             ->orderByDesc('is_featured')
             ->orderByDesc('updated_at')
             ->limit($limit)
-            ->get();
+            ->get()
+            ->map(fn (Item $item) => $this->preparePublicItem($item))
+            ->values();
 
         return response()->json([
             'success' => true,
@@ -182,6 +189,36 @@ final class CatalogDiscoveryController extends Controller
             'items' => $items,
             'total' => $companies->count() + $items->count(),
         ]);
+    }
+
+    private function preparePublicEstablishment(Establishment $establishment): Establishment
+    {
+        // Metrics are administrative/analytical data. They are intentionally excluded
+        // from discovery so catalog browsing never depends on cache writes or order analytics.
+        $establishment->makeHidden(['metrics']);
+
+        if ($establishment->relationLoaded('files')) {
+            $establishment->files->each(
+                fn ($file) => $file->makeHidden(['metrics', 'interaction_summary'])
+            );
+        }
+
+        return $establishment;
+    }
+
+    private function preparePublicItem(Item $item): Item
+    {
+        if ($item->relationLoaded('files')) {
+            $item->files->each(
+                fn ($file) => $file->makeHidden(['metrics', 'interaction_summary'])
+            );
+        }
+
+        if ($item->relationLoaded('establishment') && $item->establishment) {
+            $item->establishment->makeHidden(['metrics']);
+        }
+
+        return $item;
     }
 
     private function publicEstablishmentsQuery(): Builder
