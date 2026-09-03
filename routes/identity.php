@@ -4,9 +4,13 @@ use App\Http\Controllers\Identity\IdentityAuthenticationController;
 use App\Http\Controllers\Identity\IdentityPasskeyController;
 use App\Http\Controllers\Identity\IdentitySecurityController;
 use App\Http\Controllers\Identity\IdentitySessionController;
+use App\Http\Controllers\PublicAuthConfigController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('account/identity')->name('identity.')->group(function () {
+    Route::get('/providers', PublicAuthConfigController::class)
+        ->middleware('throttle:60,1')->name('providers');
+
     Route::post('/login', [IdentityAuthenticationController::class, 'login'])
         ->middleware('throttle:30,1')->name('login');
     Route::post('/register', [IdentityAuthenticationController::class, 'register'])
