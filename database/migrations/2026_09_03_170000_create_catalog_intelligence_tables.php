@@ -25,6 +25,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('product_id')->constrained()->cascadeOnDelete();
             $table->uuid('public_id')->unique();
+            $table->string('variant_key', 64);
             $table->string('name')->nullable();
             $table->string('sku', 120)->nullable()->index();
             $table->string('gtin', 32)->nullable()->unique();
@@ -35,6 +36,7 @@ return new class extends Migration
             $table->decimal('source_confidence', 5, 2)->nullable();
             $table->json('metadata')->nullable();
             $table->timestamps();
+            $table->unique(['product_id', 'variant_key']);
             $table->index(['product_id', 'sku']);
         });
 
