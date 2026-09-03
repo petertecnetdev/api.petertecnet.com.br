@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Identity\IdentityAuditController;
 use App\Http\Controllers\Identity\IdentityAuthenticationController;
 use App\Http\Controllers\Identity\IdentityGlobalSsoController;
 use App\Http\Controllers\Identity\IdentityPasskeyController;
@@ -31,8 +32,6 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
     Route::post('/passkeys/authenticate', [IdentityPasskeyController::class, 'authenticate'])
         ->middleware('throttle:30,1')->name('passkeys.authenticate');
 
-    // Cookie-backed SSO endpoints are intentionally outside auth:api. They use
-    // an opaque host-only API cookie + rotating refresh secret + Origin/app-bound CSRF.
     Route::get('/sso/csrf', [IdentityGlobalSsoController::class, 'csrf'])
         ->middleware('throttle:60,1')->name('sso.csrf');
     Route::post('/sso/exchange', [IdentityGlobalSsoController::class, 'exchange'])
@@ -52,6 +51,8 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
         Route::delete('/sessions/{sessionId}', [IdentitySessionController::class, 'destroy'])->name('sessions.destroy');
         Route::delete('/sessions', [IdentitySessionController::class, 'destroyAll'])->name('sessions.destroy-all');
         Route::post('/sessions/revoke-others', [IdentitySessionController::class, 'destroyOthers'])->name('sessions.revoke-others');
+        Route::get('/activity', [IdentityAuditController::class, 'index'])
+            ->middleware('throttle:60,1')->name('activity.index');
 
         Route::get('/security', [IdentitySecurityController::class, 'show'])->name('security.show');
         Route::post('/two-factor/setup', [IdentitySecurityController::class, 'beginTwoFactor'])
