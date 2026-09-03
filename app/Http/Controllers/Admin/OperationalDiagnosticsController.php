@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\Operations\OperationalIssueClassifier;
+use App\Services\Operations\OperationalIssueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +13,12 @@ use Illuminate\Support\Str;
 
 class OperationalDiagnosticsController extends Controller
 {
+    public function __construct(
+        private readonly OperationalIssueClassifier $classifier,
+        private readonly OperationalIssueService $issues,
+    ) {
+    }
+
     public function security(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
@@ -27,7 +35,13 @@ class OperationalDiagnosticsController extends Controller
         $base = DB::table('interactions as i')->where('i.created_at', '>=', $since);
 
         $critical = in_array('severity', $columns, true)
-            ? (clone $base)->whereIn('i.severity', ['suspicious', 'critical'])->count()
+            ? (clone $base)->where('i.severity', 'critical')->count()
+            : 0;
+        $suspicious = in_array('severity', $columns, true)
+            ? (clone $base)->where('i.severity', 'suspicious')->count()
+            : 0;
+        $attention = in_array('severity', $columns, true)
+            ? (clone $base)->where('i.severity', 'attention')->count()
             : 0;
         $errors = in_array('outcome', $columns, true)
             ? (clone $base)->where('i.outcome', 'error')->count()
@@ -36,25 +50,28 @@ class OperationalDiagnosticsController extends Controller
             ? (clone $base)->whereIn('i.outcome', ['denied', 'refused'])->count()
             : 0;
 
-        $relevant = (clone $base);
-        if (in_array('severity', $columns, true) || in_array('outcome', $columns, true)) {
-            $relevant->where(function ($query) use ($columns) {
-                if (in_array('severity', $columns, true)) {
-                    $query->whereIn('i.severity', ['attention', 'suspicious', 'critical']);
-                }
-                if (in_array('outcome', $columns, true)) {
-                    $method = in_array('severity', $columns, true) ? 'orWhereIn' : 'whereIn';
-                    $query->{$method}('i.outcome', ['denied', 'refused', 'error']);
-                }
-            });
-        }
-
+        $relevant = $this->relevantQuery($since, $columns);
         $relevantCount = (clone $relevant)->count();
-        $rows = $relevant->orderByDesc('i.id')->limit($limit)->get();
 
-        $applicationMap = $this->applicationMap($rows);
-        $userMap = $this->userMap($rows);
-        $events = $rows->map(fn ($row) => $this->normalizeEvent($row, $applicationMap, $userMap))->values();
+        $syncSince = now()->subHours(max(48, $hours * 2));
+        $syncRows = $this->relevantQuery($syncSince, $columns)
+            ->orderByDesc('i.id')
+            ->limit(1500)
+            ->get();
+
+        $applicationMap = $this->applicationMap($syncRows);
+        $userMap = $this->userMap($syncRows);
+        $syncEvents = $syncRows
+            ->map(fn ($row) => $this->normalizeEvent($row, $applicationMap, $userMap))
+            ->values();
+
+        $this->issues->sync($syncEvents);
+
+        $sinceTimestamp = $since->timestamp;
+        $events = $syncEvents
+            ->filter(fn (array $event) => $event['occurred_at'] && strtotime((string) $event['occurred_at']) >= $sinceTimestamp)
+            ->take($limit)
+            ->values();
 
         $groupCounts = $events->countBy('fingerprint');
         $events = $events->map(function (array $event) use ($groupCounts) {
@@ -66,12 +83,25 @@ class OperationalDiagnosticsController extends Controller
             ->groupBy('fingerprint')
             ->map(function ($rows, string $fingerprint) {
                 $latest = $rows->first();
+                $users = $rows->pluck('user.id')->filter()->unique()->count();
+                $apps = $rows->pluck('application.id')->filter()->unique()->count();
+                $severity = $rows->contains(fn ($event) => $event['severity'] === 'critical')
+                    ? 'critical'
+                    : ($rows->contains(fn ($event) => $event['severity'] === 'suspicious') ? 'suspicious' : ($latest['severity'] ?? 'attention'));
+                $impactEvent = $latest;
+                $impactEvent['severity'] = $severity;
+                $impact = $this->classifier->impactScore($impactEvent, $rows->count(), $users, $apps);
+
                 return [
                     'fingerprint' => $fingerprint,
                     'occurrences' => $rows->count(),
                     'first_seen_at' => $rows->last()['occurred_at'] ?? null,
                     'last_seen_at' => $latest['occurred_at'] ?? null,
-                    'severity' => $rows->contains(fn ($event) => $event['severity'] === 'critical') ? 'critical' : ($latest['severity'] ?? 'attention'),
+                    'severity' => $severity,
+                    'category' => $latest['category'] ?? 'operational',
+                    'domain' => $latest['domain'] ?? 'platform',
+                    'impact_score' => $impact,
+                    'priority' => $this->classifier->priority($impact),
                     'http_status' => $latest['http_status'] ?? null,
                     'error_code' => $latest['error_code'] ?? null,
                     'message' => $latest['message'] ?? null,
@@ -81,7 +111,7 @@ class OperationalDiagnosticsController extends Controller
                     'sample_request_id' => $latest['request_id'] ?? null,
                 ];
             })
-            ->sortByDesc('occurrences')
+            ->sortByDesc('impact_score')
             ->values();
 
         $impactedApps = $events
@@ -91,20 +121,40 @@ class OperationalDiagnosticsController extends Controller
             ->values();
 
         return response()->json([
-            'diagnostics_version' => 1,
+            'diagnostics_version' => 2,
             'window_hours' => $hours,
             'critical_events_24h' => $critical,
+            'suspicious_24h' => $suspicious,
+            'attention_24h' => $attention,
             'denied_24h' => $denied,
             'errors_24h' => $errors,
             'total_relevant_events' => $relevantCount,
             'unique_issues' => $groups->count(),
             'repeated_events' => max(0, $events->count() - $groups->count()),
             'impacted_applications' => $impactedApps,
+            'operational_issues' => $this->issues->summary(),
             'truncated' => $relevantCount > $events->count(),
             'groups' => $groups,
             'events' => $events,
             'generated_at' => now()->toIso8601String(),
         ]);
+    }
+
+    private function relevantQuery($since, array $columns)
+    {
+        $query = DB::table('interactions as i')->where('i.created_at', '>=', $since);
+        if (in_array('severity', $columns, true) || in_array('outcome', $columns, true)) {
+            $query->where(function ($builder) use ($columns) {
+                if (in_array('severity', $columns, true)) {
+                    $builder->whereIn('i.severity', ['attention', 'suspicious', 'critical']);
+                }
+                if (in_array('outcome', $columns, true)) {
+                    $method = in_array('severity', $columns, true) ? 'orWhereIn' : 'whereIn';
+                    $builder->{$method}('i.outcome', ['denied', 'refused', 'error']);
+                }
+            });
+        }
+        return $query;
     }
 
     private function normalizeEvent(object $row, array $applicationMap, array $userMap): array
@@ -119,6 +169,7 @@ class OperationalDiagnosticsController extends Controller
             'id' => $row->app_id ?? ($content['app_id'] ?? null),
             'name' => $application['name'] ?? ($content['app_name'] ?? null),
             'slug' => $application['slug'] ?? ($content['app_slug'] ?? null),
+            'version' => $application['version'] ?? ($content['app_version'] ?? null),
         ], fn ($value) => $value !== null && $value !== '');
 
         $user = array_filter([
@@ -128,7 +179,8 @@ class OperationalDiagnosticsController extends Controller
             'profile' => $userSnapshot['profile'] ?? null,
         ], fn ($value) => $value !== null && $value !== '');
 
-        $status = isset($content['status']) && is_numeric($content['status']) ? (int) $content['status'] : null;
+        $statusValue = $row->http_status ?? ($content['status'] ?? null);
+        $status = is_numeric($statusValue) ? (int) $statusValue : null;
         $message = $content['error'] ?? $content['response_message'] ?? $row->name ?? 'Evento operacional sem mensagem detalhada';
         $errorCode = $content['error_code'] ?? ($status ? 'HTTP_'.$status : null);
         $route = $row->route ?? $content['path'] ?? null;
@@ -153,7 +205,9 @@ class OperationalDiagnosticsController extends Controller
             'request_id' => $row->request_id ?? null,
             'correlation_id' => $row->correlation_id ?? null,
             'parent_interaction_id' => $row->parent_interaction_id ?? null,
-            'duration_ms' => isset($content['duration_ms']) ? (int) $content['duration_ms'] : null,
+            'duration_ms' => is_numeric($row->duration_ms ?? null)
+                ? (int) $row->duration_ms
+                : (isset($content['duration_ms']) && is_numeric($content['duration_ms']) ? (int) $content['duration_ms'] : null),
             'user' => $user ?: null,
             'entity' => $entitySnapshot ?: array_filter([
                 'type' => $row->entity_type ?? null,
@@ -166,7 +220,7 @@ class OperationalDiagnosticsController extends Controller
                 'operating_system' => $content['operating_system'] ?? null,
             ]),
             'network' => array_filter([
-                'ip' => $content['ip'] ?? null,
+                'ip' => $content['ip'] ?? ($row->ip ?? null),
                 'origin' => $content['origin'] ?? null,
                 'referer' => $content['referer'] ?? null,
             ]),
@@ -179,25 +233,34 @@ class OperationalDiagnosticsController extends Controller
         ];
 
         $event['fingerprint'] = $this->fingerprint($event);
+        $event['category'] = $this->classifier->category($event);
+        $event['domain'] = $this->classifier->domain($event);
+        $event['impact_score'] = $this->classifier->impactScore($event);
+        $event['priority'] = $this->classifier->priority($event['impact_score']);
         return $event;
     }
 
     private function fingerprint(array $event): string
     {
-        $message = Str::lower((string) ($event['message'] ?? ''));
-        $message = preg_replace('/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i', '{uuid}', $message) ?? $message;
-        $message = preg_replace('/\b\d+\b/', '{n}', $message) ?? $message;
-        $message = preg_replace('/\s+/', ' ', trim($message)) ?? $message;
+        $message = $this->normalizeVolatile((string) ($event['message'] ?? ''));
+        $route = $this->normalizeVolatile((string) ($event['route_name'] ?? $event['route'] ?? 'unknown'));
 
         $source = implode('|', [
             $event['http_status'] ?? 'none',
             Str::upper((string) ($event['method'] ?? '')),
-            Str::lower((string) ($event['route_name'] ?? $event['route'] ?? 'unknown')),
+            Str::lower($route),
             Str::lower((string) ($event['error_code'] ?? 'unknown')),
-            mb_substr($message, 0, 300),
+            mb_substr(Str::lower($message), 0, 300),
         ]);
 
         return 'EVT-'.strtoupper(substr(hash('sha256', $source), 0, 12));
+    }
+
+    private function normalizeVolatile(string $value): string
+    {
+        $value = preg_replace('/\b[0-9a-f]{8}-[0-9a-f-]{27,}\b/i', '{uuid}', $value) ?? $value;
+        $value = preg_replace('/\b\d+\b/', '{n}', $value) ?? $value;
+        return preg_replace('/\s+/', ' ', trim($value)) ?? $value;
     }
 
     private function decodeContent(mixed $content): array
@@ -214,8 +277,8 @@ class OperationalDiagnosticsController extends Controller
         $ids = $rows->pluck('app_id')->filter()->unique()->values();
         if ($ids->isEmpty()) return [];
 
-        return DB::table('applications')->whereIn('id', $ids)->get(['id', 'name', 'slug'])
-            ->mapWithKeys(fn ($app) => [(int) $app->id => ['name' => $app->name, 'slug' => $app->slug]])->all();
+        return DB::table('applications')->whereIn('id', $ids)->get(['id', 'name', 'slug', 'version'])
+            ->mapWithKeys(fn ($app) => [(int) $app->id => ['name' => $app->name, 'slug' => $app->slug, 'version' => $app->version]])->all();
     }
 
     private function userMap($rows): array
@@ -244,15 +307,18 @@ class OperationalDiagnosticsController extends Controller
     private function emptyPayload(int $hours): array
     {
         return [
-            'diagnostics_version' => 1,
+            'diagnostics_version' => 2,
             'window_hours' => $hours,
             'critical_events_24h' => 0,
+            'suspicious_24h' => 0,
+            'attention_24h' => 0,
             'denied_24h' => 0,
             'errors_24h' => 0,
             'total_relevant_events' => 0,
             'unique_issues' => 0,
             'repeated_events' => 0,
             'impacted_applications' => [],
+            'operational_issues' => $this->issues->summary(),
             'truncated' => false,
             'groups' => [],
             'events' => [],
