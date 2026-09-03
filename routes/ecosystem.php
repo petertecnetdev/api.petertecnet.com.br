@@ -45,10 +45,19 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::get('/intelligence', [CommandCenterController::class, 'intelligence']);
     });
 
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
+    Route::prefix('financial')->group(function () {
+        Route::get('/dashboard', [FinancialController::class, 'dashboard']);
+        Route::get('/transactions', [FinancialController::class, 'transactions']);
+        Route::get('/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
+        Route::get('/orders', [FinancialController::class, 'orders']);
+        Route::get('/payouts', [FinancialController::class, 'payouts']);
+        Route::get('/health', [FinancialController::class, 'health']);
+        Route::get('/ledger', [FinancialController::class, 'ledger']);
+        Route::get('/reconciliations', [FinancialController::class, 'reconciliations']);
+        Route::post('/reconcile', [FinancialController::class, 'reconcileNow'])->middleware('throttle:10,1');
+        Route::get('/closing', [FinancialController::class, 'closing']);
+        Route::get('/reports/{format}', [FinancialController::class, 'export'])->whereIn('format', ['csv', 'pdf']);
+    });
 
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
