@@ -2,6 +2,7 @@
 
 namespace App\Domain\Discovery\Http\Controllers;
 
+use App\Domain\Discovery\Services\ContentRecommendationService;
 use App\Domain\Discovery\Services\DiscoveryService;
 use App\Http\Controllers\Controller;
 use App\Models\ContentEntry;
@@ -11,8 +12,10 @@ use Illuminate\Http\Request;
 
 class ContentController extends Controller
 {
-    public function __construct(private readonly DiscoveryService $discovery)
-    {
+    public function __construct(
+        private readonly DiscoveryService $discovery,
+        private readonly ContentRecommendationService $recommendations,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -80,6 +83,19 @@ class ContentController extends Controller
                     $data['seo'] = $this->discovery->contentSeo($related);
                     return $data;
                 })->values();
+
+            $payload['related_items'] = $this->recommendations->items($entry)
+                ->map(fn ($item) => [
+                    'id' => $item->id,
+                    'slug' => $item->slug,
+                    'name' => $item->name,
+                    'description' => $item->description,
+                    'category' => $item->category,
+                    'type' => $item->type,
+                    'price' => $item->price,
+                    'image_url' => $item->image_url,
+                    'establishment' => $item->establishment,
+                ])->values();
         }
 
         return $payload;
