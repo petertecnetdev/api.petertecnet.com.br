@@ -9,7 +9,18 @@ use App\Http\Controllers\Api\V1\MetricsController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
 use App\Http\Controllers\Api\V1\PlatPaymentController;
+use App\Http\Controllers\Api\V1\UserWorkspaceController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1/me/workspace')->middleware(['auth:api'])->group(function () {
+    Route::get('/preferences/{namespace}', [UserWorkspaceController::class, 'preferences']);
+    Route::put('/preferences/{namespace}/{key}', [UserWorkspaceController::class, 'putPreference']);
+    Route::delete('/preferences/{namespace}/{key}', [UserWorkspaceController::class, 'deletePreference']);
+    Route::get('/views/{scope}', [UserWorkspaceController::class, 'views']);
+    Route::post('/views/{scope}', [UserWorkspaceController::class, 'storeView']);
+    Route::patch('/views/{view}', [UserWorkspaceController::class, 'updateView'])->whereNumber('view');
+    Route::delete('/views/{view}', [UserWorkspaceController::class, 'deleteView'])->whereNumber('view');
+});
 
 Route::prefix('v1/apps/{application}')
     ->middleware('app.context')

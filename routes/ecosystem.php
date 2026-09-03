@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\ControlPlaneController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -20,10 +21,6 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
-    Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
-    Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
-    Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
-    Route::get('/financial/payouts', [FinancialController::class, 'payouts']);
 
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
@@ -51,6 +48,17 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
+
+    Route::prefix('control-plane')->group(function () {
+        Route::get('/realtime', [ControlPlaneController::class, 'realtimeConfig']);
+        Route::get('/entities/{type}/{id}', [ControlPlaneController::class, 'entity'])->whereNumber('id');
+        Route::get('/notifications', [ControlPlaneController::class, 'notifications']);
+        Route::patch('/notifications/{notification}/read', [ControlPlaneController::class, 'markNotificationRead'])->whereNumber('notification');
+        Route::post('/notifications/read-all', [ControlPlaneController::class, 'markNotificationsRead']);
+        Route::get('/timeline', [ControlPlaneController::class, 'timeline']);
+        Route::get('/insights', [ControlPlaneController::class, 'insights']);
+        Route::post('/bulk', [ControlPlaneController::class, 'bulk'])->middleware('throttle:20,1');
+    });
 });
 
 Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
