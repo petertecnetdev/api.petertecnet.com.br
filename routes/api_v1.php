@@ -43,12 +43,12 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::delete('/items/{item}', [ItemController::class, 'destroy']);
         Route::get('/items/{item}/metrics', [MetricsController::class, 'item']);
 
+        Route::get('/catalog-intelligence/items/{item}', [CatalogIntelligenceController::class, 'showItem'])->whereNumber('item');
         Route::post('/catalog-intelligence/items/{item}/enrich', [CatalogIntelligenceController::class, 'enrich'])->whereNumber('item');
         Route::get('/catalog-intelligence/establishments/{establishment}/health', [CatalogIntelligenceController::class, 'health'])->whereNumber('establishment');
         Route::post('/catalog-intelligence/imports', [CatalogIntelligenceController::class, 'stageImport'])->middleware('throttle:10,1');
         Route::get('/catalog-intelligence/imports/{publicId}', [CatalogIntelligenceController::class, 'showImport']);
         Route::post('/catalog-intelligence/imports/{publicId}/publish', [CatalogIntelligenceController::class, 'publishImport'])->middleware('throttle:10,1');
-        Route::post('/catalog-intelligence/aliases', [CatalogIntelligenceController::class, 'rememberAlias'])->middleware('throttle:30,1');
 
         Route::get('/establishments/{establishment}/employers', [EmployerController::class, 'index']);
         Route::post('/employers', [EmployerController::class, 'store']);
