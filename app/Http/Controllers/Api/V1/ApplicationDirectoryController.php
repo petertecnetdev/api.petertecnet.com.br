@@ -18,8 +18,7 @@ class ApplicationDirectoryController extends Controller
     public function companies(Request $request): JsonResponse
     {
         $user = $request->user();
-        $targetApplication = $this->applicationContext->get();
-        $targetAppId = (int) $targetApplication->id;
+        $targetAppId = $this->applicationContext->id();
 
         $companies = Establishment::query()
             ->where('user_id', $user->id)
@@ -76,8 +75,7 @@ class ApplicationDirectoryController extends Controller
     public function activateCompany(Request $request, int $sourceId): JsonResponse
     {
         $user = $request->user();
-        $targetApplication = $this->applicationContext->get();
-        $targetAppId = (int) $targetApplication->id;
+        $targetAppId = $this->applicationContext->id();
 
         $company = Establishment::query()
             ->where('user_id', $user->id)
@@ -112,8 +110,7 @@ class ApplicationDirectoryController extends Controller
     public function deactivateCompany(Request $request, int $sourceId): JsonResponse
     {
         $user = $request->user();
-        $targetApplication = $this->applicationContext->get();
-        $targetAppId = (int) $targetApplication->id;
+        $targetAppId = $this->applicationContext->id();
 
         $company = Establishment::query()
             ->where('user_id', $user->id)
