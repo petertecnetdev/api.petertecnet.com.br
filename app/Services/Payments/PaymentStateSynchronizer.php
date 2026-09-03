@@ -5,10 +5,15 @@ namespace App\Services\Payments;
 use App\Data\Payments\PaymentProviderResult;
 use App\Models\EcosystemPayment;
 use App\Models\Order;
+use App\Services\Commerce\CommerceFulfillmentService;
 use Illuminate\Support\Facades\DB;
 
 class PaymentStateSynchronizer
 {
+    public function __construct(
+        private readonly CommerceFulfillmentService $fulfillment,
+    ) {}
+
     public function apply(EcosystemPayment $payment, PaymentProviderResult $result): void
     {
         DB::transaction(function () use ($payment, $result) {
@@ -49,17 +54,58 @@ class PaymentStateSynchronizer
                 return;
             }
 
+            $previousFulfillment = strtolower((string) $order->fulfillment_status);
+            $nextFulfillment = $previousFulfillment;
+
+            if ($isPaid) {
+                $preserved = [
+                    CommerceFulfillmentService::PREPARING,
+                    CommerceFulfillmentService::READY,
+                    CommerceFulfillmentService::LEGACY_READY,
+                    CommerceFulfillmentService::FULFILLED,
+                    CommerceFulfillmentService::DELIVERED,
+                    CommerceFulfillmentService::BLOCKED,
+                ];
+
+                if (! in_array($previousFulfillment, $preserved, true)) {
+                    $nextFulfillment = CommerceFulfillmentService::PREPARING;
+                }
+            } elseif ($isReversed) {
+                $nextFulfillment = CommerceFulfillmentService::BLOCKED;
+            }
+
+            $nextOrderStatus = $order->status;
+            if ($isPaid && $nextFulfillment === CommerceFulfillmentService::PREPARING
+                && in_array($order->status, ['pending', 'confirmed'], true)) {
+                $nextOrderStatus = 'preparing';
+            }
+
             $order->forceFill([
                 'payment_status' => $status,
                 'payment_reference' => $payment->provider_payment_id,
-                'fulfillment_status' => $isPaid
-                    ? 'available'
-                    : ($isReversed ? 'blocked' : $order->fulfillment_status),
-                'status' => $isPaid && $order->status === 'pending'
-                    ? 'confirmed'
-                    : $order->status,
+                'fulfillment_status' => $nextFulfillment ?: $order->fulfillment_status,
+                'status' => $nextOrderStatus,
                 'status_updated_at' => now(),
             ])->save();
+
+            if ($nextFulfillment !== $previousFulfillment && $nextFulfillment !== '') {
+                $this->fulfillment->record(
+                    $order,
+                    $isReversed ? 'payment_reversed' : 'payment_confirmed',
+                    null,
+                    $previousFulfillment ?: null,
+                    $nextFulfillment,
+                    'payment_provider',
+                    'success',
+                    [
+                        'metadata' => [
+                            'provider' => $payment->provider,
+                            'payment_public_id' => $payment->public_id,
+                            'payment_status' => $status,
+                        ],
+                    ]
+                );
+            }
         });
     }
 }
