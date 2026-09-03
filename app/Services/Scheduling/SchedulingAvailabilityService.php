@@ -266,15 +266,46 @@ class SchedulingAvailabilityService
 
         if ($subject['kind'] === 'provider') {
             $query->where('attendant_id', $subject['model']->id);
+            $capacity = 1;
         } else {
+            /** @var SchedulingResource $resource */
+            $resource = $subject['model'];
             $query->whereIn('id', DB::table('order_scheduling_resource')
                 ->select('order_id')
-                ->where('scheduling_resource_id', $subject['model']->id));
+                ->where('scheduling_resource_id', $resource->id));
+            $capacity = max(1, (int) $resource->capacity);
         }
 
-        return $query
-            ->where('order_datetime', '<', $slotEnd)
-            ->whereRaw('DATE_ADD(order_datetime, INTERVAL GREATEST(total_duration, 5) MINUTE) > ?', [$slotStart])
-            ->exists();
+        $query->where('order_datetime', '<', $slotEnd);
+        $driver = DB::getDriverName();
+
+        if (in_array($driver, ['mysql', 'mariadb'], true)) {
+            $query->whereRaw(
+                'DATE_ADD(order_datetime, INTERVAL GREATEST(total_duration, 5) MINUTE) > ?',
+                [$slotStart]
+            );
+        } elseif ($driver === 'pgsql') {
+            $query->whereRaw(
+                "order_datetime + (GREATEST(total_duration, 5) * INTERVAL '1 minute') > ?",
+                [$slotStart]
+            );
+        } elseif ($driver === 'sqlite') {
+            $query->whereRaw(
+                "datetime(order_datetime, '+' || MAX(total_duration, 5) || ' minutes') > datetime(?)",
+                [$slotStart->format('Y-m-d H:i:s')]
+            );
+        } else {
+            // Unsupported drivers are handled in PHP to preserve correctness.
+            return $query
+                ->get(['order_datetime', 'total_duration'])
+                ->filter(function (Order $order) use ($slotStart) {
+                    $existingStart = Carbon::parse($order->order_datetime);
+                    $existingEnd = $existingStart->copy()->addMinutes(max(5, (int) $order->total_duration));
+                    return $existingEnd->gt($slotStart);
+                })
+                ->count() >= $capacity;
+        }
+
+        return $query->count() >= $capacity;
     }
 }
