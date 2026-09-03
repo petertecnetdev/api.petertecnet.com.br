@@ -62,7 +62,11 @@ final class EventTicketController extends Controller
     {
         DB::transaction(function () use ($request, $ticketId) {
             $ticket = $this->ownedTicket($request, $ticketId, true);
-            abort_if($ticket->passes()->exists(), 409, 'Este ingresso já possui emissões e não pode ser excluído.');
+            if ($ticket->passes()->exists()) {
+                abort(409, $ticket->type === 'courtesy'
+                    ? 'Esta cortesia já possui ingressos emitidos e não pode ser excluída.'
+                    : 'Este ingresso já possui emissões e não pode ser excluído.');
+            }
             $ticket->delete();
         }, 3);
         return response()->json(['message' => 'Ingresso removido.']);
