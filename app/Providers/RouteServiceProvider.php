@@ -36,6 +36,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
 
+            // Shared workforce contract. Read/delete operations live here while the
+            // canonical create route remains in api_v1.php during migration.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/workforce.php'));
+
             // Generic fulfillment extends the canonical commerce contract without
             // adding application-specific controllers or legacy URL namespaces.
             Route::middleware('api')
