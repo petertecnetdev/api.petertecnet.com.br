@@ -46,6 +46,7 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $sessionResponse = $this->withHeaders([
             'Authorization' => 'Bearer ' . $this->token,
             'X-Peter-App' => 'nexus',
+            'Origin' => 'https://nexus.petertecnet.com.br',
         ])->postJson('/api/account/sso/session');
 
         $sessionResponse->assertOk()
@@ -55,12 +56,14 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         $this->assertNotNull($cookie);
         $this->assertTrue($cookie->isHttpOnly());
         $this->assertTrue($cookie->isSecure());
-        $this->assertSame('.petertecnet.com.br', $cookie->getDomain());
+        $this->assertNull($cookie->getDomain());
         $this->assertSame('lax', strtolower((string) $cookie->getSameSite()));
 
         $exchange = $this->withCookie('peter_ecosystem_session', $cookie->getValue())
-            ->withHeader('X-Peter-App', 'cutinapp')
-            ->postJson('/api/account/sso/session/exchange', [
+            ->withHeaders([
+                'X-Peter-App' => 'cutinapp',
+                'Origin' => 'https://cutinapp.petertecnet.com.br',
+            ])->postJson('/api/account/sso/session/exchange', [
                 'application' => 'cutinapp',
             ]);
 
@@ -68,6 +71,61 @@ class EcosystemGlobalSessionSsoTest extends TestCase
             ->assertJsonPath('data.application.slug', 'cutinapp')
             ->assertJsonPath('data.user.id', $this->user->id)
             ->assertJsonStructure(['data' => ['access_token']]);
+    }
+
+    public function test_global_session_exchange_rejects_a_different_application_origin(): void
+    {
+        $source = $this->application('Nexus', 'nexus', 10);
+        $destination = $this->application('Cutinapp', 'cutinapp', 20);
+        $this->user->applications()->attach([$source->id, $destination->id], [
+            'status' => 'active',
+            'role' => 'member',
+            'joined_at' => now(),
+        ]);
+
+        $sessionResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+            'X-Peter-App' => 'nexus',
+        ])->postJson('/api/account/sso/session');
+        $cookie = $this->globalSessionCookie($sessionResponse->headers->getCookies());
+        $this->assertNotNull($cookie);
+
+        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+            ->withHeaders([
+                'X-Peter-App' => 'cutinapp',
+                'Origin' => 'https://nexus.petertecnet.com.br',
+            ])->postJson('/api/account/sso/session/exchange', [
+                'application' => 'cutinapp',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'A origem não corresponde ao aplicativo solicitado.');
+    }
+
+    public function test_global_session_exchange_rejects_a_different_application_header(): void
+    {
+        $application = $this->application('Nexus', 'nexus', 10);
+        $this->user->applications()->attach($application->id, [
+            'status' => 'active',
+            'role' => 'member',
+            'joined_at' => now(),
+        ]);
+
+        $sessionResponse = $this->withHeaders([
+            'Authorization' => 'Bearer ' . $this->token,
+            'X-Peter-App' => 'nexus',
+        ])->postJson('/api/account/sso/session');
+        $cookie = $this->globalSessionCookie($sessionResponse->headers->getCookies());
+        $this->assertNotNull($cookie);
+
+        $this->withCookie('peter_ecosystem_session', $cookie->getValue())
+            ->withHeaders([
+                'X-Peter-App' => 'cutinapp',
+                'Origin' => 'https://nexus.petertecnet.com.br',
+            ])->postJson('/api/account/sso/session/exchange', [
+                'application' => 'nexus',
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'O aplicativo solicitante não corresponde à sessão requisitada.');
     }
 
     public function test_global_session_is_invalidated_when_auth_version_changes(): void
@@ -92,8 +150,10 @@ class EcosystemGlobalSessionSsoTest extends TestCase
         ])->save();
 
         $this->withCookie('peter_ecosystem_session', $cookie->getValue())
-            ->withHeader('X-Peter-App', 'nexus')
-            ->postJson('/api/account/sso/session/exchange', [
+            ->withHeaders([
+                'X-Peter-App' => 'nexus',
+                'Origin' => 'https://nexus.petertecnet.com.br',
+            ])->postJson('/api/account/sso/session/exchange', [
                 'application' => 'nexus',
             ])
             ->assertNoContent();
@@ -121,8 +181,10 @@ class EcosystemGlobalSessionSsoTest extends TestCase
             ->assertNoContent();
 
         $this->withCookie('peter_ecosystem_session', $cookie->getValue())
-            ->withHeader('X-Peter-App', 'nexus')
-            ->postJson('/api/account/sso/session/exchange', [
+            ->withHeaders([
+                'X-Peter-App' => 'nexus',
+                'Origin' => 'https://nexus.petertecnet.com.br',
+            ])->postJson('/api/account/sso/session/exchange', [
                 'application' => 'nexus',
             ])
             ->assertNoContent();
