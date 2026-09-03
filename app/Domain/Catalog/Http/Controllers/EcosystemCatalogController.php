@@ -330,10 +330,31 @@ final class EcosystemCatalogController extends Controller
             return;
         }
 
-        Interaction::registerRestrictedAccess($company, Auth::user(), [
+        $ip = request()->ip();
+        $userId = Auth::id();
+        $recent = Interaction::query()
+            ->where('entity_type', class_basename($company))
+            ->where('entity_id', $company->id)
+            ->where('interaction_type', 'restricted_access')
+            ->where('created_at', '>=', now()->subMinute())
+            ->where(function ($query) use ($userId, $ip) {
+                if ($userId) {
+                    $query->where('user_id', $userId);
+                }
+                if ($ip) {
+                    $query->orWhereJsonContains('content->ip', $ip);
+                }
+            })
+            ->exists();
+
+        if ($recent) {
+            return;
+        }
+
+        Interaction::register('restricted_access', $company, Auth::user(), [
             'resource' => $resource,
             'availability_status' => $availability['status'],
             'availability_reason' => $availability['reason'],
-        ]);
+        ], 'Tentativa de acesso a recurso restrito');
     }
 }
