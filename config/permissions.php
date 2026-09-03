@@ -11,6 +11,26 @@ return [
         'name' => 'Gerenciar aplicações',
         'description' => 'Permite cadastrar, editar, ativar e excluir aplicações da Peter Tecnet.',
     ],
+    'onboarding_manage' => [
+        'category' => 'Operação comercial',
+        'name' => 'Gerenciar onboarding',
+        'description' => 'Permite preparar clientes e continuar sessões de onboarding sem conceder administração geral de usuários ou aplicações.',
+    ],
+    'establishment_manage' => [
+        'category' => 'Operação comercial',
+        'name' => 'Gerenciar estabelecimentos',
+        'description' => 'Permite cadastrar, editar e validar dados de estabelecimentos dentro do fluxo operacional autorizado.',
+    ],
+    'catalog_manage' => [
+        'category' => 'Operação comercial',
+        'name' => 'Gerenciar catálogo',
+        'description' => 'Permite cadastrar e editar produtos, serviços e demais itens de catálogo sem conceder administração do ecossistema.',
+    ],
+    'file_manage' => [
+        'category' => 'Arquivos',
+        'name' => 'Gerenciar arquivos',
+        'description' => 'Permite enviar, substituir, versionar e remover arquivos vinculados às entidades autorizadas.',
+    ],
 
     'marketing_dashboard' => [
         'category' => 'Marketing',
@@ -56,7 +76,7 @@ return [
     'item_list' => ['category' => 'Item', 'name' => 'Listar itens', 'description' => 'Permite ao usuário listar itens.'],
     'item_config' => ['category' => 'Item', 'name' => 'Configurar item', 'description' => 'Permite ao usuário configurar itens.'],
     'item_create' => ['category' => 'Item', 'name' => 'Criar item', 'description' => 'Permite ao usuário criar itens.'],
-    'item_edit' => ['category' => 'Item', 'name' => 'Editar item', 'description' => 'Permite ao usuário editar itens.'],
+    'item_edit' => ['category' => 'Item', 'name' => 'Editar item', 'description' => 'Permite ao usuário editar informações de um item.'],
     'item_delete' => ['category' => 'Item', 'name' => 'Excluir item', 'description' => 'Permite ao usuário excluir itens.'],
 
     'user_list' => ['category' => 'Usuário', 'name' => 'Listar usuários', 'description' => 'Permite ao usuário listar usuários.'],
@@ -99,7 +119,7 @@ return [
 
     'blog_create' => ['category' => 'Blog', 'name' => 'Criar blog', 'description' => 'Permite criar conteúdo de blog.'],
     'blog_view' => ['category' => 'Blog', 'name' => 'Ver blogs', 'description' => 'Permite visualizar blogs.'],
-    'blog_show' => ['category' => 'Blog', 'name' => 'Ver blog específico', 'description' => 'Permite visualizar um blog específico.'],
+    'blog_show' => ['category' => 'Blog', 'name' => 'Ver blog específico', 'description' => 'Permite visualizar um perfil específico.'],
     'blog_edit' => ['category' => 'Blog', 'name' => 'Editar blog', 'description' => 'Permite editar blogs.'],
     'blog_delete' => ['category' => 'Blog', 'name' => 'Excluir blog', 'description' => 'Permite excluir blogs.'],
 
