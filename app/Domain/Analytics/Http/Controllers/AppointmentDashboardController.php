@@ -20,8 +20,9 @@ class AppointmentDashboardController extends Controller
     {
         $actorId = (int) $request->user()->id;
         $establishment = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
+            ->where('is_cancelled', false)
             ->firstOrFail();
 
         abort_unless(
@@ -75,7 +76,9 @@ class AppointmentDashboardController extends Controller
                 $summary['pending']++;
             } elseif ($status === 'confirmed') {
                 $summary['confirmed']++;
-                if ($now->gte($scheduledAt) && $now->lt($scheduledEnd)) $summary['in_progress']++;
+                if ($now->gte($scheduledAt) && $now->lt($scheduledEnd)) {
+                    $summary['in_progress']++;
+                }
             } elseif (in_array($status, ['completed', 'attended'], true)) {
                 $summary['completed']++;
                 $completionAt = $order->attended_at
@@ -125,7 +128,9 @@ class AppointmentDashboardController extends Controller
 
     private function isEstablishmentManager(Establishment $establishment, int $userId): bool
     {
-        if ((int) $establishment->user_id === $userId || (int) $establishment->created_by === $userId) return true;
+        if ((int) $establishment->user_id === $userId || (int) $establishment->created_by === $userId) {
+            return true;
+        }
 
         return Employer::query()
             ->where('establishment_id', $establishment->id)
