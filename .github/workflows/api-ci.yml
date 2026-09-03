@@ -75,6 +75,9 @@ jobs:
           php artisan route:list | grep -q 'api/cutinapp/events'
           php artisan route:list | grep -q 'api/cutinapp/checkin'
           php artisan route:list | grep -q 'api/admin/ecosystem/command/overview'
+          php artisan route:list | grep -q 'api/admin/ecosystem/command/security'
+          php artisan route:list | grep -q 'api/admin/ecosystem/command/issues'
+          php artisan route:list | grep -q 'api/admin/ecosystem/command/issues/{issue}'
           php artisan route:list | grep -q 'api/admin/ecosystem/financial/dashboard'
           php artisan route:list | grep -q 'api/admin/ecosystem/financial/orders'
 
