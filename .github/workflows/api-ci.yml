@@ -123,7 +123,51 @@ jobs:
           php artisan route:list | grep -q 'api/cutinapp/checkin'
 
       - name: Run architecture gate
-        run: php artisan test --filter=PlatformArchitectureTest
+        shell: bash
+        run: |
+          set -o pipefail
+          php artisan test --filter=PlatformArchitectureTest 2>&1 | tee /tmp/architecture.log
+
+      - name: Publish architecture diagnostic
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('/tmp/architecture.log')) return;
+            const raw = fs.readFileSync('/tmp/architecture.log', 'utf8');
+            if (!raw.trim()) return;
+            const tail = raw.length > 18000 ? raw.slice(-18000) : raw;
+            const marker = '<!-- api-ci-architecture-diagnostic -->';
+            const body = `${marker}\n### API architecture gate diagnostic\n\n\`\`\`text\n${tail}\n\`\`\``;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 });
+            const existing = comments.data.find(comment => comment.body?.includes(marker));
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
 
       - name: Run tests
-        run: php artisan test
+        shell: bash
+        run: |
+          set -o pipefail
+          php artisan test 2>&1 | tee /tmp/tests.log
+
+      - name: Publish test diagnostic
+        if: failure() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            if (!fs.existsSync('/tmp/tests.log')) return;
+            const raw = fs.readFileSync('/tmp/tests.log', 'utf8');
+            if (!raw.trim()) return;
+            const tail = raw.length > 20000 ? raw.slice(-20000) : raw;
+            const marker = '<!-- api-ci-test-diagnostic -->';
+            const body = `${marker}\n### API test-suite diagnostic\n\n\`\`\`text\n${tail}\n\`\`\``;
+            const { owner, repo } = context.repo;
+            const issue_number = context.issue.number;
+            const comments = await github.rest.issues.listComments({ owner, repo, issue_number, per_page: 100 });
+            const existing = comments.data.find(comment => comment.body?.includes(marker));
+            if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body });
