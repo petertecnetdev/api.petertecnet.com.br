@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Establishment;
 use App\Models\Item;
 use App\Support\ApplicationContext;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,8 +19,8 @@ class MetricsController extends Controller
     public function establishment(Request $request, int $establishment): JsonResponse
     {
         $model = Establishment::query()
+            ->forApplication($this->context->id())
             ->whereKey($establishment)
-            ->where('app_id', $this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();
@@ -43,15 +44,15 @@ class MetricsController extends Controller
 
     public function item(Request $request, int $item): JsonResponse
     {
+        $applicationId = $this->context->id();
+        $userId = $request->user()->id;
+
         $model = Item::query()
             ->whereKey($item)
-            ->where('app_id', $this->context->id())
             ->where('entity_name', 'establishment')
-            ->whereIn('entity_id', function ($query) use ($request) {
-                $query->select('id')
-                    ->from('establishments')
-                    ->where('app_id', $this->context->id())
-                    ->where('user_id', $request->user()->id)
+            ->whereHas('establishment', function (Builder $query) use ($applicationId, $userId) {
+                $query->forApplication($applicationId)
+                    ->where('user_id', $userId)
                     ->where('is_cancelled', false);
             })
             ->firstOrFail();
