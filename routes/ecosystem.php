@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\AdministrativeReportController;
+use App\Http\Controllers\Admin\AdministrativeReportExportController;
+use App\Http\Controllers\Admin\AdministrativeReportScheduleController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -13,20 +15,26 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
-Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])
-    ->where('token', '[A-Za-z0-9]{40,128}')
-    ->middleware(['api', 'throttle:30,1']);
-Route::post('/auth/invitations/{token}/activate', [InvitationActivationController::class, 'activate'])
-    ->where('token', '[A-Za-z0-9]{40,128}')
-    ->middleware(['api', 'throttle:10,1']);
+Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])->where('token', '[A-Za-z0-9]{40,128}')->middleware(['api', 'throttle:30,1']);
+Route::post('/auth/invitations/{token}/activate', [InvitationActivationController::class, 'activate'])->where('token', '[A-Za-z0-9]{40,128}')->middleware(['api', 'throttle:10,1']);
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+
     Route::get('/reports', [AdministrativeReportController::class, 'index']);
     Route::get('/reports/{report}/pdf', [AdministrativeReportController::class, 'pdf'])->where('report', '[a-z]+');
-    Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
+    Route::get('/reports/{report}/{format}', [AdministrativeReportController::class, 'download'])->where('report', '[a-z]+')->whereIn('format', ['pdf', 'csv', 'xlsx']);
+    Route::get('/report-exports', [AdministrativeReportExportController::class, 'index']);
+    Route::post('/report-exports', [AdministrativeReportExportController::class, 'store'])->middleware('throttle:20,1');
+    Route::get('/report-exports/{export}', [AdministrativeReportExportController::class, 'show']);
+    Route::get('/report-exports/{export}/download', [AdministrativeReportExportController::class, 'download'])->middleware('throttle:60,1');
+    Route::get('/report-schedules', [AdministrativeReportScheduleController::class, 'index']);
+    Route::post('/report-schedules', [AdministrativeReportScheduleController::class, 'store']);
+    Route::put('/report-schedules/{schedule}', [AdministrativeReportScheduleController::class, 'update'])->whereNumber('schedule');
+    Route::delete('/report-schedules/{schedule}', [AdministrativeReportScheduleController::class, 'destroy'])->whereNumber('schedule');
 
+    Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/command/overview', [CommandCenterController::class, 'overview']);
     Route::get('/command/search', [CommandCenterController::class, 'globalSearch']);
     Route::get('/command/security', [OperationalDiagnosticsController::class, 'security']);
@@ -79,7 +87,6 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
 
     Route::get('/settings', [EcosystemController::class, 'settings']);
     Route::put('/settings', [EcosystemController::class, 'updateSettings']);
-
     Route::get('/audit', [EcosystemController::class, 'auditLogs'])->middleware('admin.permission:audit_view');
 });
 
