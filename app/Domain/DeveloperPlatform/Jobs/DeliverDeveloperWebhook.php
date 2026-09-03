@@ -46,6 +46,7 @@ class DeliverDeveloperWebhook implements ShouldQueue
 
         $response = Http::timeout(10)
             ->connectTimeout(5)
+            ->withoutRedirecting()
             ->withHeaders([
                 'Content-Type' => 'application/json',
                 'User-Agent' => 'Peter-Tecnet-Webhooks/1.0',
