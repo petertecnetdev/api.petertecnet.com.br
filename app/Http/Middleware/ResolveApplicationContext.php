@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\Application;
 use App\Support\ApplicationContext;
 use App\Support\ApplicationResolver;
 use Closure;
@@ -19,10 +18,7 @@ class ResolveApplicationContext
 
     public function handle(Request $request, Closure $next): Response
     {
-        $routeValue = $request->route('application');
-        $application = $routeValue instanceof Application
-            ? $this->resolver->fromIdentifier($routeValue)
-            : $this->resolver->fromIdentifier($routeValue);
+        $application = $this->resolver->fromIdentifier($request->route('application'));
 
         if (! $application) {
             return response()->json([
@@ -40,8 +36,6 @@ class ResolveApplicationContext
         $request->attributes->set('application_slug', (string) $application->slug);
         $request->attributes->set('peter.application_slug', (string) $application->slug);
 
-        // Application is infrastructure context and must not leak into action
-        // signatures. Domain controllers only receive their own route variables.
         $request->route()?->forgetParameter('application');
 
         try {
