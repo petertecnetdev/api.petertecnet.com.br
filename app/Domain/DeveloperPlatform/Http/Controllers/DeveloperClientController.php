@@ -80,7 +80,6 @@ class DeveloperClientController extends Controller
     {
         $client = $this->owned($request, $client);
         $availableScopes = array_keys((array) config('developer.scopes', []));
-        $maxRate = (int) config('developer.max_rate_limit_per_minute', 600);
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:120'],
@@ -89,7 +88,6 @@ class DeveloperClientController extends Controller
             'scopes.*' => ['string', Rule::in($availableScopes)],
             'allowed_origins' => ['sometimes', 'array', 'max:20'],
             'allowed_origins.*' => ['url:http,https', 'max:255'],
-            'rate_limit_per_minute' => ['sometimes', 'integer', 'min:1', 'max:' . $maxRate],
         ]);
 
         if (array_key_exists('scopes', $validated)) {
