@@ -49,10 +49,34 @@ class MercadoPagoService
         throw new RuntimeException('Mercado Pago recusou a criação do pagamento: '.$response->body());
     }
 
+    /**
+     * Checkout Pro keeps card data outside Peter Tecnet infrastructure while
+     * exposing PIX, boleto and cards through one reusable hosted checkout.
+     */
+    public function createPreference(array $payload, string $idempotencyKey): array
+    {
+        $response = Http::acceptJson()
+            ->withToken($this->platformAccessToken())
+            ->withHeaders(['X-Idempotency-Key' => $idempotencyKey])
+            ->timeout(20)
+            ->post($this->baseUrl.'/checkout/preferences', $payload);
+        if (! $response->successful()) {
+            throw new RuntimeException('Mercado Pago recusou a criação do checkout: '.$response->body());
+        }
+        return $response->json();
+    }
+
     public function getPayment(string $sellerAccessToken,string $paymentId):array
     {
         $response=Http::acceptJson()->withToken($sellerAccessToken)->timeout(20)->get($this->baseUrl.'/v1/payments/'.rawurlencode($paymentId));
         if(!$response->successful())throw new RuntimeException('Não foi possível consultar o pagamento no Mercado Pago.');return$response->json();
+    }
+
+    public function platformAccessToken(): string
+    {
+        $value = trim((string) config('services.mercadopago.access_token'));
+        if ($value === '') throw new RuntimeException('MERCADOPAGO_ACCESS_TOKEN não configurado.');
+        return $value;
     }
 
     public function validateWebhookSignature(?string $xSignature,?string $xRequestId,?string $dataId):bool
