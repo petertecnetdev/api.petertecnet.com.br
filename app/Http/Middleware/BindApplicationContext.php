@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Application;
+use App\Services\RequestDeduplicationService;
 use App\Support\ApplicationContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -10,7 +11,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 final class BindApplicationContext
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly RequestDeduplicationService $deduplication,
+    ) {}
 
     public function handle(Request $request, Closure $next, ?string $applicationSlug = null): Response
     {
@@ -50,7 +54,7 @@ final class BindApplicationContext
         $request->attributes->set('app_id', (int) $application->id);
 
         try {
-            return $next($request);
+            return $this->deduplication->handle($request, $next, $application);
         } finally {
             $this->context->clear();
         }
