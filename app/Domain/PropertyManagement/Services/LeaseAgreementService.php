@@ -49,13 +49,28 @@ class LeaseAgreementService
 
     public function generateRentReceivables(object $agreement): int
     {
-        $start = CarbonImmutable::parse($agreement->start_date)->startOfMonth();
-        $end = CarbonImmutable::parse($agreement->end_date)->startOfMonth();
+        $leaseStart = CarbonImmutable::parse($agreement->start_date)->startOfDay();
+        $leaseEnd = CarbonImmutable::parse($agreement->end_date)->endOfDay();
+        $firstPeriod = $leaseStart->startOfMonth();
+        $lastPeriod = $leaseEnd->startOfMonth();
         $count = 0;
 
-        for ($period = $start; $period->lessThanOrEqualTo($end); $period = $period->addMonth()) {
+        for ($period = $firstPeriod; $period->lessThanOrEqualTo($lastPeriod); $period = $period->addMonth()) {
             $dueDay = min((int) $agreement->due_day, $period->daysInMonth);
-            $dueDate = $period->setDay($dueDay);
+            $dueDate = $period->setDay($dueDay)->startOfDay();
+
+            // Never create a receivable before the lease exists. If the configured
+            // due day has already passed in the first month, the first charge is due
+            // on the lease start date instead.
+            if ($period->isSameMonth($leaseStart) && $dueDate->lessThan($leaseStart)) {
+                $dueDate = $leaseStart;
+            }
+
+            // A final-month due date after the contractual end does not belong to
+            // this agreement and must not be generated.
+            if ($dueDate->greaterThan($leaseEnd)) {
+                continue;
+            }
 
             DB::table('lease_receivables')->updateOrInsert(
                 [
