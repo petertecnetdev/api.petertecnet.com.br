@@ -3,6 +3,7 @@
 use App\Http\Controllers\Identity\IdentityAccountMergeController;
 use App\Http\Controllers\Identity\IdentityAuditController;
 use App\Http\Controllers\Identity\IdentityAuthenticationController;
+use App\Http\Controllers\Identity\IdentityCompatibilityController;
 use App\Http\Controllers\Identity\IdentityContactController;
 use App\Http\Controllers\Identity\IdentityFederatedController;
 use App\Http\Controllers\Identity\IdentityGlobalSsoController;
@@ -122,10 +123,10 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
     });
 });
 
-// Compatibility adapters: existing clients keep their URLs, but credentials are
-// processed by the generic Identity Platform so legacy login routes cannot bypass
-// two-factor, centralized sessions or risk policies.
-Route::post('auth/login', [IdentityAuthenticationController::class, 'login'])
+// Existing clients keep their URLs and response envelope while authentication
+// remains owned by Identity. This prevents legacy routes from bypassing 2FA,
+// centralized sessions, risk policies or account linking rules.
+Route::post('auth/login', [IdentityCompatibilityController::class, 'login'])
     ->middleware('throttle:30,1')->name('identity.compat.login');
-Route::post('auth/google', [IdentityFederatedController::class, 'google'])
+Route::post('auth/google', [IdentityCompatibilityController::class, 'google'])
     ->middleware('throttle:20,1')->name('identity.compat.google');
