@@ -36,6 +36,7 @@ return [
         'Referer',
         'X-Requested-With',
         'X-Request-ID',
+        'X-API-Key',
         'X-App-ID',
         'X-Application-Id',
         'X-App-Slug',
@@ -47,7 +48,14 @@ return [
         'X-Correlation-ID',
         'X-Parent-Interaction-ID',
     ],
-    'exposed_headers' => ['X-Request-ID'],
+    'exposed_headers' => [
+        'X-Request-ID',
+        'X-RateLimit-Limit',
+        'X-RateLimit-Remaining',
+        'Retry-After',
+        'X-Peter-API-Version',
+        'X-Peter-API-Environment',
+    ],
     'max_age' => 600,
     'supports_credentials' => false,
 ];

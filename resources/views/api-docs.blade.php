@@ -5,304 +5,90 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#050816">
     <meta name="robots" content="index,follow,max-image-preview:large">
-    <meta name="description" content="Documentação inicial da API pública Peter Tecnet: URL base, autenticação, recursos disponíveis e exemplos de integração.">
+    <meta name="description" content="Documentação oficial da Peter Tecnet Public API v1: autenticação, sandbox, endpoints, filtros, erros, rate limits, webhooks e exemplos em cURL, JavaScript, PHP e Python.">
+    <meta property="og:title" content="Peter Tecnet Public API v1 — Documentação">
+    <meta property="og:description" content="Referência completa para construir integrações com a API pública da Peter Tecnet.">
     <link rel="canonical" href="https://api.petertecnet.com.br/docs">
-    <title>Documentação da API | Peter Tecnet</title>
+    <title>Documentação Public API v1 | Peter Tecnet</title>
     <style>
-        :root {
-            color-scheme: dark;
-            --bg: #050816;
-            --surface: rgba(13, 20, 43, .78);
-            --surface-strong: #101a36;
-            --line: rgba(148, 163, 184, .18);
-            --text: #f8fafc;
-            --muted: #a9b6cc;
-            --primary: #5f8cff;
-            --primary-strong: #7da2ff;
-            --accent: #4fe7c3;
-            --code: #070b18;
-            --shadow: 0 24px 70px rgba(0, 0, 0, .28);
-        }
-
-        * { box-sizing: border-box; }
-        html { scroll-behavior: smooth; }
-        body {
-            margin: 0;
-            min-height: 100vh;
-            background:
-                radial-gradient(circle at 15% 0%, rgba(95, 140, 255, .15), transparent 35%),
-                radial-gradient(circle at 100% 20%, rgba(79, 231, 195, .09), transparent 28%),
-                var(--bg);
-            color: var(--text);
-            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            line-height: 1.6;
-        }
-
-        a { color: inherit; }
-        .shell { width: min(1180px, calc(100% - 32px)); margin: 0 auto; }
-        .topbar {
-            position: sticky;
-            top: 0;
-            z-index: 20;
-            border-bottom: 1px solid var(--line);
-            background: rgba(5, 8, 22, .84);
-            backdrop-filter: blur(18px);
-        }
-        .nav {
-            min-height: 72px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 20px;
-        }
-        .brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 11px;
-            text-decoration: none;
-            font-weight: 800;
-            letter-spacing: -.02em;
-        }
-        .brand-mark {
-            width: 36px;
-            height: 36px;
-            border-radius: 12px;
-            display: grid;
-            place-items: center;
-            background: linear-gradient(145deg, #2449a9, #6e93ff);
-            box-shadow: 0 8px 30px rgba(95, 140, 255, .26);
-            font-size: 12px;
-            letter-spacing: .04em;
-        }
-        .nav-links { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-        .nav-links a {
-            text-decoration: none;
-            color: var(--muted);
-            font-size: 14px;
-            font-weight: 700;
-        }
-        .nav-links a:hover { color: var(--text); }
-        .hero { padding: 78px 0 44px; }
-        .eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            border: 1px solid rgba(79, 231, 195, .25);
-            border-radius: 999px;
-            padding: 7px 11px;
-            background: rgba(79, 231, 195, .07);
-            color: #9ef7e1;
-            font-size: 12px;
-            font-weight: 800;
-            text-transform: uppercase;
-            letter-spacing: .12em;
-        }
-        .eyebrow::before {
-            content: "";
-            width: 7px;
-            height: 7px;
-            border-radius: 50%;
-            background: var(--accent);
-            box-shadow: 0 0 18px var(--accent);
-        }
-        h1 {
-            max-width: 850px;
-            margin: 22px 0 18px;
-            font-size: clamp(2.5rem, 7vw, 5rem);
-            line-height: .98;
-            letter-spacing: -.055em;
-        }
-        .hero p { max-width: 760px; margin: 0; color: var(--muted); font-size: clamp(1rem, 2vw, 1.2rem); }
-        .layout {
-            display: grid;
-            grid-template-columns: 250px minmax(0, 1fr);
-            gap: 28px;
-            align-items: start;
-            padding-bottom: 90px;
-        }
-        .sidebar {
-            position: sticky;
-            top: 94px;
-            padding: 18px;
-            border: 1px solid var(--line);
-            border-radius: 20px;
-            background: rgba(13, 20, 43, .6);
-        }
-        .sidebar strong { display: block; margin-bottom: 10px; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; color: #d9e2f2; }
-        .sidebar a { display: block; padding: 8px 10px; border-radius: 10px; text-decoration: none; color: var(--muted); font-size: 14px; }
-        .sidebar a:hover { background: rgba(95, 140, 255, .08); color: var(--text); }
-        .content { min-width: 0; }
-        .section {
-            margin-bottom: 22px;
-            padding: clamp(22px, 4vw, 34px);
-            border: 1px solid var(--line);
-            border-radius: 24px;
-            background: var(--surface);
-            box-shadow: var(--shadow);
-        }
-        .section h2 { margin: 0 0 12px; font-size: clamp(1.45rem, 3vw, 2rem); letter-spacing: -.03em; }
-        .section h3 { margin: 24px 0 8px; font-size: 1rem; }
-        .section p { color: var(--muted); margin: 0 0 15px; }
-        .section p:last-child { margin-bottom: 0; }
-        .base-url {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: 14px 16px;
-            border: 1px solid rgba(95, 140, 255, .24);
-            border-radius: 14px;
-            background: rgba(95, 140, 255, .06);
-            overflow-wrap: anywhere;
-        }
-        .base-url code { color: #dce6ff; font-size: .95rem; }
-        .pill { border-radius: 999px; padding: 4px 8px; background: rgba(79, 231, 195, .1); color: #9ef7e1; font-size: 11px; font-weight: 800; white-space: nowrap; }
-        pre {
-            margin: 15px 0 0;
-            padding: 18px;
-            overflow-x: auto;
-            border: 1px solid var(--line);
-            border-radius: 16px;
-            background: var(--code);
-            color: #d9e7ff;
-            font-size: 13px;
-            line-height: 1.65;
-        }
-        code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
-        .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-        .card { padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: rgba(255,255,255,.025); }
-        .card strong { display: block; margin-bottom: 5px; }
-        .card span { color: var(--muted); font-size: 14px; }
-        .endpoint-list { display: grid; gap: 10px; }
-        .endpoint {
-            display: grid;
-            grid-template-columns: 58px minmax(0, 1fr);
-            gap: 10px;
-            align-items: center;
-            padding: 12px 14px;
-            border: 1px solid var(--line);
-            border-radius: 13px;
-            background: rgba(255,255,255,.02);
-        }
-        .method { color: #9ef7e1; font-size: 12px; font-weight: 900; letter-spacing: .06em; }
-        .endpoint code { min-width: 0; overflow-wrap: anywhere; color: #dce6ff; font-size: 13px; }
-        .note {
-            padding: 14px 16px;
-            border-left: 3px solid var(--primary);
-            border-radius: 0 12px 12px 0;
-            background: rgba(95, 140, 255, .07);
-            color: #c8d5eb;
-            font-size: 14px;
-        }
-        footer { padding: 0 0 48px; color: #7f8ba3; font-size: 13px; }
-        @media (max-width: 840px) {
-            .layout { grid-template-columns: 1fr; }
-            .sidebar { position: static; display: flex; gap: 5px; overflow-x: auto; }
-            .sidebar strong { display: none; }
-            .sidebar a { white-space: nowrap; }
-        }
-        @media (max-width: 620px) {
-            .shell { width: min(100% - 22px, 1180px); }
-            .hero { padding-top: 52px; }
-            .grid { grid-template-columns: 1fr; }
-            .nav-links a:not(.home-link) { display: none; }
-            .base-url { align-items: flex-start; flex-direction: column; }
-        }
+        :root{color-scheme:dark;--bg:#050816;--surface:#0d142bdb;--line:#25314d;--text:#f8fafc;--muted:#a8b5ca;--primary:#6f92ff;--accent:#55e8c4;--code:#060a16;--warn:#f7c96b}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(circle at 15% 0,#172b60 0,transparent 28%),var(--bg);color:var(--text);font-family:Inter,system-ui,sans-serif;line-height:1.6}a{color:#a9bcff}.shell{width:min(1240px,calc(100% - 28px));margin:auto}.topbar{position:sticky;top:0;z-index:20;background:#050816e8;border-bottom:1px solid var(--line);backdrop-filter:blur(16px)}.nav{min-height:68px;display:flex;justify-content:space-between;align-items:center;gap:18px}.brand{font-weight:900;text-decoration:none;color:var(--text)}.navlinks{display:flex;gap:14px;font-size:13px}.hero{padding:66px 0 38px}.eyebrow{font-size:12px;color:var(--accent);font-weight:900;text-transform:uppercase;letter-spacing:.12em}h1{font-size:clamp(2.7rem,7vw,5.4rem);line-height:.95;letter-spacing:-.055em;margin:12px 0 18px}.hero p{max-width:820px;color:var(--muted);font-size:1.1rem}.layout{display:grid;grid-template-columns:240px minmax(0,1fr);gap:24px;padding-bottom:80px}.sidebar{position:sticky;top:90px;align-self:start;border:1px solid var(--line);border-radius:18px;padding:14px;background:#0b1227cc;max-height:calc(100vh - 112px);overflow:auto}.sidebar strong{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.12em;margin:4px 8px 8px}.sidebar a{display:block;padding:7px 9px;border-radius:9px;text-decoration:none;color:var(--muted);font-size:13px}.sidebar a:hover{background:#5f8cff12;color:var(--text)}.content{min-width:0}.section{scroll-margin-top:90px;border:1px solid var(--line);border-radius:22px;background:var(--surface);padding:clamp(20px,4vw,34px);margin-bottom:18px;box-shadow:0 18px 50px #0004}.section h2{font-size:clamp(1.5rem,3vw,2.2rem);letter-spacing:-.035em;margin:0 0 12px}.section h3{margin:28px 0 8px}.section p,.section li{color:var(--muted)}code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.inline{background:#080d1d;border:1px solid var(--line);padding:2px 6px;border-radius:6px;color:#dbe6ff}.code{position:relative;margin:12px 0;background:var(--code);border:1px solid var(--line);border-radius:15px;padding:18px;overflow:auto;color:#dbe6ff;font:13px/1.65 ui-monospace,SFMono-Regular,Menlo,monospace;white-space:pre}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.card{border:1px solid var(--line);border-radius:15px;padding:16px;background:#080e20}.card strong{display:block;margin-bottom:5px}.card span{color:var(--muted);font-size:13px}.note{border-left:3px solid var(--primary);border-radius:0 12px 12px 0;padding:13px 15px;background:#5f8cff12;color:#cbd8ed;margin:14px 0}.note.warn{border-color:var(--warn);background:#f7c96b10}.endpoint{border:1px solid var(--line);border-radius:16px;padding:17px;margin:12px 0;background:#080e20}.endpoint-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.method{font-size:11px;font-weight:900;color:#8cf1d6;background:#55e8c413;border:1px solid #55e8c43d;border-radius:7px;padding:4px 7px}.path{font-family:ui-monospace,monospace;font-weight:800;overflow-wrap:anywhere}.pill{font-size:11px;border:1px solid #5f8cff42;background:#5f8cff12;color:#b7c8ff;border-radius:999px;padding:4px 8px}.tablewrap{overflow:auto}.table{width:100%;border-collapse:collapse;font-size:13px}.table th,.table td{text-align:left;padding:10px;border-bottom:1px solid var(--line);vertical-align:top}.table th{color:#c7d2e5}.table td{color:var(--muted)}.tabs{display:flex;gap:7px;flex-wrap:wrap;margin:12px 0}.tab{border:1px solid var(--line);background:#0b1328;color:var(--muted);padding:7px 10px;border-radius:9px;cursor:pointer;font-weight:800}.tab.active{background:#5f8cff18;color:var(--text);border-color:#5f8cff55}.playground{display:grid;grid-template-columns:minmax(260px,.7fr) minmax(0,1.3fr);gap:15px}.field{display:grid;gap:6px;margin-bottom:12px}label{font-size:12px;font-weight:800;color:#c8d4e8}input,select{width:100%;border:1px solid var(--line);background:#070c1a;color:var(--text);border-radius:10px;padding:11px}.btn{border:1px solid var(--line);background:#172549;color:var(--text);font-weight:850;border-radius:11px;padding:10px 13px;cursor:pointer}.btn.primary{background:linear-gradient(135deg,#4d72e1,#7898ff);border:0}.statusline{font-size:12px;color:var(--muted);margin:6px 0}.footer{padding:0 0 50px;color:var(--muted);font-size:13px}@media(max-width:900px){.layout{grid-template-columns:1fr}.sidebar{position:static;display:flex;gap:4px;overflow:auto}.sidebar strong{display:none}.sidebar a{white-space:nowrap}.playground{grid-template-columns:1fr}}@media(max-width:650px){.grid{grid-template-columns:1fr}.navlinks a:not(:first-child){display:none}}
     </style>
 </head>
 <body>
-<header class="topbar">
-    <div class="shell nav">
-        <a class="brand" href="{{ url('/') }}" aria-label="API Peter Tecnet">
-            <span class="brand-mark">PT</span>
-            <span>Peter Tecnet API</span>
-        </a>
-        <nav class="nav-links" aria-label="Navegação principal">
-            <a class="home-link" href="{{ url('/') }}">Visão geral</a>
-            <a href="https://petertecnet.com.br" rel="noopener">Peter Tecnet</a>
-        </nav>
-    </div>
-</header>
-
+<header class="topbar"><div class="shell nav"><a class="brand" href="/">Peter Tecnet API</a><nav class="navlinks"><a href="/developers">Developer Portal</a><a href="/openapi.json">OpenAPI 3.1</a><a href="/status">Status</a><a href="/changelog">Changelog</a></nav></div></header>
 <main class="shell">
-    <section class="hero">
-        <span class="eyebrow">Documentação pública</span>
-        <h1>Integre com o ecossistema Peter Tecnet.</h1>
-        <p>Esta é a documentação inicial da API pública Peter Tecnet. Ela apresenta a base de integração, os recursos de acesso aberto e o padrão de autenticação usado nas operações protegidas.</p>
-    </section>
-
-    <div class="layout">
-        <aside class="sidebar" aria-label="Seções da documentação">
-            <strong>Nesta página</strong>
-            <a href="#inicio">Primeiros passos</a>
-            <a href="#autenticacao">Autenticação</a>
-            <a href="#recursos">Recursos</a>
-            <a href="#endpoints">Endpoints públicos</a>
-            <a href="#boas-praticas">Boas práticas</a>
-        </aside>
-
-        <div class="content">
-            <section class="section" id="inicio">
-                <h2>Primeiros passos</h2>
-                <p>Todas as integrações partem da URL base abaixo e utilizam JSON como formato principal de troca de dados.</p>
-                <div class="base-url">
-                    <code>https://api.petertecnet.com.br/api</code>
-                    <span class="pill">HTTPS</span>
-                </div>
-                <h3>Exemplo de leitura pública</h3>
-                <pre><code>curl --request GET \
-  --url https://api.petertecnet.com.br/api/establishment \
-  --header 'Accept: application/json'</code></pre>
-            </section>
-
-            <section class="section" id="autenticacao">
-                <h2>Autenticação</h2>
-                <p>A API pode ser utilizada publicamente, mas operações que acessam dados privados ou alteram recursos continuam protegidas. Quando o endpoint exigir autenticação, envie o token no cabeçalho <code>Authorization</code>.</p>
-                <pre><code>Authorization: Bearer SEU_TOKEN
-Accept: application/json
-Content-Type: application/json</code></pre>
-                <div class="note">Acesso público não significa acesso irrestrito: permissões, escopo do usuário, contexto da aplicação e limites de requisição continuam sendo aplicados no servidor.</div>
-            </section>
-
-            <section class="section" id="recursos">
-                <h2>Recursos disponíveis</h2>
-                <div class="grid">
-                    <div class="card"><strong>Identidade e contas</strong><span>Cadastro, login, Google, perfil e sessão.</span></div>
-                    <div class="card"><strong>Estabelecimentos</strong><span>Descoberta, consulta e dados de empresas e operações.</span></div>
-                    <div class="card"><strong>Catálogo e itens</strong><span>Produtos, serviços, menus e recursos comerciais.</span></div>
-                    <div class="card"><strong>Pedidos e atendimento</strong><span>Fluxos de pedido, acompanhamento e registros de serviço.</span></div>
-                    <div class="card"><strong>Eventos e ingressos</strong><span>Eventos, produções e recursos de ticketing.</span></div>
-                    <div class="card"><strong>Conteúdo</strong><span>Notícias e recursos de descoberta consumidos pelas plataformas.</span></div>
-                </div>
-            </section>
-
-            <section class="section" id="endpoints">
-                <h2>Alguns endpoints públicos</h2>
-                <p>Os exemplos abaixo são pontos de entrada de leitura já disponíveis. A documentação será ampliada progressivamente com schemas, filtros e exemplos de resposta.</p>
-                <div class="endpoint-list">
-                    <div class="endpoint"><span class="method">GET</span><code>/api/establishment</code></div>
-                    <div class="endpoint"><span class="method">GET</span><code>/api/item/index</code></div>
-                    <div class="endpoint"><span class="method">GET</span><code>/api/event</code></div>
-                    <div class="endpoint"><span class="method">GET</span><code>/api/ticket</code></div>
-                    <div class="endpoint"><span class="method">GET</span><code>/api/news</code></div>
-                </div>
-            </section>
-
-            <section class="section" id="boas-praticas">
-                <h2>Boas práticas de integração</h2>
-                <div class="grid">
-                    <div class="card"><strong>Use HTTPS</strong><span>Nunca envie tokens ou dados de usuário por conexões inseguras.</span></div>
-                    <div class="card"><strong>Respeite rate limits</strong><span>Implemente cache, backoff e evite polling desnecessário.</span></div>
-                    <div class="card"><strong>Não exponha tokens</strong><span>Credenciais sensíveis não devem ficar em URLs, logs ou código público.</span></div>
-                    <div class="card"><strong>Prepare-se para evolução</strong><span>Prefira recursos versionados e integrações desacopladas de uma plataforma específica.</span></div>
-                </div>
-            </section>
-        </div>
-    </div>
-</main>
-
-<footer class="shell">
-    Peter Tecnet API · infraestrutura pública para produtos, integrações e experiências digitais conectadas.
-</footer>
+<section class="hero"><span class="eyebrow">Public API v1 · documentação oficial</span><h1>Integre sem<br>adivinhação.</h1><p>Este é o contrato público estável da Peter Tecnet. Ele é separado das rotas internas usadas pelas plataformas do ecossistema e foi desenhado para integrações externas com versionamento, credenciais próprias, scopes, sandbox, rate limit, respostas previsíveis e observabilidade.</p></section>
+<div class="layout">
+<aside class="sidebar"><strong>Referência</strong><a href="#inicio">Primeiros passos</a><a href="#ambientes">Ambientes</a><a href="#autenticacao">Autenticação</a><a href="#cors">Navegador / CORS</a><a href="#respostas">Respostas</a><a href="#consulta">Paginação e filtros</a><a href="#endpoints">Endpoints</a><a href="#erros">Erros</a><a href="#limites">Rate limits</a><a href="#exemplos">Exemplos</a><a href="#playground">Playground</a><a href="#webhooks">Webhooks</a><a href="#versoes">Versões</a></aside>
+<div class="content">
+<section class="section" id="inicio"><h2>Primeiros passos</h2><p>Crie uma aplicação no <a href="/developers">Developer Portal</a>, selecione o ambiente e apenas os scopes necessários. A chave completa é mostrada uma única vez; depois disso a Peter Tecnet mantém somente o hash.</p><div class="grid"><div class="card"><strong>Production</strong><span><code>https://api.petertecnet.com.br/api/v1</code></span></div><div class="card"><strong>Sandbox</strong><span><code>https://api.petertecnet.com.br/api/sandbox/v1</code></span></div></div><div class="note">Comece no sandbox. Chaves <code>pt_test_…</code> só funcionam no sandbox e chaves <code>pt_live_…</code> só funcionam em produção.</div></section>
+<section class="section" id="ambientes"><h2>Ambientes isolados</h2><p>Cada API Client pertence a exatamente um ambiente. A API rejeita uma credencial usada no host lógico errado com <code class="inline">environment_mismatch</code>. Isso reduz o risco de um teste tocar acidentalmente no contrato de produção.</p><div class="tablewrap"><table class="table"><thead><tr><th>Ambiente</th><th>Base URL</th><th>Prefixo de chave</th><th>Uso</th></tr></thead><tbody><tr><td>Production</td><td>/api/v1</td><td>pt_live_</td><td>Integrações reais</td></tr><tr><td>Sandbox</td><td>/api/sandbox/v1</td><td>pt_test_</td><td>Desenvolvimento e testes</td></tr></tbody></table></div></section>
+<section class="section" id="autenticacao"><h2>Autenticação e scopes</h2><p>Os recursos externos usam uma API Key própria, não o JWT de usuário das aplicações Peter Tecnet. Envie a chave em <code class="inline">X-API-Key</code>.</p><div class="code">X-API-Key: pt_live_SEU_SEGREDO
+Accept: application/json</div><p>Os scopes são aplicados por cliente. Para os endpoints disponíveis na primeira versão pública:</p><div class="grid"><div class="card"><strong>establishments:read</strong><span>Lista e consulta estabelecimentos publicados.</span></div><div class="card"><strong>catalog:read</strong><span>Lista e consulta produtos e serviços ativos.</span></div></div><div class="note warn"><strong>Nunca</strong> coloque uma chave live em repositório público, aplicativo mobile compilado ou JavaScript distribuído sem uma estratégia apropriada. Para browser, restrinja explicitamente as origens.</div></section>
+<section class="section" id="cors"><h2>Integrações de navegador / CORS</h2><p>O CORS dinâmico é aplicado somente à Public API. As rotas internas da Peter Tecnet continuam usando a whitelist oficial existente.</p><p>No Developer Portal, cadastre origens exatas, como <code class="inline">https://app.exemplo.com</code>. Para requisições cross-origin no navegador, acrescente o <code class="inline">client_id</code> na query string para que o preflight possa identificar a política antes de o navegador enviar <code>X-API-Key</code>.</p><div class="code">GET /api/v1/items?client_id=ptc_abc123&amp;q=cimento
+Origin: https://app.exemplo.com
+X-API-Key: pt_live_...</div><p>Chamadas server-to-server não precisam de <code>Origin</code> nem de <code>client_id</code>.</p></section>
+<section class="section" id="respostas"><h2>Respostas previsíveis</h2><h3>Sucesso</h3><div class="code">{
+  "data": { "id": 42, "slug": "exemplo", "name": "Exemplo" }
+}</div><h3>Lista paginada</h3><div class="code">{
+  "data": [ ... ],
+  "meta": { "current_page": 1, "per_page": 20, "total": 71, "last_page": 4 },
+  "links": { "first": "...", "last": "...", "prev": null, "next": "..." }
+}</div><h3>Erro</h3><div class="code">{
+  "error": {
+    "code": "insufficient_scope",
+    "message": "A credencial não possui permissão para esta operação.",
+    "details": { "required_scope": "catalog:read" },
+    "request_id": "a4e4..."
+  }
+}</div></section>
+<section class="section" id="consulta"><h2>Paginação, busca, filtros e ordenação</h2><div class="tablewrap"><table class="table"><thead><tr><th>Parâmetro</th><th>Descrição</th><th>Padrão</th></tr></thead><tbody><tr><td>page</td><td>Página, começando em 1.</td><td>1</td></tr><tr><td>per_page</td><td>Itens por página, máximo 100.</td><td>20</td></tr><tr><td>q</td><td>Busca textual nos campos permitidos do recurso.</td><td>—</td></tr><tr><td>sort</td><td>Campo permitido. Use <code>-</code> para descendente.</td><td>-created_at</td></tr></tbody></table></div><p>Filtros desconhecidos não são convertidos em SQL arbitrário; cada endpoint trabalha com uma whitelist explícita.</p></section>
+<section class="section" id="endpoints"><h2>Referência de endpoints</h2>
+<div class="endpoint"><div class="endpoint-head"><span class="method">GET</span><span class="path">/status</span><span class="pill">sem API key</span></div><p>Estado de banco e cache sem expor exceções, credenciais ou detalhes internos.</p></div>
+<div class="endpoint"><div class="endpoint-head"><span class="method">GET</span><span class="path">/establishments</span><span class="pill">establishments:read</span></div><p>Lista apenas estabelecimentos publicados, aprovados e não cancelados. Filtros: <code>q</code>, <code>city</code>, <code>uf</code>, <code>type</code>, <code>category</code>. Sort: <code>name</code>, <code>fantasy</code>, <code>city</code>, <code>created_at</code>.</p></div>
+<div class="endpoint"><div class="endpoint-head"><span class="method">GET</span><span class="path">/establishments/{slug}</span><span class="pill">establishments:read</span></div><p>Retorna a projeção pública segura do estabelecimento. Campos administrativos, CNPJ, owner IDs e métricas privadas não fazem parte deste contrato.</p></div>
+<div class="endpoint"><div class="endpoint-head"><span class="method">GET</span><span class="path">/items</span><span class="pill">catalog:read</span></div><p>Lista itens ativos. Filtros: <code>q</code>, <code>type</code>, <code>category</code>, <code>brand</code>, <code>establishment_id</code>. Sort: <code>name</code>, <code>price</code>, <code>created_at</code>.</p></div>
+<div class="endpoint"><div class="endpoint-head"><span class="method">GET</span><span class="path">/items/{slug}</span><span class="pill">catalog:read</span></div><p>Consulta um produto ou serviço ativo por slug.</p></div>
+<p>A especificação canônica e processável por ferramentas está em <a href="/openapi.json">/openapi.json</a> (OpenAPI 3.1).</p></section>
+<section class="section" id="erros"><h2>Catálogo de erros</h2><div class="tablewrap"><table class="table"><thead><tr><th>HTTP</th><th>code</th><th>Quando ocorre</th></tr></thead><tbody><tr><td>401</td><td>api_key_required</td><td>X-API-Key não enviado.</td></tr><tr><td>401</td><td>invalid_api_key</td><td>Chave inválida, expirada ou revogada.</td></tr><tr><td>403</td><td>environment_mismatch</td><td>Chave de sandbox em production ou vice-versa.</td></tr><tr><td>403</td><td>insufficient_scope</td><td>Scope necessário ausente.</td></tr><tr><td>403</td><td>origin_not_allowed</td><td>Origem de browser não autorizada.</td></tr><tr><td>403</td><td>cors_client_required</td><td>Preflight cross-origin sem client_id.</td></tr><tr><td>404</td><td>resource_not_found</td><td>Recurso público inexistente ou não publicável.</td></tr><tr><td>422</td><td>validation_failed</td><td>Parâmetros inválidos em operações de controle.</td></tr><tr><td>429</td><td>rate_limit_exceeded</td><td>Cota por minuto atingida.</td></tr></tbody></table></div><p>Ao abrir suporte, sempre informe o <code class="inline">X-Request-ID</code> recebido.</p></section>
+<section class="section" id="limites"><h2>Rate limits</h2><p>O limite padrão é <strong>60 requisições/minuto por API Client</strong> e pode ser administrado até o teto permitido pela plataforma. O limite acompanha a credencial, não apenas o IP.</p><div class="code">X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 42
+Retry-After: 18   # presente quando aplicável
+X-Peter-API-Version: 1
+X-Peter-API-Environment: production</div><p>Em <code>429</code>, use exponential backoff e respeite <code>Retry-After</code>.</p></section>
+<section class="section" id="exemplos"><h2>Exemplos em quatro linguagens</h2><div class="tabs"><button class="tab active" data-example="curl">cURL</button><button class="tab" data-example="js">JavaScript</button><button class="tab" data-example="php">PHP</button><button class="tab" data-example="python">Python</button></div>
+<div id="ex-curl" class="code example">curl 'https://api.petertecnet.com.br/api/v1/establishments?city=São%20Paulo' \
+  -H 'Accept: application/json' \
+  -H 'X-API-Key: pt_live_SEU_SEGREDO'</div>
+<div id="ex-js" class="code example" hidden>const response = await fetch(
+  'https://api.petertecnet.com.br/api/v1/items?q=cimento',
+  { headers: { 'Accept': 'application/json', 'X-API-Key': process.env.PETER_API_KEY } }
+);
+const body = await response.json();</div>
+<div id="ex-php" class="code example" hidden>$response = Http::withHeaders([
+    'Accept' => 'application/json',
+    'X-API-Key' => env('PETER_API_KEY'),
+])->get('https://api.petertecnet.com.br/api/v1/items', ['q' => 'cimento']);
+$data = $response->json();</div>
+<div id="ex-python" class="code example" hidden>import os, requests
+response = requests.get(
+    'https://api.petertecnet.com.br/api/v1/items',
+    params={'q': 'cimento'},
+    headers={'Accept': 'application/json', 'X-API-Key': os.environ['PETER_API_KEY']},
+    timeout=10,
+)
+data = response.json()</div></section>
+<section class="section" id="playground"><h2>Playground</h2><p>A chave fica somente neste formulário e não é persistida pelo playground. Como a documentação está no mesmo domínio da API, você pode testar diretamente.</p><div class="playground"><div><div class="field"><label>Ambiente</label><select id="pgEnv"><option value="production">Production</option><option value="sandbox">Sandbox</option></select></div><div class="field"><label>Endpoint</label><select id="pgEndpoint"><option value="/status">GET /status</option><option value="/establishments">GET /establishments</option><option value="/items">GET /items</option></select></div><div class="field"><label>API key (não necessária para /status)</label><input id="pgKey" type="password" autocomplete="off" placeholder="pt_test_... ou pt_live_..."></div><div class="field"><label>Busca q</label><input id="pgQuery" placeholder="opcional"></div><button id="pgRun" class="btn primary">Executar</button></div><div><div id="pgStatus" class="statusline">Nenhuma chamada executada.</div><div id="pgOutput" class="code">{}</div></div></div></section>
+<section class="section" id="webhooks"><h2>Webhooks assinados</h2><p>Cadastre webhooks no Developer Portal. URLs devem ser HTTPS e resolver para endereços públicos. Cada entrega inclui um ID e assinatura HMAC SHA-256.</p><div class="code">X-Peter-Event: payment.paid
+X-Peter-Event-Id: 550e8400-e29b-41d4-a716-446655440000
+X-Peter-Timestamp: 1788460000
+X-Peter-Signature: v1=...</div><p>Assine a string <code class="inline">timestamp + "." + raw_body</code> usando o signing secret do webhook e compare em tempo constante. A fila faz novas tentativas com backoff em falhas.</p><h3>Eventos registrados</h3><div class="grid"><div class="card"><strong>Commerce</strong><span>order.created, order.updated, payment.paid, payment.failed</span></div><div class="card"><strong>Scheduling / Ticketing</strong><span>appointment.created, appointment.confirmed, appointment.cancelled, ticket.checked_in</span></div></div><p>O evento <code class="inline">developer.webhook.test</code> pode ser disparado pelo portal para validar a integração.</p></section>
+<section class="section" id="versoes"><h2>Versionamento, changelog e depreciação</h2><p>Contratos estáveis ficam sob <code class="inline">/api/v1</code>. Novos campos compatíveis podem ser adicionados sem criar uma nova versão; mudanças incompatíveis exigem nova versão ou período formal de migração.</p><div class="grid"><div class="card"><strong>Changelog</strong><span><a href="/changelog">Histórico público de mudanças.</a></span></div><div class="card"><strong>Depreciação</strong><span><a href="/deprecation">Política de aviso e sunset.</a></span></div><div class="card"><strong>Termos</strong><span><a href="/terms">Uso aceitável e responsabilidades.</a></span></div><div class="card"><strong>Privacidade</strong><span><a href="/privacy">Tratamento e minimização de dados.</a></span></div></div></section>
+</div></div></main>
+<footer class="shell footer">Peter Tecnet Public API v1 · <a href="/developers">Developer Portal</a> · <a href="/status">Status</a> · <a href="/openapi.json">OpenAPI</a></footer>
+<script>
+document.querySelectorAll('.tab').forEach(button=>button.addEventListener('click',()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));button.classList.add('active');document.querySelectorAll('.example').forEach(x=>x.hidden=true);document.getElementById('ex-'+button.dataset.example).hidden=false}));
+document.getElementById('pgRun').addEventListener('click',async()=>{const env=document.getElementById('pgEnv').value;const endpoint=document.getElementById('pgEndpoint').value;const key=document.getElementById('pgKey').value.trim();const q=document.getElementById('pgQuery').value.trim();const base=env==='sandbox'?'/api/sandbox/v1':'/api/v1';const params=new URLSearchParams();if(q&&endpoint!=='/status')params.set('q',q);const url=base+endpoint+(params.size?'?'+params:'');const headers={'Accept':'application/json'};if(key)headers['X-API-Key']=key;const status=document.getElementById('pgStatus'),output=document.getElementById('pgOutput');status.textContent='Executando '+url+'...';try{const response=await fetch(url,{headers});const text=await response.text();let parsed;try{parsed=JSON.parse(text)}catch{parsed=text}status.textContent=`HTTP ${response.status} · Request ID: ${response.headers.get('X-Request-ID')||'—'} · Remaining: ${response.headers.get('X-RateLimit-Remaining')||'—'}`;output.textContent=typeof parsed==='string'?parsed:JSON.stringify(parsed,null,2)}catch(e){status.textContent='Falha de rede';output.textContent=e.message}});
+</script>
 </body>
 </html>
