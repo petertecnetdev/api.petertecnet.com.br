@@ -5,6 +5,7 @@ namespace App\Providers;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Foundation\Support\Providers\RouteServiceProvider as ServiceProvider;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Route;
 
@@ -31,10 +32,18 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/identity.php'));
 
-            // Canonical shared platform contract.
+            // Canonical shared platform contract used by Peter Tecnet applications.
             Route::middleware('api')
                 ->prefix('api')
                 ->group(base_path('routes/api_v1.php'));
+
+            // Stable third-party developer contract. It deliberately does not use the
+            // legacy `api` middleware group, so internal interaction telemetry and the
+            // IP-only throttle cannot inspect developer credentials or cap API clients
+            // before their per-client policy has been resolved.
+            Route::middleware([SubstituteBindings::class])
+                ->prefix('api')
+                ->group(base_path('routes/developer.php'));
 
             // Generic property, lease, document, signature and recurring billing
             // contract. Applications opt in through the leasing capability.
@@ -80,6 +89,25 @@ class RouteServiceProvider extends ServiceProvider
     {
         RateLimiter::for('api', function (Request $request) {
             return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+        });
+
+        RateLimiter::for('developer', function (Request $request) {
+            $client = $request->attributes->get('developer_client');
+            $limit = max(1, (int) ($client?->rate_limit_per_minute ?? config('developer.default_rate_limit_per_minute', 60)));
+            $key = $client?->id ? 'developer-client:' . $client->id : 'developer-ip:' . $request->ip();
+
+            return Limit::perMinute($limit)
+                ->by($key)
+                ->response(function (Request $request, array $headers) {
+                    return response()->json([
+                        'error' => [
+                            'code' => 'rate_limit_exceeded',
+                            'message' => 'Limite de requisições excedido. Aguarde o período indicado pelos headers de rate limit.',
+                            'details' => (object) [],
+                            'request_id' => $request->attributes->get('request_id'),
+                        ],
+                    ], 429, $headers);
+                });
         });
     }
 }
