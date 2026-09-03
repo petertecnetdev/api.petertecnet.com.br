@@ -80,8 +80,12 @@ class PaymentStateSynchronizer
                 $nextOrderStatus = 'preparing';
             }
 
+            $orderPaymentStatus = $isPaid
+                ? 'paid'
+                : ($isReversed ? 'refunded' : $status);
+
             $order->forceFill([
-                'payment_status' => $status,
+                'payment_status' => $orderPaymentStatus,
                 'payment_reference' => $payment->provider_payment_id,
                 'fulfillment_status' => $nextFulfillment ?: $order->fulfillment_status,
                 'status' => $nextOrderStatus,
@@ -101,7 +105,8 @@ class PaymentStateSynchronizer
                         'metadata' => [
                             'provider' => $payment->provider,
                             'payment_public_id' => $payment->public_id,
-                            'payment_status' => $status,
+                            'payment_status' => $orderPaymentStatus,
+                            'provider_status' => $status,
                         ],
                     ]
                 );
