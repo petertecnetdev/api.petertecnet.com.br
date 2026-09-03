@@ -2,12 +2,16 @@
 
 namespace App\Services;
 
+use App\Models\EcosystemPayment;
+use App\Services\Payments\FinancialLedgerService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class EcosystemPaymentLedgerService
 {
+    public function __construct(private readonly FinancialLedgerService $financialLedger) {}
+
     public function syncCutinappPayment(int $paymentId): void
     {
         if (!Schema::hasTable('ecosystem_payments') || !Schema::hasTable('cutinapp_payments')) {
@@ -94,13 +98,22 @@ class EcosystemPaymentLedgerService
 
         if ($existing) {
             DB::table('ecosystem_payments')->where('id', $existing->id)->update($payload);
-            return;
+        } else {
+            DB::table('ecosystem_payments')->insert(array_merge($payload, [
+                'public_id' => (string) Str::uuid(),
+                'created_at' => $row->created_at ?: now(),
+            ]));
         }
 
-        DB::table('ecosystem_payments')->insert(array_merge($payload, [
-            'public_id' => (string) Str::uuid(),
-            'created_at' => $row->created_at ?: now(),
-        ]));
+        $payment = EcosystemPayment::query()
+            ->where('app_slug', 'cutinapp')
+            ->where('source_type', 'cutinapp_payment')
+            ->where('source_reference', (string) $row->payment_id)
+            ->first();
+
+        if ($payment) {
+            $this->financialLedger->capture($payment);
+        }
     }
 
     public function backfillCutinapp(): int
@@ -113,6 +126,60 @@ class EcosystemPaymentLedgerService
             $count++;
         });
 
+        $this->syncLegacyPayouts();
+
         return $count;
+    }
+
+    public function backfillFinancialLedger(): int
+    {
+        if (! Schema::hasTable('ecosystem_payments')) return 0;
+
+        $count = 0;
+        EcosystemPayment::query()->orderBy('id')->chunkById(250, function ($payments) use (&$count) {
+            foreach ($payments as $payment) {
+                $this->financialLedger->capture($payment);
+                $count++;
+            }
+        });
+
+        $this->syncLegacyPayouts();
+
+        return $count;
+    }
+
+    private function syncLegacyPayouts(): void
+    {
+        if (! Schema::hasTable('cutinapp_payout_requests')) {
+            return;
+        }
+
+        $applicationId = Schema::hasTable('applications')
+            ? DB::table('applications')->where('slug', 'cutinapp')->value('id')
+            : null;
+
+        DB::table('cutinapp_payout_requests')
+            ->whereIn('status', ['paid', 'completed'])
+            ->orderBy('id')
+            ->get()
+            ->each(function ($payout) use ($applicationId) {
+                $this->financialLedger->recordPayout([
+                    'app_id' => $applicationId,
+                    'app_slug' => 'cutinapp',
+                    'production_id' => $payout->production_id,
+                    'provider' => $payout->provider,
+                    'provider_payment_id' => $payout->provider_transfer_id,
+                    'currency' => 'BRL',
+                    'amount' => (float) $payout->amount,
+                    'occurred_at' => $payout->paid_at ?: $payout->processed_at ?: $payout->updated_at,
+                    'source_type' => 'legacy_payout',
+                    'source_reference' => (string) $payout->id,
+                    'idempotency_key' => 'legacy-payout:cutinapp:' . $payout->id,
+                    'metadata' => [
+                        'reference' => $payout->reference,
+                        'settlement_mode' => $payout->settlement_mode,
+                    ],
+                ]);
+            });
     }
 }
