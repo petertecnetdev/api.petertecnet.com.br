@@ -16,8 +16,19 @@
         .summary td { border: 1px solid #d9e3e7; background: #f5f9fa; padding: 8px 9px; vertical-align: top; }
         .summary span { display: block; color: #60717a; font-size: 7px; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 3px; }
         .summary strong { font-size: 12px; color: #0b5363; }
-        .filters { margin: 8px 0 12px; padding: 8px 10px; background: #f7f9fa; border: 1px solid #e1e8eb; }
+        .filters, .comparisons, .visual { margin: 8px 0 12px; padding: 8px 10px; background: #f7f9fa; border: 1px solid #e1e8eb; }
         .filters b { color: #263b45; }
+        .comparison-grid { width: 100%; border-collapse: separate; border-spacing: 6px; margin: 0 -6px; }
+        .comparison-grid td { width: 25%; padding: 7px; border: 1px solid #dce5e8; background: #fff; }
+        .comparison-grid small { display: block; color: #6b7d85; font-size: 7px; }
+        .comparison-grid strong { display: block; margin-top: 2px; color: #0b5363; }
+        .up { color: #137a45 !important; } .down { color: #a53b3b !important; }
+        .visual h3 { margin: 0 0 7px; font-size: 10px; color: #193740; }
+        .bar-row { margin: 4px 0; white-space: nowrap; }
+        .bar-label { display: inline-block; width: 25%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; }
+        .bar-track { display: inline-block; width: 60%; height: 8px; background: #e7eef0; vertical-align: middle; }
+        .bar-fill { display: block; height: 8px; background: #0b5363; }
+        .bar-value { display: inline-block; width: 12%; text-align: right; vertical-align: middle; }
         .warning { margin: 8px 0 12px; padding: 8px 10px; background: #fff7e6; border: 1px solid #e8c777; color: #704f00; }
         table.data { width: 100%; border-collapse: collapse; table-layout: auto; }
         table.data thead { display: table-header-group; }
@@ -31,70 +42,23 @@
     </style>
 </head>
 <body>
-    <div class="footer">
-        Peter Tecnet - Relatorio administrativo
-        <span class="right">Gerado em {{ $report['generated_at'] }}</span>
-    </div>
-
-    <header class="header">
-        <div class="brand">Peter Tecnet Admin Center</div>
-        <h1>{{ $report['title'] }}</h1>
-        <div class="description">{{ $report['description'] }}</div>
-        <div class="meta">Periodo: {{ $report['period']['label'] }} | Gerado em: {{ $report['generated_at'] }}</div>
-    </header>
-
-    @if(!empty($report['summary']))
-        <table class="summary">
-            <tr>
-                @foreach($report['summary'] as $label => $value)
-                    <td>
-                        <span>{{ $label }}</span>
-                        <strong>{{ $value }}</strong>
-                    </td>
-                    @if($loop->iteration % 4 === 0 && !$loop->last)
-                        </tr><tr>
-                    @endif
-                @endforeach
-            </tr>
-        </table>
-    @endif
-
-    @if(!empty($report['filters']))
-        <div class="filters">
-            <b>Filtros aplicados:</b>
-            @foreach($report['filters'] as $label => $value)
-                {{ $label }}: {{ $value }}@if(!$loop->last) | @endif
-            @endforeach
-        </div>
-    @endif
-
-    @if(!empty($report['truncated']))
-        <div class="warning">
-            O resultado excedeu {{ $report['max_rows'] }} linhas. O PDF apresenta as linhas mais recentes dentro do filtro selecionado para preservar desempenho e estabilidade.
-        </div>
-    @endif
-
-    @if(!empty($report['rows']))
-        <table class="data">
-            <thead>
-                <tr>
-                    @foreach($report['columns'] as $column)
-                        <th>{{ $column['label'] }}</th>
-                    @endforeach
-                </tr>
-            </thead>
-            <tbody>
-                @foreach($report['rows'] as $row)
-                    <tr>
-                        @foreach($report['columns'] as $column)
-                            <td>{{ data_get($row, $column['key'], '-') }}</td>
-                        @endforeach
-                    </tr>
-                @endforeach
-            </tbody>
-        </table>
-    @else
-        <div class="empty">Nenhum registro encontrado para os filtros selecionados.</div>
-    @endif
-</body>
-</html>
+<div class="footer">Peter Tecnet - Relatório administrativo<span class="right">Gerado em {{ $report['generated_at'] }}</span></div>
+<header class="header"><div class="brand">Peter Tecnet Admin Center</div><h1>{{ $report['title'] }}</h1><div class="description">{{ $report['description'] }}</div><div class="meta">Período: {{ $report['period']['label'] }} | Registros: {{ $report['row_count'] ?? count($report['rows'] ?? []) }} | Gerado em: {{ $report['generated_at'] }}</div></header>
+@if(!empty($report['summary']))
+<table class="summary"><tr>@foreach($report['summary'] as $label=>$value)<td><span>{{ $label }}</span><strong>{{ $value }}</strong></td>@if($loop->iteration % 4 === 0 && !$loop->last)</tr><tr>@endif @endforeach</tr></table>
+@endif
+@if(!empty($report['comparisons']))
+<div class="comparisons"><table class="comparison-grid"><tr>@foreach($report['comparisons'] as $label=>$comparison)<td><small>{{ $label }}</small><strong class="{{ $comparison['direction'] ?? '' }}">{{ ($comparison['change_percent'] ?? 0) > 0 ? '+' : '' }}{{ number_format($comparison['change_percent'] ?? 0,1,',','.') }}%</strong><small>Anterior: {{ $comparison['previous'] ?? 0 }}</small></td>@endforeach</tr></table></div>
+@endif
+@if(!empty($report['visuals']))
+@foreach($report['visuals'] as $visual)
+@php($max = max(collect($visual['items'] ?? [])->pluck('value')->map(fn($v)=>(float)$v)->push(1)->all()))
+<div class="visual"><h3>{{ $visual['title'] ?? 'Distribuição' }}</h3>@foreach($visual['items'] ?? [] as $item)<div class="bar-row"><span class="bar-label">{{ $item['label'] ?? '—' }}</span><span class="bar-track"><span class="bar-fill" style="width: {{ min(100, ((float)($item['value'] ?? 0) / $max) * 100) }}%"></span></span><span class="bar-value">{{ $item['value'] ?? 0 }}</span></div>@endforeach</div>
+@endforeach
+@endif
+@if(!empty($report['filters']))<div class="filters"><b>Filtros aplicados:</b> @foreach($report['filters'] as $label=>$value){{ $label }}: {{ $value }}@if(!$loop->last) | @endif @endforeach</div>@endif
+@if(!empty($report['truncated']))<div class="warning">O resultado excedeu {{ $report['max_rows'] }} linhas. O PDF apresenta as linhas mais recentes; para análise integral use CSV/XLSX ou a exportação assíncrona.</div>@endif
+@if(!empty($report['rows']))
+<table class="data"><thead><tr>@foreach($report['columns'] as $column)<th>{{ $column['label'] }}</th>@endforeach</tr></thead><tbody>@foreach($report['rows'] as $row)<tr>@foreach($report['columns'] as $column)<td>{{ data_get($row,$column['key'],'-') }}</td>@endforeach</tr>@endforeach</tbody></table>
+@else<div class="empty">Nenhum registro encontrado para os filtros selecionados.</div>@endif
+</body></html>

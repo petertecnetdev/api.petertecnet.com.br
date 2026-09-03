@@ -11,30 +11,23 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.2'
           extensions: mbstring, pdo_sqlite, gd
           coverage: none
-
       - name: Validate Composer manifest
         run: composer validate --no-check-publish --no-check-lock
-
       - name: Install dependencies
         run: composer install --no-interaction --prefer-dist --no-progress
-
       - name: PHP syntax check
         shell: bash
         run: |
-          find app bootstrap config database routes tests -name '*.php' -print0 \
-            | xargs -0 -n1 php -l
-
+          find app bootstrap config database routes tests -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Prepare application environment
         shell: bash
         run: |
@@ -55,19 +48,15 @@ jobs:
           CUTINAPP_ENFORCE_PRODUCER_CONTRACT=false
           EOF
           touch /tmp/api.sqlite
-
       - name: Build Laravel caches
         run: |
           php artisan config:clear
           php artisan route:clear
           php artisan route:list
-
       - name: Run migrations on clean database
         run: php artisan migrate --force
-
       - name: Audit migration history
         run: php artisan platform:audit-migrations
-
       - name: Verify critical API routes
         shell: bash
         run: |
@@ -77,9 +66,11 @@ jobs:
           php artisan route:list | grep -q 'api/admin/ecosystem/command/overview'
           php artisan route:list | grep -q 'api/admin/ecosystem/command/security'
           php artisan route:list | grep -q 'api/admin/ecosystem/command/issues'
-          php artisan route:list | grep -q 'api/admin/ecosystem/command/issues/{issue}'
           php artisan route:list | grep -q 'api/admin/ecosystem/financial/dashboard'
           php artisan route:list | grep -q 'api/admin/ecosystem/financial/orders'
-
+          php artisan route:list | grep -q 'api/admin/ecosystem/reports/{report}/{format}'
+          php artisan route:list | grep -q 'api/admin/ecosystem/report-exports'
+          php artisan route:list | grep -q 'api/admin/ecosystem/report-schedules'
+          php artisan list | grep -q 'reports:dispatch-scheduled'
       - name: Run tests
         run: php artisan test
