@@ -8,6 +8,9 @@ use Illuminate\Http\Request;
 
 class EcosystemAccountController extends Controller
 {
+    private const SDK_VERSION = '2.0.0';
+    private const TELEMETRY_SCHEMA = '2';
+
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -17,13 +20,17 @@ class EcosystemAccountController extends Controller
 
         $applications = Application::query()
             ->active()
+            ->visibleInLauncher()
+            ->orderByDesc('is_default')
+            ->orderBy('launcher_order')
             ->orderBy('name')
             ->get()
             ->map(function (Application $application) use ($memberships) {
                 $membership = $memberships->get($application->id);
-                $status = $membership?->pivot?->status;
-                $memberAccess = $membership !== null && ($status === null || $status === 'active');
+                $membershipStatus = $membership?->pivot?->status;
+                $memberAccess = $membership !== null && ($membershipStatus === null || $membershipStatus === 'active');
                 $hasAccess = $memberAccess || (bool) $application->self_service_access;
+                $operational = $application->isOperational();
 
                 return [
                     'id' => (int) $application->id,
@@ -33,11 +40,18 @@ class EcosystemAccountController extends Controller
                     'url' => $application->url,
                     'logo' => $application->logo,
                     'version' => $application->version,
+                    'category' => $application->category,
+                    'launcher_order' => (int) $application->launcher_order,
+                    'is_default' => (bool) $application->is_default,
+                    'operational_status' => $application->operational_status ?: 'operational',
+                    'maintenance_message' => $application->maintenance_message,
+                    'ecosystem_sdk_version' => $application->ecosystem_sdk_version,
                     'has_access' => $hasAccess,
+                    'available' => $operational,
                     'self_service_access' => (bool) $application->self_service_access,
                     'membership' => $membership ? [
                         'role' => $membership->pivot->role,
-                        'status' => $status,
+                        'status' => $membershipStatus,
                         'metadata' => $membership->pivot->metadata,
                         'joined_at' => $membership->pivot->joined_at,
                     ] : null,
@@ -47,6 +61,13 @@ class EcosystemAccountController extends Controller
         return response()->json([
             'success' => true,
             'data' => [
+                'sdk' => [
+                    'version' => self::SDK_VERSION,
+                    'minimum_version' => self::SDK_VERSION,
+                    'telemetry_schema' => self::TELEMETRY_SCHEMA,
+                ],
+                'generated_at' => now()->toIso8601String(),
+                'default_application' => $applications->firstWhere('is_default', true),
                 'account' => [
                     'id' => (int) $user->id,
                     'user_name' => $user->user_name,
@@ -58,7 +79,10 @@ class EcosystemAccountController extends Controller
                     'profile' => $user->profile,
                 ],
                 'applications' => $applications,
-                'accessible_applications' => $applications->where('has_access', true)->values(),
+                'accessible_applications' => $applications
+                    ->where('has_access', true)
+                    ->where('available', true)
+                    ->values(),
             ],
         ]);
     }
