@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Identity\IdentityAuthenticationController;
+use App\Http\Controllers\Identity\IdentityGlobalSsoController;
 use App\Http\Controllers\Identity\IdentityPasskeyController;
 use App\Http\Controllers\Identity\IdentitySecurityController;
 use App\Http\Controllers\Identity\IdentitySessionController;
@@ -30,9 +31,22 @@ Route::prefix('account/identity')->name('identity.')->group(function () {
     Route::post('/passkeys/authenticate', [IdentityPasskeyController::class, 'authenticate'])
         ->middleware('throttle:30,1')->name('passkeys.authenticate');
 
+    // Cookie-backed SSO endpoints are intentionally outside auth:api. They use
+    // an opaque host-only API cookie + rotating refresh secret + Origin/app-bound CSRF.
+    Route::get('/sso/csrf', [IdentityGlobalSsoController::class, 'csrf'])
+        ->middleware('throttle:60,1')->name('sso.csrf');
+    Route::post('/sso/exchange', [IdentityGlobalSsoController::class, 'exchange'])
+        ->middleware('throttle:60,1')->name('sso.exchange');
+    Route::delete('/sso/session', [IdentityGlobalSsoController::class, 'revokeCurrent'])
+        ->middleware('throttle:20,1')->name('sso.revoke');
+
     Route::middleware(['auth:api', 'token.version'])->group(function () {
         Route::post('/logout', [IdentityAuthenticationController::class, 'logout'])->name('logout');
         Route::post('/refresh', [IdentityAuthenticationController::class, 'refresh'])->name('refresh');
+        Route::post('/logout-everywhere', [IdentityGlobalSsoController::class, 'logoutEverywhere'])
+            ->middleware('throttle:10,1')->name('logout-everywhere');
+        Route::post('/sso/session', [IdentityGlobalSsoController::class, 'establish'])
+            ->middleware('throttle:60,1')->name('sso.establish');
 
         Route::get('/sessions', [IdentitySessionController::class, 'index'])->name('sessions.index');
         Route::delete('/sessions/{sessionId}', [IdentitySessionController::class, 'destroy'])->name('sessions.destroy');
