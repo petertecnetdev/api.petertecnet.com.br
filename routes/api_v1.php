@@ -1,14 +1,19 @@
 <?php
 
 use App\Http\Controllers\Api\V1\AccountContextController;
+use App\Http\Controllers\Api\V1\AppointmentController;
 use App\Http\Controllers\Api\V1\CommerceController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
 use App\Http\Controllers\Api\V1\MetricsController;
+use App\Http\Controllers\Api\V1\NotificationController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
 use App\Http\Controllers\Api\V1\PlatPaymentController;
+use App\Http\Controllers\Api\V1\SchedulingAvailabilityController;
+use App\Http\Controllers\Api\V1\SchedulingDashboardController;
+use App\Http\Controllers\Api\V1\SchedulingResourceController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -57,6 +62,34 @@ Route::prefix('v1/apps/{application}')
             Route::get('/employers/{employer}/items', [EmployerController::class, 'items']);
             Route::put('/employers/{employer}/items', [EmployerController::class, 'syncItems']);
             Route::get('/employers/{employer}/metrics', [EmployerController::class, 'metrics']);
+
+            // Generic scheduling capabilities shared by every application.
+            Route::get('/scheduling/establishments/{establishment}/resources', [SchedulingResourceController::class, 'index'])
+                ->whereNumber('establishment');
+            Route::post('/scheduling/resources', [SchedulingResourceController::class, 'store']);
+            Route::patch('/scheduling/resources/{resource}', [SchedulingResourceController::class, 'update'])->whereNumber('resource');
+            Route::delete('/scheduling/resources/{resource}', [SchedulingResourceController::class, 'destroy'])->whereNumber('resource');
+            Route::get('/scheduling/resources/{resource}/schedules', [SchedulingResourceController::class, 'schedules'])->whereNumber('resource');
+            Route::put('/scheduling/resources/{resource}/schedules', [SchedulingResourceController::class, 'syncSchedules'])->whereNumber('resource');
+
+            Route::get('/scheduling/availability/times', [SchedulingAvailabilityController::class, 'times']);
+            Route::get('/scheduling/availability/dates', [SchedulingAvailabilityController::class, 'dates']);
+
+            Route::post('/scheduling/appointments', [AppointmentController::class, 'store'])->middleware('throttle:30,1');
+            Route::get('/scheduling/appointments/mine', [AppointmentController::class, 'mine']);
+            Route::get('/scheduling/appointments/provider', [AppointmentController::class, 'provider']);
+            Route::get('/scheduling/establishments/{establishment}/appointments', [AppointmentController::class, 'establishment'])
+                ->whereNumber('establishment');
+            Route::get('/scheduling/appointments/{appointment}', [AppointmentController::class, 'show'])->whereNumber('appointment');
+            Route::patch('/scheduling/appointments/{appointment}/transition', [AppointmentController::class, 'transition'])->whereNumber('appointment');
+            Route::patch('/scheduling/appointments/{appointment}/assignment', [AppointmentController::class, 'assign'])->whereNumber('appointment');
+            Route::get('/scheduling/establishments/{establishment}/dashboard', [SchedulingDashboardController::class, 'overview'])
+                ->whereNumber('establishment');
+
+            Route::get('/notifications', [NotificationController::class, 'index']);
+            Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+            Route::patch('/notifications/read-all', [NotificationController::class, 'markAllRead']);
+            Route::patch('/notifications/{notification}/read', [NotificationController::class, 'markRead'])->whereNumber('notification');
 
             Route::post('/commerce/orders', [CommerceController::class, 'checkout'])->middleware('throttle:30,1');
             Route::get('/commerce/orders/mine', [CommerceController::class, 'myOrders']);
