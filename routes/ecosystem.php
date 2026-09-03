@@ -1,15 +1,25 @@
 <?php
 
+use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
+use App\Http\Controllers\Admin\OnboardingController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
+Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
+Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])
+    ->where('token', '[A-Za-z0-9]{40,128}')
+    ->middleware(['api', 'throttle:30,1']);
+Route::post('/auth/invitations/{token}/activate', [InvitationActivationController::class, 'activate'])
+    ->where('token', '[A-Za-z0-9]{40,128}')
+    ->middleware(['api', 'throttle:10,1']);
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/financial/dashboard', [FinancialController::class, 'dashboard']);
     Route::get('/financial/transactions', [FinancialController::class, 'transactions']);
     Route::get('/financial/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
