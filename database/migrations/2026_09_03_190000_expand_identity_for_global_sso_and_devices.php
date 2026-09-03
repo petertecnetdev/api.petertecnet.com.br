@@ -11,7 +11,7 @@ return new class extends Migration
         if (! Schema::hasTable('identity_devices')) {
             Schema::create('identity_devices', function (Blueprint $table) {
                 $table->id();
-                $table->uuid('device_id')->unique();
+                $table->string('device_id', 120)->unique();
                 $table->foreignId('user_id')->constrained('users')->cascadeOnDelete();
                 $table->foreignId('last_application_id')->nullable()->constrained('applications')->nullOnDelete();
                 $table->string('name', 180)->nullable();
@@ -26,7 +26,6 @@ return new class extends Migration
                 $table->timestamp('trusted_at')->nullable();
                 $table->json('metadata')->nullable();
                 $table->timestamps();
-
                 $table->index(['user_id', 'last_seen_at']);
             });
         }
@@ -59,7 +58,6 @@ return new class extends Migration
                 $table->string('revoke_reason', 120)->nullable();
                 $table->json('metadata')->nullable();
                 $table->timestamps();
-
                 $table->index(['user_id', 'revoked_at']);
                 $table->index(['device_id', 'last_seen_at']);
             });
@@ -69,13 +67,11 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('identity_global_sessions');
-
         if (Schema::hasTable('identity_sessions') && Schema::hasColumn('identity_sessions', 'device_id')) {
             Schema::table('identity_sessions', function (Blueprint $table) {
                 $table->dropConstrainedForeignId('device_id');
             });
         }
-
         Schema::dropIfExists('identity_devices');
     }
 };
