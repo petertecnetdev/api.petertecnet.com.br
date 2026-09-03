@@ -7,8 +7,8 @@ use App\Domain\DeveloperPlatform\Http\Controllers\PlatformStatusController;
 use App\Domain\DeveloperPlatform\Http\Controllers\PublicResourceController;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/v1/status', [PlatformStatusController::class, 'show'])->middleware('api.version');
-Route::get('/sandbox/v1/status', [PlatformStatusController::class, 'show'])->middleware('api.version');
+Route::get('/v1/status', [PlatformStatusController::class, 'show'])->middleware(['api.version', 'throttle:120,1']);
+Route::get('/sandbox/v1/status', [PlatformStatusController::class, 'show'])->middleware(['api.version', 'throttle:120,1']);
 
 $publicApiMiddleware = [
     'api.version',
