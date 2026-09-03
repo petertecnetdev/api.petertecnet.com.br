@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Employer;
 use App\Models\Order;
 use App\Models\SchedulingResource;
+use App\Services\Scheduling\SchedulingAuthorizationService;
 use App\Support\ApplicationContext;
 use Closure;
 use Illuminate\Http\Request;
@@ -14,8 +15,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class ValidateSchedulingAssignment
 {
-    public function __construct(private readonly ApplicationContext $context)
-    {
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly SchedulingAuthorizationService $authorization
+    ) {
     }
 
     public function handle(Request $request, Closure $next): Response
@@ -50,6 +53,15 @@ class ValidateSchedulingAssignment
                 ->where('type', 'appointment')
                 ->where('entity_name', 'establishment')
                 ->firstOrFail();
+
+            // Assignment changes expose workforce and resource capability data.
+            // Authorize management before validating any submitted provider/resource
+            // so unauthorized users cannot use validation responses to enumerate it.
+            $this->authorization->managedEstablishment(
+                $request,
+                $this->context->id(),
+                (int) $order->entity_id
+            );
 
             $itemIds = DB::table('order_items')
                 ->where('order_id', $order->id)
@@ -120,7 +132,9 @@ class ValidateSchedulingAssignment
             ]);
         }
 
-        $professionalResource = $resources->first(fn (SchedulingResource $resource) => $resource->type === 'professional');
+        $professionalResource = $resources->first(
+            fn (SchedulingResource $resource) => $resource->type === 'professional'
+        );
         if ($professionalResource) {
             throw ValidationException::withMessages([
                 'resource_ids' => ['Profissionais devem ser informados em provider_id; resource_ids deve conter apenas recursos físicos ou operacionais.'],
