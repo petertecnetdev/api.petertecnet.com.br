@@ -24,16 +24,25 @@ class IdentitySessionService
             'expires_at' => now()->addMinutes(max((int) config('identity.session.ttl_minutes', 43200), 1)),
         ]);
 
-        $token = auth('api')->claims([
-            'sid' => $session->session_id,
-            'amr' => [$authMethod],
-            'ver' => max((int) ($user->auth_version ?? 1), 1),
-        ])->login($user);
+        $ttl = max((int) config('identity.access_token_ttl_minutes', 30), 5);
+        $factory = auth('api')->factory();
+        $previousTtl = $factory->getTTL();
+        $factory->setTTL($ttl);
+
+        try {
+            $token = auth('api')->claims([
+                'sid' => $session->session_id,
+                'amr' => [$authMethod],
+                'ver' => max((int) ($user->auth_version ?? 1), 1),
+            ])->login($user);
+        } finally {
+            $factory->setTTL($previousTtl);
+        }
 
         return [
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => auth('api')->factory()->getTTL() * 60,
+            'expires_in' => $ttl * 60,
             'session' => $this->present($session),
         ];
     }
