@@ -17,7 +17,13 @@ class ApplicationController extends Controller
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        return response()->json(['applications' => Application::query()->orderBy('name')->get()]);
+
+        return response()->json([
+            'applications' => Application::query()
+                ->orderBy('launcher_order')
+                ->orderBy('name')
+                ->get(),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
@@ -28,6 +34,7 @@ class ApplicationController extends Controller
         $data['logo'] = $this->logo($data);
         $application = Application::query()->create($data);
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(['application' => $application], 201);
     }
 
@@ -35,10 +42,13 @@ class ApplicationController extends Controller
     {
         $this->authorizeAccess($request);
         $data = $this->validated($request, $application);
-        if (isset($data['slug'])) $data['slug'] = $this->uniqueSlug($data['slug'], $application->id);
+        if (isset($data['slug'])) {
+            $data['slug'] = $this->uniqueSlug($data['slug'], $application->id);
+        }
         $data['logo'] = $this->logo(array_merge($application->toArray(), $data));
         $application->update($data);
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(['application' => $application->fresh()]);
     }
 
@@ -47,12 +57,17 @@ class ApplicationController extends Controller
         $this->authorizeAccess($request);
         $application->delete();
         Cache::forget(self::CACHE_KEY);
+
         return response()->json(null, 204);
     }
 
     private function authorizeAccess(Request $request): void
     {
-        abort_unless($request->user()?->hasPermission('application_manage'), 403, 'Usuário sem permissão para gerenciar aplicações.');
+        abort_unless(
+            $request->user()?->hasPermission('application_manage'),
+            403,
+            'Usuário sem permissão para gerenciar aplicações.'
+        );
     }
 
     private function validated(Request $request, ?Application $application = null): array
@@ -64,6 +79,13 @@ class ApplicationController extends Controller
             'url' => ['required', 'url', 'max:2048'],
             'logo' => ['nullable', 'url', 'max:2048'],
             'is_active' => ['sometimes', 'boolean'],
+            'self_service_access' => ['sometimes', 'boolean'],
+            'launcher_order' => ['sometimes', 'integer', 'min:0', 'max:100000'],
+            'category' => ['nullable', 'string', 'max:100'],
+            'is_visible' => ['sometimes', 'boolean'],
+            'operational_status' => ['sometimes', Rule::in(['operational', 'degraded', 'maintenance', 'down'])],
+            'maintenance_message' => ['nullable', 'string', 'max:500'],
+            'ecosystem_sdk_version' => ['nullable', 'string', 'max:30'],
             'version' => ['nullable', 'string', 'max:100'],
             'author' => ['nullable', 'string', 'max:255'],
             'release_date' => ['nullable', 'date'],
@@ -80,9 +102,14 @@ class ApplicationController extends Controller
         $base = Str::slug($value) ?: 'aplicacao';
         $slug = $base;
         $number = 2;
-        while (Application::query()->where('slug', $slug)->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->exists()) {
+
+        while (Application::query()
+            ->where('slug', $slug)
+            ->when($ignoreId, fn ($query) => $query->whereKeyNot($ignoreId))
+            ->exists()) {
             $slug = $base . '-' . $number++;
         }
+
         return $slug;
     }
 }
