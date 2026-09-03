@@ -43,9 +43,8 @@ class CommerceFulfillmentServiceTest extends TestCase
         $service = app(CommerceFulfillmentService::class);
         $order = $this->order();
         $code = $service->claimCode($order);
-        $digitsOnly = str_replace(['RT-', '-'], '', $code);
 
-        $this->assertSame('manual_code', $service->credentialType($order, null, strtolower($digitsOnly)));
+        $this->assertSame('manual_code', $service->credentialType($order, null, strtolower($code)));
     }
 
     public function test_legacy_available_status_remains_redeemable_during_migration(): void
