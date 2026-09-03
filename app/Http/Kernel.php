@@ -55,5 +55,6 @@ class Kernel extends HttpKernel
         'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
         'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
+        'identity.step-up' => \App\Http\Middleware\RequireIdentityStepUp::class,
     ];
 }
