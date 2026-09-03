@@ -35,6 +35,26 @@ abstract class TestCase extends BaseTestCase
     }
 
     /**
+     * Return an application fixture without duplicating the application rows
+     * provisioned from config/platform.php by the shared test harness.
+     */
+    protected function applicationFixture(string $slug, array $attributes = []): Application
+    {
+        unset($attributes['slug']);
+        $configured = (array) config('platform.applications.' . $slug, []);
+
+        return Application::query()->updateOrCreate(
+            ['slug' => $slug],
+            array_merge([
+                'name' => Str::headline($slug),
+                'url' => $configured['url'] ?? null,
+                'is_active' => true,
+                'self_service_access' => true,
+            ], $attributes)
+        );
+    }
+
+    /**
      * Laravel's HTTP test kernel reuses the same application instance between
      * requests, while production PHP-FPM requests resolve authentication from
      * scratch. Reset both Laravel guards and JWTAuth's cached token before and
