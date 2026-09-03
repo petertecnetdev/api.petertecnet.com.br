@@ -131,9 +131,9 @@ class EcosystemLauncherSsoTest extends TestCase
         string $status = 'operational',
         ?string $message = null
     ): Application {
-        return Application::create([
+        $application = Application::query()->firstOrNew(['slug' => $slug]);
+        $application->fill([
             'name' => $name,
-            'slug' => $slug,
             'url' => "https://{$slug}.petertecnet.com.br",
             'logo' => "https://{$slug}.petertecnet.com.br/logo.png",
             'is_active' => true,
@@ -143,5 +143,8 @@ class EcosystemLauncherSsoTest extends TestCase
             'maintenance_message' => $message,
             'ecosystem_sdk_version' => '2.0.0',
         ]);
+        $application->save();
+
+        return $application;
     }
 }
