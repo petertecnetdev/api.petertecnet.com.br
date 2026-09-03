@@ -109,7 +109,7 @@ class DiscoverySearchService
                     'id' => $row->id,
                     'title' => $row->name,
                     'description' => $row->description,
-                    'url' => '/plataformas/' . $this->canonicalApplicationSlug($row->slug),
+                    'url' => '/plataformas/' . $row->slug,
                     'application' => $row->slug,
                 ])->values(),
                 'content' => $contents->map(fn ($row) => [
@@ -223,10 +223,5 @@ class DiscoverySearchService
             'top_application' => $applicationScores->sortDesc()->keys()->first(),
             'confidence' => min(100, (int) round(($applications->count() + $contents->count() + $establishments->count() + $items->count()) * 7.5)),
         ];
-    }
-
-    private function canonicalApplicationSlug(string $slug): string
-    {
-        return $slug === 'peter-payflow' ? 'payflow' : $slug;
     }
 }
