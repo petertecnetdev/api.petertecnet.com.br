@@ -39,6 +39,7 @@ jobs:
         run: |
           find app bootstrap config database routes tests -name '*.php' -print0 \
             | xargs -0 -n1 php -l
+          bash -n scripts/smoke-public-platforms.sh
 
       - name: Prepare application environment
         shell: bash
@@ -57,6 +58,10 @@ jobs:
           QUEUE_CONNECTION=sync
           MAIL_MAILER=array
           JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          PUBLIC_CATALOG_MAX_RESPONSE_MS=1500
+          PUBLIC_CATALOG_MAX_PAYLOAD_BYTES=524288
+          PUBLIC_CATALOG_MAX_QUERIES=18
+          OBSERVABILITY_REQUEST_LOGGING=false
           EOF
           touch /tmp/api.sqlite
 
@@ -146,6 +151,11 @@ jobs:
             const existing = comments.data.find(comment => comment.body?.includes(marker));
             if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+      - name: Enforce public catalog contracts and performance budgets
+        shell: bash
+        run: |
+          php artisan test tests/Feature/PublicCatalogContractTest.php tests/Feature/PublicCatalogPerformanceTest.php
 
       - name: Run tests
         shell: bash
