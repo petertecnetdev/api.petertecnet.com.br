@@ -45,7 +45,8 @@ return new class extends Migration
 
         Schema::create('payment_reconciliations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('payment_id')->constrained('ecosystem_payments')->cascadeOnDelete();
+            // Reconciliation evidence is audit history. Deleting an operational payment must not erase it.
+            $table->foreignId('payment_id')->nullable()->constrained('ecosystem_payments')->nullOnDelete();
             $table->string('provider', 40)->index();
             $table->string('provider_payment_id', 255)->nullable()->index();
             $table->string('local_status', 40);
