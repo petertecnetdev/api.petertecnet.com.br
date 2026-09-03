@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/apps/{application}')
     ->middleware('app.context')
     ->group(function () {
+        Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
         Route::get('/establishments', [EstablishmentController::class, 'index']);
         Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
         Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
