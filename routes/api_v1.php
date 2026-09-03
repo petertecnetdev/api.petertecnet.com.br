@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\ApplicationDirectoryController;
+use App\Http\Controllers\Api\V1\CatalogIntelligenceController;
 use App\Http\Controllers\Api\V1\CommerceController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
@@ -18,6 +19,8 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
     Route::get('/establishments/{slug}', [EstablishmentController::class, 'show']);
     Route::get('/catalog/{establishmentSlug}', [ItemController::class, 'catalog']);
     Route::get('/items', [ItemController::class, 'index']);
+    Route::get('/catalog-intelligence/schema', [CatalogIntelligenceController::class, 'schema']);
+    Route::post('/catalog-intelligence/resolve', [CatalogIntelligenceController::class, 'resolve'])->middleware('throttle:60,1');
     Route::get('/commerce/catalog/{slug}', [CommerceController::class, 'catalog']);
     Route::post('/commerce/payments/mercadopago/webhook', [CommerceController::class, 'mercadoPagoWebhook'])->middleware('throttle:120,1');
     Route::post('/commerce/payments/{provider}/webhook', [CommerceController::class, 'paymentWebhook'])->where('provider', '[a-z0-9_-]+')->middleware('throttle:120,1');
@@ -39,6 +42,14 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::patch('/items/{item}', [ItemController::class, 'update']);
         Route::delete('/items/{item}', [ItemController::class, 'destroy']);
         Route::get('/items/{item}/metrics', [MetricsController::class, 'item']);
+
+        Route::post('/catalog-intelligence/items/{item}/enrich', [CatalogIntelligenceController::class, 'enrich'])->whereNumber('item');
+        Route::get('/catalog-intelligence/establishments/{establishment}/health', [CatalogIntelligenceController::class, 'health'])->whereNumber('establishment');
+        Route::post('/catalog-intelligence/imports', [CatalogIntelligenceController::class, 'stageImport'])->middleware('throttle:10,1');
+        Route::get('/catalog-intelligence/imports/{publicId}', [CatalogIntelligenceController::class, 'showImport']);
+        Route::post('/catalog-intelligence/imports/{publicId}/publish', [CatalogIntelligenceController::class, 'publishImport'])->middleware('throttle:10,1');
+        Route::post('/catalog-intelligence/aliases', [CatalogIntelligenceController::class, 'rememberAlias'])->middleware('throttle:30,1');
+
         Route::get('/establishments/{establishment}/employers', [EmployerController::class, 'index']);
         Route::post('/employers', [EmployerController::class, 'store']);
         Route::delete('/employers/{employer}', [EmployerController::class, 'destroy']);
