@@ -19,12 +19,16 @@ class ApiClient extends Model
         'allowed_origins',
         'rate_limit_per_minute',
         'last_used_at',
+        'terms_accepted_at',
+        'privacy_acknowledged_at',
     ];
 
     protected $casts = [
         'scopes' => 'array',
         'allowed_origins' => 'array',
         'last_used_at' => 'datetime',
+        'terms_accepted_at' => 'datetime',
+        'privacy_acknowledged_at' => 'datetime',
     ];
 
     public function owner(): BelongsTo
