@@ -3,7 +3,6 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use RuntimeException;
 
 return new class extends Migration
 {
@@ -22,24 +21,19 @@ return new class extends Migration
             return;
         }
 
-        // Expand phase for MariaDB/MySQL: keep the physical legacy tables in
-        // place so old PHP workers and new V1 workers can coexist. The generic
-        // names are simple MERGE views and therefore remain writable.
         foreach (self::ALIASES as $legacy => $domain) {
             if (! Schema::hasTable($legacy)) {
                 continue;
             }
 
-            $type = $this->objectType($domain);
-            if ($type === 'BASE TABLE') {
-                // A later contract migration may already have materialized the
-                // generic table. Never replace real data with a view.
+            if ($this->objectType($domain) === 'BASE TABLE') {
                 continue;
             }
 
-            $legacySql = $this->quote($legacy);
-            $domainSql = $this->quote($domain);
-            DB::statement("CREATE OR REPLACE ALGORITHM=MERGE VIEW {$domainSql} AS SELECT * FROM {$legacySql}");
+            DB::statement(
+                'CREATE OR REPLACE ALGORITHM=MERGE VIEW '.$this->quote($domain)
+                .' AS SELECT * FROM '.$this->quote($legacy)
+            );
         }
     }
 
@@ -54,7 +48,7 @@ return new class extends Migration
             return;
         }
 
-        foreach (array_reverse(self::ALIASES, true) as $domain) {
+        foreach (array_reverse(array_values(self::ALIASES)) as $domain) {
             if ($this->objectType($domain) === 'VIEW') {
                 DB::statement('DROP VIEW IF EXISTS '.$this->quote($domain));
             }
@@ -74,7 +68,7 @@ return new class extends Migration
     {
         $database = DB::connection()->getDatabaseName();
         if (! $database) {
-            throw new RuntimeException('Database name is required to inspect compatibility views.');
+            throw new \RuntimeException('Database name is required to inspect compatibility views.');
         }
 
         $value = DB::table('information_schema.tables')
