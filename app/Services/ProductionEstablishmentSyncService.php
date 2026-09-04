@@ -30,9 +30,9 @@ class ProductionEstablishmentSyncService
             $profile = array_merge(
                 $this->businessProfile($establishment->business_profile),
                 [
-                    'source' => 'cutinapp_production',
+                    'source' => 'production_record',
                     'production_id' => $production->id,
-                    'app_slug' => $production->app_slug ?: 'cutinapp',
+                    'app_slug' => $production->app_slug ?: null,
                 ]
             );
 
@@ -153,7 +153,7 @@ class ProductionEstablishmentSyncService
 
     private function establishmentSlug(Production $production, Establishment $establishment): string
     {
-        $base = Str::slug($production->slug ?: $production->name) ?: 'production-' . $production->id;
+        $base = Str::slug($production->slug ?: $production->name) ?: 'production-'.$production->id;
         $candidate = $base;
         $suffix = 2;
 
@@ -161,7 +161,7 @@ class ProductionEstablishmentSyncService
             ->when($establishment->exists, fn ($query) => $query->whereKeyNot($establishment->id))
             ->where('slug', $candidate)
             ->exists()) {
-            $candidate = $base . '-cutinapp-' . $production->id . ($suffix > 2 ? '-' . $suffix : '');
+            $candidate = $base.'-production-'.$production->id.($suffix > 2 ? '-'.$suffix : '');
             $suffix++;
         }
 
@@ -200,6 +200,7 @@ class ProductionEstablishmentSyncService
 
         if (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
+
             return is_array($decoded) ? $decoded : [];
         }
 
