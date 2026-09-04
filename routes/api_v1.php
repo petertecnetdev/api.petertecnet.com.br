@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\V1\AccountContextController;
 use App\Http\Controllers\Api\V1\ApplicationDirectoryController;
 use App\Http\Controllers\Api\V1\CommerceController;
+use App\Http\Controllers\Api\V1\ContextualAccessController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
@@ -26,6 +27,8 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
 
     Route::middleware(['auth:api', 'token.version'])->group(function () {
         Route::get('/me', [AccountContextController::class, 'show']);
+        Route::get('/me/relationships', [ContextualAccessController::class, 'relationships']);
+        Route::post('/resources/{resourceRef}/authorize', [ContextualAccessController::class, 'authorizeResource'])->whereUuid('resourceRef');
         Route::get('/me/establishments', [EstablishmentController::class, 'mine']);
         Route::get('/directory/companies', [ApplicationDirectoryController::class, 'companies']);
         Route::post('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'activateCompany'])->whereNumber('sourceId');
