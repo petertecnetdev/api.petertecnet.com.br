@@ -222,6 +222,14 @@ return new class extends Migration
     {
         foreach ($this->productionForeignKeys as $table => $constraint) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'production_id')) continue;
+
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                Schema::table($table, function (Blueprint $blueprint) {
+                    $blueprint->dropForeign(['production_id']);
+                });
+                continue;
+            }
+
             DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraint));
         }
     }
