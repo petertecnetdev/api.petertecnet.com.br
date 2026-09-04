@@ -3,6 +3,7 @@
 namespace App\Domain\Acquisition\Http\Controllers;
 
 use App\Domain\Acquisition\Services\AcquisitionAgentService;
+use App\Domain\Acquisition\Services\AcquisitionLifecycleGuard;
 use App\Domain\Acquisition\Services\AcquisitionOnboardingService;
 use App\Http\Controllers\Controller;
 use Carbon\CarbonImmutable;
@@ -16,6 +17,7 @@ final class AcquisitionController extends Controller
     public function __construct(
         private readonly AcquisitionAgentService $agents,
         private readonly AcquisitionOnboardingService $onboarding,
+        private readonly AcquisitionLifecycleGuard $lifecycle,
     ) {}
 
     public function context(Request $request)
@@ -81,6 +83,7 @@ final class AcquisitionController extends Controller
         ]);
 
         $this->validateEventInvariants($data);
+        $this->lifecycle->assertOnboardingAllowed((string) data_get($data, 'user.email'));
 
         return response()->json(
             $this->onboarding->onboard($request->user(), $data),
@@ -121,6 +124,7 @@ final class AcquisitionController extends Controller
 
     public function resend(Request $request, int $referralId)
     {
+        $this->lifecycle->assertResendAllowed($request->user(), $referralId);
         $result = $this->onboarding->resend($request->user(), $referralId);
 
         return response()->json($result, $result['email_sent'] ? 200 : 503);
@@ -158,6 +162,11 @@ final class AcquisitionController extends Controller
             'password_confirmation' => 'nullable|string|same:password',
         ]);
 
-        return response()->json($this->onboarding->activate($data));
+        $result = $this->lifecycle->activate(
+            (string) $data['token'],
+            fn () => $this->onboarding->activate($data),
+        );
+
+        return response()->json($result);
     }
 }
