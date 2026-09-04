@@ -1,12 +1,17 @@
 <?php
 
 return [
-    'enabled' => env('COGNITION_ENABLED', false),
+    // Enabled automatically in production unless explicitly overridden.
+    // Local/testing environments remain opt-in so test data never becomes training data.
+    'enabled' => env('COGNITION_ENABLED', env('APP_ENV') === 'production'),
     'auto_learn' => env('COGNITION_AUTO_LEARN', true),
     'default_agent_slug' => env('COGNITION_DEFAULT_AGENT', 'ecosystem-core'),
     'default_agent_name' => env('COGNITION_DEFAULT_AGENT_NAME', 'Peter Cognitive Core'),
     'memory_threshold' => (float) env('COGNITION_MEMORY_THRESHOLD', 0.65),
     'allow_self_generated_goals' => env('COGNITION_ALLOW_SELF_GENERATED_GOALS', false),
+    // Keep cognitive learning independent from the application's general queue worker.
+    // `sync` guarantees learning is processed even when no queue daemon is configured.
+    'queue_connection' => env('COGNITION_QUEUE_CONNECTION', 'sync'),
     'queue' => env('COGNITION_QUEUE', 'default'),
 
     'interaction_content_allowlist' => [

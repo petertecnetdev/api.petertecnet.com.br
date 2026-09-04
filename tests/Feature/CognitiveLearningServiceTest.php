@@ -8,6 +8,7 @@ use App\Models\Interaction;
 use App\Models\Profile;
 use App\Models\User;
 use App\Services\CognitiveLearningService;
+use App\Services\CognitiveQueryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
@@ -74,5 +75,43 @@ class CognitiveLearningServiceTest extends TestCase
         $this->assertSame($agent->identity['continuity_key'], $snapshot->self_model['identity']['continuity_key']);
         $this->assertNotEmpty($snapshot->active_goals);
         $this->assertArrayHasKey('belief_count', $snapshot->metrics);
+    }
+
+    public function test_dashboard_exposes_learning_health_and_timeline(): void
+    {
+        config(['cognition.enabled'=>true,'cognition.auto_learn'=>true]);
+        $profile = Profile::create(['name'=>'Administrador Dashboard','permissions'=>[]]);
+        $user = User::create(['first_name'=>'Dashboard','email'=>'dashboard@example.test','user_name'=>'dashboard-researcher','password'=>Hash::make('Test1234!'),'profile_id'=>$profile->id]);
+        $learning = app(CognitiveLearningService::class);
+        $agent = $learning->defaultAgent();
+
+        $learning->recordObservation($agent, [
+            'event_type'=>'usage_success',
+            'source_channel'=>'api',
+            'payload'=>['status'=>'ok','duration_ms'=>35],
+            'salience'=>0.95,
+        ]);
+        $learning->recordFeedback($agent, [
+            'subject'=>'ecosystem',
+            'predicate'=>'usage_pattern',
+            'object_key'=>'fast-path',
+            'value'=>['successful'=>true],
+            'signal'=>1,
+            'confidence'=>0.9,
+            'summary'=>'O fluxo rápido teve resultado positivo.',
+        ], $user);
+        $learning->captureState($agent);
+
+        $dashboard = app(CognitiveQueryService::class)->dashboard($agent);
+
+        $this->assertTrue($dashboard['system']['enabled']);
+        $this->assertTrue($dashboard['system']['auto_learn']);
+        $this->assertFalse($dashboard['system']['allow_self_generated_goals']);
+        $this->assertGreaterThanOrEqual(1, $dashboard['summary']['observations']);
+        $this->assertGreaterThanOrEqual(1, $dashboard['summary']['memories']);
+        $this->assertGreaterThanOrEqual(1, $dashboard['summary']['beliefs']);
+        $this->assertCount(14, $dashboard['timeline']);
+        $this->assertArrayHasKey('learning_events', $dashboard['recent']);
+        $this->assertNotNull($dashboard['recent']['state']);
     }
 }

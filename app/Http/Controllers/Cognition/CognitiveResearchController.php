@@ -22,9 +22,10 @@ class CognitiveResearchController extends CognitionController
         return response()->json(['experiments_upserted' => $learning->bootstrapExperiments()]);
     }
 
-    public function experiments(Request $request, CognitiveQueryService $queries)
+    public function experiments(Request $request, CognitiveLearningService $learning, CognitiveQueryService $queries)
     {
         $this->authorizeCognition($request);
+        $learning->bootstrapExperiments();
         return response()->json($queries->experiments());
     }
 

@@ -10,6 +10,7 @@ Route::prefix('cognition')->middleware(['auth:api','throttle:60,1'])->group(func
     Route::get('/agents/default',[CognitiveAgentController::class,'default']);
     Route::post('/agents',[CognitiveAgentController::class,'store']);
     Route::get('/agents/{agent}',[CognitiveAgentController::class,'show']);
+    Route::get('/agents/{agent}/dashboard',[CognitiveAgentController::class,'dashboard']);
     Route::put('/agents/{agent}',[CognitiveAgentController::class,'update']);
     Route::post('/agents/{agent}/state',[CognitiveAgentController::class,'state']);
     Route::get('/agents/{agent}/observations',[CognitiveLearningController::class,'observations']);
