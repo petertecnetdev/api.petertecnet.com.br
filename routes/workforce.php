@@ -9,8 +9,8 @@ use Illuminate\Support\Facades\Route;
 |--------------------------------------------------------------------------
 | Shared team-management reads and mutations that are consumed by any
 | application with the workforce capability. The canonical create route lives
-| in api_v1.php; this contract completes read/delete while clients migrate away
-| from the legacy /employer endpoints.
+| in api_v1.php; this contract completes discovery/read/delete while clients
+| migrate away from legacy employer/user-specific endpoints.
 */
 Route::prefix('v1/apps/{application}')
     ->middleware([
@@ -20,6 +20,7 @@ Route::prefix('v1/apps/{application}')
         'app.capability:workforce',
     ])
     ->group(function () {
+        Route::get('/team-members/candidates', [TeamMemberController::class, 'candidates']);
         Route::get('/team-members', [TeamMemberController::class, 'index']);
         Route::delete('/team-members/{teamMember}', [TeamMemberController::class, 'destroy'])
             ->whereNumber('teamMember');
