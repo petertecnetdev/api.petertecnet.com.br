@@ -2,28 +2,44 @@
 
 namespace App\Domain\Documents\Services;
 
+use App\Domain\Documents\DTOs\DocumentAuditContext;
 use App\Domain\Documents\Events\DocumentSignatureRecorded;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class DocumentWorkflowService
 {
-    public function createOrRevise(int $appId, string $contextType, string|int $contextId, string $documentType, string $title, string $content, array $payload, array $parties, ?int $actorUserId = null, ?int $parentDocumentId = null, ?Request $request = null): object
+    public function createOrRevise(int $appId, string $contextType, string|int $contextId, string $documentType, string $title, string $content, array $payload, array $parties, ?int $actorUserId = null, ?int $parentDocumentId = null, ?DocumentAuditContext $auditContext = null): object
     {
-        return DB::transaction(function () use ($appId, $contextType, $contextId, $documentType, $title, $content, $payload, $parties, $actorUserId, $parentDocumentId, $request) {
+        return DB::transaction(function () use ($appId, $contextType, $contextId, $documentType, $title, $content, $payload, $parties, $actorUserId, $parentDocumentId, $auditContext) {
             $document = DB::table('documents')
-                ->where('app_id', $appId)->where('context_type', $contextType)->where('context_id', (string) $contextId)
-                ->where('document_type', $documentType)->whereNull('deleted_at')->latest('id')->lockForUpdate()->first();
+                ->where('app_id', $appId)
+                ->where('context_type', $contextType)
+                ->where('context_id', (string) $contextId)
+                ->where('document_type', $documentType)
+                ->whereNull('deleted_at')
+                ->latest('id')
+                ->lockForUpdate()
+                ->first();
 
             if (! $document) {
                 $documentId = DB::table('documents')->insertGetId([
-                    'public_id' => (string) Str::uuid(), 'app_id' => $appId, 'context_type' => $contextType, 'context_id' => (string) $contextId,
-                    'parent_document_id' => $parentDocumentId, 'created_by_user_id' => $actorUserId, 'document_type' => $documentType, 'title' => $title,
-                    'status' => 'draft', 'current_version' => 0, 'payload' => $this->json($payload), 'created_at' => now(), 'updated_at' => now(),
+                    'public_id' => (string) Str::uuid(),
+                    'app_id' => $appId,
+                    'context_type' => $contextType,
+                    'context_id' => (string) $contextId,
+                    'parent_document_id' => $parentDocumentId,
+                    'created_by_user_id' => $actorUserId,
+                    'document_type' => $documentType,
+                    'title' => $title,
+                    'status' => 'draft',
+                    'current_version' => 0,
+                    'payload' => $this->json($payload),
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
                 $document = DB::table('documents')->where('id', $documentId)->lockForUpdate()->firstOrFail();
-                $this->audit($documentId, null, $actorUserId, 'document.created', 'Documento criado.', [], $request);
+                $this->audit($documentId, null, $actorUserId, 'document.created', 'Documento criado.', [], $auditContext);
             }
 
             abort_if(in_array($document->status, ['signed', 'active', 'cancelled', 'expired'], true), 422, 'Documento concluído deve ser alterado por aditivo.');
@@ -36,9 +52,13 @@ final class DocumentWorkflowService
 
             if ($currentVersion && hash_equals((string) $currentVersion->content_hash, $contentHash)) {
                 DB::table('documents')->where('id', $document->id)->update([
-                    'title' => $title, 'payload' => $this->json($payload), 'parent_document_id' => $parentDocumentId ?: $document->parent_document_id, 'updated_at' => now(),
+                    'title' => $title,
+                    'payload' => $this->json($payload),
+                    'parent_document_id' => $parentDocumentId ?: $document->parent_document_id,
+                    'updated_at' => now(),
                 ]);
-                return $this->payload($document->id);
+
+                return $this->payloadForApplication($appId, $document->id);
             }
 
             if (in_array($document->status, ['awaiting_signatures', 'partially_signed'], true)) {
@@ -48,34 +68,62 @@ final class DocumentWorkflowService
 
             $nextVersion = ((int) $document->current_version) + 1;
             $versionId = DB::table('document_versions')->insertGetId([
-                'document_id' => $document->id, 'version' => $nextVersion, 'status' => 'draft', 'content' => $content,
-                'payload_snapshot' => $this->json($payload), 'content_hash' => $contentHash, 'is_locked' => false,
-                'created_by_user_id' => $actorUserId, 'created_at' => now(), 'updated_at' => now(),
+                'document_id' => $document->id,
+                'version' => $nextVersion,
+                'status' => 'draft',
+                'content' => $content,
+                'payload_snapshot' => $this->json($payload),
+                'content_hash' => $contentHash,
+                'is_locked' => false,
+                'created_by_user_id' => $actorUserId,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
             DB::table('documents')->where('id', $document->id)->update([
-                'title' => $title, 'payload' => $this->json($payload), 'parent_document_id' => $parentDocumentId ?: $document->parent_document_id,
-                'current_version' => $nextVersion, 'status' => 'review', 'completed_at' => null, 'updated_at' => now(),
+                'title' => $title,
+                'payload' => $this->json($payload),
+                'parent_document_id' => $parentDocumentId ?: $document->parent_document_id,
+                'current_version' => $nextVersion,
+                'status' => 'review',
+                'completed_at' => null,
+                'updated_at' => now(),
             ]);
-            $this->audit($document->id, $versionId, $actorUserId, 'document.version.created', 'Nova versão da minuta criada.', ['version' => $nextVersion, 'content_hash' => $contentHash], $request);
-            return $this->payload($document->id);
+            $this->audit($document->id, $versionId, $actorUserId, 'document.version.created', 'Nova versão da minuta criada.', ['version' => $nextVersion, 'content_hash' => $contentHash], $auditContext);
+
+            return $this->payloadForApplication($appId, $document->id);
         });
     }
 
-    public function reopenForRevision(int $documentId, ?int $actorUserId = null, ?Request $request = null): object
+    public function reopenForRevisionForApplication(int $appId, int $documentId, ?int $actorUserId = null, ?DocumentAuditContext $auditContext = null): object
     {
-        DB::transaction(function () use ($documentId, $actorUserId, $request) {
+        $this->documentForApplication($appId, $documentId);
+
+        return $this->reopenForRevision($documentId, $actorUserId, $auditContext);
+    }
+
+    public function reopenForRevision(int $documentId, ?int $actorUserId = null, ?DocumentAuditContext $auditContext = null): object
+    {
+        DB::transaction(function () use ($documentId, $actorUserId, $auditContext) {
             $document = DB::table('documents')->where('id', $documentId)->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_if(in_array($document->status, ['signed', 'active', 'cancelled', 'expired'], true), 422, 'Documento concluído deve ser alterado por aditivo.');
             DB::table('signature_requests')->where('document_id', $documentId)->where('status', 'pending')->update(['status' => 'cancelled', 'cancelled_at' => now(), 'updated_at' => now()]);
             DB::table('documents')->where('id', $documentId)->update(['status' => 'review', 'updated_at' => now()]);
-            $this->audit($documentId, null, $actorUserId, 'document.revision_requested', 'Solicitações pendentes foram invalidadas para criação de nova versão.', [], $request);
+            $this->audit($documentId, null, $actorUserId, 'document.revision_requested', 'Solicitações pendentes foram invalidadas para criação de nova versão.', [], $auditContext);
         });
+
         return $this->payload($documentId);
     }
 
-    public function send(int $documentId, ?int $actorUserId = null, ?Request $request = null, int $expiresInDays = 15): array
+    public function sendForApplication(int $appId, int $documentId, ?int $actorUserId = null, ?DocumentAuditContext $auditContext = null, int $expiresInDays = 15): array
     {
-        return DB::transaction(function () use ($documentId, $actorUserId, $request, $expiresInDays) {
+        $this->documentForApplication($appId, $documentId);
+
+        return $this->send($documentId, $actorUserId, $auditContext, $expiresInDays);
+    }
+
+    public function send(int $documentId, ?int $actorUserId = null, ?DocumentAuditContext $auditContext = null, int $expiresInDays = 15): array
+    {
+        return DB::transaction(function () use ($documentId, $actorUserId, $auditContext, $expiresInDays) {
             $document = DB::table('documents')->where('id', $documentId)->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_if(in_array($document->status, ['signed', 'active', 'cancelled', 'expired'], true), 422, 'Este documento não pode mais ser enviado para assinatura.');
             $version = DB::table('document_versions')->where('document_id', $documentId)->where('version', $document->current_version)->lockForUpdate()->firstOrFail();
@@ -88,64 +136,163 @@ final class DocumentWorkflowService
             foreach ($parties as $party) {
                 $token = Str::random(64);
                 $requestId = DB::table('signature_requests')->insertGetId([
-                    'public_id' => (string) Str::uuid(), 'document_id' => $documentId, 'document_version_id' => $version->id, 'document_party_id' => $party->id,
-                    'token_hash' => hash('sha256', $token), 'status' => 'pending', 'expires_at' => now()->addDays(max(1, min(30, $expiresInDays))),
-                    'created_at' => now(), 'updated_at' => now(),
+                    'public_id' => (string) Str::uuid(),
+                    'document_id' => $documentId,
+                    'document_version_id' => $version->id,
+                    'document_party_id' => $party->id,
+                    'token_hash' => hash('sha256', $token),
+                    'status' => 'pending',
+                    'expires_at' => now()->addDays(max(1, min(30, $expiresInDays))),
+                    'created_at' => now(),
+                    'updated_at' => now(),
                 ]);
                 $requests[] = ['id' => $requestId, 'party' => $party, 'token' => $token];
             }
             DB::table('documents')->where('id', $documentId)->update(['status' => 'awaiting_signatures', 'sent_at' => now(), 'updated_at' => now()]);
-            $this->audit($documentId, $version->id, $actorUserId, 'document.sent', 'Documento enviado para assinatura.', ['version' => $version->version, 'signature_requests' => count($requests)], $request);
+            $this->audit($documentId, $version->id, $actorUserId, 'document.sent', 'Documento enviado para assinatura.', ['version' => $version->version, 'signature_requests' => count($requests)], $auditContext);
+
             return ['document' => $this->payload($documentId), 'signature_requests' => $requests];
         });
     }
 
-    public function sign(int $documentId, string $role, array $signer, ?int $userId, ?Request $request = null): object
+    public function signForApplication(int $appId, int $documentId, string $role, array $signer, ?int $userId, ?DocumentAuditContext $auditContext = null): object
+    {
+        $this->documentForApplication($appId, $documentId);
+
+        return $this->sign($documentId, $role, $signer, $userId, $auditContext);
+    }
+
+    public function sign(int $documentId, string $role, array $signer, ?int $userId, ?DocumentAuditContext $auditContext = null): object
     {
         $partyId = null;
-        $payload = DB::transaction(function () use ($documentId, $role, $signer, $userId, $request, &$partyId) {
+        $payload = DB::transaction(function () use ($documentId, $role, $signer, $userId, $auditContext, &$partyId) {
             $document = DB::table('documents')->where('id', $documentId)->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_unless(in_array($document->status, ['awaiting_signatures', 'partially_signed'], true), 422, 'O documento não está disponível para assinatura.');
             $version = DB::table('document_versions')->where('document_id', $documentId)->where('version', $document->current_version)->where('is_locked', true)->firstOrFail();
             $party = DB::table('document_parties')->where('document_id', $documentId)->where('role', $role)->firstOrFail();
             $partyId = (int) $party->id;
-            if ($existing = DB::table('document_signatures')->where('document_version_id', $version->id)->where('document_party_id', $party->id)->first()) {
+
+            if (DB::table('document_signatures')->where('document_version_id', $version->id)->where('document_party_id', $party->id)->exists()) {
                 return $this->payload($documentId);
             }
+
             $signatureRequest = DB::table('signature_requests')->where('document_id', $documentId)->where('document_version_id', $version->id)->where('document_party_id', $party->id)->where('status', 'pending')->latest('id')->first();
-            if ($signatureRequest && $signatureRequest->expires_at && now()->greaterThan($signatureRequest->expires_at)) abort(410, 'A solicitação de assinatura expirou.');
+            if ($signatureRequest && $signatureRequest->expires_at && now()->greaterThan($signatureRequest->expires_at)) {
+                abort(410, 'A solicitação de assinatura expirou.');
+            }
 
             $signedAt = now();
-            $signatureHash = hash('sha256', implode('|', [$document->public_id, $version->version, $version->content_hash, $role, $party->id, $userId ?: 'guest', $signedAt->toIso8601String(), $request?->ip() ?: '']));
+            $signatureHash = hash('sha256', implode('|', [
+                $document->public_id,
+                $version->version,
+                $version->content_hash,
+                $role,
+                $party->id,
+                $userId ?: 'guest',
+                $signedAt->toIso8601String(),
+                $auditContext?->ipAddress ?: '',
+            ]));
+
             DB::table('document_signatures')->insert([
-                'document_id' => $documentId, 'document_version_id' => $version->id, 'document_party_id' => $party->id, 'signature_request_id' => $signatureRequest?->id,
-                'user_id' => $userId, 'signer_name' => $signer['name'], 'signer_email' => $signer['email'] ?? $party->email, 'signer_tax_id' => $signer['tax_id'] ?? $party->tax_id,
-                'signature_type' => 'electronic_acknowledgement', 'signature_hash' => $signatureHash, 'content_hash' => $version->content_hash,
-                'ip_address' => $request?->ip(), 'user_agent' => mb_substr((string) ($request?->userAgent() ?? ''), 0, 2000),
+                'document_id' => $documentId,
+                'document_version_id' => $version->id,
+                'document_party_id' => $party->id,
+                'signature_request_id' => $signatureRequest?->id,
+                'user_id' => $userId,
+                'signer_name' => $signer['name'],
+                'signer_email' => $signer['email'] ?? $party->email,
+                'signer_tax_id' => $signer['tax_id'] ?? $party->tax_id,
+                'signature_type' => 'electronic_acknowledgement',
+                'signature_hash' => $signatureHash,
+                'content_hash' => $version->content_hash,
+                'ip_address' => $auditContext?->ipAddress,
+                'user_agent' => $auditContext?->userAgentForStorage() ?? '',
                 'evidence' => $this->json(['accepted' => true, 'role' => $role, 'version' => $version->version, 'content_hash' => $version->content_hash]),
-                'signed_at' => $signedAt, 'created_at' => now(), 'updated_at' => now(),
+                'signed_at' => $signedAt,
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
-            if ($signatureRequest) DB::table('signature_requests')->where('id', $signatureRequest->id)->update(['status' => 'signed', 'signed_at' => $signedAt, 'updated_at' => now()]);
+
+            if ($signatureRequest) {
+                DB::table('signature_requests')->where('id', $signatureRequest->id)->update(['status' => 'signed', 'signed_at' => $signedAt, 'updated_at' => now()]);
+            }
 
             $requiredPartyIds = DB::table('document_parties')->where('document_id', $documentId)->where('must_sign', true)->pluck('id');
             $signedCount = DB::table('document_signatures')->where('document_version_id', $version->id)->whereIn('document_party_id', $requiredPartyIds)->distinct()->count('document_party_id');
             $complete = $requiredPartyIds->isNotEmpty() && $signedCount >= $requiredPartyIds->count();
             DB::table('documents')->where('id', $documentId)->update(['status' => $complete ? 'signed' : 'partially_signed', 'completed_at' => $complete ? now() : null, 'updated_at' => now()]);
             DB::table('document_versions')->where('id', $version->id)->update(['status' => $complete ? 'signed' : 'locked', 'updated_at' => now()]);
-            $this->audit($documentId, $version->id, $userId, 'document.signed', 'Parte assinou a versão imutável do documento.', ['role' => $role, 'signature_hash' => $signatureHash, 'complete' => $complete], $request);
-            if ($complete) $this->audit($documentId, $version->id, $userId, 'document.completed', 'Todas as assinaturas obrigatórias foram concluídas.', [], $request);
+            $this->audit($documentId, $version->id, $userId, 'document.signed', 'Parte assinou a versão imutável do documento.', ['role' => $role, 'signature_hash' => $signatureHash, 'complete' => $complete], $auditContext);
+            if ($complete) {
+                $this->audit($documentId, $version->id, $userId, 'document.completed', 'Todas as assinaturas obrigatórias foram concluídas.', [], $auditContext);
+            }
+
             return $this->payload($documentId);
         });
 
-        if ($partyId) event(new DocumentSignatureRecorded($documentId, $partyId));
+        if ($partyId) {
+            event(new DocumentSignatureRecorded($documentId, $partyId));
+        }
+
         return $payload;
+    }
+
+    public function publicSignaturePayload(string $token, ?DocumentAuditContext $auditContext = null): array
+    {
+        $signatureRequest = $this->resolveSignatureRequest($token);
+        $document = DB::table('documents')->where('id', $signatureRequest->document_id)->whereNull('deleted_at')->firstOrFail();
+        $version = DB::table('document_versions')->where('id', $signatureRequest->document_version_id)->where('document_id', $document->id)->firstOrFail();
+        $party = DB::table('document_parties')->where('id', $signatureRequest->document_party_id)->where('document_id', $document->id)->firstOrFail();
+
+        if (! $signatureRequest->viewed_at && $signatureRequest->status === 'pending') {
+            DB::transaction(function () use ($signatureRequest, $document, $version, $party, $auditContext) {
+                DB::table('signature_requests')->where('id', $signatureRequest->id)->whereNull('viewed_at')->update(['viewed_at' => now(), 'updated_at' => now()]);
+                $this->audit($document->id, $version->id, null, 'document.viewed', 'Documento visualizado por link seguro de assinatura.', ['party_role' => $party->role], $auditContext);
+            });
+        }
+
+        return [
+            'request' => ['public_id' => $signatureRequest->public_id, 'status' => $signatureRequest->status, 'expires_at' => $signatureRequest->expires_at, 'signed_at' => $signatureRequest->signed_at],
+            'document' => ['public_id' => $document->public_id, 'title' => $document->title, 'document_type' => $document->document_type, 'status' => $document->status, 'version' => $version->version, 'content' => $version->content, 'content_hash' => $version->content_hash],
+            'party' => ['role' => $party->role, 'name' => $party->name, 'email' => $party->email],
+        ];
+    }
+
+    public function signByToken(string $token, array $signer, ?DocumentAuditContext $auditContext = null): object
+    {
+        $signatureRequest = $this->resolveSignatureRequest($token, true);
+        $party = DB::table('document_parties')
+            ->where('id', $signatureRequest->document_party_id)
+            ->where('document_id', $signatureRequest->document_id)
+            ->firstOrFail();
+
+        return $this->sign($signatureRequest->document_id, $party->role, [
+            'name' => $signer['name'],
+            'email' => $party->email,
+            'tax_id' => $signer['tax_id'] ?? $party->tax_id,
+        ], null, $auditContext);
+    }
+
+    public function timelineForApplication(int $appId, int $documentId): array
+    {
+        $this->documentForApplication($appId, $documentId);
+
+        return $this->timeline($documentId);
     }
 
     public function timeline(int $documentId): array
     {
         return DB::table('document_audit_events')->where('document_id', $documentId)->orderByDesc('occurred_at')->orderByDesc('id')->get()->map(function ($row) {
-            $row->metadata = $row->metadata ? json_decode($row->metadata, true) : null; return $row;
+            $row->metadata = $row->metadata ? json_decode($row->metadata, true) : null;
+            return $row;
         })->all();
+    }
+
+    public function payloadForApplication(int $appId, int $documentId): object
+    {
+        $this->documentForApplication($appId, $documentId);
+
+        return $this->payload($documentId);
     }
 
     public function payload(int $documentId): object
@@ -153,43 +300,94 @@ final class DocumentWorkflowService
         $document = DB::table('documents')->where('id', $documentId)->whereNull('deleted_at')->firstOrFail();
         $document->payload = $document->payload ? json_decode($document->payload, true) : null;
         $document->versions = DB::table('document_versions')->where('document_id', $documentId)->orderByDesc('version')->get()->map(function ($version) {
-            $version->payload_snapshot = $version->payload_snapshot ? json_decode($version->payload_snapshot, true) : null; return $version;
+            $version->payload_snapshot = $version->payload_snapshot ? json_decode($version->payload_snapshot, true) : null;
+            return $version;
         });
         $document->parties = DB::table('document_parties')->where('document_id', $documentId)->orderBy('signing_order')->get()->map(function ($party) {
-            $party->metadata = $party->metadata ? json_decode($party->metadata, true) : null; return $party;
+            $party->metadata = $party->metadata ? json_decode($party->metadata, true) : null;
+            return $party;
         });
         $document->signatures = DB::table('document_signatures')->where('document_id', $documentId)->orderBy('signed_at')->get()->map(function ($signature) {
-            $signature->evidence = $signature->evidence ? json_decode($signature->evidence, true) : null; return $signature;
+            $signature->evidence = $signature->evidence ? json_decode($signature->evidence, true) : null;
+            return $signature;
         });
-        $document->signature_requests = DB::table('signature_requests')->where('document_id', $documentId)->select(['public_id','document_version_id','document_party_id','status','expires_at','viewed_at','signed_at','cancelled_at','created_at'])->orderByDesc('id')->get();
+        $document->signature_requests = DB::table('signature_requests')->where('document_id', $documentId)
+            ->select(['public_id', 'document_version_id', 'document_party_id', 'status', 'expires_at', 'viewed_at', 'signed_at', 'cancelled_at', 'created_at'])
+            ->orderByDesc('id')->get();
+
         return $document;
     }
 
     public function latestForContext(int $appId, string $contextType, string|int $contextId, ?string $documentType = null): ?object
     {
         $query = DB::table('documents')->where('app_id', $appId)->where('context_type', $contextType)->where('context_id', (string) $contextId)->whereNull('deleted_at');
-        if ($documentType) $query->where('document_type', $documentType);
+        if ($documentType) {
+            $query->where('document_type', $documentType);
+        }
         $document = $query->latest('id')->first();
-        return $document ? $this->payload($document->id) : null;
+
+        return $document ? $this->payloadForApplication($appId, $document->id) : null;
+    }
+
+    private function documentForApplication(int $appId, int $documentId): object
+    {
+        return DB::table('documents')
+            ->where('id', $documentId)
+            ->where('app_id', $appId)
+            ->whereNull('deleted_at')
+            ->firstOrFail();
+    }
+
+    private function resolveSignatureRequest(string $token, bool $mustBePending = false): object
+    {
+        abort_unless(strlen($token) >= 40, 404);
+        $query = DB::table('signature_requests')->where('token_hash', hash('sha256', $token));
+        if ($mustBePending) {
+            $query->where('status', 'pending');
+        }
+        $signatureRequest = $query->firstOrFail();
+        abort_if($signatureRequest->expires_at && now()->greaterThan($signatureRequest->expires_at), 410, 'Este link de assinatura expirou.');
+        abort_if($signatureRequest->cancelled_at || $signatureRequest->status === 'cancelled', 410, 'Este link de assinatura foi cancelado.');
+
+        return $signatureRequest;
     }
 
     private function syncParties(int $documentId, array $parties): void
     {
         foreach ($parties as $party) {
             DB::table('document_parties')->updateOrInsert(['document_id' => $documentId, 'role' => $party['role']], [
-                'user_id' => $party['user_id'] ?? null, 'name' => $party['name'], 'email' => $party['email'] ?? null, 'tax_id' => $party['tax_id'] ?? null,
-                'signing_order' => $party['signing_order'] ?? 1, 'must_sign' => $party['must_sign'] ?? true, 'metadata' => $this->json($party['metadata'] ?? null),
-                'created_at' => now(), 'updated_at' => now(),
+                'user_id' => $party['user_id'] ?? null,
+                'name' => $party['name'],
+                'email' => $party['email'] ?? null,
+                'tax_id' => $party['tax_id'] ?? null,
+                'signing_order' => $party['signing_order'] ?? 1,
+                'must_sign' => $party['must_sign'] ?? true,
+                'metadata' => $this->json($party['metadata'] ?? null),
+                'created_at' => now(),
+                'updated_at' => now(),
             ]);
         }
     }
 
-    private function audit(int $documentId, ?int $versionId, ?int $actorUserId, string $eventType, ?string $description, array $metadata, ?Request $request): void
+    private function audit(int $documentId, ?int $versionId, ?int $actorUserId, string $eventType, ?string $description, array $metadata, ?DocumentAuditContext $auditContext): void
     {
+        $metadata['source'] = $auditContext?->source ?? 'internal';
+        if ($auditContext?->requestId) {
+            $metadata['request_id'] = $auditContext->requestId;
+        }
+
         DB::table('document_audit_events')->insert([
-            'document_id' => $documentId, 'document_version_id' => $versionId, 'actor_user_id' => $actorUserId, 'event_type' => $eventType, 'description' => $description,
-            'metadata' => $this->json($metadata), 'ip_address' => $request?->ip(), 'user_agent' => mb_substr((string) ($request?->userAgent() ?? ''), 0, 2000),
-            'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            'document_id' => $documentId,
+            'document_version_id' => $versionId,
+            'actor_user_id' => $actorUserId,
+            'event_type' => $eventType,
+            'description' => $description,
+            'metadata' => $this->json($metadata),
+            'ip_address' => $auditContext?->ipAddress,
+            'user_agent' => $auditContext?->userAgentForStorage() ?? '',
+            'occurred_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
