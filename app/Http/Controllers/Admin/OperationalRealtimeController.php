@@ -34,6 +34,10 @@ class OperationalRealtimeController extends Controller
             'port' => $port,
             'channel' => 'private-ecosystem.admin',
             'event' => 'mission-control.updated',
+            'events' => [
+                'mission-control.updated',
+                'ecosystem.updated',
+            ],
             'auth_endpoint' => rtrim((string) config('app.url'), '/') . '/broadcasting/auth',
         ]);
     }
