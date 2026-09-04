@@ -223,9 +223,16 @@ return new class extends Migration
         foreach ($this->productionForeignKeys as $table => $constraint) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'production_id')) continue;
 
-            Schema::table($table, function (Blueprint $blueprint) use ($constraint) {
-                $blueprint->dropForeign($constraint);
-            });
+            if (DB::getDriverName() === 'sqlite') {
+                // Laravel 12 rebuilds the SQLite table for dropForeign. Passing the
+                // column is required because SQLite does not persist constraint names.
+                Schema::table($table, function (Blueprint $blueprint) {
+                    $blueprint->dropForeign(['production_id']);
+                });
+                continue;
+            }
+
+            DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraint));
         }
     }
 
