@@ -11,10 +11,17 @@ class CognitiveInteractionObserver
     public function created(Interaction $interaction): void
     {
         if (! config('cognition.enabled') || ! config('cognition.auto_learn', true)) return;
+
         try {
-            LearnFromInteraction::dispatch($interaction->id)->afterCommit();
+            LearnFromInteraction::dispatch($interaction->id)
+                ->onConnection((string) config('cognition.queue_connection', 'sync'))
+                ->onQueue((string) config('cognition.queue', 'default'))
+                ->afterCommit();
         } catch (\Throwable $e) {
-            Log::warning('Falha ao enfileirar aprendizado cognitivo.', ['interaction_id'=>$interaction->id,'message'=>$e->getMessage()]);
+            Log::warning('Falha ao processar aprendizado cognitivo.', [
+                'interaction_id' => $interaction->id,
+                'message' => $e->getMessage(),
+            ]);
         }
     }
 }
