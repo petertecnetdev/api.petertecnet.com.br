@@ -9,6 +9,7 @@ use App\Domain\Leasing\Http\Controllers\LeasePaymentWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeaseReadController;
 use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
+use App\Domain\Leasing\Http\Controllers\PropertyWorkspaceController;
 use App\Domain\Leasing\Http\Middleware\PreventLeaseOverlap;
 use App\Domain\Leasing\Http\Middleware\ProtectPropertyLeaseState;
 use Illuminate\Support\Facades\Route;
@@ -24,11 +25,21 @@ Route::prefix('v1/apps/{application}')
 
         Route::get('/properties', [LeaseReadController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
+        Route::get('/properties/{propertyId}', [PropertyWorkspaceController::class, 'show'])->whereNumber('propertyId');
         Route::match(['put', 'patch'], '/properties/{propertyId}', [LeasingController::class, 'updateProperty'])->whereNumber('propertyId')->middleware(ProtectPropertyLeaseState::class);
         Route::delete('/properties/{propertyId}', [LeasingController::class, 'destroyProperty'])->whereNumber('propertyId');
-        Route::get('/properties/{propertyId}/timeline', [LeaseLifecycleController::class, 'propertyTimeline'])->whereNumber('propertyId');
+        Route::get('/properties/{propertyId}/timeline', [PropertyWorkspaceController::class, 'timeline'])->whereNumber('propertyId');
+        Route::get('/properties/{propertyId}/financial', [PropertyWorkspaceController::class, 'financial'])->whereNumber('propertyId');
         Route::get('/properties/{propertyId}/inspections', [LeasingController::class, 'inspections'])->whereNumber('propertyId');
         Route::post('/properties/{propertyId}/inspections', [LeasingController::class, 'storeInspection'])->whereNumber('propertyId');
+        Route::get('/properties/{propertyId}/maintenance', [PropertyWorkspaceController::class, 'maintenance'])->whereNumber('propertyId');
+        Route::post('/properties/{propertyId}/maintenance', [PropertyWorkspaceController::class, 'storeMaintenance'])->whereNumber('propertyId');
+        Route::patch('/properties/{propertyId}/maintenance/{operationId}', [PropertyWorkspaceController::class, 'updateMaintenance'])->whereNumber('propertyId')->whereNumber('operationId');
+        Route::get('/properties/{propertyId}/assets', [PropertyWorkspaceController::class, 'assets'])->whereNumber('propertyId');
+        Route::post('/properties/{propertyId}/assets', [PropertyWorkspaceController::class, 'storeAsset'])->whereNumber('propertyId')->middleware('throttle:30,1');
+        Route::patch('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'updateAsset'])->whereNumber('propertyId')->whereNumber('assetId');
+        Route::get('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'downloadAsset'])->whereNumber('propertyId')->whereNumber('assetId');
+        Route::delete('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'deleteAsset'])->whereNumber('propertyId')->whereNumber('assetId');
 
         Route::get('/leases', [LeaseReadController::class, 'leases']);
         Route::post('/leases', [LeasingController::class, 'storeLease'])->middleware(PreventLeaseOverlap::class);
