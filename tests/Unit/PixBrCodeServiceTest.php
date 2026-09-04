@@ -22,7 +22,7 @@ final class PixBrCodeServiceTest extends TestCase
 
         $this->assertStringStartsWith('000201', $payload);
         $this->assertStringContainsString('BR.GOV.BCB.PIX', $payload);
-        $this->assertStringContainsString('541250.50', $payload);
+        $this->assertStringContainsString('54071250.50', $payload);
         $this->assertStringContainsString('5802BR', $payload);
         $this->assertMatchesRegularExpression('/6304[0-9A-F]{4}$/', $payload);
         $this->assertSame($this->crc16(substr($payload, 0, -4)), substr($payload, -4));
