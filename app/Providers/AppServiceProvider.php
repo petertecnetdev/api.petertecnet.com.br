@@ -15,6 +15,7 @@ use App\Models\Item;
 use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
+use App\Observers\CognitiveInteractionObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
 use App\Services\Operations\OperationalIssueService;
@@ -45,7 +46,7 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
-        Relation::morphMap(['establishment' => 'App\Models\Establishment', 'event' => 'App\Models\Event']);
+        Relation::morphMap(['establishment' => 'App\\Models\\Establishment', 'event' => 'App\\Models\\Event']);
         Event::listen(DocumentSignatureRecorded::class, SyncLeaseDocumentSignature::class);
 
         $storagePath = storage_path('app/public');
@@ -54,6 +55,9 @@ class AppServiceProvider extends ServiceProvider
         foreach ([Application::class, Profile::class, User::class, Establishment::class, Item::class, Order::class] as $auditedModel) {
             $auditedModel::observe(InteractionAuditObserver::class);
         }
+
+        // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
+        Interaction::observe(CognitiveInteractionObserver::class);
 
         $this->broadcastModelChanges(Interaction::class, ['dashboard', 'activity', 'audit']);
         $this->broadcastModelChanges(Order::class, ['dashboard', 'activity', 'audit']);

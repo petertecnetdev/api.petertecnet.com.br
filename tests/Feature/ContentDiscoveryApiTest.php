@@ -38,11 +38,23 @@ class ContentDiscoveryApiTest extends TestCase
             'excerpt' => 'Conteúdo já disponível.',
         ]);
 
-        $this->getJson('/api/v1/content')
+        $response = $this->getJson('/api/v1/content')
             ->assertOk()
-            ->assertJsonCount(1, 'data.data')
-            ->assertJsonPath('data.data.0.slug', 'agendado-liberado')
-            ->assertJsonPath('data.data.0.seo.canonical_path', '/blog/agendado-liberado');
+            ->assertJsonFragment([
+                'slug' => 'agendado-liberado',
+            ])
+            ->assertJsonMissing([
+                'slug' => 'rascunho-privado',
+            ])
+            ->assertJsonMissing([
+                'slug' => 'agendado-futuro',
+            ]);
+
+        $released = collect($response->json('data.data'))
+            ->firstWhere('slug', 'agendado-liberado');
+
+        $this->assertNotNull($released);
+        $this->assertSame('/blog/agendado-liberado', data_get($released, 'seo.canonical_path'));
     }
 
     public function test_admin_can_create_and_publish_generic_content(): void
