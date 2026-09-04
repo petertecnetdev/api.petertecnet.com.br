@@ -48,7 +48,8 @@ final class LeaseReadController extends Controller
     public function leases(Request $request)
     {
         $userId = (int) $request->user()->id;
-        $email = (string) $request->user()->email;
+        $email = mb_strtolower(trim((string) ($request->user()->email ?? '')));
+        $role = $this->contextRole($request);
 
         $rows = DB::table('leases as l')
             ->join('properties as p', function ($join) {
@@ -56,10 +57,29 @@ final class LeaseReadController extends Controller
             })
             ->where('l.app_id', $this->context->id())
             ->whereNull('l.deleted_at')
-            ->where(function ($query) use ($userId, $email) {
+            ->where(function ($query) use ($userId, $email, $role) {
+                if ($role === 'landlord') {
+                    $query->where('l.landlord_user_id', $userId);
+                    return;
+                }
+
+                if ($role === 'tenant') {
+                    $query->where('l.tenant_user_id', $userId);
+                    if ($email !== '') {
+                        $query->orWhere(function ($pending) use ($email) {
+                            $pending->whereNull('l.tenant_user_id')
+                                ->whereRaw('LOWER(l.tenant_email) = ?', [$email]);
+                        });
+                    }
+                    return;
+                }
+
+                // Compatibilidade: clientes antigos sem contexto continuam recebendo seus vínculos.
                 $query->where('l.landlord_user_id', $userId)
-                    ->orWhere('l.tenant_user_id', $userId)
-                    ->orWhere('l.tenant_email', $email);
+                    ->orWhere('l.tenant_user_id', $userId);
+                if ($email !== '') {
+                    $query->orWhereRaw('LOWER(l.tenant_email) = ?', [$email]);
+                }
             })
             ->select('l.*', 'p.name as property_name', 'p.city as property_city', 'p.state as property_state')
             ->orderByDesc('l.id')
@@ -69,6 +89,12 @@ final class LeaseReadController extends Controller
             $data = $this->decodeJsonColumns((array) $row, ['clauses', 'included_expenses', 'tenant_expenses', 'metadata']);
             return array_merge($data, $this->lifecycle->evaluate($row));
         })->values());
+    }
+
+    private function contextRole(Request $request): ?string
+    {
+        $role = strtolower(trim((string) ($request->header('X-Peter-Context-Role') ?: $request->query('role', ''))));
+        return in_array($role, ['landlord', 'tenant'], true) ? $role : null;
     }
 
     private function decodeJsonColumns(array $data, array $columns): array
