@@ -6,11 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\V1\StoreItemRequest;
 use App\Http\Requests\Api\V1\UpdateItemRequest;
 use App\Models\Establishment;
+use App\Models\File;
 use App\Models\Item;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class ItemController extends Controller
 {
@@ -120,43 +123,83 @@ class ItemController extends Controller
 
     public function store(StoreItemRequest $request): JsonResponse
     {
-        $establishment = $this->ownedEstablishment($request, (int) $request->validated('establishment_id'));
-        $data = $request->safe()->except('establishment_id');
+        $establishment = $this->ownedEstablishment(
+            $request,
+            (int) $request->validated('establishment_id')
+        );
+        $data = $request->safe()->except(['establishment_id', 'image']);
+        $userId = (int) $request->user()->id;
 
-        // Items stay attached to the establishment's source application so the
-        // catalog remains one reusable source of truth when the company is linked
-        // to additional applications.
-        $data['app_id'] = $establishment->app_id ?: $this->context->id();
-        $data['entity_name'] = 'establishment';
-        $data['entity_id'] = $establishment->id;
-        $data['user_id'] = $request->user()->id;
-        $data['created_by'] = $request->user()->id;
-        $data['updated_by'] = $request->user()->id;
-        $data['status'] = $data['status'] ?? true;
-        $data['is_featured'] = false;
+        $item = DB::transaction(function () use ($request, $establishment, $data, $userId) {
+            $payload = $data;
+            $payload['app_id'] = $establishment->app_id ?: $this->context->id();
+            $payload['entity_name'] = 'establishment';
+            $payload['entity_id'] = $establishment->id;
+            $payload['user_id'] = $userId;
+            $payload['created_by'] = $userId;
+            $payload['updated_by'] = $userId;
+            $payload['status'] = $payload['status'] ?? true;
+            $payload['is_featured'] = false;
 
-        $item = Item::create($data);
-        $item->load('files')->setAppends(['image_url']);
+            $item = Item::create($payload);
+            if ($request->hasFile('image')) {
+                File::storeOne(
+                    $request->file('image'),
+                    'item',
+                    $item->id,
+                    'image',
+                    (int) $item->app_id,
+                    $userId
+                );
+            }
+
+            return $item;
+        });
+
+        $fresh = $item->fresh()->load('files');
+        $fresh->setAppends(['image_url']);
 
         return response()->json([
             'success' => true,
             'message' => 'Item criado com sucesso.',
-            'data' => $item,
+            'data' => $fresh,
         ], 201);
     }
 
     public function update(UpdateItemRequest $request, int $item): JsonResponse
     {
-        $model = $this->ownedItem($request, $item);
-        $data = $request->validated();
-        $data['updated_by'] = $request->user()->id;
-        $model->fill($data)->save();
-        $model->load('files')->setAppends(['image_url']);
+        $model = $this->ownedItem($request, $item)->load('files');
+        $data = $request->safe()->except(['image', 'remove_image']);
+        $userId = (int) $request->user()->id;
+
+        DB::transaction(function () use ($request, $model, $data, $userId) {
+            $payload = $data;
+            $payload['updated_by'] = $userId;
+            $model->fill($payload)->save();
+
+            if ($request->boolean('remove_image') || $request->hasFile('image')) {
+                $this->deleteItemImages($model);
+            }
+
+            if ($request->hasFile('image')) {
+                File::storeOne(
+                    $request->file('image'),
+                    'item',
+                    $model->id,
+                    'image',
+                    (int) $model->app_id,
+                    $userId
+                );
+            }
+        });
+
+        $fresh = $model->fresh()->load('files');
+        $fresh->setAppends(['image_url']);
 
         return response()->json([
             'success' => true,
             'message' => 'Item atualizado com sucesso.',
-            'data' => $model,
+            'data' => $fresh,
         ]);
     }
 
@@ -212,6 +255,16 @@ class ItemController extends Controller
         }
 
         return $query->firstOrFail();
+    }
+
+    private function deleteItemImages(Item $item): void
+    {
+        foreach ($item->files()->where('type', 'image')->get() as $file) {
+            if ($file->path) {
+                Storage::disk('public')->delete($file->path);
+            }
+            $file->delete();
+        }
     }
 
     private function scopeEstablishmentsToApplication(QueryBuilder $query): void
