@@ -8,15 +8,9 @@ use App\Services\ApplicationContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 
 class InteractionController extends Controller
 {
-    private const TYPES = [
-        'session_start', 'session_end', 'navigation', 'click', 'form_submit',
-        'field_change', 'search', 'filter', 'scroll', 'frontend_error',
-    ];
-
     private const SENSITIVE = [
         'password', 'token', 'authorization', 'cookie', 'secret', 'code', 'cpf',
         'document', 'card', 'card_number', 'cvv', 'cvc', 'value',
@@ -28,7 +22,7 @@ class InteractionController extends Controller
             'session_id' => ['required', 'string', 'max:100'],
             'events' => ['required', 'array', 'min:1', 'max:50'],
             'events.*.id' => ['required', 'string', 'max:100'],
-            'events.*.type' => ['required', Rule::in(self::TYPES)],
+            'events.*.type' => ['required', 'string', 'max:80', 'regex:/^[a-z0-9]+(?:_[a-z0-9]+)*$/'],
             'events.*.timestamp' => ['required', 'date'],
             'events.*.page' => ['nullable', 'string', 'max:1000'],
             'events.*.label' => ['nullable', 'string', 'max:200'],
@@ -119,7 +113,7 @@ class InteractionController extends Controller
             'filter' => 'Aplicou um filtro',
             'scroll' => 'Visualizou '.($label ?: 'parte da página'),
             'frontend_error' => 'Encontrou um erro na interface',
-            default => ucfirst(str_replace('_', ' ', $type)),
+            default => $label !== '' ? $label : ucfirst(str_replace('_', ' ', $type)),
         };
     }
 
