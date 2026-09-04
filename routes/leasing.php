@@ -1,5 +1,12 @@
 <?php
 
+use App\Domain\Assets\Http\Controllers\AssetAuditController;
+use App\Domain\Assets\Http\Controllers\AssetFileController;
+use App\Domain\Assets\Http\Controllers\AssetInspectionController;
+use App\Domain\Assets\Http\Controllers\AssetManagementController;
+use App\Domain\Assets\Http\Controllers\AssetReportController;
+use App\Domain\Assets\Http\Controllers\AssetSharingController;
+use App\Domain\Assets\Http\Controllers\AssetStructureController;
 use App\Domain\Leasing\Http\Controllers\LeaseChargeLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeaseDocumentWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeaseLifecycleController;
@@ -40,6 +47,56 @@ Route::prefix('v1/apps/{application}')
         Route::patch('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'updateAsset'])->whereNumber('propertyId')->whereNumber('assetId');
         Route::get('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'downloadAsset'])->whereNumber('propertyId')->whereNumber('assetId');
         Route::delete('/properties/{propertyId}/assets/{assetId}', [PropertyWorkspaceController::class, 'deleteAsset'])->whereNumber('propertyId')->whereNumber('assetId');
+
+        // Generic asset intelligence and management. The first registered adapter is "property";
+        // future applications can register other asset types without app-specific controllers or tables.
+        Route::get('/assets/{assetType}/portfolio', [AssetManagementController::class, 'portfolio'])->where('assetType', '[A-Za-z0-9_-]+');
+        Route::get('/assets/{assetType}/{assetId}/profile', [AssetManagementController::class, 'profile'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::put('/assets/{assetType}/{assetId}/profile', [AssetManagementController::class, 'updateProfile'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/analytics', [AssetManagementController::class, 'analytics'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/health', [AssetManagementController::class, 'health'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/alerts', [AssetManagementController::class, 'alerts'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/financial', [AssetManagementController::class, 'financial'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/financial/entries', [AssetManagementController::class, 'storeFinancialEntry'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::patch('/assets/{assetType}/{assetId}/financial/entries/{entryId}', [AssetManagementController::class, 'updateFinancialEntry'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('entryId');
+        Route::delete('/assets/{assetType}/{assetId}/financial/entries/{entryId}', [AssetManagementController::class, 'deleteFinancialEntry'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('entryId');
+
+        Route::get('/assets/{assetType}/{assetId}/spaces', [AssetStructureController::class, 'spaces'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/spaces', [AssetStructureController::class, 'storeSpace'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::patch('/assets/{assetType}/{assetId}/spaces/{spaceId}', [AssetStructureController::class, 'updateSpace'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('spaceId');
+        Route::delete('/assets/{assetType}/{assetId}/spaces/{spaceId}', [AssetStructureController::class, 'deleteSpace'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('spaceId');
+
+        Route::get('/assets/{assetType}/{assetId}/inventory', [AssetStructureController::class, 'inventory'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/inventory', [AssetStructureController::class, 'storeInventory'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::patch('/assets/{assetType}/{assetId}/inventory/{itemId}', [AssetStructureController::class, 'updateInventory'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('itemId');
+        Route::delete('/assets/{assetType}/{assetId}/inventory/{itemId}', [AssetStructureController::class, 'deleteInventory'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('itemId');
+
+        Route::get('/assets/{assetType}/{assetId}/preventive', [AssetStructureController::class, 'preventive'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/preventive', [AssetStructureController::class, 'storePreventive'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::patch('/assets/{assetType}/{assetId}/preventive/{planId}', [AssetStructureController::class, 'updatePreventive'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('planId');
+        Route::post('/assets/{assetType}/{assetId}/preventive/{planId}/complete', [AssetStructureController::class, 'completePreventive'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('planId');
+        Route::delete('/assets/{assetType}/{assetId}/preventive/{planId}', [AssetStructureController::class, 'deletePreventive'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('planId');
+
+        Route::get('/assets/{assetType}/{assetId}/tags', [AssetStructureController::class, 'tags'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::put('/assets/{assetType}/{assetId}/tags', [AssetStructureController::class, 'setTags'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/ownerships', [AssetStructureController::class, 'ownerships'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/ownerships', [AssetStructureController::class, 'storeOwnership'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::patch('/assets/{assetType}/{assetId}/ownerships/{ownershipId}', [AssetStructureController::class, 'updateOwnership'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('ownershipId');
+        Route::delete('/assets/{assetType}/{assetId}/ownerships/{ownershipId}', [AssetStructureController::class, 'deleteOwnership'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('ownershipId');
+
+        Route::get('/assets/{assetType}/{assetId}/shares', [AssetSharingController::class, 'index'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/shares', [AssetSharingController::class, 'store'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->middleware('throttle:20,1');
+        Route::delete('/assets/{assetType}/{assetId}/shares/{grantId}', [AssetSharingController::class, 'revoke'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('grantId');
+
+        Route::get('/assets/{assetType}/{assetId}/files', [AssetFileController::class, 'index'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::post('/assets/{assetType}/{assetId}/files', [AssetFileController::class, 'store'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->middleware('throttle:30,1');
+        Route::patch('/assets/{assetType}/{assetId}/files/{fileId}', [AssetFileController::class, 'update'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('fileId');
+        Route::get('/assets/{assetType}/{assetId}/files/{fileId}', [AssetFileController::class, 'download'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('fileId');
+        Route::delete('/assets/{assetType}/{assetId}/files/{fileId}', [AssetFileController::class, 'destroy'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->whereNumber('fileId');
+
+        Route::get('/assets/{assetType}/{assetId}/inspection-comparison', [AssetInspectionController::class, 'compare'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/audit', [AssetAuditController::class, 'index'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId');
+        Route::get('/assets/{assetType}/{assetId}/report.pdf', [AssetReportController::class, 'dossier'])->where('assetType', '[A-Za-z0-9_-]+')->whereNumber('assetId')->middleware('throttle:10,1');
 
         Route::get('/leases', [LeaseReadController::class, 'leases']);
         Route::post('/leases', [LeasingController::class, 'storeLease'])->middleware(PreventLeaseOverlap::class);
@@ -88,4 +145,11 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasingController::class, 'preparePayment'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
         Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeaseChargeLifecycleController::class, 'markPaid'])->whereNumber('leaseId')->whereNumber('chargeId');
+    });
+
+Route::prefix('v1/apps/{application}')
+    ->middleware(['app.context', 'app.capability:leasing', 'throttle:60,1'])
+    ->group(function () {
+        Route::get('/shared-assets/{token}', [AssetSharingController::class, 'sharedView'])->where('token', '[A-Za-z0-9]{32,128}');
+        Route::get('/shared-assets/{token}/files/{fileId}', [AssetSharingController::class, 'sharedFile'])->where('token', '[A-Za-z0-9]{32,128}')->whereNumber('fileId');
     });
