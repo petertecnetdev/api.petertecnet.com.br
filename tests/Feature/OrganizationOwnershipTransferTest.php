@@ -26,6 +26,7 @@ class OrganizationOwnershipTransferTest extends TestCase
                 'owner_user_id' => $newOwner->id,
             ])
             ->assertOk()
+            ->assertJsonPath('message', 'Responsabilidade pela organização transferida com sucesso.')
             ->assertJsonPath('organization.user_id', $newOwner->id)
             ->assertJsonPath('owner.id', $newOwner->id);
 
