@@ -1,6 +1,6 @@
 <?php
 
-use App\Domain\Leasing\Http\Controllers\LeaseContractController;
+use App\Domain\Leasing\Http\Controllers\LeaseDocumentWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
 
@@ -20,9 +20,15 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases', [LeasingController::class, 'storeLease']);
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
         Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/contract/generate', [LeaseContractController::class, 'generate'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
-        Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
+
+        Route::get('/leases/{leaseId}/contract', [LeaseDocumentWorkflowController::class, 'show'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/proposal/generate', [LeaseDocumentWorkflowController::class, 'proposal'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/contract/generate', [LeaseDocumentWorkflowController::class, 'generate'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/contract/send', [LeaseDocumentWorkflowController::class, 'send'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/contract/sign', [LeaseDocumentWorkflowController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
+        Route::get('/leases/{leaseId}/contract/timeline', [LeaseDocumentWorkflowController::class, 'timeline'])->whereNumber('leaseId');
+        Route::get('/leases/{leaseId}/contract/amendments', [LeaseDocumentWorkflowController::class, 'amendments'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/contract/amendments', [LeaseDocumentWorkflowController::class, 'storeAmendment'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/documents', [LeasingController::class, 'documents'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/documents', [LeasingController::class, 'uploadDocument'])->whereNumber('leaseId')->middleware('throttle:30,1');
