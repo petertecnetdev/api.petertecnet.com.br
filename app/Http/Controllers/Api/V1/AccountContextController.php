@@ -4,19 +4,25 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employer;
+use App\Services\ContextualAccessService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class AccountContextController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context)
-    {
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ContextualAccessService $access,
+    ) {
     }
 
     public function show(Request $request): JsonResponse
     {
         $user = $request->user();
+
+        // Legacy profile is kept during the migration window only. New clients
+        // must rely on contextual_access for authorization and role display.
         $user->load('profile');
 
         $establishments = $user->establishments()
@@ -50,7 +56,9 @@ class AccountContextController extends Controller
                     'name' => $this->context->application()->name,
                 ],
                 'user' => $user,
+                // application_user remains available for backward compatibility.
                 'membership' => $membership?->pivot,
+                'contextual_access' => $this->access->snapshot($user, $this->context->id()),
                 'establishments' => $establishments,
                 'employments' => $employments,
                 // Compatibility for clients still expecting one employment.
