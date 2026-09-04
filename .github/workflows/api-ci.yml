@@ -2,7 +2,7 @@ name: API CI
 
 on:
   push:
-    branches: [main, staging, develop, 'refactor/**']
+    branches: [main, staging, develop, 'refactor/**', 'fix/**']
   pull_request:
     branches: [main, staging, develop]
   workflow_dispatch:
@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -129,7 +131,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          php artisan test --filter=PlatformArchitectureTest 2>&1 | tee /tmp/architecture.log
+          php artisan test tests/Feature/PlatformArchitectureTest.php tests/Feature/ControllerArchitectureBoundaryTest.php 2>&1 | tee /tmp/architecture.log
 
       - name: Publish architecture diagnostic
         if: failure() && github.event_name == 'pull_request'

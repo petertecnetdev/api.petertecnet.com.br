@@ -3,6 +3,7 @@
 namespace App\Domain\Notifications\Services;
 
 use App\Domain\Notifications\Exceptions\NotificationDispatchException;
+use Illuminate\Mail\Mailable;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
@@ -16,6 +17,15 @@ final class NotificationDispatcher
             });
         } catch (Throwable $e) {
             throw new NotificationDispatchException('Não foi possível entregar a notificação por e-mail.', 0, $e);
+        }
+    }
+
+    public function queueMailable(string $recipient, Mailable $mailable): void
+    {
+        try {
+            Mail::to($recipient)->queue($mailable);
+        } catch (Throwable $e) {
+            throw new NotificationDispatchException('Não foi possível enfileirar a notificação por e-mail.', 0, $e);
         }
     }
 }

@@ -40,19 +40,7 @@ class WorkforceTeamManagementTest extends TestCase
             'capabilities' => ['workforce'],
         ]);
 
-        $establishmentId = DB::table('establishments')->insertGetId([
-            'app_id' => $application->id,
-            'name' => 'Workforce Establishment',
-            'slug' => 'workforce-establishment',
-            'user_id' => $owner->id,
-            'created_by' => $owner->id,
-            'updated_by' => $owner->id,
-            'is_published' => true,
-            'is_approved' => true,
-            'is_cancelled' => false,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $establishmentId = $this->createEstablishment($application->id, $owner->id, 'Workforce Establishment', 'workforce-establishment');
 
         $headers = [
             'Authorization' => 'Bearer '.auth('api')->login($owner),
@@ -110,5 +98,109 @@ class WorkforceTeamManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('count', 0)
             ->assertJsonPath('data', []);
+    }
+
+    public function test_same_workforce_domain_is_reused_with_strict_application_isolation(): void
+    {
+        Mail::fake();
+
+        $ownerA = $this->user('owner-a@example.test', 'owner-a');
+        $ownerB = $this->user('owner-b@example.test', 'owner-b');
+        $candidate = $this->user('shared-candidate@example.test', 'shared-candidate');
+
+        $appA = $this->applicationFixture('workforce-a', [
+            'name' => 'Workforce A',
+            'is_active' => true,
+            'capabilities' => ['workforce'],
+        ]);
+        $appB = $this->applicationFixture('workforce-b', [
+            'name' => 'Workforce B',
+            'is_active' => true,
+            'capabilities' => ['workforce'],
+        ]);
+
+        $establishmentA = $this->createEstablishment($appA->id, $ownerA->id, 'Equipe A', 'equipe-a');
+        $establishmentB = $this->createEstablishment($appB->id, $ownerB->id, 'Equipe B', 'equipe-b');
+
+        $headersA = ['Authorization' => 'Bearer '.auth('api')->login($ownerA)];
+        $headersB = ['Authorization' => 'Bearer '.auth('api')->login($ownerB)];
+
+        $this->withHeaders($headersA)
+            ->getJson('/api/v1/apps/workforce-a/team-members?establishment_id='.$establishmentB)
+            ->assertNotFound();
+
+        $this->withHeaders($headersA)
+            ->getJson('/api/v1/apps/workforce-a/team-members/candidates?establishment_id='.$establishmentB.'&q=shared-candidate')
+            ->assertNotFound();
+
+        $this->withHeaders($headersA)
+            ->postJson('/api/v1/apps/workforce-a/team-members', [
+                'user_id' => $candidate->id,
+                'establishment_id' => $establishmentB,
+                'role' => 'profissional',
+            ])
+            ->assertNotFound();
+
+        $created = $this->withHeaders($headersB)
+            ->postJson('/api/v1/apps/workforce-b/team-members', [
+                'user_id' => $candidate->id,
+                'establishment_id' => $establishmentB,
+                'role' => 'profissional',
+                'permissions' => ['appointments.manage'],
+            ])
+            ->assertCreated()
+            ->assertJsonPath('employer.establishment_id', $establishmentB)
+            ->assertJsonPath('employer.user_id', $candidate->id);
+
+        $teamMemberId = (int) $created->json('employer.id');
+
+        $this->withHeaders($headersB)
+            ->getJson('/api/v1/apps/workforce-b/team-members?establishment_id='.$establishmentB)
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('data.0.id', $teamMemberId);
+
+        $this->withHeaders($headersA)
+            ->getJson('/api/v1/apps/workforce-a/team-members?establishment_id='.$establishmentA)
+            ->assertOk()
+            ->assertJsonPath('count', 0);
+
+        $this->withHeaders($headersA)
+            ->deleteJson('/api/v1/apps/workforce-a/team-members/'.$teamMemberId)
+            ->assertNotFound();
+
+        $this->withHeaders($headersB)
+            ->getJson('/api/v1/apps/workforce-b/team-members/candidates?establishment_id='.$establishmentB.'&q=shared-candidate')
+            ->assertOk()
+            ->assertJsonPath('data.0.is_team_member', true)
+            ->assertJsonPath('data.0.team_member.id', $teamMemberId);
+    }
+
+    private function user(string $email, string $username): User
+    {
+        return User::create([
+            'first_name' => ucfirst(str_replace('-', ' ', $username)),
+            'last_name' => 'Workforce',
+            'email' => $email,
+            'user_name' => $username,
+            'password' => Hash::make('Test1234!'),
+        ]);
+    }
+
+    private function createEstablishment(int $applicationId, int $ownerId, string $name, string $slug): int
+    {
+        return DB::table('establishments')->insertGetId([
+            'app_id' => $applicationId,
+            'name' => $name,
+            'slug' => $slug,
+            'user_id' => $ownerId,
+            'created_by' => $ownerId,
+            'updated_by' => $ownerId,
+            'is_published' => true,
+            'is_approved' => true,
+            'is_cancelled' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
