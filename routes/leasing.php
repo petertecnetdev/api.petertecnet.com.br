@@ -1,7 +1,8 @@
 <?php
 
-use App\Domain\Leasing\Http\Controllers\LeaseContractController;
+use App\Domain\Leasing\Http\Controllers\LeaseDocumentPackageController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
+use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
 
@@ -24,9 +25,14 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases', [LeasingController::class, 'storeLease']);
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
         Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/contract/generate', [LeaseContractController::class, 'generate'])->whereNumber('leaseId');
+
+        Route::post('/leases/{leaseId}/tenant/invite', [LeaseWorkflowController::class, 'inviteTenant'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::patch('/leases/{leaseId}/tenant/profile', [LeaseWorkflowController::class, 'updateTenantProfile'])->whereNumber('leaseId');
+
+        Route::post('/leases/{leaseId}/contract/generate', [LeaseDocumentPackageController::class, 'generate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
+        Route::post('/leases/{leaseId}/payments/request', [LeaseWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware('throttle:10,1');
 
         Route::get('/leases/{leaseId}/timeline', [LeaseOperationsController::class, 'timeline'])->whereNumber('leaseId');
         Route::get('/leases/{leaseId}/document-requirements', [LeaseOperationsController::class, 'documentRequirements'])->whereNumber('leaseId');
