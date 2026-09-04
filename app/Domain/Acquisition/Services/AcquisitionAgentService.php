@@ -69,6 +69,7 @@ final class AcquisitionAgentService
                 'orders_count' => (int) ($sale?->orders_count ?? 0),
                 'gross_sales' => $gross,
                 'commission_amount' => round($gross * ($percentage / 100), 2),
+                'commission_locked' => (int) ($sale?->orders_count ?? 0) > 0,
             ];
         });
 
@@ -126,11 +127,24 @@ final class AcquisitionAgentService
     public function updateCommission(?User $user, int $eventId, float $percentage): EventAcquisitionCommission
     {
         $agent = $this->access->assertAgent($user);
+        $appId = $this->context->id();
         $rule = EventAcquisitionCommission::query()
-            ->where('application_id', $this->context->id())
+            ->where('application_id', $appId)
             ->where('agent_user_id', $agent->id)
             ->where('event_id', $eventId)
             ->firstOrFail();
+
+        $hasPaidSales = CommerceOrder::query()
+            ->where('app_id', $appId)
+            ->where('event_id', $eventId)
+            ->where('status', 'paid')
+            ->exists();
+
+        abort_if(
+            $hasPaidSales,
+            409,
+            'A comissão deste evento foi bloqueada após a primeira venda paga para preservar o histórico financeiro.'
+        );
 
         $rule->update(['percentage' => round($percentage, 2)]);
 
