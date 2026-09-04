@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping(10);
 
+        $schedule->command('operations:backup-database --retention-days=14')
+            ->dailyAt('03:10')
+            ->withoutOverlapping(120);
+
         $schedule->command('forecasts:evaluate')->everyFiveMinutes();
         $schedule->command('platform:remind-events')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('platform:reconcile-payments --limit=50')->everyMinute()->withoutOverlapping();
