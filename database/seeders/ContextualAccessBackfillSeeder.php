@@ -155,7 +155,7 @@ class ContextualAccessBackfillSeeder extends Seeder
 
     private function membership(int $userId, int $establishmentId, array $metadata): void
     {
-        Membership::query()->updateOrCreate(
+        Membership::query()->firstOrCreate(
             ['user_id' => $userId, 'establishment_id' => $establishmentId],
             ['status' => 'active', 'metadata' => $metadata],
         );
@@ -170,7 +170,7 @@ class ContextualAccessBackfillSeeder extends Seeder
     ): void {
         $contextKey = RoleAssignment::contextKey($applicationId, $establishmentId);
 
-        RoleAssignment::query()->updateOrCreate(
+        RoleAssignment::query()->firstOrCreate(
             ['user_id' => $userId, 'role_id' => $roleId, 'context_key' => $contextKey],
             [
                 'application_id' => $applicationId,
