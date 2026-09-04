@@ -5,6 +5,7 @@ namespace App\Domain\Organizations\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Artist;
 use App\Models\Event;
+use App\Models\Interaction;
 use App\Models\Production;
 use App\Models\User;
 use App\Support\ApplicationContext;
@@ -136,6 +137,14 @@ final class OrganizationController extends Controller
         $organization = $this->owned($request, $id);
         $this->normalize($request);
         $data = $request->validate($this->rules(false));
+
+        if (array_key_exists('owner_user_id', $data)) {
+            $newOwnerId = (int) $data['owner_user_id'];
+            unset($data['owner_user_id']);
+            abort_if($data !== [], 422, 'A transferência de responsabilidade deve ser confirmada separadamente de outras alterações.');
+            return $this->transferOwnership($request, $organization, $newOwnerId);
+        }
+
         if (! empty($data['name']) && $data['name'] !== $organization->name) $data['slug'] = $this->uniqueSlug($data['name'], $organization->id);
         unset($data['logo'], $data['background'], $data['user_id'], $data['app_id'], $data['app_slug']);
         $organization->update($data);
@@ -149,8 +158,6 @@ final class OrganizationController extends Controller
         abort_if($organization->events()->whereHas('tickets.passes')->exists(), 409, 'Organizações com ingressos emitidos não podem ser excluídas.');
 
         DB::transaction(function () use ($organization) {
-            // A soft-deleted organization must not leave active/public events behind.
-            // Historical rows remain available for audit, finance and future recovery.
             Event::query()
                 ->where('production_id', $organization->id)
                 ->update([
@@ -167,6 +174,74 @@ final class OrganizationController extends Controller
         });
 
         return response()->json(['message' => 'Organização excluída com sucesso.']);
+    }
+
+    private function transferOwnership(Request $request, Production $organization, int $newOwnerId)
+    {
+        $actor = $request->user();
+        $target = User::query()
+            ->select(['id', 'first_name', 'last_name', 'user_name', 'email', 'avatar'])
+            ->findOrFail($newOwnerId);
+
+        $organization = DB::transaction(function () use ($actor, $organization, $target) {
+            $locked = Production::query()
+                ->where('app_id', $this->context->id())
+                ->lockForUpdate()
+                ->findOrFail($organization->id);
+
+            $admin = $actor && method_exists($actor, 'hasProfile') && $actor->hasProfile('Administrador');
+            abort_unless($actor && ($admin || (int) $locked->user_id === (int) $actor->id), 403, 'Você não pode transferir esta organização.');
+
+            $previousOwnerId = $locked->user_id === null ? null : (int) $locked->user_id;
+            abort_if($previousOwnerId === (int) $target->id, 422, 'O usuário selecionado já é o responsável por esta organização.');
+
+            $locked->forceFill([
+                'user_id' => $target->id,
+                'updated_by' => $actor->id,
+            ])->save();
+
+            $membershipQuery = DB::table('application_user')->where([
+                'application_id' => $this->context->id(),
+                'user_id' => $target->id,
+            ]);
+            $membership = $membershipQuery->first();
+            if ($membership) {
+                $preservedRole = in_array((string) $membership->role, ['owner', 'admin', 'administrator'], true)
+                    ? $membership->role
+                    : 'producer';
+                $membershipQuery->update([
+                    'role' => $preservedRole,
+                    'status' => 'active',
+                    'updated_at' => now(),
+                ]);
+            } else {
+                DB::table('application_user')->insert([
+                    'application_id' => $this->context->id(),
+                    'user_id' => $target->id,
+                    'role' => 'producer',
+                    'status' => 'active',
+                    'joined_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
+
+            Interaction::registerUpdate($locked, $actor, [
+                'user_id' => ['from' => $previousOwnerId, 'to' => $target->id],
+            ], [
+                'action' => 'ownership_transfer',
+                'previous_owner_id' => $previousOwnerId,
+                'new_owner_id' => $target->id,
+            ]);
+
+            return $locked->fresh();
+        });
+
+        return response()->json([
+            'message' => 'Responsabilidade pela organização transferida com sucesso.',
+            'organization' => $organization,
+            'owner' => $target,
+        ]);
     }
 
     private function owned(Request $request, int $id): Production
@@ -189,6 +264,7 @@ final class OrganizationController extends Controller
             'website_url' => 'sometimes|nullable|url:http,https|max:2048', 'instagram_url' => 'sometimes|nullable|url:http,https|max:2048',
             'logo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
             'background' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:10240',
+            'owner_user_id' => 'sometimes|required|integer|exists:users,id',
         ];
     }
 
