@@ -2,6 +2,7 @@
 
 namespace App\Domain\Leasing\Http\Controllers;
 
+use App\Domain\Assets\Services\AssetAccessService;
 use App\Domain\Leasing\Services\LeaseLifecycleService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
@@ -13,33 +14,37 @@ final class LeaseReadController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly LeaseLifecycleService $lifecycle,
+        private readonly AssetAccessService $assetAccess,
     ) {}
 
     public function properties(Request $request)
     {
         $appId = $this->context->id();
-        $userId = (int) $request->user()->id;
+        $propertyIds = $this->assetAccess->accessibleAssetIds($request, 'property');
+        if ($propertyIds === []) return response()->json([]);
 
         $properties = DB::table('properties')
             ->where('app_id', $appId)
-            ->where('owner_user_id', $userId)
+            ->whereIn('id', $propertyIds)
             ->whereNull('deleted_at')
             ->orderByDesc('id')
             ->get();
 
-        $propertyIds = $properties->pluck('id');
-        $leases = $propertyIds->isEmpty() ? collect() : DB::table('leases')
+        $ids = $properties->pluck('id');
+        $leases = $ids->isEmpty() ? collect() : DB::table('leases')
             ->where('app_id', $appId)
-            ->whereIn('property_id', $propertyIds)
+            ->whereIn('property_id', $ids)
             ->whereNull('deleted_at')
             ->get();
 
-        return response()->json($properties->map(function ($property) use ($leases) {
+        return response()->json($properties->map(function ($property) use ($leases, $request) {
             $related = $leases->where('property_id', $property->id)->values();
             $state = $this->lifecycle->effectivePropertyState($property, $related);
             $data = $this->decodeJsonColumns((array) $property, ['metadata']);
             $data['stored_status'] = $data['status'] ?? 'available';
             $data['status'] = $state['effective_status'];
+            $data['access_permissions'] = $this->assetAccess->permissions($request, 'property', (int) $property->id);
+            $data['is_primary_owner'] = (int) $property->owner_user_id === (int) $request->user()->id;
 
             return array_merge($data, $state);
         })->values());
@@ -49,6 +54,11 @@ final class LeaseReadController extends Controller
     {
         $userId = (int) $request->user()->id;
         $email = (string) $request->user()->email;
+        $managedPropertyIds = collect($this->assetAccess->accessibleAssetIds($request, 'property'))
+            ->filter(function ($propertyId) use ($request) {
+                $permissions = $this->assetAccess->permissions($request, 'property', (int) $propertyId);
+                return in_array('*', $permissions, true) || in_array('edit', $permissions, true) || in_array('financial', $permissions, true);
+            })->values()->all();
 
         $rows = DB::table('leases as l')
             ->join('properties as p', function ($join) {
@@ -56,10 +66,11 @@ final class LeaseReadController extends Controller
             })
             ->where('l.app_id', $this->context->id())
             ->whereNull('l.deleted_at')
-            ->where(function ($query) use ($userId, $email) {
+            ->where(function ($query) use ($userId, $email, $managedPropertyIds) {
                 $query->where('l.landlord_user_id', $userId)
                     ->orWhere('l.tenant_user_id', $userId)
                     ->orWhere('l.tenant_email', $email);
+                if ($managedPropertyIds !== []) $query->orWhereIn('l.property_id', $managedPropertyIds);
             })
             ->select('l.*', 'p.name as property_name', 'p.city as property_city', 'p.state as property_state')
             ->orderByDesc('l.id')
