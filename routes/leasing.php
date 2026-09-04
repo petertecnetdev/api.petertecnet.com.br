@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Leasing\Http\Controllers\LeaseContractController;
+use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
 
@@ -8,6 +9,9 @@ Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:leasing'])
     ->group(function () {
         Route::get('/leasing/dashboard', [LeasingController::class, 'dashboard']);
+        Route::get('/leasing/action-center', [LeaseOperationsController::class, 'actionCenter']);
+        Route::get('/leasing/portfolio', [LeaseOperationsController::class, 'portfolio']);
+        Route::get('/leasing/tenant-portal', [LeaseOperationsController::class, 'tenantPortal']);
 
         Route::get('/properties', [LeasingController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
@@ -23,6 +27,18 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases/{leaseId}/contract/generate', [LeaseContractController::class, 'generate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
+
+        Route::get('/leases/{leaseId}/timeline', [LeaseOperationsController::class, 'timeline'])->whereNumber('leaseId');
+        Route::get('/leases/{leaseId}/document-requirements', [LeaseOperationsController::class, 'documentRequirements'])->whereNumber('leaseId');
+        Route::put('/leases/{leaseId}/document-requirements', [LeaseOperationsController::class, 'setDocumentRequirements'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/adjustments/preview', [LeaseOperationsController::class, 'previewAdjustment'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/adjustments', [LeaseOperationsController::class, 'applyAdjustment'])->whereNumber('leaseId');
+        Route::get('/leases/{leaseId}/maintenance', [LeaseOperationsController::class, 'maintenance'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/maintenance', [LeaseOperationsController::class, 'storeMaintenance'])->whereNumber('leaseId');
+        Route::patch('/leases/{leaseId}/maintenance/{operationId}', [LeaseOperationsController::class, 'updateMaintenance'])->whereNumber('leaseId')->whereNumber('operationId');
+        Route::get('/leases/{leaseId}/termination', [LeaseOperationsController::class, 'termination'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/termination', [LeaseOperationsController::class, 'startTermination'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/termination/complete', [LeaseOperationsController::class, 'completeTermination'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/documents', [LeasingController::class, 'documents'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/documents', [LeasingController::class, 'uploadDocument'])->whereNumber('leaseId')->middleware('throttle:30,1');
