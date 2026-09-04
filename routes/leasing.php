@@ -3,6 +3,7 @@
 use App\Domain\Leasing\Http\Controllers\LeaseOnboardingController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
 use App\Domain\Leasing\Http\Controllers\LeasePackageLifecycleController;
+use App\Domain\Leasing\Http\Controllers\LeasePaymentWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
@@ -36,7 +37,7 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases/{leaseId}/contract/generate', [LeasePackageLifecycleController::class, 'generate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
-        Route::post('/leases/{leaseId}/payments/request', [LeaseWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/payments/request', [LeasePaymentWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/activate', [LeaseOnboardingController::class, 'activateIfReady'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/timeline', [LeaseOperationsController::class, 'timeline'])->whereNumber('leaseId');
