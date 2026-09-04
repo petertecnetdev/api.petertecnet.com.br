@@ -54,6 +54,12 @@ class RouteServiceProvider extends ServiceProvider
                 ->prefix('api')
                 ->group(base_path('routes/leasing.php'));
 
+            // Cross-application operational records: tasks, maintenance, inspections,
+            // financial entries, resource timelines, saved filters and preferences.
+            Route::middleware('api')
+                ->prefix('api')
+                ->group(base_path('routes/operations.php'));
+
             // Application branding is a shared platform capability. Keeping it in a
             // dedicated contract avoids app-specific controllers and lets every UI
             // migrate from hard-coded assets without changing legacy endpoints.
