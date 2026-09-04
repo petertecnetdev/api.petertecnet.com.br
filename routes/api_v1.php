@@ -137,7 +137,9 @@ Route::prefix('v1/apps/{application}')
             });
 
             Route::middleware('app.capability:workforce')->group(function () {
+                Route::get('/team-members', [TeamMemberController::class, 'index']);
                 Route::post('/team-members', [TeamMemberController::class, 'store']);
+                Route::delete('/team-members/{teamMember}', [TeamMemberController::class, 'destroy'])->whereNumber('teamMember');
             });
 
             Route::middleware('app.capability:commerce')->group(function () {
@@ -174,7 +176,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/connections/matches', [ConnectionController::class, 'matches'])->middleware('throttle:120,1');
                 Route::delete('/connections/matches/{matchId}', [ConnectionController::class, 'unmatch'])->whereNumber('matchId')->middleware('throttle:30,1');
                 Route::get('/connections/matches/{matchId}/messages', [ConnectionController::class, 'messages'])->whereNumber('matchId')->middleware('throttle:120,1');
-                Route::post('/connections/matches/{matchId}/messages', [ConnectionController::class, 'sendMessage'])->whereNumber('matchId')->middleware('throttle:60,1');
+                Route::post('/connections/matches/{matchId}/messages', [ConnectionController::class, 'sendMessage'])->middleware('throttle:60,1');
                 Route::post('/connections/users/{targetUserId}/block', [ConnectionController::class, 'block'])->whereNumber('targetUserId')->middleware('throttle:30,1');
                 Route::delete('/connections/users/{targetUserId}/block', [ConnectionController::class, 'unblock'])->whereNumber('targetUserId')->middleware('throttle:30,1');
                 Route::post('/connections/reports', [ConnectionController::class, 'report'])->middleware('throttle:10,1');
