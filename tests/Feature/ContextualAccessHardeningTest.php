@@ -14,25 +14,44 @@ use App\Services\ContextualAccessService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use LogicException;
 use Tests\TestCase;
 
 class ContextualAccessHardeningTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_malformed_app_less_establishment_assignment_does_not_become_global(): void
+    public function test_new_malformed_app_less_establishment_assignment_is_rejected(): void
+    {
+        [$user, , , $establishment] = $this->foundation();
+        $role = Role::create(['code' => 'manager', 'name' => 'Gerente']);
+
+        $this->expectException(LogicException::class);
+        RoleAssignment::create([
+            'user_id' => $user->id,
+            'role_id' => $role->id,
+            'application_id' => null,
+            'establishment_id' => $establishment,
+            'context_key' => 'invalid',
+        ]);
+    }
+
+    public function test_legacy_malformed_app_less_establishment_assignment_does_not_become_global(): void
     {
         [$user, $appA, $appB, $establishment] = $this->foundation();
         $permission = Permission::create(['code' => 'members.manage', 'name' => 'Administrar membros']);
         $role = Role::create(['code' => 'manager', 'name' => 'Gerente']);
         $role->permissions()->attach($permission);
 
-        RoleAssignment::create([
+        DB::table('role_assignments')->insert([
             'user_id' => $user->id,
             'role_id' => $role->id,
             'application_id' => null,
             'establishment_id' => $establishment,
             'context_key' => 'legacy-malformed',
+            'status' => 'active',
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
 
         $service = app(ContextualAccessService::class);
@@ -105,6 +124,7 @@ class ContextualAccessHardeningTest extends TestCase
         $party->refresh();
         $this->assertNull($party->getRawOriginal('document'));
         $this->assertNotNull($party->getRawOriginal('document_encrypted'));
+        $this->assertNotNull($party->getRawOriginal('document_hash'));
         $this->assertSame('12.345.678/0001-90', $party->document);
         $this->assertTrue(app(ContextualAccessService::class)->hasRelationship($user, 'landlord', 'agreement', 77, $appA->id, $resource->uuid));
     }
