@@ -41,8 +41,8 @@ return new class extends Migration
             $table->decimal('salience', 5, 4)->default(0.2500)->index();
             $table->timestamp('processed_at')->nullable()->index();
             $table->timestamps();
-            $table->unique(['agent_id', 'external_key']);
-            $table->index(['agent_id', 'event_type', 'created_at']);
+            $table->unique(['agent_id', 'external_key'], 'cog_obs_agent_external_unique');
+            $table->index(['agent_id', 'event_type', 'created_at'], 'cog_obs_agent_event_created_idx');
         });
 
         Schema::create('cognitive_memories', function (Blueprint $table) {
@@ -62,7 +62,7 @@ return new class extends Migration
             $table->timestamp('last_accessed_at')->nullable();
             $table->timestamp('expires_at')->nullable()->index();
             $table->timestamps();
-            $table->index(['agent_id', 'memory_type', 'active']);
+            $table->index(['agent_id', 'memory_type', 'active'], 'cog_mem_agent_type_active_idx');
         });
 
         Schema::create('cognitive_beliefs', function (Blueprint $table) {
@@ -97,7 +97,7 @@ return new class extends Migration
             $table->timestamp('started_at')->nullable();
             $table->timestamp('completed_at')->nullable();
             $table->timestamps();
-            $table->index(['agent_id', 'status', 'priority']);
+            $table->index(['agent_id', 'status', 'priority'], 'cog_goal_agent_status_priority_idx');
         });
 
         Schema::create('cognitive_state_snapshots', function (Blueprint $table) {
@@ -112,7 +112,7 @@ return new class extends Migration
             $table->json('metrics')->nullable();
             $table->timestamp('captured_at')->index();
             $table->timestamps();
-            $table->index(['agent_id', 'captured_at']);
+            $table->index(['agent_id', 'captured_at'], 'cog_state_agent_captured_idx');
         });
 
         Schema::create('cognitive_experiments', function (Blueprint $table) {
@@ -143,7 +143,7 @@ return new class extends Migration
             $table->timestamp('started_at')->nullable();
             $table->timestamp('finished_at')->nullable();
             $table->timestamps();
-            $table->index(['agent_id', 'experiment_id', 'created_at']);
+            $table->index(['agent_id', 'experiment_id', 'created_at'], 'cog_exp_run_agent_exp_created_idx');
         });
 
         Schema::create('cognitive_learning_events', function (Blueprint $table) {
@@ -160,7 +160,7 @@ return new class extends Migration
             $table->decimal('confidence_delta', 6, 5)->default(0.00000);
             $table->json('metadata')->nullable();
             $table->timestamps();
-            $table->index(['agent_id', 'event_type', 'created_at']);
+            $table->index(['agent_id', 'event_type', 'created_at'], 'cog_learn_agent_event_created_idx');
         });
     }
 
