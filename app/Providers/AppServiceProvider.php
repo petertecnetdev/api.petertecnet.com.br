@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Domain\Documents\Events\DocumentSignatureRecorded;
 use App\Domain\Finance\Contracts\PayoutProvider;
+use App\Domain\Leasing\Listeners\SyncLeaseDocumentSignature;
 use App\Events\EcosystemUpdated;
 use App\Models\Application;
 use App\Models\EcosystemAuditLog;
@@ -21,6 +23,7 @@ use App\Services\Operations\ResilientOperationalIssueService;
 use App\Services\Operations\ResilientOperationalTelemetryService;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -48,6 +51,8 @@ class AppServiceProvider extends ServiceProvider
             'establishment' => 'App\Models\Establishment',
             'event' => 'App\Models\Event',
         ]);
+
+        Event::listen(DocumentSignatureRecorded::class, SyncLeaseDocumentSignature::class);
 
         $storagePath = storage_path('app/public');
         if (! File::exists($storagePath)) {
