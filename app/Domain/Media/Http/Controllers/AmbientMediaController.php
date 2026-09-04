@@ -101,7 +101,7 @@ final class AmbientMediaController extends Controller
         $cacheKey = 'ambient-media:recommendations:' . sha1(Str::lower($term));
         $recommendations = Cache::remember($cacheKey, now()->addHours(6), function () use ($term, $seed) {
             try {
-                $response = Http::acceptJson()->timeout(4)->retry(1, 150)->get('https://itunes.apple.com/search', [
+                $response = Http::acceptJson()->timeout(4)->retry(2, 150)->get('https://itunes.apple.com/search', [
                     'term' => $term,
                     'country' => 'BR',
                     'media' => 'music',
@@ -159,12 +159,12 @@ final class AmbientMediaController extends Controller
 
         $valid = match ($provider) {
             'youtube' => in_array($host, ['youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be', 'www.youtube-nocookie.com'], true),
-            'spotify' => in_array($host, ['open.spotify.com', 'spotify.link'], true),
+            'spotify' => $host === 'open.spotify.com',
             'audio' => $host !== '',
             default => false,
         };
 
-        if (! $valid) throw ValidationException::withMessages(['source_url' => ['A URL não corresponde ao provedor selecionado.']]);
+        if (! $valid) throw ValidationException::withMessages(['source_url' => ['A URL não corresponde ao provedor selecionado. Use o link completo do Spotify em open.spotify.com.']]);
         if ($provider !== 'audio' && ! $this->externalId($provider, $url)) {
             throw ValidationException::withMessages(['source_url' => ['Não foi possível identificar a música ou playlist nessa URL.']]);
         }
