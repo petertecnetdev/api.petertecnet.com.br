@@ -12,8 +12,10 @@ return new class extends Migration {
             ->orWhereRaw('LOWER(name) = ?', ['nexus'])
             ->first();
 
+        // This is an optional data seed, not a schema dependency. A clean
+        // installation may legitimately not have Nexus registered yet.
         if (! $nexus) {
-            throw new RuntimeException('Aplicação Nexus não encontrada para carga do catálogo do Cirilo Ferragista.');
+            return;
         }
 
         $cirilo = DB::table('establishments')
@@ -26,8 +28,11 @@ return new class extends Migration {
             ->orderByRaw("CASE WHEN LOWER(name) LIKE '%cirilo%ferrag%' THEN 1 WHEN LOWER(COALESCE(fantasy, '')) LIKE '%cirilo%ferrag%' THEN 2 WHEN LOWER(slug) LIKE '%cirilo%ferrag%' THEN 3 ELSE 4 END")
             ->first();
 
+        // The catalog seed must also be safe on environments where the
+        // establishment has not been provisioned. Provisioning belongs to a
+        // separate concern and must not be invented by this migration.
         if (! $cirilo) {
-            throw new RuntimeException('Estabelecimento Cirilo Ferragista não encontrado para carga do catálogo.');
+            return;
         }
 
         $products = [
