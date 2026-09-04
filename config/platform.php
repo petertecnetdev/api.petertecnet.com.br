@@ -14,7 +14,7 @@ return [
     // services and routes consume capabilities through ApplicationContext.
     'applications' => [
         'cutinapp' => [
-            'capabilities' => ['organizations','events','event_tickets','event_community','social','commerce','payments','payouts','agreements','notifications','moderation','acquisition'],
+            'capabilities' => ['organizations','catalog','events','event_tickets','event_community','social','commerce','payments','payouts','agreements','notifications','moderation','acquisition'],
             'commerce' => [
                 'platform_fee_percent' => (float) env('CUTINAPP_PLATFORM_FEE_PERCENT', 8),
                 'order_expiration_minutes' => max(30, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 30), 60)),
