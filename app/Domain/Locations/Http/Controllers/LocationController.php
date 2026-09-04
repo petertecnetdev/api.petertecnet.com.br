@@ -2,158 +2,63 @@
 
 namespace App\Domain\Locations\Http\Controllers;
 
-use App\Domain\Locations\Services\MunicipalityService;
+use App\Domain\Locations\Services\LocationLookupService;
 use App\Http\Controllers\Controller;
-use App\Models\BrazilianMunicipality;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Str;
-use Illuminate\Validation\ValidationException;
 
 class LocationController extends Controller
 {
-    private const UFS = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+    public function __construct(private readonly LocationLookupService $locations) {}
 
     public function states()
     {
-        return response()->json(['states' => self::UFS]);
+        return response()->json(['states' => $this->locations->states()]);
     }
 
-    public function cities(Request $request, MunicipalityService $locations)
+    public function cities(Request $request)
     {
         $data = $request->validate([
             'uf' => 'nullable|string|size:2',
             'q' => 'nullable|string|min:2|max:120',
         ]);
 
-        $uf = strtoupper(trim((string) ($data['uf'] ?? '')));
-        $term = trim((string) ($data['q'] ?? ''));
-
-        if ($uf !== '' && ! in_array($uf, self::UFS, true)) {
-            throw ValidationException::withMessages(['uf' => ['Selecione uma UF válida.']]);
-        }
-
-        if ($uf !== '') {
-            $this->ensureStateCached($uf, $locations);
-        } elseif ($term !== '') {
-            $this->ensureBrazilCached($locations);
-        } else {
-            return response()->json(['cities' => []]);
-        }
-
-        $query = BrazilianMunicipality::query();
-        if ($uf !== '') $query->where('uf', $uf);
-        if ($term !== '') {
-            $query->where('normalized_name', 'like', $locations->normalizedName($term).'%');
-        }
-
         return response()->json([
-            'cities' => $query->orderBy('name')->orderBy('uf')->limit(30)->get(['ibge_code','name','uf','slug']),
+            'cities' => $this->locations->cities($data['uf'] ?? null, $data['q'] ?? null),
         ]);
     }
 
-    public function cep(string $cep, MunicipalityService $locations)
+    public function cep(string $cep)
     {
-        $digits = $locations->normalizeCep($cep);
-        $payload = Cache::remember("locations:cep:{$digits}", now()->addDays(30), function () use ($digits) {
-            $response = Http::timeout(4)->retry(1, 150)->acceptJson()->get("https://viacep.com.br/ws/{$digits}/json/");
-            if (! $response->successful()) return null;
-            $data = $response->json();
-            return ! empty($data['erro']) ? null : $data;
-        });
-
-        if (! $payload) {
+        $address = $this->locations->cep($cep);
+        if (! $address) {
             return response()->json([
                 'message' => 'Não foi possível localizar este CEP agora. Você pode preencher o endereço manualmente.',
             ], 404);
         }
 
-        $ibge = (int) ($payload['ibge'] ?? 0);
-        $city = $ibge ? BrazilianMunicipality::query()->find($ibge) : null;
-        if (! $city && ! empty($payload['uf'])) {
-            $this->ensureStateCached(strtoupper($payload['uf']), $locations);
-            $city = $ibge ? BrazilianMunicipality::query()->find($ibge) : null;
-        }
-
-        return response()->json(['address' => [
-            'cep' => $digits,
-            'street' => trim((string) ($payload['logradouro'] ?? '')),
-            'neighborhood' => trim((string) ($payload['bairro'] ?? '')),
-            'complement' => trim((string) ($payload['complemento'] ?? '')),
-            'city_id' => $city?->ibge_code ?: ($ibge ?: null),
-            'city' => $city?->name ?: ($payload['localidade'] ?? null),
-            'uf' => $city?->uf ?: strtoupper((string) ($payload['uf'] ?? '')),
-        ]]);
+        return response()->json(['address' => $address]);
     }
 
-    private function ensureStateCached(string $uf, MunicipalityService $locations): void
+    public function places(Request $request)
     {
-        if (BrazilianMunicipality::query()->where('uf', $uf)->exists()) return;
+        $data = $request->validate([
+            'q' => 'required|string|min:2|max:160',
+            'session_token' => ['nullable','string','max:120','regex:/^[A-Za-z0-9_-]+$/'],
+        ]);
 
-        Cache::lock("locations:municipalities:{$uf}", 15)->block(5, function () use ($uf, $locations) {
-            if (BrazilianMunicipality::query()->where('uf', $uf)->exists()) return;
-
-            $response = Http::timeout(8)->retry(2, 250)->acceptJson()
-                ->get("https://servicodados.ibge.gov.br/api/v1/localidades/estados/{$uf}/municipios");
-            if (! $response->successful()) {
-                throw ValidationException::withMessages([
-                    'city_id' => ['A lista oficial de cidades está temporariamente indisponível. Tente novamente em instantes.'],
-                ]);
-            }
-
-            $now = now();
-            $rows = collect($response->json())->map(fn ($item) => [
-                'ibge_code' => (int) $item['id'],
-                'name' => trim($item['nome']),
-                'normalized_name' => $locations->normalizedName($item['nome']),
-                'uf' => $uf,
-                'slug' => Str::slug($item['nome']),
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all();
-
-            BrazilianMunicipality::query()->upsert($rows, ['ibge_code'], ['name','normalized_name','uf','slug','updated_at']);
-        });
+        return response()->json([
+            'places' => $this->locations->autocompletePlaces($data['q'], $data['session_token'] ?? null),
+        ]);
     }
 
-    private function ensureBrazilCached(MunicipalityService $locations): void
+    public function place(Request $request, string $placeId)
     {
-        if (BrazilianMunicipality::query()->count() >= 5500) return;
+        $data = $request->validate([
+            'session_token' => ['nullable','string','max:120','regex:/^[A-Za-z0-9_-]+$/'],
+        ]);
 
-        Cache::lock('locations:municipalities:brazil', 30)->block(8, function () use ($locations) {
-            if (BrazilianMunicipality::query()->count() >= 5500) return;
-
-            $response = Http::timeout(15)->retry(2, 300)->acceptJson()
-                ->get('https://servicodados.ibge.gov.br/api/v1/localidades/municipios', ['orderBy' => 'nome']);
-
-            if (! $response->successful()) {
-                throw ValidationException::withMessages([
-                    'city_id' => ['A lista oficial de cidades está temporariamente indisponível. Tente novamente em instantes.'],
-                ]);
-            }
-
-            $now = now();
-            $rows = collect($response->json())->map(function ($item) use ($locations, $now) {
-                $uf = strtoupper((string) (
-                    data_get($item, 'microrregiao.mesorregiao.UF.sigla')
-                    ?: data_get($item, 'regiao-imediata.regiao-intermediaria.UF.sigla')
-                ));
-
-                if (! in_array($uf, self::UFS, true)) return null;
-
-                return [
-                    'ibge_code' => (int) $item['id'],
-                    'name' => trim($item['nome']),
-                    'normalized_name' => $locations->normalizedName($item['nome']),
-                    'uf' => $uf,
-                    'slug' => Str::slug($item['nome']),
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ];
-            })->filter()->values()->all();
-
-            BrazilianMunicipality::query()->upsert($rows, ['ibge_code'], ['name','normalized_name','uf','slug','updated_at']);
-        });
+        return response()->json([
+            'place' => $this->locations->place($placeId, $data['session_token'] ?? null),
+        ]);
     }
 }

@@ -18,6 +18,11 @@ return [
 
     'google' => ['client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID'))],
 
+    'google_maps' => [
+        'places_api_key' => env('GOOGLE_MAPS_PLACES_API_KEY', env('GOOGLE_MAPS_API_KEY')),
+        'timeout' => (int) env('GOOGLE_MAPS_API_TIMEOUT', 5),
+    ],
+
     'search_console' => [
         'site_url' => env('GOOGLE_SEARCH_CONSOLE_SITE_URL'),
         'access_token' => env('GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN'),
