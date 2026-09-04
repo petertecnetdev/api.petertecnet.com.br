@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ApplicationCapabilityTest extends TestCase
@@ -60,5 +61,21 @@ class ApplicationCapabilityTest extends TestCase
         $this->getJson('/api/v1/apps/generic-restricted/establishments')
             ->assertNotFound()
             ->assertJsonPath('code', 'CAPABILITY_NOT_AVAILABLE');
+    }
+
+    public function test_declared_capabilities_are_persisted_for_configured_applications(): void
+    {
+        $raw = DB::table('applications')
+            ->where('slug', 'cutinapp')
+            ->value('capabilities');
+
+        $capabilities = is_array($raw) ? $raw : json_decode((string) $raw, true);
+
+        $this->assertIsArray($capabilities);
+        $this->assertContains('acquisition', $capabilities);
+
+        $this->getJson('/api/v1/apps/cutinapp/config')
+            ->assertOk()
+            ->assertJsonFragment(['acquisition']);
     }
 }
