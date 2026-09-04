@@ -34,8 +34,13 @@ final class LeaseReadController extends Controller
             ->whereNull('deleted_at')
             ->get();
 
-        return response()->json($properties->map(function ($property) use ($leases) {
-            $related = $leases->where('property_id', $property->id)->values();
+        // Agrupa uma única vez. Antes, cada imóvel fazia uma nova varredura na
+        // coleção inteira de locações (O(imóveis × locações)), o que piorava
+        // progressivamente conforme a carteira crescia.
+        $leasesByProperty = $leases->groupBy(fn ($lease) => (int) $lease->property_id);
+
+        return response()->json($properties->map(function ($property) use ($leasesByProperty) {
+            $related = $leasesByProperty->get((int) $property->id, collect())->values();
             $state = $this->lifecycle->effectivePropertyState($property, $related);
             $data = $this->decodeJsonColumns((array) $property, ['metadata']);
             $data['stored_status'] = $data['status'] ?? 'available';
