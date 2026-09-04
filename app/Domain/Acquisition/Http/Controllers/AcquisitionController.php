@@ -3,17 +3,21 @@
 namespace App\Domain\Acquisition\Http\Controllers;
 
 use App\Domain\Acquisition\Services\AcquisitionAgentService;
+use App\Domain\Acquisition\Services\AcquisitionLifecycleGuard;
 use App\Domain\Acquisition\Services\AcquisitionOnboardingService;
 use App\Http\Controllers\Controller;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\ValidationException;
 
 final class AcquisitionController extends Controller
 {
     public function __construct(
         private readonly AcquisitionAgentService $agents,
         private readonly AcquisitionOnboardingService $onboarding,
+        private readonly AcquisitionLifecycleGuard $lifecycle,
     ) {}
 
     public function context(Request $request)
@@ -78,14 +82,49 @@ final class AcquisitionController extends Controller
             'events.*.tickets.*.description' => ['nullable','string','max:5000'],
         ]);
 
+        $this->validateEventInvariants($data);
+        $this->lifecycle->assertOnboardingAllowed((string) data_get($data, 'user.email'));
+
         return response()->json(
             $this->onboarding->onboard($request->user(), $data),
             201,
         );
     }
 
+    private function validateEventInvariants(array $payload): void
+    {
+        $errors = [];
+        $productionAddress = trim((string) data_get($payload, 'production.address', ''));
+
+        foreach (($payload['events'] ?? []) as $index => $event) {
+            $start = CarbonImmutable::parse((string) $event['start_date']);
+            $end = CarbonImmutable::parse((string) $event['end_date']);
+            $format = (string) ($event['event_format'] ?? 'in_person');
+
+            if ($end->lessThanOrEqualTo($start)) {
+                $errors["events.{$index}.end_date"][] = 'A data de término deve ser posterior à data de início.';
+            }
+
+            if (in_array($format, ['in_person', 'hybrid'], true)) {
+                $eventAddress = trim((string) ($event['address'] ?? ''));
+                if ($eventAddress === '' && $productionAddress === '') {
+                    $errors["events.{$index}.address"][] = 'Informe o endereço do evento ou da produção para eventos presenciais ou híbridos.';
+                }
+            }
+
+            if (in_array($format, ['online', 'hybrid'], true) && blank($event['online_url'] ?? null)) {
+                $errors["events.{$index}.online_url"][] = 'Informe o link online para eventos online ou híbridos.';
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
+        }
+    }
+
     public function resend(Request $request, int $referralId)
     {
+        $this->lifecycle->assertResendAllowed($request->user(), $referralId);
         $result = $this->onboarding->resend($request->user(), $referralId);
 
         return response()->json($result, $result['email_sent'] ? 200 : 503);
@@ -123,6 +162,11 @@ final class AcquisitionController extends Controller
             'password_confirmation' => 'nullable|string|same:password',
         ]);
 
-        return response()->json($this->onboarding->activate($data));
+        $result = $this->lifecycle->activate(
+            (string) $data['token'],
+            fn () => $this->onboarding->activate($data),
+        );
+
+        return response()->json($result);
     }
 }
