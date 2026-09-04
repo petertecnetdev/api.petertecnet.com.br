@@ -6,6 +6,7 @@ use App\Domain\Leasing\Http\Controllers\LeaseLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeaseOnboardingController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
 use App\Domain\Leasing\Http\Controllers\LeasePaymentWorkflowController;
+use App\Domain\Leasing\Http\Controllers\LeasePixPaymentController;
 use App\Domain\Leasing\Http\Controllers\LeaseReadController;
 use App\Domain\Leasing\Http\Controllers\LeaseTerminationController;
 use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
@@ -23,6 +24,8 @@ Route::prefix('v1/apps/{application}')
         Route::get('/leasing/portfolio', [LeaseOperationsController::class, 'portfolio']);
         Route::get('/leasing/tenant-portal', [LeaseOperationsController::class, 'tenantPortal']);
         Route::get('/leasing/lifecycle', [LeaseLifecycleController::class, 'index']);
+        Route::get('/leasing/payment-profile', [LeasePixPaymentController::class, 'profile']);
+        Route::put('/leasing/payment-profile/pix', [LeasePixPaymentController::class, 'saveProfile'])->middleware('throttle:10,1');
 
         Route::get('/properties', [LeaseReadController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
@@ -90,6 +93,6 @@ Route::prefix('v1/apps/{application}')
         Route::get('/leases/{leaseId}/charges', [LeasingController::class, 'charges'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges', [LeasingController::class, 'storeCharge'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasingController::class, 'preparePayment'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
+        Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasePixPaymentController::class, 'prepare'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
         Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeaseChargeLifecycleController::class, 'markPaid'])->whereNumber('leaseId')->whereNumber('chargeId');
     });
