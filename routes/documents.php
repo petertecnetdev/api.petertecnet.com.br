@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Documents\Http\Controllers\DocumentCatalogController;
+use App\Domain\Documents\Http\Controllers\DocumentExportController;
 use App\Domain\Documents\Http\Controllers\PublicSignatureController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/document-clauses', [DocumentCatalogController::class, 'clauses']);
         Route::post('/document-clauses', [DocumentCatalogController::class, 'storeClause']);
         Route::patch('/document-clauses/{clauseId}', [DocumentCatalogController::class, 'updateClause'])->whereNumber('clauseId');
+        Route::get('/documents/{publicId}/pdf', [DocumentExportController::class, 'pdf'])->whereUuid('publicId');
     });
 
 Route::prefix('v1/document-signatures')->middleware('throttle:30,1')->group(function () {
