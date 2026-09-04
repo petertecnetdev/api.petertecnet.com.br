@@ -2,10 +2,12 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountIdentityProfile;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -14,7 +16,7 @@ class AccountProfileDocumentsTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_user_can_update_own_extended_profile(): void
+    public function test_user_can_update_own_extended_profile_with_sensitive_fields_encrypted(): void
     {
         $user = $this->user('perfil@example.test', 'perfil-user');
         $token = auth('api')->login($user);
@@ -43,7 +45,15 @@ class AccountProfileDocumentsTest extends TestCase
             ->assertJsonPath('completion.percentage', 100);
 
         $this->assertDatabaseHas('users', ['id' => $user->id, 'cpf' => '12345678901', 'uf' => 'GO']);
-        $this->assertSame('1234567', $user->fresh()->extra_info['account_profile']['identity_document_number']);
+
+        $private = AccountIdentityProfile::where('user_id', $user->id)->firstOrFail();
+        $this->assertSame('1234567', $private->identity_document_number);
+        $this->assertSame('Brasileira', $private->nationality);
+        $this->assertNotSame(
+            '1234567',
+            DB::table('account_identity_profiles')->where('user_id', $user->id)->value('identity_document_number')
+        );
+        $this->assertArrayNotHasKey('account_profile', $user->fresh()->extra_info ?: []);
     }
 
     public function test_documents_are_private_and_scoped_to_the_owner(): void
