@@ -3,6 +3,7 @@
 namespace App\Domain\MarketData\Http\Controllers;
 
 use App\Domain\MarketData\Services\MarketDataService;
+use App\Domain\MarketData\Services\MarketPortfolioService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -10,25 +11,14 @@ use RuntimeException;
 
 final class MarketDataController extends Controller
 {
-    public function __construct(private readonly MarketDataService $marketData) {}
+    public function __construct(
+        private readonly MarketDataService $marketData,
+        private readonly MarketPortfolioService $portfolio,
+    ) {}
 
     public function overview(Request $request): JsonResponse
     {
-        try {
-            $data = $this->marketData->overview();
-        } catch (RuntimeException $exception) {
-            return response()->json([
-                'success' => false,
-                'message' => $exception->getMessage(),
-                'code' => 'MARKET_DATA_UNAVAILABLE',
-                'request_id' => $request->attributes->get('request_id'),
-            ], 502);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $data,
-        ]);
+        return $this->marketResponse($request, fn () => $this->marketData->overview());
     }
 
     public function candles(Request $request, string $asset): JsonResponse
@@ -39,13 +29,121 @@ final class MarketDataController extends Controller
             'limit' => ['nullable', 'integer', 'min:20', 'max:500'],
         ]);
 
+        return $this->marketResponse($request, fn () => $this->marketData->candles(
+            $asset,
+            (string) ($validated['quote'] ?? 'USDT'),
+            (string) ($validated['interval'] ?? '1h'),
+            (int) ($validated['limit'] ?? 200),
+        ));
+    }
+
+    public function analyze(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1', 'max:1000000000'],
+            'risk_profile' => ['nullable', 'in:conservador,moderado,agressivo'],
+            'horizon' => ['nullable', 'in:intraday,swing,position'],
+            'asset_ids' => ['nullable', 'array', 'max:20'],
+            'asset_ids.*' => ['string', 'max:80'],
+        ]);
+
+        return $this->marketResponse($request, fn () => $this->portfolio->analyze((int) $request->user()->id, $data));
+    }
+
+    public function portfolio(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->portfolio->portfolio((int) $request->user()->id),
+        ]);
+    }
+
+    public function addPosition(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'asset_id' => ['required', 'string', 'max:80'],
+            'quantity' => ['required', 'numeric', 'gt:0', 'max:1000000000000'],
+            'average_price' => ['required', 'numeric', 'gt:0', 'max:1000000000000'],
+            'label' => ['nullable', 'string', 'max:120'],
+        ]);
+
+        return $this->marketResponse($request, fn () => $this->portfolio->addPosition((int) $request->user()->id, $data), 201);
+    }
+
+    public function removePosition(Request $request, int $position): JsonResponse
+    {
+        $this->portfolio->removePosition((int) $request->user()->id, $position);
+
+        return response()->json(['success' => true, 'message' => 'Posição removida.']);
+    }
+
+    public function riskProfile(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->portfolio->riskProfile((int) $request->user()->id),
+        ]);
+    }
+
+    public function saveRiskProfile(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'risk_profile' => ['required', 'in:conservador,moderado,agressivo'],
+            'max_asset_exposure' => ['required', 'numeric', 'between:5,100'],
+            'max_scenario_loss' => ['required', 'numeric', 'between:1,90'],
+            'min_liquidity_reserve' => ['nullable', 'numeric', 'between:0,95'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->portfolio->saveRiskProfile((int) $request->user()->id, $data),
+        ]);
+    }
+
+    public function alerts(Request $request): JsonResponse
+    {
+        return $this->marketResponse($request, fn () => $this->portfolio->alerts((int) $request->user()->id));
+    }
+
+    public function addAlert(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'asset_id' => ['required', 'string', 'max:80'],
+            'metric' => ['required', 'in:price,change_24h,change_7d,score,confidence'],
+            'operator' => ['required', 'in:>,>=,<,<='],
+            'threshold' => ['required', 'numeric', 'between:-1000000000000,1000000000000'],
+            'active' => ['nullable', 'boolean'],
+        ]);
+
+        return $this->marketResponse($request, fn () => $this->portfolio->addAlert((int) $request->user()->id, $data), 201);
+    }
+
+    public function removeAlert(Request $request, int $alert): JsonResponse
+    {
+        $this->portfolio->removeAlert((int) $request->user()->id, $alert);
+
+        return response()->json(['success' => true, 'message' => 'Alerta removido.']);
+    }
+
+    public function simulate(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'market_move_pct' => ['required', 'numeric', 'between:-90,1000'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->portfolio->simulate((int) $request->user()->id, $data),
+        ]);
+    }
+
+    private function marketResponse(Request $request, callable $callback, int $status = 200): JsonResponse
+    {
         try {
-            $data = $this->marketData->candles(
-                $asset,
-                (string) ($validated['quote'] ?? 'USDT'),
-                (string) ($validated['interval'] ?? '1h'),
-                (int) ($validated['limit'] ?? 200),
-            );
+            return response()->json([
+                'success' => true,
+                'data' => $callback(),
+            ], $status);
         } catch (RuntimeException $exception) {
             return response()->json([
                 'success' => false,
@@ -54,10 +152,5 @@ final class MarketDataController extends Controller
                 'request_id' => $request->attributes->get('request_id'),
             ], 502);
         }
-
-        return response()->json([
-            'success' => true,
-            'data' => $data,
-        ]);
     }
 }
