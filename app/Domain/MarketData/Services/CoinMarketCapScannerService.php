@@ -15,16 +15,20 @@ final class CoinMarketCapScannerService
 
     public function scan(int $limit = 50): array
     {
-        $snapshot = Cache::remember(
-            self::CACHE_KEY,
-            now()->addMinutes(5),
-            fn (): array => $this->buildSnapshot(),
-        );
-
+        $snapshot = $this->universe();
         $limit = max(10, min(100, $limit));
         $snapshot['opportunities'] = array_slice($snapshot['opportunities'], 0, $limit);
 
         return $snapshot;
+    }
+
+    public function universe(): array
+    {
+        return Cache::remember(
+            self::CACHE_KEY,
+            now()->addMinutes(5),
+            fn (): array => $this->buildSnapshot(),
+        );
     }
 
     private function buildSnapshot(): array
