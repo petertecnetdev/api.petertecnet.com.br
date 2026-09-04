@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\AdminCopilotController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -24,6 +25,12 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
+
+    Route::prefix('copilot')->middleware('throttle:60,1')->group(function () {
+        Route::get('/capabilities', [AdminCopilotController::class, 'capabilities']);
+        Route::post('/preflight', [AdminCopilotController::class, 'preflight']);
+        Route::post('/audit', [AdminCopilotController::class, 'audit']);
+    });
 
     Route::prefix('command')->group(function () {
         Route::get('/overview', [CommandCenterController::class, 'overview']);
