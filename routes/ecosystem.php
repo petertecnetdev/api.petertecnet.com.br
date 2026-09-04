@@ -74,6 +74,8 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])->whereNumber('user')->whereNumber('application');
 
     Route::get('/access/catalog', [ContextualAccessController::class, 'catalog']);
+    Route::get('/access/resources', [ContextualAccessController::class, 'resources']);
+    Route::post('/access/step-up', [ContextualAccessController::class, 'stepUp'])->middleware('throttle:10,1');
     Route::get('/users/{user}/access-contexts', [ContextualAccessController::class, 'show'])->whereNumber('user');
     Route::post('/users/{user}/role-assignments', [ContextualAccessController::class, 'assignRole'])->whereNumber('user');
     Route::delete('/users/{user}/role-assignments/{assignment}', [ContextualAccessController::class, 'revokeRole'])->whereNumber('user')->whereNumber('assignment');
