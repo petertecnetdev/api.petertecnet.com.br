@@ -2,6 +2,7 @@
 
 namespace App\Domain\Documents\Http\Controllers;
 
+use App\Domain\Documents\Events\DocumentSignatureRecorded;
 use App\Domain\Documents\Services\DocumentWorkflowService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -41,6 +42,7 @@ final class PublicSignatureController extends Controller
         $party = DB::table('document_parties')->where('id', $signatureRequest->document_party_id)->firstOrFail();
         $data = $request->validate(['signer_name' => 'required|string|max:190', 'signer_tax_id' => 'nullable|string|max:40', 'accepted' => 'required|accepted']);
         $document = $this->documents->sign($signatureRequest->document_id, $party->role, ['name' => $data['signer_name'], 'email' => $party->email, 'tax_id' => $data['signer_tax_id'] ?? $party->tax_id], null, $request);
+        event(new DocumentSignatureRecorded($document->id, $party->id));
         return response()->json(['ok' => true, 'message' => 'Assinatura registrada com integridade vinculada à versão do documento.', 'document' => $document]);
     }
 
