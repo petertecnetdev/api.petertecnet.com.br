@@ -3,6 +3,7 @@
 use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
+use App\Domain\MarketData\Services\MarketSignalService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -30,6 +31,15 @@ Artisan::command('discovery:monitor-public {--limit=80}', function () {
     $this->info("Checked {$checked} public pages.");
 })->purpose('Validate public pages, canonicals, schema and images');
 
+Artisan::command('kryvion:market-signal-notifications', function () {
+    $result = app(MarketSignalService::class)->distribute();
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Generate Kryvion buy, sell, breakout and breakdown notifications');
+
 Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
+Schedule::command('kryvion:market-signal-notifications')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping(20)
+    ->onOneServer();
