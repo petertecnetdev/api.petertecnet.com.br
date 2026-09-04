@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class RoleAssignment extends Model
 {
     protected $fillable = [
-        'user_id', 'role_id', 'application_id', 'establishment_id', 'resource_type', 'resource_id',
+        'user_id', 'role_id', 'application_id', 'establishment_id', 'resource_ref_id', 'resource_type', 'resource_id',
         'context_key', 'status', 'starts_at', 'expires_at', 'metadata', 'assigned_by',
     ];
 
@@ -32,11 +32,14 @@ class RoleAssignment extends Model
         ?int $establishmentId = null,
         ?string $resourceType = null,
         ?int $resourceId = null,
+        ?string $resourceUuid = null,
     ): string {
+        if ($resourceUuid) return 'resource:' . strtolower(trim($resourceUuid));
+
         if ($resourceType !== null && $resourceId !== null) {
             return sprintf(
-                'app:%s:est:%s:resource:%s:%d',
-                $applicationId ?? '*',
+                'app:%d:est:%s:resource:%s:%d',
+                $applicationId,
                 $establishmentId ?? '*',
                 strtolower(trim($resourceType)),
                 $resourceId,
@@ -44,38 +47,17 @@ class RoleAssignment extends Model
         }
 
         if ($establishmentId !== null) {
-            return sprintf('app:%s:est:%d', $applicationId ?? '*', $establishmentId);
+            return sprintf('app:%d:est:%d', $applicationId, $establishmentId);
         }
 
-        if ($applicationId !== null) {
-            return 'app:' . $applicationId;
-        }
-
+        if ($applicationId !== null) return 'app:' . $applicationId;
         return 'global';
     }
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
-
-    public function role(): BelongsTo
-    {
-        return $this->belongsTo(Role::class);
-    }
-
-    public function application(): BelongsTo
-    {
-        return $this->belongsTo(Application::class);
-    }
-
-    public function establishment(): BelongsTo
-    {
-        return $this->belongsTo(Establishment::class);
-    }
-
-    public function assigner(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'assigned_by');
-    }
+    public function user(): BelongsTo { return $this->belongsTo(User::class); }
+    public function role(): BelongsTo { return $this->belongsTo(Role::class); }
+    public function application(): BelongsTo { return $this->belongsTo(Application::class); }
+    public function establishment(): BelongsTo { return $this->belongsTo(Establishment::class); }
+    public function resourceRef(): BelongsTo { return $this->belongsTo(ResourceRef::class); }
+    public function assigner(): BelongsTo { return $this->belongsTo(User::class, 'assigned_by'); }
 }
