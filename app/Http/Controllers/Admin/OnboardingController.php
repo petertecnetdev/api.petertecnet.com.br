@@ -31,6 +31,10 @@ class OnboardingController extends Controller
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255'],
             'app_id' => ['required', 'integer', 'exists:applications,id'],
+            'dry_run' => ['sometimes', 'boolean'],
+            'user' => ['nullable', 'array'],
+            'user.first_name' => ['nullable', 'string', 'max:100'],
+            'user.last_name' => ['nullable', 'string', 'max:100'],
             'establishment' => ['nullable', 'array'],
             'establishment.name' => ['required_with:establishment', 'string', 'max:255'],
             'establishment.fantasy' => ['nullable', 'string', 'max:255'],
@@ -73,15 +77,42 @@ class OnboardingController extends Controller
 
         $application = Application::query()->findOrFail($data['app_id']);
         $email = strtolower(trim($data['email']));
+        $existingUser = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
 
-        [$user, $establishment, $items, $createdUser, $issued] = DB::transaction(function () use ($data, $email, $actor, $application) {
-            $user = User::query()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if ((bool) ($data['dry_run'] ?? false)) {
+            $warnings = [];
+            if ($existingUser) {
+                $warnings[] = 'O e-mail já pertence a um usuário. A conta existente será reutilizada.';
+            }
+            if (! empty($data['establishment']['cnpj'])) {
+                $duplicate = Establishment::query()->where('cnpj', $data['establishment']['cnpj'])->first();
+                if ($duplicate) {
+                    $warnings[] = "Já existe um estabelecimento com esse CNPJ (#{$duplicate->id} {$duplicate->name}).";
+                }
+            }
+
+            return response()->json([
+                'valid' => true,
+                'dry_run' => true,
+                'application' => $application->only(['id', 'name', 'slug', 'url']),
+                'existing_user' => $existingUser?->only(['id', 'first_name', 'last_name', 'user_name', 'email']),
+                'user' => $data['user'] ?? null,
+                'establishment' => $data['establishment'] ?? null,
+                'items_count' => count($data['items'] ?? []),
+                'warnings' => $warnings,
+            ]);
+        }
+
+        [$user, $establishment, $items, $createdUser, $issued] = DB::transaction(function () use ($data, $email, $actor, $application, $existingUser) {
+            $user = $existingUser;
             $createdUser = ! $user;
 
             if (! $user) {
-                $label = $this->labelFromEmail($email);
+                $firstName = trim((string) data_get($data, 'user.first_name')) ?: $this->labelFromEmail($email);
+                $lastName = trim((string) data_get($data, 'user.last_name')) ?: null;
                 $user = User::create([
-                    'first_name' => $label,
+                    'first_name' => $firstName,
+                    'last_name' => $lastName,
                     'email' => $email,
                     'user_name' => $this->uniqueUsername($email),
                     'password' => Hash::make(Str::random(64)),
@@ -92,12 +123,8 @@ class OnboardingController extends Controller
             $existingStatus = $existingAccess?->pivot?->status;
             $existingRole = $existingAccess?->pivot?->role;
             $metadata = $existingAccess?->pivot?->metadata;
-            if (is_string($metadata)) {
-                $metadata = json_decode($metadata, true) ?: [];
-            }
-            if (! is_array($metadata)) {
-                $metadata = [];
-            }
+            if (is_string($metadata)) $metadata = json_decode($metadata, true) ?: [];
+            if (! is_array($metadata)) $metadata = [];
 
             $metadata = array_merge($metadata, [
                 'invited_by' => $actor->id,
