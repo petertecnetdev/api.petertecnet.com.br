@@ -57,7 +57,7 @@ final class PaymentOrchestratorService
             abort(422, $exception->getMessage());
         }
 
-        $snapshot = [
+        $snapshot = array_merge([
             'profile_id' => (int) $profile->id,
             'recipient_user_id' => (int) $input['recipient_user_id'],
             'method' => 'pix',
@@ -66,7 +66,7 @@ final class PaymentOrchestratorService
             'holder_name' => $profile->holder_name,
             'merchant_city' => $profile->merchant_city,
             'captured_at' => now()->toIso8601String(),
-        ];
+        ], $input['recipient_snapshot_extra'] ?? []);
 
         $metadata = array_merge($input['metadata'] ?? [], [
             'recipient' => $snapshot,
