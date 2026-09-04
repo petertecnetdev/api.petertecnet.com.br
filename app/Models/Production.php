@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Compatibility facade for the Cutinapp production vocabulary.
+ * Compatibility facade for the legacy production vocabulary.
  *
  * The organizational identity lives in establishments. Production-specific
  * state lives in event_producer_profiles. Legacy columns still present on
