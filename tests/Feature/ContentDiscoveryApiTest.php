@@ -38,11 +38,13 @@ class ContentDiscoveryApiTest extends TestCase
             'excerpt' => 'Conteúdo já disponível.',
         ]);
 
-        $this->getJson('/api/v1/content')
-            ->assertOk()
-            ->assertJsonCount(1, 'data.data')
-            ->assertJsonPath('data.data.0.slug', 'agendado-liberado')
-            ->assertJsonPath('data.data.0.seo.canonical_path', '/blog/agendado-liberado');
+        $response = $this->getJson('/api/v1/content')->assertOk();
+        $entries = collect($response->json('data.data'))->keyBy('slug');
+
+        $this->assertTrue($entries->has('agendado-liberado'));
+        $this->assertFalse($entries->has('rascunho-privado'));
+        $this->assertFalse($entries->has('agendado-futuro'));
+        $this->assertSame('/blog/agendado-liberado', data_get($entries->get('agendado-liberado'), 'seo.canonical_path'));
     }
 
     public function test_admin_can_create_and_publish_generic_content(): void
