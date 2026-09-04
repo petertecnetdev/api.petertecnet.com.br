@@ -22,7 +22,7 @@ final class MarketDataService
     public function overview(): array
     {
         return Cache::remember(
-            'market_data:overview:brl:v2',
+            'market_data:overview:brl:v3',
             now()->addSeconds(60),
             fn () => $this->fetchCoinGeckoOverview(),
         );
@@ -80,6 +80,8 @@ final class MarketDataService
             $marketCap = (float) ($row['market_cap'] ?? 0);
             $volume = (float) ($row['total_volume'] ?? 0);
             $risk = $this->classifyRisk($change24h, $change7d);
+            $score = $this->opportunityScore($change24h, $change7d, $rank);
+            $confidence = max(55, min(92, 94 - min(39, $rank)));
             $spark = is_array($row['sparkline_in_7d']['price'] ?? null)
                 ? $this->sampleSeries($row['sparkline_in_7d']['price'], 36)
                 : [];
@@ -95,8 +97,9 @@ final class MarketDataService
                 'volume' => $volume,
                 'turnover_24h' => $marketCap > 0 ? round(($volume / $marketCap) * 100, 4) : 0.0,
                 'market_cap_rank' => $rank,
-                'base_score' => $this->opportunityScore($change24h, $change7d, $rank),
+                'score' => $score,
                 'risk' => $risk,
+                'confidence' => $confidence,
                 'spark' => $spark,
                 'last_updated' => $row['last_updated'] ?? null,
             ];
@@ -123,27 +126,24 @@ final class MarketDataService
         }
 
         $regime['confidence'] = (int) round(max(52, min(92, 56 + abs($breadth - 50) * 0.45 + min(20, abs($momentum) * 5))));
-
         $sentiment = $this->marketSentiment();
+
         foreach ($assets as &$asset) {
-            $decision = $this->decisionScore($asset, $regime, $sentiment);
-            $asset['score'] = $decision['score'];
-            $asset['confidence'] = $decision['confidence'];
-            $asset['decision'] = $decision['action'];
-            $asset['decision_label'] = $decision['action_label'];
-            $asset['decision_factors'] = $decision['factors'];
-            $asset['decision_reasons'] = $decision['reasons'];
-            $asset['decision_risks'] = $decision['risks'];
+            $intelligence = $this->marketIntelligence($asset, $regime, $sentiment);
+            $asset['intelligence_score'] = $intelligence['score'];
+            $asset['intelligence_confidence'] = $intelligence['confidence'];
+            $asset['intelligence_label'] = $intelligence['label'];
+            $asset['intelligence_factors'] = $intelligence['factors'];
+            $asset['intelligence_reasons'] = $intelligence['reasons'];
+            $asset['intelligence_risks'] = $intelligence['risks'];
         }
         unset($asset);
-
-        $decisionSupport = $this->buildDecisionSupport($assets, $regime, $sentiment);
 
         return [
             'assets' => $assets,
             'regime' => $regime,
             'breadth' => round($breadth, 2),
-            'decision_support' => $decisionSupport,
+            'market_intelligence' => $this->buildMarketIntelligence($assets, $regime, $sentiment),
             'sentiment' => $sentiment,
             'provider' => 'coingecko',
             'currency' => 'BRL',
@@ -151,7 +151,7 @@ final class MarketDataService
         ];
     }
 
-    private function decisionScore(array $asset, array $regime, array $sentiment): array
+    private function marketIntelligence(array $asset, array $regime, array $sentiment): array
     {
         $change24h = (float) ($asset['change_24h'] ?? 0);
         $change7d = (float) ($asset['change_7d'] ?? 0);
@@ -185,12 +185,12 @@ final class MarketDataService
         $sentimentPenalty = $sentimentValue >= 80 ? 7 : ($sentimentValue >= 70 ? 4 : ($sentimentValue <= 20 ? 6 : ($sentimentValue <= 30 ? 3 : 0)));
         $score = (int) round($this->clamp($rawScore - $sentimentPenalty));
 
-        [$action, $actionLabel] = match (true) {
-            $score >= 75 => ['entrada_parcial', 'Entrada parcial'],
-            $score >= 64 => ['oportunidade_seletiva', 'Oportunidade seletiva'],
-            $score >= 55 => ['observar', 'Observar'],
-            $score >= 45 => ['evitar_nova_exposicao', 'Evitar nova exposição'],
-            default => ['reduzir_exposicao', 'Revisar/reduzir exposição'],
+        $label = match (true) {
+            $score >= 75 => 'Força relativa elevada',
+            $score >= 64 => 'Força relativa construtiva',
+            $score >= 55 => 'Equilíbrio relativo',
+            $score >= 45 => 'Fragilidade relativa',
+            default => 'Fragilidade relativa elevada',
         };
 
         $confidence = 62;
@@ -208,62 +208,47 @@ final class MarketDataService
         } else {
             $reasons[] = sprintf('Momentum de 7 dias moderado em %.2f%%.', $change7d);
         }
-
-        if ($turnover >= 5) {
-            $reasons[] = sprintf('Giro de 24h de %.2f%% da capitalização, indicando liquidez relevante.', $turnover);
-        } else {
-            $reasons[] = sprintf('Giro de 24h de %.2f%% da capitalização; liquidez recebe peso conservador.', $turnover);
-        }
+        $reasons[] = sprintf('Giro de 24h equivalente a %.2f%% da capitalização.', $turnover);
 
         $risks = [];
         if ($sentimentValue >= 70) {
-            $risks[] = sprintf('Sentimento em ganância (%d/100) aumenta risco de FOMO e correção.', $sentimentValue);
+            $risks[] = sprintf('Sentimento em ganância (%d/100) aumenta risco de FOMO e reversão.', $sentimentValue);
         } elseif ($sentimentValue <= 30) {
-            $risks[] = sprintf('Sentimento em medo (%d/100) sinaliza ambiente de maior estresse.', $sentimentValue);
+            $risks[] = sprintf('Sentimento em medo (%d/100) indica ambiente de maior estresse.', $sentimentValue);
         }
-
         if ($risk === 'alto') {
             $risks[] = 'Volatilidade recente classificada como alta.';
         }
-
         if (($regime['code'] ?? 'neutral') === 'bearish') {
             $risks[] = 'Regime agregado do mercado está defensivo.';
         }
-
         if ($risks === []) {
-            $risks[] = 'Risco permanece presente mesmo com confluência favorável; prefira entrada fracionada e invalidação definida.';
+            $risks[] = 'O score é comparativo e não elimina risco de perda ou reversão.';
         }
 
         return [
             'score' => $score,
             'confidence' => $confidence,
-            'action' => $action,
-            'action_label' => $actionLabel,
+            'label' => $label,
             'factors' => $factors,
             'reasons' => $reasons,
             'risks' => $risks,
         ];
     }
 
-    private function buildDecisionSupport(array $assets, array $regime, array $sentiment): array
+    private function buildMarketIntelligence(array $assets, array $regime, array $sentiment): array
     {
         $ranking = $assets;
-        usort($ranking, static fn (array $a, array $b): int => ($b['score'] ?? 0) <=> ($a['score'] ?? 0));
-
-        $buy = $ranking[0];
-        $reduce = $ranking[count($ranking) - 1];
-        $hasStrongReduceSignal = (int) ($reduce['score'] ?? 0) < 45;
+        usort($ranking, static fn (array $a, array $b): int => ($b['intelligence_score'] ?? 0) <=> ($a['intelligence_score'] ?? 0));
+        $leader = $ranking[0];
+        $weakest = $ranking[count($ranking) - 1];
 
         return [
-            'version' => 'decision-engine-v2',
+            'version' => 'market-intelligence-v2',
             'generated_at' => now()->toIso8601String(),
-            'buy_candidate' => $this->candidateSnapshot($buy, 'buy'),
-            'reduce_candidate' => $this->candidateSnapshot($reduce, 'reduce'),
-            'has_strong_reduce_signal' => $hasStrongReduceSignal,
-            'reduce_context' => $hasStrongReduceSignal
-                ? 'O menor score cruzou a faixa de revisão/redução de exposição.'
-                : 'Não há sinal técnico forte de venda no universo monitorado; o ativo indicado é apenas o de menor prioridade relativa.',
-            'market_context' => [
+            'relative_strength_leader' => $this->intelligenceSnapshot($leader),
+            'relative_weakness' => $this->intelligenceSnapshot($weakest),
+            'context' => [
                 'regime' => $regime,
                 'sentiment' => $sentiment,
             ],
@@ -271,10 +256,9 @@ final class MarketDataService
                 'id' => $asset['id'],
                 'symbol' => $asset['symbol'],
                 'name' => $asset['name'],
-                'score' => $asset['score'],
-                'confidence' => $asset['confidence'],
-                'action' => $asset['decision'],
-                'action_label' => $asset['decision_label'],
+                'score' => $asset['intelligence_score'],
+                'confidence' => $asset['intelligence_confidence'],
+                'label' => $asset['intelligence_label'],
                 'change_24h' => $asset['change_24h'],
                 'change_7d' => $asset['change_7d'],
                 'turnover_24h' => $asset['turnover_24h'],
@@ -290,7 +274,7 @@ final class MarketDataService
                     'market_regime' => 8,
                     'sentiment_balance' => 6,
                 ],
-                'principle' => 'O score combina força relativa, liquidez, qualidade de mercado, resiliência e contexto. Extremos de medo/ganância recebem penalização adicional.',
+                'principle' => 'Ranking comparativo de força, liquidez e risco. Extremos de medo ou ganância reduzem a leitura de qualidade do contexto.',
                 'planned_data_factors' => [
                     'fluxo líquido de ETFs spot de BTC e ETH',
                     'funding rate e open interest de derivativos',
@@ -304,29 +288,27 @@ final class MarketDataService
                 ['name' => 'CoinGecko', 'role' => 'preço, market cap, volume, 24h, 7d e série de 7 dias'],
                 ['name' => 'Alternative.me Fear & Greed Index', 'role' => 'sentimento agregado do mercado'],
             ],
-            'disclaimer' => 'Apoio à decisão, não recomendação individual nem promessa de retorno. O candidato de redução pode significar apenas menor prioridade relativa quando não existe sinal forte de venda.',
+            'disclaimer' => 'Esta leitura compara condições de mercado e não constitui ordem, recomendação individual ou promessa de retorno.',
         ];
     }
 
-    private function candidateSnapshot(array $asset, string $type): array
+    private function intelligenceSnapshot(array $asset): array
     {
         return [
-            'type' => $type,
             'id' => $asset['id'],
             'symbol' => $asset['symbol'],
             'name' => $asset['name'],
             'price' => $asset['price'],
-            'score' => $asset['score'],
-            'confidence' => $asset['confidence'],
-            'action' => $asset['decision'],
-            'action_label' => $asset['decision_label'],
+            'score' => $asset['intelligence_score'],
+            'confidence' => $asset['intelligence_confidence'],
+            'label' => $asset['intelligence_label'],
             'change_24h' => $asset['change_24h'],
             'change_7d' => $asset['change_7d'],
             'turnover_24h' => $asset['turnover_24h'],
             'risk' => $asset['risk'],
-            'factors' => $asset['decision_factors'],
-            'reasons' => $asset['decision_reasons'],
-            'risks' => $asset['decision_risks'],
+            'factors' => $asset['intelligence_factors'],
+            'reasons' => $asset['intelligence_reasons'],
+            'risks' => $asset['intelligence_risks'],
         ];
     }
 
