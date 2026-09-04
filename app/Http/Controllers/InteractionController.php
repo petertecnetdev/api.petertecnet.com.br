@@ -8,15 +8,9 @@ use App\Services\ApplicationContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\Rule;
 
 class InteractionController extends Controller
 {
-    private const TYPES = [
-        'session_start', 'session_end', 'navigation', 'click', 'form_submit',
-        'field_change', 'search', 'filter', 'scroll', 'frontend_error',
-    ];
-
     private const SENSITIVE = [
         'password', 'token', 'authorization', 'cookie', 'secret', 'code', 'cpf',
         'document', 'card', 'card_number', 'cvv', 'cvc', 'value',
@@ -28,7 +22,9 @@ class InteractionController extends Controller
             'session_id' => ['required', 'string', 'max:100'],
             'events' => ['required', 'array', 'min:1', 'max:50'],
             'events.*.id' => ['required', 'string', 'max:100'],
-            'events.*.type' => ['required', Rule::in(self::TYPES)],
+            // Schema 3 allows semantic event names while keeping the namespace
+            // intentionally narrow and machine-safe.
+            'events.*.type' => ['required', 'string', 'max:80', 'regex:/^[a-z][a-z0-9_]*$/'],
             'events.*.timestamp' => ['required', 'date'],
             'events.*.page' => ['nullable', 'string', 'max:1000'],
             'events.*.label' => ['nullable', 'string', 'max:200'],
@@ -56,14 +52,18 @@ class InteractionController extends Controller
 
         foreach ($data['events'] as $event) {
             if ($existingIds->has($event['id'])) continue;
+
             $metadata = $this->sanitize($event['metadata'] ?? []);
             $type = $event['type'];
+            $outcome = $this->outcomeFor($type, $metadata);
+            $status = $this->statusFor($type, $metadata);
+
             Interaction::withoutEvents(fn () => Interaction::create([
                 'user_id' => $user?->id,
                 'app_id' => $application?->id,
                 'interaction_type' => 'frontend_'.$type,
-                'outcome' => $type === 'frontend_error' ? 'error' : 'success',
-                'severity' => $type === 'frontend_error' ? 'attention' : 'normal',
+                'outcome' => $outcome,
+                'severity' => $this->severityFor($type, $outcome),
                 'environment' => app()->environment(),
                 'request_id' => $event['id'],
                 'correlation_id' => $data['session_id'],
@@ -79,7 +79,7 @@ class InteractionController extends Controller
                     'label' => $event['label'] ?? null,
                     'client_timestamp' => $event['timestamp'],
                     'metadata' => $metadata,
-                    'status' => $type === 'frontend_error' ? null : 200,
+                    'status' => $status,
                     'origin' => $request->header('Origin'),
                     'referer' => $request->header('Referer'),
                     'app_slug' => $application->slug,
@@ -104,22 +104,51 @@ class InteractionController extends Controller
         ], 202);
     }
 
+    private function outcomeFor(string $type, array $metadata): string
+    {
+        if ($type === 'frontend_error' || str_ends_with($type, '_failed')) return 'error';
+
+        $outcome = strtolower(trim((string) ($metadata['outcome'] ?? '')));
+        return in_array($outcome, ['success', 'error', 'failed', 'cancelled', 'pending'], true)
+            ? ($outcome === 'failed' ? 'error' : $outcome)
+            : 'success';
+    }
+
+    private function statusFor(string $type, array $metadata): ?int
+    {
+        if (isset($metadata['status']) && is_numeric($metadata['status'])) {
+            $status = (int) $metadata['status'];
+            return $status > 0 && $status <= 599 ? $status : null;
+        }
+
+        return $type === 'frontend_error' ? null : 200;
+    }
+
+    private function severityFor(string $type, string $outcome): string
+    {
+        if ($type === 'frontend_error' || $outcome === 'error') return 'attention';
+        return 'normal';
+    }
+
     private function description(string $type, array $event): string
     {
         $label = trim((string) ($event['label'] ?? ''));
         $page = trim((string) ($event['page'] ?? ''));
+
         return match ($type) {
             'session_start' => 'Iniciou uma sessão',
             'session_end' => 'Encerrou a sessão',
             'navigation' => 'Navegou para '.($page ?: 'outra página'),
+            'screen_view' => 'Visualizou '.($label ?: 'uma tela'),
             'click' => 'Clicou em '.($label ?: 'um elemento'),
             'form_submit' => 'Enviou '.($label ?: 'um formulário'),
             'field_change' => 'Alterou '.($label ?: 'um filtro ou opção'),
-            'search' => 'Realizou uma busca',
-            'filter' => 'Aplicou um filtro',
+            'search', 'search_input' => $label ?: 'Realizou uma busca',
+            'filter' => $label ?: 'Aplicou um filtro',
             'scroll' => 'Visualizou '.($label ?: 'parte da página'),
+            'visibility_change' => $label ?: 'Alterou o foco da aplicação',
             'frontend_error' => 'Encontrou um erro na interface',
-            default => ucfirst(str_replace('_', ' ', $type)),
+            default => $label ?: ucfirst(str_replace('_', ' ', $type)),
         };
     }
 
