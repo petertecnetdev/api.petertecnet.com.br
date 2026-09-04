@@ -39,5 +39,8 @@ return [
         'payflow' => [
             'capabilities' => ['crm','commerce','payments','notifications'],
         ],
+        'kryvion' => [
+            'capabilities' => ['market_data','portfolio','analytics','alerts','notifications'],
+        ],
     ],
 ];
