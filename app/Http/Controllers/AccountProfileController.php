@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AccountDocument;
+use App\Models\AccountIdentityProfile;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -39,7 +40,7 @@ class AccountProfileController extends Controller
             'cpf' => ['sometimes', 'nullable', 'digits:11', Rule::unique('users', 'cpf')->ignore($user->id)],
             'phone' => 'sometimes|nullable|string|max:30',
             'birthdate' => 'sometimes|nullable|date|before_or_equal:today',
-            'gender' => 'sometimes|nullable|in:male,female,other',
+            'gender' => 'sometimes|nullable|string|max:30',
             'marital_status' => 'sometimes|nullable|string|max:60',
             'occupation' => 'sometimes|nullable|string|max:180',
             'address' => 'sometimes|nullable|string|max:500',
@@ -56,7 +57,7 @@ class AccountProfileController extends Controller
             'parent_2' => 'sometimes|nullable|string|max:180',
         ]);
 
-        $extendedKeys = [
+        $privateKeys = [
             'nationality', 'birthplace', 'identity_document_type', 'identity_document_number',
             'identity_document_issuer', 'parent_1', 'parent_2',
         ];
@@ -65,19 +66,19 @@ class AccountProfileController extends Controller
             'marital_status', 'occupation', 'address', 'city', 'uf', 'postal_code', 'about',
         ];
 
-        DB::transaction(function () use ($user, $data, $extendedKeys, $userKeys) {
+        DB::transaction(function () use ($user, $data, $privateKeys, $userKeys) {
             foreach (Arr::only($data, $userKeys) as $field => $value) {
                 $user->{$field} = is_string($value) ? trim($value) : $value;
             }
-
-            $extra = is_array($user->extra_info) ? $user->extra_info : [];
-            $profile = is_array($extra['account_profile'] ?? null) ? $extra['account_profile'] : [];
-            foreach (Arr::only($data, $extendedKeys) as $field => $value) {
-                $profile[$field] = is_string($value) ? trim($value) : $value;
-            }
-            $extra['account_profile'] = $profile;
-            $user->extra_info = $extra;
             $user->save();
+
+            if (Arr::hasAny($data, $privateKeys)) {
+                $private = AccountIdentityProfile::query()->firstOrNew(['user_id' => $user->id]);
+                foreach (Arr::only($data, $privateKeys) as $field => $value) {
+                    $private->{$field} = is_string($value) ? trim($value) : $value;
+                }
+                $private->save();
+            }
         });
 
         return response()->json([
@@ -88,8 +89,7 @@ class AccountProfileController extends Controller
 
     private function payload(User $user): array
     {
-        $extra = is_array($user->extra_info) ? $user->extra_info : [];
-        $extended = is_array($extra['account_profile'] ?? null) ? $extra['account_profile'] : [];
+        $private = AccountIdentityProfile::query()->where('user_id', $user->id)->first();
         $documents = AccountDocument::query()
             ->where('user_id', $user->id)
             ->latest()
@@ -130,10 +130,13 @@ class AccountProfileController extends Controller
                 'postal_code' => $user->postal_code,
                 'about' => $user->about,
                 'avatar' => $user->avatar,
-                ...Arr::only($extended, [
-                    'nationality', 'birthplace', 'identity_document_type', 'identity_document_number',
-                    'identity_document_issuer', 'parent_1', 'parent_2',
-                ]),
+                'nationality' => $private?->nationality,
+                'birthplace' => $private?->birthplace,
+                'identity_document_type' => $private?->identity_document_type,
+                'identity_document_number' => $private?->identity_document_number,
+                'identity_document_issuer' => $private?->identity_document_issuer,
+                'parent_1' => $private?->parent_1,
+                'parent_2' => $private?->parent_2,
             ],
             'completion' => [
                 'percentage' => $completion,
