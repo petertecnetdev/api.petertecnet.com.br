@@ -30,9 +30,9 @@ class ProductionEstablishmentSyncService
             $profile = array_merge(
                 $this->businessProfile($establishment->business_profile),
                 [
-                    'source' => 'cutinapp_production',
+                    'source' => 'legacy_production_adapter',
                     'production_id' => $production->id,
-                    'app_slug' => $production->app_slug ?: 'cutinapp',
+                    'app_slug' => $production->app_slug ?: 'production',
                 ]
             );
 
@@ -161,7 +161,7 @@ class ProductionEstablishmentSyncService
             ->when($establishment->exists, fn ($query) => $query->whereKeyNot($establishment->id))
             ->where('slug', $candidate)
             ->exists()) {
-            $candidate = $base . '-cutinapp-' . $production->id . ($suffix > 2 ? '-' . $suffix : '');
+            $candidate = $base . '-production-' . $production->id . ($suffix > 2 ? '-' . $suffix : '');
             $suffix++;
         }
 

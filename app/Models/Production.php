@@ -9,16 +9,30 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Compatibility model for the Cutinapp vocabulary.
+ * Compatibility facade for the legacy production vocabulary.
  *
- * A production is not persisted in its own table anymore. It is an
- * Establishment with category=production. Keeping this model lets legacy
- * domain code continue using Production while the source of truth remains the
- * generic establishments table used by the whole Peter Tecnet ecosystem.
+ * The organizational identity lives in establishments. Production-specific
+ * state lives in event_producer_profiles. Legacy columns still present on
+ * establishments are compatibility shadows only and are dual-written until
+ * all consumers have migrated to the specialized profile.
  */
 class Production extends Establishment
 {
     protected $table = 'establishments';
+
+    private const PROFILE_FIELDS = [
+        'capacity',
+        'start_date',
+        'end_date',
+        'ticket_price_min',
+        'ticket_price_max',
+        'total_tickets_sold',
+        'total_tickets_available',
+        'contact_email',
+        'contact_phone',
+        'other_information',
+        'images',
+    ];
 
     protected $fillable = [
         'app_id','app_slug','legacy_production_id','name','slug','type','category','phone','establishment_type',
@@ -73,7 +87,9 @@ class Production extends Establishment
 
         static::saving(function (Production $production) {
             foreach (['city_id','cep','address_number','neighborhood','address_complement','address_reference','formatted_address','latitude','longitude','place_id','google_maps_url','location_public'] as $field) {
-                if (request()->exists($field)) $production->setAttribute($field, request()->input($field));
+                if (request()->exists($field)) {
+                    $production->setAttribute($field, request()->input($field));
+                }
             }
 
             if (request()->exists('city') && ! request()->exists('city_id')) {
@@ -83,7 +99,9 @@ class Production extends Establishment
             $locationDirty = ! $production->exists || $production->isDirty(['city_id','city','uf','cep']);
             if ($locationDirty) {
                 $service = app(LocationService::class);
-                if ($production->cep) $production->cep = $service->normalizeCep($production->cep);
+                if ($production->cep) {
+                    $production->cep = $service->normalizeCep($production->cep);
+                }
                 if ($production->city_id || $production->city || $production->uf) {
                     $data = ['city_id'=>$production->city_id,'city'=>$production->city,'uf'=>$production->uf];
                     $service->applyCanonicalCity($data, true);
@@ -97,17 +115,23 @@ class Production extends Establishment
             $production->type = $production->type ?: 'production';
             $production->establishment_type = $production->establishment_type ?: 'production';
             $production->updated_by = $production->updated_by ?: $production->user_id;
-            if (! $production->phone && $production->contact_phone) $production->phone = $production->contact_phone;
-            if (! $production->email && $production->contact_email) $production->email = $production->contact_email;
+            if (! $production->phone && $production->contact_phone) {
+                $production->phone = $production->contact_phone;
+            }
+            if (! $production->email && $production->contact_email) {
+                $production->email = $production->contact_email;
+            }
         });
 
         static::saved(function (Production $production) {
-            if (! $production->app_id || ! Schema::hasTable('application_establishment')) return;
+            if ($production->app_id && Schema::hasTable('application_establishment')) {
+                DB::table('application_establishment')->updateOrInsert(
+                    ['application_id' => $production->app_id, 'establishment_id' => $production->id],
+                    ['is_primary' => true, 'created_at' => $production->created_at ?: now(), 'updated_at' => now()]
+                );
+            }
 
-            DB::table('application_establishment')->updateOrInsert(
-                ['application_id' => $production->app_id, 'establishment_id' => $production->id],
-                ['is_primary' => true, 'created_at' => $production->created_at ?: now(), 'updated_at' => now()]
-            );
+            $production->syncEventProducerProfile();
         });
     }
 
@@ -115,6 +139,30 @@ class Production extends Establishment
     public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');}
     public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->whereIn('entity_type',['production','Production','Establishment']);}
     public function events(){return $this->hasMany(Event::class,'production_id')->orderBy('start_date','desc');}
+
+    public function eventProducerProfile()
+    {
+        return $this->hasOne(EventProducerProfile::class, 'establishment_id');
+    }
+
+    public function syncEventProducerProfile(): void
+    {
+        if (! $this->exists || ! Schema::hasTable('event_producer_profiles')) {
+            return;
+        }
+
+        $payload = ['application_id' => $this->app_id];
+        foreach (self::PROFILE_FIELDS as $field) {
+            $payload[$field] = $this->getRawOriginal($field) ?? $this->getAttribute($field);
+        }
+
+        EventProducerProfile::query()->updateOrCreate(
+            ['establishment_id' => $this->id],
+            $payload,
+        );
+
+        $this->unsetRelation('eventProducerProfile');
+    }
 
     public function getSegmentsnNamesAttribute()
     {
