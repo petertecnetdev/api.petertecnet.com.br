@@ -39,13 +39,35 @@ class GenericDomainArchitectureRegressionTest extends TestCase
         $this->assertStringNotContainsString('Str::uuid', $source);
     }
 
-    public function test_leasing_does_not_own_email_transport(): void
+    public function test_leasing_document_and_termination_controllers_do_not_own_email_transport(): void
     {
-        $source = $this->source('Domain/Leasing/Http/Controllers/LeaseDocumentWorkflowController.php');
+        $document = $this->source('Domain/Leasing/Http/Controllers/LeaseDocumentWorkflowController.php');
+        $termination = $this->source('Domain/Leasing/Http/Controllers/LeaseTerminationController.php');
 
-        $this->assertStringContainsString('NotificationDispatcher', $source);
-        $this->assertStringNotContainsString('Support\\Facades\\Mail', $source);
-        $this->assertStringNotContainsString('Mail::raw', $source);
+        $this->assertStringContainsString('NotificationDispatcher', $document);
+        $this->assertStringNotContainsString('Support\\Facades\\Mail', $document);
+        $this->assertStringNotContainsString('Mail::raw', $document);
+        $this->assertStringContainsString('LeaseTerminationService', $termination);
+        $this->assertStringNotContainsString('Support\\Facades\\Mail', $termination);
+        $this->assertStringNotContainsString('DocumentWorkflowService', $termination);
+    }
+
+    public function test_contextual_role_controller_delegates_domain_queries(): void
+    {
+        $source = $this->source('Domain/Leasing/Http/Controllers/LeaseContextController.php');
+
+        $this->assertStringContainsString('LeaseContextService', $source);
+        $this->assertStringNotContainsString('Support\\Facades\\DB', $source);
+        $this->assertStringNotContainsString('DB::table', $source);
+    }
+
+    public function test_account_documents_reuse_generic_media_storage(): void
+    {
+        $source = $this->source('Http/Controllers/AccountDocumentController.php');
+
+        $this->assertStringContainsString('ManagedFileStorageService', $source);
+        $this->assertStringNotContainsString('Support\\Facades\\Storage', $source);
+        $this->assertStringNotContainsString('storeAs(', $source);
     }
 
     private function source(string $relativePath): string
