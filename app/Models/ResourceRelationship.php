@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class ResourceRelationship extends Model
 {
@@ -18,6 +19,27 @@ class ResourceRelationship extends Model
         'ends_at' => 'datetime',
         'metadata' => 'array',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (ResourceRelationship $relationship) {
+            if (! $relationship->application_id) {
+                throw new LogicException('Relacionamentos de recurso exigem application_id.');
+            }
+            if (! $relationship->resource_type || ! $relationship->resource_id) {
+                throw new LogicException('Relacionamentos exigem resource_type e resource_id.');
+            }
+            if ($relationship->resource_ref_id) {
+                $resource = ResourceRef::query()->find($relationship->resource_ref_id);
+                if (! $resource || (int) $resource->application_id !== (int) $relationship->application_id) {
+                    throw new LogicException('O recurso registrado não pertence ao application_id do relacionamento.');
+                }
+                if ($resource->resource_type !== strtolower(trim($relationship->resource_type)) || (int) $resource->resource_id !== (int) $relationship->resource_id) {
+                    throw new LogicException('Tipo/ID do relacionamento divergem do recurso registrado.');
+                }
+            }
+        });
+    }
 
     public function scopeActive(Builder $query): Builder
     {
