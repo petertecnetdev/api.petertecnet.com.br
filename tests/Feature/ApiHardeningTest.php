@@ -28,6 +28,11 @@ class ApiHardeningTest extends TestCase
         );
     }
 
+    public function test_cors_allows_contextual_role_header(): void
+    {
+        $this->assertContains('X-Peter-Context-Role', config('cors.allowed_headers', []));
+    }
+
     public function test_saving_configured_email_does_not_implicitly_promote_user(): void
     {
         config()->set('peter.admin_email', 'admin@example.test');
