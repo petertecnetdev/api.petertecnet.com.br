@@ -128,13 +128,15 @@ jobs:
           grep -q 'api/v1/apps/{application}/commerce/checkout' <<< "$routes"
 
       - name: Run architecture gate
+        id: architecture
+        continue-on-error: true
         shell: bash
         run: |
           set -o pipefail
           php artisan test tests/Feature/PlatformArchitectureTest.php tests/Feature/ControllerArchitectureBoundaryTest.php 2>&1 | tee /tmp/architecture.log
 
       - name: Publish architecture diagnostic
-        if: failure() && github.event_name == 'pull_request'
+        if: steps.architecture.outcome == 'failure' && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         with:
           script: |
@@ -176,3 +178,10 @@ jobs:
             const existing = comments.data.find(comment => comment.body?.includes(marker));
             if (existing) await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
             else await github.rest.issues.createComment({ owner, repo, issue_number, body });
+
+      - name: Enforce architecture gate
+        if: always() && steps.architecture.outcome == 'failure'
+        shell: bash
+        run: |
+          echo 'Architecture guardrails failed. Functional tests were still executed for complete diagnostics.'
+          exit 1
