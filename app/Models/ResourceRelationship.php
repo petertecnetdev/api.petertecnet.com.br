@@ -9,7 +9,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ResourceRelationship extends Model
 {
     protected $fillable = [
-        'subject_type', 'subject_id', 'application_id', 'relationship_type', 'resource_type', 'resource_id',
+        'subject_type', 'subject_id', 'application_id', 'resource_ref_id', 'relationship_type', 'resource_type', 'resource_id',
         'relationship_key', 'status', 'starts_at', 'ends_at', 'metadata', 'created_by',
     ];
 
@@ -34,26 +34,21 @@ class ResourceRelationship extends Model
         string $resourceType,
         int $resourceId,
         ?int $applicationId = null,
+        ?string $resourceUuid = null,
     ): string {
-        $raw = implode('|', [
+        $resourceNamespace = $resourceUuid
+            ? 'uuid:' . strtolower(trim($resourceUuid))
+            : sprintf('app:%d:%s:%d', $applicationId, strtolower(trim($resourceType)), $resourceId);
+
+        return hash('sha256', implode('|', [
             strtolower(trim($subjectType)),
             $subjectId,
-            $applicationId ?? '*',
             strtolower(trim($relationshipType)),
-            strtolower(trim($resourceType)),
-            $resourceId,
-        ]);
-
-        return hash('sha256', $raw);
+            $resourceNamespace,
+        ]));
     }
 
-    public function application(): BelongsTo
-    {
-        return $this->belongsTo(Application::class);
-    }
-
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
+    public function application(): BelongsTo { return $this->belongsTo(Application::class); }
+    public function resourceRef(): BelongsTo { return $this->belongsTo(ResourceRef::class); }
+    public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 }
