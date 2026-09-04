@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -22,6 +23,12 @@ return new class extends Migration
             $table->timestamp('refund_deadline_at')->nullable()->after('previous_end_date');
             $table->text('lifecycle_reason')->nullable()->after('refund_deadline_at');
         });
+
+        // Preserve the semantic state of events cancelled before this lifecycle
+        // contract existed. This keeps old records from being exposed as scheduled.
+        DB::table('events')
+            ->where('is_cancelled', true)
+            ->update(['lifecycle_status' => 'cancelled']);
 
         Schema::create('event_lifecycle_actions', function (Blueprint $table) {
             $table->id();
