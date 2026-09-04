@@ -15,11 +15,19 @@ final class AcquisitionAccess
     {
         if (! $user) return false;
 
-        return $user->applications()
+        $membership = $user->applications()
             ->whereKey($this->context->id())
             ->wherePivot('status', 'active')
-            ->wherePivot('role', 'acquisition_agent')
-            ->exists();
+            ->first()?->pivot;
+
+        if (! $membership) return false;
+        if ((string) $membership->role === 'acquisition_agent') return true;
+
+        $metadata = $membership->metadata;
+        if (is_string($metadata)) $metadata = json_decode($metadata, true);
+        $roles = is_array($metadata) ? (array) ($metadata['roles'] ?? []) : [];
+
+        return in_array('acquisition_agent', $roles, true);
     }
 
     public function assertAgent(?User $user): User
