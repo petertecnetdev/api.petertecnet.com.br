@@ -38,30 +38,30 @@ class CognitiveQueryService
         $since7d = $now->copy()->subDays(7);
         $since14d = $now->copy()->subDays(13)->startOfDay();
 
-        $memoryBase = $agent->memories();
-        $beliefBase = $agent->beliefs();
-        $observationBase = $agent->observations();
-        $learningBase = $agent->learningEvents();
-        $runBase = $agent->experimentRuns();
+        $memories = fn () => $agent->memories();
+        $beliefs = fn () => $agent->beliefs();
+        $observations = fn () => $agent->observations();
+        $learningEvents = fn () => $agent->learningEvents();
+        $runs = fn () => $agent->experimentRuns();
 
-        $beliefCounts = $beliefBase->clone()
+        $beliefCounts = $beliefs()
             ->selectRaw('status, COUNT(*) as total')
             ->groupBy('status')
             ->pluck('total', 'status');
 
-        $runCounts = $runBase->clone()
+        $runCounts = $runs()
             ->selectRaw('result, COUNT(*) as total')
             ->groupBy('result')
             ->pluck('total', 'result');
 
-        $learningTimeline = $learningBase->clone()
+        $learningTimeline = $learningEvents()
             ->where('created_at', '>=', $since14d)
             ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
             ->groupByRaw('DATE(created_at)')
             ->orderBy('day')
             ->pluck('total', 'day');
 
-        $observationTimeline = $observationBase->clone()
+        $observationTimeline = $observations()
             ->where('created_at', '>=', $since14d)
             ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
             ->groupByRaw('DATE(created_at)')
@@ -78,11 +78,11 @@ class CognitiveQueryService
             ];
         })->values();
 
-        $totalBeliefs = (int) $beliefBase->clone()->count();
-        $totalMemories = (int) $memoryBase->clone()->count();
-        $activeMemories = (int) $memoryBase->clone()->where('active', true)->count();
-        $totalContradictions = (int) $beliefBase->clone()->sum('contradiction_count');
-        $totalEvidence = (int) $beliefBase->clone()->sum('evidence_count');
+        $totalBeliefs = (int) $beliefs()->count();
+        $totalMemories = (int) $memories()->count();
+        $activeMemories = (int) $memories()->where('active', true)->count();
+        $totalContradictions = (int) $beliefs()->sum('contradiction_count');
+        $totalEvidence = (int) $beliefs()->sum('evidence_count');
 
         return [
             'system' => [
@@ -95,40 +95,40 @@ class CognitiveQueryService
             ],
             'agent' => $this->agentSummary($agent),
             'summary' => [
-                'observations' => (int) $observationBase->clone()->count(),
-                'observations_24h' => (int) $observationBase->clone()->where('created_at', '>=', $since24h)->count(),
-                'observations_7d' => (int) $observationBase->clone()->where('created_at', '>=', $since7d)->count(),
-                'high_salience_observations' => (int) $observationBase->clone()->where('salience', '>=', 0.75)->count(),
+                'observations' => (int) $observations()->count(),
+                'observations_24h' => (int) $observations()->where('created_at', '>=', $since24h)->count(),
+                'observations_7d' => (int) $observations()->where('created_at', '>=', $since7d)->count(),
+                'high_salience_observations' => (int) $observations()->where('salience', '>=', 0.75)->count(),
                 'memories' => $totalMemories,
                 'active_memories' => $activeMemories,
-                'memory_confidence_avg' => round((float) ($memoryBase->clone()->where('active', true)->avg('confidence') ?? 0), 4),
-                'memory_importance_avg' => round((float) ($memoryBase->clone()->where('active', true)->avg('importance') ?? 0), 4),
-                'memory_reinforcements' => (int) $memoryBase->clone()->sum('reinforcement_count'),
+                'memory_confidence_avg' => round((float) ($memories()->where('active', true)->avg('confidence') ?? 0), 4),
+                'memory_importance_avg' => round((float) ($memories()->where('active', true)->avg('importance') ?? 0), 4),
+                'memory_reinforcements' => (int) $memories()->sum('reinforcement_count'),
                 'beliefs' => $totalBeliefs,
                 'active_beliefs' => (int) ($beliefCounts['active'] ?? 0),
                 'uncertain_beliefs' => (int) ($beliefCounts['uncertain'] ?? 0),
                 'retracted_beliefs' => (int) ($beliefCounts['retracted'] ?? 0),
-                'belief_confidence_avg' => round((float) ($beliefBase->clone()->where('status', '!=', 'retracted')->avg('confidence') ?? 0), 4),
+                'belief_confidence_avg' => round((float) ($beliefs()->where('status', '!=', 'retracted')->avg('confidence') ?? 0), 4),
                 'evidence_count' => $totalEvidence,
                 'contradiction_count' => $totalContradictions,
                 'contradiction_rate' => $totalEvidence + $totalContradictions > 0
                     ? round($totalContradictions / ($totalEvidence + $totalContradictions), 4)
                     : 0.0,
-                'learning_events' => (int) $learningBase->clone()->count(),
-                'learning_events_24h' => (int) $learningBase->clone()->where('created_at', '>=', $since24h)->count(),
+                'learning_events' => (int) $learningEvents()->count(),
+                'learning_events_24h' => (int) $learningEvents()->where('created_at', '>=', $since24h)->count(),
                 'goals_active' => (int) $agent->goals()->where('status', 'active')->count(),
-                'experiment_runs' => (int) $runBase->clone()->count(),
+                'experiment_runs' => (int) $runs()->count(),
                 'experiment_passed' => (int) ($runCounts['pass'] ?? 0),
                 'experiment_failed' => (int) ($runCounts['fail'] ?? 0),
                 'experiment_inconclusive' => (int) ($runCounts['inconclusive'] ?? 0),
-                'experiment_score_avg' => round((float) ($runBase->clone()->whereNotNull('score')->avg('score') ?? 0), 4),
+                'experiment_score_avg' => round((float) ($runs()->whereNotNull('score')->avg('score') ?? 0), 4),
             ],
             'timeline' => $timeline,
             'recent' => [
-                'learning_events' => $learningBase->clone()->latest()->limit(12)->get(),
-                'beliefs' => $beliefBase->clone()->where('status', '!=', 'retracted')->orderByDesc('last_evidence_at')->orderByDesc('confidence')->limit(10)->get(),
-                'memories' => $memoryBase->clone()->where('active', true)->orderByDesc('last_reinforced_at')->orderByDesc('created_at')->limit(10)->get(),
-                'observations' => $observationBase->clone()->latest()->limit(10)->get(),
+                'learning_events' => $learningEvents()->latest()->limit(12)->get(),
+                'beliefs' => $beliefs()->where('status', '!=', 'retracted')->orderByDesc('last_evidence_at')->orderByDesc('confidence')->limit(10)->get(),
+                'memories' => $memories()->where('active', true)->orderByDesc('last_reinforced_at')->orderByDesc('created_at')->limit(10)->get(),
+                'observations' => $observations()->latest()->limit(10)->get(),
                 'state' => $agent->stateSnapshots()->latest('captured_at')->first(),
             ],
         ];
