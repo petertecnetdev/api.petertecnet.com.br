@@ -32,6 +32,8 @@ class UpdateItemRequest extends FormRequest
             'discount' => ['sometimes', 'nullable', 'numeric', 'min:0'],
             'expiration_date' => ['sometimes', 'nullable', 'date'],
             'notes' => ['sometimes', 'nullable', 'string'],
+            'image' => ['sometimes', 'nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
+            'remove_image' => ['sometimes', 'boolean'],
         ];
     }
 }
