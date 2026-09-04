@@ -12,7 +12,6 @@ use App\Services\ContextualAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class ContextualAccessController extends Controller
 {
@@ -227,7 +226,10 @@ class ContextualAccessController extends Controller
     private function authorizeAdmin(Request $request): void
     {
         $actor = $request->user();
-        abort_unless($actor && ($actor->hasProfile('Administrador') || $actor->hasPermission('user_edit')), 403);
+        $legacyAdmin = $actor && ($actor->hasProfile('Administrador') || $actor->hasPermission('user_edit'));
+        $contextualAdmin = $actor && $this->access->hasPermission($actor, 'ecosystem.manage');
+
+        abort_unless($legacyAdmin || $contextualAdmin, 403);
     }
 
     private function validateContextConsistency(array $data): void
