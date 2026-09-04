@@ -52,6 +52,9 @@ return [
         'file' => [
             'driver' => 'file',
             'path' => storage_path('framework/cache/data'),
+            // PHP-FPM, the scheduler and deploy tasks share this store. Keep
+            // cache files group-writable so locks remain safe across processes.
+            'permission' => 0664,
         ],
 
         'memcached' => [
