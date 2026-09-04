@@ -7,6 +7,7 @@ use App\Mail\NewEmployerCollaborator;
 use App\Mail\OwnerNotifiedNewCollaborator;
 use App\Models\Employer;
 use App\Models\Establishment;
+use App\Models\User;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
@@ -37,6 +38,89 @@ class TeamMemberController extends Controller
             'success' => true,
             'data' => $members,
             'count' => $members->count(),
+        ]);
+    }
+
+    public function candidates(Request $request)
+    {
+        $data = $request->validate([
+            'establishment_id' => 'required|integer|exists:establishments,id',
+            'q' => 'required|string|min:2|max:255',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $establishment = $this->manageableEstablishment(
+            $request,
+            (int) $data['establishment_id']
+        );
+
+        $term = trim((string) $data['q']);
+        $digits = preg_replace('/\D+/', '', $term) ?: '';
+
+        $users = User::query()
+            ->select([
+                'id',
+                'first_name',
+                'last_name',
+                'user_name',
+                'email',
+                'phone',
+                'city',
+                'uf',
+                'avatar',
+            ])
+            ->where(function ($query) use ($term, $digits) {
+                if (ctype_digit($term)) {
+                    $query->orWhere('id', (int) $term);
+                }
+
+                $query->orWhere('email', 'like', '%'.$term.'%')
+                    ->orWhere('first_name', 'like', '%'.$term.'%')
+                    ->orWhere('last_name', 'like', '%'.$term.'%')
+                    ->orWhere('user_name', 'like', '%'.ltrim($term, '@').'%');
+
+                if ($digits !== '') {
+                    $query->orWhere('phone', 'like', '%'.$digits.'%')
+                        ->orWhere('cpf', $digits);
+                }
+            })
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->limit((int) ($data['limit'] ?? 30))
+            ->get();
+
+        $membersByUser = Employer::query()
+            ->where('establishment_id', $establishment->id)
+            ->whereIn('user_id', $users->pluck('id'))
+            ->get()
+            ->keyBy(fn (Employer $member) => (int) $member->user_id);
+
+        $candidates = $users->map(function (User $user) use ($membersByUser) {
+            $member = $membersByUser->get((int) $user->id);
+
+            return [
+                'id' => $user->id,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'user_name' => $user->user_name,
+                'email' => $user->email,
+                'phone' => $user->phone,
+                'city' => $user->city,
+                'uf' => $user->uf,
+                'avatar' => $user->avatar,
+                'is_team_member' => $member !== null,
+                'team_member' => $member ? [
+                    'id' => $member->id,
+                    'role' => $member->role,
+                    'permissions' => $member->permissions ?? [],
+                ] : null,
+            ];
+        })->values();
+
+        return response()->json([
+            'success' => true,
+            'data' => $candidates,
+            'count' => $candidates->count(),
         ]);
     }
 
