@@ -44,7 +44,16 @@ jobs:
         run: |
           set -euo pipefail
           composer validate --no-check-publish --no-check-lock
-          composer audit --locked --no-dev
+          for attempt in 1 2 3; do
+            if composer audit --locked --no-dev; then
+              exit 0
+            fi
+            if [[ "$attempt" -eq 3 ]]; then
+              echo "Composer security audit failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
 
   npm-audit:
     name: NPM production vulnerability audit
