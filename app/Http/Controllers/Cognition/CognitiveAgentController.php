@@ -46,6 +46,12 @@ class CognitiveAgentController extends CognitionController
         return response()->json($queries->agentSummary($agent));
     }
 
+    public function dashboard(Request $request, CognitiveAgent $agent, CognitiveQueryService $queries)
+    {
+        $this->authorizeCognition($request);
+        return response()->json($queries->dashboard($agent));
+    }
+
     public function update(Request $request, CognitiveAgent $agent, CognitiveQueryService $queries)
     {
         $this->authorizeCognition($request);
