@@ -2,6 +2,7 @@
 
 namespace App\Domain\Locations\Http\Controllers;
 
+use App\Domain\Locations\Services\GooglePlacesService;
 use App\Domain\Locations\Services\MunicipalityService;
 use App\Http\Controllers\Controller;
 use App\Models\BrazilianMunicipality;
@@ -85,6 +86,49 @@ class LocationController extends Controller
             'city' => $city?->name ?: ($payload['localidade'] ?? null),
             'uf' => $city?->uf ?: strtoupper((string) ($payload['uf'] ?? '')),
         ]]);
+    }
+
+    public function places(Request $request, GooglePlacesService $places)
+    {
+        $data = $request->validate([
+            'q' => 'required|string|min:2|max:160',
+            'session_token' => ['nullable','string','max:120','regex:/^[A-Za-z0-9_-]+$/'],
+        ]);
+
+        return response()->json([
+            'places' => $places->autocomplete(trim($data['q']), $data['session_token'] ?? null),
+        ]);
+    }
+
+    public function place(Request $request, string $placeId, GooglePlacesService $places, MunicipalityService $locations)
+    {
+        $data = $request->validate([
+            'session_token' => ['nullable','string','max:120','regex:/^[A-Za-z0-9_-]+$/'],
+        ]);
+
+        $place = $places->details($placeId, $data['session_token'] ?? null);
+        $uf = strtoupper(trim((string) ($place['uf'] ?? '')));
+        $cityName = trim((string) ($place['city'] ?? ''));
+
+        if ($uf !== '' && in_array($uf, self::UFS, true)) {
+            $this->ensureStateCached($uf, $locations);
+        }
+
+        $city = null;
+        if ($cityName !== '') {
+            $city = BrazilianMunicipality::query()
+                ->when($uf !== '', fn ($query) => $query->where('uf', $uf))
+                ->where('normalized_name', $locations->normalizedName($cityName))
+                ->first();
+        }
+
+        $place['city_id'] = $city?->ibge_code;
+        if ($city) {
+            $place['city'] = $city->name;
+            $place['uf'] = $city->uf;
+        }
+
+        return response()->json(['place' => $place]);
     }
 
     private function ensureStateCached(string $uf, MunicipalityService $locations): void
