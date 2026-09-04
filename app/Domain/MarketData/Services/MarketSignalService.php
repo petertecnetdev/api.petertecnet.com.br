@@ -5,7 +5,6 @@ namespace App\Domain\MarketData\Services;
 use App\Models\AppNotification;
 use App\Models\Application;
 use App\Services\AppNotificationService;
-use Illuminate\Support\Arr;
 
 final class MarketSignalService
 {
@@ -19,7 +18,7 @@ final class MarketSignalService
 
     public function current(): array
     {
-        $scan = $this->scanner->scan(100);
+        $scan = $this->scanner->universe();
         $assets = collect($scan['opportunities'] ?? [])->filter(fn ($asset) => is_array($asset))->values();
 
         $bearish = $assets
@@ -43,7 +42,11 @@ final class MarketSignalService
         );
 
         $up = $assets->first(fn (array $asset): bool => (int) ($asset['breakout_score'] ?? 0) >= 65);
-        $down = $bearish->first(fn (array $asset): bool => (int) ($asset['breakdown_score'] ?? 0) >= 65);
+        $down = $bearish->first(fn (array $asset): bool =>
+            (int) ($asset['breakdown_score'] ?? 0) >= 65
+            && (float) ($asset['change_24h'] ?? 0) < -2
+            && ((float) ($asset['change_1h'] ?? 0) < 0 || (float) ($asset['change_7d'] ?? 0) < -5)
+        );
 
         return [
             'generated_at' => now()->toIso8601String(),
@@ -53,10 +56,11 @@ final class MarketSignalService
             'possible_large_rise' => $up ? $this->signalPayload('possible_large_rise', $up, (int) $up['breakout_score']) : null,
             'possible_large_fall' => $down ? $this->signalPayload('possible_large_fall', $down, (int) $down['breakdown_score']) : null,
             'methodology' => [
-                'version' => 'market-signals-v1',
+                'version' => 'market-signals-v2',
                 'buy_threshold' => 78,
                 'sell_threshold' => 78,
                 'watch_threshold' => 65,
+                'universe_eligible' => (int) ($scan['total_eligible'] ?? $assets->count()),
                 'inputs' => ['momentum_1h', 'momentum_24h', 'momentum_7d', 'volume_expansion', 'turnover', 'liquidity', 'market_depth'],
             ],
             'disclaimer' => 'Sinais técnicos probabilísticos baseados em dados de mercado. Não garantem alta, baixa ou retorno e devem ser combinados com gestão de risco.',
@@ -81,7 +85,6 @@ final class MarketSignalService
                 continue;
             }
 
-            // Sinais de observação precisam de uma qualidade mínima para virar notificação.
             if (in_array($type, ['possible_large_rise', 'possible_large_fall'], true) && (int) ($signal['score'] ?? 0) < 72) {
                 continue;
             }
