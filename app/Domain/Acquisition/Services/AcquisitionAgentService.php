@@ -31,6 +31,7 @@ final class AcquisitionAgentService
     {
         $agent = $this->access->assertAgent($user);
         $appId = $this->context->id();
+        $this->expireStaleReferrals($appId, $agent->id);
 
         $referrals = AcquisitionReferral::query()
             ->where('application_id', $appId)
@@ -103,6 +104,7 @@ final class AcquisitionAgentService
     public function referrals(?User $user, array $filters): mixed
     {
         $agent = $this->access->assertAgent($user);
+        $this->expireStaleReferrals($this->context->id(), $agent->id);
         $query = AcquisitionReferral::query()
             ->where('application_id', $this->context->id())
             ->where('agent_user_id', $agent->id)
@@ -122,6 +124,16 @@ final class AcquisitionAgentService
         }
 
         return $query->paginate($filters['per_page'] ?? 25);
+    }
+
+    private function expireStaleReferrals(int $appId, int $agentId): void
+    {
+        AcquisitionReferral::query()
+            ->where('application_id', $appId)
+            ->where('agent_user_id', $agentId)
+            ->where('status', 'pending')
+            ->where('expires_at', '<=', now())
+            ->update(['status' => 'expired']);
     }
 
     public function updateCommission(?User $user, int $eventId, float $percentage): EventAcquisitionCommission
