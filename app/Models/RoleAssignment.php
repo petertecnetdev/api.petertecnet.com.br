@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use LogicException;
 
 class RoleAssignment extends Model
 {
@@ -18,6 +19,30 @@ class RoleAssignment extends Model
         'expires_at' => 'datetime',
         'metadata' => 'array',
     ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (RoleAssignment $assignment) {
+            $scoped = $assignment->establishment_id || $assignment->resource_ref_id || $assignment->resource_type || $assignment->resource_id;
+            if ($scoped && ! $assignment->application_id) {
+                throw new LogicException('Assignments de estabelecimento ou recurso exigem application_id.');
+            }
+
+            if (($assignment->resource_type && ! $assignment->resource_id) || (! $assignment->resource_type && $assignment->resource_id)) {
+                throw new LogicException('resource_type e resource_id devem ser informados em conjunto.');
+            }
+
+            if ($assignment->resource_ref_id) {
+                $resource = ResourceRef::query()->find($assignment->resource_ref_id);
+                if (! $resource || (int) $resource->application_id !== (int) $assignment->application_id) {
+                    throw new LogicException('O recurso registrado não pertence ao application_id do assignment.');
+                }
+                if ($assignment->establishment_id && $resource->establishment_id && (int) $resource->establishment_id !== (int) $assignment->establishment_id) {
+                    throw new LogicException('O recurso registrado não pertence ao estabelecimento do assignment.');
+                }
+            }
+        });
+    }
 
     public function scopeActive(Builder $query): Builder
     {
@@ -37,19 +62,9 @@ class RoleAssignment extends Model
         if ($resourceUuid) return 'resource:' . strtolower(trim($resourceUuid));
 
         if ($resourceType !== null && $resourceId !== null) {
-            return sprintf(
-                'app:%d:est:%s:resource:%s:%d',
-                $applicationId,
-                $establishmentId ?? '*',
-                strtolower(trim($resourceType)),
-                $resourceId,
-            );
+            return sprintf('app:%d:est:%s:resource:%s:%d', $applicationId, $establishmentId ?? '*', strtolower(trim($resourceType)), $resourceId);
         }
-
-        if ($establishmentId !== null) {
-            return sprintf('app:%d:est:%d', $applicationId, $establishmentId);
-        }
-
+        if ($establishmentId !== null) return sprintf('app:%d:est:%d', $applicationId, $establishmentId);
         if ($applicationId !== null) return 'app:' . $applicationId;
         return 'global';
     }
