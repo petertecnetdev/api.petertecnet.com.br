@@ -7,6 +7,7 @@ use App\Domain\Leasing\Http\Controllers\LeaseOnboardingController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
 use App\Domain\Leasing\Http\Controllers\LeasePaymentWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeaseReadController;
+use App\Domain\Leasing\Http\Controllers\LeaseTerminationController;
 use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use App\Domain\Leasing\Http\Controllers\PropertyWorkspaceController;
@@ -74,7 +75,10 @@ Route::prefix('v1/apps/{application}')
         Route::patch('/leases/{leaseId}/maintenance/{operationId}', [LeaseOperationsController::class, 'updateMaintenance'])->whereNumber('leaseId')->whereNumber('operationId');
         Route::get('/leases/{leaseId}/termination', [LeaseOperationsController::class, 'termination'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/termination', [LeaseOperationsController::class, 'startTermination'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/termination/complete', [LeaseOperationsController::class, 'completeTermination'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/termination/complete', [LeaseTerminationController::class, 'complete'])->whereNumber('leaseId');
+        Route::get('/leases/{leaseId}/termination-document', [LeaseTerminationController::class, 'show'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/termination-document/send', [LeaseTerminationController::class, 'send'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::get('/leases/{leaseId}/termination-document/timeline', [LeaseTerminationController::class, 'timeline'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/documents', [LeasingController::class, 'documents'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/documents', [LeasingController::class, 'uploadDocument'])->whereNumber('leaseId')->middleware('throttle:30,1');
