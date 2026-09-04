@@ -2,6 +2,7 @@
 
 namespace App\Domain\MarketData\Http\Controllers;
 
+use App\Domain\MarketData\Services\CoinMarketCapScannerService;
 use App\Domain\MarketData\Services\MarketDataService;
 use App\Domain\MarketData\Services\MarketPortfolioService;
 use App\Http\Controllers\Controller;
@@ -14,11 +15,21 @@ final class MarketDataController extends Controller
     public function __construct(
         private readonly MarketDataService $marketData,
         private readonly MarketPortfolioService $portfolio,
+        private readonly CoinMarketCapScannerService $scanner,
     ) {}
 
     public function overview(Request $request): JsonResponse
     {
         return $this->marketResponse($request, fn () => $this->marketData->overview());
+    }
+
+    public function scanner(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'limit' => ['nullable', 'integer', 'min:10', 'max:100'],
+        ]);
+
+        return $this->marketResponse($request, fn () => $this->scanner->scan((int) ($validated['limit'] ?? 50)));
     }
 
     public function candles(Request $request, string $asset): JsonResponse
