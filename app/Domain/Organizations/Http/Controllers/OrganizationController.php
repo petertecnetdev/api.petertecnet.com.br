@@ -147,8 +147,26 @@ final class OrganizationController extends Controller
     {
         $organization = $this->owned($request, $id);
         abort_if($organization->events()->whereHas('tickets.passes')->exists(), 409, 'Organizações com ingressos emitidos não podem ser excluídas.');
-        $organization->delete();
-        return response()->json(['message' => 'Organização excluída.']);
+
+        DB::transaction(function () use ($organization) {
+            // A soft-deleted organization must not leave active/public events behind.
+            // Historical rows remain available for audit, finance and future recovery.
+            Event::query()
+                ->where('production_id', $organization->id)
+                ->update([
+                    'is_published' => false,
+                    'is_cancelled' => true,
+                    'updated_at' => now(),
+                ]);
+
+            $organization->update([
+                'is_published' => false,
+                'is_cancelled' => true,
+            ]);
+            $organization->delete();
+        });
+
+        return response()->json(['message' => 'Organização excluída com sucesso.']);
     }
 
     private function owned(Request $request, int $id): Production
@@ -220,7 +238,7 @@ final class OrganizationController extends Controller
     private function uniqueSlug(string $name, ?int $ignoreId = null): string
     {
         $base = Str::slug($name) ?: 'organizacao-' . Str::lower(Str::random(8)); $slug = $base; $i = 2;
-        while (Production::query()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) $slug = $base . '-' . $i++;
+        while (Production::withTrashed()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) $slug = $base . '-' . $i++;
         return $slug;
     }
 
