@@ -4,11 +4,11 @@ namespace App\Domain\Leasing\Http\Controllers;
 
 use App\Domain\Documents\DTOs\DocumentAuditContext;
 use App\Domain\Leasing\Services\LeaseTerminationService;
+use App\Domain\Notifications\Exceptions\NotificationDispatchException;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Throwable;
 
 final class LeaseTerminationController extends Controller
 {
@@ -71,7 +71,7 @@ final class LeaseTerminationController extends Controller
                 (int) $request->user()->id,
                 $this->auditContext($request),
             ));
-        } catch (Throwable $e) {
+        } catch (NotificationDispatchException $e) {
             report($e);
 
             return response()->json([
