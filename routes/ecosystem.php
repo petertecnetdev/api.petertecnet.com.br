@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalRealtimeController;
 use App\Http\Controllers\Admin\ResourceVisibilityController;
+use App\Http\Controllers\Admin\UserCommunicationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -66,6 +67,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::post('/events', [AdminEventController::class, 'store'])->middleware('throttle:30,1');
     });
 
+    Route::post('/users/resend-email', [UserCommunicationController::class, 'resend'])->middleware('throttle:3,10');
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
     Route::get('/users/{user}', [EcosystemController::class, 'userDetail'])->whereNumber('user');
