@@ -39,24 +39,14 @@ class UserOnboardingCommunicationService
 
         $isOwner = $establishment && (int) $establishment->user_id === (int) $user->id;
         $establishmentName = $establishment?->fantasy ?: $establishment?->name;
-        $slug = Str::lower((string) ($application->slug ?: Str::slug($application->name)));
-
-        $context = match (true) {
-            Str::contains($slug, 'cutinapp') => $this->cutinappContext($user, $role, $isOwner, $establishmentName),
-            Str::contains($slug, 'nexus') => $this->nexusContext($role, $isOwner, $establishmentName),
-            Str::contains($slug, 'plat') => $this->platContext($role, $isOwner, $establishmentName),
-            Str::contains($slug, 'rasoio') => $this->rasoioContext($user, $role, $isOwner, $establishmentName),
-            Str::contains($slug, 'payflow') => $this->payflowContext($role, $establishmentName),
-            Str::contains($slug, 'locaio') => $this->locaioContext($role, $establishmentName),
-            Str::contains($slug, 'kryvion') => $this->kryvionContext($role),
-            default => $this->genericContext($application, $role, $isOwner, $establishmentName),
-        };
+        $domain = $this->applicationDomain($application);
+        $context = $this->domainContext($domain, $user, $application, $role, (bool) $isOwner, $establishmentName);
 
         return array_merge($context, [
             'app_name' => $application->name,
             'app_url' => $application->url,
             'role' => $role,
-            'relationship' => $this->relationshipLabel($role, $isOwner, $employment !== null),
+            'relationship' => $this->relationshipLabel($role, (bool) $isOwner, $employment !== null),
             'establishment_name' => $establishmentName,
             'is_owner' => (bool) $isOwner,
             'has_establishment' => (bool) $establishment,
@@ -189,14 +179,49 @@ class UserOnboardingCommunicationService
         ]);
     }
 
-    private function cutinappContext(User $user, string $role, bool $isOwner, ?string $establishment): array
+    private function applicationDomain(Application $application): string
     {
+        $slug = Str::lower((string) ($application->slug ?: Str::slug($application->name)));
+
+        foreach ((array) config('onboarding.application_domains', []) as $mapping) {
+            $needles = array_values(array_filter((array) ($mapping['contains'] ?? [])));
+            if ($needles !== [] && Str::contains($slug, $needles)) {
+                return (string) ($mapping['domain'] ?? 'generic');
+            }
+        }
+
+        return 'generic';
+    }
+
+    private function domainContext(
+        string $domain,
+        User $user,
+        Application $application,
+        string $role,
+        bool $isOwner,
+        ?string $establishment
+    ): array {
+        return match ($domain) {
+            'events' => $this->eventsContext($user, $application, $role, $isOwner, $establishment),
+            'catalog' => $this->catalogContext($application, $role, $isOwner, $establishment),
+            'restaurant' => $this->restaurantContext($application, $role, $isOwner, $establishment),
+            'scheduling' => $this->schedulingContext($user, $application, $role, $isOwner, $establishment),
+            'crm' => $this->crmContext($application, $establishment),
+            'real_estate' => $this->realEstateContext($application, $establishment),
+            'market' => $this->marketContext($application),
+            default => $this->genericContext($application, $role, $isOwner, $establishment),
+        };
+    }
+
+    private function eventsContext(User $user, Application $application, string $role, bool $isOwner, ?string $establishment): array
+    {
+        $name = $application->name;
         $producer = $isOwner || $user->is_producer || $this->roleMatches($role, ['producer', 'owner', 'manager']);
         if ($producer) {
             return [
-                'subject' => 'Sua produção no Cutinapp está pronta para ser gerenciada',
-                'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : 'Seu acesso de produção no Cutinapp está pronto',
-                'intro' => 'Agora você tem autonomia para administrar sua operação dentro do Cutinapp e preparar seus próximos eventos.',
+                'subject' => "Sua produção no {$name} está pronta para ser gerenciada",
+                'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : "Seu acesso de produção no {$name} está pronto",
+                'intro' => "Agora você tem autonomia para administrar sua operação dentro do {$name} e preparar seus próximos eventos.",
                 'features' => [
                     'Cadastrar, editar e publicar eventos.',
                     'Criar itens, lotes e ingressos para os eventos.',
@@ -208,8 +233,8 @@ class UserOnboardingCommunicationService
 
         if ($this->roleMatches($role, ['artist', 'artista'])) {
             return [
-                'subject' => 'Seu perfil de artista no Cutinapp está pronto',
-                'title' => 'Você já pode usar o Cutinapp como artista',
+                'subject' => "Seu perfil de artista no {$name} está pronto",
+                'title' => "Você já pode usar o {$name} como artista",
                 'intro' => 'Seu acesso foi preparado para que você acompanhe sua presença nos eventos e mantenha seu perfil atualizado.',
                 'features' => [
                     'Manter seus dados e informações de artista atualizados.',
@@ -221,8 +246,8 @@ class UserOnboardingCommunicationService
 
         if ($user->is_promoter || $this->roleMatches($role, ['promoter', 'seller', 'vendedor'])) {
             return [
-                'subject' => 'Seu acesso de promoter no Cutinapp está pronto',
-                'title' => 'Você já pode atuar como promoter no Cutinapp',
+                'subject' => "Seu acesso de promoter no {$name} está pronto",
+                'title' => "Você já pode atuar como promoter no {$name}",
                 'intro' => 'Sua conta está pronta para acompanhar os eventos e recursos comerciais liberados para seu perfil.',
                 'features' => [
                     'Acessar os eventos atribuídos ao seu perfil.',
@@ -233,8 +258,8 @@ class UserOnboardingCommunicationService
         }
 
         return [
-            'subject' => 'Seu acesso de participante ao Cutinapp está pronto',
-            'title' => 'Bem-vindo ao Cutinapp',
+            'subject' => "Seu acesso de participante ao {$name} está pronto",
+            'title' => "Bem-vindo ao {$name}",
             'intro' => 'Sua conta de participante está pronta para você descobrir eventos e acompanhar sua experiência na plataforma.',
             'features' => [
                 'Descobrir eventos e produções.',
@@ -244,14 +269,15 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function nexusContext(string $role, bool $isOwner, ?string $establishment): array
+    private function catalogContext(Application $application, string $role, bool $isOwner, ?string $establishment): array
     {
+        $name = $application->name;
         return [
-            'subject' => 'Seu acesso ao Nexus está pronto',
-            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : 'Sua empresa já pode operar no Nexus',
+            'subject' => "Seu acesso ao {$name} está pronto",
+            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : "Sua empresa já pode operar no {$name}",
             'intro' => $isOwner || $this->roleMatches($role, ['owner', 'manager'])
-                ? 'Você já tem autonomia para organizar a presença digital da sua empresa no Nexus.'
-                : 'Seu acesso ao Nexus foi liberado conforme o papel atribuído à sua conta.',
+                ? "Você já tem autonomia para organizar a presença digital da sua empresa no {$name}."
+                : "Seu acesso ao {$name} foi liberado conforme o papel atribuído à sua conta.",
             'features' => [
                 'Cadastrar e organizar os itens da empresa.',
                 'Atualizar informações e disponibilidade do catálogo.',
@@ -260,14 +286,15 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function platContext(string $role, bool $isOwner, ?string $establishment): array
+    private function restaurantContext(Application $application, string $role, bool $isOwner, ?string $establishment): array
     {
+        $name = $application->name;
         $manager = $isOwner || $this->roleMatches($role, ['owner', 'manager', 'gerente', 'admin']);
         return [
-            'subject' => 'Seu acesso ao Plat está pronto',
-            'title' => $establishment ? "{$establishment} já pode ser gerenciado por você" : 'Seu acesso operacional ao Plat está pronto',
+            'subject' => "Seu acesso ao {$name} está pronto",
+            'title' => $establishment ? "{$establishment} já pode ser gerenciado por você" : "Seu acesso operacional ao {$name} está pronto",
             'intro' => $manager
-                ? 'Você já pode administrar a operação do restaurante pelo Plat.'
+                ? "Você já pode administrar a operação do restaurante pelo {$name}."
                 : 'Você já pode atuar na operação do restaurante conforme as permissões atribuídas ao seu perfil.',
             'features' => $manager ? [
                 'Gerenciar restaurante, cardápio e itens.',
@@ -282,13 +309,14 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function rasoioContext(User $user, string $role, bool $isOwner, ?string $establishment): array
+    private function schedulingContext(User $user, Application $application, string $role, bool $isOwner, ?string $establishment): array
     {
+        $name = $application->name;
         $collaborator = ! $isOwner && ($user->is_barber || $this->roleMatches($role, ['barber', 'barbeiro', 'collaborator', 'colaborador', 'professional', 'profissional']));
         if ($collaborator) {
             return [
-                'subject' => 'Você foi vinculado a uma equipe no Rasoio',
-                'title' => $establishment ? "Você agora faz parte da equipe de {$establishment}" : 'Seu perfil profissional no Rasoio está pronto',
+                'subject' => "Você foi vinculado a uma equipe no {$name}",
+                'title' => $establishment ? "Você agora faz parte da equipe de {$establishment}" : "Seu perfil profissional no {$name} está pronto",
                 'intro' => 'Seu acesso é de colaborador: você não é o proprietário do estabelecimento e verá apenas os recursos compatíveis com sua função.',
                 'features' => [
                     'Escolher e manter os serviços do estabelecimento que você atende.',
@@ -299,9 +327,9 @@ class UserOnboardingCommunicationService
         }
 
         return [
-            'subject' => 'Seu estabelecimento no Rasoio está pronto para ser gerenciado',
-            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : 'Seu acesso de gestão no Rasoio está pronto',
-            'intro' => 'Você já pode administrar a operação do estabelecimento no Rasoio.',
+            'subject' => "Seu estabelecimento no {$name} está pronto para ser gerenciado",
+            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : "Seu acesso de gestão no {$name} está pronto",
+            'intro' => "Você já pode administrar a operação do estabelecimento no {$name}.",
             'features' => [
                 'Gerenciar dados, serviços e profissionais do estabelecimento.',
                 'Organizar agenda, horários e atendimentos.',
@@ -310,11 +338,12 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function payflowContext(string $role, ?string $establishment): array
+    private function crmContext(Application $application, ?string $establishment): array
     {
+        $name = $application->name;
         return [
-            'subject' => 'Seu acesso ao PayFlow está pronto',
-            'title' => $establishment ? "{$establishment} já está conectado ao PayFlow" : 'Seu workspace no PayFlow está pronto',
+            'subject' => "Seu acesso ao {$name} está pronto",
+            'title' => $establishment ? "{$establishment} já está conectado ao {$name}" : "Seu workspace no {$name} está pronto",
             'intro' => 'Você já pode organizar o relacionamento comercial e acompanhar o avanço das oportunidades.',
             'features' => [
                 'Gerenciar clientes e oportunidades.',
@@ -324,11 +353,12 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function locaioContext(string $role, ?string $establishment): array
+    private function realEstateContext(Application $application, ?string $establishment): array
     {
+        $name = $application->name;
         return [
-            'subject' => 'Seu acesso à Locaio está pronto',
-            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : 'Seu acesso à Locaio está pronto',
+            'subject' => "Seu acesso ao {$name} está pronto",
+            'title' => $establishment ? "{$establishment} já está vinculado à sua conta" : "Seu acesso ao {$name} está pronto",
             'intro' => 'Sua conta já pode utilizar os recursos imobiliários liberados para seu perfil.',
             'features' => [
                 'Cadastrar e organizar imóveis.',
@@ -338,16 +368,17 @@ class UserOnboardingCommunicationService
         ];
     }
 
-    private function kryvionContext(string $role): array
+    private function marketContext(Application $application): array
     {
+        $name = $application->name;
         return [
-            'subject' => 'Seu acesso à Kryvion está pronto',
-            'title' => 'Sua conta na Kryvion está pronta',
+            'subject' => "Seu acesso ao {$name} está pronto",
+            'title' => "Sua conta no {$name} está pronta",
             'intro' => 'Você já pode utilizar os recursos de acompanhamento e inteligência de mercado disponíveis na plataforma.',
             'features' => [
                 'Acompanhar ativos e dados de mercado disponíveis.',
                 'Consultar análises e indicadores apresentados pela plataforma.',
-                'Organizar sua experiência de acompanhamento do mercado cripto.',
+                'Organizar sua experiência de acompanhamento do mercado.',
             ],
         ];
     }
