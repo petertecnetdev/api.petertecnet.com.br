@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Tests\TestCase;
 
 class PlatformSemanticArchitectureTest extends TestCase
 {
+    private const NEW_PRODUCT_NAMES = ['locaio'];
+
     public function test_new_application_names_cannot_enter_runtime_architecture(): void
     {
         $roots = [
@@ -17,7 +20,6 @@ class PlatformSemanticArchitectureTest extends TestCase
             app_path('Console/Commands'),
             app_path('Mail'),
         ];
-        $productNames = ['locaio'];
         $violations = [];
 
         foreach ($roots as $root) {
@@ -31,7 +33,7 @@ class PlatformSemanticArchitectureTest extends TestCase
                 }
 
                 $contents = File::get($file->getPathname());
-                foreach ($productNames as $productName) {
+                foreach (self::NEW_PRODUCT_NAMES as $productName) {
                     if (preg_match('/(?<![A-Za-z0-9_])' . preg_quote($productName, '/') . '(?![A-Za-z0-9_])/i', $contents)) {
                         $violations[] = $this->relative($file->getPathname()) . ' [' . $productName . ']';
                     }
@@ -44,6 +46,48 @@ class PlatformSemanticArchitectureTest extends TestCase
 
         sort($violations);
         $this->assertSame([], array_values(array_unique($violations)), 'Application names belong to registration/configuration/compatibility, never reusable runtime architecture.');
+    }
+
+    public function test_new_application_names_cannot_enter_physical_storage(): void
+    {
+        $schema = DB::connection()->getSchemaBuilder();
+        $prefixPattern = '/^(' . implode('|', array_map('preg_quote', self::NEW_PRODUCT_NAMES)) . ')_/i';
+        $violations = [];
+
+        foreach ($schema->getTableListing() as $table) {
+            $tableName = is_object($table) ? (string) ($table->name ?? '') : (string) $table;
+            if ($tableName === '') {
+                continue;
+            }
+
+            if (preg_match($prefixPattern, $tableName)) {
+                $violations[] = 'table:' . $tableName;
+            }
+
+            foreach ($schema->getColumnListing($tableName) as $column) {
+                if (preg_match($prefixPattern, (string) $column)) {
+                    $violations[] = 'column:' . $tableName . '.' . $column;
+                }
+            }
+        }
+
+        foreach (File::files(database_path('migrations')) as $file) {
+            $contents = File::get($file->getPathname());
+            foreach (self::NEW_PRODUCT_NAMES as $productName) {
+                $storagePattern = '/\b(?:Schema::(?:create|table)|DB::table)\s*\(\s*[\'\"]' . preg_quote($productName, '/') . '_/i';
+                $columnPattern = '/->(?:string|text|integer|unsignedBigInteger|foreignId|uuid|boolean|decimal|timestamp|dateTime|json)\s*\(\s*[\'\"]' . preg_quote($productName, '/') . '_/i';
+
+                if (preg_match($storagePattern, $contents, $matches)) {
+                    $violations[] = $file->getFilename() . ' [storage:' . $matches[0] . ']';
+                }
+                if (preg_match($columnPattern, $contents, $matches)) {
+                    $violations[] = $file->getFilename() . ' [column:' . $matches[0] . ']';
+                }
+            }
+        }
+
+        sort($violations);
+        $this->assertSame([], array_values(array_unique($violations)), 'New applications cannot introduce product-prefixed operational storage.');
     }
 
     public function test_leasing_cannot_own_payment_storage_or_provider_implementation(): void
