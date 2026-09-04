@@ -141,11 +141,11 @@ final class LeaseWorkflowController extends Controller
 
         DB::transaction(function () use ($lease, $leaseId, $collectDeposit, $collectFirstRent, &$charges) {
             if ($collectDeposit && (float) $lease->deposit_amount > 0) {
-                $charges[] = $this->ensureCharge($lease, $leaseId, 'deposit', 'Caução da locação', (float) $lease->deposit_amount, now()->toDateString());
+                $charges[] = $this->ensureCharge($leaseId, 'deposit', 'Caução da locação', (float) $lease->deposit_amount, now()->toDateString());
             }
             if ($collectFirstRent && (float) $lease->rent_amount > 0) {
                 $dueDate = $lease->starts_on ?: now()->toDateString();
-                $charges[] = $this->ensureCharge($lease, $leaseId, 'rent', 'Primeiro aluguel', (float) $lease->rent_amount, $dueDate);
+                $charges[] = $this->ensureCharge($leaseId, 'rent', 'Primeiro aluguel', (float) $lease->rent_amount, $dueDate);
             }
 
             $metadata = $this->decode($lease->metadata);
@@ -176,7 +176,7 @@ final class LeaseWorkflowController extends Controller
         return response()->json(['ok' => true, 'charges' => $charges, 'stage' => 'awaiting_initial_payment']);
     }
 
-    private function ensureCharge(object $lease, int $leaseId, string $type, string $description, float $amount, string $dueDate): object
+    private function ensureCharge(int $leaseId, string $type, string $description, float $amount, string $dueDate): object
     {
         $existing = DB::table('lease_charges')
             ->where('app_id', $this->context->id())
@@ -191,14 +191,13 @@ final class LeaseWorkflowController extends Controller
             'public_id' => (string) Str::uuid(),
             'app_id' => $this->context->id(),
             'lease_id' => $leaseId,
-            'property_id' => $lease->property_id,
-            'payer_user_id' => $lease->tenant_user_id,
-            'payee_user_id' => $lease->landlord_user_id,
             'type' => $type,
             'description' => $description,
-            'amount' => round($amount, 2),
+            'reference_date' => now()->toDateString(),
             'due_date' => $dueDate,
+            'amount' => round($amount, 2),
             'status' => 'pending',
+            'payment_method' => null,
             'metadata' => $this->json(['source' => 'lease_onboarding']),
             'created_at' => now(),
             'updated_at' => now(),
