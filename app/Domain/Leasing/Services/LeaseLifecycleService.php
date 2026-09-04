@@ -18,6 +18,8 @@ final class LeaseLifecycleService
         $status = (string) ($this->value($lease, 'status') ?? 'draft');
         $startsOn = $this->date($this->value($lease, 'starts_on'));
         $endsOn = $this->date($this->value($lease, 'ends_on'));
+        $metadata = $this->metadata($this->value($lease, 'metadata'));
+        $wasExplicitlyTerminated = $status === 'ended' && ! empty($metadata['termination']['effective_on']);
 
         $isInForce = $status === 'active'
             && ($startsOn === null || $startsOn->lte($today))
@@ -25,6 +27,7 @@ final class LeaseLifecycleService
 
         $vigencyStatus = match (true) {
             $status === 'cancelled' => 'cancelled',
+            $wasExplicitlyTerminated => 'terminated_early',
             $status === 'ended' => 'ended',
             $endsOn !== null && $endsOn->lt($today) => 'expired',
             $startsOn !== null && $startsOn->gt($today) => 'future',
@@ -129,6 +132,7 @@ final class LeaseLifecycleService
             'future' => 'Contrato futuro',
             'expired' => 'Contrato expirado',
             'ended' => 'Contrato encerrado',
+            'terminated_early' => 'Contrato encerrado antecipadamente',
             'cancelled' => 'Contrato cancelado',
             'awaiting_signature' => 'Aguardando assinatura',
             'awaiting_documents' => 'Aguardando documentos',
@@ -149,6 +153,14 @@ final class LeaseLifecycleService
     private function value(object|array $source, string $key): mixed
     {
         return is_array($source) ? ($source[$key] ?? null) : ($source->{$key} ?? null);
+    }
+
+    private function metadata(mixed $value): array
+    {
+        if (is_array($value)) return $value;
+        if ($value === null || $value === '') return [];
+        $decoded = json_decode((string) $value, true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     private function date(mixed $value): ?CarbonImmutable
