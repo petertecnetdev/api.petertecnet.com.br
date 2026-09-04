@@ -52,9 +52,10 @@ return [
         'file' => [
             'driver' => 'file',
             'path' => storage_path('framework/cache/data'),
-            // PHP-FPM, the scheduler and deploy tasks share this store. Keep
-            // cache files group-writable so locks remain safe across processes.
-            'permission' => 0664,
+            // Keep Laravel's file permission override disabled. The same value
+            // is applied to files and directories, and directory nodes require
+            // execute bits. Deployment/runtime ownership handles writability.
+            'permission' => null,
         ],
 
         'memcached' => [
