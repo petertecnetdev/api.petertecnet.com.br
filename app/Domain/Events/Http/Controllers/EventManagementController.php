@@ -5,6 +5,7 @@ namespace App\Domain\Events\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Event;
+use App\Models\EventItem;
 use App\Models\Item;
 use App\Models\Production;
 use App\Models\Ticket;
@@ -39,19 +40,17 @@ final class EventManagementController extends Controller
     {
         $this->normalizeInput($request);$data=$request->validate($this->rules(true),$this->messages(),$this->attributes());$production=$this->ownedProduction((int)$data['production_id'],$request->user());$this->validateDates($data,null);
         $useProductionItems=(bool)($data['use_production_items']??false);unset($data['use_production_items']);
-        if($useProductionItems)$data['menu']=$this->productionItemReferences($production);
         if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
         $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
-        $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
+        $event=DB::transaction(function()use($data,$useProductionItems,$production){$event=Event::create($data);if($useProductionItems)$this->copyProductionItemsToEvent($production,$event);return$event;});
+        if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
         return response()->json(['message'=>'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')],201);
     }
 
     public function update(Request $request,int $id)
     {
         $event=$this->ownedEvent($id,$request->user());$this->normalizeInput($request);$data=$request->validate($this->rules(false),$this->messages(),$this->attributes());
-        $productionChanged=isset($data['production_id'])&&(int)$data['production_id']!==(int)$event->production_id;$targetProduction=$productionChanged?$this->ownedProduction((int)$data['production_id'],$request->user()):$event->production;
-        $syncProductionItems=array_key_exists('use_production_items',$data);$useProductionItems=(bool)($data['use_production_items']??false);unset($data['use_production_items']);
-        if($syncProductionItems||$productionChanged)$data['menu']=$useProductionItems?$this->productionItemReferences($targetProduction):[];
+        $productionChanged=isset($data['production_id'])&&(int)$data['production_id']!==(int)$event->production_id;if($productionChanged)$this->ownedProduction((int)$data['production_id'],$request->user());unset($data['use_production_items']);
         $this->validateDates($data,$event);if(!empty($data['title'])&&$data['title']!==$event->title)$data['slug']=$this->uniqueSlug($data['title'],$event->id);unset($data['image'],$data['app_id'],$data['app_slug'],$data['is_published'],$data['is_cancelled']);$event->update($data);
         if($request->hasFile('image')){if($event->image)Storage::disk('public')->delete($event->image);$event->image=$this->storeImage($request->file('image'));$event->save();}
         return response()->json(['message'=>'Evento atualizado com sucesso.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
@@ -72,7 +71,7 @@ final class EventManagementController extends Controller
     private function validateDates(array $data,?Event $event):void{$startValue=$data['start_date']??$event?->start_date;$endValue=$data['end_date']??$event?->end_date;if(!$startValue||!$endValue)return;$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);$start=Carbon::parse($startValue,$timezone);$end=Carbon::parse($endValue,$timezone);$errors=[];if($event===null&&$start->lte($now))$errors['start_date'][]='O horário de início do evento precisa estar no futuro.';elseif($event!==null&&array_key_exists('start_date',$data)&&$start->lt($now->copy()->subMinute()))$errors['start_date'][]='O início do evento não pode ficar no passado.';if(!$end->gt($start))$errors['end_date'][]='O término do evento precisa ser posterior ao início.';if($start->diffInDays($end)>30)$errors['end_date'][]='A duração do evento não pode ultrapassar 30 dias.';if($errors)throw ValidationException::withMessages($errors);}
     private function ownedProduction(int $id,User $user):Production{$production=Production::query()->where('app_id',$this->context->id())->findOrFail($id);abort_unless($user->hasProfile('Administrador')||(int)$production->user_id===(int)$user->id,403,'Você não pode gerenciar esta organização.');return$production;}
     private function ownedEvent(int $id,User $user):Event{$event=Event::query()->where('app_id',$this->context->id())->with('production')->findOrFail($id);abort_unless($event->production&&(int)$event->production->app_id===$this->context->id(),404,'Evento não encontrado neste contexto.');abort_unless($user->hasProfile('Administrador')||(int)$event->production->user_id===(int)$user->id,403,'Você não pode gerenciar este evento.');return$event;}
-    private function productionItemReferences(Production $production):array{return Item::query()->where('entity_name','establishment')->where('entity_id',$production->id)->where('status',true)->orderByDesc('is_featured')->orderBy('category')->orderBy('name')->get(['id'])->map(fn(Item $item)=>['source'=>'establishment','establishment_id'=>(int)$production->id,'item_id'=>(int)$item->id])->values()->all();}
+    private function copyProductionItemsToEvent(Production $production,Event $event):void{$items=Item::query()->forApplication($this->context->id())->where('entity_name','establishment')->where('entity_id',$production->id)->active()->orderByDesc('is_featured')->orderBy('category')->orderBy('name')->get(['name','description','price','stock']);foreach($items as$item){EventItem::create(['app_id'=>$this->context->id(),'event_id'=>$event->id,'name'=>mb_substr((string)$item->name,0,140),'description'=>$item->description?mb_substr((string)$item->description,0,2000):null,'price'=>(float)$item->price,'quantity'=>$item->stock===null?1000000:max(0,min((int)$item->stock,1000000)),'is_active'=>true]);}}
     private function notifyProductionFollowers(Event $event):void{if($event->is_private)return;$appId=$this->context->id();$followers=DB::table('follows')->where(['app_id'=>$appId,'target_type'=>'production','target_id'=>$event->production_id])->pluck('user_id');foreach($followers as$userId)AppNotification::create(['app_id'=>$appId,'user_id'=>$userId,'type'=>'production_event_published','title'=>'Novo evento publicado','message'=>$event->production?->name.' publicou '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->slug,'data'=>['production_id'=>$event->production_id,'event_id'=>$event->id]]);}
     private function uniqueSlug(string $title,?int $ignoreId=null):string{$base=Str::slug($title)?:'evento';$slug=$base;$counter=2;while(Event::query()->when($ignoreId,fn($q)=>$q->whereKeyNot($ignoreId))->where('slug',$slug)->exists())$slug=$base.'-'.$counter++;return$slug;}
     private function storeImage($file):string{$directory='images/apps/'.$this->context->slug().'/events';$path=$directory.'/'.Str::uuid().'.webp';$image=Image::make($file)->orientate()->resize(1920,1080,function($c){$c->aspectRatio();$c->upsize();})->encode('webp',86);Storage::disk('public')->put($path,(string)$image);return$path;}
