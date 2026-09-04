@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Analytics\Http\Controllers\PortfolioAnalyticsController;
 use App\Domain\Leasing\Http\Controllers\LeaseContractController;
 use App\Domain\Leasing\Http\Controllers\LeaseLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeaseReadController;
@@ -13,6 +14,7 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::get('/leasing/dashboard', [LeasingController::class, 'dashboard']);
         Route::get('/leasing/lifecycle', [LeaseLifecycleController::class, 'index']);
+        Route::get('/analytics/portfolio', [PortfolioAnalyticsController::class, 'overview']);
 
         Route::get('/properties', [LeaseReadController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
