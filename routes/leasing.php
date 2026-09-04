@@ -1,24 +1,33 @@
 <?php
 
+use App\Domain\Leasing\Http\Controllers\LeaseLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
+use App\Domain\Leasing\Http\Middleware\PreventLeaseOverlap;
+use App\Domain\Leasing\Http\Middleware\ProtectPropertyLeaseState;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:leasing'])
     ->group(function () {
         Route::get('/leasing/dashboard', [LeasingController::class, 'dashboard']);
+        Route::get('/leasing/lifecycle', [LeaseLifecycleController::class, 'index']);
 
         Route::get('/properties', [LeasingController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
-        Route::match(['put', 'patch'], '/properties/{propertyId}', [LeasingController::class, 'updateProperty'])->whereNumber('propertyId');
+        Route::match(['put', 'patch'], '/properties/{propertyId}', [LeasingController::class, 'updateProperty'])
+            ->whereNumber('propertyId')->middleware(ProtectPropertyLeaseState::class);
         Route::delete('/properties/{propertyId}', [LeasingController::class, 'destroyProperty'])->whereNumber('propertyId');
+        Route::get('/properties/{propertyId}/timeline', [LeaseLifecycleController::class, 'propertyTimeline'])->whereNumber('propertyId');
         Route::get('/properties/{propertyId}/inspections', [LeasingController::class, 'inspections'])->whereNumber('propertyId');
         Route::post('/properties/{propertyId}/inspections', [LeasingController::class, 'storeInspection'])->whereNumber('propertyId');
 
         Route::get('/leases', [LeasingController::class, 'leases']);
-        Route::post('/leases', [LeasingController::class, 'storeLease']);
+        Route::post('/leases', [LeasingController::class, 'storeLease'])->middleware(PreventLeaseOverlap::class);
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
-        Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])->whereNumber('leaseId');
+        Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])
+            ->whereNumber('leaseId')->middleware(PreventLeaseOverlap::class);
+        Route::post('/leases/{leaseId}/renew', [LeaseLifecycleController::class, 'renew'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/terminate', [LeaseLifecycleController::class, 'terminate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/generate', [LeasingController::class, 'generateContract'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
