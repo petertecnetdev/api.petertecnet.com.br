@@ -10,12 +10,3 @@ Route::prefix('v1/apps/{application}')
             ->whereNumber('passId')
             ->middleware('throttle:10,1');
     });
-
-// Temporary compatibility alias for already-deployed Cutinapp clients.
-Route::prefix('cutinapp')
-    ->middleware(['app.bind:cutinapp', 'compatibility.route', 'auth:api', 'token.version'])
-    ->group(function (): void {
-        Route::post('/passes/{passId}/transfer', [EventPassTransferController::class, 'transfer'])
-            ->whereNumber('passId')
-            ->middleware('throttle:10,1');
-    });
