@@ -1,7 +1,8 @@
 <?php
 
-use App\Domain\Leasing\Http\Controllers\LeaseDocumentPackageController;
+use App\Domain\Leasing\Http\Controllers\LeaseOnboardingController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
+use App\Domain\Leasing\Http\Controllers\LeasePackageLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeaseWorkflowController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
@@ -26,13 +27,17 @@ Route::prefix('v1/apps/{application}')
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
         Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])->whereNumber('leaseId');
 
-        Route::post('/leases/{leaseId}/tenant/invite', [LeaseWorkflowController::class, 'inviteTenant'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::get('/leases/{leaseId}/readiness', [LeaseOnboardingController::class, 'checklist'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/tenant/invite', [LeaseOnboardingController::class, 'inviteTenant'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/tenant/invite/accept', [LeaseOnboardingController::class, 'acceptInvitation'])->whereNumber('leaseId')->middleware('throttle:20,1');
         Route::patch('/leases/{leaseId}/tenant/profile', [LeaseWorkflowController::class, 'updateTenantProfile'])->whereNumber('leaseId');
+        Route::put('/leases/{leaseId}/initial-payment-agreement', [LeaseOnboardingController::class, 'configureAgreement'])->whereNumber('leaseId');
 
-        Route::post('/leases/{leaseId}/contract/generate', [LeaseDocumentPackageController::class, 'generate'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/contract/generate', [LeasePackageLifecycleController::class, 'generate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
         Route::post('/leases/{leaseId}/payments/request', [LeaseWorkflowController::class, 'requestInitialPayment'])->whereNumber('leaseId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/activate', [LeaseOnboardingController::class, 'activateIfReady'])->whereNumber('leaseId');
 
         Route::get('/leases/{leaseId}/timeline', [LeaseOperationsController::class, 'timeline'])->whereNumber('leaseId');
         Route::get('/leases/{leaseId}/document-requirements', [LeaseOperationsController::class, 'documentRequirements'])->whereNumber('leaseId');
@@ -48,6 +53,8 @@ Route::prefix('v1/apps/{application}')
 
         Route::get('/leases/{leaseId}/documents', [LeasingController::class, 'documents'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/documents', [LeasingController::class, 'uploadDocument'])->whereNumber('leaseId')->middleware('throttle:30,1');
+        Route::post('/leases/{leaseId}/documents/{documentId}/extract', [LeaseOnboardingController::class, 'extractDocument'])->whereNumber('leaseId')->whereNumber('documentId')->middleware('throttle:10,1');
+        Route::post('/leases/{leaseId}/documents/{documentId}/confirm-extraction', [LeaseOnboardingController::class, 'confirmExtraction'])->whereNumber('leaseId')->whereNumber('documentId');
         Route::get('/leases/{leaseId}/documents/{documentId}', [LeasingController::class, 'downloadDocument'])->whereNumber('leaseId')->whereNumber('documentId');
         Route::delete('/leases/{leaseId}/documents/{documentId}', [LeasingController::class, 'deleteDocument'])->whereNumber('leaseId')->whereNumber('documentId');
 
