@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Compatibility model for the Cutinapp vocabulary.
+ * Compatibility model for the legacy production vocabulary.
  *
  * A production is not persisted in its own table anymore. It is an
  * Establishment with category=production. Keeping this model lets legacy
