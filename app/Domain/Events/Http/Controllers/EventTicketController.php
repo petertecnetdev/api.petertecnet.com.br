@@ -62,9 +62,7 @@ final class EventTicketController extends Controller
     {
         DB::transaction(function () use ($request, $ticketId) {
             $ticket = $this->ownedTicket($request, $ticketId, true);
-            if ($ticket->passes()->exists()) {
-                abort(409, 'Este ingresso já possui emissões e não pode ser excluído.');
-            }
+            if ($ticket->passes()->exists()) abort(409, 'Este ingresso já possui emissões e não pode ser excluído.');
             $ticket->delete();
         }, 3);
         return response()->json(['message' => 'Ingresso removido.']);
@@ -72,16 +70,21 @@ final class EventTicketController extends Controller
 
     private function ownedEvent(Request $request, int $id): Event
     {
-        $event = Event::query()->where('app_id', $this->context->id())->with('production')->findOrFail($id);
-        $user = $request->user(); $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
-        abort_unless($event->production && (int) $event->production->app_id === $this->context->id(), 404, 'Evento não encontrado neste contexto.');
-        abort_unless($user && ($admin || (int) $event->production->user_id === (int) $user->id), 403, 'Você não pode gerenciar ingressos deste evento.');
+        $event = Event::query()->where('app_id', $this->context->id())->with('establishment')->findOrFail($id);
+        $user = $request->user();
+        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        abort_unless($event->establishment && (int) $event->establishment->app_id === $this->context->id() && $event->establishment->type === 'production', 404, 'Evento não encontrado neste contexto.');
+        abort_unless($user && ($admin || (int) $event->establishment->user_id === (int) $user->id), 403, 'Você não pode gerenciar ingressos deste evento.');
         return $event;
     }
 
     private function ownedTicket(Request $request, int $id, bool $lock = false): Ticket
     {
-        $query = Ticket::query()->where('app_id', $this->context->id())->with('event.production'); if ($lock) $query->lockForUpdate();
-        $ticket = $query->findOrFail($id); abort_unless($ticket->event, 404); $this->ownedEvent($request, (int) $ticket->event_id); return $ticket;
+        $query = Ticket::query()->where('app_id', $this->context->id())->with('event.establishment');
+        if ($lock) $query->lockForUpdate();
+        $ticket = $query->findOrFail($id);
+        abort_unless($ticket->event, 404);
+        $this->ownedEvent($request, (int) $ticket->event_id);
+        return $ticket;
     }
 }
