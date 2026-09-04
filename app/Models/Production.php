@@ -116,6 +116,13 @@ class Production extends Establishment
     public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->whereIn('entity_type',['production','Production','Establishment']);}
     public function events(){return $this->hasMany(Event::class,'production_id')->orderBy('start_date','desc');}
 
+    /**
+     * Production is a compatibility subclass of Establishment. Eloquent would
+     * otherwise infer production_id for this inherited relationship from the
+     * runtime model class, while employers are stored against establishment_id.
+     */
+    public function employers(){return $this->hasMany(Employer::class,'establishment_id');}
+
     public function getSegmentsnNamesAttribute()
     {
         $assigned = is_array($this->segments) ? $this->segments : [];
