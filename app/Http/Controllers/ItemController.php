@@ -375,7 +375,7 @@ class ItemController extends Controller
     private function assertCanManageItem(Item $item): void
     {
         $user = Auth::user();
-        if ($user->hasProfile('Administrador') || (int) $item->created_by === (int) $user->id || (int) $item->user_id === (int) $user->id) {
+        if ($user->hasProfile('Administrador') || (int) $item->user_id === (int) $user->id || (! $item->user_id && (int) $item->created_by === (int) $user->id)) {
             return;
         }
         $this->assertCanManageEntity($item->entity_name, (int) $item->entity_id, (int) $item->app_id);
@@ -396,7 +396,7 @@ class ItemController extends Controller
                 return;
             }
 
-            if ((int) $establishment->user_id === (int) $user->id || (int) $establishment->created_by === (int) $user->id) {
+            if ((int) $establishment->user_id === (int) $user->id || (! $establishment->user_id && (int) $establishment->created_by === (int) $user->id)) {
                 return;
             }
         } elseif ($user->hasProfile('Administrador')) {

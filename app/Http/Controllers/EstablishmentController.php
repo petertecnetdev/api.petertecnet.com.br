@@ -371,7 +371,7 @@ class EstablishmentController extends Controller
         abort_unless($user && (
             $user->hasProfile('Administrador')
             || (int) $establishment->user_id === (int) $user->id
-            || (int) $establishment->created_by === (int) $user->id
+            || (! $establishment->user_id && (int) $establishment->created_by === (int) $user->id)
         ), 403, 'Acesso negado.');
     }
 
