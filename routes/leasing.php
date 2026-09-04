@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Leasing\Http\Controllers\LeaseChargeLifecycleController;
 use App\Domain\Leasing\Http\Controllers\LeaseOnboardingController;
 use App\Domain\Leasing\Http\Controllers\LeaseOperationsController;
 use App\Domain\Leasing\Http\Controllers\LeasePackageLifecycleController;
@@ -63,5 +64,5 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases/{leaseId}/charges', [LeasingController::class, 'storeCharge'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges/schedule', [LeasingController::class, 'generateRentSchedule'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/charges/{chargeId}/payment', [LeasingController::class, 'preparePayment'])->whereNumber('leaseId')->whereNumber('chargeId')->middleware('throttle:20,1');
-        Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeasingController::class, 'markChargePaid'])->whereNumber('leaseId')->whereNumber('chargeId');
+        Route::patch('/leases/{leaseId}/charges/{chargeId}/paid', [LeaseChargeLifecycleController::class, 'markPaid'])->whereNumber('leaseId')->whereNumber('chargeId');
     });
