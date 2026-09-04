@@ -33,6 +33,7 @@ class StoreItemRequest extends FormRequest
             'discount' => ['nullable', 'numeric', 'min:0'],
             'expiration_date' => ['nullable', 'date'],
             'notes' => ['nullable', 'string'],
+            'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:5120'],
         ];
     }
 }
