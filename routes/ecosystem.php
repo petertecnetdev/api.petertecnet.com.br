@@ -3,6 +3,7 @@
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\AdministrativeReportController;
 use App\Http\Controllers\Admin\CommandCenterController;
+use App\Http\Controllers\Admin\ContextualAccessController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -71,6 +72,15 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
     Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])->whereNumber('user')->whereNumber('application');
+
+    Route::get('/access/catalog', [ContextualAccessController::class, 'catalog']);
+    Route::get('/users/{user}/access-contexts', [ContextualAccessController::class, 'show'])->whereNumber('user');
+    Route::post('/users/{user}/role-assignments', [ContextualAccessController::class, 'assignRole'])->whereNumber('user');
+    Route::delete('/users/{user}/role-assignments/{assignment}', [ContextualAccessController::class, 'revokeRole'])->whereNumber('user')->whereNumber('assignment');
+    Route::post('/users/{user}/memberships', [ContextualAccessController::class, 'upsertMembership'])->whereNumber('user');
+    Route::delete('/users/{user}/memberships/{membership}', [ContextualAccessController::class, 'revokeMembership'])->whereNumber('user')->whereNumber('membership');
+    Route::post('/users/{user}/relationships', [ContextualAccessController::class, 'addRelationship'])->whereNumber('user');
+    Route::delete('/users/{user}/relationships/{relationship}', [ContextualAccessController::class, 'revokeRelationship'])->whereNumber('user')->whereNumber('relationship');
 
     Route::get('/profiles', [EcosystemController::class, 'profiles']);
     Route::post('/profiles', [EcosystemController::class, 'storeProfile']);
