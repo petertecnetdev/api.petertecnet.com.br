@@ -12,7 +12,26 @@ final class MarketDataController extends Controller
 {
     public function __construct(private readonly MarketDataService $marketData) {}
 
-    public function candles(Request $request, string $application, string $asset): JsonResponse
+    public function overview(Request $request): JsonResponse
+    {
+        try {
+            $data = $this->marketData->overview();
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+                'code' => 'MARKET_DATA_UNAVAILABLE',
+                'request_id' => $request->attributes->get('request_id'),
+            ], 502);
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    public function candles(Request $request, string $asset): JsonResponse
     {
         $validated = $request->validate([
             'quote' => ['nullable', 'string', 'max:16', 'regex:/^[A-Za-z0-9]+$/'],
