@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\Application;
+use App\Services\UserOnboardingCommunicationService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -17,6 +18,7 @@ class InviteUserMail extends Mailable
     public $appName;
     public $appUrl;
     public $activationUrl;
+    public array $context;
 
     public function __construct(
         $user,
@@ -30,6 +32,11 @@ class InviteUserMail extends Mailable
         $this->code = $code;
 
         $application = $appId ? Application::query()->find($appId) : null;
+        $application ??= Application::query()
+            ->where('name', $appName)
+            ->when($appUrl, fn ($query) => $query->orWhere('url', $appUrl))
+            ->first();
+
         $this->appId = $application?->id ?? $appId;
         $this->appName = trim((string) ($application?->name ?? $appName)) ?: 'Plataforma Peter Tecnet';
 
@@ -37,6 +44,17 @@ class InviteUserMail extends Mailable
         $this->appUrl = $this->isPublicHttpsUrl($targetUrl)
             ? $targetUrl
             : 'https://petertecnet.com.br';
+
+        $this->context = $application
+            ? app(UserOnboardingCommunicationService::class)->buildContext($user, $application)
+            : [
+                'subject' => "Ative seu acesso ao {$this->appName}",
+                'title' => "Seu acesso ao {$this->appName} está pronto",
+                'intro' => 'Preparamos seu cadastro. Confirme seu e-mail e crie sua própria senha para liberar o acesso.',
+                'features' => ['Acessar os recursos liberados para o seu perfil.'],
+                'relationship' => 'Usuário',
+                'establishment_name' => null,
+            ];
 
         $centralApplication = Application::query()
             ->where('slug', 'peter-tecnet')
@@ -68,7 +86,7 @@ class InviteUserMail extends Mailable
     public function build()
     {
         return $this
-            ->subject("Ative seu acesso ao {$this->appName}")
+            ->subject($this->context['subject'] ?? "Ative seu acesso ao {$this->appName}")
             ->view('emails.invite-user')
             ->with([
                 'user' => $this->user,
@@ -77,6 +95,7 @@ class InviteUserMail extends Mailable
                 'appName' => $this->appName,
                 'appUrl' => $this->appUrl,
                 'activationUrl' => $this->activationUrl,
+                'context' => $this->context,
             ]);
     }
 
