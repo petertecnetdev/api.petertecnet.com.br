@@ -10,7 +10,7 @@ final class SyncLeaseDocumentSignature
     public function handle(DocumentSignatureRecorded $event): void
     {
         $document = DB::table('documents')->where('id', $event->documentId)->first();
-        if (! $document || $document->context_type !== 'lease') return;
+        if (! $document || $document->context_type !== 'lease' || $document->document_type !== 'lease_agreement') return;
 
         $leaseId = (int) $document->context_id;
         $lease = DB::table('leases')->where('app_id', $document->app_id)->where('id', $leaseId)->whereNull('deleted_at')->first();
