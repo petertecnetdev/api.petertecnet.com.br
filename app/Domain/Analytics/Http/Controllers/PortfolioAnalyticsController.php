@@ -38,7 +38,7 @@ final class PortfolioAnalyticsController extends Controller
             ->where('app_id', $appId)
             ->whereIn('id', $leaseIds)
             ->whereNull('deleted_at')
-            ->get(['id', 'property_id', 'tenant_name', 'status', 'starts_on', 'ends_on', 'rent_amount', 'due_day', 'deposit_months', 'deposit_amount', 'contract_generated_at']);
+            ->get(['id', 'property_id', 'tenant_name', 'status', 'starts_on', 'ends_on', 'rent_amount', 'due_day']);
 
         $charges = DB::table('lease_charges')
             ->where('app_id', $appId)
@@ -139,6 +139,24 @@ final class PortfolioAnalyticsController extends Controller
             ];
         })->values();
 
+        $propertyPerformance = $leases
+            ->groupBy('property_id')
+            ->map(function ($propertyLeases, $propertyId) use ($charges, $properties) {
+                $ids = $propertyLeases->pluck('id');
+                $received = (clone $charges)->whereIn('lease_id', $ids)->where('status', 'paid')->sum('amount');
+                $pending = (clone $charges)->whereIn('lease_id', $ids)->whereIn('status', ['pending', 'processing'])->sum('amount');
+                $property = $properties->firstWhere('id', $propertyId);
+                return [
+                    'property_id' => (int) $propertyId,
+                    'property_name' => $property?->name ?: 'Imóvel #'.$propertyId,
+                    'received' => round((float) $received, 2),
+                    'pending' => round((float) $pending, 2),
+                    'active_contracts' => $propertyLeases->where('status', 'active')->count(),
+                ];
+            })
+            ->sortByDesc('received')
+            ->values();
+
         $actions = collect();
         if ($overdueAmount > 0) $actions->push(['type' => 'collect', 'label' => 'Revisar atrasos', 'target' => 'leases', 'priority' => 1]);
         if ($expiring->isNotEmpty()) $actions->push(['type' => 'renew', 'label' => 'Revisar renovações', 'target' => 'leases', 'priority' => 2]);
@@ -164,13 +182,17 @@ final class PortfolioAnalyticsController extends Controller
             ],
             'cash_flow' => $cashFlow,
             'calendar' => $calendarCharges->concat($calendarContracts)->sortBy('date')->values(),
-            'series' => ['monthly_cash_flow' => $monthly],
+            'series' => [
+                'monthly_cash_flow' => $monthly,
+                'delinquency' => $monthly->map(fn ($row) => ['month' => $row['month'], 'label' => $row['label'], 'amount' => $row['overdue']]),
+            ],
             'occupancy' => [
                 'total' => $properties->count(),
                 'occupied' => $occupied,
                 'available' => $available,
                 'maintenance' => $maintenance,
             ],
+            'property_performance' => $propertyPerformance,
             'documents' => [
                 'pending_count' => $awaitingDocuments,
                 'leases' => $leases->whereIn('status', ['draft', 'awaiting_documents'])->values()->map(fn ($lease) => [
