@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Leasing\Http\Controllers\LeaseLifecycleController;
+use App\Domain\Leasing\Http\Controllers\LeaseReadController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use App\Domain\Leasing\Http\Middleware\PreventLeaseOverlap;
 use App\Domain\Leasing\Http\Middleware\ProtectPropertyLeaseState;
@@ -12,7 +13,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/leasing/dashboard', [LeasingController::class, 'dashboard']);
         Route::get('/leasing/lifecycle', [LeaseLifecycleController::class, 'index']);
 
-        Route::get('/properties', [LeasingController::class, 'properties']);
+        Route::get('/properties', [LeaseReadController::class, 'properties']);
         Route::post('/properties', [LeasingController::class, 'storeProperty']);
         Route::match(['put', 'patch'], '/properties/{propertyId}', [LeasingController::class, 'updateProperty'])
             ->whereNumber('propertyId')->middleware(ProtectPropertyLeaseState::class);
@@ -21,7 +22,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/properties/{propertyId}/inspections', [LeasingController::class, 'inspections'])->whereNumber('propertyId');
         Route::post('/properties/{propertyId}/inspections', [LeasingController::class, 'storeInspection'])->whereNumber('propertyId');
 
-        Route::get('/leases', [LeasingController::class, 'leases']);
+        Route::get('/leases', [LeaseReadController::class, 'leases']);
         Route::post('/leases', [LeasingController::class, 'storeLease'])->middleware(PreventLeaseOverlap::class);
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
         Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])
