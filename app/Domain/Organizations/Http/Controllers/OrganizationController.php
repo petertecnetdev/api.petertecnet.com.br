@@ -157,7 +157,7 @@ final class OrganizationController extends Controller
     {
         $organization = $this->owned($request, $id);
         $state = $this->deletionState($organization);
-        abort_unless($state['can_delete'], 409, 'Esta organização possui vínculos e não pode ser excluída. Remova apenas cadastros sem eventos, pedidos ou histórico financeiro.');
+        abort_unless($state['can_delete'], 409, 'Esta organização possui vínculos e não pode ser excluída. Apenas cadastros sem eventos, pedidos, histórico financeiro ou contratos assinados podem ser removidos.');
 
         foreach (['logo', 'background'] as $field) {
             if ($organization->{$field} && str_starts_with($organization->{$field}, 'images/apps/')) {
@@ -174,11 +174,13 @@ final class OrganizationController extends Controller
         $events = Event::query()->where('app_id', $appId)->where('production_id', $organization->id)->count();
         $orders = DB::table('commerce_orders')->where('app_id', $appId)->where('production_id', $organization->id)->count();
         $financial = DB::table('ledger_entries')->where('app_id', $appId)->where('production_id', $organization->id)->count();
+        $contracts = DB::table('contract_acceptances')->where('app_id', $appId)->where('production_id', $organization->id)->count();
 
         $blockers = [];
         if ($events > 0) $blockers[] = ['type' => 'events', 'count' => $events, 'message' => 'A organização possui eventos cadastrados.'];
         if ($orders > 0) $blockers[] = ['type' => 'orders', 'count' => $orders, 'message' => 'A organização possui pedidos no histórico comercial.'];
         if ($financial > 0) $blockers[] = ['type' => 'financial_history', 'count' => $financial, 'message' => 'A organização possui histórico financeiro.'];
+        if ($contracts > 0) $blockers[] = ['type' => 'signed_contracts', 'count' => $contracts, 'message' => 'A organização possui termo contratual assinado e precisa permanecer auditável.'];
 
         return ['can_delete' => $blockers === [], 'blockers' => $blockers];
     }
