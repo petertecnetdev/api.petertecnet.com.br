@@ -1,7 +1,9 @@
 <?php
 
 return [
-    'enabled' => env('COGNITION_ENABLED', false),
+    // Enabled automatically in production unless explicitly overridden.
+    // Local/testing environments remain opt-in so test data never becomes training data.
+    'enabled' => env('COGNITION_ENABLED', env('APP_ENV') === 'production'),
     'auto_learn' => env('COGNITION_AUTO_LEARN', true),
     'default_agent_slug' => env('COGNITION_DEFAULT_AGENT', 'ecosystem-core'),
     'default_agent_name' => env('COGNITION_DEFAULT_AGENT_NAME', 'Peter Cognitive Core'),
