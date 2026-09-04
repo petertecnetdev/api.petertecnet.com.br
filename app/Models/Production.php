@@ -4,10 +4,13 @@ namespace App\Models;
 
 use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Config;
 
 class Production extends Model
 {
+    use SoftDeletes;
+
     protected $fillable = ['app_id','app_slug','name','slug','type','phone','establishment_type','description','city_id','city','uf','location','cep','address','address_number','neighborhood','address_complement','address_reference','formatted_address','latitude','longitude','place_id','google_maps_url','location_public','user_id','is_featured','is_published','is_approved','is_cancelled','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','other_information','ticket_price_min','ticket_price_max','total_tickets_sold','total_tickets_available','logo','background','segments','website_url','cnpj','fantasy'];
     protected $casts = ['segments'=>'array','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','location_public'=>'boolean','ticket_price_min'=>'decimal:2','ticket_price_max'=>'decimal:2','total_tickets_sold'=>'integer','total_tickets_available'=>'integer','latitude'=>'decimal:7','longitude'=>'decimal:7','city_id'=>'integer'];
 
