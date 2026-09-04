@@ -1,0 +1,52 @@
+<?php
+
+namespace App\Domain\Acquisition\Services;
+
+use App\Models\AcquisitionReferral;
+use App\Models\Production;
+use App\Models\User;
+use App\Support\ApplicationContext;
+
+final class AcquisitionAccess
+{
+    public function __construct(private readonly ApplicationContext $context) {}
+
+    public function isAgent(?User $user): bool
+    {
+        if (! $user) return false;
+
+        $membership = $user->applications()
+            ->whereKey($this->context->id())
+            ->wherePivot('status', 'active')
+            ->first()?->pivot;
+
+        if (! $membership) return false;
+        if ((string) $membership->role === 'acquisition_agent') return true;
+
+        $metadata = $membership->metadata;
+        if (is_string($metadata)) $metadata = json_decode($metadata, true);
+        $roles = is_array($metadata) ? (array) ($metadata['roles'] ?? []) : [];
+
+        return in_array('acquisition_agent', $roles, true);
+    }
+
+    public function assertAgent(?User $user): User
+    {
+        abort_unless($user && $this->isAgent($user), 403, 'Este recurso é exclusivo para agentes desta aplicação.');
+        return $user;
+    }
+
+    public function canManageProduction(?User $user, Production $production): bool
+    {
+        if (! $user || (int) $production->app_id !== $this->context->id()) return false;
+        if ($user->hasProfile('Administrador') || (int) $production->user_id === (int) $user->id) return true;
+        if (! $this->isAgent($user)) return false;
+
+        return AcquisitionReferral::query()
+            ->where('application_id', $this->context->id())
+            ->where('agent_user_id', $user->id)
+            ->where('production_id', $production->id)
+            ->whereIn('status', ['pending', 'accepted'])
+            ->exists();
+    }
+}
