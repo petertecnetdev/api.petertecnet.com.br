@@ -80,6 +80,8 @@ class CognitiveLearningServiceTest extends TestCase
     public function test_dashboard_exposes_learning_health_and_timeline(): void
     {
         config(['cognition.enabled'=>true,'cognition.auto_learn'=>true]);
+        $profile = Profile::create(['name'=>'Administrador Dashboard','permissions'=>[]]);
+        $user = User::create(['first_name'=>'Dashboard','email'=>'dashboard@example.test','user_name'=>'dashboard-researcher','password'=>Hash::make('Test1234!'),'profile_id'=>$profile->id]);
         $learning = app(CognitiveLearningService::class);
         $agent = $learning->defaultAgent();
 
@@ -97,7 +99,7 @@ class CognitiveLearningServiceTest extends TestCase
             'signal'=>1,
             'confidence'=>0.9,
             'summary'=>'O fluxo rápido teve resultado positivo.',
-        ]);
+        ], $user);
         $learning->captureState($agent);
 
         $dashboard = app(CognitiveQueryService::class)->dashboard($agent);
