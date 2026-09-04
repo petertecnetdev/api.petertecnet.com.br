@@ -6,6 +6,7 @@ use App\Support\ApplicationContext;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 final class PreventLeaseOverlap
@@ -39,6 +40,24 @@ final class PreventLeaseOverlap
                     'message' => 'Já existe uma locação com período sobreposto para este imóvel. Encerre, cancele ou ajuste o período do outro contrato.',
                     'code' => 'LEASE_PERIOD_OVERLAP',
                 ], 422);
+            }
+
+            if (Schema::hasTable('property_availability_blocks')) {
+                $blocked = DB::table('property_availability_blocks')
+                    ->where('app_id', $this->context->id())
+                    ->where('property_id', $propertyId)
+                    ->whereIn('status', ['planned', 'active'])
+                    ->whereNotIn('type', ['inspection'])
+                    ->whereDate('starts_on', '<=', $endsOn)
+                    ->whereDate('ends_on', '>=', $startsOn)
+                    ->exists();
+
+                if ($blocked) {
+                    return response()->json([
+                        'message' => 'O imóvel possui um bloqueio de disponibilidade neste período. Ajuste a manutenção, reserva ou a vigência da locação.',
+                        'code' => 'PROPERTY_AVAILABILITY_BLOCK',
+                    ], 422);
+                }
             }
         }
 
