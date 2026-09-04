@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Membership;
+use App\Models\Party;
 use App\Models\Role;
 use App\Models\RoleAssignment;
 use Illuminate\Database\Seeder;
@@ -23,14 +24,13 @@ class ContextualAccessBackfillSeeder extends Seeder
         $this->backfillEstablishmentOwners($roles);
         $this->backfillEmployments($roles);
         $this->backfillApplicationRoles($roles);
+        $this->encryptLegacyPartyDocuments();
     }
 
     private function backfillGlobalAdministrators($roles): void
     {
         $superAdminId = $roles->get('super_admin');
-        if (! $superAdminId) {
-            return;
-        }
+        if (! $superAdminId) return;
 
         DB::table('users')
             ->join('profiles', 'profiles.id', '=', 'users.profile_id')
@@ -39,13 +39,9 @@ class ContextualAccessBackfillSeeder extends Seeder
             ->orderBy('users.id')
             ->chunkById(200, function ($users) use ($superAdminId) {
                 foreach ($users as $user) {
-                    $this->assign(
-                        (int) $user->id,
-                        (int) $superAdminId,
-                        null,
-                        null,
-                        ['source' => 'legacy_profile', 'migrated_at' => now()->toIso8601String()],
-                    );
+                    $this->assign((int) $user->id, (int) $superAdminId, null, null, [
+                        'source' => 'legacy_profile', 'migrated_at' => now()->toIso8601String(),
+                    ]);
                 }
             }, 'users.id', 'id');
     }
@@ -53,9 +49,7 @@ class ContextualAccessBackfillSeeder extends Seeder
     private function backfillEstablishmentOwners($roles): void
     {
         $ownerRoleId = $roles->get('owner');
-        if (! $ownerRoleId) {
-            return;
-        }
+        if (! $ownerRoleId) return;
 
         DB::table('establishments')
             ->whereNotNull('user_id')
@@ -65,20 +59,11 @@ class ContextualAccessBackfillSeeder extends Seeder
                 foreach ($establishments as $establishment) {
                     $userId = (int) $establishment->user_id;
                     $establishmentId = (int) $establishment->id;
-                    $applicationId = $establishment->app_id ? (int) $establishment->app_id : null;
+                    $applicationId = $this->resolveApplicationId($establishmentId, $establishment->app_id ? (int) $establishment->app_id : null);
+                    $metadata = ['source' => 'establishment.user_id', 'migrated_at' => now()->toIso8601String()];
 
-                    $this->membership($userId, $establishmentId, [
-                        'source' => 'establishment.user_id',
-                        'migrated_at' => now()->toIso8601String(),
-                    ]);
-
-                    $this->assign(
-                        $userId,
-                        (int) $ownerRoleId,
-                        $applicationId,
-                        $establishmentId,
-                        ['source' => 'establishment.user_id', 'migrated_at' => now()->toIso8601String()],
-                    );
+                    $this->membership($userId, $establishmentId, $metadata);
+                    if ($applicationId) $this->assign($userId, (int) $ownerRoleId, $applicationId, $establishmentId, $metadata);
                 }
             });
     }
@@ -86,20 +71,12 @@ class ContextualAccessBackfillSeeder extends Seeder
     private function backfillEmployments($roles): void
     {
         $employeeRoleId = $roles->get('employee');
-        if (! $employeeRoleId) {
-            return;
-        }
+        if (! $employeeRoleId) return;
 
         DB::table('employers')
             ->join('establishments', 'establishments.id', '=', 'employers.establishment_id')
             ->whereNotNull('employers.user_id')
-            ->select([
-                'employers.id',
-                'employers.user_id',
-                'employers.establishment_id',
-                'employers.role as legacy_role',
-                'establishments.app_id',
-            ])
+            ->select(['employers.id', 'employers.user_id', 'employers.establishment_id', 'employers.role as legacy_role', 'establishments.app_id'])
             ->orderBy('employers.id')
             ->chunkById(200, function ($employments) use ($roles, $employeeRoleId) {
                 foreach ($employments as $employment) {
@@ -107,8 +84,7 @@ class ContextualAccessBackfillSeeder extends Seeder
                     $roleId = $roles->get($roleCode) ?: $employeeRoleId;
                     $userId = (int) $employment->user_id;
                     $establishmentId = (int) $employment->establishment_id;
-                    $applicationId = $employment->app_id ? (int) $employment->app_id : null;
-
+                    $applicationId = $this->resolveApplicationId($establishmentId, $employment->app_id ? (int) $employment->app_id : null);
                     $metadata = [
                         'source' => 'employers',
                         'legacy_employer_id' => (int) $employment->id,
@@ -117,7 +93,7 @@ class ContextualAccessBackfillSeeder extends Seeder
                     ];
 
                     $this->membership($userId, $establishmentId, $metadata);
-                    $this->assign($userId, (int) $roleId, $applicationId, $establishmentId, $metadata);
+                    if ($applicationId) $this->assign($userId, (int) $roleId, $applicationId, $establishmentId, $metadata);
                 }
             }, 'employers.id', 'id');
     }
@@ -133,24 +109,42 @@ class ContextualAccessBackfillSeeder extends Seeder
                 foreach ($memberships as $membership) {
                     $roleCode = $this->mapApplicationRole($membership->role);
                     $roleId = $roleCode ? $roles->get($roleCode) : null;
-                    if (! $roleId) {
-                        continue;
-                    }
+                    if (! $roleId) continue;
 
-                    $this->assign(
-                        (int) $membership->user_id,
-                        (int) $roleId,
-                        (int) $membership->application_id,
-                        null,
-                        [
-                            'source' => 'application_user',
-                            'legacy_membership_id' => (int) $membership->id,
-                            'legacy_role' => $membership->role,
-                            'migrated_at' => now()->toIso8601String(),
-                        ],
-                    );
+                    $this->assign((int) $membership->user_id, (int) $roleId, (int) $membership->application_id, null, [
+                        'source' => 'application_user',
+                        'legacy_membership_id' => (int) $membership->id,
+                        'legacy_role' => $membership->role,
+                        'migrated_at' => now()->toIso8601String(),
+                    ]);
                 }
             });
+    }
+
+    private function encryptLegacyPartyDocuments(): void
+    {
+        Party::query()
+            ->whereNotNull('document')
+            ->whereNull('document_encrypted')
+            ->orderBy('id')
+            ->chunkById(200, function ($parties) {
+                foreach ($parties as $party) {
+                    $legacy = $party->getRawOriginal('document');
+                    if (! $legacy) continue;
+                    $party->document = $legacy;
+                    $party->save();
+                }
+            });
+    }
+
+    private function resolveApplicationId(int $establishmentId, ?int $applicationId): ?int
+    {
+        if ($applicationId) return $applicationId;
+        $ids = DB::table('application_establishment')
+            ->where('establishment_id', $establishmentId)
+            ->limit(2)
+            ->pluck('application_id');
+        return $ids->count() === 1 ? (int) $ids->first() : null;
     }
 
     private function membership(int $userId, int $establishmentId, array $metadata): void
@@ -161,23 +155,13 @@ class ContextualAccessBackfillSeeder extends Seeder
         );
     }
 
-    private function assign(
-        int $userId,
-        int $roleId,
-        ?int $applicationId,
-        ?int $establishmentId,
-        array $metadata,
-    ): void {
+    private function assign(int $userId, int $roleId, ?int $applicationId, ?int $establishmentId, array $metadata): void
+    {
+        if ($establishmentId && ! $applicationId) return;
         $contextKey = RoleAssignment::contextKey($applicationId, $establishmentId);
-
         RoleAssignment::query()->firstOrCreate(
             ['user_id' => $userId, 'role_id' => $roleId, 'context_key' => $contextKey],
-            [
-                'application_id' => $applicationId,
-                'establishment_id' => $establishmentId,
-                'status' => 'active',
-                'metadata' => $metadata,
-            ],
+            ['application_id' => $applicationId, 'establishment_id' => $establishmentId, 'status' => 'active', 'metadata' => $metadata],
         );
     }
 
@@ -209,11 +193,6 @@ class ContextualAccessBackfillSeeder extends Seeder
 
     private function normalize(?string $value): string
     {
-        return Str::of((string) $value)
-            ->ascii()
-            ->lower()
-            ->replaceMatches('/[^a-z0-9]+/', '_')
-            ->trim('_')
-            ->toString();
+        return Str::of((string) $value)->ascii()->lower()->replaceMatches('/[^a-z0-9]+/', '_')->trim('_')->toString();
     }
 }
