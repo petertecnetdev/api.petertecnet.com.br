@@ -13,7 +13,7 @@ final class LeaseLifecycleService
             ? $referenceDate->startOfDay()
             : ($referenceDate instanceof DateTimeInterface
                 ? CarbonImmutable::instance($referenceDate)->startOfDay()
-                : ($referenceDate ? CarbonImmutable::parse($referenceDate)->startOfDay() : CarbonImmutable::today(config('app.timezone'))));
+                : ($referenceDate ? CarbonImmutable::parse($referenceDate)->startOfDay() : CarbonImmutable::today($this->timezone())));
 
         $status = (string) ($this->value($lease, 'status') ?? 'draft');
         $startsOn = $this->date($this->value($lease, 'starts_on'));
@@ -161,6 +161,11 @@ final class LeaseLifecycleService
         if ($value === null || $value === '') return [];
         $decoded = json_decode((string) $value, true);
         return is_array($decoded) ? $decoded : [];
+    }
+
+    private function timezone(): string
+    {
+        return date_default_timezone_get() ?: 'UTC';
     }
 
     private function date(mixed $value): ?CarbonImmutable
