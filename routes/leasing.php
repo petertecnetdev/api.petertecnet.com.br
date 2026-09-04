@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Leasing\Http\Controllers\LeaseContractController;
 use App\Domain\Leasing\Http\Controllers\LeasingController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,7 +20,7 @@ Route::prefix('v1/apps/{application}')
         Route::post('/leases', [LeasingController::class, 'storeLease']);
         Route::get('/leases/{leaseId}', [LeasingController::class, 'showLease'])->whereNumber('leaseId');
         Route::match(['put', 'patch'], '/leases/{leaseId}', [LeasingController::class, 'updateLease'])->whereNumber('leaseId');
-        Route::post('/leases/{leaseId}/contract/generate', [LeasingController::class, 'generateContract'])->whereNumber('leaseId');
+        Route::post('/leases/{leaseId}/contract/generate', [LeaseContractController::class, 'generate'])->whereNumber('leaseId');
         Route::post('/leases/{leaseId}/contract/send', [LeasingController::class, 'sendContract'])->whereNumber('leaseId')->middleware('throttle:10,1');
         Route::post('/leases/{leaseId}/contract/sign', [LeasingController::class, 'sign'])->whereNumber('leaseId')->middleware('throttle:20,1');
 
