@@ -4,11 +4,11 @@ namespace App\Domain\Leasing\Http\Controllers;
 
 use App\Domain\Documents\DTOs\DocumentAuditContext;
 use App\Domain\Documents\Services\DocumentWorkflowService;
+use App\Domain\Notifications\Services\NotificationDispatcher;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
 use Throwable;
 
@@ -18,6 +18,7 @@ final class LeaseDocumentWorkflowController extends Controller
         private readonly ApplicationContext $context,
         private readonly DocumentWorkflowService $documents,
         private readonly LeasePackageLifecycleController $packageLifecycle,
+        private readonly NotificationDispatcher $notifications,
     ) {}
 
     public function show(Request $request, int $leaseId)
@@ -62,8 +63,6 @@ final class LeaseDocumentWorkflowController extends Controller
         $lease = $this->managedLease($request, $leaseId);
         abort_if(in_array($lease->status, ['active', 'ended', 'cancelled'], true), 422, 'Contrato ativo ou encerrado deve ser alterado por aditivo.');
 
-        // Preserve the canonical leasing readiness/package lifecycle. Documents only
-        // snapshots its output; it never replaces leasing business gates.
         $this->packageLifecycle->generate($request, $leaseId);
         $appId = $this->context->id();
         $lease = DB::table('leases')->where('app_id', $appId)->where('id', $leaseId)->whereNull('deleted_at')->firstOrFail();
@@ -115,9 +114,12 @@ final class LeaseDocumentWorkflowController extends Controller
 
         $link = $baseUrl.'/sign/'.$tenantRequest['token'];
         try {
-            Mail::raw($this->invitationText($sent['document'], $link), function ($mail) use ($lease) {
-                $mail->to($lease->tenant_email, $lease->tenant_name)->subject('Contrato para assinatura eletrônica');
-            });
+            $this->notifications->sendEmail(
+                (string) $lease->tenant_email,
+                $lease->tenant_name ?: null,
+                'Contrato para assinatura eletrônica',
+                $this->invitationText($sent['document'], $link),
+            );
         } catch (Throwable $e) {
             report($e);
             $this->documents->reopenForRevisionForApplication($appId, $document->id, (int) $request->user()->id, $auditContext);
@@ -168,8 +170,6 @@ final class LeaseDocumentWorkflowController extends Controller
             'tax_id' => $data['signer_tax_id'] ?? null,
         ], $userId, $this->auditContext($request));
 
-        // Deliberately do not activate the lease here. Activation remains behind
-        // LeaseOnboardingController::activateIfReady and its operational gates.
         return response()->json([
             'document' => $document,
             'timeline' => $this->documents->timelineForApplication($appId, $document->id),
