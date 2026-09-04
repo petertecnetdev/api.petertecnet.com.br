@@ -16,11 +16,6 @@ class EstablishmentOwnershipNotificationObserver
             return;
         }
 
-        $user = User::query()->find($establishment->user_id);
-        if (! $user || ! $user->email_verified_at) {
-            return;
-        }
-
         $this->afterCommit($establishment);
     }
 
