@@ -52,10 +52,7 @@ final class MarketDataController extends Controller
 
     public function portfolio(Request $request): JsonResponse
     {
-        return response()->json([
-            'success' => true,
-            'data' => $this->portfolio->portfolio((int) $request->user()->id),
-        ]);
+        return $this->marketResponse($request, fn () => $this->portfolio->portfolio((int) $request->user()->id));
     }
 
     public function addPosition(Request $request): JsonResponse
@@ -131,10 +128,7 @@ final class MarketDataController extends Controller
             'market_move_pct' => ['required', 'numeric', 'between:-90,1000'],
         ]);
 
-        return response()->json([
-            'success' => true,
-            'data' => $this->portfolio->simulate((int) $request->user()->id, $data),
-        ]);
+        return $this->marketResponse($request, fn () => $this->portfolio->simulate((int) $request->user()->id, $data));
     }
 
     private function marketResponse(Request $request, callable $callback, int $status = 200): JsonResponse
