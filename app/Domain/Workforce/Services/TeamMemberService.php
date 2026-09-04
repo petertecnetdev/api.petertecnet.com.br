@@ -9,7 +9,7 @@ use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 final class TeamMemberService
