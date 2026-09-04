@@ -53,6 +53,19 @@ jobs:
             -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE_SCRIPT'
           set -Eeuo pipefail
           cd /var/www/api.petertecnet.com.br
+
+          # Laravel cache files can be written by HTTP, queue, scheduler or deploy
+          # processes. Keep the shared runtime group writable and make new files
+          # inherit that policy so a root-owned cache entry cannot break requests.
+          if [[ -d storage && -d bootstrap/cache ]]; then
+            chmod -R ug+rwX storage bootstrap/cache || true
+            find storage bootstrap/cache -type d -exec chmod g+s {} + || true
+            if command -v setfacl >/dev/null 2>&1; then
+              setfacl -R -m g::rwX,m::rwX storage bootstrap/cache || true
+              find storage bootstrap/cache -type d -exec setfacl -m d:g::rwx,d:m::rwx {} + || true
+            fi
+          fi
+
           git fetch --prune origin main
           TARGET_SHA="$(git rev-parse origin/main)"
 
