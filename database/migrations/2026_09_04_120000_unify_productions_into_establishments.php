@@ -9,6 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
+        $this->ensureEstablishmentLocationColumns();
+
         if (Schema::hasTable('events') && Schema::hasColumn('events', 'production_id')) {
             $this->dropForeignFor('events', 'production_id');
 
@@ -20,13 +22,20 @@ return new class extends Migration
         if (Schema::hasTable('events') && Schema::hasColumn('events', 'establishment_id')) {
             $this->dropForeignFor('events', 'establishment_id');
 
-            Schema::table('events', function (Blueprint $table) {
-                $table->foreign('establishment_id')
-                    ->references('id')
-                    ->on('establishments')
-                    ->cascadeOnDelete();
-                $table->index(['app_id', 'establishment_id']);
-            });
+            if (! $this->hasForeignReference('events', 'establishment_id', 'establishments')) {
+                Schema::table('events', function (Blueprint $table) {
+                    $table->foreign('establishment_id')
+                        ->references('id')
+                        ->on('establishments')
+                        ->cascadeOnDelete();
+                });
+            }
+
+            if (! $this->hasIndex('events', 'events_app_id_establishment_id_index')) {
+                Schema::table('events', function (Blueprint $table) {
+                    $table->index(['app_id', 'establishment_id']);
+                });
+            }
         }
 
         if (Schema::hasTable('follows')) {
@@ -35,8 +44,8 @@ return new class extends Migration
                 ->update(['target_type' => 'establishment']);
         }
 
-        // There are no production records in production. From this migration on,
-        // type=production on establishments is the only persisted representation.
+        // There are no production or event records to migrate. From this point
+        // Establishment(type=production) is the only persisted representation.
         Schema::dropIfExists('productions');
     }
 
@@ -53,11 +62,22 @@ return new class extends Migration
                 $table->string('phone', 30)->nullable();
                 $table->string('establishment_type', 100)->nullable();
                 $table->text('description')->nullable();
+                $table->unsignedBigInteger('city_id')->nullable()->index();
                 $table->string('city', 120)->nullable();
                 $table->string('uf', 2)->nullable();
                 $table->string('location')->nullable();
                 $table->string('cep', 20)->nullable();
                 $table->string('address')->nullable();
+                $table->string('address_number', 30)->nullable();
+                $table->string('neighborhood', 160)->nullable();
+                $table->string('address_complement', 255)->nullable();
+                $table->string('address_reference', 255)->nullable();
+                $table->string('formatted_address', 700)->nullable();
+                $table->decimal('latitude', 10, 7)->nullable();
+                $table->decimal('longitude', 10, 7)->nullable();
+                $table->string('place_id', 255)->nullable();
+                $table->string('google_maps_url', 2048)->nullable();
+                $table->boolean('location_public')->default(false);
                 $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
                 $table->boolean('is_featured')->default(false);
                 $table->boolean('is_published')->default(false);
@@ -94,18 +114,32 @@ return new class extends Migration
             });
         }
 
-        if (Schema::hasTable('follows')) {
-            DB::table('follows')
-                ->where('target_type', 'establishment')
-                ->update(['target_type' => 'production']);
-        }
+        // Do not rewrite generic establishment follows on rollback: they may
+        // belong to other applications and are not safely distinguishable.
+    }
+
+    private function ensureEstablishmentLocationColumns(): void
+    {
+        if (! Schema::hasTable('establishments')) return;
+
+        Schema::table('establishments', function (Blueprint $table) {
+            if (! Schema::hasColumn('establishments', 'city_id')) $table->unsignedBigInteger('city_id')->nullable()->index('establishment_city_id_idx');
+            if (! Schema::hasColumn('establishments', 'address_number')) $table->string('address_number', 30)->nullable();
+            if (! Schema::hasColumn('establishments', 'neighborhood')) $table->string('neighborhood', 160)->nullable();
+            if (! Schema::hasColumn('establishments', 'address_complement')) $table->string('address_complement', 255)->nullable();
+            if (! Schema::hasColumn('establishments', 'address_reference')) $table->string('address_reference', 255)->nullable();
+            if (! Schema::hasColumn('establishments', 'formatted_address')) $table->string('formatted_address', 700)->nullable();
+            if (! Schema::hasColumn('establishments', 'latitude')) $table->decimal('latitude', 10, 7)->nullable();
+            if (! Schema::hasColumn('establishments', 'longitude')) $table->decimal('longitude', 10, 7)->nullable();
+            if (! Schema::hasColumn('establishments', 'place_id')) $table->string('place_id', 255)->nullable();
+            if (! Schema::hasColumn('establishments', 'google_maps_url')) $table->string('google_maps_url', 2048)->nullable();
+            if (! Schema::hasColumn('establishments', 'location_public')) $table->boolean('location_public')->default(false);
+        });
     }
 
     private function dropForeignFor(string $table, string $column): void
     {
-        if (DB::getDriverName() !== 'mysql') {
-            return;
-        }
+        if (DB::getDriverName() !== 'mysql') return;
 
         $constraint = DB::table('information_schema.KEY_COLUMN_USAGE')
             ->where('TABLE_SCHEMA', DB::getDatabaseName())
@@ -121,5 +155,28 @@ return new class extends Migration
                 str_replace('`', '``', $constraint),
             ));
         }
+    }
+
+    private function hasForeignReference(string $table, string $column, string $referencedTable): bool
+    {
+        if (DB::getDriverName() !== 'mysql') return false;
+
+        return DB::table('information_schema.KEY_COLUMN_USAGE')
+            ->where('TABLE_SCHEMA', DB::getDatabaseName())
+            ->where('TABLE_NAME', $table)
+            ->where('COLUMN_NAME', $column)
+            ->where('REFERENCED_TABLE_NAME', $referencedTable)
+            ->exists();
+    }
+
+    private function hasIndex(string $table, string $indexName): bool
+    {
+        if (DB::getDriverName() !== 'mysql') return false;
+
+        return DB::table('information_schema.STATISTICS')
+            ->where('TABLE_SCHEMA', DB::getDatabaseName())
+            ->where('TABLE_NAME', $table)
+            ->where('INDEX_NAME', $indexName)
+            ->exists();
     }
 };
