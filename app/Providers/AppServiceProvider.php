@@ -16,6 +16,7 @@ use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use App\Observers\CognitiveInteractionObserver;
+use App\Observers\EstablishmentOwnershipNotificationObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
 use App\Services\Operations\OperationalIssueService;
@@ -55,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
         foreach ([Application::class, Profile::class, User::class, Establishment::class, Item::class, Order::class] as $auditedModel) {
             $auditedModel::observe(InteractionAuditObserver::class);
         }
+
+        Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
         Interaction::observe(CognitiveInteractionObserver::class);
