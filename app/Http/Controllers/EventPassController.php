@@ -25,10 +25,6 @@ class EventPassController extends Controller
         $alreadyIssued = false;
 
         $pass = DB::transaction(function () use ($ticketId, $user, $appId, &$alreadyIssued) {
-            // Resolve the event first and lock it before the ticket. Every admission
-            // claim for the same event therefore serializes on one row, including
-            // claims made against different ticket batches. This prevents two
-            // concurrent requests from exceeding max_attendees.
             $ticketReference = Ticket::query()
                 ->where('app_id', $appId)
                 ->select(['id', 'event_id'])
@@ -51,7 +47,9 @@ class EventPassController extends Controller
                     && (int) $event->production->app_id === $appId
                     && ! $event->is_cancelled
                     && $event->is_published
-                    && ! $event->is_private,
+                    && ! $event->is_private
+                    && ! $event->sales_paused_at
+                    && ! in_array((string) $event->lifecycle_status, ['postponed', 'cancelled'], true),
                 422,
                 'Este evento não está disponível para retirada pública de cortesias.'
             );
@@ -71,8 +69,7 @@ class EventPassController extends Controller
 
             if ($existing) {
                 $alreadyIssued = true;
-
-                return $existing->load(['ticket', 'event.production']);
+                return $existing->load(['ticket', 'event.production', 'orderItem.order.refunds']);
             }
 
             $issuedForTicket = EventPass::query()
@@ -108,7 +105,7 @@ class EventPassController extends Controller
                 'holder_email' => strtolower(trim((string) $user->email)),
                 'token' => 'PASS-'.Str::upper(Str::random(16)).'-'.Str::uuid(),
                 'status' => 'issued',
-            ])->load(['ticket', 'event.production']);
+            ])->load(['ticket', 'event.production', 'orderItem.order.refunds']);
         });
 
         $this->registerParticipation($appId, (int) $user->id, 'participant');
@@ -150,7 +147,7 @@ class EventPassController extends Controller
         $passes = EventPass::query()
             ->where('user_id', $request->user()->id)
             ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
-            ->with(['ticket', 'event.production'])
+            ->with(['ticket', 'event.production', 'orderItem.order.refunds'])
             ->latest()
             ->get();
 
@@ -163,7 +160,7 @@ class EventPassController extends Controller
         $appId = $this->context->id();
         $pass = EventPass::query()
             ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
-            ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar'])
+            ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar', 'orderItem.order.refunds'])
             ->findOrFail($passId);
 
         if ((int) $pass->user_id !== (int) $user->id) {
@@ -190,7 +187,7 @@ class EventPassController extends Controller
         $valid = $passes->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
-            'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published']),
+            'event' => $event->only(['id', 'title', 'start_date', 'end_date', 'slug', 'is_published', 'is_cancelled', 'lifecycle_status', 'sales_paused_at']),
             'passes' => $passes,
             'stats' => [
                 'issued' => $valid->count(),
@@ -208,9 +205,11 @@ class EventPassController extends Controller
         ]);
         $selectedEvent = $this->manageableEvent((int) $data['event_id'], $operator);
         abort_if(
-            $selectedEvent->is_cancelled || ! $selectedEvent->is_published,
+            $selectedEvent->is_cancelled
+                || ! $selectedEvent->is_published
+                || $selectedEvent->lifecycle_status === 'postponed',
             422,
-            'A portaria só pode validar um evento publicado e não cancelado.'
+            'A portaria só pode validar um evento publicado, com data ativa e não cancelado.'
         );
         $appId = $this->context->id();
 
@@ -245,11 +244,10 @@ class EventPassController extends Controller
                     'cancelled' => 'Este ingresso foi cancelado e não pode ser utilizado.',
                     default => 'Este ingresso não está válido para entrada.',
                 };
-
                 return ['status' => 422, 'message' => $message, 'pass' => $pass];
             }
 
-            if ($pass->event->is_cancelled || ! $pass->event->is_published) {
+            if ($pass->event->is_cancelled || ! $pass->event->is_published || $pass->event->lifecycle_status === 'postponed') {
                 return ['status' => 422, 'message' => 'Este evento não está disponível para entrada.', 'pass' => $pass];
             }
 
@@ -303,7 +301,7 @@ class EventPassController extends Controller
             ->whereNotIn('status', self::INVALID_PASS_STATUSES);
 
         return response()->json([
-            'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled', 'start_date', 'end_date']),
+            'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled', 'lifecycle_status', 'sales_paused_at', 'start_date', 'end_date']),
             'issued' => (clone $valid)->count(),
             'checked_in' => (clone $valid)->whereNotNull('checked_in_at')->count(),
         ]);
@@ -334,35 +332,21 @@ class EventPassController extends Controller
     private function canOperateEvent(User $operator, Event $event, int $appId): bool
     {
         $production = $event->production;
-
-        if ($operator->hasProfile('Administrador')) {
-            return true;
-        }
-        if ($production && (int) $production->user_id === (int) $operator->id) {
-            return true;
-        }
-        if (! $operator->hasPermission('ticket_checkin') && ! $operator->hasPermission('event_checkin')) {
-            return false;
-        }
+        if ($operator->hasProfile('Administrador')) return true;
+        if ($production && (int) $production->user_id === (int) $operator->id) return true;
+        if (! $operator->hasPermission('ticket_checkin') && ! $operator->hasPermission('event_checkin')) return false;
 
         $membership = DB::table('application_user')
             ->where('application_id', $appId)
             ->where('user_id', $operator->id)
             ->where('status', 'active')
             ->first();
-        if (! $membership) {
-            return false;
-        }
+        if (! $membership) return false;
 
         $metadata = $membership->metadata ?? null;
-        if (is_string($metadata) && $metadata !== '') {
-            $metadata = json_decode($metadata, true);
-        } elseif (is_object($metadata)) {
-            $metadata = (array) $metadata;
-        }
-        if (! is_array($metadata)) {
-            return false;
-        }
+        if (is_string($metadata) && $metadata !== '') $metadata = json_decode($metadata, true);
+        elseif (is_object($metadata)) $metadata = (array) $metadata;
+        if (! is_array($metadata)) return false;
 
         $eventIds = array_map('intval', is_array($metadata['event_ids'] ?? null) ? $metadata['event_ids'] : []);
         $productionIds = array_map('intval', is_array($metadata['production_ids'] ?? null) ? $metadata['production_ids'] : []);
@@ -378,40 +362,27 @@ class EventPassController extends Controller
             ->where('user_id', $userId)
             ->first();
 
-        $priority = [
-            'participant' => 10,
-            'staff' => 20,
-            'promoter' => 30,
-            'producer' => 40,
-            'admin' => 50,
-        ];
+        $priority = ['participant'=>10,'staff'=>20,'promoter'=>30,'producer'=>40,'admin'=>50];
         $existingRole = (string) ($existing->role ?? '');
-        $effective = ($priority[$existingRole] ?? 0) > ($priority[$role] ?? 0)
-            ? $existingRole
-            : $role;
+        $effective = ($priority[$existingRole] ?? 0) > ($priority[$role] ?? 0) ? $existingRole : $role;
 
         if ($existing) {
             DB::table('application_user')
                 ->where('application_id', $appId)
                 ->where('user_id', $userId)
-                ->update([
-                    'role' => $effective,
-                    'status' => 'active',
-                    'updated_at' => now(),
-                ]);
-
+                ->update(['role'=>$effective,'status'=>'active','updated_at'=>now()]);
             return;
         }
 
         DB::table('application_user')->insert([
-            'application_id' => $appId,
-            'user_id' => $userId,
-            'role' => $effective,
-            'status' => 'active',
-            'metadata' => json_encode([], JSON_UNESCAPED_UNICODE),
-            'joined_at' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
+            'application_id'=>$appId,
+            'user_id'=>$userId,
+            'role'=>$effective,
+            'status'=>'active',
+            'metadata'=>json_encode([], JSON_UNESCAPED_UNICODE),
+            'joined_at'=>now(),
+            'created_at'=>now(),
+            'updated_at'=>now(),
         ]);
     }
 }

@@ -95,18 +95,28 @@ final class OrganizationController extends Controller
 
     public function mine(Request $request)
     {
-        return response()->json([
-            'organizations' => Production::query()
-                ->where('app_id', $this->context->id())
-                ->where('user_id', $request->user()->id)
-                ->withCount(['events' => fn ($q) => $q->where('app_id', $this->context->id())])
-                ->latest()->get(),
-        ]);
+        $organizations = Production::query()
+            ->where('app_id', $this->context->id())
+            ->where('user_id', $request->user()->id)
+            ->withCount(['events' => fn ($q) => $q->where('app_id', $this->context->id())])
+            ->latest()->get();
+
+        $organizations->each(function (Production $organization) {
+            $state = $this->deletionState($organization);
+            $organization->setAttribute('can_delete', $state['can_delete']);
+            $organization->setAttribute('deletion_blockers', $state['blockers']);
+        });
+
+        return response()->json(['organizations' => $organizations]);
     }
 
     public function show(Request $request, int $id)
     {
-        return response()->json(['organization' => $this->owned($request, $id)]);
+        $organization = $this->owned($request, $id);
+        $state = $this->deletionState($organization);
+        $organization->setAttribute('can_delete', $state['can_delete']);
+        $organization->setAttribute('deletion_blockers', $state['blockers']);
+        return response()->json(['organization' => $organization]);
     }
 
     public function store(Request $request)
@@ -146,9 +156,33 @@ final class OrganizationController extends Controller
     public function destroy(Request $request, int $id)
     {
         $organization = $this->owned($request, $id);
-        abort_if($organization->events()->whereHas('tickets.passes')->exists(), 409, 'Organizações com ingressos emitidos não podem ser excluídas.');
+        $state = $this->deletionState($organization);
+        abort_unless($state['can_delete'], 409, 'Esta organização possui vínculos e não pode ser excluída. Apenas cadastros sem eventos, pedidos, histórico financeiro ou contratos assinados podem ser removidos.');
+
+        foreach (['logo', 'background'] as $field) {
+            if ($organization->{$field} && str_starts_with($organization->{$field}, 'images/apps/')) {
+                Storage::disk('public')->delete($organization->{$field});
+            }
+        }
         $organization->delete();
-        return response()->json(['message' => 'Organização excluída.']);
+        return response()->json(['message' => 'Organização excluída com segurança.']);
+    }
+
+    private function deletionState(Production $organization): array
+    {
+        $appId = $this->context->id();
+        $events = Event::query()->where('app_id', $appId)->where('production_id', $organization->id)->count();
+        $orders = DB::table('commerce_orders')->where('app_id', $appId)->where('production_id', $organization->id)->count();
+        $financial = DB::table('ledger_entries')->where('app_id', $appId)->where('production_id', $organization->id)->count();
+        $contracts = DB::table('contract_acceptances')->where('app_id', $appId)->where('production_id', $organization->id)->count();
+
+        $blockers = [];
+        if ($events > 0) $blockers[] = ['type' => 'events', 'count' => $events, 'message' => 'A organização possui eventos cadastrados.'];
+        if ($orders > 0) $blockers[] = ['type' => 'orders', 'count' => $orders, 'message' => 'A organização possui pedidos no histórico comercial.'];
+        if ($financial > 0) $blockers[] = ['type' => 'financial_history', 'count' => $financial, 'message' => 'A organização possui histórico financeiro.'];
+        if ($contracts > 0) $blockers[] = ['type' => 'signed_contracts', 'count' => $contracts, 'message' => 'A organização possui termo contratual assinado e precisa permanecer auditável.'];
+
+        return ['can_delete' => $blockers === [], 'blockers' => $blockers];
     }
 
     private function owned(Request $request, int $id): Production

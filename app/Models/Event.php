@@ -12,8 +12,14 @@ use Illuminate\Validation\ValidationException;
 
 class Event extends Model
 {
-    protected $fillable = ['app_id','app_slug','production_id','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','max_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'];
-    protected $casts = ['start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer'];
+    protected $fillable = [
+        'app_id','app_slug','production_id','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','lifecycle_status','sales_paused_at','cancelled_at','cancelled_by_user_id','postponed_at','postponed_by_user_id','rescheduled_at','rescheduled_by_user_id','previous_start_date','previous_end_date','refund_deadline_at','lifecycle_reason','max_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'
+    ];
+
+    protected $casts = [
+        'start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer',
+        'sales_paused_at'=>'datetime','cancelled_at'=>'datetime','postponed_at'=>'datetime','rescheduled_at'=>'datetime','previous_start_date'=>'datetime','previous_end_date'=>'datetime','refund_deadline_at'=>'datetime','cancelled_by_user_id'=>'integer','postponed_by_user_id'=>'integer','rescheduled_by_user_id'=>'integer',
+    ];
 
     protected static function booted(): void
     {
@@ -24,6 +30,7 @@ class Event extends Model
 
             if (request()->exists('city') && ! request()->exists('city_id')) $event->city_id = null;
             $event->event_format = $event->event_format ?: 'in_person';
+            $event->lifecycle_status = $event->lifecycle_status ?: ($event->is_cancelled ? 'cancelled' : 'scheduled');
             if (! in_array($event->event_format, ['in_person','online','hybrid'], true)) throw ValidationException::withMessages(['event_format' => ['Selecione presencial, online ou híbrido.']]);
 
             $physical = in_array($event->event_format, ['in_person','hybrid'], true);
@@ -49,6 +56,7 @@ class Event extends Model
 
         static::saved(function (Event $event) {
             if ($event->wasChanged('is_published') && $event->is_published && ! $event->is_cancelled) app(EventLineupNotificationService::class)->notifyPublishedEvent($event);
+            if ($event->wasChanged('lifecycle_status')) return;
             if ($event->wasRecentlyCreated || ! $event->is_published) return;
             $materialFields = ['title','description','category','image','event_format','address','address_number','neighborhood','address_complement','formatted_address','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city','uf','cep','max_attendees','is_cancelled'];
             $changed = collect(array_keys($event->getChanges()))->intersect($materialFields)->values(); if ($changed->isEmpty()) return;
@@ -58,6 +66,13 @@ class Event extends Model
         });
     }
 
-    public function application(){return $this->belongsTo(Application::class,'app_id');} public function production(){return $this->belongsTo(Production::class);} public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');} public function tickets(){return $this->hasMany(Ticket::class);} public function artists(){return $this->belongsToMany(Artist::class,'event_artist','event_id','artist_id')->withPivot(['participation_type','stage','scheduled_at','description','sort_order','is_headliner'])->withTimestamps();} public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','event');}
+    public function application(){return $this->belongsTo(Application::class,'app_id');}
+    public function production(){return $this->belongsTo(Production::class);}
+    public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');}
+    public function tickets(){return $this->hasMany(Ticket::class);}
+    public function commerceOrders(){return $this->hasMany(CommerceOrder::class,'event_id');}
+    public function lifecycleActions(){return $this->hasMany(EventLifecycleAction::class,'event_id')->latest('id');}
+    public function artists(){return $this->belongsToMany(Artist::class,'event_artist','event_id','artist_id')->withPivot(['participation_type','stage','scheduled_at','description','sort_order','is_headliner'])->withTimestamps();}
+    public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','event');}
     public function getSegmentsnNamesAttribute(){ $assigned=is_array($this->segments)?$this->segments:[];if($assigned===[])return '<i>Nenhum segmento atribuído</i>';$names=[];$segments=Config::get('segments',[]);foreach($assigned as $key)if(isset($segments[$key]['name']))$names[]=$segments[$key]['name'];return implode(' | ',$names);}
 }
