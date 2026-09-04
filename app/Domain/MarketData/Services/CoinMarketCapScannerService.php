@@ -11,7 +11,7 @@ final class CoinMarketCapScannerService
 {
     private const ENDPOINT = 'https://api.coinmarketcap.com/data-api/v3/cryptocurrency/listing';
     private const PAGE_SIZE = 1000;
-    private const CACHE_KEY = 'market_data:cmc_scanner:v1';
+    private const CACHE_KEY = 'market_data:cmc_scanner:v2';
 
     public function scan(int $limit = 50): array
     {
@@ -60,7 +60,7 @@ final class CoinMarketCapScannerService
             'scanned_at' => now()->toIso8601String(),
             'opportunities' => $candidates,
             'methodology' => [
-                'version' => 'breakout-radar-v1',
+                'version' => 'breakout-timing-radar-v2',
                 'signals' => [
                     'acceleration_1h_vs_24h',
                     'momentum_24h',
@@ -70,6 +70,8 @@ final class CoinMarketCapScannerService
                     'liquidity',
                     'market_pair_depth',
                     'overheating_penalty',
+                    'estimated_move_window',
+                    'estimated_upside_range',
                 ],
                 'eligibility' => [
                     'active_only' => true,
@@ -78,7 +80,7 @@ final class CoinMarketCapScannerService
                     'minimum_market_pairs' => 2,
                 ],
             ],
-            'disclaimer' => 'Radar estatístico de aceleração e liquidez. Não prevê o futuro, não garante alta e não constitui recomendação individual de investimento.',
+            'disclaimer' => 'Estimativas probabilísticas baseadas em momentum, volume e liquidez. Não preveem o futuro, não garantem alta e não constituem recomendação individual de investimento.',
         ];
     }
 
@@ -86,7 +88,7 @@ final class CoinMarketCapScannerService
     {
         try {
             $response = Http::acceptJson()
-                ->withHeaders(['User-Agent' => 'PeterTecnet-Kryvion/1.2'])
+                ->withHeaders(['User-Agent' => 'PeterTecnet-Kryvion/1.3'])
                 ->connectTimeout(5)
                 ->timeout(18)
                 ->retry(2, 300, throw: false)
@@ -186,6 +188,17 @@ final class CoinMarketCapScannerService
             default => 'Sinal fraco',
         };
 
+        $timing = $this->estimateTiming(
+            $score,
+            $confidence,
+            $acceleration,
+            $change1h,
+            $change24h,
+            $change7d,
+            $volumeChange,
+            $overheatingPenalty,
+        );
+
         $reasons = [];
         if ($acceleration > 0.8) $reasons[] = sprintf('Aceleração de 1h acima do ritmo médio de 24h em %.2f p.p.', $acceleration);
         if ($volumeChange > 20) $reasons[] = sprintf('Volume de 24h crescendo %.1f%%.', $volumeChange);
@@ -217,10 +230,74 @@ final class CoinMarketCapScannerService
             'breakout_score' => $score,
             'confidence' => $confidence,
             'classification' => $classification,
+            'estimated_window' => $timing['window'],
+            'estimated_window_hours' => $timing['window_hours'],
+            'estimated_upside_min_pct' => $timing['upside_min_pct'],
+            'estimated_upside_max_pct' => $timing['upside_max_pct'],
+            'timing_signal' => $timing['signal'],
+            'timing_note' => $timing['note'],
             'factors' => array_map(fn (float $value): int => (int) round($value), $factors),
             'reasons' => array_slice($reasons, 0, 3),
             'risks' => array_slice($risks, 0, 2),
             'last_updated' => $row['lastUpdated'] ?? $quote['lastUpdated'] ?? null,
+        ];
+    }
+
+    private function estimateTiming(
+        int $score,
+        int $confidence,
+        float $acceleration,
+        float $change1h,
+        float $change24h,
+        float $change7d,
+        float $volumeChange,
+        float $overheatingPenalty,
+    ): array {
+        $volatilityBase = max(
+            abs($change1h) * 4,
+            abs($change24h) * 0.75,
+            abs($change7d) / 7,
+            1.5,
+        );
+        $strength = $this->clamp(($score * 0.65) + ($confidence * 0.35));
+        $upsideMin = $this->clamp(($volatilityBase * 0.55) + (($strength - 50) * 0.07), 1.0, 18.0);
+        $upsideMax = $this->clamp(($volatilityBase * 1.35) + (($strength - 50) * 0.18), $upsideMin + 1.0, 45.0);
+
+        if ($score >= 82 && $confidence >= 70 && $acceleration > 1.2 && $volumeChange > 10) {
+            $window = '1–6 horas';
+            $hours = [1, 6];
+        } elseif ($score >= 72 && $confidence >= 62) {
+            $window = '6–24 horas';
+            $hours = [6, 24];
+        } elseif ($score >= 62) {
+            $window = '1–3 dias';
+            $hours = [24, 72];
+        } else {
+            $window = 'Sem janela confiável';
+            $hours = null;
+        }
+
+        if ($overheatingPenalty >= 8 || $change1h > 8 || $change24h > 28) {
+            $signal = 'aguardar_recuo';
+            $note = 'Movimento já acelerado; prefira aguardar recuo ou nova confirmação de volume antes de considerar entrada.';
+        } elseif ($score >= 78 && $confidence >= 68 && $acceleration > 0.8 && $volumeChange > 0) {
+            $signal = 'confirmacao_forte';
+            $note = 'Confluência forte de aceleração e volume; acompanhar confirmação do rompimento e invalidar se o volume perder força.';
+        } elseif ($score >= 65) {
+            $signal = 'observar_confirmacao';
+            $note = 'Sinal em formação; aguarde confirmação simultânea de preço e volume antes de considerar entrada.';
+        } else {
+            $signal = 'sem_entrada';
+            $note = 'Não há evidência suficiente para definir uma janela de alta com confiança.';
+        }
+
+        return [
+            'window' => $window,
+            'window_hours' => $hours,
+            'upside_min_pct' => round($upsideMin, 1),
+            'upside_max_pct' => round($upsideMax, 1),
+            'signal' => $signal,
+            'note' => $note,
         ];
     }
 
