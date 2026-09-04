@@ -220,6 +220,10 @@ return new class extends Migration
 
     private function dropForeignKeysToLegacyProductions(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         foreach ($this->productionForeignKeys as $table => $constraint) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'production_id')) continue;
             DB::statement(sprintf('ALTER TABLE `%s` DROP FOREIGN KEY `%s`', $table, $constraint));
@@ -228,6 +232,10 @@ return new class extends Migration
 
     private function addForeignKeysToEstablishments(): void
     {
+        if (DB::connection()->getDriverName() === 'sqlite') {
+            return;
+        }
+
         foreach ($this->productionForeignKeys as $table => $constraint) {
             if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'production_id')) continue;
 
