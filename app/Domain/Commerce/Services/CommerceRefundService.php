@@ -62,16 +62,6 @@ class CommerceRefundService
         string $reason
     ): CommerceRefund {
         abort_unless((int) $order->app_id === $this->context->id(), 404, 'Pedido não encontrado neste contexto.');
-
-        if ($order->status === 'refunded') {
-            return CommerceRefund::query()
-                ->where('app_id', $this->context->id())
-                ->where('order_id', $order->id)
-                ->latest('id')
-                ->firstOrFail();
-        }
-
-        abort_unless(in_array($order->status, ['paid', 'refund_pending'], true), 422, 'Somente pedidos pagos podem ser reembolsados.');
         abort_if((float) $order->total <= 0, 422, 'Este pedido não possui valor pago para reembolso.');
 
         $payment = $order->payments()
@@ -89,6 +79,33 @@ class CommerceRefundService
             $order->id,
             $payment->id,
         ]));
+
+        // Older provider/webhook flows may already have marked an order/payment
+        // as refunded before commerce_refunds existed. Materialize the audit row
+        // instead of returning a 404 so old transactions remain traceable.
+        if ($order->status === 'refunded' || $payment->status === 'refunded') {
+            return CommerceRefund::query()->firstOrCreate(
+                ['idempotency_key' => $idempotencyKey],
+                [
+                    'app_id' => $this->context->id(),
+                    'order_id' => $order->id,
+                    'payment_id' => $payment->id,
+                    'requested_by_user_id' => $requestedBy?->id,
+                    'source_type' => $sourceType,
+                    'source_id' => $sourceId,
+                    'status' => 'completed',
+                    'amount' => $order->total,
+                    'currency' => $order->currency ?: 'BRL',
+                    'provider' => $payment->provider,
+                    'reason' => $reason,
+                    'provider_payload' => ['reconciled_existing_refund' => true],
+                    'requested_at' => $payment->refunded_at ?: now(),
+                    'processed_at' => $payment->refunded_at ?: now(),
+                ]
+            );
+        }
+
+        abort_unless(in_array($order->status, ['paid', 'refund_pending'], true), 422, 'Somente pedidos pagos podem ser reembolsados.');
 
         $refund = CommerceRefund::query()->firstOrCreate(
             ['idempotency_key' => $idempotencyKey],
