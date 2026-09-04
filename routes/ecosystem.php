@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\FinancialController;
@@ -57,6 +58,12 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::post('/reconcile', [FinancialController::class, 'reconcileNow'])->middleware('throttle:10,1');
         Route::get('/closing', [FinancialController::class, 'closing']);
         Route::get('/reports/{format}', [FinancialController::class, 'export'])->whereIn('format', ['csv', 'pdf']);
+    });
+
+    Route::prefix('event-management')->group(function () {
+        Route::get('/users', [AdminEventController::class, 'users']);
+        Route::get('/users/{user}/productions', [AdminEventController::class, 'productions'])->whereNumber('user');
+        Route::post('/events', [AdminEventController::class, 'store'])->middleware('throttle:30,1');
     });
 
     Route::get('/users', [EcosystemController::class, 'users']);
