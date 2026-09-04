@@ -76,7 +76,7 @@ class AccountController extends Controller
 
         abort_unless(
             (int) $establishment->user_id === (int) Auth::id()
-                || (int) $establishment->created_by === (int) Auth::id()
+                || (! $establishment->user_id && (int) $establishment->created_by === (int) Auth::id())
                 || Auth::user()?->hasProfile('Administrador'),
             403,
             'Acesso negado.'

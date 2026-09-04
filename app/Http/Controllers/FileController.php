@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Establishment;
 use App\Models\File;
 use App\Models\Interaction;
 use Illuminate\Http\Request;
@@ -24,6 +25,10 @@ class FileController extends Controller
             'file' => 'nullable|required_without:external_url|file|max:20480|mimes:jpg,jpeg,png,webp,gif,pdf,txt,csv,doc,docx,xls,xlsx,zip',
             'external_url' => 'nullable|required_without:file|url:http,https|max:2048',
         ]);
+
+        if (strtolower((string) $data['entity_name']) === 'establishment') {
+            $this->assertCanManageEstablishment((int) $data['entity_id']);
+        }
 
         if (! empty($data['external_url'])) {
             $url = trim($data['external_url']);
@@ -195,10 +200,30 @@ class FileController extends Controller
     private function canManage(File $file): bool
     {
         $user = Auth::user();
-        return $user && (
+        if (! $user) return false;
+        if ($user->hasProfile('Administrador') || $user->hasPermission('file_manage')) return true;
+
+        if (strtolower((string) $file->entity_name) === 'establishment') {
+            $establishment = Establishment::query()->find($file->entity_id);
+            if (! $establishment) return false;
+
+            return (int) $establishment->user_id === (int) $user->id
+                || (! $establishment->user_id && (int) $file->created_by === (int) $user->id);
+        }
+
+        return (int) $file->created_by === (int) $user->id;
+    }
+
+    private function assertCanManageEstablishment(int $establishmentId): void
+    {
+        $user = Auth::user();
+        $establishment = Establishment::query()->findOrFail($establishmentId);
+
+        abort_unless($user && (
             $user->hasProfile('Administrador')
-            || (int) $file->created_by === (int) $user->id
             || $user->hasPermission('file_manage')
-        );
+            || (int) $establishment->user_id === (int) $user->id
+            || (! $establishment->user_id && (int) $establishment->created_by === (int) $user->id)
+        ), 403, 'Você não pode gerenciar arquivos deste estabelecimento.');
     }
 }

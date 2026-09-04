@@ -496,6 +496,14 @@ class EcosystemController extends Controller
         $this->authorizeAccess($request);
         $before = $establishment->toArray();
         $data = $this->validateEstablishment($request, $establishment);
+        if (array_key_exists('user_id', $data)) {
+            abort_if(
+                (int) $data['user_id'] !== (int) $establishment->user_id,
+                422,
+                'Use a transferência de propriedade para alterar o proprietário do estabelecimento.'
+            );
+            unset($data['user_id']);
+        }
         $applicationIds = array_key_exists('app_ids', $data)
             ? collect($data['app_ids'])->map(fn ($id) => (int) $id)->unique()->values()->all()
             : $establishment->applications()->pluck('applications.id')->push($establishment->app_id)->filter()->unique()->values()->all();
@@ -511,6 +519,77 @@ class EcosystemController extends Controller
         });
         $this->audit($request, 'establishment.updated', $establishment, $before, $establishment->fresh()->toArray());
         return response()->json(['establishment' => $establishment->fresh()->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email'])]);
+    }
+
+    public function transferEstablishmentOwner(Request $request, Establishment $establishment): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $data = $request->validate([
+            'user_id' => ['required', 'integer', 'exists:users,id'],
+        ], [
+            'user_id.required' => 'Selecione o novo proprietário do estabelecimento.',
+            'user_id.exists' => 'O usuário selecionado não existe.',
+        ]);
+
+        $newOwner = User::query()->findOrFail((int) $data['user_id']);
+        $oldOwner = $establishment->user()->first();
+
+        if ((int) $establishment->user_id === (int) $newOwner->id) {
+            return response()->json([
+                'message' => 'Este usuário já é o proprietário do estabelecimento.',
+                'establishment' => $establishment->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']),
+                'previous_owner' => $oldOwner?->only(['id', 'first_name', 'last_name', 'email']),
+                'new_owner' => $newOwner->only(['id', 'first_name', 'last_name', 'email']),
+                'items_reassigned' => 0,
+            ]);
+        }
+
+        $before = $establishment->toArray();
+        $applicationIds = $establishment->applications()
+            ->pluck('applications.id')
+            ->push($establishment->app_id)
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $itemsReassigned = DB::transaction(function () use ($request, $establishment, $newOwner, $applicationIds) {
+            $establishment->forceFill([
+                'user_id' => $newOwner->id,
+                'updated_by' => $request->user()->id,
+            ])->save();
+
+            if (! empty($applicationIds)) {
+                $this->syncEstablishmentApplications($establishment->fresh(), $applicationIds);
+            }
+
+            return Item::query()
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->update([
+                    'user_id' => $newOwner->id,
+                    'updated_by' => $request->user()->id,
+                    'updated_at' => now(),
+                ]);
+        });
+
+        $fresh = $establishment->fresh()->load(['app:id,name,slug', 'applications:id,name,slug', 'user:id,first_name,last_name,email']);
+        $this->audit(
+            $request,
+            'establishment.owner_transferred',
+            $fresh,
+            $before,
+            $fresh->toArray()
+        );
+
+        return response()->json([
+            'message' => 'Propriedade do estabelecimento transferida com sucesso.',
+            'establishment' => $fresh,
+            'previous_owner' => $oldOwner?->only(['id', 'first_name', 'last_name', 'email']),
+            'new_owner' => $newOwner->only(['id', 'first_name', 'last_name', 'email']),
+            'items_reassigned' => $itemsReassigned,
+        ]);
     }
 
     public function destroyEstablishment(Request $request, Establishment $establishment): JsonResponse
