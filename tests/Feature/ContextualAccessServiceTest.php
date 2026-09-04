@@ -116,7 +116,6 @@ class ContextualAccessServiceTest extends TestCase
             'name' => $name,
             'slug' => $slug,
             'user_id' => $user->id,
-            'created_by' => $user->id,
             'updated_by' => $user->id,
             'is_published' => true,
             'is_approved' => true,
