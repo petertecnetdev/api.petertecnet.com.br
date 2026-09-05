@@ -8,6 +8,31 @@ final class PendingCheckoutRecoveryService
 {
     public function latest(int $appId, int $userId): ?CommerceOrder
     {
+        return $this->recoverableQuery($appId, $userId)
+            ->latest('id')
+            ->first();
+    }
+
+    public function recover(int $appId, int $userId, int $orderId): ?CommerceOrder
+    {
+        $order = $this->recoverableQuery($appId, $userId)
+            ->whereKey($orderId)
+            ->first();
+
+        if (! $order) {
+            return null;
+        }
+
+        if ($order->recovery_started_at === null) {
+            $order->forceFill(['recovery_started_at' => now()])->saveQuietly();
+            $order->refresh();
+        }
+
+        return $order;
+    }
+
+    private function recoverableQuery(int $appId, int $userId)
+    {
         return CommerceOrder::query()
             ->where('app_id', $appId)
             ->where('user_id', $userId)
@@ -28,8 +53,6 @@ final class PendingCheckoutRecoveryService
                         ->whereIn('status', ['pending', 'in_process'])
                         ->latest('id');
                 },
-            ])
-            ->latest('id')
-            ->first();
+            ]);
     }
 }
