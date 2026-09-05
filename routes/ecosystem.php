@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
@@ -63,6 +64,23 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
         Route::post('/reconcile', [FinancialController::class, 'reconcileNow'])->middleware('throttle:10,1');
         Route::get('/closing', [FinancialController::class, 'closing']);
         Route::get('/reports/{format}', [FinancialController::class, 'export'])->whereIn('format', ['csv', 'pdf']);
+    });
+
+    Route::prefix('control')->group(function () {
+        Route::get('/capabilities', [AdminControlPlaneController::class, 'capabilities']);
+        Route::get('/feature-flags', [AdminControlPlaneController::class, 'featureFlags']);
+        Route::put('/feature-flags', [AdminControlPlaneController::class, 'saveFeatureFlags']);
+        Route::get('/saved-views', [AdminControlPlaneController::class, 'savedViews']);
+        Route::post('/saved-views', [AdminControlPlaneController::class, 'saveView']);
+        Route::delete('/saved-views/{setting}', [AdminControlPlaneController::class, 'deleteView'])->whereNumber('setting');
+        Route::get('/notifications', [AdminControlPlaneController::class, 'notificationCampaigns']);
+        Route::post('/notifications', [AdminControlPlaneController::class, 'storeNotificationCampaign'])->middleware('throttle:10,1');
+        Route::get('/moderation', [AdminControlPlaneController::class, 'moderation']);
+        Route::patch('/moderation/{report}', [AdminControlPlaneController::class, 'updateModeration'])->whereNumber('report');
+        Route::get('/trash', [AdminControlPlaneController::class, 'trash']);
+        Route::post('/trash/{resource}/{id}/restore', [AdminControlPlaneController::class, 'restoreTrash'])->whereNumber('id');
+        Route::get('/export/{resource}', [AdminControlPlaneController::class, 'export']);
+        Route::post('/import/{resource}', [AdminControlPlaneController::class, 'import']);
     });
 
     Route::prefix('event-management')->group(function () {
