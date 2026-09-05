@@ -68,8 +68,10 @@ class MercadoPagoSubscriptionService
 
     public function updateSubscriptionStatus(string $providerId, string $status): array
     {
+        $providerStatus = $status === 'cancelled' ? 'canceled' : $status;
+
         $response = $this->client()->put('/preapproval/' . rawurlencode($providerId), [
-            'status' => $status,
+            'status' => $providerStatus,
         ]);
         $response->throw();
 
