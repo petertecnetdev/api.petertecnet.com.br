@@ -26,15 +26,16 @@ Route::get('/login', function () {
 
 
 Route::get('/admin/access', function () {
-    if (auth()->check() && strtolower((string) auth()->user()->email) === 'petertecnet@gmail.com') return redirect()->route('admin.center');
+    $webUser = \Illuminate\Support\Facades\Auth::guard('web')->user();
+    if ($webUser && strtolower((string) $webUser->email) === 'petertecnet@gmail.com') return redirect()->route('admin.center');
     return view('admin.gate');
 })->name('admin.gate');
 
 Route::post('/admin/access', function (\Illuminate\Http\Request $request) {
     $credentials = $request->validate(['email' => ['required','email'], 'password' => ['required','string']]);
     $email = strtolower(trim((string) $credentials['email']));
-    if ($email !== 'petertecnet@gmail.com' || ! \Illuminate\Support\Facades\Auth::attempt(['email' => $email, 'password' => $credentials['password']])) {
-        \Illuminate\Support\Facades\Auth::logout();
+    if ($email !== 'petertecnet@gmail.com' || ! \Illuminate\Support\Facades\Auth::guard('web')->attempt(['email' => $email, 'password' => $credentials['password']])) {
+        \Illuminate\Support\Facades\Auth::guard('web')->logout();
         $return = session()->pull('peter_admin_return_url', 'https://petertecnet.com.br/');
         return redirect()->away($return);
     }
@@ -47,7 +48,7 @@ Route::get('/admin', fn () => view('admin.index'))
     ->name('admin.center');
 
 Route::get('/admin/logout', function (\Illuminate\Http\Request $request) {
-    \Illuminate\Support\Facades\Auth::logout();
+    \Illuminate\Support\Facades\Auth::guard('web')->logout();
     $request->session()->invalidate();
     $request->session()->regenerateToken();
     return redirect('https://petertecnet.com.br/');
