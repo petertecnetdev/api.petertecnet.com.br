@@ -17,6 +17,30 @@ use Throwable;
 
 class EcosystemNotificationController extends Controller
 {
+    private const EXCLUSION_FIELDS = [
+        'email',
+        'user_name',
+        'city',
+        'uf',
+        'profile_id',
+        'application_role',
+        'is_producer',
+        'is_participant',
+        'is_promoter',
+        'is_partner',
+        'newsletter_subscription',
+        'email_verified',
+    ];
+
+    private const EXCLUSION_OPERATORS = [
+        'equals',
+        'contains',
+        'starts_with',
+        'ends_with',
+        'is_true',
+        'is_false',
+    ];
+
     public function index(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
@@ -80,12 +104,19 @@ class EcosystemNotificationController extends Controller
     {
         $this->authorizeAccess($request);
         $audience = $this->validateAudience($request);
+
+        $baseAudience = $audience;
+        $baseAudience['exclude_user_ids'] = [];
+        $baseAudience['exclusion_rules'] = [];
+        $baseCounts = $this->recipientCounts($this->recipientQuery($baseAudience));
         $counts = $this->recipientCounts($this->recipientQuery($audience));
 
         return response()->json([
             'audience' => $audience,
             'users_count' => $counts['users_count'],
             'deliveries_count' => $counts['deliveries_count'],
+            'excluded_users_count' => max($baseCounts['users_count'] - $counts['users_count'], 0),
+            'excluded_deliveries_count' => max($baseCounts['deliveries_count'] - $counts['deliveries_count'], 0),
         ]);
     }
 
@@ -105,7 +136,14 @@ class EcosystemNotificationController extends Controller
 
         $targetQuery = $this->recipientQuery($audience);
         $counts = $this->recipientCounts(clone $targetQuery);
-        abort_if($counts['deliveries_count'] === 0, 422, 'Nenhum destinatário ativo foi encontrado para esse público.');
+        abort_if($counts['deliveries_count'] === 0, 422, 'Nenhum destinatário ativo foi encontrado para esse público depois das exclusões.');
+
+        $campaignData = $content['data'] ?? [];
+        $campaignData['audience_exclusions'] = [
+            'user_ids' => $audience['exclude_user_ids'],
+            'rules' => $audience['exclusion_rules'],
+            'match' => $audience['exclusion_match'],
+        ];
 
         $campaign = NotificationCampaign::query()->create([
             'created_by_user_id' => $request->user()->id,
@@ -116,7 +154,7 @@ class EcosystemNotificationController extends Controller
             'title' => trim($content['title']),
             'message' => trim($content['message']),
             'reference_url' => $content['reference_url'] ?? null,
-            'data' => $content['data'] ?? null,
+            'data' => $campaignData,
             'status' => 'sending',
         ]);
 
@@ -191,6 +229,9 @@ class EcosystemNotificationController extends Controller
                 'audience_type' => $campaign->audience_type,
                 'app_id' => $campaign->app_id,
                 'recipients_count' => $delivered,
+                'excluded_user_ids' => $audience['exclude_user_ids'],
+                'exclusion_rules_count' => count($audience['exclusion_rules']),
+                'exclusion_match' => $audience['exclusion_match'],
                 'type' => $campaign->type,
                 'title' => $campaign->title,
             ],
@@ -221,6 +262,13 @@ class EcosystemNotificationController extends Controller
             'app_id' => ['nullable', 'integer', 'exists:applications,id'],
             'user_ids' => ['nullable', 'array', 'max:500'],
             'user_ids.*' => ['integer', 'distinct', 'exists:users,id'],
+            'exclude_user_ids' => ['nullable', 'array', 'max:500'],
+            'exclude_user_ids.*' => ['integer', 'distinct', 'exists:users,id'],
+            'exclusion_match' => ['nullable', Rule::in(['any', 'all'])],
+            'exclusion_rules' => ['nullable', 'array', 'max:20'],
+            'exclusion_rules.*.field' => ['required', Rule::in(self::EXCLUSION_FIELDS)],
+            'exclusion_rules.*.operator' => ['required', Rule::in(self::EXCLUSION_OPERATORS)],
+            'exclusion_rules.*.value' => ['nullable'],
         ]);
 
         if ($data['audience_type'] === 'application' && empty($data['app_id'])) {
@@ -233,8 +281,47 @@ class EcosystemNotificationController extends Controller
 
         $data['app_id'] = isset($data['app_id']) ? (int) $data['app_id'] : null;
         $data['user_ids'] = collect($data['user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $data['exclude_user_ids'] = collect($data['exclude_user_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $data['exclusion_match'] = $data['exclusion_match'] ?? 'any';
+        $data['exclusion_rules'] = collect($data['exclusion_rules'] ?? [])
+            ->map(fn (array $rule) => $this->normalizeExclusionRule($rule))
+            ->values()
+            ->all();
 
         return $data;
+    }
+
+    private function normalizeExclusionRule(array $rule): array
+    {
+        $field = (string) ($rule['field'] ?? '');
+        $operator = (string) ($rule['operator'] ?? '');
+        $value = $rule['value'] ?? null;
+
+        $textFields = ['email', 'user_name', 'city', 'application_role'];
+        $booleanFields = ['is_producer', 'is_participant', 'is_promoter', 'is_partner', 'newsletter_subscription', 'email_verified'];
+
+        if (in_array($field, $textFields, true)) {
+            abort_unless(in_array($operator, ['equals', 'contains', 'starts_with', 'ends_with'], true), 422, 'Operador inválido para uma regra textual de exclusão.');
+            $value = trim((string) $value);
+            abort_if($value === '' || mb_strlen($value) > 180, 422, 'Informe um valor válido para a regra de exclusão.');
+        } elseif ($field === 'uf') {
+            abort_unless($operator === 'equals', 422, 'Estado (UF) aceita somente comparação exata.');
+            $value = strtoupper(trim((string) $value));
+            abort_unless((bool) preg_match('/^[A-Z]{2}$/', $value), 422, 'Informe uma UF válida para a regra de exclusão.');
+        } elseif ($field === 'profile_id') {
+            abort_unless($operator === 'equals', 422, 'Perfil aceita somente comparação exata.');
+            $value = (int) $value;
+            abort_unless($value > 0, 422, 'Informe um ID de perfil válido para a regra de exclusão.');
+        } elseif (in_array($field, $booleanFields, true)) {
+            abort_unless(in_array($operator, ['is_true', 'is_false'], true), 422, 'Operador inválido para uma regra booleana de exclusão.');
+            $value = null;
+        }
+
+        return [
+            'field' => $field,
+            'operator' => $operator,
+            'value' => $value,
+        ];
     }
 
     private function recipientQuery(array $audience): Builder
@@ -253,7 +340,94 @@ class EcosystemNotificationController extends Controller
             $query->whereIn('application_user.user_id', $audience['user_ids']);
         }
 
+        if (! empty($audience['exclude_user_ids'])) {
+            $query->whereNotIn('application_user.user_id', $audience['exclude_user_ids']);
+        }
+
+        $this->applyExclusionRules($query, $audience);
+
         return $query;
+    }
+
+    private function applyExclusionRules(Builder $query, array $audience): void
+    {
+        $rules = $audience['exclusion_rules'] ?? [];
+        if ($rules === []) {
+            return;
+        }
+
+        $excludedUsers = DB::table('application_user as excluded_membership')
+            ->join('applications as excluded_applications', 'excluded_applications.id', '=', 'excluded_membership.application_id')
+            ->join('users as excluded_users', 'excluded_users.id', '=', 'excluded_membership.user_id')
+            ->where('excluded_membership.status', 'active')
+            ->where('excluded_applications.is_active', true)
+            ->select('excluded_users.id')
+            ->distinct();
+
+        if (! empty($audience['app_id'])) {
+            $excludedUsers->where('excluded_membership.application_id', $audience['app_id']);
+        }
+
+        $match = $audience['exclusion_match'] ?? 'any';
+        $excludedUsers->where(function (Builder $conditions) use ($rules, $match) {
+            foreach ($rules as $index => $rule) {
+                $method = $match === 'any' && $index > 0 ? 'orWhere' : 'where';
+                $conditions->{$method}(function (Builder $condition) use ($rule) {
+                    $this->applyExclusionRule($condition, $rule);
+                });
+            }
+        });
+
+        $query->whereNotIn('application_user.user_id', $excludedUsers);
+    }
+
+    private function applyExclusionRule(Builder $query, array $rule): void
+    {
+        $field = $rule['field'];
+        $operator = $rule['operator'];
+        $value = $rule['value'];
+
+        $columns = [
+            'email' => 'excluded_users.email',
+            'user_name' => 'excluded_users.user_name',
+            'city' => 'excluded_users.city',
+            'uf' => 'excluded_users.uf',
+            'profile_id' => 'excluded_users.profile_id',
+            'application_role' => 'excluded_membership.role',
+            'is_producer' => 'excluded_users.is_producer',
+            'is_participant' => 'excluded_users.is_participant',
+            'is_promoter' => 'excluded_users.is_promoter',
+            'is_partner' => 'excluded_users.is_partner',
+            'newsletter_subscription' => 'excluded_users.newsletter_subscription',
+        ];
+
+        if ($field === 'email_verified') {
+            $operator === 'is_true'
+                ? $query->whereNotNull('excluded_users.email_verified_at')
+                : $query->whereNull('excluded_users.email_verified_at');
+            return;
+        }
+
+        $column = $columns[$field];
+        if (in_array($operator, ['is_true', 'is_false'], true)) {
+            $query->where($column, $operator === 'is_true');
+            return;
+        }
+
+        if ($operator === 'contains') {
+            $query->where($column, 'like', "%{$value}%");
+            return;
+        }
+        if ($operator === 'starts_with') {
+            $query->where($column, 'like', "{$value}%");
+            return;
+        }
+        if ($operator === 'ends_with') {
+            $query->where($column, 'like', "%{$value}");
+            return;
+        }
+
+        $query->where($column, '=', $value);
     }
 
     private function recipientCounts(Builder $query): array
@@ -294,16 +468,22 @@ class EcosystemNotificationController extends Controller
     {
         $delivered = (int) ($campaign->delivered_count ?? $campaign->recipients_count ?? 0);
         $read = (int) ($campaign->read_count ?? 0);
+        $campaignData = is_array($campaign->data) ? $campaign->data : [];
 
         return [
             'id' => $campaign->id,
             'audience_type' => $campaign->audience_type,
             'recipient_user_ids' => $campaign->recipient_user_ids,
+            'audience_exclusions' => $campaignData['audience_exclusions'] ?? [
+                'user_ids' => [],
+                'rules' => [],
+                'match' => 'any',
+            ],
             'type' => $campaign->type,
             'title' => $campaign->title,
             'message' => $campaign->message,
             'reference_url' => $campaign->reference_url,
-            'data' => $campaign->data,
+            'data' => $campaignData,
             'status' => $campaign->status,
             'recipients_count' => $delivered,
             'read_count' => $read,
