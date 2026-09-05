@@ -23,6 +23,7 @@ final class OrganizationController extends Controller
     public function publicIndex(Request $request)
     {
         $data = $request->validate([
+            'q' => 'nullable|string|max:120',
             'city' => 'nullable|string|max:120',
             'uf' => 'nullable|string|size:2',
             'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
@@ -36,12 +37,75 @@ final class OrganizationController extends Controller
             ->where('app_id', $appId)
             ->where('is_published', true)
             ->where('is_cancelled', false)
+            ->select('establishments.*')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('follows')
+                    ->selectRaw('COUNT(*)')
+                    ->where('app_id', $appId)
+                    ->where('target_type', 'production')
+                    ->whereColumn('target_id', 'establishments.id');
+            }, 'followers_count')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('interactions')
+                    ->selectRaw('COUNT(*)')
+                    ->where('app_id', $appId)
+                    ->where('interaction_type', 'view')
+                    ->whereIn('entity_type', ['Production', 'production', 'Establishment'])
+                    ->whereColumn('entity_id', 'establishments.id');
+            }, 'views_count')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('events')
+                    ->selectRaw('COUNT(*)')
+                    ->where('app_id', $appId)
+                    ->where('is_published', true)
+                    ->where('is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))
+                    ->whereColumn('production_id', 'establishments.id');
+            }, 'events_count')
+            ->selectSub(function ($sub) {
+                $sub->from('items')
+                    ->selectRaw('COUNT(*)')
+                    ->where('entity_name', 'establishment')
+                    ->where('status', true)
+                    ->whereNull('deleted_at')
+                    ->whereColumn('entity_id', 'establishments.id');
+            }, 'items_count')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('event_ratings as ratings')
+                    ->join('events as rated_events', 'rated_events.id', '=', 'ratings.event_id')
+                    ->selectRaw('COALESCE(ROUND(AVG(ratings.rating), 1), 0)')
+                    ->where('ratings.app_id', $appId)
+                    ->where('rated_events.app_id', $appId)
+                    ->where('rated_events.is_published', true)
+                    ->where('rated_events.is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy->where('rated_events.is_private', false)->orWhereNull('rated_events.is_private'))
+                    ->whereColumn('rated_events.production_id', 'establishments.id');
+            }, 'rating_average')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('event_ratings as ratings')
+                    ->join('events as rated_events', 'rated_events.id', '=', 'ratings.event_id')
+                    ->selectRaw('COUNT(*)')
+                    ->where('ratings.app_id', $appId)
+                    ->where('rated_events.app_id', $appId)
+                    ->where('rated_events.is_published', true)
+                    ->where('rated_events.is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy->where('rated_events.is_private', false)->orWhereNull('rated_events.is_private'))
+                    ->whereColumn('rated_events.production_id', 'establishments.id');
+            }, 'ratings_count')
             ->withCount(['events as upcoming_events_count' => fn ($q) => $q
                 ->where('app_id', $appId)
                 ->where('is_published', true)
                 ->where('is_cancelled', false)
                 ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))
                 ->where('end_date', '>', now())]);
+
+        if (! empty($data['q'])) {
+            $term = '%' . trim($data['q']) . '%';
+            $query->where(function ($search) use ($term) {
+                $search->whereRaw('LOWER(name) LIKE LOWER(?)', [$term])
+                    ->orWhereRaw('LOWER(COALESCE(fantasy, \'\')) LIKE LOWER(?)', [$term]);
+            });
+        }
 
         if (! empty($data['city'])) $query->whereRaw('LOWER(city) = LOWER(?)', [trim($data['city'])]);
         if (! empty($data['uf'])) $query->where('uf', strtoupper($data['uf']));
@@ -52,7 +116,6 @@ final class OrganizationController extends Controller
             $radius = (int) ($data['radius_km'] ?? 80);
             $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))';
             $query->whereNotNull('latitude')->whereNotNull('longitude')
-                ->select('productions.*')
                 ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
                 ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius])
                 ->orderBy('distance_km');
@@ -60,7 +123,10 @@ final class OrganizationController extends Controller
             $query->orderByDesc('is_featured')->orderByDesc('upcoming_events_count')->orderBy('name');
         }
 
-        return response()->json(['organizations' => $query->paginate($data['per_page'] ?? 12)->appends($request->query())]);
+        $organizations = $query->paginate($data['per_page'] ?? 12)->appends($request->query());
+        $organizations->getCollection()->each(fn (Production $organization) => $organization->makeHidden('metrics'));
+
+        return response()->json(['organizations' => $organizations]);
     }
 
     public function publicShow(Request $request, string $slug)
@@ -149,8 +215,6 @@ final class OrganizationController extends Controller
         abort_if($organization->events()->whereHas('tickets.passes')->exists(), 409, 'Organizações com ingressos emitidos não podem ser excluídas.');
 
         DB::transaction(function () use ($organization) {
-            // A soft-deleted organization must not leave active/public events behind.
-            // Historical rows remain available for audit, finance and future recovery.
             Event::query()
                 ->where('production_id', $organization->id)
                 ->update([
