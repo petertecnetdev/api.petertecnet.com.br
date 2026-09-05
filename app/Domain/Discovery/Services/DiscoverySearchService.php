@@ -3,8 +3,10 @@
 namespace App\Domain\Discovery\Services;
 
 use App\Models\Application;
+use App\Models\Artist;
 use App\Models\ContentEntry;
 use App\Models\Establishment;
+use App\Models\Event;
 use App\Models\Item;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -19,18 +21,22 @@ class DiscoverySearchService
     public function search(string $term, ?string $city = null, int|string|null $application = null, int $limit = 8): array
     {
         $term = trim($term);
+        $city = $city ? trim($city) : null;
         $like = '%' . $term . '%';
         $app = $this->discovery->resolveApplication($application);
+        $publicApplication = fn (Builder $query) => $query->where('is_active', true)->where('is_visible', true);
 
         $applications = Application::query()
             ->where('is_active', true)
+            ->where('is_visible', true)
             ->where(function (Builder $query) use ($like) {
                 $query->where('name', 'like', $like)
                     ->orWhere('slug', 'like', $like)
-                    ->orWhere('description', 'like', $like);
+                    ->orWhere('description', 'like', $like)
+                    ->orWhere('category', 'like', $like);
             })
             ->limit($limit)
-            ->get(['id', 'name', 'slug', 'description', 'url']);
+            ->get(['id', 'name', 'slug', 'description', 'url', 'logo', 'category']);
 
         if ($app) {
             $applications = $applications->where('id', $app->id)->values();
@@ -54,8 +60,12 @@ class DiscoverySearchService
         $establishments = Establishment::query()
             ->where('is_cancelled', false)
             ->where('is_published', true)
+            ->where(function (Builder $query) use ($publicApplication) {
+                $query->whereHas('app', $publicApplication)
+                    ->orWhereHas('applications', $publicApplication);
+            })
             ->when($app, fn (Builder $query) => $query->forApplication($app->id))
-            ->when($city, fn (Builder $query) => $query->where('city', 'like', '%' . trim($city) . '%'))
+            ->when($city, fn (Builder $query) => $query->where('city', 'like', '%' . $city . '%'))
             ->where(function (Builder $query) use ($like) {
                 $query->where('name', 'like', $like)
                     ->orWhere('fantasy', 'like', $like)
@@ -77,9 +87,13 @@ class DiscoverySearchService
                         ->orWhereHas('establishment', fn (Builder $est) => $est->forApplication($app->id));
                 });
             })
-            ->whereHas('establishment', function (Builder $query) use ($city) {
-                $query->where('is_cancelled', false)->where('is_published', true);
-                if ($city) $query->where('city', 'like', '%' . trim($city) . '%');
+            ->whereHas('establishment', function (Builder $query) use ($city, $publicApplication) {
+                $query->where('is_cancelled', false)->where('is_published', true)
+                    ->where(function (Builder $apps) use ($publicApplication) {
+                        $apps->whereHas('app', $publicApplication)
+                            ->orWhereHas('applications', $publicApplication);
+                    });
+                if ($city) $query->where('city', 'like', '%' . $city . '%');
             })
             ->where(function (Builder $query) use ($like) {
                 $query->where('name', 'like', $like)
@@ -92,74 +106,137 @@ class DiscoverySearchService
             ->limit($limit)
             ->get(['id', 'app_id', 'entity_id', 'slug', 'name', 'description', 'category', 'subcategory', 'brand', 'type', 'price', 'image']);
 
+        $events = Event::query()
+            ->with('application:id,name,slug,url,is_active,is_visible')
+            ->whereHas('application', $publicApplication)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->where(fn (Builder $query) => $query->where('is_private', false)->orWhereNull('is_private'))
+            ->where('end_date', '>', now())
+            ->when($app, fn (Builder $query) => $query->where('app_id', $app->id))
+            ->when($city, fn (Builder $query) => $query->where('city', 'like', '%' . $city . '%'))
+            ->where(function (Builder $query) use ($like) {
+                $query->where('title', 'like', $like)
+                    ->orWhere('description', 'like', $like)
+                    ->orWhere('category', 'like', $like)
+                    ->orWhere('venue', 'like', $like)
+                    ->orWhere('city', 'like', $like)
+                    ->orWhere('establishment_name', 'like', $like);
+            })
+            ->orderBy('start_date')
+            ->limit($limit)
+            ->get(['id', 'app_id', 'slug', 'title', 'description', 'category', 'image', 'venue', 'city', 'uf', 'event_format', 'start_date', 'end_date']);
+
+        $artists = Artist::query()
+            ->with('application:id,name,slug,url,is_active,is_visible')
+            ->whereHas('application', $publicApplication)
+            ->where('is_published', true)
+            ->when($app, fn (Builder $query) => $query->where('app_id', $app->id))
+            ->when($city, fn (Builder $query) => $query->where('city', 'like', '%' . $city . '%'))
+            ->where(function (Builder $query) use ($like) {
+                $query->where('stage_name', 'like', $like)
+                    ->orWhere('bio', 'like', $like)
+                    ->orWhere('artist_type', 'like', $like)
+                    ->orWhere('city', 'like', $like)
+                    ->orWhere('genres', 'like', $like);
+            })
+            ->orderBy('stage_name')
+            ->limit($limit)
+            ->get(['id', 'app_id', 'slug', 'stage_name', 'bio', 'artist_type', 'genres', 'photo', 'city', 'uf']);
+
+        $results = [
+            'applications' => $applications->map(fn ($row) => [
+                'type' => 'application', 'id' => $row->id, 'title' => $row->name,
+                'description' => $row->description, 'category' => $row->category,
+                'image' => $row->logo, 'url' => '/plataformas/' . $row->slug,
+                'application' => $row->slug,
+                'metadata' => array_values(array_filter([
+                    $row->category ? ['label' => 'Categoria', 'value' => $row->category] : null,
+                    ['label' => 'Status', 'value' => 'Disponível'],
+                ])),
+            ])->values(),
+            'content' => $contents->map(fn ($row) => [
+                'type' => 'content', 'id' => $row->id, 'title' => $row->title,
+                'description' => $row->excerpt, 'category' => $row->category,
+                'cluster' => $row->cluster, 'url' => '/blog/' . $row->slug,
+                'application_id' => $row->application_id,
+                'metadata' => array_values(array_filter([
+                    $row->category ? ['label' => 'Categoria', 'value' => $row->category] : null,
+                    $row->cluster ? ['label' => 'Tema', 'value' => $row->cluster] : null,
+                ])),
+            ])->values(),
+            'establishments' => $establishments->map(fn ($row) => [
+                'type' => 'establishment', 'id' => $row->id,
+                'title' => $row->fantasy ?: $row->name, 'description' => $row->description,
+                'category' => $row->category ?: $row->type,
+                'location' => trim(implode(' - ', array_filter([$row->city, $row->uf]))),
+                'url' => '/empresas/' . $row->slug, 'application_id' => $row->app_id,
+                'metadata' => array_values(array_filter([
+                    ($row->category ?: $row->type) ? ['label' => 'Categoria', 'value' => $row->category ?: $row->type] : null,
+                    $row->city ? ['label' => 'Local', 'value' => trim(implode(' - ', array_filter([$row->city, $row->uf])))] : null,
+                ])),
+            ])->values(),
+            'items' => $items->map(fn ($row) => [
+                'type' => 'item', 'id' => $row->id, 'title' => $row->name,
+                'description' => $row->description, 'category' => $row->category ?: $row->type,
+                'price' => $row->price, 'image' => $row->image_url ?? $row->image,
+                'location' => $row->establishment ? trim(implode(' - ', array_filter([$row->establishment->city, $row->establishment->uf]))) : null,
+                'establishment' => $row->establishment ? ['id' => $row->establishment->id, 'name' => $row->establishment->fantasy ?: $row->establishment->name, 'slug' => $row->establishment->slug] : null,
+                'url' => '/solucoes/' . ($row->slug ?: $row->id), 'application_id' => $row->app_id,
+                'metadata' => array_values(array_filter([
+                    ($row->category ?: $row->type) ? ['label' => 'Categoria', 'value' => $row->category ?: $row->type] : null,
+                    $row->brand ? ['label' => 'Marca', 'value' => $row->brand] : null,
+                    $row->establishment ? ['label' => 'Empresa', 'value' => $row->establishment->fantasy ?: $row->establishment->name] : null,
+                ])),
+            ])->values(),
+            'events' => $events->map(fn ($row) => [
+                'type' => 'event', 'id' => $row->id, 'title' => $row->title,
+                'description' => $row->description, 'category' => $row->category,
+                'image' => $row->image, 'location' => trim(implode(' - ', array_filter([$row->venue, $row->city, $row->uf]))),
+                'url' => $this->applicationUrl($row->application?->url, '/event/' . $row->slug),
+                'application' => $row->application?->slug, 'application_name' => $row->application?->name,
+                'starts_at' => $row->start_date?->toIso8601String(), 'ends_at' => $row->end_date?->toIso8601String(),
+                'metadata' => array_values(array_filter([
+                    $row->category ? ['label' => 'Categoria', 'value' => $row->category] : null,
+                    $row->start_date ? ['label' => 'Quando', 'value' => $row->start_date->timezone(config('app.timezone'))->format('d/m/Y H:i')] : null,
+                    $row->city ? ['label' => 'Local', 'value' => trim(implode(' - ', array_filter([$row->city, $row->uf])))] : null,
+                ])),
+            ])->values(),
+            'artists' => $artists->map(fn ($row) => [
+                'type' => 'artist', 'id' => $row->id, 'title' => $row->stage_name,
+                'description' => $row->bio, 'category' => $row->artist_type,
+                'image' => $row->photo, 'location' => trim(implode(' - ', array_filter([$row->city, $row->uf]))),
+                'url' => $this->applicationUrl($row->application?->url, '/artist/' . $row->slug),
+                'application' => $row->application?->slug, 'application_name' => $row->application?->name,
+                'metadata' => array_values(array_filter([
+                    $row->artist_type ? ['label' => 'Tipo', 'value' => $row->artist_type] : null,
+                    $row->city ? ['label' => 'Local', 'value' => trim(implode(' - ', array_filter([$row->city, $row->uf])))] : null,
+                    is_array($row->genres) && $row->genres ? ['label' => 'Gêneros', 'value' => implode(', ', array_slice($row->genres, 0, 3))] : null,
+                ])),
+            ])->values(),
+        ];
+
         return [
             'query' => $term,
             'city' => $city,
             'application' => $app?->only(['id', 'name', 'slug']),
             'intent' => $this->intent($term, $applications, $contents, $establishments, $items),
-            'totals' => [
-                'applications' => $applications->count(),
-                'content' => $contents->count(),
-                'establishments' => $establishments->count(),
-                'items' => $items->count(),
+            'group_labels' => [
+                'applications' => 'Plataformas', 'content' => 'Conteúdos', 'establishments' => 'Empresas',
+                'items' => 'Produtos e serviços', 'events' => 'Eventos', 'artists' => 'Artistas',
             ],
-            'results' => [
-                'applications' => $applications->map(fn ($row) => [
-                    'type' => 'application',
-                    'id' => $row->id,
-                    'title' => $row->name,
-                    'description' => $row->description,
-                    'url' => '/plataformas/' . $row->slug,
-                    'application' => $row->slug,
-                ])->values(),
-                'content' => $contents->map(fn ($row) => [
-                    'type' => 'content',
-                    'id' => $row->id,
-                    'title' => $row->title,
-                    'description' => $row->excerpt,
-                    'category' => $row->category,
-                    'cluster' => $row->cluster,
-                    'url' => '/blog/' . $row->slug,
-                    'application_id' => $row->application_id,
-                ])->values(),
-                'establishments' => $establishments->map(fn ($row) => [
-                    'type' => 'establishment',
-                    'id' => $row->id,
-                    'title' => $row->fantasy ?: $row->name,
-                    'description' => $row->description,
-                    'category' => $row->category ?: $row->type,
-                    'location' => trim(implode(' - ', array_filter([$row->city, $row->uf]))),
-                    'url' => '/empresas/' . $row->slug,
-                    'application_id' => $row->app_id,
-                ])->values(),
-                'items' => $items->map(fn ($row) => [
-                    'type' => 'item',
-                    'id' => $row->id,
-                    'title' => $row->name,
-                    'description' => $row->description,
-                    'category' => $row->category ?: $row->type,
-                    'price' => $row->price,
-                    'image' => $row->image_url ?? $row->image,
-                    'location' => $row->establishment ? trim(implode(' - ', array_filter([$row->establishment->city, $row->establishment->uf]))) : null,
-                    'establishment' => $row->establishment ? [
-                        'id' => $row->establishment->id,
-                        'name' => $row->establishment->fantasy ?: $row->establishment->name,
-                        'slug' => $row->establishment->slug,
-                    ] : null,
-                    'url' => '/solucoes/' . ($row->slug ?: $row->id),
-                    'application_id' => $row->app_id,
-                ])->values(),
-            ],
+            'totals' => collect($results)->map(fn ($rows) => $rows->count())->all(),
+            'results' => $results,
         ];
     }
 
     public function landing(string $term, ?string $city = null, int|string|null $application = null): array
     {
-        $search = $this->search($term, $city, $application, 24);
+        $search = $this->search($term, $city, $application, 20);
         $uniqueEstablishments = collect($search['results']['items'])
             ->pluck('establishment.id')->filter()->merge(collect($search['results']['establishments'])->pluck('id'))->unique()->count();
         $entityTotal = array_sum($search['totals']);
-        $indexable = $entityTotal >= 4 && $uniqueEstablishments >= 2;
+        $indexable = $entityTotal >= 4 && ($uniqueEstablishments >= 2 || ($search['totals']['events'] ?? 0) >= 2 || ($search['totals']['content'] ?? 0) >= 2);
         $location = $city ? ' em ' . trim($city) : '';
         $title = Str::headline($term) . $location . ' | Peter Tecnet';
 
@@ -167,7 +244,7 @@ class DiscoverySearchService
             'indexable' => $indexable,
             'seo' => [
                 'title' => Str::limit($title, 68, ''),
-                'description' => Str::limit("Encontre " . Str::lower($term) . "{$location}: empresas, produtos, serviços, conteúdos e plataformas relacionados no ecossistema Peter Tecnet.", 158, ''),
+                'description' => Str::limit("Encontre " . Str::lower($term) . "{$location}: empresas, produtos, serviços, eventos, artistas, conteúdos e plataformas relacionados no ecossistema Peter Tecnet.", 158, ''),
                 'canonical_path' => '/descobrir/' . Str::slug($term) . ($city ? '/' . Str::slug($city) : ''),
                 'robots' => $indexable ? 'index, follow' : 'noindex, follow',
             ],
@@ -223,5 +300,11 @@ class DiscoverySearchService
             'top_application' => $applicationScores->sortDesc()->keys()->first(),
             'confidence' => min(100, (int) round(($applications->count() + $contents->count() + $establishments->count() + $items->count()) * 7.5)),
         ];
+    }
+
+    private function applicationUrl(?string $base, string $path): string
+    {
+        if (! $base) return '/';
+        return rtrim($base, '/') . '/' . ltrim($path, '/');
     }
 }
