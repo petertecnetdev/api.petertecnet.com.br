@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\V1\CommerceController;
 use App\Http\Controllers\Api\V1\EmployerController;
 use App\Http\Controllers\Api\V1\EstablishmentController;
 use App\Http\Controllers\Api\V1\ItemController;
+use App\Http\Controllers\Api\V1\ItemImportController;
 use App\Http\Controllers\Api\V1\MetricsController;
 use App\Http\Controllers\Api\V1\PlatOrderController;
 use App\Http\Controllers\Api\V1\PlatOrderingSettingsController;
@@ -35,6 +36,8 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy']);
         Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
         Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
+        Route::post('/establishments/{establishment}/items/import-preview', [ItemImportController::class, 'preview'])->whereNumber('establishment')->middleware('throttle:10,1');
+        Route::post('/establishments/{establishment}/items/import', [ItemImportController::class, 'store'])->whereNumber('establishment')->middleware('throttle:20,1');
         Route::post('/items', [ItemController::class, 'store']);
         Route::patch('/items/{item}', [ItemController::class, 'update']);
         Route::delete('/items/{item}', [ItemController::class, 'destroy']);
