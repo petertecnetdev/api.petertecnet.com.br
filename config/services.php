@@ -18,6 +18,17 @@ return [
 
     'google' => ['client_id' => env('GOOGLE_CLIENT_ID', env('GOOGLE_OAUTH_CLIENT_ID'))],
 
+    'instagram' => [
+        'client_id' => env('INSTAGRAM_CLIENT_ID', env('INSTAGRAM_APP_ID')),
+        'client_secret' => env('INSTAGRAM_CLIENT_SECRET', env('INSTAGRAM_APP_SECRET')),
+        'redirect_uri' => env('INSTAGRAM_REDIRECT_URI'),
+        'scopes' => array_values(array_filter(array_map(
+            'trim',
+            explode(',', (string) env('INSTAGRAM_SCOPES', 'instagram_business_basic'))
+        ))),
+        'graph_url' => env('INSTAGRAM_GRAPH_URL', 'https://graph.instagram.com'),
+    ],
+
     'search_console' => [
         'site_url' => env('GOOGLE_SEARCH_CONSOLE_SITE_URL'),
         'access_token' => env('GOOGLE_SEARCH_CONSOLE_ACCESS_TOKEN'),
