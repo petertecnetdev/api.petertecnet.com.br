@@ -39,6 +39,27 @@ final class MarketDataController extends Controller
         return $this->marketResponse($request, fn () => $this->signals->current());
     }
 
+    public function realtimeConfig(Request $request): JsonResponse
+    {
+        $app = (array) config('reverb.apps.apps.0', []);
+        $options = (array) ($app['options'] ?? []);
+        $key = (string) ($app['key'] ?? '');
+        $host = (string) ($options['host'] ?? config('reverb.servers.reverb.hostname') ?? '');
+        $scheme = (string) ($options['scheme'] ?? 'https');
+        $port = (int) ($options['port'] ?? ($scheme === 'https' ? 443 : 80));
+
+        return response()->json([
+            'enabled' => $key !== '' && $host !== '',
+            'key' => $key,
+            'host' => $host,
+            'scheme' => $scheme,
+            'port' => $port,
+            'channel' => 'App.Models.User.'.(int) $request->user()->id,
+            'event' => 'app.notification.created',
+            'auth_endpoint' => rtrim((string) config('app.url'), '/').'/broadcasting/auth',
+        ]);
+    }
+
     public function candles(Request $request, string $asset): JsonResponse
     {
         $validated = $request->validate([

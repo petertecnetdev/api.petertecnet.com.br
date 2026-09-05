@@ -40,6 +40,6 @@ Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverl
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
 Schedule::command('kryvion:market-signal-notifications')
-    ->everyFifteenMinutes()
+    ->everyMinute()
     ->withoutOverlapping(20)
     ->onOneServer();

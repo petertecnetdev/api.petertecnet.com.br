@@ -10,7 +10,7 @@ use App\Services\AppNotificationService;
 final class MarketSignalService
 {
     private const APP_SLUG = 'kryvion';
-    private const NOTIFICATION_COOLDOWN_HOURS = 3;
+    private const NOTIFICATION_COOLDOWN_MINUTES = 30;
 
     public function __construct(
         private readonly CoinMarketCapScannerService $scanner,
@@ -76,7 +76,15 @@ final class MarketSignalService
         }
 
         $signals = $this->current();
-        $userIds = User::query()->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $userIds = User::query()
+            ->whereHas('applications', fn ($query) => $query
+                ->where('applications.id', $application->id)
+                ->where('application_user.status', 'active'))
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
         $sent = 0;
         $skipped = 0;
 
@@ -91,7 +99,7 @@ final class MarketSignalService
             }
 
             foreach ($userIds as $userId) {
-                if ($this->wasRecentlySent((int) $application->id, $userId, $type)) {
+                if ($this->wasRecentlySent((int) $application->id, $userId, $type, (string) ($signal['symbol'] ?? ''))) {
                     $skipped++;
                     continue;
                 }
@@ -126,13 +134,14 @@ final class MarketSignalService
         ];
     }
 
-    private function wasRecentlySent(int $appId, int $userId, string $signalType): bool
+    private function wasRecentlySent(int $appId, int $userId, string $signalType, string $symbol): bool
     {
         return AppNotification::query()
             ->where('app_id', $appId)
             ->where('user_id', $userId)
             ->where('type', 'market_signal_'.$signalType)
-            ->where('created_at', '>=', now()->subHours(self::NOTIFICATION_COOLDOWN_HOURS))
+            ->when($symbol !== '', fn ($query) => $query->where('data->symbol', $symbol))
+            ->where('created_at', '>=', now()->subMinutes(self::NOTIFICATION_COOLDOWN_MINUTES))
             ->exists();
     }
 
