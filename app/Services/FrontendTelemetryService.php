@@ -14,8 +14,10 @@ class FrontendTelemetryService
         'document', 'card', 'card_number', 'cvv', 'cvc', 'value',
     ];
 
-    public function __construct(private readonly ApplicationContextService $applicationContext)
-    {
+    public function __construct(
+        private readonly ApplicationContextService $applicationContext,
+        private readonly ResilientRealtimePublisher $realtime,
+    ) {
     }
 
     public function storeBatch(Request $request, array $data, ?Authenticatable $user = null): array
@@ -93,7 +95,10 @@ class FrontendTelemetryService
         }
 
         if ($accepted > 0) {
-            broadcast(new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'));
+            $this->realtime->publish(
+                new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'),
+                ['operation' => 'frontend-telemetry', 'app_id' => $application->id]
+            );
         }
 
         return [
