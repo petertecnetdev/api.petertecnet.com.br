@@ -6,6 +6,7 @@ use App\Domain\Organizations\Models\Organization;
 use App\Domain\Organizations\Support\OrganizationTaxonomy;
 use App\Http\Controllers\Controller;
 use App\Models\Artist;
+use App\Models\Establishment;
 use App\Models\Event;
 use App\Models\User;
 use App\Support\ApplicationContext;
@@ -277,7 +278,7 @@ final class OrganizationController extends Controller
         $base = Str::slug($name) ?: 'organizacao-' . Str::lower(Str::random(8));
         $slug = $base;
         $i = 2;
-        while (Organization::withTrashed()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) {
+        while (Establishment::withTrashed()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) {
             $slug = $base . '-' . $i++;
         }
         return $slug;
