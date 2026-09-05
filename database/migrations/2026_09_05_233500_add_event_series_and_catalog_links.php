@@ -33,6 +33,8 @@ return new class extends Migration
             });
         }
 
+        $this->refreshEventItemsView();
+
         if (Schema::hasTable('event_schedules') && Schema::hasColumn('event_schedules', 'event_series_id')) {
             DB::table('event_schedules')
                 ->select(['id'])
@@ -67,6 +69,8 @@ return new class extends Migration
             });
         }
 
+        $this->refreshEventItemsView();
+
         if (Schema::hasTable('event_schedules') && Schema::hasColumn('event_schedules', 'event_series_id')) {
             Schema::table('event_schedules', function (Blueprint $table) {
                 $table->dropIndex('event_schedules_app_production_series_idx');
@@ -89,5 +93,14 @@ return new class extends Migration
         }
 
         return Schema::hasTable('cutinapp_event_items') ? 'cutinapp_event_items' : null;
+    }
+
+    private function refreshEventItemsView(): void
+    {
+        if (DB::getDriverName() === 'sqlite' || ! Schema::hasTable('cutinapp_event_items')) {
+            return;
+        }
+
+        DB::statement('CREATE OR REPLACE ALGORITHM=MERGE VIEW `event_items` AS SELECT * FROM `cutinapp_event_items`');
     }
 };
