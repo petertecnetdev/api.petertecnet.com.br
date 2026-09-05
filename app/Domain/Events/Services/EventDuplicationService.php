@@ -12,6 +12,34 @@ use Illuminate\Validation\ValidationException;
 
 final class EventDuplicationService
 {
+    public function duplicateForApplicationUser(
+        int $eventId,
+        string $date,
+        int $appId,
+        ?string $appSlug,
+        int $userId,
+        bool $isAdministrator = false,
+    ): Event {
+        $source = Event::query()
+            ->where('app_id', $appId)
+            ->with('production:id,app_id,name,slug,user_id,app_slug')
+            ->findOrFail($eventId);
+
+        abort_unless(
+            $source->production && (int) $source->production->app_id === $appId,
+            404,
+            'Evento não encontrado neste contexto.'
+        );
+
+        abort_unless(
+            $isAdministrator || (int) $source->production->user_id === $userId,
+            403,
+            'Você não pode duplicar este evento.'
+        );
+
+        return $this->duplicate($source, $date, $appId, $appSlug);
+    }
+
     public function duplicate(Event $source, string $date, int $appId, ?string $appSlug = null): Event
     {
         $source->loadMissing([
