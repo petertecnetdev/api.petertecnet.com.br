@@ -2,6 +2,7 @@
 
 namespace App\Providers;
 
+use App\Domain\Commerce\Http\Controllers\PendingCheckoutController;
 use App\Domain\Documents\Events\DocumentSignatureRecorded;
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Domain\Leasing\Listeners\SyncLeaseDocumentSignature;
@@ -10,12 +11,15 @@ use App\Models\Application;
 use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
+use App\Models\Event as EventModel;
 use App\Models\Interaction;
 use App\Models\Item;
 use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use App\Observers\CognitiveInteractionObserver;
+use App\Observers\EstablishmentOwnershipNotificationObserver;
+use App\Observers\EventProducerNotificationObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
 use App\Services\Operations\OperationalIssueService;
@@ -26,6 +30,7 @@ use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
 
@@ -49,12 +54,22 @@ class AppServiceProvider extends ServiceProvider
         Relation::morphMap(['establishment' => 'App\\Models\\Establishment', 'event' => 'App\\Models\\Event']);
         Event::listen(DocumentSignatureRecorded::class, SyncLeaseDocumentSignature::class);
 
+        Route::prefix('api/v1/apps/{application}')
+            ->middleware(['api', 'app.context', 'auth:api', 'token.version', 'app.capability:commerce'])
+            ->group(function () {
+                Route::get('/commerce/checkout/pending', [PendingCheckoutController::class, 'show'])
+                    ->middleware('throttle:60,1');
+            });
+
         $storagePath = storage_path('app/public');
         if (! File::exists($storagePath)) File::makeDirectory($storagePath, 0775, true);
 
         foreach ([Application::class, Profile::class, User::class, Establishment::class, Item::class, Order::class] as $auditedModel) {
             $auditedModel::observe(InteractionAuditObserver::class);
         }
+
+        Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
+        EventModel::observe(EventProducerNotificationObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
         Interaction::observe(CognitiveInteractionObserver::class);

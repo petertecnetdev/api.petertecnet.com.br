@@ -142,7 +142,7 @@ class MenuController extends Controller
         abort_unless($user && (
             $user->hasProfile('Administrador')
             || (int) $establishment->user_id === (int) $user->id
-            || (int) $establishment->created_by === (int) $user->id
+            || (! $establishment->user_id && (int) $establishment->created_by === (int) $user->id)
         ), 403, 'Você não pode gerenciar o menu deste estabelecimento.');
     }
 

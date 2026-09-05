@@ -24,14 +24,14 @@ use App\Http\Controllers\{
     UserController
 };
 
-Route::post('/interactions/batch', [InteractionController::class, 'storeBatch'])->middleware(['api', 'throttle:120,1'])->name('interactions.batch');
+Route::post('/interactions/batch', [InteractionController::class, 'storeBatch'])->middleware('throttle:1200,1')->name('interactions.batch');
 
 Route::prefix('home')->middleware('api')->group(function () {
     Route::get('/{app_id}', [HomeController::class, 'home'])->whereNumber('app_id')->name('home.main');
 });
 
 Route::prefix('auth')->middleware('api')->group(function () {
-    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->middleware('throttle:5,1');
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
@@ -238,7 +238,7 @@ Route::prefix('applications')->middleware('api')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('applications.index');
     Route::get('/{slug}', [ApplicationController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->name('applications.show');
 });
-Route::prefix('admin/applications')->middleware(['api', 'auth:api'])->group(function () {
+Route::prefix('admin/applications')->middleware(['api', 'auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/', [AdminApplicationController::class, 'index']);
     Route::post('/', [AdminApplicationController::class, 'store']);
     Route::put('/{application}', [AdminApplicationController::class, 'update'])->whereNumber('application');

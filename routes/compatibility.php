@@ -13,6 +13,7 @@ use App\Domain\CRM\Http\Controllers\SalesPipelineController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
+use App\Domain\Events\Http\Controllers\EventPassTransferController;
 use App\Domain\Events\Http\Controllers\EventTicketController;
 use App\Domain\Finance\Http\Controllers\PaymentProviderController;
 use App\Domain\Finance\Http\Controllers\PayoutController;
@@ -157,6 +158,8 @@ $authenticatedCompatibility('cutinapp', static function (): void {
     Route::delete('/courtesies/{ticketId}', [EventTicketController::class, 'destroy'])->whereNumber('ticketId');
     Route::get('/passes/mine', [EventPassController::class, 'mine']);
     Route::get('/passes/{passId}', [EventPassController::class, 'show'])->whereNumber('passId');
+    Route::post('/passes/{passId}/transfer', [EventPassTransferController::class, 'transfer'])->whereNumber('passId')->middleware('throttle:10,1');
+    Route::post('/event-passes/{passId}/transfer', [EventPassTransferController::class, 'transfer'])->whereNumber('passId')->middleware('throttle:10,1');
     Route::get('/events/{eventId}/participants', [EventPassController::class, 'participants'])->whereNumber('eventId');
     Route::post('/passes/claim/{ticketId}', [EventPassController::class, 'claim'])->whereNumber('ticketId');
     Route::post('/checkin', [EventPassController::class, 'validateToken'])->middleware('throttle:120,1');

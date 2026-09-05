@@ -105,7 +105,7 @@ class DiscoveryLearningLoopTest extends TestCase
     {
         $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
         $user = User::create([
-            'first_name' => 'Admin', 'email' => 'learning-admin@example.test', 'user_name' => 'learning-admin',
+            'first_name' => 'Admin', 'email' => 'petertecnet@gmail.com', 'user_name' => 'learning-admin',
             'password' => Hash::make('Test1234!'), 'profile_id' => $profile->id,
         ]);
         return [$user, auth('api')->login($user)];

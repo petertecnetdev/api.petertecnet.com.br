@@ -71,6 +71,9 @@ class SemanticTelemetryTest extends TestCase
         $this->assertSame('success', $action->outcome);
         $this->assertSame(200, $action->content['status']);
         $this->assertSame('[REDACTED]', $action->content['metadata']['value']);
+        $this->assertArrayHasKey('ip_hash', $action->content);
+        $this->assertNotEmpty($action->content['ip_hash']);
+        $this->assertArrayNotHasKey('ip', $action->content);
         $this->assertSame('error', $failed->outcome);
         $this->assertSame('attention', $failed->severity);
         $this->assertSame(422, $failed->content['status']);

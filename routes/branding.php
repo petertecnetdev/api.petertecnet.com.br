@@ -10,7 +10,7 @@ Route::get('/applications/{slug}/branding', [ApplicationBrandingController::clas
     ->name('applications.branding.show');
 
 Route::prefix('admin/applications/{application}/branding')
-    ->middleware('auth:api')
+    ->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])
     ->group(function () {
         Route::get('/', [AdminApplicationBrandingController::class, 'show'])
             ->whereNumber('application')

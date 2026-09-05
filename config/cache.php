@@ -52,6 +52,10 @@ return [
         'file' => [
             'driver' => 'file',
             'path' => storage_path('framework/cache/data'),
+            // Keep Laravel's file permission override disabled. The same value
+            // is applied to files and directories, and directory nodes require
+            // execute bits. Deployment/runtime ownership handles writability.
+            'permission' => null,
         ],
 
         'memcached' => [

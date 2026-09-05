@@ -1,13 +1,19 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\AdminControlPlaneController;
+use App\Http\Controllers\Admin\AdminEventController;
+use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\EcosystemNotificationController;
 use App\Http\Controllers\Admin\FinancialController;
+use App\Http\Controllers\Admin\InteractionMaintenanceController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalRealtimeController;
 use App\Http\Controllers\Admin\ResourceVisibilityController;
+use App\Http\Controllers\Admin\UserCommunicationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
@@ -19,9 +25,14 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
     ->where('token', '[A-Za-z0-9]{40,128}')
     ->middleware(['api', 'throttle:10,1']);
 
-Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::delete('/activity', [InteractionMaintenanceController::class, 'destroySelected'])->middleware('throttle:20,1');
+    Route::delete('/activity/all', [InteractionMaintenanceController::class, 'destroyAll'])->middleware('throttle:3,10');
+    Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
+    Route::post('/notifications/preview', [EcosystemNotificationController::class, 'preview'])->middleware('throttle:60,1');
+    Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
 
@@ -59,9 +70,34 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
         Route::get('/reports/{format}', [FinancialController::class, 'export'])->whereIn('format', ['csv', 'pdf']);
     });
 
+    Route::prefix('control')->group(function () {
+        Route::get('/capabilities', [AdminControlPlaneController::class, 'capabilities']);
+        Route::get('/feature-flags', [AdminControlPlaneController::class, 'featureFlags']);
+        Route::put('/feature-flags', [AdminControlPlaneController::class, 'saveFeatureFlags']);
+        Route::get('/saved-views', [AdminControlPlaneController::class, 'savedViews']);
+        Route::post('/saved-views', [AdminControlPlaneController::class, 'saveView']);
+        Route::delete('/saved-views/{setting}', [AdminControlPlaneController::class, 'deleteView'])->whereNumber('setting');
+        Route::get('/notifications', [AdminControlPlaneController::class, 'notificationCampaigns']);
+        Route::post('/notifications', [AdminControlPlaneController::class, 'storeNotificationCampaign'])->middleware('throttle:10,1');
+        Route::get('/moderation', [AdminControlPlaneController::class, 'moderation']);
+        Route::patch('/moderation/{report}', [AdminControlPlaneController::class, 'updateModeration'])->whereNumber('report');
+        Route::get('/trash', [AdminControlPlaneController::class, 'trash']);
+        Route::post('/trash/{resource}/{id}/restore', [AdminControlPlaneController::class, 'restoreTrash'])->whereNumber('id');
+        Route::get('/export/{resource}', [AdminControlPlaneController::class, 'export']);
+        Route::post('/import/{resource}', [AdminControlPlaneController::class, 'import']);
+    });
+
+    Route::prefix('event-management')->group(function () {
+        Route::get('/users', [AdminEventController::class, 'users']);
+        Route::get('/users/{user}/productions', [AdminEventController::class, 'productions'])->whereNumber('user');
+        Route::post('/events', [AdminEventController::class, 'store'])->middleware('throttle:30,1');
+    });
+
+    Route::post('/users/resend-email', [UserCommunicationController::class, 'resend'])->middleware('throttle:3,10');
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
-    Route::get('/users/{user}', [EcosystemController::class, 'userDetail'])->whereNumber('user');
+    Route::get('/users/{user}', [AdminUserDetailController::class, 'show'])->whereNumber('user');
+    Route::get('/users/{user}/activity', [AdminUserDetailController::class, 'activity'])->whereNumber('user');
     Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])->whereNumber('user');
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
@@ -72,6 +108,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
+    Route::put('/establishments/{establishment}/owner', [EcosystemController::class, 'transferEstablishmentOwner'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
     Route::get('/items', [EcosystemController::class, 'items']);
     Route::post('/items', [EcosystemController::class, 'storeItem']);
@@ -82,7 +119,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
 });
 
-Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/marketing')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/context', [MarketingController::class, 'context']);
     Route::get('/dashboard', [MarketingController::class, 'dashboard']);
     Route::get('/activity', [MarketingController::class, 'activity']);

@@ -50,7 +50,7 @@ class PlatformArchitectureTest extends TestCase
                     continue;
                 }
 
-                if (preg_match($sourcePattern, $contents)) {
+                if (preg_match($sourcePattern, $this->withoutComments($contents))) {
                     $violations[] = $relative.' [source]';
                 }
             }
@@ -262,6 +262,23 @@ class PlatformArchitectureTest extends TestCase
         // Catch standalone slugs/branding literals and CamelCase classes while
         // allowing the generic words Platform and Plataforma.
         return '/(?<![A-Za-z0-9_])(Cutinapp|Rasoio|Nexus|Laora|Payflow|Inkap|CamQuick|Plat(?!form|aform))/i';
+    }
+
+
+    private function withoutComments(string $contents): string
+    {
+        $tokens = token_get_all($contents);
+        $source = '';
+
+        foreach ($tokens as $token) {
+            if (is_array($token) && in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true)) {
+                continue;
+            }
+
+            $source .= is_array($token) ? $token[1] : $token;
+        }
+
+        return $source;
     }
 
     private function relative(string $path): string

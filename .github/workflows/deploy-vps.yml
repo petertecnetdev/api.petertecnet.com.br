@@ -11,7 +11,96 @@ permissions:
   contents: read
 
 jobs:
+  reconcile-source:
+    name: Reconcile safe VPS source state
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check deploy configuration
+        id: config
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${VPS_HOST}" || -z "${VPS_USER}" || -z "${VPS_SSH_KEY}" ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Reconcile files already present in main
+        if: steps.config.outputs.enabled == 'true'
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ steps.config.outputs.port }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+
+          ssh \
+            -o StrictHostKeyChecking=accept-new \
+            -o ConnectTimeout=20 \
+            -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE_SCRIPT'
+          set -Eeuo pipefail
+          cd /var/www/api.petertecnet.com.br
+
+          # Laravel cache files can be written by HTTP, queue, scheduler or deploy
+          # processes. Keep the shared runtime group writable and make new files
+          # inherit that policy so a root-owned cache entry cannot break requests.
+          if [[ -d storage && -d bootstrap/cache ]]; then
+            chmod -R ug+rwX storage bootstrap/cache || true
+            find storage bootstrap/cache -type d -exec chmod g+s {} + || true
+            if command -v setfacl >/dev/null 2>&1; then
+              setfacl -R -m g::rwX,m::rwX storage bootstrap/cache || true
+              find storage bootstrap/cache -type d -exec setfacl -m d:g::rwx,d:m::rwx {} + || true
+            fi
+          fi
+
+          git fetch --prune origin main
+          TARGET_SHA="$(git rev-parse origin/main)"
+
+          # A file modified relative to the currently deployed (older) commit is not
+          # necessarily unpublished work: it can already be byte-for-byte identical
+          # to a newer version committed to main. Reconcile only that safe case.
+          while IFS= read -r status_line; do
+            [[ -z "$status_line" ]] && continue
+            path="${status_line:3}"
+
+            case "$path" in
+              storage/*|bootstrap/cache/*|node_modules/*|vendor/*|dist/*|build/*|artifacts/*|.env|.env.*)
+                continue
+                ;;
+            esac
+
+            # Rename/copy status contains two paths; leave it untouched for manual review.
+            if [[ "$path" == *" -> "* ]]; then
+              continue
+            fi
+
+            # Untracked files have no target blob and must remain protected.
+            if [[ "${status_line:0:2}" == "??" ]]; then
+              continue
+            fi
+
+            if git diff --quiet "$TARGET_SHA" -- "$path"; then
+              echo "Reconciling local file already committed to main: $path"
+              git restore --source="$TARGET_SHA" --staged --worktree -- "$path"
+            fi
+          done < <(git status --porcelain=v1 --untracked-files=all)
+          REMOTE_SCRIPT
+
   deploy:
+    needs: reconcile-source
     uses: petertecnetdev/petertecnet.com.br/.github/workflows/reusable-vps-deploy.yml@main
     with:
       deploy_path: /var/www/api.petertecnet.com.br

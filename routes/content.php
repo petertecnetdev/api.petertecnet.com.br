@@ -52,7 +52,7 @@ Route::prefix('v1')->group(function () {
     });
 });
 
-Route::middleware(['auth:api', 'token.version'])->prefix('admin')->group(function () {
+Route::middleware(['auth:api', 'token.version', \App\Http\Middleware\PeterTecnetAdminApi::class])->prefix('admin')->group(function () {
     Route::get('/content', [ContentManagementController::class, 'index']);
     Route::post('/content', [ContentManagementController::class, 'store']);
     Route::patch('/content/{content}', [ContentManagementController::class, 'update'])->whereNumber('content');
