@@ -20,6 +20,7 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')->prefix('api')->group(base_path('routes/api.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/email_verification_deferral.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/account.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/support.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/identity.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/api_v1.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/event_agenda.php'));
@@ -146,6 +147,24 @@ class RouteServiceProvider extends ServiceProvider
 
             return Limit::perMinute(1200)
                 ->by('telemetry:ip-app:'.$request->ip().':'.$appKey);
+        });
+
+        RateLimiter::for('support-write', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+            $key = $userId ? 'user:'.$userId : 'ip:'.$request->ip();
+
+            return Limit::perMinute($userId ? 60 : 12)
+                ->by('support-write:'.$key.':'.$appKey);
+        });
+
+        RateLimiter::for('support-read', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+            $key = $userId ? 'user:'.$userId : 'ip:'.$request->ip();
+
+            return Limit::perMinute($userId ? 300 : 90)
+                ->by('support-read:'.$key.':'.$appKey);
         });
     }
 
