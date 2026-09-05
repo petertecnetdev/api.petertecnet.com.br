@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -10,6 +11,8 @@ use Illuminate\Support\Str;
 
 class Item extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'items';
 
     protected $fillable = [
