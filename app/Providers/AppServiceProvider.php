@@ -26,6 +26,7 @@ use App\Services\Operations\OperationalIssueService;
 use App\Services\Operations\OperationalTelemetryService;
 use App\Services\Operations\ResilientOperationalIssueService;
 use App\Services\Operations\ResilientOperationalTelemetryService;
+use App\Services\ResilientRealtimePublisher;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Event;
@@ -86,7 +87,12 @@ class AppServiceProvider extends ServiceProvider
 
     private function broadcastModelChanges(string $model, array $modules): void
     {
-        $model::saved(fn () => broadcast(new EcosystemUpdated($modules, 'saved')));
-        $model::deleted(fn () => broadcast(new EcosystemUpdated($modules, 'deleted')));
+        $publish = fn (string $action) => app(ResilientRealtimePublisher::class)->publish(
+            new EcosystemUpdated($modules, $action),
+            ['operation' => 'model-change', 'model' => $model, 'action' => $action]
+        );
+
+        $model::saved(fn () => $publish('saved'));
+        $model::deleted(fn () => $publish('deleted'));
     }
 }
