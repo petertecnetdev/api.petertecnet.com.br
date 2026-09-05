@@ -4,6 +4,8 @@ use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\MarketData\Services\MarketSignalService;
+use App\Jobs\DispatchNotificationCampaign;
+use App\Models\NotificationCampaign;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -41,10 +43,33 @@ Artisan::command('kryvion:market-opportunity-reports {--force}', function () {
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Send Kryvion HTML opportunity reports to active users');
 
+Artisan::command('ecosystem:dispatch-scheduled-notifications', function () {
+    $dispatched = 0;
+
+    NotificationCampaign::query()
+        ->where('status', 'scheduled')
+        ->whereNotNull('scheduled_at')
+        ->where('scheduled_at', '<=', now())
+        ->orderBy('id')
+        ->chunkById(100, function ($campaigns) use (&$dispatched) {
+            foreach ($campaigns as $campaign) {
+                $campaign->forceFill(['status' => 'queued'])->save();
+                DispatchNotificationCampaign::dispatch($campaign->id);
+                $dispatched++;
+            }
+        });
+
+    $this->info("{$dispatched} campanha(s) agendada(s) despachada(s).");
+})->purpose('Dispatch notification campaigns whose scheduled time has arrived');
+
 Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
 Schedule::command('kryvion:market-signal-notifications')
     ->everyMinute()
     ->withoutOverlapping(20)
+    ->onOneServer();
+Schedule::command('ecosystem:dispatch-scheduled-notifications')
+    ->everyMinute()
+    ->withoutOverlapping(5)
     ->onOneServer();
