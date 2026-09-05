@@ -16,7 +16,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
-class UserController extends ApiController
+class UserService
 {
     public function list(Request $request)
     {
