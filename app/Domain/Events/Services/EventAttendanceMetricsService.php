@@ -37,7 +37,9 @@ final class EventAttendanceMetricsService
 
         $issued = (clone $validPasses)->count();
         $checkedIn = (clone $validPasses)->whereNotNull('checked_in_at')->count();
-        $attendanceFinalized = $event->end_date !== null && now()->greaterThanOrEqualTo($event->end_date);
+        $attendanceFinalized = ! $event->is_cancelled
+            && $event->end_date !== null
+            && now()->greaterThanOrEqualTo($event->end_date);
         $noShow = $attendanceFinalized
             ? (clone $validPasses)->whereNull('checked_in_at')->count()
             : 0;
