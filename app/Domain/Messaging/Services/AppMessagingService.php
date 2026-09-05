@@ -7,8 +7,7 @@ use App\Events\AppMessageCreated;
 use App\Models\AppConversation;
 use App\Models\AppMessage;
 use App\Models\User;
-use Illuminate\Contracts\Pagination\LengthAwarePaginator;
-use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
