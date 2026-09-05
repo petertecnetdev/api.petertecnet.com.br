@@ -9,8 +9,8 @@ class CommerceOrder extends Model
 {
     protected $table = 'commerce_orders';
 
-    protected $fillable = ['app_id','public_id','event_id','production_id','user_id','status','currency','subtotal','platform_fee','processor_fee','discount_amount','total','producer_net','payment_method','expires_at','paid_at','cancelled_at','metadata'];
-    protected $casts = ['app_id'=>'integer','subtotal'=>'decimal:2','platform_fee'=>'decimal:2','processor_fee'=>'decimal:2','discount_amount'=>'decimal:2','total'=>'decimal:2','producer_net'=>'decimal:2','expires_at'=>'datetime','paid_at'=>'datetime','cancelled_at'=>'datetime','metadata'=>'array'];
+    protected $fillable = ['app_id','public_id','event_id','production_id','user_id','status','currency','subtotal','platform_fee','processor_fee','discount_amount','total','producer_net','payment_method','expires_at','paid_at','cancelled_at','recovery_started_at','metadata'];
+    protected $casts = ['app_id'=>'integer','subtotal'=>'decimal:2','platform_fee'=>'decimal:2','processor_fee'=>'decimal:2','discount_amount'=>'decimal:2','total'=>'decimal:2','producer_net'=>'decimal:2','expires_at'=>'datetime','paid_at'=>'datetime','cancelled_at'=>'datetime','recovery_started_at'=>'datetime','metadata'=>'array'];
 
     protected static function booted(): void
     {
