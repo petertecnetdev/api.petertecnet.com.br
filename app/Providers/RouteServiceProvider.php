@@ -24,7 +24,7 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')->prefix('api')->group(base_path('routes/identity.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/api_v1.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/event_agenda.php'));
-            Route::prefix('api')->group(base_path('routes/cutinapp_event_duplication.php'));
+            Route::prefix('api')->group(base_path('routes/event_duplication.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/event_pass_transfer.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/organization_experience.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/acquisition.php'));
@@ -174,8 +174,6 @@ class RouteServiceProvider extends ServiceProvider
         try {
             return $request->user('api')?->getAuthIdentifier();
         } catch (\Throwable $exception) {
-            // Authentication middleware will handle invalid/expired credentials later.
-            // Rate limiting must never turn an auth failure into a 500 response.
             return null;
         }
     }

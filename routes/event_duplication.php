@@ -9,10 +9,3 @@ Route::prefix('v1/apps/{application}')
         Route::post('/events/{id}/duplicate', DuplicateEventController::class)
             ->whereNumber('id');
     });
-
-Route::prefix('cutinapp')
-    ->middleware(['api', 'app.bind:cutinapp', 'compatibility.route', 'auth:api', 'token.version'])
-    ->group(function (): void {
-        Route::post('/events/{id}/duplicate', DuplicateEventController::class)
-            ->whereNumber('id');
-    });
