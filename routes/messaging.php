@@ -9,6 +9,7 @@ Route::prefix('v1/apps/{application}/messaging')
         Route::get('/conversations', [AppMessagingController::class, 'index'])->middleware('throttle:120,1');
         Route::get('/unread-count', [AppMessagingController::class, 'unreadCount'])->middleware('throttle:120,1');
         Route::get('/people', [AppMessagingController::class, 'people'])->middleware('throttle:120,1');
+        Route::get('/people/{userId}/block-status', [AppMessagingController::class, 'blockStatus'])->whereNumber('userId')->middleware('throttle:120,1');
 
         Route::post('/conversations/direct', [AppMessagingController::class, 'createDirect'])->middleware('throttle:30,1');
         Route::get('/conversations/{conversationId}/messages/search', [AppMessagingController::class, 'searchMessages'])->whereNumber('conversationId')->middleware('throttle:60,1');
