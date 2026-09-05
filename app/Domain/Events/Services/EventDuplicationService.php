@@ -81,16 +81,18 @@ final class EventDuplicationService
                 foreach ($source->tickets as $ticket) {
                     $price = round((float) $ticket->price, 2);
                     $paid = $price > 0;
+                    $type = trim((string) $ticket->type);
+                    $ticketType = trim((string) $ticket->ticket_type);
 
                     Ticket::create([
                         'app_id' => $appId,
                         'app_slug' => $resolvedAppSlug,
                         'event_id' => $event->id,
                         'name' => $ticket->name,
-                        'type' => $paid ? 'paid' : 'courtesy',
+                        'type' => $type !== '' ? $type : ($paid ? 'paid' : 'courtesy'),
                         'price' => $price,
                         'limit_date' => $this->shiftTicketDeadline($ticket->limit_date, $deltaSeconds, $targetStart, $timezone),
-                        'ticket_type' => $paid ? ($ticket->ticket_type ?: 'standard') : 'courtesy',
+                        'ticket_type' => $ticketType !== '' ? $ticketType : ($paid ? 'standard' : 'courtesy'),
                         'quantity' => $ticket->quantity,
                         'description' => $ticket->description,
                     ]);
