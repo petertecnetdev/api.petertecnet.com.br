@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\Facades\Image;
 
 class EventController extends Controller
@@ -46,6 +47,7 @@ class EventController extends Controller
 
         $data['slug'] = $this->uniqueSlug($data['slug'] ?? $data['title']);
         $data['image'] = $request->hasFile('image') ? $this->storeImage($request->file('image')) : null;
+        $data = $this->prepareOpeningMedia($request, $data, null, true);
 
         $event = Event::create($data);
 
@@ -82,11 +84,19 @@ class EventController extends Controller
             $this->deleteImage($oldImage);
         }
 
+        $oldOpeningVideo = $event->opening_media_type === 'video' ? $event->opening_media : null;
+        $data = $this->prepareOpeningMedia($request, $data, $event, false);
+
         $event->update($data);
+        $event = $event->fresh()->load('production:id,name,slug,user_id');
+
+        if ($oldOpeningVideo && ($event->opening_media_type !== 'video' || $event->opening_media !== $oldOpeningVideo)) {
+            $this->deleteOpeningVideo($oldOpeningVideo);
+        }
 
         return response()->json([
             'message' => 'Evento atualizado com sucesso.',
-            'event' => $event->fresh()->load('production:id,name,slug,user_id'),
+            'event' => $event,
         ]);
     }
 
@@ -149,8 +159,10 @@ class EventController extends Controller
         }
 
         $image = $event->image;
+        $openingVideo = $event->opening_media_type === 'video' ? $event->opening_media : null;
         $event->delete();
         $this->deleteImage($image);
+        $this->deleteOpeningVideo($openingVideo);
 
         return response()->json(['message' => 'Evento excluído com sucesso.']);
     }
@@ -177,6 +189,9 @@ class EventController extends Controller
             'title' => "$required|string|max:255",
             'description' => "$required|string|max:50000",
             'image' => ($creating ? 'nullable' : 'sometimes|nullable') . '|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'opening_media_type' => 'sometimes|nullable|in:banner,video,youtube',
+            'opening_media_url' => 'sometimes|nullable|url|max:2000',
+            'opening_media_file' => 'sometimes|nullable|file|mimetypes:video/mp4,video/webm,video/quicktime|max:51200',
             'address' => "$required|string|max:500",
             'start_date' => "$required|date",
             'end_date' => "$required|date|after_or_equal:start_date",
@@ -226,6 +241,47 @@ class EventController extends Controller
         ]);
     }
 
+    private function prepareOpeningMedia(Request $request, array $data, ?Event $event, bool $creating): array
+    {
+        $hasType = array_key_exists('opening_media_type', $data);
+        $type = $hasType
+            ? ($data['opening_media_type'] ?: 'banner')
+            : ($creating ? 'banner' : ($event?->opening_media_type ?: 'banner'));
+        $url = trim((string) ($data['opening_media_url'] ?? ''));
+
+        unset($data['opening_media_url'], $data['opening_media_file']);
+
+        if (! $creating && ! $hasType && ! $request->hasFile('opening_media_file') && ! $request->exists('opening_media_url')) {
+            return $data;
+        }
+
+        if ($type === 'video') {
+            if ($request->hasFile('opening_media_file')) {
+                $data['opening_media'] = $this->storeOpeningVideo($request->file('opening_media_file'));
+            } elseif (! $event || $event->opening_media_type !== 'video' || ! $event->opening_media) {
+                throw ValidationException::withMessages([
+                    'opening_media_file' => ['Envie o vídeo que será exibido na abertura do evento.'],
+                ]);
+            } else {
+                $data['opening_media'] = $event->opening_media;
+            }
+        } elseif ($type === 'youtube') {
+            if (! $this->youtubeVideoId($url)) {
+                throw ValidationException::withMessages([
+                    'opening_media_url' => ['Informe um link válido de vídeo do YouTube.'],
+                ]);
+            }
+            $data['opening_media'] = $url;
+        } else {
+            $type = 'banner';
+            $data['opening_media'] = null;
+        }
+
+        $data['opening_media_type'] = $type;
+
+        return $data;
+    }
+
     private function canManageProduction(?Production $production, string $permission): bool
     {
         $user = Auth::user();
@@ -261,9 +317,57 @@ class EventController extends Controller
         return $path;
     }
 
+    private function storeOpeningVideo($uploaded): string
+    {
+        $extension = strtolower((string) ($uploaded->getClientOriginalExtension() ?: $uploaded->extension() ?: 'mp4'));
+        if (! in_array($extension, ['mp4', 'webm', 'mov'], true)) {
+            $extension = 'mp4';
+        }
+
+        return $uploaded->storeAs('videos/events', Str::uuid() . '.' . $extension, 'public');
+    }
+
+    private function youtubeVideoId(?string $url): ?string
+    {
+        $url = trim((string) $url);
+        if ($url === '') {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || empty($parts['host'])) {
+            return null;
+        }
+
+        $host = strtolower((string) $parts['host']);
+        $host = preg_replace('/^www\./', '', $host) ?: $host;
+        $path = (string) ($parts['path'] ?? '');
+        $candidate = null;
+
+        if ($host === 'youtu.be') {
+            $candidate = trim(explode('/', trim($path, '/'))[0] ?? '');
+        } elseif (in_array($host, ['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtube-nocookie.com'], true)) {
+            parse_str((string) ($parts['query'] ?? ''), $query);
+            if (! empty($query['v'])) {
+                $candidate = (string) $query['v'];
+            } elseif (preg_match('#^/(?:embed|shorts|live)/([A-Za-z0-9_-]{6,})#', $path, $matches)) {
+                $candidate = $matches[1];
+            }
+        }
+
+        return $candidate && preg_match('/^[A-Za-z0-9_-]{6,}$/', $candidate) ? $candidate : null;
+    }
+
     private function deleteImage(?string $path): void
     {
         if ($path && str_starts_with($path, 'images/events/')) {
+            Storage::disk('public')->delete($path);
+        }
+    }
+
+    private function deleteOpeningVideo(?string $path): void
+    {
+        if ($path && str_starts_with($path, 'videos/events/')) {
             Storage::disk('public')->delete($path);
         }
     }
