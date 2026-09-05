@@ -9,6 +9,10 @@ use Illuminate\Support\Facades\Schema;
 
 final class PublicUserProfileService
 {
+    public function __construct(
+        private readonly UserActorIdentityService $actorIdentity,
+    ) {}
+
     public function show(int $userId, int $appId): array
     {
         $user = User::query()
@@ -24,6 +28,11 @@ final class PublicUserProfileService
                 'about',
                 'favorite_artist',
                 'favorite_genre',
+                'is_producer',
+                'is_participant',
+                'is_promoter',
+                'is_partner',
+                'is_ticket_seller',
             ])
             ->findOrFail($userId);
 
@@ -98,6 +107,7 @@ final class PublicUserProfileService
                 'favorite_artist' => $settings['show_interests'] ? $user->favorite_artist : null,
                 'favorite_genre' => $settings['show_interests'] ? $user->favorite_genre : null,
             ],
+            'actor_identity' => $this->actorIdentity->for($user, $appId, true),
             'stats' => [
                 'interested' => $settings['show_event_interests'] ? $interestedEvents->count() : null,
                 'followers' => DB::table('follows')->where([
