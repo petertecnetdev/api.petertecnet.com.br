@@ -48,7 +48,7 @@ class EventProducerCommunicationService
 
         $appId = (int) ($event->app_id ?: $production->app_id);
         $application = $appId > 0 ? Application::query()->find($appId) : null;
-        $appName = $application?->name ?: 'Cutinapp';
+        $appName = $application?->name ?: 'Aplicativo';
         $productionName = $production->fantasy ?: $production->name ?: 'sua produção';
         $eventUrl = $this->eventManagementUrl($application, (int) $event->id);
         [$title, $message] = $this->copyFor($event, $action, $changedLabels, $productionName);
@@ -125,7 +125,7 @@ class EventProducerCommunicationService
         return match ($action) {
             'created' => [
                 'Novo evento criado: '.$eventName,
-                'O evento "'.$eventName.'" foi criado para '.$productionName.'. Confira os dados e continue a gestão pela Cutinapp.',
+                'O evento "'.$eventName.'" foi criado para '.$productionName.'. Confira os dados e continue a gestão pelo aplicativo.',
             ],
             'activated' => [
                 'Evento ativado: '.$eventName,
@@ -153,7 +153,7 @@ class EventProducerCommunicationService
         $baseUrl = rtrim(trim((string) $application?->url), '/');
 
         if (! filter_var($baseUrl, FILTER_VALIDATE_URL)) {
-            $baseUrl = 'https://cutinapp.petertecnet.com.br';
+            $baseUrl = 'https://petertecnet.com.br';
         }
 
         return $baseUrl.'/event/edit/'.$eventId;
