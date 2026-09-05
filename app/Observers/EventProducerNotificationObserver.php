@@ -38,10 +38,7 @@ class EventProducerNotificationObserver
             return 'reactivated';
         }
 
-        if (
-            ($event->wasChanged('is_published') && $event->is_published)
-            || ($event->wasChanged('is_approved') && $event->is_approved)
-        ) {
+        if ($event->wasChanged('is_published') && $event->is_published) {
             return 'activated';
         }
 
