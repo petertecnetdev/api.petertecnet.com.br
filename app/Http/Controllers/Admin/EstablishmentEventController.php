@@ -17,15 +17,7 @@ class EstablishmentEventController extends Controller
         ]);
 
         $events = Event::query()
-            ->where('production_id', $establishment->id)
-            ->when(
-                isset($data['app_id']),
-                fn ($query) => $query->where('app_id', (int) $data['app_id'])
-            )
-            ->withCount(['tickets', 'artists'])
-            ->orderByDesc('start_date')
-            ->orderByDesc('id')
-            ->get([
+            ->select([
                 'id',
                 'app_id',
                 'production_id',
@@ -40,7 +32,16 @@ class EstablishmentEventController extends Controller
                 'is_approved',
                 'is_cancelled',
                 'is_private',
-            ]);
+            ])
+            ->where('production_id', $establishment->id)
+            ->when(
+                isset($data['app_id']),
+                fn ($query) => $query->where('app_id', (int) $data['app_id'])
+            )
+            ->withCount(['tickets', 'artists'])
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->get();
 
         return response()->json([
             'establishment' => [
