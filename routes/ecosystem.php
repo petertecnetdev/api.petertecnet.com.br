@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
 use App\Http\Controllers\Admin\FinancialController;
+use App\Http\Controllers\Admin\InteractionMaintenanceController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalRealtimeController;
@@ -26,6 +27,8 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::delete('/activity', [InteractionMaintenanceController::class, 'destroySelected'])->middleware('throttle:20,1');
+    Route::delete('/activity/all', [InteractionMaintenanceController::class, 'destroyAll'])->middleware('throttle:3,10');
     Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
     Route::post('/notifications/preview', [EcosystemNotificationController::class, 'preview'])->middleware('throttle:60,1');
     Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
