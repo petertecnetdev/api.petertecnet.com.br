@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\Admin\ActivityController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
@@ -25,6 +26,12 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::prefix('activities')->group(function () {
+        Route::get('/', [ActivityController::class, 'index']);
+        Route::get('/overview', [ActivityController::class, 'overview']);
+        Route::get('/facets', [ActivityController::class, 'facets']);
+        Route::get('/{interaction}', [ActivityController::class, 'show'])->whereNumber('interaction');
+    });
     Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
     Route::post('/notifications/preview', [EcosystemNotificationController::class, 'preview'])->middleware('throttle:60,1');
     Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
