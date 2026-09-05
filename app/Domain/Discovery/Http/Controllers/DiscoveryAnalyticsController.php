@@ -180,7 +180,7 @@ class DiscoveryAnalyticsController extends Controller
                     'score' => $score,
                 ];
             })
-            ->sortByDesc(fn (array $row) => [$row['score'], $row['views'], $row['sessions']])
+            ->sortByDesc('score')
             ->values()
             ->take(50)
             ->map(function (array $row, int $index) {
