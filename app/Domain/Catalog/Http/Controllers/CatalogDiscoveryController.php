@@ -175,7 +175,8 @@ final class CatalogDiscoveryController extends Controller
                 ->orWhere('sku', 'like', $like))
             ->whereHas('establishment', function (Builder $query) {
                 $this->applyPublicVisibility($query);
-                $query->whereNull('source_establishment_id');
+                $query->forApplication($this->context->id())
+                    ->whereNull('source_establishment_id');
             })
             ->with('establishment:id,name,fantasy,slug,city,uf')
             ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'price')
@@ -197,7 +198,9 @@ final class CatalogDiscoveryController extends Controller
 
     private function publicEstablishmentsQuery(): Builder
     {
-        return $this->applyPublicVisibility(Establishment::query());
+        return $this->applyPublicVisibility(
+            Establishment::query()->forApplication($this->context->id())
+        );
     }
 
     private function applyPublicVisibility(Builder $query): Builder
