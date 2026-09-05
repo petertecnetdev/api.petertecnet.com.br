@@ -8,7 +8,7 @@ final class PendingCheckoutRecoveryService
 {
     public function latest(int $appId, int $userId): ?CommerceOrder
     {
-        return CommerceOrder::query()
+        $order = CommerceOrder::query()
             ->where('app_id', $appId)
             ->where('user_id', $userId)
             ->where('status', 'pending')
@@ -31,5 +31,11 @@ final class PendingCheckoutRecoveryService
             ])
             ->latest('id')
             ->first();
+
+        if ($order && $order->recovery_started_at === null) {
+            $order->forceFill(['recovery_started_at' => now()])->saveQuietly();
+        }
+
+        return $order;
     }
 }
