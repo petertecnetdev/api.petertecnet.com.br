@@ -1,0 +1,111 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Http\Kernel;
+use App\Http\Middleware\EnsureAdminAccess;
+use App\Models\Profile;
+use App\Models\User;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Tests\TestCase;
+
+class AdminAccessSecurityTest extends TestCase
+{
+    public function test_every_central_admin_route_inherits_admin_access_firewall(): void
+    {
+        $apiMiddleware = app(Kernel::class)->getMiddlewareGroups()['api'] ?? [];
+        $this->assertContains(
+            EnsureAdminAccess::class,
+            $apiMiddleware,
+            'O grupo api precisa carregar o firewall administrativo.'
+        );
+
+        $adminRoutes = collect(Route::getRoutes()->getRoutes())
+            ->filter(fn ($route) => str_starts_with($route->uri(), 'api/admin/'));
+
+        $this->assertNotEmpty($adminRoutes);
+
+        foreach ($adminRoutes as $route) {
+            $this->assertContains(
+                'api',
+                $route->gatherMiddleware(),
+                sprintf('A rota %s %s não está no grupo api protegido.', implode('|', $route->methods()), $route->uri())
+            );
+        }
+    }
+
+    public function test_regular_authenticated_user_is_denied(): void
+    {
+        $response = $this->middlewareResponse($this->user('usuario@exemplo.com', 'Participante'));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('ADMIN_ACCESS_DENIED', $response->getContent());
+    }
+
+    public function test_legacy_administrator_profile_is_not_enough_for_central_admin(): void
+    {
+        $response = $this->middlewareResponse($this->user('administrador@exemplo.com', 'Administrador'));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('ADMIN_ACCESS_DENIED', $response->getContent());
+    }
+
+    public function test_primary_admin_email_is_allowed(): void
+    {
+        $response = $this->middlewareResponse($this->user('PETERTECNET@GMAIL.COM', 'Participante'));
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function test_super_admin_profile_is_allowed(): void
+    {
+        $response = $this->middlewareResponse($this->user('outro-admin@exemplo.com', 'Super Admin'));
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    public function test_unauthenticated_request_is_denied(): void
+    {
+        $response = $this->middlewareResponse(null);
+
+        $this->assertSame(401, $response->getStatusCode());
+        $this->assertStringContainsString('ADMIN_AUTH_REQUIRED', $response->getContent());
+    }
+
+    public function test_non_admin_api_route_is_not_blocked_by_firewall(): void
+    {
+        $request = Request::create('/api/applications', 'GET');
+
+        $response = (new EnsureAdminAccess())->handle(
+            $request,
+            fn () => response()->json(['ok' => true])
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
+    }
+
+    private function middlewareResponse(?User $user)
+    {
+        $request = Request::create('/api/admin/ecosystem/dashboard', 'GET');
+        $request->setUserResolver(fn (?string $guard = null) => $user);
+
+        return (new EnsureAdminAccess())->handle(
+            $request,
+            fn () => response()->json(['ok' => true])
+        );
+    }
+
+    private function user(string $email, string $profileName): User
+    {
+        $user = new User([
+            'email' => $email,
+            'first_name' => 'Teste',
+            'last_name' => 'Admin',
+        ]);
+        $user->id = 999;
+        $user->setRelation('profile', new Profile(['name' => $profileName]));
+
+        return $user;
+    }
+}

@@ -103,7 +103,7 @@ class DiscoveryLearningLoopTest extends TestCase
 
     private function admin(): array
     {
-        $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
+        $profile = Profile::create(['name' => 'Super Admin', 'permissions' => []]);
         $user = User::create([
             'first_name' => 'Admin', 'email' => 'petertecnet@gmail.com', 'user_name' => 'learning-admin',
             'password' => Hash::make('Test1234!'), 'profile_id' => $profile->id,
