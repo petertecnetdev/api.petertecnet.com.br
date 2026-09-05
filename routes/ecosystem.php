@@ -4,6 +4,7 @@ use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
+use App\Http\Controllers\Admin\EcosystemNotificationController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
@@ -24,6 +25,9 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
 Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
+    Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
+    Route::post('/notifications/preview', [EcosystemNotificationController::class, 'preview'])->middleware('throttle:60,1');
+    Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
 
