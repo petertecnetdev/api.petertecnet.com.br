@@ -238,7 +238,7 @@ Route::prefix('applications')->middleware('api')->group(function () {
     Route::get('/', [ApplicationController::class, 'index'])->name('applications.index');
     Route::get('/{slug}', [ApplicationController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->name('applications.show');
 });
-Route::prefix('admin/applications')->middleware(['api', 'auth:api'])->group(function () {
+Route::prefix('admin/applications')->middleware(['api', 'auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/', [AdminApplicationController::class, 'index']);
     Route::post('/', [AdminApplicationController::class, 'store']);
     Route::put('/{application}', [AdminApplicationController::class, 'update'])->whereNumber('application');

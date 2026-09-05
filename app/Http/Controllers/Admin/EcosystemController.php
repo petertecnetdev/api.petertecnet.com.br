@@ -191,30 +191,41 @@ class EcosystemController extends Controller
     public function users(Request $request): JsonResponse
     {
         $this->authorizeAccess($request);
-        $query = User::query()
-            ->with(['profile:id,name', 'applications:id,name,slug'])
-            ->withCount(['interactions', 'establishments']);
 
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:150'],
             'profile_id' => ['nullable', 'integer', 'exists:profiles,id'],
             'app_id' => ['nullable', 'integer', 'exists:applications,id'],
-            'access_status' => ['nullable', Rule::in(['active', 'blocked', 'pending', 'none'])],
+            'access_status' => ['nullable', Rule::in(['active', 'blocked', 'suspended', 'pending', 'none'])],
             'has_establishment' => ['nullable', Rule::in(['yes', 'no'])],
             'activity_from' => ['nullable', 'date'],
-            'activity_to' => ['nullable', 'date'],
+            'activity_to' => ['nullable', 'date', 'after_or_equal:activity_from'],
+            'sort' => ['nullable', Rule::in(['newest', 'oldest', 'name', 'email'])],
+            'per_page' => ['nullable', 'integer', 'min:10', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
         ]);
+
+        $query = User::query()
+            ->with(['profile:id,name', 'applications:id,name,slug'])
+            ->withCount(['interactions', 'establishments']);
 
         if ($search = trim((string) ($data['search'] ?? ''))) {
             $query->where(function ($q) use ($search) {
                 $q->where('first_name', 'like', "%{$search}%")
                     ->orWhere('last_name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('user_name', 'like', "%{$search}%")
-                    ->orWhere('id', $search);
+                    ->orWhere('user_name', 'like', "%{$search}%");
+
+                if (ctype_digit($search)) {
+                    $q->orWhere('id', (int) $search);
+                }
             });
         }
-        if (! empty($data['profile_id'])) $query->where('profile_id', $data['profile_id']);
+
+        if (! empty($data['profile_id'])) {
+            $query->where('profile_id', $data['profile_id']);
+        }
+
         if (! empty($data['app_id'])) {
             $appId = (int) $data['app_id'];
             if (($data['access_status'] ?? null) === 'none') {
@@ -222,14 +233,22 @@ class EcosystemController extends Controller
             } else {
                 $query->whereHas('applications', function ($app) use ($appId, $data) {
                     $app->where('applications.id', $appId);
-                    if (! empty($data['access_status'])) $app->where('application_user.status', $data['access_status']);
+                    if (! empty($data['access_status'])) {
+                        $app->where('application_user.status', $data['access_status']);
+                    }
                 });
             }
         } elseif (! empty($data['access_status']) && $data['access_status'] !== 'none') {
             $query->whereHas('applications', fn ($app) => $app->where('application_user.status', $data['access_status']));
         }
-        if (($data['has_establishment'] ?? null) === 'yes') $query->has('establishments');
-        if (($data['has_establishment'] ?? null) === 'no') $query->doesntHave('establishments');
+
+        if (($data['has_establishment'] ?? null) === 'yes') {
+            $query->has('establishments');
+        }
+        if (($data['has_establishment'] ?? null) === 'no') {
+            $query->doesntHave('establishments');
+        }
+
         if (! empty($data['activity_from'])) {
             $query->whereHas('interactions', fn ($activity) => $activity->where('created_at', '>=', $data['activity_from']));
         }
@@ -238,15 +257,54 @@ class EcosystemController extends Controller
             $query->whereHas('interactions', fn ($activity) => $activity->where('created_at', '<=', $until));
         }
 
-        $users = $query->latest('id')->limit(300)->get();
-        $lastActivity = Interaction::query()->selectRaw('user_id, MAX(created_at) last_activity_at')
-            ->whereIn('user_id', $users->pluck('id'))->groupBy('user_id')->pluck('last_activity_at', 'user_id');
+        switch ($data['sort'] ?? 'newest') {
+            case 'oldest':
+                $query->oldest('id');
+                break;
+            case 'name':
+                $query->orderBy('first_name')->orderBy('last_name')->orderBy('id');
+                break;
+            case 'email':
+                $query->orderBy('email')->orderBy('id');
+                break;
+            default:
+                $query->latest('id');
+                break;
+        }
+
+        // Preserve the legacy 300-user payload for existing Admin Center consumers
+        // that do not opt into pagination yet. The Users Center always sends
+        // per_page explicitly, so it receives the scalable paginated contract.
+        $perPage = array_key_exists('per_page', $data) ? (int) $data['per_page'] : 300;
+        $paginator = $query->paginate($perPage);
+        $users = collect($paginator->items());
+        $userIds = $users->pluck('id');
+        $lastActivity = $userIds->isEmpty()
+            ? collect()
+            : Interaction::query()
+                ->selectRaw('user_id, MAX(created_at) last_activity_at')
+                ->whereIn('user_id', $userIds)
+                ->groupBy('user_id')
+                ->pluck('last_activity_at', 'user_id');
 
         $users->each(function ($user) use ($lastActivity) {
             $user->last_activity_at = $lastActivity[$user->id] ?? null;
         });
 
-        return response()->json(['users' => $users]);
+        return response()->json([
+            'users' => $users->values(),
+            'pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+                'has_more' => $paginator->hasMorePages(),
+                'next_page' => $paginator->hasMorePages() ? $paginator->currentPage() + 1 : null,
+                'previous_page' => $paginator->currentPage() > 1 ? $paginator->currentPage() - 1 : null,
+            ],
+        ]);
     }
 
     public function userDetail(Request $request, User $user): JsonResponse
