@@ -54,7 +54,7 @@ class DiscoveryIntelligenceTest extends TestCase
 
     public function test_web_vital_collection_and_admin_diagnostics_are_available(): void
     {
-        $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
+        $profile = Profile::create(['name' => 'Super Admin', 'permissions' => []]);
         $user = User::create([
             'first_name' => 'Admin',
             'email' => 'discovery-admin@example.test',

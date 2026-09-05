@@ -4,7 +4,6 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 
 class EnsureAdminAccess
@@ -23,7 +22,7 @@ class EnsureAdminAccess
         }
 
         try {
-            $user = Auth::guard('api')->user();
+            $user = $request->user('api');
         } catch (\Throwable $exception) {
             Log::notice('Falha de autenticação em rota administrativa.', [
                 'security_event' => 'admin_auth_failed',

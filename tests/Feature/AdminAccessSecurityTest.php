@@ -6,9 +6,7 @@ use App\Http\Middleware\EnsureAdminAccess;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use Mockery;
 use Tests\TestCase;
 
 class AdminAccessSecurityTest extends TestCase
@@ -83,11 +81,8 @@ class AdminAccessSecurityTest extends TestCase
 
     private function middlewareResponse(?User $user)
     {
-        $guard = Mockery::mock();
-        $guard->shouldReceive('user')->once()->andReturn($user);
-        Auth::shouldReceive('guard')->once()->with('api')->andReturn($guard);
-
         $request = Request::create('/api/admin/ecosystem/dashboard', 'GET');
+        $request->setUserResolver(fn (?string $guard = null) => $user);
 
         return (new EnsureAdminAccess())->handle(
             $request,
