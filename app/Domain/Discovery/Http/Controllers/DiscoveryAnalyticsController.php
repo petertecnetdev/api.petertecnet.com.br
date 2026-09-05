@@ -3,6 +3,7 @@
 namespace App\Domain\Discovery\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\ContentEntry;
 use App\Models\DiscoveryEvent;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -67,6 +68,8 @@ class DiscoveryAnalyticsController extends Controller
             ->orderBy('day')
             ->get();
 
+        $contentPerformance = $this->contentPerformance($query);
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -92,9 +95,102 @@ class DiscoveryAnalyticsController extends Controller
                 'events_by_type' => $byType,
                 'sources' => $sources,
                 'top_entities' => $topEntities,
+                'content_performance' => $contentPerformance,
                 'series' => $series,
             ],
         ]);
+    }
+
+    private function contentPerformance($query)
+    {
+        $slugSql = "TRIM(BOTH '/' FROM SUBSTRING_INDEX(SUBSTRING_INDEX(path, '?', 1), '/blog/', -1))";
+
+        $rows = (clone $query)
+            ->where('path', 'like', '/blog/%')
+            ->selectRaw("{$slugSql} slug")
+            ->selectRaw('COUNT(*) events')
+            ->selectRaw('COUNT(DISTINCT session_id) sessions')
+            ->selectRaw("SUM(CASE WHEN event_type = 'page_view' THEN 1 ELSE 0 END) page_views")
+            ->selectRaw("SUM(CASE WHEN event_type = 'content_view' THEN 1 ELSE 0 END) content_views")
+            ->selectRaw("SUM(CASE WHEN event_type = 'cta_click' THEN 1 ELSE 0 END) cta_clicks")
+            ->selectRaw("SUM(CASE WHEN event_type = 'outbound_click' THEN 1 ELSE 0 END) outbound_clicks")
+            ->groupBy(DB::raw($slugSql))
+            ->havingRaw("{$slugSql} <> ''")
+            ->get();
+
+        if ($rows->isEmpty()) {
+            return collect();
+        }
+
+        $slugs = $rows->pluck('slug')->filter()->unique()->values();
+        $content = ContentEntry::query()
+            ->whereIn('slug', $slugs)
+            ->get(['slug', 'title', 'category', 'status', 'published_at'])
+            ->keyBy('slug');
+
+        $convertedSessions = (clone $query)
+            ->where('event_type', 'conversion')
+            ->whereNotNull('session_id')
+            ->distinct()
+            ->pluck('session_id')
+            ->flip();
+
+        $blogSessions = (clone $query)
+            ->where('path', 'like', '/blog/%')
+            ->whereNotNull('session_id')
+            ->selectRaw("{$slugSql} slug, session_id")
+            ->distinct()
+            ->get()
+            ->groupBy('slug');
+
+        return $rows
+            ->map(function ($row) use ($content, $blogSessions, $convertedSessions) {
+                $slug = (string) $row->slug;
+                $entry = $content->get($slug);
+                $sessions = (int) $row->sessions;
+                $contentViews = (int) $row->content_views;
+                $pageViews = (int) $row->page_views;
+                $views = max($contentViews, $pageViews);
+                $ctaClicks = (int) $row->cta_clicks;
+                $outboundClicks = (int) $row->outbound_clicks;
+                $assistedConversions = ($blogSessions->get($slug) ?? collect())
+                    ->pluck('session_id')
+                    ->filter(fn ($sessionId) => $convertedSessions->has($sessionId))
+                    ->unique()
+                    ->count();
+
+                $ctaRate = $sessions > 0 ? round(($ctaClicks / $sessions) * 100, 2) : 0;
+                $conversionRate = $sessions > 0 ? round(($assistedConversions / $sessions) * 100, 2) : 0;
+                $score = $sessions + ($views * 2) + ($ctaClicks * 6) + ($outboundClicks * 3) + ($assistedConversions * 15);
+
+                return [
+                    'slug' => $slug,
+                    'title' => $entry?->title ?: str_replace('-', ' ', $slug),
+                    'category' => $entry?->category,
+                    'status' => $entry?->status,
+                    'published_at' => $entry?->published_at,
+                    'events' => (int) $row->events,
+                    'sessions' => $sessions,
+                    'views' => $views,
+                    'cta_clicks' => $ctaClicks,
+                    'outbound_clicks' => $outboundClicks,
+                    'assisted_conversions' => $assistedConversions,
+                    'cta_rate' => $ctaRate,
+                    'conversion_rate' => $conversionRate,
+                    'score' => $score,
+                ];
+            })
+            ->sortByDesc(fn (array $row) => [$row['score'], $row['views'], $row['sessions']])
+            ->values()
+            ->take(50)
+            ->map(function (array $row, int $index) {
+                $rank = $index + 1;
+                return [
+                    ...$row,
+                    'rank' => $rank,
+                    'instagram_recommended' => $rank <= 3 && $row['views'] > 0,
+                ];
+            });
     }
 
     private function authorizeActor(Request $request): User
