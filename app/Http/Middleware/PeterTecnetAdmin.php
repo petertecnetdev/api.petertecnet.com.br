@@ -12,8 +12,7 @@ class PeterTecnetAdmin
 
     public function handle(Request $request, Closure $next): Response
     {
-        $user = \Illuminate\Support\Facades\Auth::guard('web')->user();
-        $verified = $user && strtolower((string) $user->email) === self::ADMIN_EMAIL;
+        $verified = $request->user() && strtolower((string) $request->user()->email) === self::ADMIN_EMAIL;
         if (! $verified) {
             $request->session()->put('peter_admin_return_url', $this->safeReturnUrl($request));
             return redirect()->route('admin.gate');
