@@ -56,6 +56,13 @@ final class DuplicateEventController extends Controller
 
         $sourceStart = Carbon::parse($source->start_date, $timezone);
         $sourceEnd = Carbon::parse($source->end_date, $timezone);
+
+        if ($data['date'] === $sourceStart->format('Y-m-d')) {
+            throw ValidationException::withMessages([
+                'date' => ['Escolha uma data diferente da data do evento original.'],
+            ]);
+        }
+
         $targetStart = Carbon::createFromFormat(
             'Y-m-d H:i:s',
             $data['date'].' '.$sourceStart->format('H:i:s'),
