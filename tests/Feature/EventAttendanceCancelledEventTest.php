@@ -34,12 +34,15 @@ class EventAttendanceCancelledEventTest extends TestCase
             ]);
         }
 
-        $productionId = DB::table('productions')->insertGetId([
+        $productionId = DB::table('establishments')->insertGetId([
             'app_id' => $appId,
-            'app_slug' => 'cutinapp',
             'user_id' => $owner->id,
+            'updated_by' => $owner->id,
             'name' => 'Produção Cancelada',
-            'city' => 'Goiânia',
+            'fantasy' => 'Produção Cancelada',
+            'slug' => 'production-cancelled-no-show',
+            'type' => 'production',
+            'category' => 'production',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
