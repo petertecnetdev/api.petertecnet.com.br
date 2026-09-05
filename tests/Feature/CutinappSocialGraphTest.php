@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\Artist;
 use App\Models\Production;
@@ -98,6 +99,7 @@ class CutinappSocialGraphTest extends TestCase
         $producer = $this->user('Producer Notify', 'notify-producer@cutinapp.test');
         $participant = $this->user('Follower Notify', 'notify-follower@cutinapp.test');
         $ph = $this->headersFor($producer); $uh = $this->headersFor($participant);
+        $app = Application::where('slug', 'cutinapp')->firstOrFail();
         $production = $this->withHeaders($ph)->postJson('/api/cutinapp/productions', ['name' => 'Notify Prod'])->assertCreated()->json('production');
         $event = $this->withHeaders($ph)->postJson('/api/cutinapp/events', [
             'production_id' => $production['id'], 'title' => 'Notify Event', 'description' => 'Notify', 'address' => 'Rua 1', 'city' => 'Recife', 'uf' => 'PE',
@@ -111,7 +113,35 @@ class CutinappSocialGraphTest extends TestCase
         $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])->assertOk();
 
         $this->assertDatabaseHas('event_engagements', ['user_id' => $participant->id, 'event_id' => $event['id'], 'is_favorite' => 1, 'is_interested' => 1]);
-        $this->withHeaders($uh)->getJson('/api/cutinapp/notifications')->assertOk()->assertJsonPath('notifications.data.0.reference_id', $event['id']);
+        $this->assertDatabaseHas('app_notifications', [
+            'app_id' => $app->id,
+            'user_id' => $producer->id,
+            'type' => 'event_interest',
+            'reference_type' => 'event',
+            'reference_id' => $event['id'],
+        ]);
+
+        $this->assertSame(1, AppNotification::query()
+            ->where('app_id', $app->id)
+            ->where('user_id', $producer->id)
+            ->where('type', 'event_interest')
+            ->where('reference_type', 'event')
+            ->where('reference_id', $event['id'])
+            ->count());
+
+        $this->withHeaders($uh)->putJson('/api/cutinapp/events/' . $event['id'] . '/engagement', ['is_favorite' => true, 'is_interested' => true])->assertOk();
+
+        $this->assertSame(1, AppNotification::query()
+            ->where('app_id', $app->id)
+            ->where('user_id', $producer->id)
+            ->where('type', 'event_interest')
+            ->where('reference_type', 'event')
+            ->where('reference_id', $event['id'])
+            ->count());
+
+        $this->withHeaders($ph)->getJson('/api/cutinapp/notifications')->assertOk()
+            ->assertJsonPath('notifications.data.0.type', 'event_interest')
+            ->assertJsonPath('notifications.data.0.reference_id', $event['id']);
     }
 
     private function headersFor(User $user): array
