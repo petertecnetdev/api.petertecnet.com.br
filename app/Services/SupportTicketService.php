@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Application;
 use App\Models\SupportMessage;
 use App\Models\SupportTicket;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -17,7 +18,7 @@ final class SupportTicketService
         $name = trim((string) ($data['name'] ?? ''));
         $email = strtolower(trim((string) ($data['email'] ?? '')));
         if (! $user && ($name === '' || $email === '')) {
-            abort(response()->json([
+            throw new HttpResponseException(response()->json([
                 'message' => 'Informe nome e e-mail para abrir um chamado sem estar autenticado.',
                 'errors' => [
                     'name' => $name === '' ? ['O nome é obrigatório.'] : [],
