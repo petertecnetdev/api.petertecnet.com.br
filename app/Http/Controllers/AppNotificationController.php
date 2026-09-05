@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AppNotification;
+use App\Models\NotificationPreference;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 
@@ -24,11 +25,21 @@ class AppNotificationController extends ApiController
             ->paginate($perPage)
             ->appends($request->query());
         $unreadCount = (clone $query)->whereNull('read_at')->count();
+        $preference = NotificationPreference::query()->firstOrCreate(
+            [
+                'app_id' => $this->context->id(),
+                'user_id' => $userId,
+            ],
+            ['email_enabled' => true],
+        );
 
         return response()->json([
             'success' => true,
             'unread_count' => $unreadCount,
             'notifications' => $notifications,
+            'preferences' => [
+                'email_enabled' => (bool) $preference->email_enabled,
+            ],
         ]);
     }
 
@@ -62,6 +73,27 @@ class AppNotificationController extends ApiController
 
     public function markAllRead(Request $request)
     {
+        if ($request->boolean('preference_only')) {
+            $validated = $request->validate([
+                'email_enabled' => ['required', 'boolean'],
+            ]);
+
+            $preference = NotificationPreference::query()->updateOrCreate(
+                [
+                    'app_id' => $this->context->id(),
+                    'user_id' => (int) $request->user()->id,
+                ],
+                ['email_enabled' => (bool) $validated['email_enabled']],
+            );
+
+            return response()->json([
+                'success' => true,
+                'preferences' => [
+                    'email_enabled' => (bool) $preference->email_enabled,
+                ],
+            ]);
+        }
+
         AppNotification::query()
             ->where('app_id', $this->context->id())
             ->where('user_id', (int) $request->user()->id)
