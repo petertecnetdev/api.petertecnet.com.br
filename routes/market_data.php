@@ -6,23 +6,23 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'app.capability:market_data'])
     ->group(function () {
-        // Market reads are intentionally generous: the Kryvion UI keeps multiple
-        // realtime panels open at once. Abuse-sensitive writes keep tighter limits.
+        // Realtime reads share one generous bucket per application/user (or IP),
+        // avoiding collisions with other Peter Tecnet applications on the same network.
         Route::get('/market/overview', [MarketDataController::class, 'overview'])
-            ->middleware('throttle:240,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/scanner', [MarketDataController::class, 'scanner'])
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/signals', [MarketDataController::class, 'signals'])
-            ->middleware('throttle:240,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/realtime-config', [MarketDataController::class, 'realtimeConfig'])
-            ->middleware(['auth:api', 'token.version', 'throttle:120,1']);
+            ->middleware(['auth:api', 'token.version', 'throttle:market-read']);
 
         Route::get('/market/assets/{asset}/ohlcv', [MarketDataController::class, 'candles'])
             ->where('asset', '[A-Za-z0-9\-]+')
-            ->middleware('throttle:600,1');
+            ->middleware('throttle:market-read');
 
         Route::prefix('market')
             ->middleware(['auth:api', 'token.version'])
