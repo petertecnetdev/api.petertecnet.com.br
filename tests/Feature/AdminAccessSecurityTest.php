@@ -21,9 +21,11 @@ class AdminAccessSecurityTest extends TestCase
         $this->assertNotEmpty($adminRoutes);
 
         foreach ($adminRoutes as $route) {
+            $middleware = app('router')->gatherRouteMiddleware($route);
+
             $this->assertContains(
                 EnsureAdminAccess::class,
-                $route->gatherMiddleware(),
+                $middleware,
                 sprintf('A rota %s %s não herdou o firewall administrativo.', implode('|', $route->methods()), $route->uri())
             );
         }
@@ -57,6 +59,18 @@ class AdminAccessSecurityTest extends TestCase
 
         $this->assertSame(401, $response->getStatusCode());
         $this->assertStringContainsString('ADMIN_AUTH_REQUIRED', $response->getContent());
+    }
+
+    public function test_non_admin_api_route_is_not_blocked_by_firewall(): void
+    {
+        $request = Request::create('/api/applications', 'GET');
+
+        $response = (new EnsureAdminAccess())->handle(
+            $request,
+            fn () => response()->json(['ok' => true])
+        );
+
+        $this->assertSame(200, $response->getStatusCode());
     }
 
     private function middlewareResponse(?User $user)
