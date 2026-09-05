@@ -81,4 +81,9 @@ return [
     ],
 
     'geo_ip' => ['endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}')],
+
+    'geocoding' => [
+        'reverse_endpoint' => env('GEOCODING_REVERSE_ENDPOINT', 'https://nominatim.openstreetmap.org/reverse'),
+        'user_agent' => env('GEOCODING_USER_AGENT', 'PeterTecnet/1.0 (https://petertecnet.com.br)'),
+    ],
 ];
