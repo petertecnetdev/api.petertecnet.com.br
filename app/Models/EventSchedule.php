@@ -9,6 +9,7 @@ class EventSchedule extends Model
     protected $fillable = [
         'app_id',
         'production_id',
+        'event_series_id',
         'title',
         'description',
         'category',
