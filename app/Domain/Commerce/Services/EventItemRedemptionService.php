@@ -14,6 +14,22 @@ final class EventItemRedemptionService
 {
     public function __construct(private readonly ApplicationContext $context) {}
 
+    public function credentialFor(User $actor, string $publicId): array
+    {
+        $order = CommerceOrder::query()
+            ->where('app_id', $this->context->id())
+            ->where('public_id', $publicId)
+            ->with(['items', 'event', 'production'])
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $order->user_id === (int) $actor->id || $this->canOperateProduction($actor, $order),
+            403
+        );
+
+        return $this->credential($order);
+    }
+
     public function credential(CommerceOrder $order): array
     {
         $this->assertRedeemableOrder($order);
@@ -95,17 +111,22 @@ final class EventItemRedemptionService
     private function assertRedeemableOrder(CommerceOrder $order): void
     {
         abort_unless($order->status === 'paid', 422, 'A retirada só é liberada após a confirmação do pagamento.');
-        abort_if(in_array($order->status, ['cancelled', 'refunded', 'charged_back'], true), 422, 'Este pedido não pode mais ser retirado.');
         abort_unless($order->items->where('type', 'item')->isNotEmpty(), 422, 'Este pedido não possui itens para retirada.');
     }
 
     private function assertProducerCanRedeem(User $actor, CommerceOrder $order): void
     {
+        abort_unless($this->canOperateProduction($actor, $order), 403);
+    }
+
+    private function canOperateProduction(User $actor, CommerceOrder $order): bool
+    {
         $production = $order->production ?: Production::query()
             ->where('app_id', $this->context->id())
             ->find($order->production_id);
         $admin = method_exists($actor, 'hasProfile') && $actor->hasProfile('Administrador');
-        abort_unless($production && ($admin || (int) $production->user_id === (int) $actor->id), 403);
+
+        return (bool) ($production && ($admin || (int) $production->user_id === (int) $actor->id));
     }
 
     private function assertRedemptionWindow(CommerceOrder $order): void
