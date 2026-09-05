@@ -6,11 +6,27 @@ use App\Http\Controllers\AccountProfileController;
 use App\Http\Controllers\EcosystemAccountController;
 use App\Http\Controllers\EcosystemSsoController;
 use App\Http\Controllers\SafeAccountContextController;
+use App\Http\Controllers\SocialAuthController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('account/sso/exchange', [EcosystemSsoController::class, 'exchange'])
     ->middleware(['api', 'throttle:20,1'])
     ->name('account.sso.exchange');
+
+Route::prefix('auth/instagram')->middleware('api')->group(function () {
+    Route::post('/start', [SocialAuthController::class, 'instagramStart'])
+        ->middleware('throttle:30,1')
+        ->name('auth.instagram.start');
+    Route::post('/callback', [SocialAuthController::class, 'instagramCallback'])
+        ->middleware('throttle:30,1')
+        ->name('auth.instagram.callback');
+    Route::post('/complete', [SocialAuthController::class, 'instagramComplete'])
+        ->middleware('throttle:10,1')
+        ->name('auth.instagram.complete');
+    Route::post('/link', [SocialAuthController::class, 'instagramLink'])
+        ->middleware(['auth:api', 'throttle:10,1'])
+        ->name('auth.instagram.link');
+});
 
 Route::prefix('account')->middleware(['api', 'auth:api'])->group(function () {
     Route::get('/ecosystem', [EcosystemAccountController::class, 'show'])->name('account.ecosystem');
