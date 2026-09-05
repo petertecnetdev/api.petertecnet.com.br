@@ -9,11 +9,3 @@ Route::prefix('v1/apps/{application}')
         Route::get('/checkin/events/{eventId}/stats', [EventAttendanceMetricsController::class, 'show'])
             ->whereNumber('eventId');
     });
-
-// Temporary compatibility alias for already-deployed Cutinapp clients.
-Route::prefix('cutinapp')
-    ->middleware(['app.bind:cutinapp', 'compatibility.route', 'auth:api', 'token.version'])
-    ->group(function (): void {
-        Route::get('/checkin/event/{eventId}/stats', [EventAttendanceMetricsController::class, 'show'])
-            ->whereNumber('eventId');
-    });
