@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Domain\Messaging\Support\AppMessagePayload;
 use App\Models\AppMessage;
 use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -18,7 +19,6 @@ class AppMessageCreated implements ShouldBroadcastNow
         public array $participantUserIds,
         public int $applicationId,
     ) {
-        $this->message->loadMissing('sender:id,first_name,last_name,user_name,avatar');
     }
 
     public function broadcastOn(): array
@@ -36,28 +36,10 @@ class AppMessageCreated implements ShouldBroadcastNow
 
     public function broadcastWith(): array
     {
-        $sender = $this->message->sender;
-
         return [
             'application_id' => $this->applicationId,
             'conversation_id' => (int) $this->message->conversation_id,
-            'message' => [
-                'id' => (int) $this->message->id,
-                'conversation_id' => (int) $this->message->conversation_id,
-                'sender_user_id' => (int) $this->message->sender_user_id,
-                'type' => $this->message->type,
-                'body' => $this->message->body,
-                'metadata' => $this->message->metadata,
-                'created_at' => optional($this->message->created_at)->toISOString(),
-                'edited_at' => optional($this->message->edited_at)->toISOString(),
-                'sender' => $sender ? [
-                    'id' => (int) $sender->id,
-                    'first_name' => $sender->first_name,
-                    'last_name' => $sender->last_name,
-                    'user_name' => $sender->user_name,
-                    'avatar' => $sender->avatar,
-                ] : null,
-            ],
+            'message' => AppMessagePayload::make($this->message),
         ];
     }
 }
