@@ -4,11 +4,15 @@ namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Events\Services\EventDuplicationService;
 use App\Http\Controllers\Controller;
+use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 
 final class DuplicateEventController extends Controller
 {
-    public function __construct(private readonly EventDuplicationService $duplication) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly EventDuplicationService $duplicator,
+    ) {}
 
     public function __invoke(Request $request, int $id)
     {
@@ -19,9 +23,23 @@ final class DuplicateEventController extends Controller
             'date.date_format' => 'Informe a nova data no formato válido.',
         ]);
 
-        return response()->json(
-            $this->duplication->duplicate($request->user(), $id, $data['date']),
-            201
+        $user = $request->user();
+        $duplicate = $this->duplicator->duplicateForApplicationUser(
+            $id,
+            $data['date'],
+            $this->context->id(),
+            $this->context->slug(),
+            (int) $user->id,
+            $user->hasProfile('Administrador'),
         );
+
+        return response()->json([
+            'message' => 'Evento duplicado como rascunho. Revise a nova data e publique quando estiver pronto.',
+            'event' => $duplicate,
+            'copied' => [
+                'tickets' => $duplicate->tickets_count,
+                'artists' => $duplicate->artists->count(),
+            ],
+        ], 201);
     }
 }
