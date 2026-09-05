@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Application;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Cache;
@@ -10,8 +11,19 @@ use Illuminate\Support\Facades\Log;
 
 class ApplicationController extends Controller
 {
-    private const CACHE_KEY = 'public.applications.v1';
+    private const CACHE_KEY = 'public.applications.v2';
     private const CACHE_TTL_SECONDS = 600;
+
+    /**
+     * Applications that belong to the Peter Tecnet administrative surface and
+     * must never be exposed through the public application catalogue/store.
+     */
+    private const INTERNAL_APPLICATION_SLUGS = [
+        'admin-center',
+        'admin',
+        'peter-tecnet',
+        'petertecnet',
+    ];
 
     public function index(): JsonResponse
     {
@@ -19,9 +31,7 @@ class ApplicationController extends Controller
             $applications = Cache::remember(
                 self::CACHE_KEY,
                 self::CACHE_TTL_SECONDS,
-                fn () => Application::query()
-                    ->where('is_active', true)
-                    ->where('is_visible', true)
+                fn () => $this->publicApplicationsQuery()
                     ->select($this->publicFields())
                     ->orderByDesc('is_default')
                     ->orderBy('launcher_order')
@@ -44,9 +54,7 @@ class ApplicationController extends Controller
     public function show(string $slug): JsonResponse
     {
         try {
-            $application = Application::query()
-                ->where('is_active', true)
-                ->where('is_visible', true)
+            $application = $this->publicApplicationsQuery()
                 ->where('slug', $slug)
                 ->select($this->publicFields())
                 ->firstOrFail();
@@ -64,6 +72,23 @@ class ApplicationController extends Controller
                 'message' => 'Não foi possível carregar a aplicação agora.',
             ], 500);
         }
+    }
+
+    private function publicApplicationsQuery(): Builder
+    {
+        return Application::query()
+            ->where('is_active', true)
+            ->where('is_visible', true)
+            ->whereNotIn('slug', self::INTERNAL_APPLICATION_SLUGS)
+            ->where(function (Builder $query) {
+                $query
+                    ->whereNull('url')
+                    ->orWhere(function (Builder $urlQuery) {
+                        $urlQuery
+                            ->where('url', 'not like', 'https://petertecnet.com.br%')
+                            ->where('url', 'not like', 'http://petertecnet.com.br%');
+                    });
+            });
     }
 
     private function publicFields(): array
