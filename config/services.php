@@ -57,4 +57,11 @@ return [
     'geo_ip' => [
         'endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}'),
     ],
+
+    'openai' => [
+        'api_key' => env('OPENAI_API_KEY'),
+        'base_url' => env('OPENAI_API_BASE_URL', 'https://api.openai.com/v1'),
+        'catalog_vision_model' => env('OPENAI_CATALOG_VISION_MODEL', 'gpt-5-mini'),
+        'timeout' => (int) env('OPENAI_API_TIMEOUT', 90),
+    ],
 ];
