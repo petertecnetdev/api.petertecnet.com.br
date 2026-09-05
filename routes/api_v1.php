@@ -2,7 +2,7 @@
 
 use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
-use App\Domain\Catalog\Http\Controllers\CatalogImageImportController;
+use App\Domain\Catalog\Http\Controllers\CatalogBulkImportController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
 use App\Domain\Commerce\Http\Controllers\OrderHistoryController;
@@ -131,9 +131,7 @@ Route::prefix('v1/apps/{application}')
                 Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy']);
                 Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
                 Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
-                Route::get('/establishments/{establishment}/items/import-capabilities', [CatalogImageImportController::class, 'capabilities'])->whereNumber('establishment')->middleware('throttle:60,1');
-                Route::post('/establishments/{establishment}/items/import-preview', [CatalogImageImportController::class, 'preview'])->whereNumber('establishment')->middleware('throttle:10,1');
-                Route::post('/establishments/{establishment}/items/import', [CatalogImageImportController::class, 'store'])->whereNumber('establishment')->middleware('throttle:20,1');
+                Route::post('/establishments/{establishment}/items/import', [CatalogBulkImportController::class, 'store'])->whereNumber('establishment')->middleware('throttle:20,1');
                 Route::post('/items', [ItemController::class, 'store']);
                 Route::patch('/items/{item}', [ItemController::class, 'update']);
                 Route::delete('/items/{item}', [ItemController::class, 'destroy']);
