@@ -57,11 +57,32 @@ final class OrganizationService
                     ->whereNull('deleted_at')
                     ->whereColumn('entity_id', 'establishments.id');
             }, 'items_count')
-            // There is no canonical ratings persistence yet. Keep the public
-            // contract explicit without inventing a score or touching a table
-            // that does not exist in every environment.
-            ->selectRaw('NULL AS rating_average')
-            ->selectRaw('0 AS ratings_count')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('event_ratings as ratings')
+                    ->join('events as rated_events', 'rated_events.id', '=', 'ratings.event_id')
+                    ->selectRaw('ROUND(AVG(ratings.rating), 1)')
+                    ->where('ratings.app_id', $appId)
+                    ->where('rated_events.app_id', $appId)
+                    ->where('rated_events.is_published', true)
+                    ->where('rated_events.is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy
+                        ->where('rated_events.is_private', false)
+                        ->orWhereNull('rated_events.is_private'))
+                    ->whereColumn('rated_events.production_id', 'establishments.id');
+            }, 'rating_average')
+            ->selectSub(function ($sub) use ($appId) {
+                $sub->from('event_ratings as ratings')
+                    ->join('events as rated_events', 'rated_events.id', '=', 'ratings.event_id')
+                    ->selectRaw('COUNT(*)')
+                    ->where('ratings.app_id', $appId)
+                    ->where('rated_events.app_id', $appId)
+                    ->where('rated_events.is_published', true)
+                    ->where('rated_events.is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy
+                        ->where('rated_events.is_private', false)
+                        ->orWhereNull('rated_events.is_private'))
+                    ->whereColumn('rated_events.production_id', 'establishments.id');
+            }, 'ratings_count')
             ->withCount(['events as upcoming_events_count' => fn ($events) => $events
                 ->where('app_id', $appId)
                 ->where('is_published', true)
