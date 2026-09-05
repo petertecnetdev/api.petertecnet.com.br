@@ -29,7 +29,7 @@ class EventAttendanceNoShowMetricsTest extends TestCase
         $this->pass($eventId, $courtesyTicketId, $owner->id, 'REFUNDED-PASS', null, 'refunded');
 
         $this->withHeaders($this->headersFor($owner))
-            ->getJson('/api/cutinapp/checkin/event/'.$eventId.'/stats')
+            ->getJson('/api/v1/apps/cutinapp/checkin/events/'.$eventId.'/stats')
             ->assertOk()
             ->assertJsonPath('attendance_finalized', true)
             ->assertJsonPath('issued', 3)
@@ -98,12 +98,16 @@ class EventAttendanceNoShowMetricsTest extends TestCase
             ]);
         }
 
-        $productionId = DB::table('productions')->insertGetId([
+        $name = 'Produção '.$suffix;
+        $productionId = DB::table('establishments')->insertGetId([
             'app_id' => $appId,
-            'app_slug' => 'cutinapp',
             'user_id' => $owner->id,
-            'name' => 'Produção '.$suffix,
-            'city' => 'Goiânia',
+            'updated_by' => $owner->id,
+            'name' => $name,
+            'fantasy' => $name,
+            'slug' => 'production-'.$suffix.'-'.Str::lower(Str::random(6)),
+            'type' => 'production',
+            'category' => 'production',
             'created_at' => now(),
             'updated_at' => now(),
         ]);
