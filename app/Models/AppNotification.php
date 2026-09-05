@@ -9,6 +9,7 @@ class AppNotification extends Model
     protected $fillable = [
         'app_id',
         'user_id',
+        'campaign_id',
         'type',
         'title',
         'message',
@@ -45,5 +46,10 @@ class AppNotification extends Model
                 return false;
             }
         });
+    }
+
+    public function campaign()
+    {
+        return $this->belongsTo(NotificationCampaign::class, 'campaign_id');
     }
 }
