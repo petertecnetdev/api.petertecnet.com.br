@@ -46,7 +46,44 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting()
     {
         RateLimiter::for('api', function (Request $request) {
-            return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+            $userId = null;
+
+            try {
+                $userId = $request->user('api')?->getAuthIdentifier();
+            } catch (\Throwable $exception) {
+                // Authentication middleware will handle invalid/expired credentials later.
+                // Rate limiting must never turn an auth failure into a 500 response.
+            }
+
+            if ($userId) {
+                return Limit::perMinute(300)->by('user:'.$userId);
+            }
+
+            return Limit::perMinute(120)->by('ip:'.$request->ip());
+        });
+
+        RateLimiter::for('login', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+            $emailKey = $email !== '' ? hash('sha256', $email) : 'missing-email';
+            $ip = $request->ip();
+
+            $tooManyAttemptsResponse = static function (Request $request, array $headers) {
+                $retryAfter = (int) ($headers['Retry-After'] ?? 60);
+
+                return response()->json([
+                    'message' => 'Muitas tentativas de acesso. Aguarde alguns segundos e tente novamente.',
+                    'retry_after' => $retryAfter,
+                ], 429, $headers);
+            };
+
+            return [
+                Limit::perMinute(20)
+                    ->by('login:'.$ip.':'.$emailKey)
+                    ->response($tooManyAttemptsResponse),
+                Limit::perMinute(60)
+                    ->by('login-ip:'.$ip)
+                    ->response($tooManyAttemptsResponse),
+            ];
         });
     }
 }
