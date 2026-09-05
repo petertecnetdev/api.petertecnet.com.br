@@ -35,6 +35,7 @@ final class ParticipantSocialController extends Controller
             ->select(['users.id', 'users.user_name', 'users.first_name', 'users.last_name', 'users.avatar', 'users.city', 'users.uf', 'users.about'])
             ->join('application_user as au', 'au.user_id', '=', 'users.id')
             ->where('au.application_id', $appId)
+            ->where('au.status', 'active')
             ->where('users.id', '<>', $viewer->id)
             ->distinct();
 
@@ -181,6 +182,11 @@ final class ParticipantSocialController extends Controller
 
         $activity = DB::table('event_engagements as ee')
             ->join('users as u', 'u.id', '=', 'ee.user_id')
+            ->join('application_user as au', function ($join) use ($appId) {
+                $join->on('au.user_id', '=', 'u.id')
+                    ->where('au.application_id', '=', $appId)
+                    ->where('au.status', '=', 'active');
+            })
             ->join('events as e', 'e.id', '=', 'ee.event_id')
             ->leftJoin('productions as p', 'p.id', '=', 'e.production_id')
             ->where('ee.app_id', $appId)
@@ -353,6 +359,7 @@ final class ParticipantSocialController extends Controller
             ->select(['users.id', 'users.user_name', 'users.first_name', 'users.last_name', 'users.avatar', 'users.city', 'users.uf', 'users.about'])
             ->join('application_user as au', 'au.user_id', '=', 'users.id')
             ->where('au.application_id', $appId)
+            ->where('au.status', 'active')
             ->where('users.id', $participantId)
             ->firstOrFail();
     }
