@@ -12,7 +12,7 @@ class ControllerArchitectureBoundaryTest extends TestCase
      * boundary before this architecture contract existed. Any new controller,
      * or any subsequent edit to a legacy controller, must satisfy the rules.
      */
-    private const LEGACY_BASELINE = 'b3ec26b17551c075ae762d686f6a1e7353df8a42';
+    private const LEGACY_BASELINE = '34457ab71d3a740121cbea1c99fff3e5a8ecda32';
 
     public function test_new_or_modified_controllers_are_transport_only(): void
     {

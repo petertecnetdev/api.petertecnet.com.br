@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Establishment;
 use App\Models\EventPass;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -123,15 +124,19 @@ class CutinappEventPassTransferTest extends TestCase
         $recipient = $this->user('Destino', 'destino-transfer@cutinapp.test');
         $appId = $this->cutinappId();
 
-        $productionId = DB::table('productions')->insertGetId([
+        $productionId = Establishment::query()->create([
             'app_id' => $appId,
             'app_slug' => 'cutinapp',
             'user_id' => $producer->id,
             'name' => 'Produção Transferência',
+            'fantasy' => 'Produção Transferência',
+            'category' => 'production',
+            'type' => 'production',
+            'establishment_type' => 'production',
             'city' => 'Goiânia',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            'created_by' => $producer->id,
+            'updated_by' => $producer->id,
+        ])->id;
 
         $eventId = DB::table('events')->insertGetId([
             'app_id' => $appId,
