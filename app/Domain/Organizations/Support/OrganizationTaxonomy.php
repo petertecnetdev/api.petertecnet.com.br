@@ -78,16 +78,19 @@ final class OrganizationTaxonomy
     {
         if (is_string($roles)) {
             $decoded = json_decode($roles, true);
-            $roles = is_array($decoded) ? $decoded : preg_split('/\s*,\s*/', $roles, -1, PREG_SPLIT_NO_EMPTY);
+            $roles = is_array($decoded)
+                ? $decoded
+                : preg_split('/\s*,\s*/', $roles, -1, PREG_SPLIT_NO_EMPTY);
         }
 
         $allowed = array_keys(self::roles());
-        $normalized = collect(is_array($roles) ? $roles : [])
-            ->map(fn ($role) => strtolower(trim((string) $role)))
-            ->filter(fn ($role) => in_array($role, $allowed, true))
-            ->unique()
-            ->values()
-            ->all();
+        $normalized = [];
+        foreach (is_array($roles) ? $roles : [] as $role) {
+            $value = strtolower(trim((string) $role));
+            if ($value !== '' && in_array($value, $allowed, true) && ! in_array($value, $normalized, true)) {
+                $normalized[] = $value;
+            }
+        }
 
         if ($normalized !== []) {
             return $normalized;
@@ -99,15 +102,19 @@ final class OrganizationTaxonomy
 
     public static function payload(): array
     {
+        $types = [];
+        foreach (self::types() as $value => $label) {
+            $types[] = ['value' => $value, 'label' => $label];
+        }
+
+        $roles = [];
+        foreach (self::roles() as $value => $label) {
+            $roles[] = ['value' => $value, 'label' => $label];
+        }
+
         return [
-            'types' => collect(self::types())->map(fn ($label, $value) => [
-                'value' => $value,
-                'label' => $label,
-            ])->values()->all(),
-            'roles' => collect(self::roles())->map(fn ($label, $value) => [
-                'value' => $value,
-                'label' => $label,
-            ])->values()->all(),
+            'types' => $types,
+            'roles' => $roles,
             'defaults' => self::defaults(),
             'legacy_aliases' => self::legacyAliases(),
         ];
