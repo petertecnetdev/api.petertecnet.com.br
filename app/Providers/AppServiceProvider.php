@@ -11,6 +11,7 @@ use App\Models\Application;
 use App\Models\EcosystemAuditLog;
 use App\Models\EcosystemSetting;
 use App\Models\Establishment;
+use App\Models\Event as EventModel;
 use App\Models\Interaction;
 use App\Models\Item;
 use App\Models\Order;
@@ -18,6 +19,7 @@ use App\Models\Profile;
 use App\Models\User;
 use App\Observers\CognitiveInteractionObserver;
 use App\Observers\EstablishmentOwnershipNotificationObserver;
+use App\Observers\EventProducerNotificationObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
 use App\Services\Operations\OperationalIssueService;
@@ -67,6 +69,7 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
+        EventModel::observe(EventProducerNotificationObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
         Interaction::observe(CognitiveInteractionObserver::class);

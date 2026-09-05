@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ $notificationTitle }}</title>
+    <style>
+        body,html{margin:0;padding:0}body{background:#081723;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;color:#fff;line-height:1.6}.container{background:#102838;max-width:640px;margin:40px auto;padding:32px;border:1px solid #1bbcff;border-radius:16px;box-shadow:0 12px 32px rgba(0,0,0,.28)}.logo{display:block;margin:0 auto 22px;max-width:130px;height:auto}h1{font-size:1.8rem;text-align:center;color:#65d7ff;margin:0 0 18px}p{font-size:1rem;color:#f3f8fb}.context{background:#0b1f2d;border:1px solid rgba(101,215,255,.25);padding:16px 18px;border-radius:12px;margin:22px 0}.context p{margin:7px 0}.context strong{color:#65d7ff}.changes{margin:22px 0;padding:0;list-style:none}.changes li{background:#0b1f2d;margin:9px 0;padding:12px 15px;border-radius:10px;border-left:3px solid #1bbcff}.action{display:block;margin:26px auto 10px;padding:14px 20px;border-radius:10px;background:#1bbcff;color:#071621!important;font-weight:800;text-align:center;text-decoration:none}.footer{text-align:center;padding:18px;font-size:.88rem;color:#b9cad3}@media(max-width:680px){.container{margin:18px;padding:22px}h1{font-size:1.45rem}}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <img src="https://petertecnet.com.br/petertecnetlogo.png" alt="Peter Tecnet" class="logo" />
+        <h1>{{ $notificationTitle }}</h1>
+
+        <p>Olá, {{ $owner->name ?: 'produtor' }}.</p>
+        <p>{{ $notificationMessage }}</p>
+
+        <div class="context">
+            <p><strong>Plataforma:</strong> {{ $appName }}</p>
+            <p><strong>Produção:</strong> {{ $production->fantasy ?: $production->name }}</p>
+            <p><strong>Evento:</strong> {{ $event->title }}</p>
+            @if($event->start_date)
+                <p><strong>Início:</strong> {{ $event->start_date->format('d/m/Y H:i') }}</p>
+            @endif
+            @if($event->venue || $event->city)
+                <p><strong>Local:</strong> {{ collect([$event->venue, $event->city])->filter()->implode(' — ') }}</p>
+            @endif
+            <p><strong>Publicação:</strong> {{ $event->is_published ? 'Publicado' : 'Não publicado' }}</p>
+            <p><strong>Situação:</strong> {{ $event->is_cancelled ? 'Cancelado/inativo' : 'Ativo' }}</p>
+        </div>
+
+        @if(!empty($changedLabels))
+            <p><strong>O que mudou:</strong></p>
+            <ul class="changes">
+                @foreach($changedLabels as $label)
+                    <li>{{ ucfirst($label) }}</li>
+                @endforeach
+            </ul>
+        @endif
+
+        <a href="{{ $eventUrl }}" class="action">Abrir e gerenciar evento</a>
+        <p>Você recebeu este e-mail porque é o produtor proprietário da produção responsável por este evento. As atualizações do evento também ficam disponíveis nas notificações da plataforma.</p>
+    </div>
+    <div class="footer">© {{ date('Y') }} Peter Tecnet. Todos os direitos reservados.</div>
+</body>
+</html>
