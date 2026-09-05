@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\ActivityController;
+use App\Http\Controllers\Admin\ApiLogInsightsController;
 use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
@@ -31,6 +32,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::delete('/activity', [InteractionMaintenanceController::class, 'destroySelected'])->middleware('throttle:20,1');
     Route::delete('/activity/all', [InteractionMaintenanceController::class, 'destroyAll'])->middleware('throttle:3,10');
+    Route::get('/log-insights', ApiLogInsightsController::class)->middleware('throttle:30,1');
     Route::prefix('activities')->group(function () {
         Route::get('/', [ActivityController::class, 'index']);
         Route::get('/overview', [ActivityController::class, 'overview']);
