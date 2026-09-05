@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')->middleware('app.context')->group(function () {
     Route::middleware('app.capability:organizations')->group(function () {
+        Route::get('/organizations/taxonomy', [OrganizationExperienceController::class, 'taxonomy']);
         Route::get('/organizations/public/{slug}/experience', [OrganizationExperienceController::class, 'publicExperience']);
         Route::get('/organizations/public/{slug}/community', [OrganizationCommunityController::class, 'publicCommunity']);
     });
