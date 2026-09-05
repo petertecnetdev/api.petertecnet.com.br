@@ -2,16 +2,18 @@
 
 namespace App\Domain\Organizations\Http\Controllers;
 
+use App\Domain\Organizations\Models\Organization;
+use App\Domain\Organizations\Support\OrganizationTaxonomy;
 use App\Http\Controllers\Controller;
 use App\Models\Artist;
 use App\Models\Event;
-use App\Models\Production;
 use App\Models\User;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Intervention\Image\Facades\Image;
 use Throwable;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -25,6 +27,8 @@ final class OrganizationController extends Controller
         $data = $request->validate([
             'city' => 'nullable|string|max:120',
             'uf' => 'nullable|string|size:2',
+            'type' => ['nullable', 'string', Rule::in(array_keys(OrganizationTaxonomy::types()))],
+            'role' => ['nullable', 'string', Rule::in(array_keys(OrganizationTaxonomy::roles()))],
             'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
             'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
             'radius_km' => 'nullable|integer|min:1|max:500',
@@ -32,10 +36,12 @@ final class OrganizationController extends Controller
         ]);
 
         $appId = $this->context->id();
-        $query = Production::query()
+        $query = Organization::query()
             ->where('app_id', $appId)
             ->where('is_published', true)
             ->where('is_cancelled', false)
+            ->when(! empty($data['type']), fn ($q) => $q->where('type', $data['type']))
+            ->when(! empty($data['role']), fn ($q) => $q->whereJsonContains('roles', $data['role']))
             ->withCount(['events as upcoming_events_count' => fn ($q) => $q
                 ->where('app_id', $appId)
                 ->where('is_published', true)
@@ -52,7 +58,7 @@ final class OrganizationController extends Controller
             $radius = (int) ($data['radius_km'] ?? 80);
             $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(latitude)) * cos(radians(longitude) - radians(?)) + sin(radians(?)) * sin(radians(latitude))))';
             $query->whereNotNull('latitude')->whereNotNull('longitude')
-                ->select('productions.*')
+                ->select('establishments.*')
                 ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
                 ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius])
                 ->orderBy('distance_km');
@@ -66,7 +72,7 @@ final class OrganizationController extends Controller
     public function publicShow(Request $request, string $slug)
     {
         $appId = $this->context->id();
-        $organization = Production::query()
+        $organization = Organization::query()
             ->where('app_id', $appId)
             ->where('slug', $slug)
             ->where('is_published', true)
@@ -96,7 +102,7 @@ final class OrganizationController extends Controller
     public function mine(Request $request)
     {
         return response()->json([
-            'organizations' => Production::query()
+            'organizations' => Organization::query()
                 ->where('app_id', $this->context->id())
                 ->where('user_id', $request->user()->id)
                 ->withCount(['events' => fn ($q) => $q->where('app_id', $this->context->id())])
@@ -114,7 +120,11 @@ final class OrganizationController extends Controller
         $this->normalize($request);
         $data = $request->validate($this->rules(true));
         $user = $request->user();
+        $data['type'] = OrganizationTaxonomy::normalizeType($data['type'] ?? null);
+        $data['roles'] = OrganizationTaxonomy::normalizeRoles($data['roles'] ?? null, $data['type']);
         $data['user_id'] = $user->id;
+        $data['created_by'] = $user->id;
+        $data['updated_by'] = $user->id;
         $data['app_id'] = $this->context->id();
         $data['app_slug'] = $this->context->slug();
         $data['slug'] = $this->uniqueSlug($data['name']);
@@ -122,7 +132,7 @@ final class OrganizationController extends Controller
         $data['is_cancelled'] = false;
         unset($data['logo'], $data['background']);
 
-        $organization = Production::create($data);
+        $organization = Organization::create($data);
         $this->storeImages($request, $organization);
         $this->context->application()->users()->syncWithoutDetaching([
             $user->id => ['role' => 'producer', 'status' => 'active', 'joined_at' => now()],
@@ -136,9 +146,13 @@ final class OrganizationController extends Controller
         $organization = $this->owned($request, $id);
         $this->normalize($request);
         $data = $request->validate($this->rules(false));
+        if (array_key_exists('type', $data)) $data['type'] = OrganizationTaxonomy::normalizeType($data['type']);
+        if (array_key_exists('roles', $data)) $data['roles'] = OrganizationTaxonomy::normalizeRoles($data['roles'], $data['type'] ?? $organization->type);
         if (! empty($data['name']) && $data['name'] !== $organization->name) $data['slug'] = $this->uniqueSlug($data['name'], $organization->id);
         unset($data['logo'], $data['background'], $data['user_id'], $data['app_id'], $data['app_slug']);
-        $organization->update($data);
+        $organization->fill($data);
+        $organization->updated_by = $request->user()->id;
+        $organization->save();
         $this->storeImages($request, $organization);
         return response()->json(['message' => 'Organização atualizada com sucesso.', 'organization' => $organization->fresh()]);
     }
@@ -149,8 +163,6 @@ final class OrganizationController extends Controller
         abort_if($organization->events()->whereHas('tickets.passes')->exists(), 409, 'Organizações com ingressos emitidos não podem ser excluídas.');
 
         DB::transaction(function () use ($organization) {
-            // A soft-deleted organization must not leave active/public events behind.
-            // Historical rows remain available for audit, finance and future recovery.
             Event::query()
                 ->where('production_id', $organization->id)
                 ->update([
@@ -169,9 +181,9 @@ final class OrganizationController extends Controller
         return response()->json(['message' => 'Organização excluída com sucesso.']);
     }
 
-    private function owned(Request $request, int $id): Production
+    private function owned(Request $request, int $id): Organization
     {
-        $organization = Production::query()->where('app_id', $this->context->id())->findOrFail($id);
+        $organization = Organization::query()->where('app_id', $this->context->id())->findOrFail($id);
         $user = $request->user();
         $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
         abort_unless($user && ($admin || (int) $organization->user_id === (int) $user->id), 403, 'Você não pode gerenciar esta organização.');
@@ -182,11 +194,31 @@ final class OrganizationController extends Controller
     {
         $required = $creating ? 'required|' : 'sometimes|';
         return [
-            'name' => $required . 'string|min:2|max:255', 'fantasy' => 'sometimes|nullable|string|max:255',
-            'cnpj' => ['sometimes','nullable','regex:/^\d{14}$/'], 'phone' => 'sometimes|nullable|string|max:30',
-            'description' => 'sometimes|nullable|string|max:10000', 'city' => 'sometimes|nullable|string|max:120',
-            'uf' => 'sometimes|nullable|string|size:2', 'address' => 'sometimes|nullable|string|max:255',
-            'website_url' => 'sometimes|nullable|url:http,https|max:2048', 'instagram_url' => 'sometimes|nullable|url:http,https|max:2048',
+            'name' => $required . 'string|min:2|max:255',
+            'fantasy' => 'sometimes|nullable|string|max:255',
+            'cnpj' => ['sometimes', 'nullable', 'regex:/^\d{14}$/'],
+            'type' => ['sometimes', 'nullable', 'string', Rule::in(array_keys(OrganizationTaxonomy::types()))],
+            'roles' => 'sometimes|array|min:1',
+            'roles.*' => ['string', Rule::in(array_keys(OrganizationTaxonomy::roles()))],
+            'phone' => 'sometimes|nullable|string|max:30',
+            'description' => 'sometimes|nullable|string|max:10000',
+            'city_id' => 'sometimes|nullable|integer',
+            'city' => 'sometimes|nullable|string|max:120',
+            'uf' => 'sometimes|nullable|string|size:2',
+            'cep' => 'sometimes|nullable|string|max:20',
+            'address' => 'sometimes|nullable|string|max:255',
+            'address_number' => 'sometimes|nullable|string|max:30',
+            'neighborhood' => 'sometimes|nullable|string|max:160',
+            'address_complement' => 'sometimes|nullable|string|max:255',
+            'address_reference' => 'sometimes|nullable|string|max:255',
+            'formatted_address' => 'sometimes|nullable|string|max:700',
+            'latitude' => 'sometimes|nullable|numeric|between:-90,90',
+            'longitude' => 'sometimes|nullable|numeric|between:-180,180',
+            'place_id' => 'sometimes|nullable|string|max:255',
+            'google_maps_url' => 'sometimes|nullable|url:http,https|max:2048',
+            'location_public' => 'sometimes|boolean',
+            'website_url' => 'sometimes|nullable|url:http,https|max:2048',
+            'instagram_url' => 'sometimes|nullable|url:http,https|max:2048',
             'logo' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
             'background' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:10240',
         ];
@@ -195,9 +227,14 @@ final class OrganizationController extends Controller
     private function normalize(Request $request): void
     {
         $merge = [];
-        foreach (['name','fantasy','phone','description','city','address'] as $field) if ($request->exists($field)) $merge[$field] = trim((string) $request->input($field));
+        foreach (['name', 'fantasy', 'phone', 'description', 'city', 'address', 'address_number', 'neighborhood', 'address_complement', 'address_reference', 'formatted_address', 'place_id', 'google_maps_url'] as $field) {
+            if ($request->exists($field)) $merge[$field] = trim((string) $request->input($field)) ?: null;
+        }
+        if ($request->exists('name')) $merge['name'] = trim((string) $request->input('name'));
         if ($request->exists('uf')) $merge['uf'] = strtoupper(trim((string) $request->input('uf')));
         if ($request->filled('cnpj')) $merge['cnpj'] = preg_replace('/\D+/', '', (string) $request->input('cnpj'));
+        if ($request->exists('type')) $merge['type'] = OrganizationTaxonomy::normalizeType($request->input('type'));
+        if ($request->exists('roles')) $merge['roles'] = OrganizationTaxonomy::normalizeRoles($request->input('roles'), $merge['type'] ?? $request->input('type'));
 
         if ($request->exists('website_url')) {
             $value = trim((string) $request->input('website_url'));
@@ -221,9 +258,9 @@ final class OrganizationController extends Controller
         if ($merge) $request->merge($merge);
     }
 
-    private function storeImages(Request $request, Production $organization): void
+    private function storeImages(Request $request, Organization $organization): void
     {
-        foreach (['logo' => [600,600], 'background' => [1920,700]] as $field => $size) {
+        foreach (['logo' => [600, 600], 'background' => [1920, 700]] as $field => $size) {
             if (! $request->hasFile($field)) continue;
             if ($organization->{$field} && str_starts_with($organization->{$field}, 'images/apps/')) Storage::disk('public')->delete($organization->{$field});
             $path = 'images/apps/' . $this->context->slug() . '/organizations/' . $field . '-' . Str::uuid() . '.webp';
@@ -232,19 +269,29 @@ final class OrganizationController extends Controller
             Image::make($request->file($field)->getRealPath())->orientate()->fit($size[0], $size[1])->encode('webp', 86)->save($absolute);
             $organization->{$field} = $path;
         }
-        if ($organization->isDirty(['logo','background'])) $organization->save();
+        if ($organization->isDirty(['logo', 'background'])) $organization->save();
     }
 
     private function uniqueSlug(string $name, ?int $ignoreId = null): string
     {
-        $base = Str::slug($name) ?: 'organizacao-' . Str::lower(Str::random(8)); $slug = $base; $i = 2;
-        while (Production::withTrashed()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) $slug = $base . '-' . $i++;
+        $base = Str::slug($name) ?: 'organizacao-' . Str::lower(Str::random(8));
+        $slug = $base;
+        $i = 2;
+        while (Organization::withTrashed()->when($ignoreId, fn ($q) => $q->whereKeyNot($ignoreId))->where('slug', $slug)->exists()) {
+            $slug = $base . '-' . $i++;
+        }
         return $slug;
     }
 
     private function optionalRequestUser(Request $request): ?User
     {
-        $token = $request->bearerToken(); if (! $token) return null;
-        try { $user = JWTAuth::setToken($token)->authenticate(); return $user instanceof User ? $user : null; } catch (Throwable) { return null; }
+        $token = $request->bearerToken();
+        if (! $token) return null;
+        try {
+            $user = JWTAuth::setToken($token)->authenticate();
+            return $user instanceof User ? $user : null;
+        } catch (Throwable) {
+            return null;
+        }
     }
 }
