@@ -39,6 +39,14 @@ class AdminAccessSecurityTest extends TestCase
         $this->assertStringContainsString('ADMIN_ACCESS_DENIED', $response->getContent());
     }
 
+    public function test_legacy_administrator_profile_is_not_enough_for_central_admin(): void
+    {
+        $response = $this->middlewareResponse($this->user('administrador@exemplo.com', 'Administrador'));
+
+        $this->assertSame(403, $response->getStatusCode());
+        $this->assertStringContainsString('ADMIN_ACCESS_DENIED', $response->getContent());
+    }
+
     public function test_primary_admin_email_is_allowed(): void
     {
         $response = $this->middlewareResponse($this->user('PETERTECNET@GMAIL.COM', 'Participante'));
