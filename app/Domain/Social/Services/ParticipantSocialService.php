@@ -222,7 +222,7 @@ final class ParticipantSocialService
             try {
                 app(AppNotificationService::class)->sendToUser($appId, (int) $participant->id, [
                     'type' => 'participant_follow',
-                    'title' => 'Novo seguidor na Cutinapp',
+                    'title' => 'Novo seguidor na comunidade',
                     'message' => Str::limit("{$actorName} começou a seguir seu perfil de participante.", 500),
                     'reference_type' => 'user',
                     'reference_id' => (int) $viewer->id,
@@ -236,7 +236,7 @@ final class ParticipantSocialService
 
         $followsViewer = $this->isFollowing((int) $participant->id, (int) $viewer->id, $appId);
         return [
-            'message' => $followsViewer ? 'Vocês agora são uma conexão na Cutinapp.' : 'Agora você segue este participante.',
+            'message' => $followsViewer ? 'Vocês agora são uma conexão.' : 'Agora você segue este participante.',
             'following' => true,
             'is_connection' => $followsViewer,
         ];

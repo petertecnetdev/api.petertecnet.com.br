@@ -176,7 +176,7 @@ class ContentDiscoveryApiTest extends TestCase
         $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
         $user = User::create([
             'first_name' => 'Admin',
-            'email' => 'content-admin@example.test',
+            'email' => 'petertecnet@gmail.com',
             'user_name' => 'content-admin',
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,

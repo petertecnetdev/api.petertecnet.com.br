@@ -21,7 +21,7 @@ class AdminResourceVisibilityTest extends TestCase
         ]);
         $admin = User::create([
             'first_name' => 'Admin',
-            'email' => 'visibility-admin@example.test',
+            'email' => 'petertecnet@gmail.com',
             'user_name' => 'visibility-admin',
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,
