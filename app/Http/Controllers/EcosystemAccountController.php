@@ -3,12 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Application;
+use App\Models\Subscription;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class EcosystemAccountController extends Controller
 {
-    private const SDK_VERSION = '2.0.0';
+    private const SDK_VERSION = '3.1.0';
     private const TELEMETRY_SCHEMA = '2';
 
     public function show(Request $request): JsonResponse
@@ -17,6 +18,11 @@ class EcosystemAccountController extends Controller
         $user->load('profile');
 
         $memberships = $user->applications()->get()->keyBy('id');
+        $subscriptions = Subscription::query()
+            ->where('user_id', $user->id)
+            ->latest()
+            ->get()
+            ->groupBy('application_key');
 
         $applications = Application::query()
             ->active()
@@ -25,12 +31,25 @@ class EcosystemAccountController extends Controller
             ->orderBy('launcher_order')
             ->orderBy('name')
             ->get()
-            ->map(function (Application $application) use ($memberships) {
+            ->map(function (Application $application) use ($memberships, $subscriptions) {
                 $membership = $memberships->get($application->id);
                 $membershipStatus = $membership?->pivot?->status;
                 $memberAccess = $membership !== null && ($membershipStatus === null || $membershipStatus === 'active');
-                $hasAccess = $memberAccess || (bool) $application->self_service_access;
+                $baseAccess = $memberAccess || (bool) $application->self_service_access;
                 $operational = $application->isOperational();
+
+                $billingConfig = config('subscriptions.applications.' . $application->slug);
+                $subscriptionEnabled = is_array($billingConfig) && ($billingConfig['billing'] ?? null) === 'subscription';
+                $accessMode = $subscriptionEnabled ? ($billingConfig['access'] ?? 'required') : 'free';
+                $activeSubscription = null;
+
+                if ($subscriptionEnabled) {
+                    $activeSubscription = ($subscriptions->get($application->slug) ?? collect())
+                        ->first(fn (Subscription $item) => $item->hasAccess());
+                }
+
+                $subscriptionRequired = $subscriptionEnabled && $accessMode === 'required';
+                $hasAccess = $baseAccess && (! $subscriptionRequired || $activeSubscription !== null);
 
                 return [
                     'id' => (int) $application->id,
@@ -49,6 +68,18 @@ class EcosystemAccountController extends Controller
                     'has_access' => $hasAccess,
                     'available' => $operational,
                     'self_service_access' => (bool) $application->self_service_access,
+                    'billing' => $billingConfig['billing'] ?? 'free',
+                    'subscription_enabled' => $subscriptionEnabled,
+                    'subscription_required' => $subscriptionRequired,
+                    'subscription_access_mode' => $accessMode,
+                    'subscription' => $activeSubscription ? [
+                        'id' => (int) $activeSubscription->id,
+                        'plan' => $activeSubscription->plan_key,
+                        'status' => $activeSubscription->status,
+                        'trial_ends_at' => $activeSubscription->trial_ends_at,
+                        'current_period_ends_at' => $activeSubscription->current_period_ends_at,
+                        'next_payment_at' => $activeSubscription->next_payment_at,
+                    ] : null,
                     'membership' => $membership ? [
                         'role' => $membership->pivot->role,
                         'status' => $membershipStatus,
