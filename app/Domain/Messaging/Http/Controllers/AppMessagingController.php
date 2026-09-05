@@ -2,6 +2,7 @@
 
 namespace App\Domain\Messaging\Http\Controllers;
 
+use App\Domain\Messaging\Services\AppMessagingPrivacyService;
 use App\Domain\Messaging\Services\AppMessagingService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -11,8 +12,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AppMessagingController extends Controller
 {
-    public function __construct(private readonly AppMessagingService $messaging)
-    {
+    public function __construct(
+        private readonly AppMessagingService $messaging,
+        private readonly AppMessagingPrivacyService $privacy,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -45,6 +48,15 @@ class AppMessagingController extends Controller
                 (int) $request->query('per_page', 20),
             ),
         ]);
+    }
+
+    public function blockStatus(Request $request, int $userId): JsonResponse
+    {
+        return response()->json($this->privacy->blockStatus(
+            (int) $request->user('api')->id,
+            $userId,
+            $this->applicationId($request),
+        ));
     }
 
     public function createDirect(Request $request): JsonResponse
@@ -213,7 +225,11 @@ class AppMessagingController extends Controller
             $this->applicationId($request),
         );
 
-        return response()->json(['blocked' => true]);
+        return response()->json($this->privacy->blockStatus(
+            (int) $request->user('api')->id,
+            $userId,
+            $this->applicationId($request),
+        ));
     }
 
     public function unblock(Request $request, int $userId): JsonResponse
@@ -224,7 +240,11 @@ class AppMessagingController extends Controller
             $this->applicationId($request),
         );
 
-        return response()->json(['blocked' => false]);
+        return response()->json($this->privacy->blockStatus(
+            (int) $request->user('api')->id,
+            $userId,
+            $this->applicationId($request),
+        ));
     }
 
     public function report(Request $request, int $userId): JsonResponse
