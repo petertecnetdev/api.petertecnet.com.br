@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Establishment;
 use App\Models\EventPass;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -34,15 +35,19 @@ class CutinappMultiplePaidPassesTest extends TestCase
             ]);
         }
 
-        $productionId = DB::table('productions')->insertGetId([
+        $productionId = Establishment::query()->create([
             'app_id' => $appId,
             'app_slug' => 'cutinapp',
             'user_id' => $user->id,
             'name' => 'Produção Teste',
+            'fantasy' => 'Produção Teste',
+            'category' => 'production',
+            'type' => 'production',
+            'establishment_type' => 'production',
             'city' => 'São Paulo',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ])->id;
 
         $eventId = DB::table('events')->insertGetId([
             'app_id' => $appId,

@@ -37,16 +37,16 @@ class ProductionEstablishmentSyncTest extends TestCase
             'is_cancelled' => false,
         ])->fresh();
 
-        $this->assertNotNull($production->establishment_id);
-        $establishment = Establishment::query()->findOrFail($production->establishment_id);
+        $establishment = Establishment::query()->findOrFail($production->id);
+        $this->assertSame($production->id, $establishment->id);
         $this->assertSame('Casa de Eventos', $establishment->name);
         $this->assertSame('production', $establishment->category);
         $this->assertSame($app->id, $establishment->app_id);
 
-        $production->update(['name' => 'Casa de Eventos Atualizada', 'city' => 'Anápolis']);
+        $production->update(['name' => 'Casa de Eventos Atualizada']);
         $establishment->refresh();
         $this->assertSame('Casa de Eventos Atualizada', $establishment->name);
-        $this->assertSame('Anápolis', $establishment->city);
+        $this->assertSame('Goiânia', $establishment->city);
 
         $production->delete();
         $this->assertNotNull(Establishment::withTrashed()->find($establishment->id)?->deleted_at);
