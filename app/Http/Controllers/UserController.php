@@ -95,6 +95,7 @@ class UserController extends ApiController
             'address' => 'sometimes|nullable|string|max:500',
             'about' => 'sometimes|nullable|string|max:5000',
             'avatar' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:4096',
+            'background' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:8192',
         ];
 
         if ($editingOther && $this->hasPermission($actor, 'user_config')) {
@@ -108,7 +109,7 @@ class UserController extends ApiController
         $emailVerificationCode = null;
 
         DB::transaction(function () use ($request, $user, $actor, $data, &$changes, &$emailVerificationCode) {
-            foreach (collect($data)->except('avatar')->all() as $key => $value) {
+            foreach (collect($data)->except(['avatar', 'background'])->all() as $key => $value) {
                 if ($key === 'uf' && $value) {
                     $value = strtoupper($value);
                 }
@@ -137,6 +138,18 @@ class UserController extends ApiController
                 $file = File::storeOne($request->file('avatar'), 'user', $user->id, 'avatar', null, $actor->id);
                 $changes['avatar'] = ['from' => $user->avatar, 'to' => $file->public_url];
                 $user->avatar = $file->public_url;
+            }
+
+            if ($request->hasFile('background')) {
+                foreach ($user->files()->where('type', 'background')->get() as $old) {
+                    if ($old->path) {
+                        Storage::disk('public')->delete($old->path);
+                    }
+                    $old->delete();
+                }
+                $file = File::storeOne($request->file('background'), 'user', $user->id, 'background', null, $actor->id);
+                $changes['background'] = ['from' => $user->background, 'to' => $file->public_url];
+                $user->background = $file->public_url;
             }
 
             $user->save();
@@ -195,7 +208,7 @@ class UserController extends ApiController
     public function view(string $userName)
     {
         $user = User::query()
-            ->select(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'city', 'uf', 'about', 'profile_id'])
+            ->select(['id', 'first_name', 'last_name', 'user_name', 'avatar', 'background', 'city', 'uf', 'about', 'profile_id'])
             ->with([
                 'profile:id,name',
                 'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active'),
