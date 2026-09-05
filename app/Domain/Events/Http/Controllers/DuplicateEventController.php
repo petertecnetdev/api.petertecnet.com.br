@@ -4,7 +4,6 @@ namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Events\Services\EventDuplicationService;
 use App\Http\Controllers\Controller;
-use App\Models\Event;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 
@@ -24,28 +23,14 @@ final class DuplicateEventController extends Controller
             'date.date_format' => 'Informe a nova data no formato válido.',
         ]);
 
-        $source = Event::query()
-            ->where('app_id', $this->context->id())
-            ->with('production:id,app_id,name,slug,user_id,app_slug')
-            ->findOrFail($id);
-
-        abort_unless(
-            $source->production && (int) $source->production->app_id === $this->context->id(),
-            404,
-            'Evento não encontrado neste contexto.'
-        );
-        abort_unless(
-            $request->user()->hasProfile('Administrador')
-                || (int) $source->production->user_id === (int) $request->user()->id,
-            403,
-            'Você não pode duplicar este evento.'
-        );
-
-        $duplicate = $this->duplicator->duplicate(
-            $source,
+        $user = $request->user();
+        $duplicate = $this->duplicator->duplicateForApplicationUser(
+            $id,
             $data['date'],
             $this->context->id(),
             $this->context->slug(),
+            (int) $user->id,
+            $user->hasProfile('Administrador'),
         );
 
         return response()->json([
