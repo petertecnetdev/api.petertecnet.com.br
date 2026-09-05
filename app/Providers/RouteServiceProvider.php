@@ -49,15 +49,7 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting()
     {
         RateLimiter::for('api', function (Request $request) {
-            $userId = null;
-
-            try {
-                $userId = $request->user('api')?->getAuthIdentifier();
-            } catch (\Throwable $exception) {
-                // Authentication middleware will handle invalid/expired credentials later.
-                // Rate limiting must never turn an auth failure into a 500 response.
-            }
-
+            $userId = $this->rateLimitUserId($request);
             $ip = $request->ip();
             $appKey = $this->rateLimitApplicationKey($request);
             $isAuthRequest = $request->is('api/auth/*');
@@ -129,6 +121,43 @@ class RouteServiceProvider extends ServiceProvider
                     ->response($tooManyAttemptsResponse),
             ];
         });
+
+        RateLimiter::for('market-read', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+
+            if ($userId) {
+                return Limit::perMinute(1800)
+                    ->by('market-read:user-app:'.$userId.':'.$appKey);
+            }
+
+            return Limit::perMinute(900)
+                ->by('market-read:ip-app:'.$request->ip().':'.$appKey);
+        });
+
+        RateLimiter::for('telemetry', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+
+            if ($userId) {
+                return Limit::perMinute(3000)
+                    ->by('telemetry:user-app:'.$userId.':'.$appKey);
+            }
+
+            return Limit::perMinute(1200)
+                ->by('telemetry:ip-app:'.$request->ip().':'.$appKey);
+        });
+    }
+
+    private function rateLimitUserId(Request $request): int|string|null
+    {
+        try {
+            return $request->user('api')?->getAuthIdentifier();
+        } catch (\Throwable $exception) {
+            // Authentication middleware will handle invalid/expired credentials later.
+            // Rate limiting must never turn an auth failure into a 500 response.
+            return null;
+        }
     }
 
     private function rateLimitApplicationKey(Request $request): string
