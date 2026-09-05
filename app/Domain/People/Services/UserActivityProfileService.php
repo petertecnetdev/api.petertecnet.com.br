@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 final class UserActivityProfileService
 {
@@ -49,7 +50,9 @@ final class UserActivityProfileService
             ->unique(fn ($interest) => mb_strtolower($interest))
             ->values()->take(50)->all();
 
-        $social = DB::table('user_social_preferences')->where(['app_id' => $appId, 'user_id' => $user->id])->first();
+        $social = Schema::hasTable('user_social_preferences')
+            ? DB::table('user_social_preferences')->where(['app_id' => $appId, 'user_id' => $user->id])->first()
+            : null;
         $socialSettings = [
             'discoverable' => $social ? (bool) $social->discoverable : true,
             'show_city' => $social ? (bool) $social->show_city : true,
