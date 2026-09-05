@@ -2,15 +2,19 @@
 
 namespace App\Domain\MarketData\Services;
 
+use App\Mail\KryvionOpportunityReportMail;
 use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\User;
 use App\Services\AppNotificationService;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
 
 final class MarketSignalService
 {
     private const APP_SLUG = 'kryvion';
     private const NOTIFICATION_COOLDOWN_MINUTES = 30;
+    private const REPORT_EMAIL_COOLDOWN_HOURS = 6;
 
     public function __construct(
         private readonly CoinMarketCapScannerService $scanner,
@@ -126,11 +130,113 @@ final class MarketSignalService
             }
         }
 
+        $emailReports = $this->distributeOpportunityReports($application, $signals);
+
         return [
             'sent' => $sent,
             'skipped' => $skipped,
             'users' => $userIds->count(),
             'generated_at' => $signals['generated_at'],
+            'email_reports' => $emailReports,
+        ];
+    }
+
+    public function opportunityReport(string $symbol): array
+    {
+        $symbol = strtoupper(trim($symbol));
+        $scan = $this->scanner->universe();
+        $asset = collect($scan['opportunities'] ?? [])->first(fn ($row) => strtoupper((string) ($row['symbol'] ?? '')) === $symbol);
+
+        abort_unless(is_array($asset), 404, 'Ativo não encontrado no radar atual da Kryvion.');
+
+        return $this->buildOpportunityReport($asset);
+    }
+
+    public function distributeOpportunityReports(?Application $application = null, ?array $signals = null, bool $force = false): array
+    {
+        $application ??= Application::query()->where('slug', self::APP_SLUG)->where('is_active', true)->first();
+        if (! $application) {
+            return ['sent' => 0, 'skipped' => 0, 'failed' => 0, 'reason' => 'kryvion_application_not_found'];
+        }
+
+        $signals ??= $this->current();
+        $signal = $signals['buy'] ?? null;
+        if (! is_array($signal) || (int) ($signal['score'] ?? 0) < 78 || (int) ($signal['confidence'] ?? 0) < 68) {
+            return ['sent' => 0, 'skipped' => 0, 'failed' => 0, 'reason' => 'no_strong_buy_signal'];
+        }
+
+        $report = $this->opportunityReport((string) $signal['symbol']);
+        $users = User::query()
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->whereHas('applications', fn ($query) => $query
+                ->where('applications.id', $application->id)
+                ->where('application_user.status', 'active'))
+            ->get(['id', 'email', 'first_name', 'last_name', 'user_name']);
+
+        $sent = 0;
+        $skipped = 0;
+        $failed = 0;
+
+        foreach ($users as $user) {
+            $cacheKey = 'kryvion:opportunity-email:'.(int) $user->id.':'.strtolower((string) $report['symbol']);
+            if (! $force && Cache::has($cacheKey)) {
+                $skipped++;
+                continue;
+            }
+
+            try {
+                $name = trim((string) ($user->first_name ?: $user->user_name ?: ''));
+                Mail::to((string) $user->email)->send(new KryvionOpportunityReportMail($report, $name));
+                Cache::put($cacheKey, true, now()->addHours(self::REPORT_EMAIL_COOLDOWN_HOURS));
+                $sent++;
+            } catch (\Throwable $e) {
+                report($e);
+                $failed++;
+            }
+        }
+
+        return [
+            'sent' => $sent,
+            'skipped' => $skipped,
+            'failed' => $failed,
+            'users' => $users->count(),
+            'symbol' => $report['symbol'],
+        ];
+    }
+
+    private function buildOpportunityReport(array $asset): array
+    {
+        $price = (float) ($asset['price_usd'] ?? 0);
+        $upsideMin = (float) ($asset['estimated_upside_min_pct'] ?? 0);
+        $upsideMax = (float) ($asset['estimated_upside_max_pct'] ?? 0);
+        $window = (string) ($asset['estimated_window'] ?? 'Sem janela confiável');
+        $targetMin = $price > 0 ? $price * (1 + ($upsideMin / 100)) : 0;
+        $targetMax = $price > 0 ? $price * (1 + ($upsideMax / 100)) : 0;
+
+        return [
+            'symbol' => strtoupper((string) ($asset['symbol'] ?? '')),
+            'name' => (string) ($asset['name'] ?? ''),
+            'score' => (int) ($asset['breakout_score'] ?? 0),
+            'confidence' => (int) ($asset['confidence'] ?? 0),
+            'classification' => (string) ($asset['classification'] ?? ''),
+            'price_usd' => $price,
+            'change_1h' => (float) ($asset['change_1h'] ?? 0),
+            'change_24h' => (float) ($asset['change_24h'] ?? 0),
+            'change_7d' => (float) ($asset['change_7d'] ?? 0),
+            'volume_change_24h' => (float) ($asset['volume_change_24h'] ?? 0),
+            'entry_window' => $window,
+            'exit_window' => $window === '1–6 horas' ? 'Monitorar realização entre 6–24 horas' : ($window === '6–24 horas' ? 'Monitorar realização entre 1–3 dias' : 'Reavaliar após confirmação do alvo'),
+            'upside_min_pct' => round($upsideMin, 2),
+            'upside_max_pct' => round($upsideMax, 2),
+            'target_price_min_usd' => round($targetMin, 8),
+            'target_price_max_usd' => round($targetMax, 8),
+            'reasons' => array_values($asset['reasons'] ?? []),
+            'risks' => array_values($asset['risks'] ?? []),
+            'timing_note' => (string) ($asset['timing_note'] ?? ''),
+            'panel_url' => 'https://kryvion.petertecnet.com.br/?marketReport='.urlencode(strtoupper((string) ($asset['symbol'] ?? ''))),
+            'generated_at' => now()->toIso8601String(),
+            'disclaimer' => 'Cenário probabilístico calculado com dados de mercado; não há garantia de preço, prazo ou retorno.',
         ];
     }
 

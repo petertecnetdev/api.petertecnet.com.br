@@ -39,6 +39,11 @@ final class MarketDataController extends Controller
         return $this->marketResponse($request, fn () => $this->signals->current());
     }
 
+    public function opportunityReport(Request $request, string $asset): JsonResponse
+    {
+        return $this->marketResponse($request, fn () => $this->signals->opportunityReport($asset));
+    }
+
     public function realtimeConfig(Request $request): JsonResponse
     {
         $app = (array) config('reverb.apps.apps.0', []);

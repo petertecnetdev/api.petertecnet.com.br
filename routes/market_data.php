@@ -32,6 +32,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/simulate', [MarketDataController::class, 'simulate'])->middleware('throttle:60,1');
                 Route::get('/risk-profile', [MarketDataController::class, 'riskProfile']);
                 Route::put('/risk-profile', [MarketDataController::class, 'saveRiskProfile'])->middleware('throttle:20,1');
+                Route::get('/reports/{asset}', [MarketDataController::class, 'opportunityReport'])->where('asset', '[A-Za-z0-9\-]+');
                 Route::get('/alerts', [MarketDataController::class, 'alerts']);
                 Route::post('/alerts', [MarketDataController::class, 'addAlert'])->middleware('throttle:30,1');
                 Route::delete('/alerts/{alert}', [MarketDataController::class, 'removeAlert'])->whereNumber('alert');
