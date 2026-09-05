@@ -4,8 +4,6 @@ namespace App\Domain\Events\Services;
 
 use App\Models\Event;
 use App\Models\Ticket;
-use App\Models\User;
-use App\Support\ApplicationContext;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -14,55 +12,91 @@ use Illuminate\Validation\ValidationException;
 
 final class EventDuplicationService
 {
-    public function __construct(private readonly ApplicationContext $context) {}
-
-    public function duplicate(User $actor, int $id, string $date): array
-    {
+    public function duplicateForApplicationUser(
+        int $eventId,
+        string $date,
+        int $appId,
+        ?string $appSlug,
+        int $userId,
+        bool $isAdministrator = false,
+    ): Event {
         $source = Event::query()
-            ->where('app_id', $this->context->id())
-            ->with([
-                'production:id,app_id,name,slug,user_id,app_slug',
-                'artists:id,app_id,slug,stage_name',
-                'tickets' => fn ($query) => $query->where('app_id', $this->context->id()),
-            ])
-            ->findOrFail($id);
+            ->where('app_id', $appId)
+            ->with('production:id,app_id,name,slug,user_id,app_slug')
+            ->findOrFail($eventId);
 
-        abort_unless($source->production && (int) $source->production->app_id === $this->context->id(), 404, 'Evento não encontrado neste contexto.');
-        abort_unless($actor->hasProfile('Administrador') || (int) $source->production->user_id === (int) $actor->id, 403, 'Você não pode duplicar este evento.');
+        abort_unless(
+            $source->production && (int) $source->production->app_id === $appId,
+            404,
+            'Evento não encontrado neste contexto.'
+        );
+
+        abort_unless(
+            $isAdministrator || (int) $source->production->user_id === $userId,
+            403,
+            'Você não pode duplicar este evento.'
+        );
+
+        return $this->duplicate($source, $date, $appId, $appSlug);
+    }
+
+    public function duplicate(Event $source, string $date, int $appId, ?string $appSlug = null): Event
+    {
+        $source->loadMissing([
+            'artists:id,app_id,slug,stage_name',
+            'tickets' => fn ($query) => $query->where('app_id', $appId),
+        ]);
 
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         if (! $source->start_date || ! $source->end_date) {
-            throw ValidationException::withMessages(['date' => ['O evento original precisa ter início e término definidos antes de ser duplicado.']]);
+            throw ValidationException::withMessages([
+                'date' => ['O evento original precisa ter início e término definidos antes de ser duplicado.'],
+            ]);
         }
 
         $sourceStart = Carbon::parse($source->start_date, $timezone);
         $sourceEnd = Carbon::parse($source->end_date, $timezone);
+
         if ($date === $sourceStart->format('Y-m-d')) {
-            throw ValidationException::withMessages(['date' => ['Escolha uma data diferente da data do evento original.']]);
+            throw ValidationException::withMessages([
+                'date' => ['Escolha uma data diferente da data do evento original.'],
+            ]);
         }
 
-        $targetStart = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$sourceStart->format('H:i:s'), $timezone);
+        $targetStart = Carbon::createFromFormat(
+            'Y-m-d H:i:s',
+            $date.' '.$sourceStart->format('H:i:s'),
+            $timezone
+        );
+
         if ($targetStart->lte(Carbon::now($timezone))) {
-            throw ValidationException::withMessages(['date' => ['A nova data precisa manter o início do evento no futuro.']]);
+            throw ValidationException::withMessages([
+                'date' => ['A nova data precisa manter o início do evento no futuro.'],
+            ]);
         }
 
         $durationSeconds = $sourceEnd->getTimestamp() - $sourceStart->getTimestamp();
         if ($durationSeconds <= 0) {
-            throw ValidationException::withMessages(['date' => ['A duração do evento original é inválida. Revise o evento antes de duplicá-lo.']]);
+            throw ValidationException::withMessages([
+                'date' => ['A duração do evento original é inválida. Revise o evento antes de duplicá-lo.'],
+            ]);
         }
 
         $targetEnd = $targetStart->copy()->addSeconds($durationSeconds);
         $deltaSeconds = $targetStart->getTimestamp() - $sourceStart->getTimestamp();
         $copiedImage = $this->copyImage($source->image);
+        $resolvedAppSlug = $appSlug ?: $source->app_slug;
 
         try {
-            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone) {
+            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
                 $event = $source->replicate(['id', 'slug', 'created_at', 'updated_at']);
                 $event->forceFill([
                     'slug' => $this->uniqueSlug($source->title.' '.$targetStart->format('Y-m-d')),
                     'start_date' => $targetStart->format('Y-m-d H:i:s'),
                     'end_date' => $targetEnd->format('Y-m-d H:i:s'),
                     'image' => $copiedImage,
+                    'app_id' => $appId,
+                    'app_slug' => $resolvedAppSlug,
                     'is_published' => false,
                     'is_cancelled' => false,
                     'is_featured' => false,
@@ -73,15 +107,20 @@ final class EventDuplicationService
                 $event->save();
 
                 foreach ($source->tickets as $ticket) {
+                    $price = round((float) $ticket->price, 2);
+                    $paid = $price > 0;
+                    $type = trim((string) $ticket->type);
+                    $ticketType = trim((string) $ticket->ticket_type);
+
                     Ticket::create([
-                        'app_id' => $this->context->id(),
-                        'app_slug' => $this->context->slug(),
+                        'app_id' => $appId,
+                        'app_slug' => $resolvedAppSlug,
                         'event_id' => $event->id,
                         'name' => $ticket->name,
-                        'type' => $ticket->type,
-                        'price' => $ticket->price,
+                        'type' => $type !== '' ? $type : ($paid ? 'paid' : 'courtesy'),
+                        'price' => $price,
                         'limit_date' => $this->shiftTicketDeadline($ticket->limit_date, $deltaSeconds, $targetStart, $timezone),
-                        'ticket_type' => $ticket->ticket_type,
+                        'ticket_type' => $ticketType !== '' ? $ticketType : ($paid ? 'standard' : 'courtesy'),
                         'quantity' => $ticket->quantity,
                         'description' => $ticket->description,
                     ]);
@@ -91,6 +130,7 @@ final class EventDuplicationService
                     $scheduledAt = $artist->pivot?->scheduled_at
                         ? Carbon::parse($artist->pivot->scheduled_at, $timezone)->addSeconds($deltaSeconds)->format('Y-m-d H:i:s')
                         : null;
+
                     $event->artists()->attach($artist->id, [
                         'participation_type' => $artist->pivot?->participation_type,
                         'stage' => $artist->pivot?->stage,
@@ -104,35 +144,38 @@ final class EventDuplicationService
                 return $event;
             });
         } catch (\Throwable $exception) {
-            if ($copiedImage && $copiedImage !== $source->image) Storage::disk('public')->delete($copiedImage);
+            if ($copiedImage && $copiedImage !== $source->image) {
+                Storage::disk('public')->delete($copiedImage);
+            }
             throw $exception;
         }
 
         $duplicate->load(['production:id,app_id,name,slug,user_id,app_slug', 'artists:id,app_id,slug,stage_name']);
-        $duplicate->loadCount(['tickets' => fn ($query) => $query->where('app_id', $this->context->id())]);
+        $duplicate->loadCount(['tickets' => fn ($query) => $query->where('app_id', $appId)]);
 
-        return [
-            'message' => 'Evento duplicado como rascunho. Revise a nova data e publique quando estiver pronto.',
-            'event' => $duplicate,
-            'copied' => ['tickets' => $duplicate->tickets_count, 'artists' => $duplicate->artists->count()],
-        ];
+        return $duplicate;
     }
 
     private function shiftTicketDeadline($value, int $deltaSeconds, Carbon $targetStart, string $timezone): ?string
     {
         if (! $value) return null;
+
         $deadline = Carbon::parse($value, $timezone)->addSeconds($deltaSeconds);
-        if ($deadline->lte(Carbon::now($timezone)->addHour())) return null;
+        $minimumUsefulDeadline = Carbon::now($timezone)->addHour();
+        if ($deadline->lte($minimumUsefulDeadline)) return null;
         if ($deadline->gt($targetStart)) $deadline = $targetStart->copy();
+
         return $deadline->format('Y-m-d H:i:s');
     }
 
     private function copyImage(?string $sourcePath): ?string
     {
         if (! $sourcePath || ! Storage::disk('public')->exists($sourcePath)) return $sourcePath;
+
         $extension = pathinfo($sourcePath, PATHINFO_EXTENSION) ?: 'webp';
         $directory = trim(dirname($sourcePath), './');
         $targetPath = ($directory !== '' ? $directory.'/' : '').Str::uuid().'.'.$extension;
+
         return Storage::disk('public')->copy($sourcePath, $targetPath) ? $targetPath : $sourcePath;
     }
 
