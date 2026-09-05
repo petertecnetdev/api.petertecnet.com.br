@@ -29,7 +29,7 @@ class AppConversation extends Model
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::class, 'app_conversation_participants', 'conversation_id', 'user_id')
-            ->withPivot(['unread_count', 'last_read_at', 'joined_at'])
+            ->withPivot(['unread_count', 'last_read_at', 'archived_at', 'muted_until', 'pinned_at', 'joined_at'])
             ->withTimestamps();
     }
 
@@ -40,6 +40,8 @@ class AppConversation extends Model
 
     public function lastMessage(): HasOne
     {
-        return $this->hasOne(AppMessage::class, 'conversation_id')->latestOfMany();
+        return $this->hasOne(AppMessage::class, 'conversation_id')
+            ->whereNull('deleted_at')
+            ->latestOfMany();
     }
 }
