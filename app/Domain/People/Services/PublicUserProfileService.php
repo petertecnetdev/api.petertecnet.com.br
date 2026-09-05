@@ -95,8 +95,8 @@ final class PublicUserProfileService
                 'city' => $settings['show_city'] ? $user->city : null,
                 'uf' => $settings['show_city'] ? $user->uf : null,
                 'about' => $user->about,
-                'favorite_artist' => $user->favorite_artist,
-                'favorite_genre' => $user->favorite_genre,
+                'favorite_artist' => $settings['show_interests'] ? $user->favorite_artist : null,
+                'favorite_genre' => $settings['show_interests'] ? $user->favorite_genre : null,
             ],
             'stats' => [
                 'interested' => $settings['show_event_interests'] ? $interestedEvents->count() : null,
