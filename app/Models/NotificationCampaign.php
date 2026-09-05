@@ -16,16 +16,26 @@ class NotificationCampaign extends Model
         'message',
         'reference_url',
         'data',
+        'channels',
         'status',
+        'scheduled_at',
         'recipients_count',
+        'delivered_count',
+        'failed_count',
         'sent_at',
+        'completed_at',
     ];
 
     protected $casts = [
         'recipient_user_ids' => 'array',
         'data' => 'array',
+        'channels' => 'array',
         'recipients_count' => 'integer',
+        'delivered_count' => 'integer',
+        'failed_count' => 'integer',
+        'scheduled_at' => 'datetime',
         'sent_at' => 'datetime',
+        'completed_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
