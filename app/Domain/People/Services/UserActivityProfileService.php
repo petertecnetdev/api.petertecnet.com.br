@@ -10,6 +10,10 @@ use Illuminate\Support\Facades\Schema;
 
 final class UserActivityProfileService
 {
+    public function __construct(
+        private readonly UserActorIdentityService $actorIdentity,
+    ) {}
+
     public function overview(User $user, int $appId): array
     {
         $now = now();
@@ -77,6 +81,7 @@ final class UserActivityProfileService
                 'favorite_artist' => $user->favorite_artist,
                 'favorite_genre' => $user->favorite_genre,
             ],
+            'actor_identity' => $this->actorIdentity->for($user, $appId),
             'stats' => [
                 'tickets' => $passes->count(),
                 'upcoming_with_ticket' => $ticketUpcoming->count(),
