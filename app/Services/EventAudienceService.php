@@ -22,6 +22,47 @@ class EventAudienceService
             ->map(fn($id)=>(int)$id)->values();
     }
 
+    public function interestedUserIds(Event $event): Collection
+    {
+        return DB::table('event_engagements')
+            ->where('app_id', (int) $event->app_id)
+            ->where('event_id', (int) $event->id)
+            ->where('is_interested', true)
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    public function productionFollowerUserIds(Event $event): Collection
+    {
+        return DB::table('follows')
+            ->where('app_id', (int) $event->app_id)
+            ->where('target_type', 'production')
+            ->where('target_id', (int) $event->production_id)
+            ->whereNotNull('user_id')
+            ->distinct()
+            ->pluck('user_id')
+            ->map(fn ($id) => (int) $id)
+            ->values();
+    }
+
+    public function audienceUserIds(Event $event, string $audience = 'all'): Collection
+    {
+        return match ($audience) {
+            'attendees' => $this->attendeeUserIds($event),
+            'interested' => $this->interestedUserIds($event),
+            default => $this->attendeeUserIds($event)
+                ->merge($this->interestedUserIds($event))
+                ->merge($this->productionFollowerUserIds($event))
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values(),
+        };
+    }
+
     public function markInterested(int $appId,int $eventId,int $userId): void
     {
         DB::table('event_engagements')->updateOrInsert(
