@@ -128,7 +128,7 @@ Route::prefix('report')->middleware(['api', 'auth:api'])->group(function () {
 });
 Route::prefix('service-record')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/', [ServiceRecordController::class, 'store'])->name('service_record.store');
-    Route::get('/listmy', [ServiceRecord::class, 'listMy'])->name('service_record.listMy');
+    Route::get('/listmy', [ServiceRecordController::class, 'listMy'])->name('service_record.listMy');
     Route::get('/listbyclient', [ServiceRecordController::class, 'listByClient'])->name('service_record.listByClient');
     Route::get('/listbyentity', [ServiceRecordController::class, 'listByEntity'])->name('service_record.listByEntity');
     Route::get('/listbyprovider', [ServiceRecordController::class, 'listByProvider'])->name('service_record.listByProvider');
