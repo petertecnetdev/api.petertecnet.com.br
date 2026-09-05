@@ -187,7 +187,7 @@ final class EventAnnouncementController extends Controller
             'is_pinned' => 'sometimes|boolean',
             'send_notification' => 'sometimes|boolean',
             'starts_at' => 'nullable|date',
-            'ends_at' => 'nullable|date|after:starts_at',
+            'ends_at' => $request->filled('starts_at') ? 'nullable|date|after:starts_at' : 'nullable|date',
         ]);
     }
 
