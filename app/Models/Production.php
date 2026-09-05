@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Organizations\Support\OrganizationTaxonomy;
 use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Config;
@@ -9,19 +10,18 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Compatibility model for the legacy production vocabulary.
+ * Compatibility alias for the legacy production vocabulary.
  *
- * A production is not persisted in its own table anymore. It is an
- * Establishment with category=production. Keeping this model lets legacy
- * domain code continue using Production while the source of truth remains the
- * generic establishments table used by the whole Peter Tecnet ecosystem.
+ * Production has no independent persistence. Every read and write targets the
+ * generic establishments table with category=production, and legacy type
+ * values are normalized to the canonical organization taxonomy before save.
  */
 class Production extends Establishment
 {
     protected $table = 'establishments';
 
     protected $fillable = [
-        'app_id','app_slug','legacy_production_id','name','slug','type','category','phone','establishment_type',
+        'app_id','app_slug','legacy_production_id','name','slug','type','roles','category','phone','establishment_type',
         'description','city_id','city','uf','location','cep','address','address_number','neighborhood',
         'address_complement','address_reference','formatted_address','latitude','longitude','place_id',
         'google_maps_url','location_public','user_id','created_by','updated_by','is_featured','is_published',
@@ -32,6 +32,7 @@ class Production extends Establishment
     ];
 
     protected $casts = [
+        'roles' => 'array',
         'segments' => 'array',
         'is_featured' => 'boolean',
         'is_published' => 'boolean',
@@ -60,7 +61,8 @@ class Production extends Establishment
 
         static::creating(function (Production $production) {
             $production->category = 'production';
-            $production->type = $production->type ?: 'production';
+            $production->type = OrganizationTaxonomy::normalizeType($production->type);
+            $production->roles = OrganizationTaxonomy::normalizeRoles($production->roles, $production->type);
             $production->establishment_type = $production->establishment_type ?: 'production';
             $production->fantasy = $production->fantasy ?: $production->name;
             $production->created_by = $production->created_by ?: $production->user_id;
@@ -94,7 +96,8 @@ class Production extends Establishment
             }
 
             $production->category = 'production';
-            $production->type = $production->type ?: 'production';
+            $production->type = OrganizationTaxonomy::normalizeType($production->type);
+            $production->roles = OrganizationTaxonomy::normalizeRoles($production->roles, $production->type);
             $production->establishment_type = $production->establishment_type ?: 'production';
             $production->updated_by = $production->updated_by ?: $production->user_id;
             if (! $production->phone && $production->contact_phone) $production->phone = $production->contact_phone;
@@ -113,7 +116,7 @@ class Production extends Establishment
 
     public function application(){return $this->belongsTo(Application::class,'app_id');}
     public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');}
-    public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->whereIn('entity_type',['production','Production','Establishment']);}
+    public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->whereIn('entity_type',['production','Production','Establishment','Organization']);}
     public function events(){return $this->hasMany(Event::class,'production_id')->orderBy('start_date','desc');}
 
     /**
