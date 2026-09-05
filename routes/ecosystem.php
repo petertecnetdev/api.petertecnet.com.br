@@ -3,6 +3,7 @@
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
+use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
@@ -95,7 +96,8 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::post('/users/resend-email', [UserCommunicationController::class, 'resend'])->middleware('throttle:3,10');
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
-    Route::get('/users/{user}', [EcosystemController::class, 'userDetail'])->whereNumber('user');
+    Route::get('/users/{user}', [AdminUserDetailController::class, 'show'])->whereNumber('user');
+    Route::get('/users/{user}/activity', [AdminUserDetailController::class, 'activity'])->whereNumber('user');
     Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])->whereNumber('user');
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
