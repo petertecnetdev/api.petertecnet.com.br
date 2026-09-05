@@ -29,7 +29,7 @@ class MercadoPagoSubscriptionService
             ->retry(2, 250);
     }
 
-    public function createSubscription(User $user, Subscription $subscription, array $plan, array $application): array
+    public function createSubscription(User $user, Subscription $subscription, array $plan, array $application, ?string $backUrl = null): array
     {
         $autoRecurring = [
             'frequency' => (int) $plan['frequency'],
@@ -50,7 +50,7 @@ class MercadoPagoSubscriptionService
             'external_reference' => (string) $subscription->external_reference,
             'payer_email' => (string) $user->email,
             'auto_recurring' => $autoRecurring,
-            'back_url' => (string) config('subscriptions.checkout_back_url'),
+            'back_url' => $backUrl ?: (string) config('subscriptions.checkout_back_url'),
         ]);
 
         $response->throw();
