@@ -31,7 +31,7 @@ Route::prefix('home')->middleware('api')->group(function () {
 });
 
 Route::prefix('auth')->middleware('api')->group(function () {
-    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:login');
     Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:5,1');
     Route::post('/password-email', [AuthController::class, 'sendResetCodeEmail'])->middleware('throttle:5,1');
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
