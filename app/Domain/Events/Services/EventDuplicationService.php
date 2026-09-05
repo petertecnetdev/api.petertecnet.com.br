@@ -19,6 +19,7 @@ final class EventDuplicationService
         ?string $appSlug,
         int $userId,
         bool $isAdministrator = false,
+        array $overrides = [],
     ): Event {
         $source = Event::query()
             ->where('app_id', $appId)
@@ -37,10 +38,10 @@ final class EventDuplicationService
             'Você não pode duplicar este evento.'
         );
 
-        return $this->duplicate($source, $date, $appId, $appSlug);
+        return $this->duplicate($source, $date, $appId, $appSlug, $overrides);
     }
 
-    public function duplicate(Event $source, string $date, int $appId, ?string $appSlug = null): Event
+    public function duplicate(Event $source, string $date, int $appId, ?string $appSlug = null, array $overrides = []): Event
     {
         $source->loadMissing([
             'artists:id,app_id,slug,stage_name',
@@ -63,15 +64,23 @@ final class EventDuplicationService
             ]);
         }
 
-        $targetStart = Carbon::createFromFormat(
-            'Y-m-d H:i:s',
-            $date.' '.$sourceStart->format('H:i:s'),
-            $timezone
-        );
+        $targetStart = ! empty($overrides['start_date'])
+            ? Carbon::parse($overrides['start_date'], $timezone)
+            : Carbon::createFromFormat(
+                'Y-m-d H:i:s',
+                $date.' '.$sourceStart->format('H:i:s'),
+                $timezone
+            );
+
+        if ($targetStart->format('Y-m-d') !== $date) {
+            throw ValidationException::withMessages([
+                'start_date' => ['A data do início precisa corresponder à nova data escolhida para a duplicação.'],
+            ]);
+        }
 
         if ($targetStart->lte(Carbon::now($timezone))) {
             throw ValidationException::withMessages([
-                'date' => ['A nova data precisa manter o início do evento no futuro.'],
+                'date' => ['A nova data e horário precisam manter o início do evento no futuro.'],
             ]);
         }
 
@@ -82,16 +91,27 @@ final class EventDuplicationService
             ]);
         }
 
-        $targetEnd = $targetStart->copy()->addSeconds($durationSeconds);
+        $targetEnd = ! empty($overrides['end_date'])
+            ? Carbon::parse($overrides['end_date'], $timezone)
+            : $targetStart->copy()->addSeconds($durationSeconds);
+
+        if ($targetEnd->lte($targetStart)) {
+            throw ValidationException::withMessages([
+                'end_date' => ['O término da cópia precisa ser posterior ao início.'],
+            ]);
+        }
+
+        $editable = $this->editableOverrides($overrides);
         $deltaSeconds = $targetStart->getTimestamp() - $sourceStart->getTimestamp();
         $copiedImage = $this->copyImage($source->image);
         $resolvedAppSlug = $appSlug ?: $source->app_slug;
+        $slugTitle = trim((string) ($editable['title'] ?? $source->title)) ?: $source->title;
 
         try {
-            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
+            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug, $editable, $slugTitle) {
                 $event = $source->replicate(['id', 'slug', 'created_at', 'updated_at']);
-                $event->forceFill([
-                    'slug' => $this->uniqueSlug($source->title.' '.$targetStart->format('Y-m-d')),
+                $event->forceFill(array_merge($editable, [
+                    'slug' => $this->uniqueSlug($slugTitle.' '.$targetStart->format('Y-m-d')),
                     'start_date' => $targetStart->format('Y-m-d H:i:s'),
                     'end_date' => $targetEnd->format('Y-m-d H:i:s'),
                     'image' => $copiedImage,
@@ -103,7 +123,7 @@ final class EventDuplicationService
                     'reviews' => [],
                     'rating' => null,
                     'remaining_tickets' => $source->tickets->sum('quantity') ?: null,
-                ]);
+                ]));
                 $event->save();
 
                 foreach ($source->tickets as $ticket) {
@@ -154,6 +174,33 @@ final class EventDuplicationService
         $duplicate->loadCount(['tickets' => fn ($query) => $query->where('app_id', $appId)]);
 
         return $duplicate;
+    }
+
+    private function editableOverrides(array $overrides): array
+    {
+        $allowed = [
+            'title',
+            'description',
+            'category',
+            'event_format',
+            'venue',
+            'address',
+            'google_maps_url',
+            'city',
+            'uf',
+            'country',
+            'online_platform',
+            'online_url',
+            'online_instructions',
+            'max_attendees',
+            'contact_email',
+            'contact_phone',
+            'is_private',
+            'requires_approval',
+            'approval_message',
+        ];
+
+        return array_intersect_key($overrides, array_flip($allowed));
     }
 
     private function shiftTicketDeadline($value, int $deltaSeconds, Carbon $targetStart, string $timezone): ?string
