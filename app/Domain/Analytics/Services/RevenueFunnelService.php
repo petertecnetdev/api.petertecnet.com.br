@@ -39,6 +39,15 @@ final class RevenueFunnelService
         $discounts = (float) (clone $paidOrders)->sum('discount_amount');
         $producerNet = (float) (clone $paidOrders)->sum('producer_net');
 
+        $recoveryAttempts = (clone $orders)->whereNotNull('recovery_started_at')->count();
+        $recoveredOrders = (clone $orders)
+            ->whereNotNull('recovery_started_at')
+            ->where('status', 'paid')
+            ->count();
+        $recoveredPaidOrders = (clone $paidOrders)->whereNotNull('recovery_started_at');
+        $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
+        $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
+
         return [
             'period_days' => $days,
             'orders_created' => $created,
@@ -54,6 +63,11 @@ final class RevenueFunnelService
             'discounts' => round($discounts, 2),
             'producer_net' => round($producerNet, 2),
             'average_paid_order' => $paid > 0 ? round($gross / $paid, 2) : 0.0,
+            'checkout_recovery_attempts' => $recoveryAttempts,
+            'checkout_recovered_orders' => $recoveredOrders,
+            'checkout_recovery_conversion_rate' => $recoveryAttempts > 0 ? round(($recoveredOrders / $recoveryAttempts) * 100, 2) : 0.0,
+            'recovered_gross_revenue' => round($recoveredGross, 2),
+            'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
         ];
     }
 }
