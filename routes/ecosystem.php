@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
+use App\Http\Controllers\Admin\EstablishmentEventController;
 use App\Http\Controllers\Admin\FinancialController;
 use App\Http\Controllers\Admin\InteractionMaintenanceController;
 use App\Http\Controllers\Admin\MarketingController;
@@ -107,6 +108,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])->whereNumber('profile');
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
+    Route::get('/establishments/{establishment}/resources/events', [EstablishmentEventController::class, 'index'])->whereNumber('establishment');
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
     Route::put('/establishments/{establishment}/owner', [EcosystemController::class, 'transferEstablishmentOwner'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
