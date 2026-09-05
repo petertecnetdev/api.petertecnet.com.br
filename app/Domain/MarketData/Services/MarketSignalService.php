@@ -4,6 +4,7 @@ namespace App\Domain\MarketData\Services;
 
 use App\Models\AppNotification;
 use App\Models\Application;
+use App\Models\User;
 use App\Services\AppNotificationService;
 
 final class MarketSignalService
@@ -75,7 +76,7 @@ final class MarketSignalService
         }
 
         $signals = $this->current();
-        $userIds = $application->users()->pluck('users.id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
+        $userIds = User::query()->pluck('id')->map(fn ($id) => (int) $id)->filter()->unique()->values();
         $sent = 0;
         $skipped = 0;
 
