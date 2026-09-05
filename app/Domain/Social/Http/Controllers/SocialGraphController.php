@@ -7,6 +7,7 @@ use App\Models\Artist;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
+use App\Services\AppNotificationService;
 use App\Services\EventLineupNotificationService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
@@ -42,7 +43,53 @@ final class SocialGraphController extends Controller
 
     public function follow(Request $request){$data=$request->validate(['target_type'=>'required|in:artist,production','target_id'=>'required|integer|min:1']);$this->assertTarget($data['target_type'],$data['target_id']);DB::table('follows')->updateOrInsert(['app_id'=>$this->context->id(),'user_id'=>$request->user()->id,'target_type'=>$data['target_type'],'target_id'=>$data['target_id']],['updated_at'=>now(),'created_at'=>now()]);return response()->json(['message'=>'Agora você está seguindo este perfil.','following'=>true]);}
     public function unfollow(Request $request){$data=$request->validate(['target_type'=>'required|in:artist,production','target_id'=>'required|integer|min:1']);DB::table('follows')->where(['app_id'=>$this->context->id(),'user_id'=>$request->user()->id,'target_type'=>$data['target_type'],'target_id'=>$data['target_id']])->delete();return response()->json(['message'=>'Você deixou de seguir este perfil.','following'=>false]);}
-    public function engagement(Request $request,int $eventId){$event=Event::query()->where('app_id',$this->context->id())->where('is_published',true)->where('is_cancelled',false)->where('is_private',false)->findOrFail($eventId);$data=$request->validate(['is_favorite'=>'sometimes|boolean','is_interested'=>'sometimes|boolean']);DB::table('event_engagements')->updateOrInsert(['app_id'=>$this->context->id(),'user_id'=>$request->user()->id,'event_id'=>$event->id],array_merge($data,['updated_at'=>now(),'created_at'=>now()]));return response()->json(['message'=>'Preferência atualizada.','engagement'=>DB::table('event_engagements')->where(['app_id'=>$this->context->id(),'user_id'=>$request->user()->id,'event_id'=>$event->id])->first()]);}
+
+    public function engagement(Request $request,int $eventId)
+    {
+        $appId=$this->context->id();
+        $event=Event::query()
+            ->where('app_id',$appId)
+            ->where('is_published',true)
+            ->where('is_cancelled',false)
+            ->where(fn($query)=>$query->where('is_private',false)->orWhereNull('is_private'))
+            ->with('production:id,user_id,name,slug')
+            ->findOrFail($eventId);
+        $data=$request->validate(['is_favorite'=>'sometimes|boolean','is_interested'=>'sometimes|boolean']);
+        $key=['app_id'=>$appId,'user_id'=>$request->user()->id,'event_id'=>$event->id];
+        $previous=DB::table('event_engagements')->where($key)->first();
+        $wasInterested=(bool)($previous->is_interested??false);
+
+        DB::table('event_engagements')->updateOrInsert($key,array_merge($data,['updated_at'=>now(),'created_at'=>now()]));
+        $engagement=DB::table('event_engagements')->where($key)->first();
+        $isInterested=(bool)($engagement->is_interested??false);
+        $producerUserId=(int)($event->production?->user_id??0);
+        $actor=$request->user();
+
+        if(!$wasInterested&&$isInterested&&$producerUserId>0&&$producerUserId!==(int)$actor->id){
+            $actorName=trim(implode(' ',array_filter([$actor->first_name,$actor->last_name])))?:($actor->user_name?:'Alguém');
+            try{
+                app(AppNotificationService::class)->sendToUser($appId,$producerUserId,[
+                    'type'=>'event_interest',
+                    'title'=>'Novo interesse no seu evento',
+                    'message'=>Str::limit("{$actorName} demonstrou interesse em {$event->title}.",500),
+                    'reference_type'=>'event',
+                    'reference_id'=>$event->id,
+                    'reference_url'=>'/event/'.$event->slug,
+                    'data'=>[
+                        'actor_user_id'=>(int)$actor->id,
+                        'actor_name'=>$actorName,
+                        'production_id'=>$event->production_id,
+                        'event_slug'=>$event->slug,
+                    ],
+                ]);
+            }catch(\Throwable $e){
+                report($e);
+            }
+        }
+
+        return response()->json(['message'=>'Preferência atualizada.','engagement'=>$engagement]);
+    }
+
     public function preferences(Request $request){$key=['app_id'=>$this->context->id(),'user_id'=>$request->user()->id];if($request->isMethod('get'))return response()->json(['preferences'=>DB::table('application_user_preferences')->where($key)->first()]);$data=$request->validate(['preferred_city'=>'nullable|string|max:120','preferred_uf'=>'nullable|string|size:2','latitude'=>'nullable|numeric|between:-90,90','longitude'=>'nullable|numeric|between:-180,180','radius_km'=>'nullable|integer|min:1|max:500','interests'=>'nullable|array|max:50']);if(isset($data['preferred_uf']))$data['preferred_uf']=strtoupper($data['preferred_uf']);DB::table('application_user_preferences')->updateOrInsert($key,array_merge($data,['updated_at'=>now(),'created_at'=>now()]));return response()->json(['message'=>'Preferências de descoberta salvas.','preferences'=>DB::table('application_user_preferences')->where($key)->first()]);}
 
     private function artistEvents(int $artistId,bool $upcoming){$query=Event::query()->where('events.app_id',$this->context->id())->where('events.is_published',true)->where('events.is_cancelled',false)->where('events.is_private',false)->whereHas('artists',fn($q)=>$q->where('artists.id',$artistId))->with('production:id,name,slug,logo');return$upcoming?$query->where('events.end_date','>',now())->orderBy('events.start_date'):$query->where('events.end_date','<=',now())->orderByDesc('events.start_date');}
