@@ -23,13 +23,17 @@ class DispatchNotificationCampaign implements ShouldQueue
 
     public function __construct(public int $campaignId)
     {
-        $this->onQueue('notifications');
     }
 
     public function handle(): void
     {
         $campaign = NotificationCampaign::find($this->campaignId);
         if (! $campaign || in_array($campaign->status, ['sent', 'completed', 'cancelled'], true)) {
+            return;
+        }
+
+        if ($campaign->scheduled_at && $campaign->scheduled_at->isFuture()) {
+            $campaign->update(['status' => 'scheduled']);
             return;
         }
 
