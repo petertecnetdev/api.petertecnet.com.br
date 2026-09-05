@@ -22,7 +22,7 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
     ->where('token', '[A-Za-z0-9]{40,128}')
     ->middleware(['api', 'throttle:10,1']);
 
-Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
@@ -96,7 +96,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api'])->group(function () {
     Route::get('/audit', [EcosystemController::class, 'auditLogs']);
 });
 
-Route::prefix('admin/marketing')->middleware(['auth:api'])->group(function () {
+Route::prefix('admin/marketing')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/context', [MarketingController::class, 'context']);
     Route::get('/dashboard', [MarketingController::class, 'dashboard']);
     Route::get('/activity', [MarketingController::class, 'activity']);
