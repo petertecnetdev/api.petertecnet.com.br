@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Profile;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -45,10 +46,19 @@ class EnsureAdminAccess
             ], 401);
         }
 
-        $user->loadMissing('profile');
-
         $email = strtolower(trim((string) $user->email));
         $profileName = trim((string) ($user->profile?->name ?? ''));
+
+        // Resolve the persisted profile as the source of truth when possible.
+        // This avoids authorizing against a stale relationship cached on a JWT user instance.
+        $profileId = (int) ($user->profile_id ?? 0);
+        if ($profileId > 0) {
+            $persistedProfileName = Profile::query()->whereKey($profileId)->value('name');
+            if (is_string($persistedProfileName) && trim($persistedProfileName) !== '') {
+                $profileName = trim($persistedProfileName);
+            }
+        }
+
         $isPrimaryAdmin = hash_equals(self::PRIMARY_ADMIN_EMAIL, $email);
         $isSuperAdmin = strcasecmp($profileName, self::SUPER_ADMIN_PROFILE) === 0;
 

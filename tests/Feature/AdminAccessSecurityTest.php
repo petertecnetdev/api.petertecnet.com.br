@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Kernel;
 use App\Http\Middleware\EnsureAdminAccess;
 use App\Models\Profile;
 use App\Models\User;
@@ -13,18 +14,23 @@ class AdminAccessSecurityTest extends TestCase
 {
     public function test_every_central_admin_route_inherits_admin_access_firewall(): void
     {
+        $apiMiddleware = app(Kernel::class)->getMiddlewareGroups()['api'] ?? [];
+        $this->assertContains(
+            EnsureAdminAccess::class,
+            $apiMiddleware,
+            'O grupo api precisa carregar o firewall administrativo.'
+        );
+
         $adminRoutes = collect(Route::getRoutes()->getRoutes())
             ->filter(fn ($route) => str_starts_with($route->uri(), 'api/admin/'));
 
         $this->assertNotEmpty($adminRoutes);
 
         foreach ($adminRoutes as $route) {
-            $middleware = app('router')->gatherRouteMiddleware($route);
-
             $this->assertContains(
-                EnsureAdminAccess::class,
-                $middleware,
-                sprintf('A rota %s %s não herdou o firewall administrativo.', implode('|', $route->methods()), $route->uri())
+                'api',
+                $route->gatherMiddleware(),
+                sprintf('A rota %s %s não está no grupo api protegido.', implode('|', $route->methods()), $route->uri())
             );
         }
     }
