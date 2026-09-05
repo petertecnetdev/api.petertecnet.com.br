@@ -2,8 +2,8 @@
 
 namespace App\Domain\Organizations\Http\Controllers;
 
+use App\Domain\Organizations\Models\Organization;
 use App\Http\Controllers\Controller;
-use App\Models\Production;
 use App\Models\User;
 use App\Services\AppNotificationService;
 use App\Support\ApplicationContext;
@@ -32,7 +32,7 @@ final class OrganizationCommunityController extends Controller
         $posts = DB::table('organization_posts as p')->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.app_id', $appId)->where('p.organization_id', $organization->id)
             ->whereNull('p.parent_id')->where('p.status', 'published')
-            ->select(['p.id','p.organization_id','p.user_id','p.body','p.is_pinned','p.created_at','p.edited_at','u.first_name','u.last_name','u.avatar'])
+            ->select(['p.id', 'p.organization_id', 'p.user_id', 'p.body', 'p.is_pinned', 'p.created_at', 'p.edited_at', 'u.first_name', 'u.last_name', 'u.avatar'])
             ->selectSub(fn ($q) => $q->from('organization_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id', 'p.id')->where('l.app_id', $appId), 'likes_count')
             ->selectSub(fn ($q) => $q->from('organization_posts as r')->selectRaw('COUNT(*)')->whereColumn('r.parent_id', 'p.id')->where('r.status', 'published'), 'comments_count')
             ->orderByDesc('p.is_pinned')->orderByDesc('p.created_at')->paginate($perPage);
@@ -41,7 +41,7 @@ final class OrganizationCommunityController extends Controller
         $replies = $ids->isEmpty() ? collect() : DB::table('organization_posts as p')->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.app_id', $appId)->where('p.organization_id', $organization->id)
             ->whereIn('p.parent_id', $ids)->where('p.status', 'published')
-            ->select(['p.id','p.parent_id','p.user_id','p.body','p.created_at','p.edited_at','u.first_name','u.last_name','u.avatar'])
+            ->select(['p.id', 'p.parent_id', 'p.user_id', 'p.body', 'p.created_at', 'p.edited_at', 'u.first_name', 'u.last_name', 'u.avatar'])
             ->selectSub(fn ($q) => $q->from('organization_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id', 'p.id')->where('l.app_id', $appId), 'likes_count')
             ->orderBy('p.created_at')->get()->groupBy('parent_id');
 
@@ -95,7 +95,7 @@ final class OrganizationCommunityController extends Controller
         $appId = $this->context->id();
         $post = DB::table('organization_posts')->where('app_id', $appId)->where('id', $postId)->first();
         abort_unless($post, 404, 'Publicação não encontrada.');
-        $organization = Production::query()->where('app_id', $appId)->find($post->organization_id);
+        $organization = Organization::query()->where('app_id', $appId)->find($post->organization_id);
         $can = (int) $post->user_id === (int) $user->id || $user->hasProfile('Administrador')
             || ($organization && (int) $organization->user_id === (int) $user->id);
         abort_unless($can, 403, 'Você não tem permissão para remover esta publicação.');
@@ -117,13 +117,13 @@ final class OrganizationCommunityController extends Controller
         );
 
         if (! $already && (int) $post->user_id !== (int) $user->id) {
-            $organization = Production::query()->where('app_id', $appId)->find($post->organization_id);
+            $organization = Organization::query()->where('app_id', $appId)->find($post->organization_id);
             if ($organization) {
                 $this->safeNotify($appId, (int) $post->user_id, [
                     'type' => 'comment_like', 'title' => 'Curtiram sua publicação',
-                    'message' => (trim((string) $user->first_name) ?: 'Alguém').' curtiu o que você publicou em '.$organization->name.'.',
+                    'message' => (trim((string) $user->first_name) ?: 'Alguém') . ' curtiu o que você publicou em ' . $organization->name . '.',
                     'reference_type' => 'production', 'reference_id' => $organization->id,
-                    'reference_url' => '/production/'.$organization->slug.'/public#comunidade',
+                    'reference_url' => '/production/' . $organization->slug . '/public#comunidade',
                     'data' => ['organization_id' => $organization->id, 'post_id' => $post->id, 'actor_id' => $user->id],
                 ]);
             }
@@ -148,7 +148,7 @@ final class OrganizationCommunityController extends Controller
         $count = DB::table('organization_media')->where('app_id', $appId)->where('organization_id', $organization->id)->count();
         abort_if($count >= 16, 422, 'A galeria pode ter até 16 fotos.');
 
-        $path = 'images/apps/'.$this->context->slug().'/organizations/'.$organization->id.'/gallery/'.Str::uuid().'.webp';
+        $path = 'images/apps/' . $this->context->slug() . '/organizations/' . $organization->id . '/gallery/' . Str::uuid() . '.webp';
         $absolute = Storage::disk('public')->path($path);
         if (! is_dir(dirname($absolute))) mkdir(dirname($absolute), 0755, true);
         Image::make($data['photo']->getRealPath())->orientate()->resize(1800, 1200, function ($constraint) {
@@ -176,7 +176,7 @@ final class OrganizationCommunityController extends Controller
         return response()->json(['message' => 'Foto removida.']);
     }
 
-    private function notifyActivity(Production $organization, User $actor, int $postId, ?object $parent): void
+    private function notifyActivity(Organization $organization, User $actor, int $postId, ?object $parent): void
     {
         $appId = $this->context->id();
         $ownerId = (int) $organization->user_id;
@@ -185,9 +185,9 @@ final class OrganizationCommunityController extends Controller
         $payload = [
             'type' => $parent ? 'production_reply' : 'production_comment',
             'title' => $parent ? 'Nova resposta na produção' : 'Novo comentário na produção',
-            'message' => $name.($parent ? ' respondeu uma conversa em ' : ' publicou na conversa de ').$organization->name.'.',
+            'message' => $name . ($parent ? ' respondeu uma conversa em ' : ' publicou na conversa de ') . $organization->name . '.',
             'reference_type' => 'production', 'reference_id' => $organization->id,
-            'reference_url' => '/production/'.$organization->slug.'/public#comunidade',
+            'reference_url' => '/production/' . $organization->slug . '/public#comunidade',
             'data' => ['organization_id' => $organization->id, 'post_id' => $postId, 'actor_id' => $actor->id],
         ];
         if ($ownerId && $ownerId !== (int) $actor->id) $this->safeNotify($appId, $ownerId, $payload);
@@ -211,21 +211,21 @@ final class OrganizationCommunityController extends Controller
         return $post;
     }
 
-    private function publicOrganizationBySlug(string $slug): Production
+    private function publicOrganizationBySlug(string $slug): Organization
     {
-        return Production::query()->where('app_id', $this->context->id())->where('slug', $slug)
+        return Organization::query()->where('app_id', $this->context->id())->where('slug', $slug)
             ->where('is_published', true)->where('is_cancelled', false)->firstOrFail();
     }
 
-    private function publicOrganizationById(int $id): Production
+    private function publicOrganizationById(int $id): Organization
     {
-        return Production::query()->where('app_id', $this->context->id())->whereKey($id)
+        return Organization::query()->where('app_id', $this->context->id())->whereKey($id)
             ->where('is_published', true)->where('is_cancelled', false)->firstOrFail();
     }
 
-    private function managedOrganization(Request $request, int $id): Production
+    private function managedOrganization(Request $request, int $id): Organization
     {
-        $organization = Production::query()->where('app_id', $this->context->id())->findOrFail($id);
+        $organization = Organization::query()->where('app_id', $this->context->id())->findOrFail($id);
         $user = $request->user();
         $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
         abort_unless($user && ($admin || (int) $organization->user_id === (int) $user->id), 403, 'Você não pode gerenciar esta organização.');
