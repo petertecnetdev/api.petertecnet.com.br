@@ -105,12 +105,18 @@ class SubscriptionController extends Controller
         $validated = $request->validate([
             'application' => ['required', 'string', 'max:80'],
             'plan' => ['required', 'string', 'in:monthly,semiannual,annual'],
+            'return_url' => ['nullable', 'url', 'max:2048'],
         ]);
 
         $applicationKey = $validated['application'];
         $planKey = $validated['plan'];
         $application = config('subscriptions.applications.' . $applicationKey);
         $plan = config('subscriptions.plans.' . $planKey);
+        $returnUrl = $validated['return_url'] ?? null;
+
+        if ($returnUrl && ! $this->isSafePeterUrl($returnUrl)) {
+            return response()->json(['message' => 'URL de retorno não permitida.'], 422);
+        }
 
         if (! is_array($application) || ($application['billing'] ?? null) !== 'subscription') {
             return response()->json([
@@ -175,7 +181,7 @@ class SubscriptionController extends Controller
         });
 
         try {
-            $provider = $this->mercadoPago->createSubscription($user, $subscription, $plan, $application);
+            $provider = $this->mercadoPago->createSubscription($user, $subscription, $plan, $application, $returnUrl);
 
             $subscription->update([
                 'provider_subscription_id' => $provider['id'] ?? null,
@@ -185,6 +191,7 @@ class SubscriptionController extends Controller
                 'next_payment_at' => $provider['next_payment_date'] ?? null,
                 'metadata' => array_merge($subscription->metadata ?? [], [
                     'provider_version' => $provider['version'] ?? null,
+                    'return_url' => $returnUrl,
                 ]),
             ]);
         } catch (Throwable $e) {
@@ -282,9 +289,6 @@ class SubscriptionController extends Controller
             }
         } catch (Throwable $e) {
             report($e);
-
-            // Retorna 200 após autenticar o webhook para evitar tempestade de retries;
-            // o recurso poderá ser reconciliado posteriormente pela API do provedor.
             return response()->json(['received' => true, 'processed' => false]);
         }
 
@@ -377,6 +381,15 @@ class SubscriptionController extends Controller
             ->where('provider_subscription_id', $providerId)
             ->when($externalReference !== '', fn ($query) => $query->orWhere('external_reference', $externalReference))
             ->first();
+    }
+
+    private function isSafePeterUrl(string $url): bool
+    {
+        $scheme = strtolower((string) parse_url($url, PHP_URL_SCHEME));
+        $host = strtolower((string) parse_url($url, PHP_URL_HOST));
+
+        return $scheme === 'https'
+            && ($host === 'petertecnet.com.br' || str_ends_with($host, '.petertecnet.com.br'));
     }
 
     private function authorizeOwner(Request $request, Subscription $subscription): void
