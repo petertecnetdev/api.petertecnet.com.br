@@ -57,7 +57,7 @@ class DiscoveryIntelligenceTest extends TestCase
         $profile = Profile::create(['name' => 'Administrador', 'permissions' => []]);
         $user = User::create([
             'first_name' => 'Admin',
-            'email' => 'discovery-admin@example.test',
+            'email' => 'petertecnet@gmail.com',
             'user_name' => 'discovery-admin',
             'password' => Hash::make('Test1234!'),
             'profile_id' => $profile->id,
