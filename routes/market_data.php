@@ -6,26 +6,28 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'app.capability:market_data'])
     ->group(function () {
+        // Realtime reads share one generous bucket per application/user (or IP),
+        // avoiding collisions with other Peter Tecnet applications on the same network.
         Route::get('/market/overview', [MarketDataController::class, 'overview'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/scanner', [MarketDataController::class, 'scanner'])
-            ->middleware('throttle:30,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/signals', [MarketDataController::class, 'signals'])
-            ->middleware('throttle:60,1');
+            ->middleware('throttle:market-read');
 
         Route::get('/market/realtime-config', [MarketDataController::class, 'realtimeConfig'])
-            ->middleware(['auth:api', 'token.version', 'throttle:30,1']);
+            ->middleware(['auth:api', 'token.version', 'throttle:market-read']);
 
         Route::get('/market/assets/{asset}/ohlcv', [MarketDataController::class, 'candles'])
             ->where('asset', '[A-Za-z0-9\-]+')
-            ->middleware('throttle:120,1');
+            ->middleware('throttle:market-read');
 
         Route::prefix('market')
             ->middleware(['auth:api', 'token.version'])
             ->group(function () {
-                Route::post('/analyze', [MarketDataController::class, 'analyze'])->middleware('throttle:30,1');
+                Route::post('/analyze', [MarketDataController::class, 'analyze'])->middleware('throttle:60,1');
                 Route::get('/portfolio', [MarketDataController::class, 'portfolio']);
                 Route::post('/positions', [MarketDataController::class, 'addPosition'])->middleware('throttle:30,1');
                 Route::delete('/positions/{position}', [MarketDataController::class, 'removePosition'])->whereNumber('position');

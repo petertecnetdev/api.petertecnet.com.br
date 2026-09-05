@@ -24,7 +24,7 @@ use App\Http\Controllers\{
     UserController
 };
 
-Route::post('/interactions/batch', [InteractionController::class, 'storeBatch'])->middleware('throttle:1200,1')->name('interactions.batch');
+Route::post('/interactions/batch', [InteractionController::class, 'storeBatch'])->middleware('throttle:telemetry')->name('interactions.batch');
 
 Route::prefix('home')->middleware('api')->group(function () {
     Route::get('/{app_id}', [HomeController::class, 'home'])->whereNumber('app_id')->name('home.main');
@@ -37,7 +37,7 @@ Route::prefix('auth')->middleware('api')->group(function () {
     Route::post('/password-reset', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
     Route::post('/logout', [AuthController::class, 'logout']);
     Route::post('/refresh', [AuthController::class, 'refresh'])->middleware('throttle:30,1');
-    Route::post('/google', [AuthController::class, 'googleAuth'])->middleware('throttle:10,1')->name('auth.google');
+    Route::post('/google', [AuthController::class, 'googleAuth'])->middleware('throttle:google-login')->name('auth.google');
 
     Route::middleware('auth:api')->group(function () {
         Route::get('/me', [AuthController::class, 'me']);

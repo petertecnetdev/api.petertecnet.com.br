@@ -49,26 +49,33 @@ class RouteServiceProvider extends ServiceProvider
     protected function configureRateLimiting()
     {
         RateLimiter::for('api', function (Request $request) {
-            $userId = null;
-
-            try {
-                $userId = $request->user('api')?->getAuthIdentifier();
-            } catch (\Throwable $exception) {
-                // Authentication middleware will handle invalid/expired credentials later.
-                // Rate limiting must never turn an auth failure into a 500 response.
-            }
+            $userId = $this->rateLimitUserId($request);
+            $ip = $request->ip();
+            $appKey = $this->rateLimitApplicationKey($request);
+            $isAuthRequest = $request->is('api/auth/*');
 
             if ($userId) {
-                return Limit::perMinute(3000)->by('user:'.$userId);
+                return [
+                    Limit::perMinute($isAuthRequest ? 10000 : 6000)
+                        ->by('api:user-app:'.$userId.':'.$appKey),
+                    Limit::perMinute($isAuthRequest ? 30000 : 20000)
+                        ->by('api:user-global:'.$userId),
+                ];
             }
 
-            return Limit::perMinute(600)->by('ip:'.$request->ip());
+            return [
+                Limit::perMinute($isAuthRequest ? 6000 : 1200)
+                    ->by('api:ip-app:'.$ip.':'.$appKey),
+                Limit::perMinute($isAuthRequest ? 12000 : 6000)
+                    ->by('api:ip-global:'.$ip),
+            ];
         });
 
         RateLimiter::for('login', function (Request $request) {
-            $email = strtolower(trim((string) $request->input('email')));
-            $emailKey = $email !== '' ? hash('sha256', $email) : 'missing-email';
+            $identifier = strtolower(trim((string) ($request->input('username') ?: $request->input('email'))));
+            $identifierKey = $identifier !== '' ? hash('sha256', $identifier) : 'missing-identifier';
             $ip = $request->ip();
+            $appKey = $this->rateLimitApplicationKey($request);
 
             $tooManyAttemptsResponse = static function (Request $request, array $headers) {
                 $retryAfter = (int) ($headers['Retry-After'] ?? 60);
@@ -81,12 +88,90 @@ class RouteServiceProvider extends ServiceProvider
 
             return [
                 Limit::perMinute(20)
-                    ->by('login:'.$ip.':'.$emailKey)
+                    ->by('login:'.$ip.':'.$identifierKey)
                     ->response($tooManyAttemptsResponse),
-                Limit::perMinute(60)
-                    ->by('login-ip:'.$ip)
+                Limit::perMinute(120)
+                    ->by('login-app-ip:'.$appKey.':'.$ip)
+                    ->response($tooManyAttemptsResponse),
+                Limit::perMinute(300)
+                    ->by('login-ip-global:'.$ip)
                     ->response($tooManyAttemptsResponse),
             ];
         });
+
+        RateLimiter::for('google-login', function (Request $request) {
+            $ip = $request->ip();
+            $appKey = $this->rateLimitApplicationKey($request);
+
+            $tooManyAttemptsResponse = static function (Request $request, array $headers) {
+                $retryAfter = (int) ($headers['Retry-After'] ?? 60);
+
+                return response()->json([
+                    'message' => 'Muitas tentativas de login com Google. Aguarde alguns segundos e tente novamente.',
+                    'retry_after' => $retryAfter,
+                ], 429, $headers);
+            };
+
+            return [
+                Limit::perMinute(60)
+                    ->by('google-login-app-ip:'.$appKey.':'.$ip)
+                    ->response($tooManyAttemptsResponse),
+                Limit::perMinute(300)
+                    ->by('google-login-ip-global:'.$ip)
+                    ->response($tooManyAttemptsResponse),
+            ];
+        });
+
+        RateLimiter::for('market-read', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+
+            if ($userId) {
+                return Limit::perMinute(1800)
+                    ->by('market-read:user-app:'.$userId.':'.$appKey);
+            }
+
+            return Limit::perMinute(900)
+                ->by('market-read:ip-app:'.$request->ip().':'.$appKey);
+        });
+
+        RateLimiter::for('telemetry', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+
+            if ($userId) {
+                return Limit::perMinute(3000)
+                    ->by('telemetry:user-app:'.$userId.':'.$appKey);
+            }
+
+            return Limit::perMinute(1200)
+                ->by('telemetry:ip-app:'.$request->ip().':'.$appKey);
+        });
+    }
+
+    private function rateLimitUserId(Request $request): int|string|null
+    {
+        try {
+            return $request->user('api')?->getAuthIdentifier();
+        } catch (\Throwable $exception) {
+            // Authentication middleware will handle invalid/expired credentials later.
+            // Rate limiting must never turn an auth failure into a 500 response.
+            return null;
+        }
+    }
+
+    private function rateLimitApplicationKey(Request $request): string
+    {
+        $header = strtolower(trim((string) $request->header('X-Peter-App', '')));
+        $routeApplication = strtolower(trim((string) $request->route('application')));
+        $value = $header !== '' ? $header : $routeApplication;
+
+        if ($value === '') {
+            return 'unknown';
+        }
+
+        $normalized = preg_replace('/[^a-z0-9._-]+/', '-', $value) ?: 'unknown';
+
+        return substr(trim($normalized, '-'), 0, 80) ?: 'unknown';
     }
 }
