@@ -56,10 +56,10 @@ class RouteServiceProvider extends ServiceProvider
             }
 
             if ($userId) {
-                return Limit::perMinute(300)->by('user:'.$userId);
+                return Limit::perMinute(3000)->by('user:'.$userId);
             }
 
-            return Limit::perMinute(120)->by('ip:'.$request->ip());
+            return Limit::perMinute(600)->by('ip:'.$request->ip());
         });
 
         RateLimiter::for('login', function (Request $request) {
