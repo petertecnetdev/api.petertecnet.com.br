@@ -189,11 +189,10 @@ final class UserActorIdentityService
             return null;
         }
 
-        $normalized = Str::of($role)
+        $normalized = (string) Str::of($role)
             ->lower()
             ->ascii()
-            ->replace([' ', '-'], '_')
-            ->value();
+            ->replace([' ', '-'], '_');
 
         return match ($normalized) {
             'artist', 'artista', 'dj', 'musician', 'musico', 'band', 'banda' => 'artist',
