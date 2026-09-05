@@ -53,6 +53,7 @@ class Kernel extends HttpKernel
         'app.context' => \App\Http\Middleware\ResolveApplicationContext::class,
         'app.bind' => \App\Http\Middleware\BindApplicationContext::class,
         'app.capability' => \App\Http\Middleware\RequireApplicationCapability::class,
+        'app.admin' => \App\Http\Middleware\RequireApplicationAdmin::class,
         'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
         'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
