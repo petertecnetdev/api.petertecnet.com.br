@@ -225,6 +225,7 @@ Route::prefix('v1/apps/{application}')
                 Route::match(['put', 'patch'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id');
                 Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
                 Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
+                Route::post('/events/{id}/duplicate', [EventManagementController::class, 'duplicate'])->whereNumber('id');
                 Route::delete('/events/{id}', [EventManagementController::class, 'destroy'])->whereNumber('id');
             });
 
@@ -256,8 +257,8 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/commerce/purchases/{publicId}', [OrderHistoryController::class, 'purchase']);
                 Route::get('/commerce/purchases/{publicId}/receipt', [OrderHistoryController::class, 'receipt']);
                 Route::get('/commerce/purchases/{publicId}/receipt.pdf', [OrderHistoryController::class, 'receiptPdf']);
-                Route::get('/organizations/{organizationId}/sales', [OrderHistoryController::class, 'producerSales'])->whereNumber('organizationId');
-                Route::get('/organizations/{organizationId}/sales/{publicId}', [OrderHistoryController::class, 'producerSale'])->whereNumber('organizationId');
+                Route::get('/organizations/{organizationId}/sales', [OrderHistoryController::class, 'organizationSales'])->whereNumber('organizationId');
+                Route::get('/organizations/{organizationId}/sales/{publicId}', [OrderHistoryController::class, 'organizationSale'])->whereNumber('organizationId');
             });
 
             Route::middleware('app.capability:payouts')->group(function () {
