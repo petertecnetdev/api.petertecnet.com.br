@@ -7,10 +7,16 @@ use Illuminate\Support\Facades\Schema;
 return new class extends Migration {
     public function up(): void
     {
+        if (Schema::hasTable('establishments')) {
+            return;
+        }
+
         Schema::create('establishments', function (Blueprint $table) {
             $table->id();
-           $table->unsignedBigInteger('app_id')->nullable();
-$table->foreign('app_id')->references('id')->on('applications')->nullOnDelete();
+            // The applications table is created by the next migration.
+            // Keep the column here and add cross-domain constraints only after
+            // both tables exist so a fresh install can migrate deterministically.
+            $table->unsignedBigInteger('app_id')->nullable();
 
 
             $table->string('name');
