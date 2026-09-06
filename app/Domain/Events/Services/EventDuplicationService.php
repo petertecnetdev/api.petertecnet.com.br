@@ -6,6 +6,7 @@ use App\Models\Event;
 use App\Models\EventItem;
 use App\Models\EventSchedule;
 use App\Models\Ticket;
+use App\Models\User;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -19,8 +20,7 @@ final class EventDuplicationService
         string $date,
         int $appId,
         ?string $appSlug,
-        int $userId,
-        bool $isAdministrator = false,
+        User $actor,
     ): Event {
         $source = Event::query()
             ->where('app_id', $appId)
@@ -34,7 +34,7 @@ final class EventDuplicationService
         );
 
         abort_unless(
-            $isAdministrator || (int) $source->production->user_id === $userId,
+            $actor->hasProfile('Administrador') || (int) $source->production->user_id === (int) $actor->id,
             403,
             'Você não pode duplicar este evento.'
         );
