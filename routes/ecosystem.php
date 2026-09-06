@@ -109,6 +109,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::get('/establishments', [EcosystemController::class, 'establishments']);
     Route::post('/establishments', [EcosystemController::class, 'storeEstablishment']);
     Route::get('/establishments/{establishment}/resources/events', [EstablishmentEventController::class, 'index'])->whereNumber('establishment');
+    Route::get('/establishments/{establishment}/resources/events/{event}/tickets', [EstablishmentEventController::class, 'tickets'])->whereNumber('establishment')->whereNumber('event');
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
     Route::put('/establishments/{establishment}/owner', [EcosystemController::class, 'transferEstablishmentOwner'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
