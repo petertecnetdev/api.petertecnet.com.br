@@ -31,10 +31,27 @@ final class EventCommerceController extends Controller
     {
         $this->context->requireCapability('commerce');
         $event = Event::query()->where('app_id',$this->context->id())->where('slug',$slug)->where('is_published',true)->where('is_cancelled',false)->where('is_private',false)->whereHas('production',fn($q)=>$q->where('app_id',$this->context->id()))->firstOrFail();
-        $tickets = Ticket::query()->where('event_id',$event->id)->where('app_id',$this->context->id())->where('price','>',0)->orderBy('price')->get();
-        $items = EventItem::query()->where('app_id',$this->context->id())->where('event_id',$event->id)->where('is_active',true)->orderBy('name')->get();
+        $salesClosed = $event->salesClosed();
+        $tickets = Ticket::query()->where('event_id',$event->id)->where('app_id',$this->context->id())->where('price','>',0)->orderBy('price')->get()->each(function(Ticket $ticket)use($salesClosed){if($salesClosed)$ticket->setAttribute('available',false);});
+        $items = EventItem::query()->where('app_id',$this->context->id())->where('event_id',$event->id)->where('is_active',true)->orderBy('name')->get()->each(function(EventItem $item)use($salesClosed){if($salesClosed)$item->setAttribute('available',false);});
         $readiness = $this->accounts->readiness((int)$event->production_id);
-        return response()->json(['event'=>$event->only(['id','title','slug','start_date','end_date']),'tickets'=>$tickets,'items'=>$items,'payment_config'=>['provider'=>'mercadopago','connected'=>$readiness['available'],'available'=>$readiness['available'],'merchant_connected'=>$readiness['merchant_connected'],'settlement_mode'=>$readiness['settlement_mode'],'public_key'=>$readiness['public_key'],'methods'=>$readiness['methods'],'message'=>$readiness['message']]]);
+        $paymentAvailable = ! $salesClosed && $readiness['available'];
+        return response()->json([
+            'event'=>$event->only(['id','title','slug','start_date','end_date','temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions']),
+            'sales_closed'=>$salesClosed,
+            'tickets'=>$tickets,
+            'items'=>$items,
+            'payment_config'=>[
+                'provider'=>'mercadopago',
+                'connected'=>$readiness['available'],
+                'available'=>$paymentAvailable,
+                'merchant_connected'=>$readiness['merchant_connected'],
+                'settlement_mode'=>$readiness['settlement_mode'],
+                'public_key'=>$readiness['public_key'],
+                'methods'=>$paymentAvailable?$readiness['methods']:[],
+                'message'=>$salesClosed?'As vendas deste evento foram encerradas.':$readiness['message'],
+            ],
+        ]);
     }
 
     public function checkout(Request $request)
@@ -48,12 +65,14 @@ final class EventCommerceController extends Controller
         abort_if(empty($data['tickets'])&&empty($data['items']),422,'Selecione ao menos um ingresso ou item.');
         if($data['payment_method']==='card'){$document=preg_replace('/\D+/','',(string)($data['payer_identification_number']??''));abort_if(strlen($document)!==11,422,'Informe um CPF válido para o titular do cartão.');$data['payer_identification_number']=$document;}
         $eventForReadiness=Event::query()->where('id',$data['event_id'])->where('app_id',$this->context->id())->whereHas('production',fn($q)=>$q->where('app_id',$this->context->id()))->firstOrFail();
+        abort_if($eventForReadiness->salesClosed(),422,$eventForReadiness->hasEnded()?'Este evento já foi encerrado. Não aceita novas compras.':'Este evento não está disponível para venda.');
         $readiness=$this->accounts->readiness((int)$eventForReadiness->production_id);abort_unless($readiness['available'],422,$readiness['message']);abort_unless(in_array($data['payment_method'],$readiness['methods'],true),422,'Esta forma de pagamento não está disponível para esta organização.');
         $platformRate=max(0,min((float)$this->context->option('commerce.platform_fee_percent',0),100));$expirationMinutes=(int)$this->context->option('commerce.order_expiration_minutes',30);
 
         $order=DB::transaction(function()use($data,$user,$platformRate,$expirationMinutes){
             $event=Event::query()->where('id',$data['event_id'])->where('app_id',$this->context->id())->with('production')->lockForUpdate()->firstOrFail();
-            abort_if(!$event->is_published||$event->is_cancelled||$event->is_private,422,'Este evento não está disponível para venda.');abort_unless($event->production&&(int)$event->production->app_id===$this->context->id(),422,'A organização do evento é inválida.');abort_if($event->end_date&&now()->greaterThanOrEqualTo($event->end_date),422,'Este evento já foi encerrado.');
+            abort_unless($event->production&&(int)$event->production->app_id===$this->context->id(),422,'A organização do evento é inválida.');
+            abort_if($event->salesClosed(),422,$event->hasEnded()?'Este evento já foi encerrado. Não aceita novas compras.':'Este evento não está disponível para venda.');
             $expiresAt=now()->addMinutes($expirationMinutes);
             $order=CommerceOrder::create(['app_id'=>$this->context->id(),'public_id'=>(string)Str::uuid(),'event_id'=>$event->id,'production_id'=>$event->production_id,'user_id'=>$user->id,'status'=>'pending','currency'=>'BRL','payment_method'=>$data['payment_method'],'expires_at'=>$expiresAt,'metadata'=>['application_slug'=>$this->context->slug()]]);
             $subtotal=0.0;
