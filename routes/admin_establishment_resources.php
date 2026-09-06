@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AdminEstablishmentEventController;
 use App\Http\Controllers\Admin\AdminEstablishmentResourceController;
+use App\Http\Controllers\Admin\AdminEventSeriesController;
 use App\Http\Controllers\Admin\EstablishmentEventController as EstablishmentTicketController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,9 @@ Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
         Route::post('/events/{event}/duplicate', [AdminEstablishmentEventController::class, 'duplicate'])
             ->whereNumber('event')
             ->middleware('throttle:30,1');
+        Route::post('/events/{event}/series', AdminEventSeriesController::class)
+            ->whereNumber('event')
+            ->middleware('throttle:20,1');
         Route::post('/events/{event}/tickets', [EstablishmentTicketController::class, 'storeTicket'])
             ->whereNumber('event')
             ->middleware('throttle:30,1');
@@ -24,6 +28,4 @@ Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
         Route::post('/appointments', [AdminEstablishmentResourceController::class, 'storeAppointment'])->middleware('throttle:30,1');
     });
 
-// Application-scoped administrative access is loaded from the same registered
-// API route module so the Peter Tecnet root-admin middleware above stays isolated.
 require __DIR__.'/application_admin.php';

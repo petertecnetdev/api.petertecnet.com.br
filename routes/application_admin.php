@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Events\Http\Controllers\ApplicationAdminEventController;
 use App\Domain\Platform\Http\Controllers\ApplicationAdminController;
 use App\Http\Middleware\EnsureApplicationAdmin;
 use Illuminate\Support\Facades\Route;
@@ -14,6 +15,12 @@ Route::prefix('v1/apps/{application}')
             Route::get('/permissions', [ApplicationAdminController::class, 'permissionCatalog']);
             Route::get('/audit', [ApplicationAdminController::class, 'audit'])
                 ->middleware(EnsureApplicationAdmin::class.':audit.view');
+
+            Route::get('/events', [ApplicationAdminEventController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':events.view');
+            Route::post('/events/{event}/series', [ApplicationAdminEventController::class, 'series'])
+                ->whereNumber('event')
+                ->middleware([EnsureApplicationAdmin::class.':events.manage', 'throttle:20,1']);
 
             Route::middleware(EnsureApplicationAdmin::class.':admin.access.manage')->group(function () {
                 Route::get('/profiles', [ApplicationAdminController::class, 'profiles']);
