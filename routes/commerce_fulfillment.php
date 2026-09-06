@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Commerce\Http\Controllers\CommerceFulfillmentController;
+use App\Domain\Commerce\Http\Controllers\EventCatalogController;
 use App\Domain\Commerce\Http\Controllers\EventItemRedemptionController;
 use App\Domain\Commerce\Http\Controllers\EventPurchaseController;
 use Illuminate\Support\Facades\Route;
@@ -22,6 +23,13 @@ Route::prefix('v1/apps/{application}')
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:commerce'])
     ->group(function () {
+        Route::get('/events/{eventId}/catalog-items', [EventCatalogController::class, 'index'])
+            ->whereNumber('eventId')
+            ->middleware('throttle:60,1');
+        Route::put('/events/{eventId}/catalog-items', [EventCatalogController::class, 'sync'])
+            ->whereNumber('eventId')
+            ->middleware('throttle:30,1');
+
         Route::get('/me/orders/{order}/fulfillment/credential', [CommerceFulfillmentController::class, 'credential'])
             ->whereNumber('order')
             ->middleware('throttle:60,1');

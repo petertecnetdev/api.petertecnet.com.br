@@ -23,14 +23,12 @@ final class DuplicateEventController extends Controller
             'date.date_format' => 'Informe a nova data no formato válido.',
         ]);
 
-        $user = $request->user();
         $duplicate = $this->duplicator->duplicateForApplicationUser(
             $id,
             $data['date'],
             $this->context->id(),
             $this->context->slug(),
-            (int) $user->id,
-            $user->hasProfile('Administrador'),
+            $request->user(),
         );
 
         return response()->json([
@@ -39,6 +37,7 @@ final class DuplicateEventController extends Controller
             'copied' => [
                 'tickets' => $duplicate->tickets_count,
                 'artists' => $duplicate->artists->count(),
+                'items' => $duplicate->commerce_items_count,
             ],
         ], 201);
     }
