@@ -72,8 +72,10 @@ final class EventPurchaseOptionsService
                 $remaining = max(0, (int) $item->quantity - $sold - $reserved);
                 $source = $item->sourceItem;
                 if ($source) $source->setAppends(['image_url']);
+                $payload = $item->toArray();
+                unset($payload['source_item']);
 
-                return array_merge($item->toArray(), [
+                return array_merge($payload, [
                     'remaining' => $remaining,
                     'available' => $remaining > 0,
                     'image_url' => $source?->image_url,
