@@ -5,6 +5,8 @@ namespace Tests\Feature;
 use App\Models\User;
 use App\Support\EmailVerificationDeferrals;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class EmailVerificationDeferralsTest extends TestCase
@@ -13,12 +15,10 @@ class EmailVerificationDeferralsTest extends TestCase
 
     public function test_reset_clears_only_email_verification_deferral_metadata(): void
     {
-        $user = User::factory()->unverified()->create([
-            'extra_info' => [
-                EmailVerificationDeferrals::DEFERRALS_KEY => 2,
-                EmailVerificationDeferrals::LAST_DEFERRED_AT_KEY => '2026-09-06T18:00:00-03:00',
-                'preserved_key' => 'keep-me',
-            ],
+        $user = $this->createUser(false, [
+            EmailVerificationDeferrals::DEFERRALS_KEY => 2,
+            EmailVerificationDeferrals::LAST_DEFERRED_AT_KEY => '2026-09-06T18:00:00-03:00',
+            'preserved_key' => 'keep-me',
         ]);
 
         $before = EmailVerificationDeferrals::state($user);
@@ -40,10 +40,8 @@ class EmailVerificationDeferralsTest extends TestCase
 
     public function test_verified_user_stays_ineligible_to_defer_after_reset(): void
     {
-        $user = User::factory()->create([
-            'extra_info' => [
-                EmailVerificationDeferrals::DEFERRALS_KEY => 2,
-            ],
+        $user = $this->createUser(true, [
+            EmailVerificationDeferrals::DEFERRALS_KEY => 2,
         ]);
 
         $state = EmailVerificationDeferrals::reset($user);
@@ -51,5 +49,16 @@ class EmailVerificationDeferralsTest extends TestCase
         $this->assertTrue($state['verified']);
         $this->assertFalse($state['can_defer']);
         $this->assertFalse($state['confirmation_required']);
+    }
+
+    private function createUser(bool $verified, array $extraInfo): User
+    {
+        return User::query()->create([
+            'first_name' => 'Teste',
+            'email' => 'email-deferrals-'.Str::uuid().'@example.com',
+            'password' => Hash::make('test-password'),
+            'email_verified_at' => $verified ? now() : null,
+            'extra_info' => $extraInfo,
+        ]);
     }
 }
