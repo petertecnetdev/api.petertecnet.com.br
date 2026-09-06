@@ -2,6 +2,7 @@
 
 namespace App\Domain\Platform\Http\Controllers;
 
+use App\Domain\Platform\Services\ApplicationAdminOverviewService;
 use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -9,8 +10,10 @@ use Illuminate\Http\Request;
 
 class ApplicationAdminController extends Controller
 {
-    public function __construct(private readonly ApplicationAdminService $service)
-    {
+    public function __construct(
+        private readonly ApplicationAdminService $service,
+        private readonly ApplicationAdminOverviewService $overviewService,
+    ) {
     }
 
     public function context(Request $request): JsonResponse
@@ -18,6 +21,14 @@ class ApplicationAdminController extends Controller
         return response()->json([
             'success' => true,
             'data' => $this->service->context($request->user(), $this->applicationId($request)),
+        ]);
+    }
+
+    public function overview(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->overviewService->overview($this->applicationId($request)),
         ]);
     }
 
