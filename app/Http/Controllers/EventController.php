@@ -13,6 +13,8 @@ use Intervention\Image\Facades\Image;
 
 class EventController extends Controller
 {
+    private const PRODUCTION_RELATION = 'production:id,name,slug,user_id,phone,contact_phone';
+
     public function list(Request $request)
     {
         $data = $request->validate([
@@ -21,7 +23,7 @@ class EventController extends Controller
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
-        $query = Event::query()->with('production:id,name,slug,user_id');
+        $query = Event::query()->with(self::PRODUCTION_RELATION);
 
         if (isset($data['production_id'])) {
             $query->where('production_id', $data['production_id']);
@@ -51,7 +53,7 @@ class EventController extends Controller
 
         return response()->json([
             'message' => 'Evento cadastrado com sucesso.',
-            'event' => $event->load('production:id,name,slug,user_id'),
+            'event' => $event->load(self::PRODUCTION_RELATION),
         ], 201);
     }
 
@@ -86,19 +88,21 @@ class EventController extends Controller
 
         return response()->json([
             'message' => 'Evento atualizado com sucesso.',
-            'event' => $event->fresh()->load('production:id,name,slug,user_id'),
+            'event' => $event->fresh()->load(self::PRODUCTION_RELATION),
         ]);
     }
 
     public function show($id)
     {
-        $event = Event::with(['production:id,name,slug,user_id', 'tickets'])->findOrFail($id);
+        $event = Event::with([self::PRODUCTION_RELATION, 'tickets'])->findOrFail($id);
+        $this->normalizeProductionPhone($event);
         return response()->json(['event' => $event]);
     }
 
     public function view($slug)
     {
-        $event = Event::where('slug', $slug)->with(['production:id,name,slug,user_id', 'tickets'])->firstOrFail();
+        $event = Event::where('slug', $slug)->with([self::PRODUCTION_RELATION, 'tickets'])->firstOrFail();
+        $this->normalizeProductionPhone($event);
         $user = Auth::user();
 
         if ($event->is_private && ! $this->canManageProduction($event->production, 'event_edit')) {
@@ -161,7 +165,7 @@ class EventController extends Controller
 
         $events = Event::query()
             ->whereHas('production', fn ($q) => $q->where('user_id', Auth::id()))
-            ->with('production:id,name,slug,user_id')
+            ->with(self::PRODUCTION_RELATION)
             ->orderByDesc('start_date')
             ->paginate($data['per_page'] ?? 25);
 
@@ -234,6 +238,13 @@ class EventController extends Controller
             || (int) $production->user_id === (int) $user->id
             || $user->hasPermission($permission)
         );
+    }
+
+    private function normalizeProductionPhone(Event $event): void
+    {
+        if ($event->production && ! $event->production->phone && $event->production->contact_phone) {
+            $event->production->phone = $event->production->contact_phone;
+        }
     }
 
     private function uniqueSlug(string $source, ?int $ignoreId = null): string
