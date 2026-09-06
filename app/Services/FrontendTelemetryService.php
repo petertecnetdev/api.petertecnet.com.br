@@ -60,6 +60,8 @@ class FrontendTelemetryService
             Interaction::withoutEvents(fn () => Interaction::create([
                 'user_id' => $user?->getAuthIdentifier(),
                 'app_id' => $application->id,
+                'entity_type' => $this->entityType($metadata),
+                'entity_id' => $this->entityId($metadata),
                 'interaction_type' => 'frontend_'.$type,
                 'outcome' => $outcome,
                 'severity' => $this->severityFor($type, $outcome),
@@ -85,6 +87,7 @@ class FrontendTelemetryService
                     'app_name' => $application->name,
                     'declared_app' => $declaredSlug,
                     'telemetry_schema' => $request->header('X-Telemetry-Schema') ?: '1',
+                    'telemetry_version' => $request->header('X-Peter-Telemetry') ?: null,
                     'ip_hash' => $this->hashIp($request->ip()),
                     'user_agent' => $request->userAgent(),
                 ], fn ($value) => $value !== null && $value !== [] && $value !== ''),
@@ -96,7 +99,7 @@ class FrontendTelemetryService
 
         if ($accepted > 0) {
             $this->realtime->publish(
-                new EcosystemUpdated(['dashboard', 'activity', 'audit'], 'frontend-telemetry'),
+                new EcosystemUpdated(['dashboard', 'activity', 'audit', 'telemetry'], 'frontend-telemetry'),
                 ['operation' => 'frontend-telemetry', 'app_id' => $application->id]
             );
         }
@@ -157,6 +160,28 @@ class FrontendTelemetryService
             'frontend_error' => 'Encontrou um erro na interface',
             default => $label ?: ucfirst(str_replace('_', ' ', $type)),
         };
+    }
+
+    private function entityType(array $metadata): ?string
+    {
+        $value = strtolower(trim((string) ($metadata['entity_type'] ?? '')));
+        if ($value === '' || ! preg_match('/^[a-z][a-z0-9_\-]{0,79}$/', $value)) {
+            return null;
+        }
+
+        return str($value)->replace(['-', '_'], ' ')->title()->replace(' ', '')->toString();
+    }
+
+    private function entityId(array $metadata): ?int
+    {
+        $value = $metadata['entity_id'] ?? null;
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $id = (int) $value;
+
+        return $id > 0 ? $id : null;
     }
 
     private function sanitize(array $values): array

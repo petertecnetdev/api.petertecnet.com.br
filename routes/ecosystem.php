@@ -14,6 +14,7 @@ use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalRealtimeController;
 use App\Http\Controllers\Admin\ResourceVisibilityController;
+use App\Http\Controllers\Admin\TelemetryController;
 use App\Http\Controllers\Admin\UserCommunicationController;
 use Illuminate\Support\Facades\Route;
 
@@ -36,6 +37,13 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
+
+    Route::prefix('telemetry')->group(function () {
+        Route::get('/health', [TelemetryController::class, 'health']);
+        Route::get('/journeys', [TelemetryController::class, 'journeys']);
+        Route::get('/journeys/{session}', [TelemetryController::class, 'journey'])
+            ->where('session', '[A-Za-z0-9._:-]{6,100}');
+    });
 
     Route::prefix('command')->group(function () {
         Route::get('/overview', [CommandCenterController::class, 'overview']);

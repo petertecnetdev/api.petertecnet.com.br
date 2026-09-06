@@ -42,6 +42,10 @@ class SemanticTelemetryTest extends TestCase
                         'outcome' => 'success',
                         'status' => 200,
                         'duration_ms' => 84,
+                        'resource' => 'risk_profile',
+                        'action' => 'update',
+                        'entity_type' => 'risk_profile',
+                        'entity_id' => 42,
                         'value' => 'must-not-be-stored',
                     ],
                 ],
@@ -59,6 +63,7 @@ class SemanticTelemetryTest extends TestCase
             'X-Peter-App' => $app->slug,
             'Origin' => $app->url,
             'X-Telemetry-Schema' => '3',
+            'X-Peter-Telemetry' => '3.3.0',
         ]);
 
         $response->assertStatus(202)->assertJson(['accepted' => 3]);
@@ -69,7 +74,10 @@ class SemanticTelemetryTest extends TestCase
 
         $this->assertSame('frontend_screen_view', $screen->interaction_type);
         $this->assertSame('success', $action->outcome);
+        $this->assertSame('RiskProfile', $action->entity_type);
+        $this->assertSame(42, $action->entity_id);
         $this->assertSame(200, $action->content['status']);
+        $this->assertSame('3.3.0', $action->content['telemetry_version']);
         $this->assertSame('[REDACTED]', $action->content['metadata']['value']);
         $this->assertArrayHasKey('ip_hash', $action->content);
         $this->assertNotEmpty($action->content['ip_hash']);
