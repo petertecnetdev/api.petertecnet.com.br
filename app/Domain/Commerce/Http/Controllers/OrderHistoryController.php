@@ -29,11 +29,41 @@ final class OrderHistoryController extends Controller
 
     public function organizationSales(Request $request,int $organizationId)
     {
-        $this->ownedOrganization($request,$organizationId);$query=CommerceOrder::query()->where('app_id',$this->context->id())->where('production_id',$organizationId)->with(['user:id,first_name,last_name,email','event:id,title,slug,start_date,end_date','items','payments'=>fn($q)=>$q->latest('id')]);
-        if($request->filled('status'))$query->where('status',$request->string('status')->toString());if($request->filled('event_id'))$query->where('event_id',$request->integer('event_id'));if($request->filled('from'))$query->whereDate('created_at','>=',$request->date('from'));if($request->filled('to'))$query->whereDate('created_at','<=',$request->date('to'));
+        $this->ownedOrganization($request,$organizationId);
+        $query=CommerceOrder::query()->where('app_id',$this->context->id())->where('production_id',$organizationId)->with(['user:id,first_name,last_name,email','event:id,title,slug,start_date,end_date','items','payments'=>fn($q)=>$q->latest('id')]);
+        if($request->filled('status'))$query->where('status',$request->string('status')->toString());
+        if($request->filled('event_id'))$query->where('event_id',$request->integer('event_id'));
+        if($request->filled('from'))$query->whereDate('created_at','>=',$request->date('from'));
+        if($request->filled('to'))$query->whereDate('created_at','<=',$request->date('to'));
         if($request->filled('q')){$term=trim($request->string('q')->toString());$query->where(fn($q)=>$q->where('public_id','like',"%{$term}%")->orWhereHas('user',fn($u)=>$u->where('email','like',"%{$term}%")->orWhere('first_name','like',"%{$term}%")->orWhere('last_name','like',"%{$term}%")));}
-        $orders=$query->latest('id')->paginate(min(max((int)$request->integer('per_page',30),1),100));$base=CommerceOrder::query()->where('app_id',$this->context->id())->where('production_id',$organizationId);
-        return response()->json(['orders'=>$orders,'summary'=>['paid_count'=>(clone$base)->where('status','paid')->count(),'pending_count'=>(clone$base)->where('status','pending')->count(),'cancelled_count'=>(clone$base)->whereIn('status',['cancelled','refunded','charged_back'])->count(),'gross_paid'=>round((float)(clone$base)->where('status','paid')->sum('total'),2),'platform_fees'=>round((float)(clone$base)->where('status','paid')->sum('platform_fee'),2),'processor_fees'=>round((float)(clone$base)->where('status','paid')->sum('processor_fee'),2),'organization_net'=>round((float)(clone$base)->where('status','paid')->sum('producer_net'),2)]]);
+        $orders=$query->latest('id')->paginate(min(max((int)$request->integer('per_page',30),1),100));
+
+        $base=CommerceOrder::query()->where('app_id',$this->context->id())->where('production_id',$organizationId);
+        if($request->filled('event_id'))$base->where('event_id',$request->integer('event_id'));
+        if($request->filled('from'))$base->whereDate('created_at','>=',$request->date('from'));
+        if($request->filled('to'))$base->whereDate('created_at','<=',$request->date('to'));
+
+        $paidLines=DB::table('commerce_order_items as oi')
+            ->join('commerce_orders as o','o.id','=','oi.order_id')
+            ->where('oi.app_id',$this->context->id())
+            ->where('o.app_id',$this->context->id())
+            ->where('o.production_id',$organizationId)
+            ->where('o.status','paid');
+        if($request->filled('event_id'))$paidLines->where('o.event_id',$request->integer('event_id'));
+        if($request->filled('from'))$paidLines->whereDate('o.created_at','>=',$request->date('from'));
+        if($request->filled('to'))$paidLines->whereDate('o.created_at','<=',$request->date('to'));
+
+        return response()->json(['orders'=>$orders,'summary'=>[
+            'paid_count'=>(clone$base)->where('status','paid')->count(),
+            'pending_count'=>(clone$base)->where('status','pending')->count(),
+            'cancelled_count'=>(clone$base)->whereIn('status',['cancelled','refunded','charged_back'])->count(),
+            'gross_paid'=>round((float)(clone$base)->where('status','paid')->sum('total'),2),
+            'platform_fees'=>round((float)(clone$base)->where('status','paid')->sum('platform_fee'),2),
+            'processor_fees'=>round((float)(clone$base)->where('status','paid')->sum('processor_fee'),2),
+            'organization_net'=>round((float)(clone$base)->where('status','paid')->sum('producer_net'),2),
+            'paid_tickets'=>(int)(clone$paidLines)->where('oi.type','ticket')->sum('oi.quantity'),
+            'paid_items'=>(int)(clone$paidLines)->where('oi.type','item')->sum('oi.quantity'),
+        ]]);
     }
 
     public function organizationSale(Request $request,int $organizationId,string $publicId){$this->ownedOrganization($request,$organizationId);$order=$this->findOrder($publicId);abort_unless((int)$order->production_id===$organizationId,404);return response()->json(['order'=>$this->decorate($order)]);}
