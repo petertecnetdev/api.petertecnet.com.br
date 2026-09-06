@@ -65,14 +65,15 @@ final class RevenueFunnelService
         $lostGross = (float) (clone $lostOrders)->sum('total');
         $lostPlatformRevenue = (float) (clone $lostOrders)->sum('platform_fee');
 
+        $normalizedPaymentMethodSql = "COALESCE(NULLIF(payment_method, ''), 'unknown')";
         $paymentMethods = (clone $orders)
-            ->selectRaw("COALESCE(NULLIF(payment_method, ''), 'unknown') payment_method")
+            ->selectRaw("{$normalizedPaymentMethodSql} payment_method")
             ->selectRaw('COUNT(*) orders_created')
             ->selectRaw("SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) orders_paid")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) gross_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN platform_fee ELSE 0 END), 0) platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
-            ->groupBy('payment_method')
+            ->groupByRaw($normalizedPaymentMethodSql)
             ->get()
             ->map(function ($row): array {
                 $createdForMethod = (int) $row->orders_created;
