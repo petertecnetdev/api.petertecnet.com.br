@@ -13,9 +13,10 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping(10);
 
-        $schedule->command('operations:backup-database --retention-days=14')
-            ->dailyAt('03:10')
-            ->withoutOverlapping(120);
+        // Database backups are created by the verified encrypted backup workflow.
+        // The workflow streams the dump off-host, restores it in an isolated database,
+        // encrypts it before retention, and stores an off-VPS copy. Do not schedule the
+        // legacy plaintext operations:backup-database command in production.
 
         $schedule->command('forecasts:evaluate')->everyFiveMinutes();
         $schedule->command('platform:remind-events')->everyFiveMinutes()->withoutOverlapping();
