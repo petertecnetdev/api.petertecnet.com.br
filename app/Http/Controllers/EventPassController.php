@@ -56,6 +56,11 @@ class EventPassController extends Controller
                 'Este evento não está disponível para retirada pública de cortesias.'
             );
 
+            abort_if(
+                $event->end_date && now()->greaterThanOrEqualTo($event->end_date),
+                422,
+                'Este evento já foi encerrado. Não é mais possível emitir ingressos.'
+            );
             abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if(
                 $ticket->limit_date && now()->greaterThan($ticket->limit_date),
