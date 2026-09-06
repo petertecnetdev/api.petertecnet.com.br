@@ -55,6 +55,9 @@ final class SocialGraphController extends Controller
             ->with('production:id,user_id,name,slug')
             ->findOrFail($eventId);
         $data=$request->validate(['is_favorite'=>'sometimes|boolean','is_interested'=>'sometimes|boolean']);
+        if(($data['is_interested']??false) && ! $event->allowedActions()['mark_interested']){
+            abort(422,'Este evento já foi encerrado e não aceita novas marcações de interesse.');
+        }
         $key=['app_id'=>$appId,'user_id'=>$request->user()->id,'event_id'=>$event->id];
         $previous=DB::table('event_engagements')->where($key)->first();
         $wasInterested=(bool)($previous->is_interested??false);
