@@ -8,6 +8,7 @@ use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 
 final class EventDiscoveryController extends Controller
 {
@@ -34,9 +35,24 @@ final class EventDiscoveryController extends Controller
         $appId=$this->context->id();$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);
         $event=Event::query()->where('app_id',$appId)->where('slug',$slug)->where('is_published',true)->where('is_cancelled',false)->where(fn($q)=>$q->where('is_private',false)->orWhereNull('is_private'))
             ->with(['production:id,app_id,name,slug,user_id,app_slug,logo,background,description,city,uf,instagram_url,website_url','artists'=>fn($q)=>$q->where('artists.app_id',$appId)->where('artists.is_published',true)->orderByDesc('event_artist.is_headliner')->orderBy('event_artist.sort_order')])->firstOrFail();
-        $tickets=Ticket::query()->where('app_id',$appId)->where('event_id',$event->id)->where('price',0)->withCount('passes')->orderBy('created_at')->get()->map(function(Ticket $ticket)use($now){$remaining=max(0,(int)$ticket->quantity-(int)$ticket->passes_count);$expired=$ticket->limit_date&&$now->greaterThan(Carbon::parse($ticket->limit_date,config('app.timezone','America/Sao_Paulo')));$ticket->setAttribute('remaining',$remaining);$ticket->setAttribute('available',$remaining>0&&!$expired);$ticket->setAttribute('expired',(bool)$expired);return $ticket;});
-        $event->setAttribute('has_ended',$event->end_date?Carbon::parse($event->end_date,$timezone)->lte($now):false);$event->setAttribute('is_happening_now',$event->start_date&&$event->end_date?Carbon::parse($event->start_date,$timezone)->lte($now)&&Carbon::parse($event->end_date,$timezone)->gt($now):false);
-        return response()->json(['event'=>$event,'tickets'=>$tickets]);
+        $eventEnded=$event->hasEnded($now);
+        $tickets=Ticket::query()->where('app_id',$appId)->where('event_id',$event->id)->where('price',0)->withCount('passes')->orderBy('created_at')->get()->map(function(Ticket $ticket)use($now,$eventEnded){$remaining=max(0,(int)$ticket->quantity-(int)$ticket->passes_count);$limitExpired=$ticket->limit_date&&$now->greaterThan(Carbon::parse($ticket->limit_date,config('app.timezone','America/Sao_Paulo')));$expired=$eventEnded||$limitExpired;$ticket->setAttribute('remaining',$remaining);$ticket->setAttribute('available',$remaining>0&&!$expired);$ticket->setAttribute('expired',(bool)$expired);return $ticket;});
+
+        $history=null;
+        if($eventEnded){
+            $validPasses=DB::table('event_passes')->where('event_id',$event->id)->whereNotIn('status',['cancelled','refunded','charged_back']);
+            $rating=DB::table('event_ratings')->where('app_id',$appId)->where('event_id',$event->id)->selectRaw('ROUND(AVG(rating),1) average, COUNT(*) total')->first();
+            $history=[
+                'participants'=>(clone $validPasses)->whereNotNull('user_id')->distinct()->count('user_id'),
+                'checkins'=>(clone $validPasses)->whereNotNull('checked_in_at')->count(),
+                'community_posts'=>DB::table('event_posts')->where('app_id',$appId)->where('event_id',$event->id)->where('status','published')->count(),
+                'artists'=>$event->artists->count(),
+                'rating_average'=>$rating?->average?(float)$rating->average:0,
+                'rating_total'=>(int)($rating?->total??0),
+            ];
+        }
+
+        return response()->json(['event'=>$event,'tickets'=>$tickets,'history'=>$history]);
     }
 
     public function facets(Request $request)
