@@ -123,83 +123,18 @@ jobs:
           REMOTE_SCRIPT
 
   backup-before-deploy:
-    name: Verified database backup before deploy
+    name: Verified encrypted database backup before deploy
     needs: reconcile-source
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - name: Check deploy configuration
-        id: config
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          if [[ -z "${VPS_HOST}" || -z "${VPS_USER}" || -z "${VPS_SSH_KEY}" ]]; then
-            echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::error::VPS deployment is not configured; refusing database-changing deploy."
-            exit 1
-          fi
-          echo "enabled=true" >> "$GITHUB_OUTPUT"
-          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
-
-      - name: Install backup subsystem and create pre-deploy snapshot
-        if: steps.config.outputs.enabled == 'true'
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ steps.config.outputs.port }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -Eeuo pipefail
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
-
-          recipient="$(ssh-keygen -y -f "$HOME/.ssh/id_ed25519")"
-          recipient_b64="$(printf '%s' "$recipient" | base64 -w0)"
-
-          ssh \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=20 \
-            -o ConnectionAttempts=3 \
-            -o ServerAliveInterval=30 \
-            -o ServerAliveCountMax=8 \
-            -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" \
-            "bash -s -- '$recipient_b64'" <<'REMOTE_SCRIPT'
-          set -Eeuo pipefail
-          RECIPIENT_B64="$1"
-          APP_DIR=/var/www/api.petertecnet.com.br
-          cd "$APP_DIR"
-
-          git fetch --prune origin main
-          TARGET_SHA="$(git rev-parse origin/main)"
-          STAGE_DIR="$(mktemp -d /tmp/petertecnet-backup-install.XXXXXX)"
-          cleanup() { rm -rf "$STAGE_DIR"; }
-          trap cleanup EXIT
-
-          for file in \
-            install.sh \
-            petertecnet-db-backup.sh \
-            petertecnet-db-backup.service \
-            petertecnet-db-backup.timer
-          do
-            git show "$TARGET_SHA:ops/backup/$file" > "$STAGE_DIR/$file"
-          done
-          chmod 700 "$STAGE_DIR/install.sh" "$STAGE_DIR/petertecnet-db-backup.sh"
-
-          RECIPIENT="$(printf '%s' "$RECIPIENT_B64" | base64 -d)"
-          sudo env PETERTECNET_BACKUP_AGE_RECIPIENT="$RECIPIENT" \
-            bash "$STAGE_DIR/install.sh" "$APP_DIR" "$STAGE_DIR"
-
-          # Hard deployment gate: migrations never run unless the backup can be dumped,
-          # restored into an isolated database, verified and encrypted successfully.
-          sudo /usr/local/sbin/petertecnet-db-backup pre-deploy
-          REMOTE_SCRIPT
+    uses: ./.github/workflows/reusable-verified-database-backup.yml
+    with:
+      kind: pre-deploy
+      local_retention_days: 14
+      artifact_retention_days: 90
+    secrets:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
 
   deploy:
     needs:
