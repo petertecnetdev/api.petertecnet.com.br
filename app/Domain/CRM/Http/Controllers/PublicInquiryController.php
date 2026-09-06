@@ -63,14 +63,15 @@ final class PublicInquiryController extends Controller
         }
 
         $contactId = $this->findContact($scope, $data['email'] ?? null, $data['phone'] ?? null);
-        $contactNotes = $this->contactNotes($data);
+        $acquisitionSource = $this->acquisitionSource($data);
+        $contactNotes = $this->contactNotes($data, $acquisitionSource);
 
         if ($contactId) {
             DB::table('crm_contacts')->where('id', $contactId)->where($scope)->update([
                 'name' => $data['name'],
                 'phone' => $data['phone'] ?? null,
                 'email' => $data['email'] ?? null,
-                'source' => $data['source'] ?? 'website',
+                // Keep the original acquisition source for existing contacts.
                 'notes' => $contactNotes,
                 'updated_at' => now(),
             ]);
@@ -81,7 +82,7 @@ final class PublicInquiryController extends Controller
                 'phone' => $data['phone'] ?? null,
                 'email' => $data['email'] ?? null,
                 'document' => null,
-                'source' => $data['source'] ?? 'website',
+                'source' => $acquisitionSource,
                 'notes' => $contactNotes,
                 'status' => 'lead',
                 'created_at' => now(),
@@ -96,7 +97,7 @@ final class PublicInquiryController extends Controller
             'stage' => 'new',
             'value' => 0,
             'probability' => 20,
-            'notes' => $this->opportunityNotes($data, $attachmentPaths),
+            'notes' => $this->opportunityNotes($data, $attachmentPaths, $acquisitionSource),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
@@ -129,14 +130,50 @@ final class PublicInquiryController extends Controller
         return $query->value('id');
     }
 
-    private function contactNotes(array $data): string
+    private function acquisitionSource(array $data): string
+    {
+        $sourceUrl = trim((string) ($data['source_url'] ?? ''));
+        $params = [];
+        if ($sourceUrl !== '') {
+            parse_str((string) parse_url($sourceUrl, PHP_URL_QUERY), $params);
+        }
+
+        $utmSource = trim((string) ($params['utm_source'] ?? ''));
+        if ($utmSource !== '') return mb_substr(Str::lower($utmSource), 0, 80);
+        if (! empty($params['gclid'])) return 'google-ads';
+        if (! empty($params['fbclid'])) return 'meta';
+        if (! empty($params['msclkid'])) return 'microsoft-ads';
+
+        $explicit = trim((string) ($data['source'] ?? ''));
+        return mb_substr($explicit !== '' ? Str::lower($explicit) : 'website', 0, 80);
+    }
+
+    private function attributionDetails(array $data): array
+    {
+        $sourceUrl = trim((string) ($data['source_url'] ?? ''));
+        if ($sourceUrl === '') return [];
+
+        $params = [];
+        parse_str((string) parse_url($sourceUrl, PHP_URL_QUERY), $params);
+        $allowed = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'gclid', 'fbclid', 'msclkid'];
+
+        return collect($allowed)
+            ->mapWithKeys(function (string $key) use ($params) {
+                $value = trim((string) ($params[$key] ?? ''));
+                return $value === '' ? [] : [$key => mb_substr($value, 0, 240)];
+            })
+            ->all();
+    }
+
+    private function contactNotes(array $data, string $acquisitionSource): string
     {
         $company = $data['company'] ?? null;
         $sourceUrl = $data['source_url'] ?? null;
 
         return collect([
             $company ? 'Empresa: ' . $company : null,
-            'Origem: ' . ($data['source'] ?? 'website'),
+            'Origem de aquisição: ' . $acquisitionSource,
+            'Canal informado: ' . ($data['source'] ?? 'website'),
             $sourceUrl ? 'URL: ' . $sourceUrl : null,
         ])->filter()->join("\n");
     }
@@ -147,7 +184,7 @@ final class PublicInquiryController extends Controller
         return mb_substr('Inbound · ' . $need, 0, 255);
     }
 
-    private function opportunityNotes(array $data, array $attachments): string
+    private function opportunityNotes(array $data, array $attachments, string $acquisitionSource): string
     {
         $serviceSlug = $data['service_slug'] ?? null;
         $budget = $data['budget'] ?? null;
@@ -155,9 +192,15 @@ final class PublicInquiryController extends Controller
         $company = $data['company'] ?? null;
         $sourcePath = $data['source_path'] ?? null;
         $sourceUrl = $data['source_url'] ?? null;
+        $attribution = $this->attributionDetails($data);
+        $attributionLine = $attribution
+            ? collect($attribution)->map(fn ($value, $key) => $key . '=' . $value)->join(' · ')
+            : null;
 
         return collect([
             $data['message'] ?? null,
+            'Origem de aquisição: ' . $acquisitionSource,
+            $attributionLine ? 'Atribuição: ' . $attributionLine : null,
             $serviceSlug ? 'Serviço: ' . $serviceSlug : null,
             $budget ? 'Orçamento informado: ' . $budget : null,
             $urgency ? 'Urgência: ' . $urgency : null,
