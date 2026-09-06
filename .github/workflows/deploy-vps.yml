@@ -50,6 +50,9 @@ jobs:
           ssh \
             -o StrictHostKeyChecking=accept-new \
             -o ConnectTimeout=20 \
+            -o ConnectionAttempts=3 \
+            -o ServerAliveInterval=30 \
+            -o ServerAliveCountMax=4 \
             -p "$VPS_PORT" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE_SCRIPT'
           set -Eeuo pipefail
           cd /var/www/api.petertecnet.com.br
@@ -97,6 +100,26 @@ jobs:
               git restore --source="$TARGET_SHA" --staged --worktree -- "$path"
             fi
           done < <(git status --porcelain=v1 --untracked-files=all)
+
+          # Never destroy local-only commits. Emit a bounded source-only diagnostic so
+          # an unpublished VPS commit can be reviewed and ported back to main safely.
+          CURRENT_SHA="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$CURRENT_SHA" "$TARGET_SHA"; then
+            MERGE_BASE="$(git merge-base "$CURRENT_SHA" "$TARGET_SHA")"
+            echo "VPS_LOCAL_COMMITS_BEGIN"
+            git log --oneline --decorate "$TARGET_SHA..$CURRENT_SHA" || true
+            echo "VPS_LOCAL_CHANGED_FILES_BEGIN"
+            git diff --name-status "$MERGE_BASE..$CURRENT_SHA" -- \
+              app bootstrap config database routes tests .github composer.json composer.lock || true
+            echo "VPS_LOCAL_CHANGED_FILES_END"
+            echo "VPS_LOCAL_PATCH_BEGIN"
+            git diff --no-ext-diff --unified=12 "$MERGE_BASE..$CURRENT_SHA" -- \
+              app bootstrap config database routes tests .github composer.json composer.lock \
+              | head -c 350000 || true
+            echo
+            echo "VPS_LOCAL_PATCH_END"
+            echo "VPS_LOCAL_COMMITS_END"
+          fi
           REMOTE_SCRIPT
 
   deploy:
