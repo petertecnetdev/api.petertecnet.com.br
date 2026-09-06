@@ -1,0 +1,311 @@
+name: Reusable Verified Database Backup
+
+on:
+  workflow_call:
+    inputs:
+      kind:
+        description: Backup class (daily or pre-deploy).
+        required: true
+        type: string
+      local_retention_days:
+        description: Days to retain the encrypted VPS copy.
+        required: false
+        default: 14
+        type: number
+      artifact_retention_days:
+        description: Days to retain the encrypted off-site GitHub Actions artifact.
+        required: false
+        default: 90
+        type: number
+    secrets:
+      VPS_HOST:
+        required: true
+      VPS_PORT:
+        required: false
+      VPS_USER:
+        required: true
+      VPS_SSH_KEY:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Verify, encrypt and retain ${{ inputs.kind }} backup
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout backup tooling
+        uses: actions/checkout@v4
+
+      - name: Validate backup configuration
+        id: config
+        shell: bash
+        env:
+          KIND: ${{ inputs.kind }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$KIND" =~ ^(daily|pre-deploy)$ ]] || {
+            echo "::error::Unsupported backup kind: $KIND"
+            exit 2
+          }
+          [[ -n "$VPS_HOST" && -n "$VPS_USER" && -n "$VPS_SSH_KEY" ]] || {
+            echo "::error::VPS backup credentials are incomplete."
+            exit 3
+          }
+          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH and encryption tooling
+        shell: bash
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -Eeuo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          : > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age
+
+      - name: Stream consistent production dump off the VPS
+        id: export
+        shell: bash
+        env:
+          KIND: ${{ inputs.kind }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ steps.config.outputs.port }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          APP_DIR=/var/www/api.petertecnet.com.br
+          SSH=(ssh -T -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=20 -o ConnectionAttempts=3 -o ServerAliveInterval=30 -o ServerAliveCountMax=8 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
+
+          server_version="$("${SSH[@]}" "bash -s -- server-version '$APP_DIR'" < ops/backup/export-database.sh)"
+          server_version="$(printf '%s' "$server_version" | tr -d '\r\n')"
+          [[ -n "$server_version" ]] || {
+            echo "::error::Could not determine the production database version."
+            exit 4
+          }
+
+          stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
+          base="petertecnet-${KIND}-${stamp}"
+          work_dir="$RUNNER_TEMP/verified-database-backup"
+          artifact_dir="$RUNNER_TEMP/verified-database-artifact"
+          mkdir -p "$work_dir" "$artifact_dir"
+          chmod 700 "$work_dir" "$artifact_dir"
+
+          plain="$work_dir/$base.sql.gz"
+          encrypted="$artifact_dir/$base.sql.gz.age"
+          manifest="$artifact_dir/$base.manifest.json"
+
+          "${SSH[@]}" "bash -s -- dump '$APP_DIR'" < ops/backup/export-database.sh > "$plain"
+          gzip -t "$plain"
+          [[ -s "$plain" ]] || {
+            echo "::error::Production database dump is empty."
+            exit 5
+          }
+
+          echo "server_version=$server_version" >> "$GITHUB_OUTPUT"
+          echo "stamp=$stamp" >> "$GITHUB_OUTPUT"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          echo "plain=$plain" >> "$GITHUB_OUTPUT"
+          echo "encrypted=$encrypted" >> "$GITHUB_OUTPUT"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
+          echo "artifact_dir=$artifact_dir" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=verified-${KIND}-database-${stamp}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore dump into isolated disposable database
+        id: restore
+        shell: bash
+        env:
+          PLAIN: ${{ steps.export.outputs.plain }}
+          SERVER_VERSION: ${{ steps.export.outputs.server_version }}
+        run: |
+          set -Eeuo pipefail
+          container="petertecnet-db-restore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          root_password="restore-only-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+
+          if [[ "$SERVER_VERSION" =~ [Mm]aria[Dd][Bb] ]]; then
+            image="mariadb:11.4"
+            client="mariadb"
+            admin="mariadb-admin"
+            docker run -d --name "$container" \
+              -e MARIADB_ROOT_PASSWORD="$root_password" \
+              "$image" >/dev/null
+          else
+            image="mysql:8.4"
+            client="mysql"
+            admin="mysqladmin"
+            docker run -d --name "$container" \
+              -e MYSQL_ROOT_PASSWORD="$root_password" \
+              "$image" >/dev/null
+          fi
+
+          echo "container=$container" >> "$GITHUB_OUTPUT"
+          echo "client=$client" >> "$GITHUB_OUTPUT"
+          echo "root_password=$root_password" >> "$GITHUB_OUTPUT"
+
+          ready=0
+          for _ in $(seq 1 60); do
+            if docker exec "$container" "$admin" ping -uroot -p"$root_password" --silent >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          [[ "$ready" == "1" ]] || {
+            docker logs "$container" >&2 || true
+            echo "::error::Disposable restore database did not become ready."
+            exit 6
+          }
+
+          docker exec "$container" "$client" -uroot -p"$root_password" \
+            -e 'CREATE DATABASE pt_backup_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
+
+          gunzip -c "$PLAIN" | docker exec -i "$container" "$client" -uroot -p"$root_password" pt_backup_verify
+
+          table_count="$(docker exec "$container" "$client" -N -B -uroot -p"$root_password" \
+            -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='pt_backup_verify';" | tr -d '[:space:]')"
+          [[ "$table_count" =~ ^[0-9]+$ && "$table_count" -gt 0 ]] || {
+            echo "::error::Restore completed without tables."
+            exit 7
+          }
+
+          verified=0
+          for table in users establishments; do
+            exists="$(docker exec "$container" "$client" -N -B -uroot -p"$root_password" \
+              -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='pt_backup_verify' AND table_name='$table';" | tr -d '[:space:]')"
+            [[ "$exists" == "1" ]] || {
+              echo "::error::Critical table missing after restore: $table"
+              exit 8
+            }
+            verified=$((verified + 1))
+          done
+
+          echo "table_count=$table_count" >> "$GITHUB_OUTPUT"
+          echo "critical_verified=$verified" >> "$GITHUB_OUTPUT"
+          echo "Restore validation passed with $table_count tables and $verified critical tables."
+
+      - name: Encrypt and independently verify the backup
+        shell: bash
+        env:
+          KIND: ${{ inputs.kind }}
+          PLAIN: ${{ steps.export.outputs.plain }}
+          ENCRYPTED: ${{ steps.export.outputs.encrypted }}
+          MANIFEST: ${{ steps.export.outputs.manifest }}
+          STAMP: ${{ steps.export.outputs.stamp }}
+          SERVER_VERSION: ${{ steps.export.outputs.server_version }}
+          TABLE_COUNT: ${{ steps.restore.outputs.table_count }}
+          CRITICAL_VERIFIED: ${{ steps.restore.outputs.critical_verified }}
+        run: |
+          set -Eeuo pipefail
+          recipient_file="$RUNNER_TEMP/age-recipient.txt"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" > "$recipient_file"
+          chmod 600 "$recipient_file"
+
+          plain_sha="$(sha256sum "$PLAIN" | awk '{print $1}')"
+          age -R "$recipient_file" -o "$ENCRYPTED" "$PLAIN"
+          chmod 600 "$ENCRYPTED"
+          encrypted_sha="$(sha256sum "$ENCRYPTED" | awk '{print $1}')"
+          encrypted_size="$(stat -c '%s' "$ENCRYPTED")"
+
+          decrypted="$RUNNER_TEMP/database-restore-verify.sql.gz"
+          age -d -i "$HOME/.ssh/id_ed25519" -o "$decrypted" "$ENCRYPTED"
+          [[ "$(sha256sum "$decrypted" | awk '{print $1}')" == "$plain_sha" ]] || {
+            echo "::error::Decrypted backup checksum mismatch."
+            exit 9
+          }
+          gzip -t "$decrypted"
+
+          python3 - "$MANIFEST" "$KIND" "$STAMP" "$SERVER_VERSION" "$plain_sha" "$encrypted_sha" "$encrypted_size" "$TABLE_COUNT" "$CRITICAL_VERIFIED" <<'PY'
+          import json
+          import os
+          import sys
+
+          manifest, kind, stamp, server_version, plain_sha, encrypted_sha, size, table_count, critical_verified = sys.argv[1:]
+          payload = {
+              "schema": 2,
+              "kind": kind,
+              "created_at_utc": stamp,
+              "database_server_version": server_version,
+              "file": os.path.basename(manifest).replace(".manifest.json", ".sql.gz.age"),
+              "encrypted": True,
+              "encryption": "age/SSH recipient",
+              "size_bytes": int(size),
+              "sha256_encrypted": encrypted_sha,
+              "sha256_plain": plain_sha,
+              "restore_test": "passed",
+              "restored_table_count": int(table_count),
+              "critical_tables_verified": ["users", "establishments"] if int(critical_verified) == 2 else [],
+          }
+          with open(manifest, "w", encoding="utf-8") as fh:
+              json.dump(payload, fh, ensure_ascii=False, indent=2)
+              fh.write("\n")
+          PY
+          chmod 600 "$MANIFEST"
+
+          rm -f "$PLAIN" "$decrypted" "$recipient_file"
+
+      - name: Store encrypted retained copy back on VPS
+        shell: bash
+        env:
+          KIND: ${{ inputs.kind }}
+          RETENTION_DAYS: ${{ inputs.local_retention_days }}
+          STAMP: ${{ steps.export.outputs.stamp }}
+          ENCRYPTED: ${{ steps.export.outputs.encrypted }}
+          MANIFEST: ${{ steps.export.outputs.manifest }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ steps.config.outputs.port }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RETENTION_DAYS" =~ ^[0-9]+$ && "$RETENTION_DAYS" -ge 1 ]] || exit 10
+          SSH=(ssh -T -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=8 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
+          SCP=(scp -q -P "$VPS_PORT" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+
+          year="${STAMP:0:4}"
+          month="${STAMP:4:2}"
+          root="/var/www/api.petertecnet.com.br/storage/app/private/backups/verified"
+          remote_dir="$root/$KIND/$year/$month"
+          "${SSH[@]}" "mkdir -p '$remote_dir' && chmod 700 '$root' '$root/$KIND' '$root/$KIND/$year' '$remote_dir'"
+          "${SCP[@]}" "$ENCRYPTED" "$MANIFEST" "$VPS_USER@$VPS_HOST:$remote_dir/"
+
+          expected_sha="$(sha256sum "$ENCRYPTED" | awk '{print $1}')"
+          remote_file="$remote_dir/$(basename "$ENCRYPTED")"
+          remote_sha="$("${SSH[@]}" "sha256sum '$remote_file' | awk '{print \$1}'" | tr -d '\r\n')"
+          [[ "$remote_sha" == "$expected_sha" ]] || {
+            echo "::error::Encrypted VPS retention copy checksum mismatch."
+            exit 11
+          }
+
+          "${SSH[@]}" "find '$root/$KIND' -type f \\( -name '*.age' -o -name '*.manifest.json' \\) -mtime '+$RETENTION_DAYS' -delete; find '$root/$KIND' -type d -empty -delete || true"
+          echo "Encrypted VPS retention copy verified."
+
+      - name: Upload encrypted off-site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.export.outputs.artifact_name }}
+          path: ${{ steps.export.outputs.artifact_dir }}
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+      - name: Remove disposable restore environment
+        if: always()
+        shell: bash
+        env:
+          CONTAINER: ${{ steps.restore.outputs.container }}
+          PLAIN: ${{ steps.export.outputs.plain }}
+        run: |
+          set +e
+          [[ -n "$CONTAINER" ]] && docker rm -f "$CONTAINER" >/dev/null 2>&1
+          [[ -n "$PLAIN" ]] && rm -f "$PLAIN"
+          rm -f "$RUNNER_TEMP/database-restore-verify.sql.gz" "$RUNNER_TEMP/age-recipient.txt"
