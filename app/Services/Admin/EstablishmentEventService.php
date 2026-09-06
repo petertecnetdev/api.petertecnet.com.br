@@ -90,9 +90,7 @@ final class EstablishmentEventService
         abort_unless((int) $ticket->event_id === (int) $event->id, 404);
 
         if (array_key_exists('quantity', $data)) {
-            $issued = Ticket::query()
-                ->findOrFail($ticket->id)
-                ->passes()
+            $issued = $ticket->passes()
                 ->whereNotIn('status', self::INVALID_PASS_STATUSES)
                 ->count();
             $reserved = (int) DB::table('inventory_reservations')
@@ -109,16 +107,26 @@ final class EstablishmentEventService
             }
         }
 
-        DB::transaction(function () use ($ticket, $data) {
-            $ticket->fill([
-                ...array_key_exists('name', $data) ? ['name' => trim($data['name'])] : [],
-                ...array_key_exists('ticket_type', $data) ? ['ticket_type' => trim($data['ticket_type'])] : [],
-                ...array_key_exists('type', $data) ? ['type' => trim((string) ($data['type'] ?? '')) ?: null] : [],
-                ...array_key_exists('price', $data) ? ['price' => $data['price']] : [],
-                ...array_key_exists('quantity', $data) ? ['quantity' => $data['quantity']] : [],
-                ...array_key_exists('limit_date', $data) ? ['limit_date' => $data['limit_date']] : [],
-                ...array_key_exists('description', $data) ? ['description' => trim((string) ($data['description'] ?? '')) ?: null] : [],
-            ]);
+        $updates = [];
+        foreach (['name', 'ticket_type', 'type', 'price', 'quantity', 'limit_date', 'description'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $updates[$field] = $data[$field];
+            }
+        }
+        foreach (['name', 'ticket_type', 'type', 'description'] as $field) {
+            if (array_key_exists($field, $updates) && is_string($updates[$field])) {
+                $updates[$field] = trim($updates[$field]);
+            }
+        }
+        if (array_key_exists('type', $updates) && $updates['type'] === '') {
+            $updates['type'] = null;
+        }
+        if (array_key_exists('description', $updates) && $updates['description'] === '') {
+            $updates['description'] = null;
+        }
+
+        DB::transaction(function () use ($ticket, $updates) {
+            $ticket->fill($updates);
             $ticket->save();
         });
 
