@@ -16,6 +16,8 @@ LOCAL_MONTHLY_DAYS="${LOCAL_MONTHLY_DAYS:-400}"
 RESTORE_TEST="${RESTORE_TEST:-1}"
 OFFSITE_RCLONE_REMOTE="${OFFSITE_RCLONE_REMOTE:-}"
 CRITICAL_TABLES="${CRITICAL_TABLES:-users establishments}"
+MYSQL_DUMP_INCLUDE_ROUTINES="${MYSQL_DUMP_INCLUDE_ROUTINES:-0}"
+MYSQL_DUMP_INCLUDE_EVENTS="${MYSQL_DUMP_INCLUDE_EVENTS:-0}"
 LOCK_FILE="${LOCK_FILE:-/run/lock/petertecnet-db-backup.lock}"
 
 log() {
@@ -137,20 +139,90 @@ else
   mysql_client_args+=(-h "${DB_HOST:-127.0.0.1}" -P "${DB_PORT:-3306}")
 fi
 
-mysql_admin_exec() {
-  local sql="$1"
+MYSQL_ADMIN_MODE=""
+
+resolve_mysql_admin() {
+  [[ -n "$MYSQL_ADMIN_MODE" ]] && return 0
+
   if [[ -n "${RESTORE_MYSQL_ADMIN_CNF:-}" ]]; then
-    mysql --defaults-extra-file="$RESTORE_MYSQL_ADMIN_CNF" -e "$sql"
-  elif [[ -n "${RESTORE_DB_ADMIN_USER:-}" ]]; then
+    mysql --defaults-extra-file="$RESTORE_MYSQL_ADMIN_CNF" -e "SELECT 1" >/dev/null
+    MYSQL_ADMIN_MODE="cnf"
+    return 0
+  fi
+
+  if [[ -n "${RESTORE_DB_ADMIN_USER:-}" ]]; then
     MYSQL_PWD="${RESTORE_DB_ADMIN_PASSWORD:-}" mysql \
       -h "${RESTORE_DB_ADMIN_HOST:-${DB_HOST:-127.0.0.1}}" \
       -P "${RESTORE_DB_ADMIN_PORT:-${DB_PORT:-3306}}" \
-      -u "$RESTORE_DB_ADMIN_USER" -e "$sql"
-  elif [[ "${DB_HOST:-localhost}" =~ ^(localhost|127\.0\.0\.1|::1)$ ]]; then
-    mysql -uroot -e "$sql"
-  else
-    return 1
+      -u "$RESTORE_DB_ADMIN_USER" -e "SELECT 1" >/dev/null
+    MYSQL_ADMIN_MODE="configured"
+    return 0
   fi
+
+  if [[ "${DB_HOST:-localhost}" =~ ^(localhost|127\.0\.0\.1|::1)$ ]] \
+    && mysql -uroot -e "SELECT 1" >/dev/null 2>&1; then
+    MYSQL_ADMIN_MODE="root"
+    return 0
+  fi
+
+  if MYSQL_PWD="$DB_PASSWORD" mysql "${mysql_client_args[@]}" -u "$DB_USER" -e "SELECT 1" >/dev/null 2>&1; then
+    MYSQL_ADMIN_MODE="app"
+    return 0
+  fi
+
+  return 1
+}
+
+mysql_admin_exec() {
+  local sql="$1"
+  resolve_mysql_admin || return 1
+
+  case "$MYSQL_ADMIN_MODE" in
+    cnf)
+      mysql --defaults-extra-file="$RESTORE_MYSQL_ADMIN_CNF" -e "$sql"
+      ;;
+    configured)
+      MYSQL_PWD="${RESTORE_DB_ADMIN_PASSWORD:-}" mysql \
+        -h "${RESTORE_DB_ADMIN_HOST:-${DB_HOST:-127.0.0.1}}" \
+        -P "${RESTORE_DB_ADMIN_PORT:-${DB_PORT:-3306}}" \
+        -u "$RESTORE_DB_ADMIN_USER" -e "$sql"
+      ;;
+    root)
+      mysql -uroot -e "$sql"
+      ;;
+    app)
+      MYSQL_PWD="$DB_PASSWORD" mysql "${mysql_client_args[@]}" -u "$DB_USER" -e "$sql"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+mysql_restore_into() {
+  local database="$1"
+  resolve_mysql_admin || return 1
+
+  case "$MYSQL_ADMIN_MODE" in
+    cnf)
+      mysql --defaults-extra-file="$RESTORE_MYSQL_ADMIN_CNF" "$database"
+      ;;
+    configured)
+      MYSQL_PWD="${RESTORE_DB_ADMIN_PASSWORD:-}" mysql \
+        -h "${RESTORE_DB_ADMIN_HOST:-${DB_HOST:-127.0.0.1}}" \
+        -P "${RESTORE_DB_ADMIN_PORT:-${DB_PORT:-3306}}" \
+        -u "$RESTORE_DB_ADMIN_USER" "$database"
+      ;;
+    root)
+      mysql -uroot "$database"
+      ;;
+    app)
+      MYSQL_PWD="$DB_PASSWORD" mysql "${mysql_client_args[@]}" -u "$DB_USER" "$database"
+      ;;
+    *)
+      return 1
+      ;;
+  esac
 }
 
 pg_admin_exec() {
@@ -170,21 +242,32 @@ pg_admin_exec() {
 
 restore_status="skipped"
 restored_table_count=0
-critical_results=""
+critical_tables_verified=0
 
 if [[ "$DB_DRIVER" =~ ^(mysql|mariadb)$ ]]; then
   PLAIN="$TMP_DIR/$BASE.sql.gz"
   log "Creating consistent MySQL/MariaDB backup of $DB_NAME"
+  mysql_dump_options=(
+    --single-transaction
+    --quick
+    --triggers
+    --hex-blob
+    --default-character-set=utf8mb4
+  )
+  if mysqldump --help 2>&1 | grep -q -- '--no-tablespaces'; then
+    mysql_dump_options+=(--no-tablespaces)
+  fi
+  if [[ "$MYSQL_DUMP_INCLUDE_ROUTINES" == "1" ]]; then
+    mysql_dump_options+=(--routines)
+  fi
+  if [[ "$MYSQL_DUMP_INCLUDE_EVENTS" == "1" ]]; then
+    mysql_dump_options+=(--events)
+  fi
+
   MYSQL_PWD="$DB_PASSWORD" mysqldump \
     "${mysql_client_args[@]}" \
     -u "$DB_USER" \
-    --single-transaction \
-    --quick \
-    --routines \
-    --triggers \
-    --events \
-    --hex-blob \
-    --default-character-set=utf8mb4 \
+    "${mysql_dump_options[@]}" \
     "$DB_NAME" | gzip -9 > "$PLAIN"
 
   gzip -t "$PLAIN"
@@ -195,18 +278,7 @@ if [[ "$DB_DRIVER" =~ ^(mysql|mariadb)$ ]]; then
     log "Running isolated restore validation in $RESTORE_DB"
     mysql_admin_exec "CREATE DATABASE \`$RESTORE_DB\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci" \
       || die "Could not create restore-test database. Configure RESTORE_MYSQL_ADMIN_CNF or RESTORE_DB_ADMIN_*."
-    gunzip -c "$PLAIN" | {
-      if [[ -n "${RESTORE_MYSQL_ADMIN_CNF:-}" ]]; then
-        mysql --defaults-extra-file="$RESTORE_MYSQL_ADMIN_CNF" "$RESTORE_DB"
-      elif [[ -n "${RESTORE_DB_ADMIN_USER:-}" ]]; then
-        MYSQL_PWD="${RESTORE_DB_ADMIN_PASSWORD:-}" mysql \
-          -h "${RESTORE_DB_ADMIN_HOST:-${DB_HOST:-127.0.0.1}}" \
-          -P "${RESTORE_DB_ADMIN_PORT:-${DB_PORT:-3306}}" \
-          -u "$RESTORE_DB_ADMIN_USER" "$RESTORE_DB"
-      else
-        mysql -uroot "$RESTORE_DB"
-      fi
-    }
+    gunzip -c "$PLAIN" | mysql_restore_into "$RESTORE_DB"
     restored_table_count="$(
       mysql_admin_exec "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='$RESTORE_DB'" \
         | tail -n1 | tr -d '[:space:]'
@@ -221,11 +293,7 @@ if [[ "$DB_DRIVER" =~ ^(mysql|mariadb)$ ]]; then
           | tail -n1 | tr -d '[:space:]'
       )"
       [[ "$exists" == "1" ]] || die "Critical table missing after restore: $table"
-      count="$(
-        mysql_admin_exec "SELECT COUNT(*) FROM \`$RESTORE_DB\`.\`$table\`" \
-          | tail -n1 | tr -d '[:space:]'
-      )"
-      critical_results+="${table}:${count} "
+      critical_tables_verified=$((critical_tables_verified + 1))
     done
     restore_status="passed"
     mysql_admin_exec "DROP DATABASE IF EXISTS \`$RESTORE_DB\`"
@@ -283,18 +351,9 @@ mv "$ENCRYPTED.tmp" "$ENCRYPTED"
 ENCRYPTED_SHA256="$(sha256sum "$ENCRYPTED" | awk '{print $1}')"
 ENCRYPTED_SIZE="$(stat -c '%s' "$ENCRYPTED")"
 
-python3 - "$MANIFEST" "$KIND" "$STAMP" "$DB_DRIVER" "$ENCRYPTED" "$ENCRYPTED_SHA256" "$PLAIN_SHA256" "$ENCRYPTED_SIZE" "$restore_status" "$restored_table_count" "$critical_results" <<'PY'
+python3 - "$MANIFEST" "$KIND" "$STAMP" "$DB_DRIVER" "$ENCRYPTED" "$ENCRYPTED_SHA256" "$PLAIN_SHA256" "$ENCRYPTED_SIZE" "$restore_status" "$restored_table_count" "$critical_tables_verified" <<'PY'
 import json, os, sys
-manifest, kind, stamp, driver, encrypted, encrypted_sha, plain_sha, size, restore_status, table_count, critical = sys.argv[1:]
-critical_counts = {}
-for pair in critical.split():
-    if ":" in pair:
-        key, value = pair.split(":", 1)
-        try:
-            value = int(value)
-        except ValueError:
-            pass
-        critical_counts[key] = value
+manifest, kind, stamp, driver, encrypted, encrypted_sha, plain_sha, size, restore_status, table_count, critical_verified = sys.argv[1:]
 payload = {
     "schema": 1,
     "kind": kind,
@@ -306,8 +365,8 @@ payload = {
     "sha256_encrypted": encrypted_sha,
     "sha256_plain": plain_sha,
     "restore_test": restore_status,
-    "restored_table_count": int(table_count or 0),
-    "critical_table_counts": critical_counts,
+    "restore_verified_tables": int(table_count or 0),
+    "critical_tables_verified": int(critical_verified or 0),
 }
 with open(manifest, "w", encoding="utf-8") as fh:
     json.dump(payload, fh, ensure_ascii=False, indent=2)
