@@ -14,6 +14,7 @@ class Event extends Model
 {
     protected $fillable = ['app_id','app_slug','production_id','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','max_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'];
     protected $casts = ['start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer'];
+    protected $appends = ['temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions'];
 
     protected static function booted(): void
     {
@@ -57,6 +58,62 @@ class Event extends Model
             app(EventAudienceService::class)->notifyAttendees($event, ['type'=>'event_updated','title'=>$event->is_cancelled?'Atualização importante do evento':'Seu evento foi atualizado','message'=>$event->is_cancelled?$event->title.' teve uma atualização de status. Confira os detalhes.':$event->title.' teve atualização em '.$what.'. Confira os detalhes.','data'=>['event_id'=>$event->id,'changed_fields'=>$changed->all()]]);
         });
     }
+
+    public function temporalStatus(?Carbon $at = null): string
+    {
+        $at ??= Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+        if ($this->end_date && $at->greaterThanOrEqualTo($this->end_date)) return 'past';
+        if ($this->start_date && $at->greaterThanOrEqualTo($this->start_date)) return 'ongoing';
+        return 'future';
+    }
+
+    public function hasStarted(?Carbon $at = null): bool
+    {
+        if (! $this->start_date) return false;
+        $at ??= Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+        return $at->greaterThanOrEqualTo($this->start_date);
+    }
+
+    public function hasEnded(?Carbon $at = null): bool
+    {
+        if (! $this->end_date) return false;
+        $at ??= Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+        return $at->greaterThanOrEqualTo($this->end_date);
+    }
+
+    public function isHappeningNow(?Carbon $at = null): bool
+    {
+        return $this->temporalStatus($at) === 'ongoing';
+    }
+
+    public function salesClosed(?Carbon $at = null): bool
+    {
+        return $this->hasEnded($at) || ! $this->is_published || $this->is_cancelled || $this->is_private;
+    }
+
+    public function allowedActions(?Carbon $at = null): array
+    {
+        $status = $this->temporalStatus($at);
+        $public = $this->is_published && ! $this->is_cancelled && ! $this->is_private;
+        $salesOpen = $public && $status !== 'past';
+
+        return [
+            'purchase' => $salesOpen,
+            'claim_courtesy' => $salesOpen,
+            'mark_interested' => $public && $status !== 'past',
+            'check_in' => $public && $status === 'ongoing',
+            'share' => $public,
+            'save' => $public,
+            'community' => $public,
+        ];
+    }
+
+    public function getTemporalStatusAttribute(): string { return $this->temporalStatus(); }
+    public function getHasStartedAttribute(): bool { return $this->hasStarted(); }
+    public function getHasEndedAttribute(): bool { return $this->hasEnded(); }
+    public function getIsHappeningNowAttribute(): bool { return $this->isHappeningNow(); }
+    public function getSalesClosedAttribute(): bool { return $this->salesClosed(); }
+    public function getAllowedActionsAttribute(): array { return $this->allowedActions(); }
 
     public function application(){return $this->belongsTo(Application::class,'app_id');} public function production(){return $this->belongsTo(Production::class);} public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');} public function tickets(){return $this->hasMany(Ticket::class);} public function artists(){return $this->belongsToMany(Artist::class,'event_artist','event_id','artist_id')->withPivot(['participation_type','stage','scheduled_at','description','sort_order','is_headliner'])->withTimestamps();} public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','event');}
     public function getSegmentsnNamesAttribute(){ $assigned=is_array($this->segments)?$this->segments:[];if($assigned===[])return '<i>Nenhum segmento atribuído</i>';$names=[];$segments=Config::get('segments',[]);foreach($assigned as $key)if(isset($segments[$key]['name']))$names[]=$segments[$key]['name'];return implode(' | ',$names);}
