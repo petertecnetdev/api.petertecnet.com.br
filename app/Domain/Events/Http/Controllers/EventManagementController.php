@@ -33,7 +33,7 @@ final class EventManagementController extends Controller
         return response()->json(['events'=>$query->orderByDesc('start_date')->paginate($data['per_page']??50)->appends($request->query())]);
     }
 
-    public function show(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());$appId=$this->context->id();$event->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']);$event->loadCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);return response()->json(['event'=>$event]);}
+    public function show(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());$appId=$this->context->id();$event->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']);$event->loadCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);$event->setAttribute('commerce_items',EventItem::query()->where('app_id',$appId)->where('event_id',$event->id)->where('is_active',true)->orderBy('name')->get());return response()->json(['event'=>$event]);}
 
     public function store(Request $request)
     {
