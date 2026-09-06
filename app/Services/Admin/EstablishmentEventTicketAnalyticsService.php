@@ -80,11 +80,16 @@ class EstablishmentEventTicketAnalyticsService
             $sale = $sales->get($event->id);
             $reservation = $reservations->get($event->id);
 
+            $ticketTypesCount = (int) ($inventory->ticket_types_count ?? 0);
             $capacity = (int) ($inventory->capacity ?? 0);
             $issued = (int) ($passes->issued_count ?? 0);
             $reserved = (int) ($reservation->reserved_count ?? 0);
 
-            $event->setAttribute('ticket_types_count', (int) ($inventory->ticket_types_count ?? 0));
+            // tickets_count existed before this analytics endpoint. Keep it as a
+            // compatibility alias for the number of ticket types, while exposing
+            // tickets_sold_count for the actual paid/valid passes.
+            $event->setAttribute('tickets_count', $ticketTypesCount);
+            $event->setAttribute('ticket_types_count', $ticketTypesCount);
             $event->setAttribute('ticket_capacity', $capacity);
             $event->setAttribute('tickets_issued_count', $issued);
             $event->setAttribute('tickets_sold_count', (int) ($sold->sold_count ?? 0));
@@ -233,6 +238,14 @@ class EstablishmentEventTicketAnalyticsService
             ])
             ->values();
 
+        $paidOrdersCount = DB::table('commerce_orders as co')
+            ->join('commerce_order_items as coi', 'coi.order_id', '=', 'co.id')
+            ->where('co.event_id', $event->id)
+            ->where('co.status', 'paid')
+            ->where('coi.type', 'ticket')
+            ->distinct()
+            ->count('co.id');
+
         return [
             'summary' => [
                 'ticket_types_count' => $ticketRows->count(),
@@ -244,7 +257,7 @@ class EstablishmentEventTicketAnalyticsService
                 'reversed_count' => (int) $ticketRows->sum('reversed_count'),
                 'reserved_count' => (int) $ticketRows->sum('reserved_count'),
                 'available_count' => (int) $ticketRows->sum('available_count'),
-                'paid_orders_count' => (int) $ticketRows->sum('paid_orders_count'),
+                'paid_orders_count' => (int) $paidOrdersCount,
                 'gross_revenue' => round((float) $ticketRows->sum('gross_revenue'), 2),
             ],
             'tickets' => $ticketRows,
