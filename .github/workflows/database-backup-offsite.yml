@@ -8,137 +8,17 @@ on:
 
 permissions:
   contents: read
-  actions: write
 
 jobs:
   backup:
-    name: Create, verify and store encrypted backup
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Check backup configuration
-        id: config
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          if [[ -z "$VPS_HOST" || -z "$VPS_USER" || -z "$VPS_SSH_KEY" ]]; then
-            echo "::error::VPS backup secrets are not configured."
-            exit 1
-          fi
-          echo "port=${VPS_PORT:-22}" >> "$GITHUB_OUTPUT"
-
-      - name: Configure SSH and age
-        shell: bash
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          set -euo pipefail
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
-          chmod 600 "$HOME/.ssh/id_ed25519"
-          : > "$HOME/.ssh/known_hosts"
-          chmod 600 "$HOME/.ssh/known_hosts"
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq age
-
-      - name: Create verified backup on VPS
-        id: remote
-        shell: bash
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_PORT: ${{ steps.config.outputs.port }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-        run: |
-          set -Eeuo pipefail
-          SSH=(ssh -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
-
-          "${SSH[@]}" 'sudo /usr/local/sbin/petertecnet-db-backup daily'
-
-          remote_file="$("${SSH[@]}" 'sudo /usr/local/sbin/petertecnet-db-backup latest daily')"
-          [[ "$remote_file" == /var/backups/petertecnet/database/daily/*.age ]] || {
-            echo "::error::Unexpected backup path returned by VPS: $remote_file"
-            exit 1
-          }
-
-          case "$remote_file" in
-            *.sql.gz.age) remote_manifest="${remote_file%.sql.gz.age}.manifest.json" ;;
-            *.dump.age) remote_manifest="${remote_file%.dump.age}.manifest.json" ;;
-            *)
-              echo "::error::Unsupported encrypted backup extension: $remote_file"
-              exit 1
-              ;;
-          esac
-          artifact_dir="$RUNNER_TEMP/petertecnet-db-backup"
-          mkdir -p "$artifact_dir"
-
-          "${SSH[@]}" "sudo cat '$remote_file'" > "$artifact_dir/$(basename "$remote_file")"
-          "${SSH[@]}" "sudo cat '$remote_manifest'" > "$artifact_dir/$(basename "$remote_manifest")"
-
-          backup_file="$artifact_dir/$(basename "$remote_file")"
-          manifest_file="$artifact_dir/$(basename "$remote_manifest")"
-          [[ -s "$backup_file" && -s "$manifest_file" ]]
-
-          echo "backup_file=$backup_file" >> "$GITHUB_OUTPUT"
-          echo "manifest_file=$manifest_file" >> "$GITHUB_OUTPUT"
-          echo "artifact_dir=$artifact_dir" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=database-backup-$(date -u '+%Y%m%dT%H%M%SZ')" >> "$GITHUB_OUTPUT"
-
-      - name: Verify encrypted off-site copy is decryptable
-        shell: bash
-        env:
-          BACKUP_FILE: ${{ steps.remote.outputs.backup_file }}
-          MANIFEST_FILE: ${{ steps.remote.outputs.manifest_file }}
-        run: |
-          set -Eeuo pipefail
-          decrypted="$RUNNER_TEMP/database-backup-verify"
-          age -d -i "$HOME/.ssh/id_ed25519" -o "$decrypted" "$BACKUP_FILE"
-
-          python3 - "$MANIFEST_FILE" "$BACKUP_FILE" "$decrypted" <<'PY'
-          import hashlib
-          import json
-          import os
-          import sys
-
-          manifest_path, encrypted_path, decrypted_path = sys.argv[1:]
-
-          def sha256(path):
-              h = hashlib.sha256()
-              with open(path, "rb") as fh:
-                  for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-                      h.update(chunk)
-              return h.hexdigest()
-
-          with open(manifest_path, encoding="utf-8") as fh:
-              manifest = json.load(fh)
-
-          if manifest.get("restore_test") != "passed":
-              raise SystemExit("VPS restore validation was not marked as passed")
-          if sha256(encrypted_path) != manifest.get("sha256_encrypted"):
-              raise SystemExit("Encrypted backup sha256 mismatch")
-          if sha256(decrypted_path) != manifest.get("sha256_plain"):
-              raise SystemExit("Decrypted backup sha256 mismatch")
-          if os.path.getsize(decrypted_path) <= 0:
-              raise SystemExit("Decrypted backup is empty")
-
-          print("Encrypted artifact, decryption and checksums verified.")
-          PY
-
-          if [[ "$BACKUP_FILE" == *.sql.gz.age ]]; then
-            gzip -t "$decrypted"
-          fi
-          rm -f "$decrypted"
-
-      - name: Upload encrypted backup artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.remote.outputs.artifact_name }}
-          path: ${{ steps.remote.outputs.artifact_dir }}
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 90
+    name: Daily verified encrypted database backup
+    uses: ./.github/workflows/reusable-verified-database-backup.yml
+    with:
+      kind: daily
+      local_retention_days: 14
+      artifact_retention_days: 90
+    secrets:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
