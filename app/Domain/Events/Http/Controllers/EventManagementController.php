@@ -5,6 +5,7 @@ namespace App\Domain\Events\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Event;
+use App\Models\EventItem;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
@@ -58,6 +59,42 @@ final class EventManagementController extends Controller
     }
 
     public function unpublish(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());$event->forceFill(['is_published'=>false])->save();return response()->json(['message'=>'Evento retirado da publicação. Os ingressos já emitidos foram preservados.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);}
+
+    public function duplicate(Request $request,int $id)
+    {
+        $source=$this->ownedEvent($id,$request->user());
+        $data=$request->validate(['date'=>'required|date_format:Y-m-d|after:today']);
+        $timezone=config('app.timezone','America/Sao_Paulo');
+        abort_unless($source->start_date&&$source->end_date,422,'O evento original precisa ter início e término definidos.');
+        $sourceStart=Carbon::parse($source->start_date,$timezone);$sourceEnd=Carbon::parse($source->end_date,$timezone);
+        $newStart=Carbon::createFromFormat('Y-m-d H:i:s',$data['date'].' '.$sourceStart->format('H:i:s'),$timezone);
+        $duration=max(60,$sourceStart->diffInSeconds($sourceEnd));$newEnd=$newStart->copy()->addSeconds($duration);
+        abort_if($newStart->lte(Carbon::now($timezone)),422,'Escolha uma data futura para a nova edição.');
+
+        $duplicate=DB::transaction(function()use($source,$sourceStart,$newStart,$newEnd,$timezone){
+            $copy=$source->replicate(['slug','start_date','end_date','is_published','is_cancelled','is_featured','is_approved','rating','reviews','remaining_tickets','image']);
+            $copy->slug=$this->uniqueSlug($source->title);$copy->start_date=$newStart;$copy->end_date=$newEnd;$copy->is_published=false;$copy->is_cancelled=false;$copy->is_featured=false;$copy->is_approved=false;$copy->rating=0;$copy->reviews=[];$copy->remaining_tickets=null;$copy->image=null;$copy->save();
+
+            $tickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$source->id)->orderBy('id')->get();
+            foreach($tickets as$ticket){$ticketCopy=$ticket->replicate(['event_id']);$ticketCopy->event_id=$copy->id;if($ticket->limit_date){$offset=$sourceStart->diffInSeconds(Carbon::parse($ticket->limit_date,$timezone),false);$ticketCopy->limit_date=$newStart->copy()->addSeconds($offset);}$ticketCopy->save();}
+
+            $items=EventItem::query()->where('app_id',$this->context->id())->where('event_id',$source->id)->orderBy('id')->get();
+            foreach($items as$item){$itemCopy=$item->replicate(['event_id']);$itemCopy->event_id=$copy->id;$itemCopy->save();}
+
+            $links=[];
+            foreach($source->artists()->get()as$artist){$pivot=$artist->pivot;$scheduledAt=null;if($pivot->scheduled_at){$offset=$sourceStart->diffInSeconds(Carbon::parse($pivot->scheduled_at,$timezone),false);$scheduledAt=$newStart->copy()->addSeconds($offset);}$links[$artist->id]=['app_id'=>$this->context->id(),'participation_type'=>$pivot->participation_type,'description'=>$pivot->description,'sort_order'=>$pivot->sort_order,'scheduled_at'=>$scheduledAt,'stage'=>$pivot->stage,'is_headliner'=>(bool)$pivot->is_headliner];}
+            if($links)$copy->artists()->sync($links);
+
+            return$copy->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']);
+        },3);
+
+        if($source->image&&Storage::disk('public')->exists($source->image)){
+            try{$extension=pathinfo($source->image,PATHINFO_EXTENSION)?:'webp';$newImage=dirname($source->image).'/'.Str::uuid().'.'.$extension;Storage::disk('public')->copy($source->image,$newImage);$duplicate->forceFill(['image'=>$newImage])->save();}catch(Throwable $e){report($e);}
+        }
+
+        return response()->json(['message'=>'Nova edição criada como rascunho. Ingressos, itens e line-up foram reaproveitados; vendas, passes, check-ins e histórico não foram copiados.','event'=>$duplicate->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']),'copied'=>['tickets'=>$duplicate->tickets()->count(),'items'=>EventItem::query()->where('event_id',$duplicate->id)->count(),'artists'=>$duplicate->artists()->count()]],201);
+    }
+
     public function destroy(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());abort_if($event->tickets()->whereHas('passes')->exists(),409,'Eventos com ingressos emitidos não podem ser excluídos. Cancele ou despublique o evento.');$event->delete();return response()->json(['message'=>'Evento excluído com sucesso.']);}
 
     private function rules(bool $creating):array{$required=$creating?'required|':'sometimes|';return['production_id'=>$required.'integer|exists:productions,id','title'=>$required.'string|min:2|max:255','description'=>$required.'string|max:50000','category'=>'sometimes|nullable|string|max:120','image'=>'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120','address'=>'sometimes|nullable|string|max:500','google_maps_url'=>'sometimes|nullable|url:http,https|max:2048','start_date'=>$required.'date','end_date'=>$required.'date','venue'=>'sometimes|nullable|string|max:255','uf'=>'sometimes|nullable|string|size:2','city'=>'sometimes|nullable|string|max:120','cep'=>'sometimes|nullable|string|max:20','latitude'=>'sometimes|nullable|numeric|between:-90,90','longitude'=>'sometimes|nullable|numeric|between:-180,180','max_attendees'=>'sometimes|nullable|integer|min:1|max:1000000','contact_email'=>'sometimes|nullable|email|max:255','contact_phone'=>'sometimes|nullable|string|max:50','is_private'=>'sometimes|boolean','event_format'=>'sometimes|nullable|in:in_person,online,hybrid','online_url'=>'sometimes|nullable|url:http,https|max:2048'];}
