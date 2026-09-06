@@ -18,6 +18,7 @@ final class FeedController extends Controller
     {
         $user = $request->user();
         $appId = $this->context->id();
+        $now = now();
         $data = $request->validate([
             'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:6|max:40',
@@ -68,16 +69,19 @@ final class FeedController extends Controller
             ])
             ->first();
 
-        // The main Cutinapp feed behaves as a real timeline: every eligible event
-        // is included and the newest creation appears first. Personalization still
-        // explains why an event is relevant through feed_reason, but it no longer
-        // hides a newly created event below older events with an earlier start date.
+        // A timeline must show every currently public event. Legacy rows may have
+        // is_private/end_date as NULL, which means public/no explicit end rather
+        // than hidden/expired. Keep this aligned with Event::hasEnded().
         $feed = Event::query()
             ->where('app_id', $appId)
             ->where('is_published', true)
             ->where('is_cancelled', false)
-            ->where('is_private', false)
-            ->where('end_date', '>', now())
+            ->where(fn ($query) => $query
+                ->where('is_private', false)
+                ->orWhereNull('is_private'))
+            ->where(fn ($query) => $query
+                ->whereNull('end_date')
+                ->orWhere('end_date', '>', $now))
             ->with([
                 'production:id,app_id,user_id,name,slug,logo',
                 'artists:id,app_id,slug,stage_name,photo',
@@ -123,42 +127,38 @@ final class FeedController extends Controller
             return $event;
         });
 
-        $relevant = collect($feed->getCollection()->pluck('id'))
-            ->merge($engaged)
-            ->merge($ticketEvents)
-            ->unique()
-            ->values()
-            ->take(100)
-            ->all();
-
-        $community = $relevant === []
-            ? collect()
-            : DB::table('event_posts as p')
-                ->join('events as e', 'e.id', '=', 'p.event_id')
-                ->join('users as u', 'u.id', '=', 'p.user_id')
-                ->where('p.app_id', $appId)
-                ->whereNull('p.parent_id')
-                ->where('p.status', 'published')
-                ->whereIn('p.event_id', $relevant)
-                ->where('e.app_id', $appId)
-                ->where('e.is_published', true)
-                ->where('e.is_cancelled', false)
+        // Community activity is a real global timeline for the current app. It
+        // must not depend on which event IDs happened to land on this page.
+        $community = DB::table('event_posts as p')
+            ->join('events as e', 'e.id', '=', 'p.event_id')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->where('p.app_id', $appId)
+            ->whereNull('p.parent_id')
+            ->where('p.status', 'published')
+            ->where('e.app_id', $appId)
+            ->where('e.is_published', true)
+            ->where('e.is_cancelled', false)
+            ->where(fn ($query) => $query
                 ->where('e.is_private', false)
-                ->orderByDesc('p.created_at')
-                ->limit(12)
-                ->get([
-                    'p.id',
-                    'p.event_id',
-                    'p.body',
-                    'p.created_at',
-                    'p.is_pinned',
-                    'e.title as event_title',
-                    'e.slug as event_slug',
-                    'u.id as user_id',
-                    'u.first_name',
-                    'u.last_name',
-                    'u.avatar',
-                ]);
+                ->orWhereNull('e.is_private'))
+            ->where(fn ($query) => $query
+                ->whereNull('e.end_date')
+                ->orWhere('e.end_date', '>', $now))
+            ->orderByDesc('p.created_at')
+            ->limit(12)
+            ->get([
+                'p.id',
+                'p.event_id',
+                'p.body',
+                'p.created_at',
+                'p.is_pinned',
+                'e.title as event_title',
+                'e.slug as event_slug',
+                'u.id as user_id',
+                'u.first_name',
+                'u.last_name',
+                'u.avatar',
+            ]);
 
         $notifications = AppNotification::where('app_id', $appId)
             ->where('user_id', $user->id)
