@@ -29,9 +29,9 @@ class ApplicationAdminServiceTest extends TestCase
             'slug' => 'test-application',
             'is_active' => true,
         ]);
-        $this->root = User::factory()->create(['email' => ApplicationAdminService::ROOT_ADMIN_EMAIL]);
-        $this->delegated = User::factory()->create(['email' => 'delegated-admin@example.com']);
-        $this->outsider = User::factory()->create(['email' => 'outsider@example.com']);
+        $this->root = $this->createUser(ApplicationAdminService::ROOT_ADMIN_EMAIL, 'Root');
+        $this->delegated = $this->createUser('delegated-admin@example.com', 'Delegated');
+        $this->outsider = $this->createUser('outsider@example.com', 'Outsider');
     }
 
     public function test_root_admin_has_access_and_reserved_permission_without_assignment(): void
@@ -107,5 +107,16 @@ class ApplicationAdminServiceTest extends TestCase
             $this->outsider->email,
             $profile->id,
         );
+    }
+
+    private function createUser(string $email, string $name): User
+    {
+        return User::query()->create([
+            'first_name' => $name,
+            'last_name' => 'Test',
+            'email' => $email,
+            'email_verified_at' => now(),
+            'password' => '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
+        ]);
     }
 }
