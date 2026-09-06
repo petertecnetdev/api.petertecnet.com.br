@@ -60,6 +60,8 @@ class AppServiceProvider extends ServiceProvider
             ->group(function () {
                 Route::get('/commerce/checkout/pending', [PendingCheckoutController::class, 'show'])
                     ->middleware('throttle:60,1');
+                Route::post('/commerce/checkout/pending/recover', [PendingCheckoutController::class, 'recover'])
+                    ->middleware('throttle:30,1');
             });
 
         $storagePath = storage_path('app/public');
