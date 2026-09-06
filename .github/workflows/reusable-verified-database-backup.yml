@@ -132,30 +132,33 @@ jobs:
           set -Eeuo pipefail
           container="petertecnet-db-restore-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           root_password="restore-only-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          version_number="${SERVER_VERSION%%-*}"
+          major_minor="$(printf '%s' "$version_number" | awk -F. '{print $1"."$2}')"
+          [[ "$major_minor" =~ ^[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::Could not derive a compatible restore image from database version: $SERVER_VERSION"
+            exit 6
+          }
 
           if [[ "$SERVER_VERSION" =~ [Mm]aria[Dd][Bb] ]]; then
-            image="mariadb:11.4"
+            image="mariadb:$major_minor"
             client="mariadb"
-            admin="mariadb-admin"
             docker run -d --name "$container" \
               -e MARIADB_ROOT_PASSWORD="$root_password" \
               "$image" >/dev/null
           else
-            image="mysql:8.4"
+            image="mysql:$major_minor"
             client="mysql"
-            admin="mysqladmin"
             docker run -d --name "$container" \
               -e MYSQL_ROOT_PASSWORD="$root_password" \
               "$image" >/dev/null
           fi
 
           echo "container=$container" >> "$GITHUB_OUTPUT"
-          echo "client=$client" >> "$GITHUB_OUTPUT"
-          echo "root_password=$root_password" >> "$GITHUB_OUTPUT"
 
           ready=0
           for _ in $(seq 1 60); do
-            if docker exec "$container" "$admin" ping -uroot -p"$root_password" --silent >/dev/null 2>&1; then
+            if docker exec -e MYSQL_PWD="$root_password" "$container" "$client" \
+              -uroot -N -B -e 'SELECT 1;' >/dev/null 2>&1; then
               ready=1
               break
             fi
@@ -163,36 +166,36 @@ jobs:
           done
           [[ "$ready" == "1" ]] || {
             docker logs "$container" >&2 || true
-            echo "::error::Disposable restore database did not become ready."
-            exit 6
+            echo "::error::Disposable restore database did not become authenticated and ready."
+            exit 7
           }
 
-          docker exec "$container" "$client" -uroot -p"$root_password" \
+          docker exec -e MYSQL_PWD="$root_password" "$container" "$client" -uroot \
             -e 'CREATE DATABASE pt_backup_verify CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;'
 
-          gunzip -c "$PLAIN" | docker exec -i "$container" "$client" -uroot -p"$root_password" pt_backup_verify
+          gunzip -c "$PLAIN" | docker exec -i -e MYSQL_PWD="$root_password" "$container" "$client" -uroot pt_backup_verify
 
-          table_count="$(docker exec "$container" "$client" -N -B -uroot -p"$root_password" \
+          table_count="$(docker exec -e MYSQL_PWD="$root_password" "$container" "$client" -N -B -uroot \
             -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='pt_backup_verify';" | tr -d '[:space:]')"
           [[ "$table_count" =~ ^[0-9]+$ && "$table_count" -gt 0 ]] || {
             echo "::error::Restore completed without tables."
-            exit 7
+            exit 8
           }
 
           verified=0
           for table in users establishments; do
-            exists="$(docker exec "$container" "$client" -N -B -uroot -p"$root_password" \
+            exists="$(docker exec -e MYSQL_PWD="$root_password" "$container" "$client" -N -B -uroot \
               -e "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='pt_backup_verify' AND table_name='$table';" | tr -d '[:space:]')"
             [[ "$exists" == "1" ]] || {
               echo "::error::Critical table missing after restore: $table"
-              exit 8
+              exit 9
             }
             verified=$((verified + 1))
           done
 
           echo "table_count=$table_count" >> "$GITHUB_OUTPUT"
           echo "critical_verified=$verified" >> "$GITHUB_OUTPUT"
-          echo "Restore validation passed with $table_count tables and $verified critical tables."
+          echo "Restore validation passed with $table_count tables and $verified critical tables using $image."
 
       - name: Encrypt and independently verify the backup
         shell: bash
@@ -221,7 +224,7 @@ jobs:
           age -d -i "$HOME/.ssh/id_ed25519" -o "$decrypted" "$ENCRYPTED"
           [[ "$(sha256sum "$decrypted" | awk '{print $1}')" == "$plain_sha" ]] || {
             echo "::error::Decrypted backup checksum mismatch."
-            exit 9
+            exit 10
           }
           gzip -t "$decrypted"
 
@@ -267,7 +270,7 @@ jobs:
           VPS_USER: ${{ secrets.VPS_USER }}
         run: |
           set -Eeuo pipefail
-          [[ "$RETENTION_DAYS" =~ ^[0-9]+$ && "$RETENTION_DAYS" -ge 1 ]] || exit 10
+          [[ "$RETENTION_DAYS" =~ ^[0-9]+$ && "$RETENTION_DAYS" -ge 1 ]] || exit 11
           SSH=(ssh -T -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts" -o ConnectTimeout=20 -o ServerAliveInterval=30 -o ServerAliveCountMax=8 -p "$VPS_PORT" "$VPS_USER@$VPS_HOST")
           SCP=(scp -q -P "$VPS_PORT" -o StrictHostKeyChecking=accept-new -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
 
@@ -283,7 +286,7 @@ jobs:
           remote_sha="$("${SSH[@]}" "sha256sum '$remote_file' | awk '{print \$1}'" | tr -d '\r\n')"
           [[ "$remote_sha" == "$expected_sha" ]] || {
             echo "::error::Encrypted VPS retention copy checksum mismatch."
-            exit 11
+            exit 12
           }
 
           "${SSH[@]}" "find '$root/$KIND' -type f \\( -name '*.age' -o -name '*.manifest.json' \\) -mtime '+$RETENTION_DAYS' -delete; find '$root/$KIND' -type d -empty -delete || true"
