@@ -33,62 +33,6 @@ final class SalesPipelineController extends Controller
         abort_unless(DB::table('crm_contacts')->where('id',$contactId)->where($scope)->exists(), 422, 'Contato não pertence a este estabelecimento.');
     }
 
-    private function acquisitionPerformance(array $context): array
-    {
-        $tenant = $this->tenant($context);
-        $sourceSql = "COALESCE(NULLIF(TRIM(c.source), ''), 'unknown')";
-
-        $opportunityRows = DB::table('crm_opportunities as o')
-            ->join('crm_contacts as c', 'c.id', '=', 'o.contact_id')
-            ->where('o.app_id', $context['app_id'])
-            ->where('o.establishment_id', $context['establishment_id'])
-            ->where('o.owner_user_id', $context['owner_user_id'])
-            ->groupBy(DB::raw($sourceSql))
-            ->selectRaw($sourceSql . ' as source')
-            ->selectRaw('COUNT(*) as opportunities')
-            ->selectRaw("SUM(CASE WHEN o.stage = 'won' THEN 1 ELSE 0 END) as won_opportunities")
-            ->selectRaw("COALESCE(SUM(CASE WHEN o.stage = 'won' THEN o.value ELSE 0 END), 0) as won_value")
-            ->get()
-            ->keyBy('source');
-
-        $revenueRows = DB::table('crm_charges as ch')
-            ->join('crm_proposals as p', 'p.id', '=', 'ch.proposal_id')
-            ->join('crm_opportunities as o', 'o.id', '=', 'p.opportunity_id')
-            ->join('crm_contacts as c', 'c.id', '=', 'o.contact_id')
-            ->where('ch.app_id', $tenant['app_id'])
-            ->where('ch.establishment_id', $tenant['establishment_id'])
-            ->where('ch.status', 'paid')
-            ->groupBy(DB::raw($sourceSql))
-            ->selectRaw($sourceSql . ' as source')
-            ->selectRaw('COUNT(DISTINCT ch.id) as paid_charges')
-            ->selectRaw('COALESCE(SUM(ch.amount), 0) as received')
-            ->get()
-            ->keyBy('source');
-
-        return $opportunityRows->keys()
-            ->merge($revenueRows->keys())
-            ->unique()
-            ->map(function ($source) use ($opportunityRows, $revenueRows) {
-                $opportunity = $opportunityRows->get($source);
-                $revenue = $revenueRows->get($source);
-                $opportunities = (int) ($opportunity->opportunities ?? 0);
-                $won = (int) ($opportunity->won_opportunities ?? 0);
-
-                return [
-                    'source' => (string) $source,
-                    'opportunities' => $opportunities,
-                    'won_opportunities' => $won,
-                    'win_rate' => $opportunities > 0 ? round(($won / $opportunities) * 100, 2) : 0.0,
-                    'won_value' => round((float) ($opportunity->won_value ?? 0), 2),
-                    'paid_charges' => (int) ($revenue->paid_charges ?? 0),
-                    'received' => round((float) ($revenue->received ?? 0), 2),
-                ];
-            })
-            ->sortByDesc(fn ($row) => [$row['received'], $row['won_value'], $row['won_opportunities']])
-            ->values()
-            ->all();
-    }
-
     public function contextInfo(Request $request)
     {
         $app = $this->applicationContext->application();
@@ -105,7 +49,7 @@ final class SalesPipelineController extends Controller
             'pending'=>(float)DB::table('crm_charges')->where($tenant)->where('status','pending')->sum('amount'),
             'contacts'=>DB::table('crm_contacts')->where($context)->count(),
             'open_opportunities'=>DB::table('crm_opportunities')->where($context)->whereNotIn('stage',['won','lost'])->count(),
-        ],'acquisition_sources'=>$this->acquisitionPerformance($context),'activities'=>DB::table('crm_agent_activities')->where($tenant)->latest('executed_at')->limit(20)->get()]);
+        ],'activities'=>DB::table('crm_agent_activities')->where($tenant)->latest('executed_at')->limit(20)->get()]);
     }
 
     public function contacts(Request $request)
