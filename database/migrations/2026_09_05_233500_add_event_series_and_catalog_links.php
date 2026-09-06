@@ -62,14 +62,14 @@ return new class extends Migration
     {
         $eventItemsTable = $this->eventItemsTable();
         if ($eventItemsTable && Schema::hasColumn($eventItemsTable, 'source_item_id')) {
+            $this->dropEventItemsView();
             Schema::table($eventItemsTable, function (Blueprint $table) {
                 $table->dropUnique('event_items_event_source_item_unique');
                 $table->dropIndex('event_items_source_item_idx');
                 $table->dropColumn('source_item_id');
             });
+            $this->refreshEventItemsView();
         }
-
-        $this->refreshEventItemsView();
 
         if (Schema::hasTable('event_schedules') && Schema::hasColumn('event_schedules', 'event_series_id')) {
             Schema::table('event_schedules', function (Blueprint $table) {
@@ -93,6 +93,13 @@ return new class extends Migration
         }
 
         return Schema::hasTable('cutinapp_event_items') ? 'cutinapp_event_items' : null;
+    }
+
+    private function dropEventItemsView(): void
+    {
+        if (DB::getDriverName() !== 'sqlite') {
+            DB::statement('DROP VIEW IF EXISTS `event_items`');
+        }
     }
 
     private function refreshEventItemsView(): void
