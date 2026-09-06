@@ -58,6 +58,17 @@ class Event extends Model
         });
     }
 
+    public function setEventScheduleIdAttribute($value): void
+    {
+        $scheduleId = $value ? (int) $value : null;
+        $this->attributes['event_schedule_id'] = $scheduleId;
+
+        if ($scheduleId && empty($this->attributes['event_series_id'])) {
+            $seriesId = EventSchedule::query()->whereKey($scheduleId)->value('event_series_id');
+            if ($seriesId) $this->attributes['event_series_id'] = $seriesId;
+        }
+    }
+
     public function application(){return $this->belongsTo(Application::class,'app_id');}
     public function production(){return $this->belongsTo(Production::class);}
     public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');}
