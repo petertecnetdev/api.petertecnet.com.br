@@ -9,7 +9,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 
 final class RevenueFunnelService
 {
-    /** @return array<string, int|float> */
+    /** @return array<string, mixed> */
     public function metrics(int $appId, int $organizationId, ?User $user, int $days): array
     {
         $organization = Establishment::query()
@@ -48,6 +48,50 @@ final class RevenueFunnelService
         $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
         $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
 
+        $atRiskOrders = (clone $orders)
+            ->where('status', 'pending')
+            ->where(function ($query): void {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>=', now());
+            });
+        $atRiskGross = (float) (clone $atRiskOrders)->sum('total');
+        $atRiskPlatformRevenue = (float) (clone $atRiskOrders)->sum('platform_fee');
+
+        $lostOrders = (clone $orders)->where(function ($query): void {
+            $query->where('status', 'cancelled')
+                ->orWhere(function ($expiredQuery): void {
+                    $expiredQuery->where('status', 'pending')->where('expires_at', '<', now());
+                });
+        });
+        $lostGross = (float) (clone $lostOrders)->sum('total');
+        $lostPlatformRevenue = (float) (clone $lostOrders)->sum('platform_fee');
+
+        $paymentMethods = (clone $orders)
+            ->selectRaw("COALESCE(NULLIF(payment_method, ''), 'unknown') payment_method")
+            ->selectRaw('COUNT(*) orders_created')
+            ->selectRaw("SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) orders_paid")
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) gross_revenue")
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN platform_fee ELSE 0 END), 0) platform_revenue")
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
+            ->groupBy('payment_method')
+            ->get()
+            ->map(function ($row): array {
+                $createdForMethod = (int) $row->orders_created;
+                $paidForMethod = (int) $row->orders_paid;
+
+                return [
+                    'payment_method' => (string) $row->payment_method,
+                    'orders_created' => $createdForMethod,
+                    'orders_paid' => $paidForMethod,
+                    'conversion_rate' => $createdForMethod > 0 ? round(($paidForMethod / $createdForMethod) * 100, 2) : 0.0,
+                    'gross_revenue' => round((float) $row->gross_revenue, 2),
+                    'platform_revenue' => round((float) $row->platform_revenue, 2),
+                    'gross_at_risk' => round((float) $row->gross_at_risk, 2),
+                ];
+            })
+            ->sortByDesc('gross_revenue')
+            ->values()
+            ->all();
+
         return [
             'period_days' => $days,
             'orders_created' => $created,
@@ -68,6 +112,11 @@ final class RevenueFunnelService
             'checkout_recovery_conversion_rate' => $recoveryAttempts > 0 ? round(($recoveredOrders / $recoveryAttempts) * 100, 2) : 0.0,
             'recovered_gross_revenue' => round($recoveredGross, 2),
             'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
+            'gross_revenue_at_risk' => round($atRiskGross, 2),
+            'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
+            'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
+            'platform_revenue_lost_to_abandonment' => round($lostPlatformRevenue, 2),
+            'payment_methods' => $paymentMethods,
         ];
     }
 }
