@@ -9,6 +9,8 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::prefix('admin')->middleware(EnsureApplicationAdmin::class)->group(function () {
             Route::get('/context', [ApplicationAdminController::class, 'context']);
+            Route::get('/overview', [ApplicationAdminController::class, 'overview'])
+                ->middleware(EnsureApplicationAdmin::class.':dashboard.view');
             Route::get('/permissions', [ApplicationAdminController::class, 'permissionCatalog']);
             Route::get('/audit', [ApplicationAdminController::class, 'audit'])
                 ->middleware(EnsureApplicationAdmin::class.':audit.view');
