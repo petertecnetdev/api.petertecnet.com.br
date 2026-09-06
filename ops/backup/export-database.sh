@@ -2,7 +2,13 @@
 set -Eeuo pipefail
 umask 077
 
-APP_DIR="${1:-/var/www/api.petertecnet.com.br}"
+MODE="${1:-dump}"
+APP_DIR="${2:-/var/www/api.petertecnet.com.br}"
+
+if [[ "$MODE" == /* ]]; then
+  APP_DIR="$MODE"
+  MODE="dump"
+fi
 
 fail() {
   printf 'backup export error: %s\n' "$*" >&2
@@ -10,17 +16,32 @@ fail() {
 }
 
 command -v php >/dev/null 2>&1 || fail "php is not available"
-command -v mysqldump >/dev/null 2>&1 || fail "mysqldump is not available"
-command -v gzip >/dev/null 2>&1 || fail "gzip is not available"
 [[ -f "$APP_DIR/artisan" && -f "$APP_DIR/bootstrap/app.php" ]] || fail "Laravel application not found in $APP_DIR"
 [[ -f "$APP_DIR/vendor/autoload.php" ]] || fail "Laravel dependencies are not installed"
+
+if [[ "$MODE" == "server-version" ]]; then
+  cd "$APP_DIR"
+  exec php -r '
+    require "vendor/autoload.php";
+    $app = require "bootstrap/app.php";
+    $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
+    $kernel->bootstrap();
+    $connection = $app->make("db")->connection();
+    $row = $connection->selectOne("SELECT VERSION() AS version");
+    echo (string) ($row->version ?? "unknown"), PHP_EOL;
+  '
+fi
+
+[[ "$MODE" == "dump" ]] || fail "unsupported mode: $MODE"
+command -v mysqldump >/dev/null 2>&1 || fail "mysqldump is not available"
+command -v gzip >/dev/null 2>&1 || fail "gzip is not available"
 
 mapfile -t DB_CFG < <(
   cd "$APP_DIR"
   php -r '
     require "vendor/autoload.php";
     $app = require "bootstrap/app.php";
-    $kernel = $app->make(Illuminate\\Contracts\\Console\\Kernel::class);
+    $kernel = $app->make(Illuminate\Contracts\Console\Kernel::class);
     $kernel->bootstrap();
     $name = config("database.default");
     $cfg = config("database.connections.".$name, []);
