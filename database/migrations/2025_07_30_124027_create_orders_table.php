@@ -69,6 +69,34 @@ return new class extends Migration
             $table->foreign('confirmed_by')->references('id')->on('users')->onDelete('set null');
             $table->foreign('cancelled_by')->references('id')->on('users')->onDelete('set null');
         });
+
+        if (Schema::hasTable('order_items')) {
+            $foreignKeys = Schema::getForeignKeys('order_items');
+            $hasOrderForeign = collect($foreignKeys)->contains(
+                fn (array $foreign) => in_array('order_id', $foreign['columns'] ?? [], true)
+            );
+            $hasItemForeign = collect($foreignKeys)->contains(
+                fn (array $foreign) => in_array('item_id', $foreign['columns'] ?? [], true)
+            );
+
+            if (! $hasOrderForeign) {
+                Schema::table('order_items', function (Blueprint $table) {
+                    $table->foreign('order_id')
+                        ->references('id')
+                        ->on('orders')
+                        ->cascadeOnDelete();
+                });
+            }
+
+            if (! $hasItemForeign && Schema::hasTable('items')) {
+                Schema::table('order_items', function (Blueprint $table) {
+                    $table->foreign('item_id')
+                        ->references('id')
+                        ->on('items')
+                        ->nullOnDelete();
+                });
+            }
+        }
     }
 
     public function down(): void

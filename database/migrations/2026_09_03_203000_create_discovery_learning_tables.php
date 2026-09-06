@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
@@ -77,9 +78,24 @@ return new class extends Migration {
                 $table->json('metadata')->nullable();
                 $table->timestamp('audited_at');
                 $table->timestamps();
-                $table->index(['path', 'audited_at']);
                 $table->index(['application_id', 'audited_at']);
             });
+        }
+
+        if (Schema::hasTable('experience_audits')) {
+            $hasPathAuditIndex = collect(Schema::getIndexes('experience_audits'))->contains(
+                fn (array $index) => ($index['name'] ?? null) === 'experience_audits_path_audited_at_index'
+            );
+
+            if (! $hasPathAuditIndex) {
+                if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+                    DB::statement('CREATE INDEX experience_audits_path_audited_at_index ON experience_audits (path(512), audited_at)');
+                } else {
+                    Schema::table('experience_audits', function (Blueprint $table) {
+                        $table->index(['path', 'audited_at']);
+                    });
+                }
+            }
         }
 
         if (!Schema::hasTable('public_page_checks')) {

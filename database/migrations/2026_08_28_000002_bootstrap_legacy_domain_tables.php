@@ -2,11 +2,23 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
     public function up(): void
     {
+        if (in_array(DB::getDriverName(), ['mysql', 'mariadb'], true)) {
+            $legacyCompatibilityViewExists = DB::table('information_schema.views')
+                ->whereRaw('table_schema = database()')
+                ->where('table_name', 'productions')
+                ->exists();
+
+            if ($legacyCompatibilityViewExists) {
+                DB::statement('DROP VIEW `productions`');
+            }
+        }
+
         if (! Schema::hasTable('productions')) {
             Schema::create('productions', function (Blueprint $table) {
                 $table->id();

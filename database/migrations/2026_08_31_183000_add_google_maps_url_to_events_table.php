@@ -10,7 +10,7 @@ return new class extends Migration
     {
         if (Schema::hasTable('events') && ! Schema::hasColumn('events', 'google_maps_url')) {
             Schema::table('events', function (Blueprint $table) {
-                $table->string('google_maps_url', 2048)->nullable()->after('address');
+                $table->text('google_maps_url')->nullable()->after('address');
             });
         }
     }

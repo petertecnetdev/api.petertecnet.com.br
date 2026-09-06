@@ -24,15 +24,8 @@ return new class extends Migration
             $table->decimal('subtotal', 10, 2);
             $table->timestamps();
 
-            $table->foreign('order_id')
-                ->references('id')
-                ->on('orders')
-                ->cascadeOnDelete();
-
-            $table->foreign('item_id')
-                ->references('id')
-                ->on('items')
-                ->nullOnDelete();
+            // Foreign keys are attached after the orders migration runs.
+            // `order_items` predates `orders` in the historical migration order.
         });
     }
 
