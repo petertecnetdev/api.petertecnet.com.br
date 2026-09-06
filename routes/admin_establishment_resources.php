@@ -23,3 +23,7 @@ Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
         Route::post('/employers', [AdminEstablishmentResourceController::class, 'storeEmployer'])->middleware('throttle:30,1');
         Route::post('/appointments', [AdminEstablishmentResourceController::class, 'storeAppointment'])->middleware('throttle:30,1');
     });
+
+// Application-scoped administrative access is loaded from the same registered
+// API route module so the Peter Tecnet root-admin middleware above stays isolated.
+require __DIR__.'/application_admin.php';
