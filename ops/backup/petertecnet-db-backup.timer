@@ -1,0 +1,12 @@
+[Unit]
+Description=Daily Peter Tecnet encrypted database backup
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 America/Sao_Paulo
+Persistent=true
+RandomizedDelaySec=10m
+AccuracySec=1m
+Unit=petertecnet-db-backup.service
+
+[Install]
+WantedBy=timers.target
