@@ -103,6 +103,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     });
 
     Route::post('/users/resend-email', [UserCommunicationController::class, 'resend'])->middleware('throttle:3,10');
+    Route::post('/users/{user}/communications/email', [UserCommunicationController::class, 'sendMessage'])->whereNumber('user')->middleware('throttle:10,1');
     Route::get('/users', [EcosystemController::class, 'users']);
     Route::post('/users', [EcosystemController::class, 'storeUser']);
     Route::get('/users/{user}', [AdminUserDetailController::class, 'show'])->whereNumber('user');

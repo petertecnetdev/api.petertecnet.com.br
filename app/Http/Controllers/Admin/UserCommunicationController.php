@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\AdminUserCommunicationMail;
 use App\Mail\ResendVerificationCodeMail;
 use App\Models\EcosystemAuditLog;
 use App\Models\User;
@@ -15,6 +16,68 @@ use Illuminate\Support\Str;
 
 class UserCommunicationController extends Controller
 {
+    public function sendMessage(Request $request, User $user): JsonResponse
+    {
+        $this->authorizeOwner($request);
+
+        $data = $request->validate([
+            'subject' => ['required', 'string', 'max:180'],
+            'message' => ['required', 'string', 'max:5000'],
+            'action_url' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        abort_if(! $user->email, 422, 'Este usuário não possui e-mail cadastrado.');
+
+        $subject = trim($data['subject']);
+        $message = trim($data['message']);
+        $actionUrl = isset($data['action_url']) ? trim((string) $data['action_url']) : null;
+        $actionUrl = $actionUrl !== '' ? $actionUrl : null;
+
+        if ($actionUrl !== null) {
+            $scheme = strtolower((string) parse_url($actionUrl, PHP_URL_SCHEME));
+            abort_unless(
+                filter_var($actionUrl, FILTER_VALIDATE_URL) && $scheme === 'https',
+                422,
+                'O link do e-mail deve ser uma URL HTTPS válida.'
+            );
+        }
+
+        Mail::to($user->email)->send(new AdminUserCommunicationMail(
+            $user,
+            $subject,
+            $message,
+            $actionUrl,
+        ));
+
+        EcosystemAuditLog::query()->create([
+            'user_id' => $request->user()?->id,
+            'action' => 'user.communication_email.sent',
+            'entity_type' => User::class,
+            'entity_id' => $user->id,
+            'before' => null,
+            'after' => [
+                'email' => $user->email,
+                'subject' => $subject,
+                'action_url' => $actionUrl,
+                'message_length' => mb_strlen($message),
+                'message_sha256' => hash('sha256', $message),
+            ],
+            'ip' => $request->ip(),
+            'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+        ]);
+
+        return response()->json([
+            'message' => "E-mail enviado para {$user->email}.",
+            'delivery' => [
+                'channel' => 'email',
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'subject' => $subject,
+                'sent_at' => now()->toIso8601String(),
+            ],
+        ], 201);
+    }
+
     public function resend(Request $request, UserOnboardingCommunicationService $communications): JsonResponse
     {
         $this->authorizeAccess($request);
@@ -79,6 +142,16 @@ class UserCommunicationController extends Controller
         return response()->json([
             'message' => 'Este usuário já confirmou o e-mail e ainda não possui um aplicativo vinculado para receber orientações de acesso.',
         ], 422);
+    }
+
+    private function authorizeOwner(Request $request): void
+    {
+        $ownerEmail = strtolower((string) config('app.admin_center_owner_email', 'petertecnet@gmail.com'));
+        abort_unless(
+            $request->user() && strtolower((string) $request->user()->email) === $ownerEmail,
+            403,
+            'Somente o proprietário do Admin Center pode enviar comunicações individuais.'
+        );
     }
 
     private function authorizeAccess(Request $request): void
