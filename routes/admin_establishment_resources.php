@@ -12,6 +12,8 @@ Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
     ->group(function () {
         Route::get('/context', [AdminEstablishmentResourceController::class, 'context']);
         Route::get('/events', [AdminEstablishmentEventController::class, 'index']);
+        Route::delete('/events', [AdminEstablishmentEventController::class, 'destroyMany'])
+            ->middleware('throttle:20,1');
         Route::post('/events/{event}/duplicate', [AdminEstablishmentEventController::class, 'duplicate'])
             ->whereNumber('event')
             ->middleware('throttle:30,1');
