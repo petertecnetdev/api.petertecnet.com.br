@@ -9,7 +9,7 @@ use Illuminate\Validation\ValidationException;
 final class AcquisitionCommissionPolicy
 {
     private const OBSERVATION_DAYS = 90;
-    private const DEFAULT_MINIMUM_RETAINED_MARGIN_PERCENTAGE = 1.0;
+    private const DEFAULT_MINIMUM_RETAINED_MARGIN_PERCENTAGE = 0.0;
 
     public function __construct(private readonly ApplicationContext $context) {}
 
