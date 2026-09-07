@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -95,6 +96,28 @@ class FinancialController extends Controller
             $alerts->push(['severity' => 'warning', 'title' => 'Estornos/chargebacks', 'message' => "{$refunded->count} transações exigem acompanhamento financeiro."]);
         }
 
+        $profitability = Cache::get('profitability:latest', [
+            'status' => 'unavailable',
+            'lookback_hours' => null,
+            'total_contribution_shortfall' => 0.0,
+            'affected_gmv' => 0.0,
+            'action_count' => 0,
+            'actions' => [],
+            'generated_at' => null,
+        ]);
+
+        if (($profitability['status'] ?? null) === 'attention' && (float) ($profitability['total_contribution_shortfall'] ?? 0) > 0) {
+            $alerts->prepend([
+                'severity' => 'critical',
+                'title' => 'Margem negativa detectada',
+                'message' => sprintf(
+                    'R$ %.2f de contribuição em risco em %d configuração(ões) de cobrança.',
+                    (float) ($profitability['total_contribution_shortfall'] ?? 0),
+                    (int) ($profitability['action_count'] ?? 0)
+                ),
+            ]);
+        }
+
         return response()->json([
             'summary' => compact('totals', 'approved', 'failed', 'pending', 'refunded'),
             'applications' => $byApp,
@@ -102,6 +125,7 @@ class FinancialController extends Controller
             'timeline' => $timeline,
             'health' => $this->healthSnapshot(),
             'alerts' => $alerts,
+            'profitability' => $profitability,
             'generated_at' => now()->toIso8601String(),
         ]);
     }
