@@ -1,11 +1,13 @@
 <?php
 
+use App\Domain\Social\Http\Controllers\FeedController;
 use App\Domain\Social\Http\Controllers\ParticipantSocialController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:social'])
     ->group(function () {
+        Route::post('/feed/posts', [FeedController::class, 'store'])->middleware('throttle:30,1');
         Route::get('/participants', [ParticipantSocialController::class, 'index'])->middleware('throttle:120,1');
         Route::get('/participants/activity', [ParticipantSocialController::class, 'activity'])->middleware('throttle:120,1');
         Route::get('/participants/me/social-settings', [ParticipantSocialController::class, 'settings'])->middleware('throttle:120,1');
