@@ -2,17 +2,21 @@
 
 namespace App\Domain\Events\Http\Controllers;
 
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\ValidationException;
 
 final class ApplicationAdminTicketController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context)
-    {
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ApplicationAdminService $admin,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -85,16 +89,25 @@ final class ApplicationAdminTicketController extends Controller
             'description' => ['sometimes', 'nullable', 'string', 'max:2000'],
         ]);
 
+        $before = Arr::only($model->toArray(), array_keys($data));
         $model->fill($data)->save();
+        $fresh = $model->fresh()->load('event.production');
+
+        $this->admin->auditAction($this->context->id(), $request->user(), null, 'admin_ticket_updated', [
+            'ticket_id' => $model->id,
+            'event_id' => $model->event_id,
+            'before' => $before,
+            'after' => Arr::only($fresh->toArray(), array_keys($data)),
+        ], $this->auditContext($request));
 
         return response()->json([
             'success' => true,
             'scope' => 'global_application',
-            'data' => $model->fresh()->load('event.production'),
+            'data' => $fresh,
         ]);
     }
 
-    public function destroy(int $ticket): JsonResponse
+    public function destroy(Request $request, int $ticket): JsonResponse
     {
         $model = Ticket::query()
             ->where('app_id', $this->context->id())
@@ -107,8 +120,22 @@ final class ApplicationAdminTicketController extends Controller
             ]);
         }
 
+        $snapshot = Arr::only($model->toArray(), ['id', 'event_id', 'name', 'price', 'quantity', 'ticket_type']);
         $model->delete();
 
+        $this->admin->auditAction($this->context->id(), $request->user(), null, 'admin_ticket_deleted', $snapshot, $this->auditContext($request));
+
         return response()->json(['success' => true]);
+    }
+
+    private function auditContext(Request $request): array
+    {
+        return [
+            'request_id' => $request->attributes->get('request_id') ?: $request->header('X-Request-ID'),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'authority' => $request->attributes->get('admin_authority'),
+            'scope' => $request->attributes->get('admin_scope'),
+        ];
     }
 }
