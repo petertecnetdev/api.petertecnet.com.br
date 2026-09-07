@@ -3,6 +3,7 @@
 namespace App\Domain\Creative\Http\Controllers;
 
 use App\Domain\Creative\Services\CloudflareImageGenerator;
+use App\Domain\Creative\Services\CreativePromptTemplateService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
@@ -22,14 +23,16 @@ final class CreativeGenerationController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly CloudflareImageGenerator $generator,
+        private readonly CreativePromptTemplateService $templates,
     ) {}
 
     public function image(Request $request)
     {
         $data = $request->validate([
-            'purpose' => ['required', Rule::in(array_merge(['event_flyer_background'], self::MARKETING_PURPOSES))],
+            'purpose' => ['required', Rule::in(array_merge([CreativePromptTemplateService::EVENT_FLYER_BACKGROUND], self::MARKETING_PURPOSES))],
             'subject' => 'required|string|min:2|max:180',
             'description' => 'nullable|string|max:1200',
+            'category' => 'nullable|string|max:180',
             'style' => ['nullable', Rule::in(['neon', 'premium', 'sunset', 'clean', 'editorial', 'technology'])],
             'production_name' => 'nullable|string|max:180',
             'venue' => 'nullable|string|max:180',
@@ -41,9 +44,9 @@ final class CreativeGenerationController extends Controller
             'brand_context' => 'nullable|string|max:500',
         ]);
 
-        if ($data['purpose'] === 'event_flyer_background') {
+        if ($data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND) {
             $this->context->requireCapability('events');
-            $prompt = $this->buildEventFlyerBackgroundPrompt($data);
+            $prompt = $this->templates->renderEventFlyer($data);
         } else {
             abort_unless(
                 $this->context->slug() === 'peter-tecnet'
@@ -80,6 +83,9 @@ final class CreativeGenerationController extends Controller
                 'plan' => 'free_guarded',
                 'purpose' => $data['purpose'],
                 'text_rendering' => 'client_canonical_overlay',
+                'prompt_version' => $data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND
+                    ? $this->templates->definition(CreativePromptTemplateService::EVENT_FLYER_BACKGROUND)['version']
+                    : null,
             ],
         ]);
     }
@@ -123,40 +129,6 @@ final class CreativeGenerationController extends Controller
             'Composition: '.$format.', strong focal hierarchy and generous safe areas for typography',
             'Professional commercial advertising quality, polished, modern, believable, visually distinctive, no borders',
             'IMPORTANT: generate artwork only. Do not render words, letters, logos, watermarks, UI labels, dates, prices or readable text. The Peter Tecnet application will add exact copy and branding afterward',
-        ]));
-    }
-
-    private function buildEventFlyerBackgroundPrompt(array $data): string
-    {
-        $style = match ($data['style'] ?? 'neon') {
-            'premium' => 'luxury nightlife, refined cinematic lighting, elegant dark atmosphere, premium gold highlights',
-            'sunset' => 'energetic nightlife, warm magenta and orange lights, vibrant festival atmosphere, high energy',
-            'clean' => 'modern minimal event branding, sophisticated dark blue atmosphere, clean geometric lighting, editorial look',
-            default => 'futuristic nightlife, electric neon magenta and cyan lighting, immersive club atmosphere, cinematic depth',
-        };
-
-        $format = match ($data['format'] ?? 'cover') {
-            'story' => 'vertical composition with strong depth and clean negative space in the center and lower third',
-            'post' => 'portrait social media composition with strong focal depth and generous clean space for typography',
-            default => 'wide cinematic composition with generous clean negative space for typography',
-        };
-
-        $context = array_filter([
-            $data['production_name'] ?? null,
-            $data['venue'] ?? null,
-            trim(($data['city'] ?? '').' '.($data['uf'] ?? '')) ?: null,
-        ]);
-
-        $description = trim((string) ($data['description'] ?? ''));
-
-        return implode('. ', array_filter([
-            'Create a professional promotional background artwork for a real event called "'.$data['subject'].'"',
-            $description !== '' ? 'Event concept: '.$description : null,
-            $context ? 'Venue/producer context: '.implode(', ', $context) : null,
-            'Visual direction: '.$style,
-            'Composition: '.$format,
-            'High-end commercial event advertising aesthetic, realistic lighting, visually striking, polished, no borders',
-            'IMPORTANT: background artwork only. Do not render any words, letters, dates, prices, logos, watermarks, signs or readable text. Leave safe areas for the application to add exact event information afterward',
         ]));
     }
 }
