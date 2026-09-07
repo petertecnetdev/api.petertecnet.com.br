@@ -20,7 +20,9 @@ class EventProducerUpdatedMail extends Mailable
     public array $changedLabels;
     public string $notificationTitle;
     public string $notificationMessage;
+    public string $appUrl;
     public string $eventUrl;
+    public string $eventManagementUrl;
     public string $appName;
 
     public function __construct(
@@ -31,7 +33,9 @@ class EventProducerUpdatedMail extends Mailable
         array $changedLabels,
         string $notificationTitle,
         string $notificationMessage,
+        string $appUrl,
         string $eventUrl,
+        string $eventManagementUrl,
         string $appName
     ) {
         $this->owner = $owner;
@@ -41,7 +45,9 @@ class EventProducerUpdatedMail extends Mailable
         $this->changedLabels = $changedLabels;
         $this->notificationTitle = $notificationTitle;
         $this->notificationMessage = $notificationMessage;
+        $this->appUrl = $appUrl;
         $this->eventUrl = $eventUrl;
+        $this->eventManagementUrl = $eventManagementUrl;
         $this->appName = $appName;
     }
 
@@ -58,7 +64,9 @@ class EventProducerUpdatedMail extends Mailable
                 'changedLabels' => $this->changedLabels,
                 'notificationTitle' => $this->notificationTitle,
                 'notificationMessage' => $this->notificationMessage,
+                'appUrl' => $this->appUrl,
                 'eventUrl' => $this->eventUrl,
+                'eventManagementUrl' => $this->eventManagementUrl,
                 'appName' => $this->appName,
             ]);
     }
