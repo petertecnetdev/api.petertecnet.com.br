@@ -6,8 +6,10 @@ use App\Models\EcosystemAuditLog;
 use App\Models\Establishment;
 use App\Models\Event;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use Intervention\Image\Facades\Image;
 use Throwable;
 
 final class AdminEstablishmentEventService
@@ -36,6 +38,79 @@ final class AdminEstablishmentEventService
                 'user_id' => $establishment->user_id,
             ],
             'events' => $events,
+        ];
+    }
+
+    public function show(Establishment $establishment, Event $event, int $appId): array
+    {
+        $this->assertOwnedEvent($establishment, $event, $appId);
+
+        return [
+            'event' => $event->fresh([
+                'production:id,name,fantasy,slug,user_id,city,uf,address,contact_email,contact_phone',
+            ]),
+        ];
+    }
+
+    public function update(
+        Establishment $establishment,
+        Event $event,
+        int $appId,
+        array $data,
+        ?int $actorId,
+        ?string $ip,
+        ?string $userAgent,
+    ): array {
+        $this->assertOwnedEvent($establishment, $event, $appId);
+
+        $before = $this->auditSnapshot($event);
+        $oldImage = $event->image;
+        $generatedImage = null;
+
+        if (! empty($data['image_data_uri'])) {
+            $generatedImage = $this->storeDataUriImage((string) $data['image_data_uri']);
+            $data['image'] = $generatedImage;
+        }
+        unset($data['image_data_uri']);
+
+        if (isset($data['title']) && trim((string) $data['title']) !== trim((string) $event->title)) {
+            $data['slug'] = $this->uniqueSlug((string) $data['title'], $event->id);
+        }
+
+        try {
+            DB::transaction(function () use ($event, $data, $actorId, $ip, $userAgent, $before): void {
+                $event->update($data);
+                $event->refresh();
+
+                EcosystemAuditLog::create([
+                    'user_id' => $actorId,
+                    'action' => 'event.updated_from_admin_center',
+                    'entity_type' => Event::class,
+                    'entity_id' => $event->id,
+                    'before' => $before,
+                    'after' => $this->auditSnapshot($event),
+                    'ip' => $ip,
+                    'user_agent' => Str::limit((string) $userAgent, 1000, ''),
+                ]);
+            });
+        } catch (Throwable $exception) {
+            if ($generatedImage) {
+                Storage::disk('public')->delete($generatedImage);
+            }
+            throw $exception;
+        }
+
+        if ($generatedImage && $oldImage && $oldImage !== $generatedImage && str_starts_with($oldImage, 'images/events/')) {
+            Storage::disk('public')->delete($oldImage);
+        }
+
+        return [
+            'message' => $generatedImage
+                ? 'Evento e nova imagem gerada por IA atualizados com sucesso.'
+                : 'Evento atualizado com sucesso pelo Admin Center.',
+            'event' => $event->fresh([
+                'production:id,name,fantasy,slug,user_id,city,uf,address,contact_email,contact_phone',
+            ]),
         ];
     }
 
@@ -208,6 +283,17 @@ final class AdminEstablishmentEventService
         ];
     }
 
+    private function assertOwnedEvent(Establishment $establishment, Event $event, int $appId): void
+    {
+        $this->assertApplicationLinked($establishment, $appId);
+
+        if ((int) $event->production_id !== (int) $establishment->id || (int) $event->app_id !== $appId) {
+            throw ValidationException::withMessages([
+                'event' => ['O evento informado não pertence a este estabelecimento e aplicação.'],
+            ]);
+        }
+    }
+
     private function assertApplicationLinked(Establishment $establishment, int $appId): void
     {
         $linked = (int) $establishment->app_id === $appId
@@ -218,5 +304,83 @@ final class AdminEstablishmentEventService
                 'app_id' => ['A aplicação informada não está vinculada a este estabelecimento.'],
             ]);
         }
+    }
+
+    private function auditSnapshot(Event $event): array
+    {
+        return [
+            'id' => $event->id,
+            'title' => $event->title,
+            'description' => $event->description,
+            'category' => $event->category,
+            'event_format' => $event->event_format,
+            'start_date' => optional($event->start_date)->toIso8601String(),
+            'end_date' => optional($event->end_date)->toIso8601String(),
+            'venue' => $event->venue,
+            'address' => $event->address,
+            'city' => $event->city,
+            'uf' => $event->uf,
+            'online_platform' => $event->online_platform,
+            'online_url' => $event->online_url,
+            'max_attendees' => $event->max_attendees,
+            'contact_email' => $event->contact_email,
+            'contact_phone' => $event->contact_phone,
+            'is_featured' => (bool) $event->is_featured,
+            'is_published' => (bool) $event->is_published,
+            'is_approved' => (bool) $event->is_approved,
+            'is_cancelled' => (bool) $event->is_cancelled,
+            'is_private' => (bool) $event->is_private,
+            'requires_approval' => (bool) $event->requires_approval,
+            'approval_message' => $event->approval_message,
+            'image' => $event->image,
+        ];
+    }
+
+    private function storeDataUriImage(string $dataUri): string
+    {
+        if (! preg_match('/^data:image\/(?:png|jpe?g|webp);base64,(.+)$/is', $dataUri, $matches)) {
+            throw ValidationException::withMessages([
+                'image_data_uri' => ['A imagem gerada pela IA está em um formato inválido.'],
+            ]);
+        }
+
+        $binary = base64_decode(str_replace(' ', '+', $matches[1]), true);
+        if ($binary === false || strlen($binary) === 0) {
+            throw ValidationException::withMessages([
+                'image_data_uri' => ['Não foi possível interpretar a imagem gerada pela IA.'],
+            ]);
+        }
+        if (strlen($binary) > 8 * 1024 * 1024) {
+            throw ValidationException::withMessages([
+                'image_data_uri' => ['A imagem gerada pela IA excedeu 8 MB.'],
+            ]);
+        }
+
+        try {
+            $encoded = Image::make($binary)->orientate()->fit(850, 450)->encode('webp', 85);
+        } catch (Throwable $exception) {
+            report($exception);
+            throw ValidationException::withMessages([
+                'image_data_uri' => ['A imagem gerada pela IA não pôde ser processada.'],
+            ]);
+        }
+
+        $path = 'images/events/'.Str::uuid().'.webp';
+        Storage::disk('public')->put($path, (string) $encoded);
+
+        return $path;
+    }
+
+    private function uniqueSlug(string $source, int $ignoreId): string
+    {
+        $base = Str::slug($source) ?: Str::random(12);
+        $slug = $base;
+        $suffix = 2;
+
+        while (Event::query()->where('slug', $slug)->where('id', '!=', $ignoreId)->exists()) {
+            $slug = $base.'-'.$suffix++;
+        }
+
+        return $slug;
     }
 }
