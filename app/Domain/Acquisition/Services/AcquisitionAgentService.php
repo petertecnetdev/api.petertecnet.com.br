@@ -24,13 +24,15 @@ final class AcquisitionAgentService
     public function context(?User $user): array
     {
         $agent = $this->access->assertAgent($user);
+        $commissionEconomics = $this->commissionPolicy->economics();
 
         return [
             'is_agent' => true,
             'role' => 'acquisition_agent',
             'application' => $this->context->application()->only(['id', 'name', 'slug', 'url']),
             'agent' => $agent->only(['id', 'first_name', 'last_name', 'email']),
-            'commission_max_percentage' => $this->commissionCeilingPercentage(),
+            'commission_max_percentage' => $commissionEconomics['max_commission_percentage'],
+            'commission_economics' => $commissionEconomics,
         ];
     }
 
@@ -90,6 +92,7 @@ final class AcquisitionAgentService
 
         $total = (clone $referrals)->count();
         $accepted = (clone $referrals)->where('status', 'accepted')->count();
+        $commissionEconomics = $this->commissionPolicy->economics();
 
         return [
             'metrics' => [
@@ -103,7 +106,8 @@ final class AcquisitionAgentService
                 'commission_amount' => round($commissionRows->sum('commission_amount'), 2),
                 'conversion_rate' => $total > 0 ? round(($accepted / $total) * 100, 1) : 0,
             ],
-            'commission_max_percentage' => $this->commissionCeilingPercentage(),
+            'commission_max_percentage' => $commissionEconomics['max_commission_percentage'],
+            'commission_economics' => $commissionEconomics,
             'recent_referrals' => $recent,
             'commissions' => $commissionRows,
         ];
