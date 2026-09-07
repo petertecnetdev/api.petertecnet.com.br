@@ -44,7 +44,10 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(8.5, $result['platform_contribution_margin']);
         $this->assertSame(0, $result['platform_loss_making_orders']);
         $this->assertSame(0.0, $result['platform_contribution_shortfall']);
+        $this->assertSame(10.0, $result['platform_collection_effective_fee_rate']);
         $this->assertSame(3.0, $result['platform_collection_break_even_fee_rate']);
+        $this->assertSame(0.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertTrue($result['platform_collection_sustainable']);
         $this->assertSame(['automatic_split' => 1, 'platform_collection' => 1], $result['settlement_modes']);
     }
 
@@ -102,7 +105,41 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(1, $result['platform_loss_making_orders']);
         $this->assertSame(100.0, $result['platform_loss_making_gross_revenue']);
         $this->assertSame(2.0, $result['platform_contribution_shortfall']);
+        $this->assertSame(4.67, $result['platform_collection_effective_fee_rate']);
         $this->assertSame(4.0, $result['platform_collection_break_even_fee_rate']);
+        $this->assertSame(0.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertTrue($result['platform_collection_sustainable']);
         $this->assertSame(1, $result['by_payment_method']['card']['platform_loss_making_orders']);
+    }
+
+    #[Test]
+    public function it_quantifies_the_fee_rate_gap_when_platform_collection_is_structurally_underwater(): void
+    {
+        $orders = new Collection([
+            new CommerceOrder([
+                'payment_method' => 'card',
+                'total' => 100,
+                'platform_fee' => 2,
+                'processor_fee' => 4,
+                'producer_net' => 98,
+                'metadata' => ['settlement_mode' => 'platform_collection'],
+            ]),
+            new CommerceOrder([
+                'payment_method' => 'card',
+                'total' => 100,
+                'platform_fee' => 2,
+                'processor_fee' => 4,
+                'producer_net' => 98,
+                'metadata' => ['settlement_mode' => 'platform_collection'],
+            ]),
+        ]);
+
+        $method = new ReflectionMethod(RevenueFunnelService::class, 'settlementProfitability');
+        $result = $method->invoke(new RevenueFunnelService(), $orders);
+
+        $this->assertSame(2.0, $result['platform_collection_effective_fee_rate']);
+        $this->assertSame(4.0, $result['platform_collection_break_even_fee_rate']);
+        $this->assertSame(2.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertFalse($result['platform_collection_sustainable']);
     }
 }
