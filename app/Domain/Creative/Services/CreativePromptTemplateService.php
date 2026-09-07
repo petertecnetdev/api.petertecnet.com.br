@@ -23,15 +23,49 @@ final class CreativePromptTemplateService
         'venue' => 'Local do evento',
         'city' => 'Cidade',
         'uf' => 'UF',
-        'style' => 'Direção visual já expandida pela plataforma',
-        'format' => 'Composição/formato já expandido pela plataforma',
+        'artist' => 'Artista, DJ ou atração principal',
+        'brand_context' => 'Contexto visual da marca/estabelecimento',
+        'style' => 'Direção visual expandida pelo Creative Director',
+        'intensity' => 'Intensidade visual expandida pelo Creative Director',
+        'format' => 'Composição/formato expandido pelo Creative Director',
         'description_clause' => 'Frase pronta com categoria e conceito do evento',
         'context_clause' => 'Frase pronta com produção, local, cidade e UF',
+        'promotions_clause' => 'Resumo de promoções enviado pela aplicação',
+        'items_clause' => 'Resumo de itens/experiências enviado pela aplicação',
     ];
+
+    public function __construct(
+        private readonly CreativeDirectorService $director,
+    ) {}
 
     public function supports(string $key): bool
     {
         return array_key_exists($key, self::LABELS);
+    }
+
+    public function eventStyleKeys(): array
+    {
+        return $this->director->styleKeys();
+    }
+
+    public function eventIntensityKeys(): array
+    {
+        return $this->director->intensityKeys();
+    }
+
+    public function eventFormatKeys(): array
+    {
+        return $this->director->formatKeys();
+    }
+
+    public function eventPresets(): array
+    {
+        return $this->director->presets();
+    }
+
+    public function eventDirection(array $data): array
+    {
+        return $this->director->resolveEventDirection($data);
     }
 
     public function definition(string $key): array
@@ -90,20 +124,7 @@ final class CreativePromptTemplateService
     public function renderEventFlyer(array $data): string
     {
         $definition = $this->definition(self::EVENT_FLYER_BACKGROUND);
-
-        $style = match ($data['style'] ?? 'neon') {
-            'premium' => 'luxury nightlife, refined cinematic lighting, elegant dark atmosphere, premium gold highlights',
-            'sunset' => 'energetic nightlife, warm magenta and orange lights, vibrant festival atmosphere, high energy',
-            'clean' => 'modern minimal event branding, sophisticated dark blue atmosphere, clean geometric lighting, editorial look',
-            default => 'futuristic nightlife, electric neon magenta and cyan lighting, immersive club atmosphere, cinematic depth',
-        };
-
-        $format = match ($data['format'] ?? 'cover') {
-            'story' => 'vertical composition with strong depth and clean negative space in the center and lower third',
-            'post', 'portrait' => 'portrait social media composition with strong focal depth and generous clean space for typography',
-            'square' => 'square social media composition with a strong central focal point and safe typography areas',
-            default => 'wide cinematic composition with generous clean negative space for typography',
-        };
+        $direction = $this->director->resolveEventDirection($data);
 
         $descriptionParts = array_filter([
             ! empty($data['category']) ? 'Event category: '.trim((string) $data['category']) : null,
@@ -116,6 +137,9 @@ final class CreativePromptTemplateService
             trim(($data['city'] ?? '').' '.($data['uf'] ?? '')) ?: null,
         ]);
 
+        $promotions = $this->compactList($data['promotions'] ?? []);
+        $items = $this->compactList($data['featured_items'] ?? []);
+
         $variables = [
             'subject' => trim((string) ($data['subject'] ?? '')),
             'description' => trim((string) ($data['description'] ?? '')),
@@ -124,10 +148,15 @@ final class CreativePromptTemplateService
             'venue' => trim((string) ($data['venue'] ?? '')),
             'city' => trim((string) ($data['city'] ?? '')),
             'uf' => strtoupper(trim((string) ($data['uf'] ?? ''))),
-            'style' => $style,
-            'format' => $format,
+            'artist' => trim((string) ($data['artist'] ?? '')),
+            'brand_context' => trim((string) ($data['brand_context'] ?? '')),
+            'style' => $direction['style'],
+            'intensity' => $direction['intensity'],
+            'format' => $direction['format'],
             'description_clause' => implode('. ', $descriptionParts),
             'context_clause' => $context ? 'Venue/producer context: '.implode(', ', $context) : '',
+            'promotions_clause' => $promotions !== '' ? 'Promotion context: '.$promotions : '',
+            'items_clause' => $items !== '' ? 'Available items/experiences: '.$items : '',
         ];
 
         $replacements = [];
@@ -138,7 +167,7 @@ final class CreativePromptTemplateService
         $rendered = strtr((string) $definition['template'], $replacements);
         $rendered = preg_replace('/\s+/u', ' ', $rendered) ?: $rendered;
 
-        return trim($rendered);
+        return $this->director->composeEventPrompt(trim($rendered), $data);
     }
 
     public function variables(string $key): array
@@ -160,13 +189,12 @@ final class CreativePromptTemplateService
         $this->assertSupported($key);
 
         return <<<'PROMPT'
-Create a professional promotional background artwork for a real event called "{{subject}}".
+Real event: "{{subject}}".
 {{description_clause}}
 {{context_clause}}
-Visual direction: {{style}}.
-Composition: {{format}}.
-High-end commercial event advertising aesthetic, realistic lighting, visually striking, polished, no borders.
-IMPORTANT: background artwork only. Do not render any words, letters, dates, prices, logos, watermarks, signs or readable text. Leave safe areas for the application to add exact event information afterward.
+{{promotions_clause}}
+{{items_clause}}
+Use the real event context to choose meaningful visual motifs and atmosphere. Style direction: {{style}}. Intensity: {{intensity}}. Composition: {{format}}.
 PROMPT;
     }
 
@@ -222,6 +250,19 @@ PROMPT;
                 'template' => ['O prompt precisa manter a variável {{subject}} para identificar o evento.'],
             ]);
         }
+    }
+
+    private function compactList(mixed $items): string
+    {
+        if (! is_array($items)) {
+            return '';
+        }
+
+        return collect($items)
+            ->filter(fn ($item) => is_scalar($item) && trim((string) $item) !== '')
+            ->map(fn ($item) => mb_substr(trim((string) $item), 0, 90))
+            ->take(6)
+            ->implode(', ');
     }
 
     private function assertSupported(string $key): void
