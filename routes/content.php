@@ -69,3 +69,5 @@ Route::middleware(['auth:api', 'token.version', \App\Http\Middleware\PeterTecnet
     Route::post('/discovery/growth/experiments', [DiscoveryGrowthController::class, 'storeExperiment']);
     Route::patch('/discovery/growth/experiments/{experiment}', [DiscoveryGrowthController::class, 'updateExperiment'])->whereNumber('experiment');
 });
+
+require __DIR__.'/creative.php';
