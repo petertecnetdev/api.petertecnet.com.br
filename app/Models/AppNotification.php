@@ -2,7 +2,10 @@
 
 namespace App\Models;
 
+use App\Mail\AppNotificationMail;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class AppNotification extends Model
 {
@@ -44,6 +47,42 @@ class AppNotification extends Model
 
             if (! $isPublicEvent) {
                 return false;
+            }
+        });
+
+        static::created(function (AppNotification $notification): void {
+            try {
+                $application = Application::query()->find($notification->app_id);
+                if (! $application || strtolower((string) $application->slug) !== 'kryvion') {
+                    return;
+                }
+
+                $user = User::query()->find($notification->user_id);
+                if (! $user || ! filter_var($user->email, FILTER_VALIDATE_EMAIL)) {
+                    return;
+                }
+
+                $emailEnabled = NotificationPreference::query()
+                    ->where('app_id', $notification->app_id)
+                    ->where('user_id', $notification->user_id)
+                    ->value('email_enabled');
+
+                if ($emailEnabled === false || $emailEnabled === 0) {
+                    return;
+                }
+
+                Mail::to($user->email)->queue(new AppNotificationMail(
+                    notification: $notification,
+                    recipientUser: $user,
+                    application: $application,
+                ));
+            } catch (\Throwable $exception) {
+                Log::warning('Kryvion notification email could not be queued.', [
+                    'notification_id' => $notification->id,
+                    'app_id' => $notification->app_id,
+                    'user_id' => $notification->user_id,
+                    'error' => $exception->getMessage(),
+                ]);
             }
         });
     }
