@@ -109,6 +109,10 @@ final class RevenueFunnelService
                     'organization_net_margin' => $profitability['organization_net_margin'],
                     'platform_contribution_after_processing' => $profitability['platform_contribution_after_processing'],
                     'platform_contribution_margin' => $profitability['platform_contribution_margin'],
+                    'platform_loss_making_orders' => $profitability['platform_loss_making_orders'],
+                    'platform_loss_making_gross_revenue' => $profitability['platform_loss_making_gross_revenue'],
+                    'platform_contribution_shortfall' => $profitability['platform_contribution_shortfall'],
+                    'platform_collection_break_even_fee_rate' => $profitability['platform_collection_break_even_fee_rate'],
                     'settlement_modes' => $profitability['settlement_modes'],
                     'gross_at_risk' => round((float) $row->gross_at_risk, 2),
                 ];
@@ -138,6 +142,10 @@ final class RevenueFunnelService
             'organization_net_margin' => $paidProfitability['organization_net_margin'],
             'platform_contribution_after_processing' => $paidProfitability['platform_contribution_after_processing'],
             'platform_contribution_margin' => $paidProfitability['platform_contribution_margin'],
+            'platform_loss_making_orders' => $paidProfitability['platform_loss_making_orders'],
+            'platform_loss_making_gross_revenue' => $paidProfitability['platform_loss_making_gross_revenue'],
+            'platform_contribution_shortfall' => $paidProfitability['platform_contribution_shortfall'],
+            'platform_collection_break_even_fee_rate' => $paidProfitability['platform_collection_break_even_fee_rate'],
             'settlement_modes' => $paidProfitability['settlement_modes'],
             'average_paid_order' => $paid > 0 ? round($gross / $paid, 2) : 0.0,
             'checkout_recovery_attempts' => $recoveryAttempts,
@@ -152,6 +160,8 @@ final class RevenueFunnelService
             'recovered_organization_net_margin' => $recoveredProfitability['organization_net_margin'],
             'recovered_platform_contribution_after_processing' => $recoveredProfitability['platform_contribution_after_processing'],
             'recovered_platform_contribution_margin' => $recoveredProfitability['platform_contribution_margin'],
+            'recovered_platform_loss_making_orders' => $recoveredProfitability['platform_loss_making_orders'],
+            'recovered_platform_contribution_shortfall' => $recoveredProfitability['platform_contribution_shortfall'],
             'gross_revenue_at_risk' => round($atRiskGross, 2),
             'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
             'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
@@ -216,16 +226,21 @@ final class RevenueFunnelService
     {
         $row = [
             'gross_revenue' => 0.0,
+            'platform_collection_gross_revenue' => 0.0,
             'processor_fees_borne_by_platform' => 0.0,
             'processor_fees_borne_by_organization' => 0.0,
             'organization_net_after_processing' => 0.0,
             'organization_net_margin' => 0.0,
             'platform_contribution_after_processing' => 0.0,
             'platform_contribution_margin' => 0.0,
+            'platform_loss_making_orders' => 0,
+            'platform_loss_making_gross_revenue' => 0.0,
+            'platform_contribution_shortfall' => 0.0,
+            'platform_collection_break_even_fee_rate' => 0.0,
             'settlement_modes' => [],
         ];
 
-        return $finalized ? $row : $row;
+        return $finalized ? $this->finalizeProfitability($row) : $row;
     }
 
     /** @param array<string, mixed> $row */
@@ -236,20 +251,37 @@ final class RevenueFunnelService
         $row['platform_contribution_after_processing'] += $platformContribution;
         $row[$platformBearsProcessing ? 'processor_fees_borne_by_platform' : 'processor_fees_borne_by_organization'] += $processorFee;
         $row['settlement_modes'][$settlementMode] = ($row['settlement_modes'][$settlementMode] ?? 0) + 1;
+
+        if ($platformBearsProcessing) {
+            $row['platform_collection_gross_revenue'] += $gross;
+
+            if ($platformContribution < 0) {
+                $row['platform_loss_making_orders'] += 1;
+                $row['platform_loss_making_gross_revenue'] += $gross;
+                $row['platform_contribution_shortfall'] += abs($platformContribution);
+            }
+        }
     }
 
     /** @param array<string, mixed> $row @return array<string, mixed> */
     private function finalizeProfitability(array $row): array
     {
         $gross = (float) $row['gross_revenue'];
+        $platformCollectionGross = (float) $row['platform_collection_gross_revenue'];
         $row['processor_fees_borne_by_platform'] = round((float) $row['processor_fees_borne_by_platform'], 2);
         $row['processor_fees_borne_by_organization'] = round((float) $row['processor_fees_borne_by_organization'], 2);
         $row['organization_net_after_processing'] = round((float) $row['organization_net_after_processing'], 2);
         $row['organization_net_margin'] = $gross > 0 ? round(((float) $row['organization_net_after_processing'] / $gross) * 100, 2) : 0.0;
         $row['platform_contribution_after_processing'] = round((float) $row['platform_contribution_after_processing'], 2);
         $row['platform_contribution_margin'] = $gross > 0 ? round(((float) $row['platform_contribution_after_processing'] / $gross) * 100, 2) : 0.0;
+        $row['platform_loss_making_orders'] = (int) $row['platform_loss_making_orders'];
+        $row['platform_loss_making_gross_revenue'] = round((float) $row['platform_loss_making_gross_revenue'], 2);
+        $row['platform_contribution_shortfall'] = round((float) $row['platform_contribution_shortfall'], 2);
+        $row['platform_collection_break_even_fee_rate'] = $platformCollectionGross > 0
+            ? round(((float) $row['processor_fees_borne_by_platform'] / $platformCollectionGross) * 100, 2)
+            : 0.0;
         ksort($row['settlement_modes']);
-        unset($row['gross_revenue']);
+        unset($row['gross_revenue'], $row['platform_collection_gross_revenue']);
 
         return $row;
     }
