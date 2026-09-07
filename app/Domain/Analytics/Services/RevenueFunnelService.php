@@ -6,7 +6,6 @@ use App\Models\CommerceOrder;
 use App\Models\Establishment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Collection;
 
 final class RevenueFunnelService
 {
@@ -39,9 +38,9 @@ final class RevenueFunnelService
         $processorFees = (float) (clone $paidOrders)->sum('processor_fee');
         $discounts = (float) (clone $paidOrders)->sum('discount_amount');
         $producerNet = (float) (clone $paidOrders)->sum('producer_net');
-        $paidProfitability = $this->settlementProfitability((clone $paidOrders)->get([
+        $paidProfitability = $this->settlementProfitability((clone $paidOrders)->select([
             'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        ])->cursor());
 
         $recoveryAttempts = (clone $orders)->whereNotNull('recovery_started_at')->count();
         $recoveredOrders = (clone $orders)
@@ -52,9 +51,9 @@ final class RevenueFunnelService
         $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
         $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
         $recoveredProcessorFees = (float) (clone $recoveredPaidOrders)->sum('processor_fee');
-        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)->get([
+        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)->select([
             'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        ])->cursor());
 
         $atRiskOrders = (clone $orders)
             ->where('status', 'pending')
@@ -115,6 +114,7 @@ final class RevenueFunnelService
                     'platform_collection_effective_fee_rate' => $profitability['platform_collection_effective_fee_rate'],
                     'platform_collection_break_even_fee_rate' => $profitability['platform_collection_break_even_fee_rate'],
                     'platform_collection_fee_rate_gap_to_break_even' => $profitability['platform_collection_fee_rate_gap_to_break_even'],
+                    'platform_collection_revenue_gap_to_break_even' => $profitability['platform_collection_revenue_gap_to_break_even'],
                     'platform_collection_sustainable' => $profitability['platform_collection_sustainable'],
                     'settlement_modes' => $profitability['settlement_modes'],
                     'gross_at_risk' => round((float) $row->gross_at_risk, 2),
@@ -151,6 +151,7 @@ final class RevenueFunnelService
             'platform_collection_effective_fee_rate' => $paidProfitability['platform_collection_effective_fee_rate'],
             'platform_collection_break_even_fee_rate' => $paidProfitability['platform_collection_break_even_fee_rate'],
             'platform_collection_fee_rate_gap_to_break_even' => $paidProfitability['platform_collection_fee_rate_gap_to_break_even'],
+            'platform_collection_revenue_gap_to_break_even' => $paidProfitability['platform_collection_revenue_gap_to_break_even'],
             'platform_collection_sustainable' => $paidProfitability['platform_collection_sustainable'],
             'settlement_modes' => $paidProfitability['settlement_modes'],
             'average_paid_order' => $paid > 0 ? round($gross / $paid, 2) : 0.0,
@@ -168,6 +169,7 @@ final class RevenueFunnelService
             'recovered_platform_contribution_margin' => $recoveredProfitability['platform_contribution_margin'],
             'recovered_platform_loss_making_orders' => $recoveredProfitability['platform_loss_making_orders'],
             'recovered_platform_contribution_shortfall' => $recoveredProfitability['platform_contribution_shortfall'],
+            'recovered_platform_collection_revenue_gap_to_break_even' => $recoveredProfitability['platform_collection_revenue_gap_to_break_even'],
             'gross_revenue_at_risk' => round($atRiskGross, 2),
             'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
             'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
@@ -184,10 +186,10 @@ final class RevenueFunnelService
      * the platform contribution while the organization's contractual net is preserved.
      * Unknown legacy rows are treated conservatively as merchant-borne to avoid overstating platform margin.
      *
-     * @param Collection<int, CommerceOrder> $orders
+     * @param iterable<int, CommerceOrder> $orders
      * @return array<string, mixed>
      */
-    private function settlementProfitability(Collection $orders): array
+    private function settlementProfitability(iterable $orders): array
     {
         $summary = $this->emptyProfitability(false);
         $byPaymentMethod = [];
@@ -246,6 +248,7 @@ final class RevenueFunnelService
             'platform_collection_effective_fee_rate' => 0.0,
             'platform_collection_break_even_fee_rate' => 0.0,
             'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_revenue_gap_to_break_even' => 0.0,
             'platform_collection_sustainable' => true,
             'settlement_modes' => [],
         ];
@@ -298,6 +301,9 @@ final class RevenueFunnelService
         $row['platform_collection_fee_rate_gap_to_break_even'] = $platformCollectionGross > 0
             ? round(max(0, $row['platform_collection_break_even_fee_rate'] - $row['platform_collection_effective_fee_rate']), 2)
             : 0.0;
+        $row['platform_collection_revenue_gap_to_break_even'] = round(
+            max(0, (float) $row['processor_fees_borne_by_platform'] - $platformCollectionPlatformFees), 2
+        );
         $row['platform_collection_sustainable'] = $platformCollectionGross <= 0
             || $row['platform_collection_effective_fee_rate'] >= $row['platform_collection_break_even_fee_rate'];
         ksort($row['settlement_modes']);
