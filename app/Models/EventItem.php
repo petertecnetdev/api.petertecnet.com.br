@@ -8,8 +8,8 @@ use Illuminate\Validation\ValidationException;
 class EventItem extends Model
 {
     protected $table = 'event_items';
-    protected $fillable = ['app_id','event_id','name','description','price','quantity','is_active'];
-    protected $casts = ['app_id'=>'integer','price'=>'decimal:2','quantity'=>'integer','is_active'=>'boolean'];
+    protected $fillable = ['app_id','event_id','source_item_id','name','description','price','quantity','is_active'];
+    protected $casts = ['app_id'=>'integer','event_id'=>'integer','source_item_id'=>'integer','price'=>'decimal:2','quantity'=>'integer','is_active'=>'boolean'];
 
     protected static function booted(): void
     {
@@ -50,6 +50,7 @@ class EventItem extends Model
                 ]);
             }
 
+            $eventItem->source_item_id = $sourceItem->id;
             $eventItem->name = $sourceItem->name;
             $eventItem->description = $sourceItem->description;
         });
@@ -57,4 +58,5 @@ class EventItem extends Model
 
     public function application(){return $this->belongsTo(Application::class,'app_id');}
     public function event(){return $this->belongsTo(Event::class);}
+    public function sourceItem(){return $this->belongsTo(Item::class,'source_item_id')->withTrashed();}
 }
