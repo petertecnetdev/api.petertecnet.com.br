@@ -6,15 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Models\AdminUserAnnotation;
 use App\Models\User;
 use App\Services\Admin\AdminUserDetailService;
+use App\Services\Admin\AdminUserIntelligenceService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class AdminUserDetailController extends Controller
 {
-    public function show(Request $request, User $user, AdminUserDetailService $service): JsonResponse
+    public function show(Request $request, User $user, AdminUserDetailService $service, AdminUserIntelligenceService $intelligence): JsonResponse
     {
-        return response()->json($service->detail($user));
+        return response()->json($intelligence->augment($user, $service->detail($user)));
     }
 
     public function activity(Request $request, User $user, AdminUserDetailService $service): JsonResponse
@@ -37,7 +38,7 @@ class AdminUserDetailController extends Controller
         return response()->json($service->activity($user, $data));
     }
 
-    public function storeNote(Request $request, User $user, AdminUserDetailService $service): JsonResponse
+    public function storeNote(Request $request, User $user, AdminUserIntelligenceService $service): JsonResponse
     {
         $data = $request->validate([
             'message' => ['required', 'string', 'max:5000'],
@@ -50,7 +51,7 @@ class AdminUserDetailController extends Controller
         ], 201);
     }
 
-    public function deleteNote(Request $request, User $user, AdminUserAnnotation $annotation, AdminUserDetailService $service): JsonResponse
+    public function deleteNote(Request $request, User $user, AdminUserAnnotation $annotation, AdminUserIntelligenceService $service): JsonResponse
     {
         abort_unless((int) $annotation->target_user_id === (int) $user->id && $annotation->kind === 'note', 404);
         $service->deleteNote($user, $annotation, $request->user(), $request);
@@ -58,7 +59,7 @@ class AdminUserDetailController extends Controller
         return response()->json(['message' => 'Nota administrativa removida.']);
     }
 
-    public function updateTags(Request $request, User $user, AdminUserDetailService $service): JsonResponse
+    public function updateTags(Request $request, User $user, AdminUserIntelligenceService $service): JsonResponse
     {
         $data = $request->validate([
             'tags' => ['present', 'array', 'max:30'],
@@ -71,12 +72,12 @@ class AdminUserDetailController extends Controller
         ]);
     }
 
-    public function revokeSessions(Request $request, User $user, AdminUserDetailService $service): JsonResponse
+    public function revokeSessions(Request $request, User $user, AdminUserIntelligenceService $service): JsonResponse
     {
         return response()->json($service->revokeSessions($user, $request->user(), $request));
     }
 
-    public function accountAccess(Request $request, User $user, AdminUserDetailService $service): JsonResponse
+    public function accountAccess(Request $request, User $user, AdminUserIntelligenceService $service): JsonResponse
     {
         $data = $request->validate([
             'status' => ['required', Rule::in(['active', 'blocked'])],
