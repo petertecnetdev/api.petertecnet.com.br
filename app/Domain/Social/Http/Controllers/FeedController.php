@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class FeedController extends Controller
 {
@@ -123,7 +124,7 @@ final class FeedController extends Controller
             return $event;
         });
 
-        $community = DB::table('event_posts as p')
+        $eventCommunity = DB::table('event_posts as p')
             ->join('events as e', 'e.id', '=', 'p.event_id')
             ->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.app_id', $appId)
@@ -139,12 +140,53 @@ final class FeedController extends Controller
                 ->whereNull('e.end_date')
                 ->orWhere('e.end_date', '>', $now))
             ->orderByDesc('p.created_at')
-            ->limit(12)
+            ->limit(20)
             ->get([
                 'p.id', 'p.event_id', 'p.body', 'p.created_at', 'p.is_pinned',
                 'e.title as event_title', 'e.slug as event_slug',
                 'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
+                DB::raw("'event_post' as source_type"),
             ]);
+
+        $timelinePosts = DB::table('social_posts as p')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->leftJoin('events as e', function ($join) {
+                $join->on('e.id', '=', 'p.subject_id')
+                    ->where('p.subject_type', '=', 'event');
+            })
+            ->where('p.app_id', $appId)
+            ->where('p.status', 'published')
+            ->where('p.visibility', 'public')
+            ->where(function ($query) use ($appId, $now) {
+                $query->whereNull('p.subject_type')
+                    ->orWhere(function ($linked) use ($appId, $now) {
+                        $linked->where('p.subject_type', 'event')
+                            ->where('e.app_id', $appId)
+                            ->where('e.is_published', true)
+                            ->where('e.is_cancelled', false)
+                            ->where(fn ($privacy) => $privacy
+                                ->where('e.is_private', false)
+                                ->orWhereNull('e.is_private'))
+                            ->where(fn ($active) => $active
+                                ->whereNull('e.end_date')
+                                ->orWhere('e.end_date', '>', $now));
+                    });
+            })
+            ->orderByDesc('p.created_at')
+            ->limit(20)
+            ->get([
+                'p.id', 'p.body', 'p.created_at', 'p.is_pinned',
+                'e.title as event_title', 'e.slug as event_slug',
+                'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
+                DB::raw("CASE WHEN p.subject_type = 'event' THEN p.subject_id ELSE NULL END as event_id"),
+                DB::raw("'social_post' as source_type"),
+            ]);
+
+        $community = $eventCommunity
+            ->concat($timelinePosts)
+            ->sortByDesc('created_at')
+            ->take(20)
+            ->values();
 
         // Notification data has its own endpoint and navbar lifecycle. Avoid two
         // extra notification queries on every feed request while preserving shape.
@@ -160,5 +202,69 @@ final class FeedController extends Controller
                 'following_artists' => count($followedArtists),
             ],
         ]);
+    }
+
+    public function store(Request $request)
+    {
+        $appId = $this->context->id();
+        $user = $request->user();
+        $data = $request->validate([
+            'body' => 'required|string|min:2|max:3000',
+            'event_id' => 'nullable|integer|min:1',
+        ]);
+
+        $eventId = isset($data['event_id']) ? (int) $data['event_id'] : null;
+        if ($eventId) {
+            $eventExists = DB::table('events')
+                ->where('id', $eventId)
+                ->where('app_id', $appId)
+                ->where('is_published', true)
+                ->where('is_cancelled', false)
+                ->where(fn ($query) => $query
+                    ->where('is_private', false)
+                    ->orWhereNull('is_private'))
+                ->where(fn ($query) => $query
+                    ->whereNull('end_date')
+                    ->orWhere('end_date', '>', now()))
+                ->exists();
+
+            if (! $eventExists) {
+                throw ValidationException::withMessages([
+                    'event_id' => ['O evento vinculado não está disponível para publicações na timeline.'],
+                ]);
+            }
+        }
+
+        $now = now();
+        $postId = DB::table('social_posts')->insertGetId([
+            'app_id' => $appId,
+            'user_id' => $user->id,
+            'subject_type' => $eventId ? 'event' : null,
+            'subject_id' => $eventId,
+            'body' => trim((string) $data['body']),
+            'status' => 'published',
+            'visibility' => 'public',
+            'is_pinned' => false,
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        $post = DB::table('social_posts as p')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->leftJoin('events as e', function ($join) {
+                $join->on('e.id', '=', 'p.subject_id')
+                    ->where('p.subject_type', '=', 'event');
+            })
+            ->where('p.id', $postId)
+            ->where('p.app_id', $appId)
+            ->first([
+                'p.id', 'p.body', 'p.created_at', 'p.is_pinned',
+                'e.title as event_title', 'e.slug as event_slug',
+                'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
+                DB::raw("CASE WHEN p.subject_type = 'event' THEN p.subject_id ELSE NULL END as event_id"),
+                DB::raw("'social_post' as source_type"),
+            ]);
+
+        return response()->json(['post' => $post], 201);
     }
 }
