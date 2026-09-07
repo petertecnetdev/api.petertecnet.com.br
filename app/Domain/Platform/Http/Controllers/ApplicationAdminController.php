@@ -4,6 +4,7 @@ namespace App\Domain\Platform\Http\Controllers;
 
 use App\Domain\Platform\Services\ApplicationAdminOverviewService;
 use App\Domain\Platform\Services\ApplicationAdminService;
+use App\Domain\Platform\Services\ApplicationAdminUserService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ class ApplicationAdminController extends Controller
     public function __construct(
         private readonly ApplicationAdminService $service,
         private readonly ApplicationAdminOverviewService $overviewService,
+        private readonly ApplicationAdminUserService $userService,
     ) {
     }
 
@@ -38,6 +40,43 @@ class ApplicationAdminController extends Controller
             'success' => true,
             'data' => $this->service->permissionCatalog(),
         ]);
+    }
+
+    public function users(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'q' => ['nullable', 'string', 'max:255'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->userService->paginate(
+                $this->applicationId($request),
+                $validated['q'] ?? null,
+                (int) ($validated['per_page'] ?? 25),
+            ),
+        ]);
+    }
+
+    public function storeUser(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'first_name' => ['required', 'string', 'max:100'],
+            'last_name' => ['nullable', 'string', 'max:100'],
+            'email' => ['required', 'email:rfc', 'max:255'],
+            'role' => ['nullable', 'string', 'in:participant,producer,production_manager,artist,promoter,ticket_manager'],
+        ]);
+
+        $result = $this->userService->createOrAttach($this->applicationId($request), $validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['created']
+                ? 'Usuário criado e vinculado à aplicação com sucesso.'
+                : 'Usuário existente vinculado à aplicação com sucesso.',
+            'data' => $result['user'],
+        ], $result['created'] ? 201 : 200);
     }
 
     public function profiles(Request $request): JsonResponse

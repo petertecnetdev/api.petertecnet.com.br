@@ -16,6 +16,11 @@ Route::prefix('v1/apps/{application}')
             Route::get('/audit', [ApplicationAdminController::class, 'audit'])
                 ->middleware(EnsureApplicationAdmin::class.':audit.view');
 
+            Route::get('/users', [ApplicationAdminController::class, 'users'])
+                ->middleware(EnsureApplicationAdmin::class.':users.view');
+            Route::post('/users', [ApplicationAdminController::class, 'storeUser'])
+                ->middleware([EnsureApplicationAdmin::class.':users.manage', 'throttle:20,1']);
+
             Route::get('/events', [ApplicationAdminEventController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':events.view');
             Route::post('/events/{event}/series', [ApplicationAdminEventController::class, 'series'])
