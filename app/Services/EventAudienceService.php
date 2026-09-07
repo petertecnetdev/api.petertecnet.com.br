@@ -58,6 +58,7 @@ class EventAudienceService
             try{Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));}
             catch(\Throwable $e){Log::error('Falha ao enviar ingressos por e-mail.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);}
         }
+        app(ImportantEventService::class)->recordTicketPurchase($order);
     }
 
     public function confirmCourtesy(EventPass $pass): void
