@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
@@ -193,6 +194,20 @@ final class EnsureIdempotentRequest
     {
         if ($field === 'card_token') {
             return '[volatile]';
+        }
+
+        if ($value instanceof UploadedFile) {
+            $path = $value->getRealPath();
+            $contentHash = is_string($path) && $path !== '' && is_file($path)
+                ? hash_file('sha256', $path)
+                : false;
+
+            return [
+                '__uploaded_file' => true,
+                'sha256' => $contentHash ?: null,
+                'size' => $value->getSize(),
+                'mime_type' => $value->getMimeType(),
+            ];
         }
 
         if (! is_array($value)) {
