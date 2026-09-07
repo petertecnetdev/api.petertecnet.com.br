@@ -36,6 +36,7 @@ final class RevenueFunnelService
         $gross = (float) (clone $paidOrders)->sum('total');
         $platformRevenue = (float) (clone $paidOrders)->sum('platform_fee');
         $processorFees = (float) (clone $paidOrders)->sum('processor_fee');
+        $netPlatformRevenue = $platformRevenue - $processorFees;
         $discounts = (float) (clone $paidOrders)->sum('discount_amount');
         $producerNet = (float) (clone $paidOrders)->sum('producer_net');
 
@@ -47,6 +48,8 @@ final class RevenueFunnelService
         $recoveredPaidOrders = (clone $paidOrders)->whereNotNull('recovery_started_at');
         $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
         $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
+        $recoveredProcessorFees = (float) (clone $recoveredPaidOrders)->sum('processor_fee');
+        $recoveredNetPlatformRevenue = $recoveredPlatformRevenue - $recoveredProcessorFees;
 
         $atRiskOrders = (clone $orders)
             ->where('status', 'pending')
@@ -72,24 +75,33 @@ final class RevenueFunnelService
             ->selectRaw("SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) orders_paid")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END), 0) gross_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN platform_fee ELSE 0 END), 0) platform_revenue")
+            ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN processor_fee ELSE 0 END), 0) processor_fees")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
             ->groupByRaw($normalizedPaymentMethodSql)
             ->get()
             ->map(function ($row): array {
                 $createdForMethod = (int) $row->orders_created;
                 $paidForMethod = (int) $row->orders_paid;
+                $grossForMethod = (float) $row->gross_revenue;
+                $platformRevenueForMethod = (float) $row->platform_revenue;
+                $processorFeesForMethod = (float) $row->processor_fees;
+                $netPlatformRevenueForMethod = $platformRevenueForMethod - $processorFeesForMethod;
 
                 return [
                     'payment_method' => (string) $row->payment_method,
                     'orders_created' => $createdForMethod,
                     'orders_paid' => $paidForMethod,
                     'conversion_rate' => $createdForMethod > 0 ? round(($paidForMethod / $createdForMethod) * 100, 2) : 0.0,
-                    'gross_revenue' => round((float) $row->gross_revenue, 2),
-                    'platform_revenue' => round((float) $row->platform_revenue, 2),
+                    'gross_revenue' => round($grossForMethod, 2),
+                    'platform_revenue' => round($platformRevenueForMethod, 2),
+                    'processor_fees' => round($processorFeesForMethod, 2),
+                    'net_platform_revenue' => round($netPlatformRevenueForMethod, 2),
+                    'net_take_rate' => $grossForMethod > 0 ? round(($netPlatformRevenueForMethod / $grossForMethod) * 100, 2) : 0.0,
+                    'net_revenue_per_paid_order' => $paidForMethod > 0 ? round($netPlatformRevenueForMethod / $paidForMethod, 2) : 0.0,
                     'gross_at_risk' => round((float) $row->gross_at_risk, 2),
                 ];
             })
-            ->sortByDesc('gross_revenue')
+            ->sortByDesc('net_platform_revenue')
             ->values()
             ->all();
 
@@ -105,6 +117,8 @@ final class RevenueFunnelService
             'gross_revenue' => round($gross, 2),
             'platform_revenue' => round($platformRevenue, 2),
             'processor_fees' => round($processorFees, 2),
+            'net_platform_revenue' => round($netPlatformRevenue, 2),
+            'net_take_rate' => $gross > 0 ? round(($netPlatformRevenue / $gross) * 100, 2) : 0.0,
             'discounts' => round($discounts, 2),
             'producer_net' => round($producerNet, 2),
             'average_paid_order' => $paid > 0 ? round($gross / $paid, 2) : 0.0,
@@ -113,6 +127,9 @@ final class RevenueFunnelService
             'checkout_recovery_conversion_rate' => $recoveryAttempts > 0 ? round(($recoveredOrders / $recoveryAttempts) * 100, 2) : 0.0,
             'recovered_gross_revenue' => round($recoveredGross, 2),
             'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
+            'recovered_processor_fees' => round($recoveredProcessorFees, 2),
+            'recovered_net_platform_revenue' => round($recoveredNetPlatformRevenue, 2),
+            'recovered_net_take_rate' => $recoveredGross > 0 ? round(($recoveredNetPlatformRevenue / $recoveredGross) * 100, 2) : 0.0,
             'gross_revenue_at_risk' => round($atRiskGross, 2),
             'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
             'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
