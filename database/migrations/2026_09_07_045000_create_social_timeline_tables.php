@@ -145,6 +145,7 @@ return new class extends Migration
             $table->foreignId('app_id')->constrained('applications')->cascadeOnDelete();
             $table->foreignId('post_id')->constrained('social_posts')->cascadeOnDelete();
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('order_id')->nullable()->constrained('commerce_orders')->nullOnDelete();
             $table->string('event_type', 40);
             $table->string('session_key', 64)->nullable();
             $table->unsignedBigInteger('value_cents')->default(0);
@@ -152,6 +153,7 @@ return new class extends Migration
             $table->timestamp('created_at')->useCurrent();
             $table->index(['app_id', 'post_id', 'event_type', 'created_at'], 'social_post_events_metric_idx');
             $table->index(['app_id', 'session_key', 'created_at'], 'social_post_events_session_idx');
+            $table->unique(['app_id', 'post_id', 'order_id', 'event_type'], 'social_post_order_event_unique');
         });
     }
 
