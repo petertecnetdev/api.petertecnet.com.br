@@ -10,10 +10,13 @@ class ApplicationAdminOverviewService
     public function overview(int $applicationId): array
     {
         return [
+            'scope' => 'global_application',
             'users' => $this->applicationUsers($applicationId),
             'establishments' => $this->countScopedTable('establishments', $applicationId),
             'events' => $this->countScopedTable('events', $applicationId),
+            'tickets' => $this->countScopedTable('tickets', $applicationId),
             'orders' => $this->countScopedTable('orders', $applicationId),
+            'interactions' => $this->countScopedTable('interactions', $applicationId),
             'active_admins' => $this->activeAdmins($applicationId),
             'admin_profiles' => $this->adminProfiles($applicationId),
             'generated_at' => now()->toIso8601String(),
