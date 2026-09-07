@@ -14,7 +14,7 @@ final class EventSeriesService
 
     public function __construct(private readonly EventDuplicationService $duplicator) {}
 
-    public function create(Event $source, int $appId, ?string $appSlug, array $input): array
+    public function create(Event $source, int $appId, ?string $appSlug, array $input, ?callable $onProgress = null): array
     {
         $data = Validator::make($input, [
             'mode' => ['required', 'in:dates,weekly'],
@@ -66,6 +66,19 @@ final class EventSeriesService
         $events = [];
         $createdCount = 0;
         $existingCount = 0;
+        $processedCount = 0;
+        $totalCount = count($dates);
+
+        $this->emitProgress($onProgress, [
+            'status' => 'started',
+            'processed_count' => 0,
+            'total_count' => $totalCount,
+            'remaining_count' => $totalCount,
+            'created_count' => 0,
+            'existing_count' => 0,
+            'date' => null,
+            'event_id' => null,
+        ]);
 
         foreach ($dates as $date) {
             $targetStart = Carbon::createFromFormat('Y-m-d H:i:s', $date.' '.$startClock, $timezone);
@@ -81,11 +94,36 @@ final class EventSeriesService
                 $existing->loadCount(['tickets' => fn ($query) => $query->where('app_id', $appId)]);
                 $events[] = $existing;
                 $existingCount++;
+                $processedCount++;
+
+                $this->emitProgress($onProgress, [
+                    'status' => 'existing',
+                    'processed_count' => $processedCount,
+                    'total_count' => $totalCount,
+                    'remaining_count' => max(0, $totalCount - $processedCount),
+                    'created_count' => $createdCount,
+                    'existing_count' => $existingCount,
+                    'date' => $date,
+                    'event_id' => $existing->id,
+                ]);
                 continue;
             }
 
-            $events[] = $this->duplicator->duplicate($source, $date, $appId, $appSlug);
+            $created = $this->duplicator->duplicate($source, $date, $appId, $appSlug);
+            $events[] = $created;
             $createdCount++;
+            $processedCount++;
+
+            $this->emitProgress($onProgress, [
+                'status' => 'created',
+                'processed_count' => $processedCount,
+                'total_count' => $totalCount,
+                'remaining_count' => max(0, $totalCount - $processedCount),
+                'created_count' => $createdCount,
+                'existing_count' => $existingCount,
+                'date' => $date,
+                'event_id' => $created->id,
+            ]);
         }
 
         return [
@@ -95,9 +133,19 @@ final class EventSeriesService
             'mode' => $data['mode'],
             'created_count' => $createdCount,
             'existing_count' => $existingCount,
+            'processed_count' => $processedCount,
+            'total_count' => $totalCount,
+            'remaining_count' => max(0, $totalCount - $processedCount),
             'target_dates' => $dates,
             'events' => $events,
         ];
+    }
+
+    private function emitProgress(?callable $onProgress, array $progress): void
+    {
+        if ($onProgress !== null) {
+            $onProgress($progress);
+        }
     }
 
     private function weeklyDates(array $data): array
