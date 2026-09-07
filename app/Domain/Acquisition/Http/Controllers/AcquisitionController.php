@@ -72,7 +72,7 @@ final class AcquisitionController extends Controller
             'events.*.city' => ['nullable','string','max:120'],
             'events.*.uf' => ['nullable','string','size:2'],
             'events.*.online_url' => ['nullable','url:http,https','max:2048'],
-            'events.*.commission_percentage' => ['required','numeric','min:0','max:'.$this->agents->commissionCeilingPercentage()],
+            'events.*.commission_percentage' => ['required','numeric','min:0','max:100'],
             'events.*.tickets' => ['required','array','min:1','max:50'],
             'events.*.tickets.*.name' => ['required','string','max:255'],
             'events.*.tickets.*.quantity' => ['required','integer','min:1','max:100000'],
@@ -133,7 +133,7 @@ final class AcquisitionController extends Controller
     public function updateCommission(Request $request, int $eventId)
     {
         $data = $request->validate([
-            'percentage' => 'required|numeric|min:0|max:'.$this->agents->commissionCeilingPercentage(),
+            'percentage' => 'required|numeric|min:0|max:100',
         ]);
 
         $commission = $this->agents->updateCommission(
