@@ -8,6 +8,7 @@ use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 final class EventDiscoveryController extends Controller
@@ -34,12 +35,19 @@ final class EventDiscoveryController extends Controller
             'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
             'radius_km' => 'nullable|integer|min:1|max:500',
             'per_page' => 'nullable|integer|min:1|max:50',
+            'view' => 'nullable|in:compact,full',
         ]);
 
         $appId = $this->context->id();
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($timezone);
         [$from, $to] = $this->periodRange($data, $timezone);
+        $cacheQuery = $request->query();
+        ksort($cacheQuery);
+        $cacheKey = 'event-discovery:v3:'.$appId.':'.hash('sha256', http_build_query($cacheQuery));
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return response()->json($cached)->header('X-Peter-Cache', 'HIT');
+        }
 
         $query = Event::query()
             ->where('events.app_id', $appId)
@@ -134,6 +142,13 @@ final class EventDiscoveryController extends Controller
                 ->select('events.*')
                 ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
                 ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
+        } elseif (($data['view'] ?? null) === 'compact') {
+            $query->select([
+                'events.id', 'events.app_id', 'events.production_id', 'events.title', 'events.slug',
+                'events.image', 'events.start_date', 'events.end_date', 'events.city', 'events.uf',
+                'events.venue', 'events.address', 'events.category', 'events.latitude', 'events.longitude',
+                'events.created_at',
+            ]);
         }
 
         switch ($data['sort'] ?? 'soonest') {
@@ -155,8 +170,9 @@ final class EventDiscoveryController extends Controller
                 $query->orderBy('events.start_date');
         }
 
-        return response()->json([
-            'events' => $query->paginate($data['per_page'] ?? 24)->appends($request->query()),
+        $events = $query->paginate($data['per_page'] ?? 18)->appends($request->query());
+        $payload = [
+            'events' => $events->toArray(),
             'context' => [
                 'timezone' => $timezone,
                 'from' => $from?->toIso8601String(),
@@ -165,7 +181,10 @@ final class EventDiscoveryController extends Controller
                 'uf' => isset($data['uf']) ? strtoupper($data['uf']) : null,
                 'period' => $data['period'] ?? null,
             ],
-        ]);
+        ];
+        Cache::put($cacheKey, $payload, now()->addSeconds(20));
+
+        return response()->json($payload)->header('X-Peter-Cache', 'MISS');
     }
 
     public function publicEvent(Request $request, string $slug)
@@ -233,6 +252,10 @@ final class EventDiscoveryController extends Controller
     {
         $appId = $this->context->id();
         $now = Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+        $cacheKey = 'event-facets:v2:'.$appId;
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return response()->json($cached)->header('X-Peter-Cache', 'HIT');
+        }
         $public = fn ($q) => $q->where(fn ($privacy) => $privacy
             ->where('is_private', false)
             ->orWhereNull('is_private'));
@@ -267,7 +290,10 @@ final class EventDiscoveryController extends Controller
             ->limit(50)
             ->get();
 
-        return response()->json(['cities' => $cities, 'categories' => $categories]);
+        $payload = ['cities' => $cities->toArray(), 'categories' => $categories->toArray()];
+        Cache::put($cacheKey, $payload, now()->addMinutes(2));
+
+        return response()->json($payload)->header('X-Peter-Cache', 'MISS');
     }
 
     private function periodRange(array $data, string $timezone): array

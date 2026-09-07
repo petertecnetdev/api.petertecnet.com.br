@@ -3,9 +3,7 @@
 namespace App\Domain\Social\Http\Controllers;
 
 use App\Http\Controllers\Controller;
-use App\Models\AppNotification;
 use App\Models\Event;
-use App\Models\EventPass;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,24 +23,24 @@ final class FeedController extends Controller
         ]);
         $perPage = (int) ($data['per_page'] ?? 12);
 
-        $followedOrganizations = DB::table('follows')
-            ->where([
-                'app_id' => $appId,
-                'user_id' => $user->id,
-                'target_type' => 'production',
-            ])
-            ->pluck('target_id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
+        // One social-graph query replaces separate production/artist queries.
+        $follows = DB::table('follows')
+            ->where('app_id', $appId)
+            ->where('user_id', $user->id)
+            ->whereIn('target_type', ['production', 'artist'])
+            ->get(['target_type', 'target_id']);
 
-        $followedArtists = DB::table('follows')
-            ->where([
-                'app_id' => $appId,
-                'user_id' => $user->id,
-                'target_type' => 'artist',
-            ])
+        $followedOrganizations = $follows
+            ->where('target_type', 'production')
             ->pluck('target_id')
             ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+        $followedArtists = $follows
+            ->where('target_type', 'artist')
+            ->pluck('target_id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
             ->all();
 
         $engaged = DB::table('event_engagements')
@@ -55,10 +53,13 @@ final class FeedController extends Controller
             ->map(fn ($id) => (int) $id)
             ->all();
 
-        $ticketEvents = EventPass::where('user_id', $user->id)
-            ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
-            ->pluck('event_id')
-            ->unique()
+        // Direct join avoids hydrating EventPass models and a whereHas subquery.
+        $ticketEvents = DB::table('event_passes as ep')
+            ->join('events as te', 'te.id', '=', 'ep.event_id')
+            ->where('ep.user_id', $user->id)
+            ->where('te.app_id', $appId)
+            ->distinct()
+            ->pluck('ep.event_id')
             ->map(fn ($id) => (int) $id)
             ->all();
 
@@ -69,9 +70,6 @@ final class FeedController extends Controller
             ])
             ->first();
 
-        // A timeline must show every currently public event. Legacy rows may have
-        // is_private/end_date as NULL, which means public/no explicit end rather
-        // than hidden/expired. Keep this aligned with Event::hasEnded().
         $feed = Event::query()
             ->where('app_id', $appId)
             ->where('is_published', true)
@@ -106,7 +104,6 @@ final class FeedController extends Controller
                 ->all();
 
             $reason = 'discovery';
-
             if (in_array((int) $event->id, $ticketEvents, true)) {
                 $reason = 'ticket';
             } elseif (in_array((int) $event->id, $engaged, true)) {
@@ -123,12 +120,9 @@ final class FeedController extends Controller
             }
 
             $event->setAttribute('feed_reason', $reason);
-
             return $event;
         });
 
-        // Community activity is a real global timeline for the current app. It
-        // must not depend on which event IDs happened to land on this page.
         $community = DB::table('event_posts as p')
             ->join('events as e', 'e.id', '=', 'p.event_id')
             ->join('users as u', 'u.id', '=', 'p.user_id')
@@ -147,33 +141,18 @@ final class FeedController extends Controller
             ->orderByDesc('p.created_at')
             ->limit(12)
             ->get([
-                'p.id',
-                'p.event_id',
-                'p.body',
-                'p.created_at',
-                'p.is_pinned',
-                'e.title as event_title',
-                'e.slug as event_slug',
-                'u.id as user_id',
-                'u.first_name',
-                'u.last_name',
-                'u.avatar',
+                'p.id', 'p.event_id', 'p.body', 'p.created_at', 'p.is_pinned',
+                'e.title as event_title', 'e.slug as event_slug',
+                'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
             ]);
 
-        $notifications = AppNotification::where('app_id', $appId)
-            ->where('user_id', $user->id)
-            ->latest()
-            ->limit(12)
-            ->get();
-
+        // Notification data has its own endpoint and navbar lifecycle. Avoid two
+        // extra notification queries on every feed request while preserving shape.
         return response()->json([
             'feed' => $feed,
             'community_activity' => $community,
-            'notifications' => $notifications,
-            'unread_count' => AppNotification::where('app_id', $appId)
-                ->where('user_id', $user->id)
-                ->whereNull('read_at')
-                ->count(),
+            'notifications' => [],
+            'unread_count' => null,
             'context' => [
                 'preferred_city' => $preference?->preferred_city,
                 'preferred_uf' => $preference?->preferred_uf,
