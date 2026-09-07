@@ -21,6 +21,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('forecasts:evaluate')->everyFiveMinutes();
         $schedule->command('platform:remind-events')->everyFiveMinutes()->withoutOverlapping();
         $schedule->command('platform:reconcile-payments --limit=50')->everyMinute()->withoutOverlapping();
+        $schedule->command('profitability:monitor --hours=6')
+            ->everySixHours()
+            ->withoutOverlapping(30);
         $schedule->command('market:alerts:evaluate --limit=1000')
             ->everyMinute()
             ->withoutOverlapping(5);
