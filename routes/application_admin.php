@@ -33,6 +33,8 @@ Route::prefix('v1/apps/{application}')
 
             Route::get('/events', [ApplicationAdminEventController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':events.view');
+            Route::delete('/events', [ApplicationAdminEventController::class, 'destroyMany'])
+                ->middleware([EnsureApplicationAdmin::class.':events.manage', 'throttle:10,1']);
             Route::post('/events/{event}/series', [ApplicationAdminEventController::class, 'series'])
                 ->whereNumber('event')
                 ->middleware([EnsureApplicationAdmin::class.':events.manage', 'throttle:20,1']);
