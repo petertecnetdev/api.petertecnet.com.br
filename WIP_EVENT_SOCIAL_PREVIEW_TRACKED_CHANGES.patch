@@ -1,0 +1,71 @@
+diff --git a/app/Domain/Events/Http/Controllers/EventDiscoveryController.php b/app/Domain/Events/Http/Controllers/EventDiscoveryController.php
+index 110263e4..86963bfa 100644
+--- a/app/Domain/Events/Http/Controllers/EventDiscoveryController.php
++++ b/app/Domain/Events/Http/Controllers/EventDiscoveryController.php
+@@ -2,6 +2,7 @@
+ 
+ namespace App\Domain\Events\Http\Controllers;
+ 
++use App\Domain\Events\Services\EventSocialPreviewService;
+ use App\Http\Controllers\Controller;
+ use App\Models\Event;
+ use App\Models\Ticket;
+@@ -248,6 +249,32 @@ final class EventDiscoveryController extends Controller
+         return response()->json(['event' => $event, 'tickets' => $tickets, 'history' => $history]);
+     }
+ 
++    public function publicEventSharePreview(string $slug, EventSocialPreviewService $preview)
++    {
++        $event = $preview->findPublicEvent($slug);
++        $metadata = $preview->metadata($event);
++
++        return response()
++            ->view('social.event-preview', $metadata)
++            ->header('Cache-Control', 'public, max-age=120, s-maxage=300')
++            ->header('X-Robots-Tag', 'noindex, follow');
++    }
++
++    public function publicEventShareImage(string $slug, EventSocialPreviewService $preview)
++    {
++        $event = $preview->findPublicEvent($slug);
++        $path = $preview->previewImagePath($event);
++
++        if (! $path) {
++            return redirect()->away($preview->sourceImageUrl($event));
++        }
++
++        return response()->file($path, [
++            'Content-Type' => 'image/jpeg',
++            'Cache-Control' => 'public, max-age=86400, immutable',
++        ]);
++    }
++
+     public function facets(Request $request)
+     {
+         $appId = $this->context->id();
+diff --git a/routes/api_v1.php b/routes/api_v1.php
+index c81d507d..6cb4264f 100644
+--- a/routes/api_v1.php
++++ b/routes/api_v1.php
+@@ -90,6 +90,8 @@ Route::prefix('v1/apps/{application}')
+             Route::get('/events', [EventDiscoveryController::class, 'events']);
+             Route::get('/events/facets', [EventDiscoveryController::class, 'facets']);
+             Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
++            Route::get('/events/public/{slug}/share-preview', [EventDiscoveryController::class, 'publicEventSharePreview']);
++            Route::get('/events/public/{slug}/share-image.jpg', [EventDiscoveryController::class, 'publicEventShareImage']);
+         });
+ 
+         Route::middleware('app.capability:events,social')->group(function () {
+diff --git a/routes/compatibility.php b/routes/compatibility.php
+index 4f19ef63..53462a51 100644
+--- a/routes/compatibility.php
++++ b/routes/compatibility.php
+@@ -65,6 +65,8 @@ $publicCompatibility('cutinapp', static function (): void {
+     Route::get('/events', [EventDiscoveryController::class, 'events']);
+     Route::get('/discovery/facets', [EventDiscoveryController::class, 'facets']);
+     Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
++    Route::get('/events/public/{slug}/share-preview', [EventDiscoveryController::class, 'publicEventSharePreview']);
++    Route::get('/events/public/{slug}/share-image.jpg', [EventDiscoveryController::class, 'publicEventShareImage']);
+     Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists']);
+     Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
+     Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
