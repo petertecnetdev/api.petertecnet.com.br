@@ -48,10 +48,12 @@ class EventProducerCommunicationService
 
         $appId = (int) ($event->app_id ?: $production->app_id);
         $application = $appId > 0 ? Application::query()->find($appId) : null;
-        $appName = $application?->name ?: 'Aplicativo';
+        $appName = $this->applicationName($application, $event);
         $productionName = $production->fantasy ?: $production->name ?: 'sua produção';
-        $eventUrl = $this->eventManagementUrl($application, (int) $event->id);
-        [$title, $message] = $this->copyFor($event, $action, $changedLabels, $productionName);
+        $appUrl = $this->applicationUrl($application, $event);
+        $eventUrl = $this->eventPublicUrl($appUrl, $event);
+        $eventManagementUrl = $appUrl.'/event/edit/'.$event->id;
+        [$title, $message] = $this->copyFor($event, $action, $changedLabels, $productionName, $appName);
 
         if ($appId > 0) {
             try {
@@ -67,6 +69,9 @@ class EventProducerCommunicationService
                         'production_id' => (int) $production->id,
                         'action' => $action,
                         'changed_fields' => $changedFields,
+                        'app_url' => $appUrl,
+                        'event_url' => $eventUrl,
+                        'event_management_url' => $eventManagementUrl,
                     ],
                 ]);
             } catch (\Throwable $e) {
@@ -102,7 +107,9 @@ class EventProducerCommunicationService
                 $changedLabels,
                 $title,
                 $message,
+                $appUrl,
                 $eventUrl,
+                $eventManagementUrl,
                 $appName
             ));
         } catch (\Throwable $e) {
@@ -115,7 +122,7 @@ class EventProducerCommunicationService
         }
     }
 
-    private function copyFor(Event $event, string $action, array $changedLabels, string $productionName): array
+    private function copyFor(Event $event, string $action, array $changedLabels, string $productionName, string $appName): array
     {
         $eventName = trim((string) $event->title) ?: 'Evento #'.$event->id;
         $changed = $changedLabels === []
@@ -125,38 +132,71 @@ class EventProducerCommunicationService
         return match ($action) {
             'created' => [
                 'Novo evento criado: '.$eventName,
-                'O evento "'.$eventName.'" foi criado para '.$productionName.'. Confira os dados e continue a gestão pelo aplicativo.',
+                'O evento "'.$eventName.'" foi criado para '.$productionName.'. Confira os dados e continue a gestão pela '.$appName.'.',
             ],
             'activated' => [
                 'Evento ativado: '.$eventName,
-                'O evento "'.$eventName.'" foi ativado/publicado para '.$productionName.'. Confira os detalhes e acompanhe a operação.',
+                'O evento "'.$eventName.'" foi ativado/publicado para '.$productionName.'. Confira os detalhes e acompanhe a operação pela '.$appName.'.',
             ],
             'reactivated' => [
                 'Evento reativado: '.$eventName,
-                'O evento "'.$eventName.'" voltou à atividade para '.$productionName.'. Confira os detalhes atuais do evento.',
+                'O evento "'.$eventName.'" voltou à atividade para '.$productionName.'. Confira os detalhes atuais na '.$appName.'.',
             ],
             'deactivated' => [
                 'Status do evento alterado: '.$eventName,
-                'O evento "'.$eventName.'" teve seu status alterado para '.$productionName.'. Abra a gestão do evento para conferir a situação atual.',
+                'O evento "'.$eventName.'" teve seu status alterado para '.$productionName.'. Abra a '.$appName.' para conferir a situação atual.',
             ],
             default => [
                 'Evento atualizado: '.$eventName,
                 $changed
-                    ? 'O evento "'.$eventName.'" foi atualizado. Alterações: '.$changed.'.'
-                    : 'O evento "'.$eventName.'" foi atualizado. Confira os detalhes atuais.',
+                    ? 'O evento "'.$eventName.'" foi atualizado na '.$appName.'. Alterações: '.$changed.'.'
+                    : 'O evento "'.$eventName.'" foi atualizado na '.$appName.'. Confira os detalhes atuais.',
             ],
         };
     }
 
-    private function eventManagementUrl(?Application $application, int $eventId): string
+    private function applicationName(?Application $application, Event $event): string
+    {
+        $identity = Str::lower(implode(' ', array_filter([
+            $application?->name,
+            $application?->slug,
+            $event->app_slug,
+        ])));
+
+        if (Str::contains($identity, 'cutin')) {
+            return 'Cutinapp';
+        }
+
+        return trim((string) $application?->name) ?: 'Peter Tecnet';
+    }
+
+    private function applicationUrl(?Application $application, Event $event): string
     {
         $baseUrl = rtrim(trim((string) $application?->url), '/');
 
-        if (! filter_var($baseUrl, FILTER_VALIDATE_URL)) {
-            $baseUrl = 'https://petertecnet.com.br';
+        if (filter_var($baseUrl, FILTER_VALIDATE_URL)) {
+            return $baseUrl;
         }
 
-        return $baseUrl.'/event/edit/'.$eventId;
+        $identity = Str::lower(implode(' ', array_filter([
+            $application?->slug,
+            $event->app_slug,
+        ])));
+
+        return Str::contains($identity, 'cutin')
+            ? 'https://cutinapp.petertecnet.com.br'
+            : 'https://petertecnet.com.br';
+    }
+
+    private function eventPublicUrl(string $appUrl, Event $event): string
+    {
+        $slug = trim((string) $event->slug);
+
+        if ($slug !== '') {
+            return $appUrl.'/event/'.rawurlencode($slug);
+        }
+
+        return $appUrl.'/event/edit/'.$event->id;
     }
 
     private function fieldLabels(array $fields): array
