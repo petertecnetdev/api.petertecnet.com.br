@@ -10,6 +10,7 @@ final class AcquisitionCommissionPolicy
 {
     private const OBSERVATION_DAYS = 90;
     private const DEFAULT_MINIMUM_RETAINED_MARGIN_PERCENTAGE = 0.0;
+    private const ORDER_CHUNK_SIZE = 500;
 
     public function __construct(private readonly ApplicationContext $context) {}
 
@@ -25,23 +26,19 @@ final class AcquisitionCommissionPolicy
             $platformFeePercentage,
         )), 2);
 
-        $orders = CommerceOrder::query()
-            ->where('app_id', $this->context->id())
-            ->where('status', 'paid')
-            ->where('created_at', '>=', now()->subDays(self::OBSERVATION_DAYS))
-            ->get(['total', 'processor_fee', 'metadata']);
-
         $platformCollectionGross = 0.0;
         $platformCollectionProcessorFees = 0.0;
 
-        foreach ($orders as $order) {
-            if ((string) data_get($order->metadata, 'settlement_mode', 'unknown') !== 'platform_collection') {
-                continue;
-            }
-
-            $platformCollectionGross += max(0, (float) $order->total);
-            $platformCollectionProcessorFees += max(0, (float) $order->processor_fee);
-        }
+        CommerceOrder::query()
+            ->where('app_id', $this->context->id())
+            ->where('status', 'paid')
+            ->where('created_at', '>=', now()->subDays(self::OBSERVATION_DAYS))
+            ->where('metadata->settlement_mode', 'platform_collection')
+            ->lazyById(self::ORDER_CHUNK_SIZE, ['id', 'total', 'processor_fee'])
+            ->each(function (CommerceOrder $order) use (&$platformCollectionGross, &$platformCollectionProcessorFees): void {
+                $platformCollectionGross += max(0, (float) $order->total);
+                $platformCollectionProcessorFees += max(0, (float) $order->processor_fee);
+            });
 
         $observedPlatformProcessingRate = $platformCollectionGross > 0
             ? round(($platformCollectionProcessorFees / $platformCollectionGross) * 100, 2)
