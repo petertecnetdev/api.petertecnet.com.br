@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 final class AttributeSocialTimelineConversions extends Command
@@ -31,6 +32,7 @@ final class AttributeSocialTimelineConversions extends Command
                 ->first();
 
             if (! $conversion && $order->status === 'paid') {
+                $orderCreatedAt = Carbon::parse($order->created_at);
                 $touch = DB::table('social_post_events as se')
                     ->join('social_posts as p', 'p.id', '=', 'se.post_id')
                     ->where('se.app_id', $order->app_id)
@@ -39,7 +41,7 @@ final class AttributeSocialTimelineConversions extends Command
                     ->where('p.app_id', $order->app_id)
                     ->where('p.event_id', $order->event_id)
                     ->where('p.status', 'published')
-                    ->whereBetween('se.created_at', [now()->parse($order->created_at)->subHours(48), now()->parse($order->created_at)->addMinutes(10)])
+                    ->whereBetween('se.created_at', [$orderCreatedAt->copy()->subHours(48), $orderCreatedAt->copy()->addMinutes(10)])
                     ->orderByDesc('se.created_at')
                     ->first(['se.post_id', 'se.created_at', 'p.source', 'p.campaign', 'p.promoter_id']);
 
