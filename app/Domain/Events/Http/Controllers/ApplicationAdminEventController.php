@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 final class ApplicationAdminEventController extends Controller
 {
@@ -40,6 +41,85 @@ final class ApplicationAdminEventController extends Controller
 
         return response()->json([
             'events' => $query->orderByDesc('start_date')->paginate($data['per_page'] ?? 100),
+        ]);
+    }
+
+    public function destroyMany(Request $request)
+    {
+        $data = $request->validate([
+            'ids' => ['required', 'array', 'min:1', 'max:250'],
+            'ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+        ]);
+
+        $appId = $this->context->id();
+        $ids = array_values(array_map('intval', $data['ids']));
+
+        $result = DB::transaction(function () use ($appId, $ids): array {
+            $events = Event::query()
+                ->where('app_id', $appId)
+                ->whereIn('id', $ids)
+                ->lockForUpdate()
+                ->get();
+
+            $foundIds = $events->pluck('id')->map(static fn ($id) => (int) $id);
+            $missingIds = collect($ids)->diff($foundIds)->values();
+
+            if ($missingIds->isNotEmpty()) {
+                return [
+                    'status' => 'missing',
+                    'missing_event_ids' => $missingIds->all(),
+                ];
+            }
+
+            $protectedEventIds = Event::query()
+                ->where('app_id', $appId)
+                ->whereIn('id', $ids)
+                ->whereHas('tickets', static fn ($ticketQuery) => $ticketQuery
+                    ->where('app_id', $appId)
+                    ->whereHas('passes'))
+                ->pluck('id')
+                ->map(static fn ($id) => (int) $id)
+                ->values();
+
+            if ($protectedEventIds->isNotEmpty()) {
+                return [
+                    'status' => 'protected',
+                    'protected_event_ids' => $protectedEventIds->all(),
+                ];
+            }
+
+            foreach ($events as $event) {
+                $event->delete();
+            }
+
+            return [
+                'status' => 'deleted',
+                'deleted_count' => $events->count(),
+            ];
+        }, 3);
+
+        if ($result['status'] === 'missing') {
+            return response()->json([
+                'message' => 'Um ou mais eventos selecionados não existem mais. Atualize a lista e tente novamente.',
+                'missing_event_ids' => $result['missing_event_ids'],
+            ], 404);
+        }
+
+        if ($result['status'] === 'protected') {
+            return response()->json([
+                'message' => 'A exclusão em lote foi cancelada porque há evento(s) com ingressos já emitidos. Nenhum evento foi excluído.',
+                'protected_event_ids' => $result['protected_event_ids'],
+            ], 409);
+        }
+
+        $deletedCount = (int) $result['deleted_count'];
+
+        return response()->json([
+            'message' => $deletedCount === 1
+                ? '1 evento foi excluído com sucesso.'
+                : "{$deletedCount} eventos foram excluídos com sucesso.",
+            'deleted_count' => $deletedCount,
+            'deleted_event_ids' => $ids,
         ]);
     }
 
