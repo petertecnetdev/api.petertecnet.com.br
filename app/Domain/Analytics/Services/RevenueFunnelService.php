@@ -112,7 +112,10 @@ final class RevenueFunnelService
                     'platform_loss_making_orders' => $profitability['platform_loss_making_orders'],
                     'platform_loss_making_gross_revenue' => $profitability['platform_loss_making_gross_revenue'],
                     'platform_contribution_shortfall' => $profitability['platform_contribution_shortfall'],
+                    'platform_collection_effective_fee_rate' => $profitability['platform_collection_effective_fee_rate'],
                     'platform_collection_break_even_fee_rate' => $profitability['platform_collection_break_even_fee_rate'],
+                    'platform_collection_fee_rate_gap_to_break_even' => $profitability['platform_collection_fee_rate_gap_to_break_even'],
+                    'platform_collection_sustainable' => $profitability['platform_collection_sustainable'],
                     'settlement_modes' => $profitability['settlement_modes'],
                     'gross_at_risk' => round((float) $row->gross_at_risk, 2),
                 ];
@@ -145,7 +148,10 @@ final class RevenueFunnelService
             'platform_loss_making_orders' => $paidProfitability['platform_loss_making_orders'],
             'platform_loss_making_gross_revenue' => $paidProfitability['platform_loss_making_gross_revenue'],
             'platform_contribution_shortfall' => $paidProfitability['platform_contribution_shortfall'],
+            'platform_collection_effective_fee_rate' => $paidProfitability['platform_collection_effective_fee_rate'],
             'platform_collection_break_even_fee_rate' => $paidProfitability['platform_collection_break_even_fee_rate'],
+            'platform_collection_fee_rate_gap_to_break_even' => $paidProfitability['platform_collection_fee_rate_gap_to_break_even'],
+            'platform_collection_sustainable' => $paidProfitability['platform_collection_sustainable'],
             'settlement_modes' => $paidProfitability['settlement_modes'],
             'average_paid_order' => $paid > 0 ? round($gross / $paid, 2) : 0.0,
             'checkout_recovery_attempts' => $recoveryAttempts,
@@ -236,7 +242,11 @@ final class RevenueFunnelService
             'platform_loss_making_orders' => 0,
             'platform_loss_making_gross_revenue' => 0.0,
             'platform_contribution_shortfall' => 0.0,
+            'platform_collection_platform_fees' => 0.0,
+            'platform_collection_effective_fee_rate' => 0.0,
             'platform_collection_break_even_fee_rate' => 0.0,
+            'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_sustainable' => true,
             'settlement_modes' => [],
         ];
 
@@ -254,6 +264,7 @@ final class RevenueFunnelService
 
         if ($platformBearsProcessing) {
             $row['platform_collection_gross_revenue'] += $gross;
+            $row['platform_collection_platform_fees'] += max(0, $platformContribution + $processorFee);
 
             if ($platformContribution < 0) {
                 $row['platform_loss_making_orders'] += 1;
@@ -277,11 +288,20 @@ final class RevenueFunnelService
         $row['platform_loss_making_orders'] = (int) $row['platform_loss_making_orders'];
         $row['platform_loss_making_gross_revenue'] = round((float) $row['platform_loss_making_gross_revenue'], 2);
         $row['platform_contribution_shortfall'] = round((float) $row['platform_contribution_shortfall'], 2);
+        $platformCollectionPlatformFees = (float) $row['platform_collection_platform_fees'];
+        $row['platform_collection_effective_fee_rate'] = $platformCollectionGross > 0
+            ? round(($platformCollectionPlatformFees / $platformCollectionGross) * 100, 2)
+            : 0.0;
         $row['platform_collection_break_even_fee_rate'] = $platformCollectionGross > 0
             ? round(((float) $row['processor_fees_borne_by_platform'] / $platformCollectionGross) * 100, 2)
             : 0.0;
+        $row['platform_collection_fee_rate_gap_to_break_even'] = $platformCollectionGross > 0
+            ? round(max(0, $row['platform_collection_break_even_fee_rate'] - $row['platform_collection_effective_fee_rate']), 2)
+            : 0.0;
+        $row['platform_collection_sustainable'] = $platformCollectionGross <= 0
+            || $row['platform_collection_effective_fee_rate'] >= $row['platform_collection_break_even_fee_rate'];
         ksort($row['settlement_modes']);
-        unset($row['gross_revenue'], $row['platform_collection_gross_revenue']);
+        unset($row['gross_revenue'], $row['platform_collection_gross_revenue'], $row['platform_collection_platform_fees']);
 
         return $row;
     }
