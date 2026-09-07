@@ -13,7 +13,13 @@ final class AcquisitionAgentService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AcquisitionAccess $access,
+        private readonly AcquisitionCommissionPolicy $commissionPolicy,
     ) {}
+
+    public function commissionCeilingPercentage(): float
+    {
+        return $this->commissionPolicy->maxPercentage();
+    }
 
     public function context(?User $user): array
     {
@@ -24,6 +30,7 @@ final class AcquisitionAgentService
             'role' => 'acquisition_agent',
             'application' => $this->context->application()->only(['id', 'name', 'slug', 'url']),
             'agent' => $agent->only(['id', 'first_name', 'last_name', 'email']),
+            'commission_max_percentage' => $this->commissionCeilingPercentage(),
         ];
     }
 
@@ -96,6 +103,7 @@ final class AcquisitionAgentService
                 'commission_amount' => round($commissionRows->sum('commission_amount'), 2),
                 'conversion_rate' => $total > 0 ? round(($accepted / $total) * 100, 1) : 0,
             ],
+            'commission_max_percentage' => $this->commissionCeilingPercentage(),
             'recent_referrals' => $recent,
             'commissions' => $commissionRows,
         ];
@@ -140,6 +148,7 @@ final class AcquisitionAgentService
     {
         $agent = $this->access->assertAgent($user);
         $appId = $this->context->id();
+        $this->commissionPolicy->assertPercentageAllowed($percentage);
         $rule = EventAcquisitionCommission::query()
             ->where('application_id', $appId)
             ->where('agent_user_id', $agent->id)

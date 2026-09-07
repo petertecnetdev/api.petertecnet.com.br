@@ -21,6 +21,7 @@ final class AcquisitionOnboardingService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AcquisitionAccess $access,
+        private readonly AcquisitionCommissionPolicy $commissionPolicy,
     ) {}
 
     public function normalize(array $payload): array
@@ -49,6 +50,12 @@ final class AcquisitionOnboardingService
     public function onboard(?User $user, array $data): array
     {
         $agent = $this->access->assertAgent($user);
+        foreach (($data['events'] ?? []) as $index => $event) {
+            $this->commissionPolicy->assertPercentageAllowed(
+                (float) ($event['commission_percentage'] ?? 0),
+                "events.{$index}.commission_percentage",
+            );
+        }
         $appId = $this->context->id();
         $appSlug = $this->context->slug();
         $email = strtolower(trim((string) $data['user']['email']));
