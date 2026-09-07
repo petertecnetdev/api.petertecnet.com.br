@@ -26,6 +26,16 @@ final class CreativeGenerationController extends Controller
         private readonly CreativePromptTemplateService $templates,
     ) {}
 
+    public function presets()
+    {
+        $this->context->requireCapability('events');
+
+        return response()->json([
+            'purpose' => CreativePromptTemplateService::EVENT_FLYER_BACKGROUND,
+            ...$this->templates->eventPresets(),
+        ]);
+    }
+
     public function image(Request $request)
     {
         $data = $request->validate([
@@ -33,19 +43,31 @@ final class CreativeGenerationController extends Controller
             'subject' => 'required|string|min:2|max:180',
             'description' => 'nullable|string|max:1200',
             'category' => 'nullable|string|max:180',
-            'style' => ['nullable', Rule::in(['neon', 'premium', 'sunset', 'clean', 'editorial', 'technology'])],
+            'style' => ['nullable', Rule::in(array_values(array_unique(array_merge(
+                $this->templates->eventStyleKeys(),
+                ['editorial', 'technology']
+            ))))],
+            'intensity' => ['nullable', Rule::in($this->templates->eventIntensityKeys())],
             'production_name' => 'nullable|string|max:180',
             'venue' => 'nullable|string|max:180',
             'city' => 'nullable|string|max:120',
             'uf' => 'nullable|string|max:2',
-            'format' => ['nullable', Rule::in(['cover', 'post', 'story', 'square', 'landscape', 'portrait', 'og'])],
+            'format' => ['nullable', Rule::in($this->templates->eventFormatKeys())],
+            'artist' => 'nullable|string|max:240',
             'audience' => 'nullable|string|max:240',
             'cta' => 'nullable|string|max:180',
             'brand_context' => 'nullable|string|max:500',
+            'promotions' => 'nullable|array|max:8',
+            'promotions.*' => 'string|max:140',
+            'featured_items' => 'nullable|array|max:8',
+            'featured_items.*' => 'string|max:140',
         ]);
+
+        $direction = null;
 
         if ($data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND) {
             $this->context->requireCapability('events');
+            $direction = $this->templates->eventDirection($data);
             $prompt = $this->templates->renderEventFlyer($data);
         } else {
             abort_unless(
@@ -62,6 +84,11 @@ final class CreativeGenerationController extends Controller
                 $prompt,
                 (int) $request->user()->id,
                 $this->context->id(),
+                $direction ? [
+                    'width' => $direction['width'],
+                    'height' => $direction['height'],
+                    'format' => $direction['format_key'],
+                ] : [],
             );
         } catch (RuntimeException $exception) {
             report($exception);
@@ -80,12 +107,18 @@ final class CreativeGenerationController extends Controller
                 'model' => $result['model'],
             ],
             'usage' => [
-                'plan' => 'free_guarded',
+                'plan' => 'guarded',
                 'purpose' => $data['purpose'],
                 'text_rendering' => 'client_canonical_overlay',
                 'prompt_version' => $data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND
                     ? $this->templates->definition(CreativePromptTemplateService::EVENT_FLYER_BACKGROUND)['version']
                     : null,
+                'creative_direction' => $direction ? [
+                    'style' => $direction['style_key'],
+                    'intensity' => $direction['intensity_key'],
+                    'format' => $direction['format_key'],
+                    'ratio' => $direction['ratio'],
+                ] : null,
             ],
         ]);
     }
@@ -103,9 +136,9 @@ final class CreativeGenerationController extends Controller
         $style = match ($data['style'] ?? 'technology') {
             'premium' => 'premium corporate advertising, sophisticated lighting, elegant depth, refined visual hierarchy',
             'sunset' => 'vibrant magenta and orange gradients, energetic modern campaign mood, strong contrast',
-            'clean' => 'minimal contemporary branding, spacious composition, subtle geometry, polished corporate aesthetic',
+            'clean', 'minimal' => 'minimal contemporary branding, spacious composition, subtle geometry, polished corporate aesthetic',
             'editorial' => 'editorial magazine art direction, conceptual visual metaphor, sophisticated photography aesthetic',
-            'neon' => 'futuristic neon cyan and magenta lighting, immersive depth, premium technology aesthetic',
+            'neon', 'electronic' => 'futuristic neon cyan and magenta lighting, immersive depth, premium technology aesthetic',
             default => 'advanced technology aesthetic, dark cinematic background, luminous interfaces and abstract digital depth',
         };
 
