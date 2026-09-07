@@ -107,13 +107,23 @@ class FinancialController extends Controller
         ]);
 
         if (($profitability['status'] ?? null) === 'attention' && (float) ($profitability['total_contribution_shortfall'] ?? 0) > 0) {
+            $topAction = collect($profitability['actions'] ?? [])->sortByDesc('contribution_shortfall')->first();
+            $rateGuidance = $topAction && isset($topAction['fee_rate_gap_to_break_even'], $topAction['break_even_platform_fee_rate'])
+                ? sprintf(
+                    ' Maior caso pede +%.2f p.p.; break-even observado em %.2f%%.',
+                    (float) $topAction['fee_rate_gap_to_break_even'],
+                    (float) $topAction['break_even_platform_fee_rate']
+                )
+                : '';
+
             $alerts->prepend([
                 'severity' => 'critical',
                 'title' => 'Margem negativa detectada',
                 'message' => sprintf(
-                    'R$ %.2f de contribuição em risco em %d configuração(ões) de cobrança.',
+                    'R$ %.2f de contribuição em risco em %d configuração(ões) de cobrança.%s',
                     (float) ($profitability['total_contribution_shortfall'] ?? 0),
-                    (int) ($profitability['action_count'] ?? 0)
+                    (int) ($profitability['action_count'] ?? 0),
+                    $rateGuidance
                 ),
             ]);
         }

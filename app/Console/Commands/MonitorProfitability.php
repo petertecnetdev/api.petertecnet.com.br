@@ -59,7 +59,9 @@ class MonitorProfitability extends Command
             $group['contribution_shortfall'] = round($group['contribution_shortfall'], 2);
             $group['platform_fees'] = round($group['platform_fees'], 2);
             $group['processor_fees'] = round($group['processor_fees'], 2);
+            $group['current_platform_fee_rate'] = $group['affected_gmv'] > 0 ? round(($group['platform_fees'] / $group['affected_gmv']) * 100, 2) : 0.0;
             $group['fee_rate_gap_to_break_even'] = $group['affected_gmv'] > 0 ? round(($group['contribution_shortfall'] / $group['affected_gmv']) * 100, 2) : 0.0;
+            $group['break_even_platform_fee_rate'] = $group['affected_gmv'] > 0 ? round(($group['processor_fees'] / $group['affected_gmv']) * 100, 2) : 0.0;
             $group['recommended_action'] = 'review_platform_collection_fee_or_settlement_mode';
             return $group;
         })->sortByDesc('contribution_shortfall')->values();
