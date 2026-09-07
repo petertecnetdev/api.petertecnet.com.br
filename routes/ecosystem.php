@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\CommandCenterController;
+use App\Http\Controllers\Admin\DatabaseExportController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
 use App\Http\Controllers\Admin\EstablishmentEventController;
@@ -29,6 +30,7 @@ Route::post('/auth/invitations/{token}/activate', [InvitationActivationControlle
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
+    Route::post('/database/export', DatabaseExportController::class)->middleware('throttle:2,10');
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::delete('/activity', [InteractionMaintenanceController::class, 'destroySelected'])->middleware('throttle:20,1');
     Route::delete('/activity/all', [InteractionMaintenanceController::class, 'destroyAll'])->middleware('throttle:3,10');
