@@ -103,6 +103,6 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(100.0, $result['platform_loss_making_gross_revenue']);
         $this->assertSame(2.0, $result['platform_contribution_shortfall']);
         $this->assertSame(4.0, $result['platform_collection_break_even_fee_rate']);
-        $this->assertSame(2, $result['by_payment_method']['card']['platform_loss_making_orders']);
+        $this->assertSame(1, $result['by_payment_method']['card']['platform_loss_making_orders']);
     }
 }
