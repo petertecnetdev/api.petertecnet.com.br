@@ -2,6 +2,7 @@
 
 namespace App\Domain\MarketData\Http\Controllers;
 
+use App\Domain\MarketData\Services\AirdropOpportunityService;
 use App\Domain\MarketData\Services\CoinMarketCapScannerService;
 use App\Domain\MarketData\Services\MarketDataService;
 use App\Domain\MarketData\Services\MarketPortfolioService;
@@ -9,6 +10,7 @@ use App\Domain\MarketData\Services\MarketSignalService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class MarketDataController extends Controller
@@ -18,6 +20,7 @@ final class MarketDataController extends Controller
         private readonly MarketPortfolioService $portfolio,
         private readonly CoinMarketCapScannerService $scanner,
         private readonly MarketSignalService $signals,
+        private readonly AirdropOpportunityService $airdrops,
     ) {}
 
     public function overview(Request $request): JsonResponse
@@ -173,6 +176,65 @@ final class MarketDataController extends Controller
         ]);
 
         return $this->marketResponse($request, fn () => $this->portfolio->simulate((int) $request->user()->id, $data));
+    }
+
+    public function airdrops(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->airdrops->campaigns((int) $request->user()->id),
+        ]);
+    }
+
+    public function airdrop(Request $request, string $slug): JsonResponse
+    {
+        return $this->airdropResponse(fn () => $this->airdrops->campaign((int) $request->user()->id, $slug));
+    }
+
+    public function airdropPlan(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'capital_usdt' => ['required', 'numeric', 'min:1', 'max:10000000'],
+            'risk_profile' => ['nullable', 'in:conservador,moderado,agressivo'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->airdrops->plan((float) $data['capital_usdt'], (string) ($data['risk_profile'] ?? 'moderado')),
+        ]);
+    }
+
+    public function completeAirdropTask(Request $request, string $slug, string $task): JsonResponse
+    {
+        $data = $request->validate([
+            'reference' => ['nullable', 'string', 'max:255'],
+            'confirmed_by_user' => ['required', 'accepted'],
+        ]);
+
+        return $this->airdropResponse(
+            fn () => $this->airdrops->completeTask((int) $request->user()->id, $slug, $task, $data['reference'] ?? null)
+        );
+    }
+
+    public function airdropActionPolicy(Request $request, string $action): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->airdrops->actionPolicy($action),
+        ]);
+    }
+
+    private function airdropResponse(callable $callback): JsonResponse
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $callback()]);
+        } catch (InvalidArgumentException $exception) {
+            return response()->json([
+                'success' => false,
+                'message' => $exception->getMessage(),
+                'code' => 'AIRDROP_ACTION_REJECTED',
+            ], 422);
+        }
     }
 
     private function marketResponse(Request $request, callable $callback, int $status = 200): JsonResponse
