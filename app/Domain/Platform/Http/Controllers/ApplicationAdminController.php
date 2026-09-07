@@ -132,15 +132,6 @@ class ApplicationAdminController extends Controller
             Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $temporaryPassword));
         }
 
-        $this->service->recordAudit(
-            $applicationId,
-            $request->user(),
-            $user,
-            $created ? 'application_user_created' : 'application_user_linked',
-            ['role' => $validated['role'] ?? 'participant'],
-            $this->auditContext($request),
-        );
-
         return response()->json([
             'success' => true,
             'message' => $created
