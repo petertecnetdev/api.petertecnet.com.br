@@ -62,6 +62,11 @@ final class RevenueFunnelService
             });
         $atRiskGross = (float) (clone $atRiskOrders)->sum('total');
         $atRiskPlatformRevenue = (float) (clone $atRiskOrders)->sum('platform_fee');
+        $checkoutRecoveryOpportunities = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
+            (clone $atRiskOrders)
+                ->select(['id', 'payment_method', 'total', 'platform_fee', 'created_at', 'recovery_started_at'])
+                ->lazyById(1000)
+        );
 
         $lostOrders = (clone $orders)->where(function ($query): void {
             $query->where('status', 'cancelled')
@@ -169,6 +174,7 @@ final class RevenueFunnelService
             'recovered_platform_contribution_shortfall' => $recoveredProfitability['platform_contribution_shortfall'],
             'gross_revenue_at_risk' => round($atRiskGross, 2),
             'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
+            'checkout_recovery_opportunities' => $checkoutRecoveryOpportunities,
             'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
             'platform_revenue_lost_to_abandonment' => round($lostPlatformRevenue, 2),
             'payment_methods' => $paymentMethods,
