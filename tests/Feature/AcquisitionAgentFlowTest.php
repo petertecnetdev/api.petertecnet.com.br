@@ -75,7 +75,7 @@ class AcquisitionAgentFlowTest extends TestCase
             'application_id' => $application->id,
             'agent_user_id' => $agent->id,
             'event_id' => $event->id,
-            'percentage' => 12.50,
+            'percentage' => 5.00,
         ]);
         $this->assertDatabaseHas('tickets', [
             'event_id' => $event->id,

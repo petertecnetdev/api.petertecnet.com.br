@@ -113,7 +113,7 @@ class AcquisitionCommissionIntegrityTest extends TestCase
         $token = auth('api')->login($agent);
         $this->withHeader('Authorization', 'Bearer '.$token)
             ->putJson('/api/v1/apps/cutinapp/acquisition/events/'.$event->id.'/commission', [
-                'percentage' => 25,
+                'percentage' => 7,
             ])
             ->assertStatus(409);
 
