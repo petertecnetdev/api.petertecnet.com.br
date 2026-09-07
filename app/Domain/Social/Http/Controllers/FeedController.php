@@ -138,13 +138,57 @@ final class FeedController extends Controller
             ->where(fn ($query) => $query
                 ->whereNull('e.end_date')
                 ->orWhere('e.end_date', '>', $now))
+            ->select([
+                'p.id', 'p.event_id', 'p.user_id', 'p.body', 'p.post_type', 'p.media', 'p.poll', 'p.created_at', 'p.is_pinned',
+                'e.title as event_title', 'e.slug as event_slug', 'u.first_name', 'u.last_name', 'u.avatar',
+            ])
+            ->selectSub(fn ($q) => $q->from('event_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id', 'p.id')->where('l.app_id', $appId), 'likes_count')
+            ->selectSub(fn ($q) => $q->from('event_posts as r')->selectRaw('COUNT(*)')->whereColumn('r.parent_id', 'p.id')->where('r.status', 'published'), 'comments_count')
             ->orderByDesc('p.created_at')
-            ->limit(12)
-            ->get([
-                'p.id', 'p.event_id', 'p.body', 'p.created_at', 'p.is_pinned',
-                'e.title as event_title', 'e.slug as event_slug',
-                'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
-            ]);
+            ->limit(24)
+            ->get();
+
+        $postIds = $community->pluck('id')->map(fn ($id) => (int) $id)->values();
+        $liked = $postIds->isEmpty() ? collect() : DB::table('event_post_likes')
+            ->where('app_id', $appId)
+            ->where('user_id', $user->id)
+            ->whereIn('post_id', $postIds)
+            ->pluck('post_id');
+        $pollRows = $postIds->isEmpty() ? collect() : DB::table('event_post_poll_votes')
+            ->where('app_id', $appId)
+            ->whereIn('post_id', $postIds)
+            ->selectRaw('post_id, option_id, COUNT(*) as votes_count')
+            ->groupBy('post_id', 'option_id')
+            ->get()
+            ->groupBy('post_id');
+        $myPollVotes = $postIds->isEmpty() ? collect() : DB::table('event_post_poll_votes')
+            ->where('app_id', $appId)
+            ->where('user_id', $user->id)
+            ->whereIn('post_id', $postIds)
+            ->pluck('option_id', 'post_id');
+
+        $community = $community->map(function ($post) use ($liked, $pollRows, $myPollVotes) {
+            $post->post_type = $post->post_type ?: 'text';
+            $post->media = $post->media ? json_decode((string) $post->media, true) : null;
+            $post->is_liked = $liked->contains($post->id);
+            $post->likes_count = (int) $post->likes_count;
+            $post->comments_count = (int) $post->comments_count;
+
+            $poll = $post->poll ? json_decode((string) $post->poll, true) : null;
+            if (is_array($poll)) {
+                $votes = collect($pollRows->get($post->id, []))->keyBy(fn ($row) => (int) $row->option_id);
+                $total = $votes->sum(fn ($row) => (int) $row->votes_count);
+                $poll['options'] = collect($poll['options'] ?? [])->map(function ($option) use ($votes, $total) {
+                    $optionId = (int) ($option['id'] ?? 0);
+                    $count = (int) ($votes[$optionId]->votes_count ?? 0);
+                    return [...$option, 'votes_count' => $count, 'percentage' => $total > 0 ? round(($count / $total) * 100, 1) : 0];
+                })->values()->all();
+                $poll['total_votes'] = (int) $total;
+                $poll['my_option_id'] = isset($myPollVotes[$post->id]) ? (int) $myPollVotes[$post->id] : null;
+            }
+            $post->poll = $poll;
+            return $post;
+        })->values();
 
         // Notification data has its own endpoint and navbar lifecycle. Avoid two
         // extra notification queries on every feed request while preserving shape.
