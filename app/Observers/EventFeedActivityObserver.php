@@ -17,6 +17,8 @@ final class EventFeedActivityObserver
         'remaining_tickets',
         'is_approved',
         'is_featured',
+        'is_published',
+        'slug',
     ];
 
     public function updated(Event $event): void
