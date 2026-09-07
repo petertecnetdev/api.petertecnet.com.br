@@ -3,6 +3,8 @@
 namespace App\Domain\Events\Services;
 
 use App\Models\Event;
+use App\Models\EventItem;
+use App\Models\EventSchedule;
 use App\Models\Ticket;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -45,6 +47,7 @@ final class EventDuplicationService
         $source->loadMissing([
             'artists:id,app_id,slug,stage_name',
             'tickets' => fn ($query) => $query->where('app_id', $appId),
+            'commerceItems' => fn ($query) => $query->where('app_id', $appId),
         ]);
 
         $timezone = config('app.timezone', 'America/Sao_Paulo');
@@ -86,10 +89,19 @@ final class EventDuplicationService
         $deltaSeconds = $targetStart->getTimestamp() - $sourceStart->getTimestamp();
         $copiedImage = $this->copyImage($source->image);
         $resolvedAppSlug = $appSlug ?: $source->app_slug;
+        $seriesId = $this->resolveSeriesId($source, $appId);
 
         try {
-            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
-                $event = $source->replicate(['id', 'slug', 'created_at', 'updated_at']);
+            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug, $seriesId) {
+                $event = $source->replicate([
+                    'id',
+                    'slug',
+                    'event_schedule_id',
+                    'event_schedule_occurrence_date',
+                    'event_series_id',
+                    'created_at',
+                    'updated_at',
+                ]);
                 $event->forceFill([
                     'slug' => $this->uniqueSlug($source->title.' '.$targetStart->format('Y-m-d')),
                     'start_date' => $targetStart->format('Y-m-d H:i:s'),
@@ -97,6 +109,9 @@ final class EventDuplicationService
                     'image' => $copiedImage,
                     'app_id' => $appId,
                     'app_slug' => $resolvedAppSlug,
+                    'event_schedule_id' => null,
+                    'event_schedule_occurrence_date' => null,
+                    'event_series_id' => $seriesId,
                     'is_published' => false,
                     'is_cancelled' => false,
                     'is_featured' => false,
@@ -104,7 +119,9 @@ final class EventDuplicationService
                     'rating' => null,
                     'remaining_tickets' => $source->tickets->sum('quantity') ?: null,
                 ]);
-                $event->save();
+                // This is a copy of an already-valid event. Saving quietly avoids re-validating
+                // legacy location data while still keeping the duplicate a draft.
+                $event->saveQuietly();
 
                 foreach ($source->tickets as $ticket) {
                     $price = round((float) $ticket->price, 2);
@@ -123,6 +140,19 @@ final class EventDuplicationService
                         'ticket_type' => $ticketType !== '' ? $ticketType : ($paid ? 'standard' : 'courtesy'),
                         'quantity' => $ticket->quantity,
                         'description' => $ticket->description,
+                    ]);
+                }
+
+                foreach ($source->commerceItems as $item) {
+                    EventItem::create([
+                        'app_id' => $appId,
+                        'event_id' => $event->id,
+                        'source_item_id' => $item->source_item_id,
+                        'name' => $item->name,
+                        'description' => $item->description,
+                        'price' => $item->price,
+                        'quantity' => $item->quantity,
+                        'is_active' => $item->is_active,
                     ]);
                 }
 
@@ -151,9 +181,46 @@ final class EventDuplicationService
         }
 
         $duplicate->load(['production:id,app_id,name,slug,user_id,app_slug', 'artists:id,app_id,slug,stage_name']);
-        $duplicate->loadCount(['tickets' => fn ($query) => $query->where('app_id', $appId)]);
+        $duplicate->loadCount([
+            'tickets' => fn ($query) => $query->where('app_id', $appId),
+            'commerceItems' => fn ($query) => $query->where('app_id', $appId),
+        ]);
 
         return $duplicate;
+    }
+
+    private function resolveSeriesId(Event $source, int $appId): string
+    {
+        if ($source->event_series_id) {
+            return (string) $source->event_series_id;
+        }
+
+        $seriesId = null;
+        if ($source->event_schedule_id) {
+            $schedule = EventSchedule::query()
+                ->where('app_id', $appId)
+                ->find($source->event_schedule_id);
+
+            if ($schedule) {
+                $seriesId = $schedule->event_series_id ?: (string) Str::uuid();
+                if (! $schedule->event_series_id) {
+                    $schedule->forceFill(['event_series_id' => $seriesId])->saveQuietly();
+                }
+
+                Event::query()
+                    ->where('app_id', $appId)
+                    ->where('event_schedule_id', $schedule->id)
+                    ->whereNull('event_series_id')
+                    ->update(['event_series_id' => $seriesId]);
+            }
+        }
+
+        $seriesId = $seriesId ?: (string) Str::uuid();
+        if (! $source->event_series_id) {
+            $source->forceFill(['event_series_id' => $seriesId])->saveQuietly();
+        }
+
+        return $seriesId;
     }
 
     private function shiftTicketDeadline($value, int $deltaSeconds, Carbon $targetStart, string $timezone): ?string
