@@ -25,23 +25,16 @@ final class AcquisitionCommissionPolicy
             $platformFeePercentage,
         )), 2);
 
-        $orders = CommerceOrder::query()
+        $platformCollectionTotals = CommerceOrder::query()
             ->where('app_id', $this->context->id())
             ->where('status', 'paid')
             ->where('created_at', '>=', now()->subDays(self::OBSERVATION_DAYS))
-            ->get(['total', 'processor_fee', 'metadata']);
+            ->where('metadata->settlement_mode', 'platform_collection')
+            ->selectRaw('COALESCE(SUM(total), 0) AS gross, COALESCE(SUM(processor_fee), 0) AS processor_fees')
+            ->first();
 
-        $platformCollectionGross = 0.0;
-        $platformCollectionProcessorFees = 0.0;
-
-        foreach ($orders as $order) {
-            if ((string) data_get($order->metadata, 'settlement_mode', 'unknown') !== 'platform_collection') {
-                continue;
-            }
-
-            $platformCollectionGross += max(0, (float) $order->total);
-            $platformCollectionProcessorFees += max(0, (float) $order->processor_fee);
-        }
+        $platformCollectionGross = max(0, (float) ($platformCollectionTotals?->gross ?? 0));
+        $platformCollectionProcessorFees = max(0, (float) ($platformCollectionTotals?->processor_fees ?? 0));
 
         $observedPlatformProcessingRate = $platformCollectionGross > 0
             ? round(($platformCollectionProcessorFees / $platformCollectionGross) * 100, 2)
