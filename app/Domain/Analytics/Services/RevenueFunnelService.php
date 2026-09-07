@@ -6,7 +6,6 @@ use App\Models\CommerceOrder;
 use App\Models\Establishment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Collection;
 
 final class RevenueFunnelService
 {
@@ -39,9 +38,9 @@ final class RevenueFunnelService
         $processorFees = (float) (clone $paidOrders)->sum('processor_fee');
         $discounts = (float) (clone $paidOrders)->sum('discount_amount');
         $producerNet = (float) (clone $paidOrders)->sum('producer_net');
-        $paidProfitability = $this->settlementProfitability((clone $paidOrders)->get([
-            'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        $paidProfitability = $this->settlementProfitability((clone $paidOrders)
+            ->select(['id', 'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata'])
+            ->lazyById(1000));
 
         $recoveryAttempts = (clone $orders)->whereNotNull('recovery_started_at')->count();
         $recoveredOrders = (clone $orders)
@@ -52,9 +51,9 @@ final class RevenueFunnelService
         $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
         $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
         $recoveredProcessorFees = (float) (clone $recoveredPaidOrders)->sum('processor_fee');
-        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)->get([
-            'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)
+            ->select(['id', 'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata'])
+            ->lazyById(1000));
 
         $atRiskOrders = (clone $orders)
             ->where('status', 'pending')
@@ -184,10 +183,10 @@ final class RevenueFunnelService
      * the platform contribution while the organization's contractual net is preserved.
      * Unknown legacy rows are treated conservatively as merchant-borne to avoid overstating platform margin.
      *
-     * @param Collection<int, CommerceOrder> $orders
+     * @param iterable<CommerceOrder> $orders
      * @return array<string, mixed>
      */
-    private function settlementProfitability(Collection $orders): array
+    private function settlementProfitability(iterable $orders): array
     {
         $summary = $this->emptyProfitability(false);
         $byPaymentMethod = [];
