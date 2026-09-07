@@ -76,7 +76,27 @@ final class EventManagementController extends Controller
             $copy->slug=$this->uniqueSlug($source->title);$copy->start_date=$newStart;$copy->end_date=$newEnd;$copy->is_published=false;$copy->is_cancelled=false;$copy->is_featured=false;$copy->is_approved=false;$copy->rating=0;$copy->reviews=[];$copy->remaining_tickets=null;$copy->image=null;$copy->save();
 
             $tickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$source->id)->orderBy('id')->get();
-            foreach($tickets as$ticket){$ticketCopy=$ticket->replicate(['event_id']);$ticketCopy->event_id=$copy->id;if($ticket->limit_date){$offset=$sourceStart->diffInSeconds(Carbon::parse($ticket->limit_date,$timezone),false);$ticketCopy->limit_date=$newStart->copy()->addSeconds($offset);}$ticketCopy->save();}
+            foreach($tickets as$ticket){
+                $ticketCopy=$ticket->replicate(['event_id']);
+                $ticketCopy->event_id=$copy->id;
+                if($ticket->limit_date){
+                    $offset=$sourceStart->diffInSeconds(Carbon::parse($ticket->limit_date,$timezone),false);
+                    $candidateLimit=$newStart->copy()->addSeconds($offset);
+                    $minimumLimit=Carbon::now($timezone)->addHour();
+
+                    // Eventos antigos podem carregar prazos inconsistentes. A duplicação
+                    // não deve falhar por dados legados: mantém o deslocamento quando
+                    // válido e limita o prazo à janela permitida do novo evento.
+                    if($newStart->lt($minimumLimit)){
+                        $ticketCopy->limit_date=null;
+                    }else{
+                        if($candidateLimit->lt($minimumLimit))$candidateLimit=$minimumLimit->copy();
+                        if($candidateLimit->gt($newStart))$candidateLimit=$newStart->copy();
+                        $ticketCopy->limit_date=$candidateLimit;
+                    }
+                }
+                $ticketCopy->save();
+            }
 
             $items=EventItem::query()->where('app_id',$this->context->id())->where('event_id',$source->id)->orderBy('id')->get();
             foreach($items as$item){$itemCopy=$item->replicate(['event_id']);$itemCopy->event_id=$copy->id;$itemCopy->save();}
