@@ -10,12 +10,14 @@ use RuntimeException;
 final class CreativePromptTemplateService
 {
     public const EVENT_FLYER_BACKGROUND = 'event_flyer_background';
+    public const EVENT_DESCRIPTION = 'event_description';
 
     private const LABELS = [
         self::EVENT_FLYER_BACKGROUND => 'Imagem de fundo de evento',
+        self::EVENT_DESCRIPTION => 'Descrição de evento',
     ];
 
-    private const EVENT_VARIABLES = [
+    private const EVENT_FLYER_VARIABLES = [
         'subject' => 'Nome/título do evento',
         'description' => 'Descrição do evento sem prefixo',
         'category' => 'Categoria do evento',
@@ -27,6 +29,22 @@ final class CreativePromptTemplateService
         'format' => 'Composição/formato já expandido pela plataforma',
         'description_clause' => 'Frase pronta com categoria e conceito do evento',
         'context_clause' => 'Frase pronta com produção, local, cidade e UF',
+    ];
+
+    private const EVENT_DESCRIPTION_VARIABLES = [
+        'subject' => 'Nome/título do evento',
+        'current_description' => 'Descrição atual, quando existir',
+        'category' => 'Categoria do evento',
+        'production_name' => 'Nome da produção/estabelecimento',
+        'venue' => 'Local do evento',
+        'city' => 'Cidade',
+        'uf' => 'UF',
+        'start_date' => 'Data e horário de início informados no formulário',
+        'end_date' => 'Data e horário de término informados no formulário',
+        'audience' => 'Público informado pelo produtor',
+        'tone' => 'Tom editorial já expandido pela plataforma',
+        'context_clause' => 'Bloco com fatos disponíveis do evento',
+        'current_description_clause' => 'Orientação para melhorar a descrição atual, quando existir',
     ];
 
     public function supports(string $key): bool
@@ -116,7 +134,7 @@ final class CreativePromptTemplateService
             trim(($data['city'] ?? '').' '.($data['uf'] ?? '')) ?: null,
         ]);
 
-        $variables = [
+        return $this->render($definition['template'], [
             'subject' => trim((string) ($data['subject'] ?? '')),
             'description' => trim((string) ($data['description'] ?? '')),
             'category' => trim((string) ($data['category'] ?? '')),
@@ -128,24 +146,56 @@ final class CreativePromptTemplateService
             'format' => $format,
             'description_clause' => implode('. ', $descriptionParts),
             'context_clause' => $context ? 'Venue/producer context: '.implode(', ', $context) : '',
-        ];
+        ]);
+    }
 
-        $replacements = [];
-        foreach ($variables as $name => $value) {
-            $replacements['{{'.$name.'}}'] = $value;
-        }
+    public function renderEventDescription(array $data): string
+    {
+        $definition = $this->definition(self::EVENT_DESCRIPTION);
+        $tone = match ($data['tone'] ?? 'engaging') {
+            'premium' => 'sofisticado, elegante e convidativo, sem exageros publicitários',
+            'casual' => 'leve, próximo e natural, com linguagem simples',
+            'family' => 'acolhedor, claro e apropriado para público amplo',
+            'corporate' => 'profissional, objetivo e confiável',
+            default => 'envolvente, claro e persuasivo, sem promessas que não estejam nos dados',
+        };
 
-        $rendered = strtr((string) $definition['template'], $replacements);
-        $rendered = preg_replace('/\s+/u', ' ', $rendered) ?: $rendered;
+        $facts = array_filter([
+            ! empty($data['category']) ? 'Categoria: '.trim((string) $data['category']) : null,
+            ! empty($data['production_name']) ? 'Produção: '.trim((string) $data['production_name']) : null,
+            ! empty($data['venue']) ? 'Local: '.trim((string) $data['venue']) : null,
+            ! empty($data['city']) ? 'Cidade/UF: '.trim((string) $data['city']).(! empty($data['uf']) ? '/'.strtoupper(trim((string) $data['uf'])) : '') : null,
+            ! empty($data['start_date']) ? 'Início: '.trim((string) $data['start_date']) : null,
+            ! empty($data['end_date']) ? 'Término: '.trim((string) $data['end_date']) : null,
+            ! empty($data['audience']) ? 'Público/contexto: '.trim((string) $data['audience']) : null,
+        ]);
 
-        return trim($rendered);
+        $currentDescription = trim((string) ($data['current_description'] ?? ''));
+
+        return $this->render($definition['template'], [
+            'subject' => trim((string) ($data['subject'] ?? '')),
+            'current_description' => $currentDescription,
+            'category' => trim((string) ($data['category'] ?? '')),
+            'production_name' => trim((string) ($data['production_name'] ?? '')),
+            'venue' => trim((string) ($data['venue'] ?? '')),
+            'city' => trim((string) ($data['city'] ?? '')),
+            'uf' => strtoupper(trim((string) ($data['uf'] ?? ''))),
+            'start_date' => trim((string) ($data['start_date'] ?? '')),
+            'end_date' => trim((string) ($data['end_date'] ?? '')),
+            'audience' => trim((string) ($data['audience'] ?? '')),
+            'tone' => $tone,
+            'context_clause' => $facts ? "Fatos disponíveis:\n- ".implode("\n- ", $facts) : 'Não há outros fatos confirmados além do nome do evento.',
+            'current_description_clause' => $currentDescription !== ''
+                ? "Descrição atual fornecida pelo produtor:\n\"{$currentDescription}\"\nUse-a como referência e melhore clareza, apelo e organização, sem inventar fatos."
+                : 'Não existe descrição anterior. Crie o texto somente a partir dos fatos confirmados acima.',
+        ], false);
     }
 
     public function variables(string $key): array
     {
         $this->assertSupported($key);
 
-        return collect(self::EVENT_VARIABLES)
+        return collect($this->variableDefinitions($key))
             ->map(fn (string $description, string $name): array => [
                 'key' => $name,
                 'token' => '{{'.$name.'}}',
@@ -158,6 +208,18 @@ final class CreativePromptTemplateService
     private function defaultTemplate(string $key): string
     {
         $this->assertSupported($key);
+
+        if ($key === self::EVENT_DESCRIPTION) {
+            return <<<'PROMPT'
+Você é o redator de eventos da Cutinapp. Escreva SOMENTE a descrição final do evento em português do Brasil, pronta para publicação.
+Evento: "{{subject}}".
+{{context_clause}}
+{{current_description_clause}}
+Tom: {{tone}}.
+Regras obrigatórias: use apenas informações fornecidas; não invente artistas, atrações, horários, preços, benefícios, patrocinadores, endereço, regras, disponibilidade ou qualquer detalhe ausente. Não diga que algo é "imperdível", "o maior" ou similar sem evidência. Se os dados forem poucos, escreva uma descrição mais curta em vez de completar lacunas.
+Formato: 2 a 4 parágrafos curtos, leitura fácil no celular, aproximadamente 450 a 900 caracteres quando houver contexto suficiente. Destaque a proposta do evento e os fatos úteis conhecidos. Não use Markdown, títulos, listas, hashtags, emojis nem aspas envolvendo a resposta.
+PROMPT;
+        }
 
         return <<<'PROMPT'
 Create a professional promotional background artwork for a real event called "{{subject}}".
@@ -197,18 +259,18 @@ PROMPT;
     {
         if (mb_strlen($template) < 120) {
             throw ValidationException::withMessages([
-                'template' => ['O prompt precisa ter pelo menos 120 caracteres para manter contexto e qualidade visual.'],
+                'template' => ['O prompt precisa ter pelo menos 120 caracteres para manter contexto e qualidade.'],
             ]);
         }
 
         if (mb_strlen($template) > 1600) {
             throw ValidationException::withMessages([
-                'template' => ['O prompt pode ter no máximo 1600 caracteres para preservar espaço para os dados dinâmicos do evento.'],
+                'template' => ['O prompt pode ter no máximo 1600 caracteres.'],
             ]);
         }
 
         preg_match_all('/{{([a-zA-Z0-9_]+)}}/', $template, $matches);
-        $allowed = array_keys(self::EVENT_VARIABLES);
+        $allowed = array_keys($this->variableDefinitions($key));
         $unknown = array_values(array_diff(array_unique($matches[1] ?? []), $allowed));
 
         if ($unknown) {
@@ -222,6 +284,30 @@ PROMPT;
                 'template' => ['O prompt precisa manter a variável {{subject}} para identificar o evento.'],
             ]);
         }
+    }
+
+    private function variableDefinitions(string $key): array
+    {
+        return $key === self::EVENT_DESCRIPTION
+            ? self::EVENT_DESCRIPTION_VARIABLES
+            : self::EVENT_FLYER_VARIABLES;
+    }
+
+    private function render(string $template, array $variables, bool $collapseWhitespace = true): string
+    {
+        $replacements = [];
+        foreach ($variables as $name => $value) {
+            $replacements['{{'.$name.'}}'] = (string) $value;
+        }
+
+        $rendered = strtr($template, $replacements);
+        if ($collapseWhitespace) {
+            $rendered = preg_replace('/\s+/u', ' ', $rendered) ?: $rendered;
+        } else {
+            $rendered = preg_replace("/\n{3,}/u", "\n\n", $rendered) ?: $rendered;
+        }
+
+        return trim($rendered);
     }
 
     private function assertSupported(string $key): void
