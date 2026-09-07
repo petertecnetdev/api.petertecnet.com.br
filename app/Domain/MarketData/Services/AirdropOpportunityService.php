@@ -110,7 +110,7 @@ final class AirdropOpportunityService
             'allowed' => !$blocked,
             'requires_confirmation' => !$blocked,
             'reason' => $blocked
-                ? 'A Kryvion bloqueia ações destinadas a criar volume, atividade ou exposição artificial.'
+                ? 'A plataforma bloqueia ações destinadas a criar volume, atividade ou exposição artificial.'
                 : 'Ação permitida somente quando fizer parte de uma campanha legítima e for confirmada pelo usuário.',
         ];
     }
