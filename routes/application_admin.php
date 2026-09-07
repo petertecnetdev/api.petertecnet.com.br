@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Commerce\Http\Controllers\ApplicationAdminCommerceController;
+use App\Domain\Events\Http\Controllers\ApplicationAdminAccessController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminEventController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminTicketController;
 use App\Domain\Platform\Http\Controllers\ApplicationAdminController;
@@ -44,6 +45,12 @@ Route::prefix('v1/apps/{application}')
             Route::delete('/tickets/{ticket}', [ApplicationAdminTicketController::class, 'destroy'])
                 ->whereNumber('ticket')
                 ->middleware([EnsureApplicationAdmin::class.':tickets.manage', 'throttle:20,1']);
+
+            Route::get('/checkins', [ApplicationAdminAccessController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':checkin.view');
+            Route::put('/passes/{pass}/invalidate', [ApplicationAdminAccessController::class, 'invalidate'])
+                ->whereNumber('pass')
+                ->middleware([EnsureApplicationAdmin::class.':checkin.manage', 'throttle:30,1']);
 
             Route::get('/orders', [ApplicationAdminCommerceController::class, 'orders'])
                 ->middleware(EnsureApplicationAdmin::class.':finance.view');
