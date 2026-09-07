@@ -35,17 +35,43 @@ final class CheckoutRecoveryOpportunityAnalyzer
                 $summary['by_age_bucket'][$ageBucket]['age_bucket'] = $ageBucket;
             }
             $this->accumulate($summary['by_age_bucket'][$ageBucket], $gross, $platformRevenue, $recoveryStarted);
+
+            if (! $recoveryStarted) {
+                $priorityKey = $paymentMethod.'|'.$ageBucket;
+                if (! isset($summary['priority_queue'][$priorityKey])) {
+                    $summary['priority_queue'][$priorityKey] = $this->emptyBucket();
+                    $summary['priority_queue'][$priorityKey]['payment_method'] = $paymentMethod;
+                    $summary['priority_queue'][$priorityKey]['age_bucket'] = $ageBucket;
+                    $summary['priority_queue'][$priorityKey]['recommended_action'] = 'recover_unattempted_checkout';
+                }
+                $this->accumulate($summary['priority_queue'][$priorityKey], $gross, $platformRevenue, false);
+            }
         }
 
         $summary = $this->finalize($summary);
         $summary['by_payment_method'] = collect($summary['by_payment_method'])
             ->map(fn (array $row): array => $this->finalize($row))
-            ->sortByDesc('unattempted_gross_revenue')
+            ->sort(function (array $left, array $right): int {
+                return $this->compareRecoveryValue($left, $right);
+            })
             ->values()
             ->all();
         $summary['by_age_bucket'] = collect($summary['by_age_bucket'])
             ->map(fn (array $row): array => $this->finalize($row))
             ->sortBy(fn (array $row): int => $this->ageBucketPriority((string) $row['age_bucket']))
+            ->values()
+            ->all();
+        $summary['priority_queue'] = collect($summary['priority_queue'])
+            ->map(fn (array $row): array => $this->finalize($row))
+            ->sort(function (array $left, array $right): int {
+                $comparison = $this->compareRecoveryValue($left, $right);
+                if ($comparison !== 0) {
+                    return $comparison;
+                }
+
+                return $this->ageBucketPriority((string) $left['age_bucket'])
+                    <=> $this->ageBucketPriority((string) $right['age_bucket']);
+            })
             ->values()
             ->all();
 
@@ -75,6 +101,7 @@ final class CheckoutRecoveryOpportunityAnalyzer
         return array_merge($this->emptyBucket(), [
             'by_payment_method' => [],
             'by_age_bucket' => [],
+            'priority_queue' => [],
         ]);
     }
 
@@ -125,6 +152,20 @@ final class CheckoutRecoveryOpportunityAnalyzer
         }
 
         return $row;
+    }
+
+    /** @param array<string, mixed> $left @param array<string, mixed> $right */
+    private function compareRecoveryValue(array $left, array $right): int
+    {
+        $platformComparison = (float) ($right['unattempted_platform_revenue'] ?? 0)
+            <=> (float) ($left['unattempted_platform_revenue'] ?? 0);
+
+        if ($platformComparison !== 0) {
+            return $platformComparison;
+        }
+
+        return (float) ($right['unattempted_gross_revenue'] ?? 0)
+            <=> (float) ($left['unattempted_gross_revenue'] ?? 0);
     }
 
     private function ageBucketPriority(string $bucket): int
