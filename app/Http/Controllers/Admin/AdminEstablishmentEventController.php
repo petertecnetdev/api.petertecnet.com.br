@@ -25,6 +25,32 @@ final class AdminEstablishmentEventController extends Controller
         );
     }
 
+    public function destroyMany(Request $request, Establishment $establishment): JsonResponse
+    {
+        $this->authorizeAccess($request);
+        $data = $request->validate([
+            'app_id' => ['required', 'integer', 'exists:applications,id'],
+            'event_ids' => ['required', 'array', 'min:1', 'max:100'],
+            'event_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+        ], [
+            'event_ids.required' => 'Selecione pelo menos um evento para excluir.',
+            'event_ids.min' => 'Selecione pelo menos um evento para excluir.',
+            'event_ids.max' => 'Exclua no máximo 100 eventos por operação.',
+            'event_ids.*.distinct' => 'A seleção contém eventos duplicados.',
+        ]);
+
+        return response()->json(
+            $this->events->deleteMany(
+                $establishment,
+                (int) $data['app_id'],
+                $data['event_ids'],
+                $request->user()?->id,
+                $request->ip(),
+                $request->userAgent(),
+            )
+        );
+    }
+
     public function duplicate(Request $request, Establishment $establishment, Event $event): JsonResponse
     {
         $this->authorizeAccess($request);
