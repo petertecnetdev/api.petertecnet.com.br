@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\AdminUserAnnotation;
 use App\Models\User;
+use App\Services\Admin\AdminUserAccountAccessService;
 use App\Services\Admin\AdminUserDetailService;
 use App\Services\Admin\AdminUserIntelligenceService;
 use Illuminate\Http\JsonResponse;
@@ -77,12 +78,12 @@ class AdminUserDetailController extends Controller
         return response()->json($service->revokeSessions($user, $request->user(), $request));
     }
 
-    public function accountAccess(Request $request, User $user, AdminUserIntelligenceService $service): JsonResponse
+    public function accountAccess(Request $request, User $user, AdminUserAccountAccessService $service): JsonResponse
     {
         $data = $request->validate([
             'status' => ['required', Rule::in(['active', 'blocked'])],
         ]);
 
-        return response()->json($service->setAccountAccess($user, $request->user(), $data['status'], $request));
+        return response()->json($service->set($user, $data['status'], $request));
     }
 }
