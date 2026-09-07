@@ -48,7 +48,7 @@ class AcquisitionAgentFlowTest extends TestCase
                     'end_date' => now()->addDays(10)->addHours(4)->format('Y-m-d H:i:s'),
                     'event_format' => 'online',
                     'online_url' => 'https://example.test/live',
-                    'commission_percentage' => 12.5,
+                    'commission_percentage' => 5,
                     'tickets' => [[
                         'name' => 'Lote 1',
                         'quantity' => 100,
@@ -159,7 +159,7 @@ class AcquisitionAgentFlowTest extends TestCase
             ->assertJsonPath('metrics.referrals_accepted', 1)
             ->assertJsonPath('metrics.paid_orders', 1)
             ->assertJsonPath('metrics.gross_sales', 200)
-            ->assertJsonPath('metrics.commission_amount', 25);
+            ->assertJsonPath('metrics.commission_amount', 10);
     }
 
     public function test_regular_application_user_cannot_access_agent_dashboard(): void

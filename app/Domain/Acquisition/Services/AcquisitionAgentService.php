@@ -15,6 +15,11 @@ final class AcquisitionAgentService
         private readonly AcquisitionAccess $access,
     ) {}
 
+    public function commissionCeilingPercentage(): float
+    {
+        return round(max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100)), 2);
+    }
+
     public function context(?User $user): array
     {
         $agent = $this->access->assertAgent($user);
@@ -24,6 +29,7 @@ final class AcquisitionAgentService
             'role' => 'acquisition_agent',
             'application' => $this->context->application()->only(['id', 'name', 'slug', 'url']),
             'agent' => $agent->only(['id', 'first_name', 'last_name', 'email']),
+            'commission_max_percentage' => $this->commissionCeilingPercentage(),
         ];
     }
 
@@ -96,6 +102,7 @@ final class AcquisitionAgentService
                 'commission_amount' => round($commissionRows->sum('commission_amount'), 2),
                 'conversion_rate' => $total > 0 ? round(($accepted / $total) * 100, 1) : 0,
             ],
+            'commission_max_percentage' => $this->commissionCeilingPercentage(),
             'recent_referrals' => $recent,
             'commissions' => $commissionRows,
         ];

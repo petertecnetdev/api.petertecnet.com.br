@@ -37,7 +37,7 @@ class AcquisitionLifecycleHardeningTest extends TestCase
                     'start_date' => now()->addDays(10)->format('Y-m-d H:i:s'),
                     'end_date' => now()->addDays(9)->format('Y-m-d H:i:s'),
                     'event_format' => 'online',
-                    'commission_percentage' => 10,
+                    'commission_percentage' => 5,
                     'tickets' => [[
                         'name' => 'Lote 1',
                         'quantity' => 10,
@@ -210,7 +210,7 @@ class AcquisitionLifecycleHardeningTest extends TestCase
                 'end_date' => now()->addDays(10)->addHours(4)->format('Y-m-d H:i:s'),
                 'event_format' => 'online',
                 'online_url' => 'https://example.test/live',
-                'commission_percentage' => 10,
+                'commission_percentage' => 5,
                 'tickets' => [[
                     'name' => 'Lote 1',
                     'quantity' => 100,
