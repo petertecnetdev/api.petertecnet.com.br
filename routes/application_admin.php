@@ -24,6 +24,15 @@ Route::prefix('v1/apps/{application}')
                 ->middleware(EnsureApplicationAdmin::class.':users.view');
             Route::post('/users', [ApplicationAdminController::class, 'storeUser'])
                 ->middleware([EnsureApplicationAdmin::class.':users.manage', 'throttle:20,1']);
+            Route::get('/users/{userId}/security', [ApplicationAdminController::class, 'userSecurity'])
+                ->whereNumber('userId')
+                ->middleware(EnsureApplicationAdmin::class.':users.view');
+            Route::put('/users/{userId}/access', [ApplicationAdminController::class, 'updateUserAccess'])
+                ->whereNumber('userId')
+                ->middleware([EnsureApplicationAdmin::class.':users.manage', 'throttle:30,1']);
+            Route::post('/users/{userId}/revoke-sessions', [ApplicationAdminController::class, 'revokeUserSessions'])
+                ->whereNumber('userId')
+                ->middleware([EnsureApplicationAdmin::class.':users.sessions.manage', 'throttle:20,1']);
 
             Route::get('/productions', [ApplicationAdminProductionController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':establishments.view');
