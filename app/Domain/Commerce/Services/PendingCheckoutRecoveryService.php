@@ -32,6 +32,27 @@ final class PendingCheckoutRecoveryService
         return $order;
     }
 
+    public function recoveryState(?CommerceOrder $order): array
+    {
+        if (! $order) {
+            return [
+                'payment_recovery_eligible' => false,
+                'payment_expires_at' => null,
+                'payment_recovery_seconds_remaining' => 0,
+            ];
+        }
+
+        $expiresAt = $order->expires_at;
+
+        return [
+            'payment_recovery_eligible' => true,
+            'payment_expires_at' => $expiresAt?->toIso8601String(),
+            'payment_recovery_seconds_remaining' => $expiresAt
+                ? max(0, now()->diffInSeconds($expiresAt, false))
+                : 0,
+        ];
+    }
+
     private function recoverableQuery(int $appId, int $userId): Builder
     {
         return CommerceOrder::query()
