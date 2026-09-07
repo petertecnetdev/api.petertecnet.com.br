@@ -47,6 +47,7 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(10.0, $result['platform_collection_effective_fee_rate']);
         $this->assertSame(3.0, $result['platform_collection_break_even_fee_rate']);
         $this->assertSame(0.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertSame(0.0, $result['platform_collection_revenue_gap_to_break_even']);
         $this->assertTrue($result['platform_collection_sustainable']);
         $this->assertSame(['automatic_split' => 1, 'platform_collection' => 1], $result['settlement_modes']);
     }
@@ -108,6 +109,7 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(4.67, $result['platform_collection_effective_fee_rate']);
         $this->assertSame(4.0, $result['platform_collection_break_even_fee_rate']);
         $this->assertSame(0.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertSame(0.0, $result['platform_collection_revenue_gap_to_break_even']);
         $this->assertTrue($result['platform_collection_sustainable']);
         $this->assertSame(1, $result['by_payment_method']['card']['platform_loss_making_orders']);
     }
@@ -140,6 +142,7 @@ class RevenueFunnelSettlementProfitabilityTest extends TestCase
         $this->assertSame(2.0, $result['platform_collection_effective_fee_rate']);
         $this->assertSame(4.0, $result['platform_collection_break_even_fee_rate']);
         $this->assertSame(2.0, $result['platform_collection_fee_rate_gap_to_break_even']);
+        $this->assertSame(4.0, $result['platform_collection_revenue_gap_to_break_even']);
         $this->assertFalse($result['platform_collection_sustainable']);
     }
 }
