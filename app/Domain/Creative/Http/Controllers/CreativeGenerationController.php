@@ -107,7 +107,7 @@ final class CreativeGenerationController extends Controller
                 'model' => $result['model'],
             ],
             'usage' => [
-                'plan' => 'guarded',
+                'plan' => 'free_guarded',
                 'purpose' => $data['purpose'],
                 'text_rendering' => 'client_canonical_overlay',
                 'prompt_version' => $data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND
