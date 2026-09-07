@@ -14,6 +14,12 @@ Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
         Route::get('/events', [AdminEstablishmentEventController::class, 'index']);
         Route::delete('/events/bulk', [AdminEstablishmentEventController::class, 'bulkDestroy'])
             ->middleware('throttle:10,1');
+        Route::get('/events/{event}', [AdminEstablishmentEventController::class, 'show'])
+            ->whereNumber('event')
+            ->middleware('throttle:120,1');
+        Route::put('/events/{event}', [AdminEstablishmentEventController::class, 'update'])
+            ->whereNumber('event')
+            ->middleware('throttle:30,1');
         Route::post('/events/{event}/duplicate', [AdminEstablishmentEventController::class, 'duplicate'])
             ->whereNumber('event')
             ->middleware('throttle:30,1');
