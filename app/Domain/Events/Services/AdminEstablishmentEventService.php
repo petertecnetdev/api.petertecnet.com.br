@@ -107,27 +107,27 @@ final class AdminEstablishmentEventService
             ]);
         }
 
-        $events = Event::query()
-            ->where('production_id', $establishment->id)
-            ->where('app_id', $appId)
-            ->whereIn('id', $ids)
-            ->orderBy('id')
-            ->lockForUpdate()
-            ->get(['id', 'title', 'image', 'production_id', 'app_id']);
+        $images = DB::transaction(function () use ($ids, $establishment, $appId, $actorId, $ip, $userAgent): array {
+            $events = Event::query()
+                ->where('production_id', $establishment->id)
+                ->where('app_id', $appId)
+                ->whereIn('id', $ids)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get(['id', 'title', 'image', 'production_id', 'app_id']);
 
-        if ($events->count() !== $ids->count()) {
-            throw ValidationException::withMessages([
-                'event_ids' => ['Um ou mais eventos selecionados não pertencem a este estabelecimento e aplicação ou já foram removidos. Atualize a lista e tente novamente.'],
-            ]);
-        }
+            if ($events->count() !== $ids->count()) {
+                throw ValidationException::withMessages([
+                    'event_ids' => ['Um ou mais eventos selecionados não pertencem a este estabelecimento e aplicação ou já foram removidos. Atualize a lista e tente novamente.'],
+                ]);
+            }
 
-        $images = $events
-            ->pluck('image')
-            ->filter(fn ($path) => is_string($path) && str_starts_with($path, 'images/events/'))
-            ->values()
-            ->all();
+            $images = $events
+                ->pluck('image')
+                ->filter(fn ($path) => is_string($path) && str_starts_with($path, 'images/events/'))
+                ->values()
+                ->all();
 
-        DB::transaction(function () use ($events, $actorId, $ip, $userAgent, $establishment, $appId): void {
             foreach ($events as $event) {
                 $snapshot = [
                     'id' => $event->id,
@@ -154,6 +154,8 @@ final class AdminEstablishmentEventService
                     'user_agent' => Str::limit((string) $userAgent, 1000, ''),
                 ]);
             }
+
+            return $images;
         });
 
         foreach ($images as $path) {
