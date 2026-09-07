@@ -19,6 +19,7 @@ final class PendingCheckoutController extends Controller
 
         return response()->json([
             'recoverable' => $order !== null,
+            ...$this->service->recoveryState($order),
             'order' => $order,
         ]);
     }
@@ -40,12 +41,14 @@ final class PendingCheckoutController extends Controller
             return response()->json([
                 'message' => 'Checkout não está mais disponível para recuperação.',
                 'code' => 'CHECKOUT_NOT_RECOVERABLE',
+                ...$this->service->recoveryState(null),
             ], 409);
         }
 
         return response()->json([
             'recoverable' => true,
             'recovery_started' => true,
+            ...$this->service->recoveryState($order),
             'order' => $order,
         ]);
     }
