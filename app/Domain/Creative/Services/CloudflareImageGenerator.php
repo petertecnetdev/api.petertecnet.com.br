@@ -36,7 +36,6 @@ final class CloudflareImageGenerator
                 ->post($url, [
                     'prompt' => mb_substr($prompt, 0, 2048),
                     'steps' => (int) config('creative.cloudflare.steps', 4),
-                    'seed' => random_int(1, 999999999),
                 ]);
         } catch (ConnectionException $exception) {
             throw new RuntimeException('O serviço de criação por IA está temporariamente indisponível.', 0, $exception);
