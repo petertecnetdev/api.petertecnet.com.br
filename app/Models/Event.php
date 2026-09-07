@@ -19,6 +19,8 @@ class Event extends Model
     protected static function booted(): void
     {
         static::saving(function (Event $event) {
+            if (is_string($event->title)) $event->title = mb_strtoupper(trim($event->title), 'UTF-8');
+
             foreach (['event_format','city_id','cep','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','latitude','longitude','google_maps_url','online_platform','online_url','online_instructions'] as $field) {
                 if (request()->exists($field)) $event->setAttribute($field, request()->input($field));
             }
