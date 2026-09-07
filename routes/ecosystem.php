@@ -108,6 +108,11 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::post('/users', [EcosystemController::class, 'storeUser']);
     Route::get('/users/{user}', [AdminUserDetailController::class, 'show'])->whereNumber('user');
     Route::get('/users/{user}/activity', [AdminUserDetailController::class, 'activity'])->whereNumber('user');
+    Route::post('/users/{user}/notes', [AdminUserDetailController::class, 'storeNote'])->whereNumber('user')->middleware('throttle:30,1');
+    Route::delete('/users/{user}/notes/{annotation}', [AdminUserDetailController::class, 'deleteNote'])->whereNumber('user')->whereNumber('annotation')->middleware('throttle:30,1');
+    Route::put('/users/{user}/tags', [AdminUserDetailController::class, 'updateTags'])->whereNumber('user')->middleware('throttle:30,1');
+    Route::post('/users/{user}/security/revoke-sessions', [AdminUserDetailController::class, 'revokeSessions'])->whereNumber('user')->middleware('throttle:10,1');
+    Route::patch('/users/{user}/account-access', [AdminUserDetailController::class, 'accountAccess'])->whereNumber('user')->middleware('throttle:10,1');
     Route::put('/users/{user}', [EcosystemController::class, 'updateUser'])->whereNumber('user');
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
