@@ -39,6 +39,7 @@ final class DuplicateEventController extends Controller
             'copied' => [
                 'tickets' => $duplicate->tickets_count,
                 'artists' => $duplicate->artists->count(),
+                'items' => $duplicate->commerce_items_count,
             ],
         ], 201);
     }

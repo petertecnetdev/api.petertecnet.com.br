@@ -49,6 +49,7 @@ final class EventPurchaseOptionsService
             })->values();
 
         $items = EventItem::query()
+            ->with('sourceItem.files')
             ->where('app_id', $this->context->id())
             ->where('event_id', $event->id)
             ->where('is_active', true)
@@ -69,17 +70,28 @@ final class EventPurchaseOptionsService
                     ->where('o.status', 'paid')
                     ->sum('oi.quantity');
                 $remaining = max(0, (int) $item->quantity - $sold - $reserved);
+                $source = $item->sourceItem;
+                if ($source) $source->setAppends(['image_url']);
+                $payload = $item->toArray();
+                unset($payload['source_item']);
 
-                return array_merge($item->toArray(), [
+                return array_merge($payload, [
                     'remaining' => $remaining,
                     'available' => $remaining > 0,
+                    'image_url' => $source?->image_url,
+                    'catalog_source' => $source ? [
+                        'id' => $source->id,
+                        'sku' => $source->sku,
+                        'category' => $source->category,
+                        'brand' => $source->brand,
+                    ] : null,
                 ]);
             })->values();
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
 
         return [
-            'event' => $event->only(['id', 'title', 'slug', 'start_date', 'end_date', 'event_schedule_id', 'event_schedule_occurrence_date']),
+            'event' => $event->only(['id', 'title', 'slug', 'start_date', 'end_date', 'event_series_id', 'event_schedule_id', 'event_schedule_occurrence_date']),
             'available_dates' => $this->availableDates($event),
             'tickets' => $tickets,
             'items' => $items,
@@ -120,7 +132,9 @@ final class EventPurchaseOptionsService
                 $q->whereNull('end_date')->orWhere('end_date', '>', now());
             });
 
-        if ($event->event_schedule_id) {
+        if ($event->event_series_id) {
+            $query->where('event_series_id', $event->event_series_id);
+        } elseif ($event->event_schedule_id) {
             $query->where('event_schedule_id', $event->event_schedule_id);
         } else {
             $query->whereKey($event->id);
@@ -130,6 +144,7 @@ final class EventPurchaseOptionsService
             return [
                 'event_id' => $dateEvent->id,
                 'slug' => $dateEvent->slug,
+                'series_id' => $dateEvent->event_series_id,
                 'date' => $dateEvent->event_schedule_occurrence_date ?: optional($dateEvent->start_date)->toDateString(),
                 'start_date' => $dateEvent->start_date,
                 'end_date' => $dateEvent->end_date,

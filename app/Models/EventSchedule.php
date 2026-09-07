@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class EventSchedule extends Model
 {
     protected $fillable = [
         'app_id',
         'production_id',
+        'event_series_id',
         'title',
         'description',
         'category',
@@ -43,6 +45,15 @@ class EventSchedule extends Model
         'is_private' => 'boolean',
         'is_active' => 'boolean',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (EventSchedule $schedule): void {
+            if (! $schedule->event_series_id) {
+                $schedule->event_series_id = (string) Str::uuid();
+            }
+        });
+    }
 
     public function production()
     {
