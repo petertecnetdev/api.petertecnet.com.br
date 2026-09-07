@@ -47,7 +47,18 @@ final class EventCommunityController extends Controller
 
     public function createPost(Request $request,int $eventId)
     {
-        $user=$request->user();$event=$this->publicEventById($eventId);$appId=$this->context->id();$data=$request->validate(['body'=>'required|string|min:2|max:3000','parent_id'=>'nullable|integer|min:1']);$parent=null;
+        $user=$request->user();$appId=$this->context->id();$data=$request->validate(['body'=>'required|string|min:2|max:3000','parent_id'=>'nullable|integer|min:1']);
+
+        // eventId=0 is the authenticated global timeline publishing contract.
+        // Event-specific community routes keep their existing semantics, while
+        // the feed no longer needs to invent or select an event relationship.
+        if($eventId===0){
+            abort_if(isset($data['parent_id']),422,'Publicações gerais da timeline não aceitam respostas neste endpoint.');
+            $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>null,'user_id'=>$user->id,'parent_id'=>null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
+            return response()->json(['message'=>'Publicação adicionada à timeline.','post_id'=>$id],201);
+        }
+
+        $event=$this->publicEventById($eventId);$parent=null;
         if($parentId=$data['parent_id']??null){$parent=DB::table('event_posts')->where('id',$parentId)->where('app_id',$appId)->where('event_id',$event->id)->whereNull('parent_id')->where('status','published')->first();abort_unless($parent,422,'A publicação que você tentou responder não está mais disponível.');}
         $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>$event->id,'user_id'=>$user->id,'parent_id'=>$data['parent_id']??null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
         $this->notifyCommunityActivity($event,$user,$id,$parent);return response()->json(['message'=>$parent?'Comentário publicado.':'Publicação adicionada ao evento.','post_id'=>$id],201);
@@ -56,7 +67,7 @@ final class EventCommunityController extends Controller
     public function deletePost(Request $request,int $postId)
     {
         $user=$request->user();$appId=$this->context->id();$post=DB::table('event_posts')->where('app_id',$appId)->where('id',$postId)->first();abort_unless($post,404,'Publicação não encontrada.');
-        $event=Event::with('production')->where('app_id',$appId)->find($post->event_id);$can=(int)$post->user_id===(int)$user->id||$user->hasProfile('Administrador')||($event?->production&&(int)$event->production->user_id===(int)$user->id);abort_unless($can,403,'Você não tem permissão para remover esta publicação.');
+        $event=$post->event_id?Event::with('production')->where('app_id',$appId)->find($post->event_id):null;$can=(int)$post->user_id===(int)$user->id||$user->hasProfile('Administrador')||($event?->production&&(int)$event->production->user_id===(int)$user->id);abort_unless($can,403,'Você não tem permissão para remover esta publicação.');
         DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->update(['status'=>'hidden','updated_at'=>now()]);return response()->json(['message'=>'Publicação removida.']);
     }
 
@@ -64,7 +75,7 @@ final class EventCommunityController extends Controller
     {
         $user=$request->user();$post=$this->publishedPost($postId);$appId=$this->context->id();$already=DB::table('event_post_likes')->where(['app_id'=>$appId,'post_id'=>$post->id,'user_id'=>$user->id])->exists();
         DB::table('event_post_likes')->updateOrInsert(['app_id'=>$appId,'post_id'=>$post->id,'user_id'=>$user->id],['created_at'=>now(),'updated_at'=>now()]);
-        if(!$already&&(int)$post->user_id!==(int)$user->id){$event=Event::where('app_id',$appId)->find($post->event_id);if($event)$this->safeNotify($appId,(int)$post->user_id,['type'=>'comment_like','title'=>'Curtiram sua publicação','message'=>(trim((string)$user->first_name)?:'Alguém').' curtiu o que você publicou em '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->slug.'#comunidade','data'=>['event_id'=>$event->id,'post_id'=>$post->id,'actor_id'=>$user->id]]);}
+        if(!$already&&(int)$post->user_id!==(int)$user->id&&$post->event_id){$event=Event::where('app_id',$appId)->find($post->event_id);if($event)$this->safeNotify($appId,(int)$post->user_id,['type'=>'comment_like','title'=>'Curtiram sua publicação','message'=>(trim((string)$user->first_name)?:'Alguém').' curtiu o que você publicou em '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->slug.'#comunidade','data'=>['event_id'=>$event->id,'post_id'=>$post->id,'actor_id'=>$user->id]]);}
         return response()->json(['message'=>'Publicação curtida.','liked'=>true]);
     }
 
