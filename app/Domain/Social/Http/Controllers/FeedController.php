@@ -124,20 +124,25 @@ final class FeedController extends Controller
         });
 
         $community = DB::table('event_posts as p')
-            ->join('events as e', 'e.id', '=', 'p.event_id')
+            ->leftJoin('events as e', 'e.id', '=', 'p.event_id')
             ->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.app_id', $appId)
             ->whereNull('p.parent_id')
             ->where('p.status', 'published')
-            ->where('e.app_id', $appId)
-            ->where('e.is_published', true)
-            ->where('e.is_cancelled', false)
-            ->where(fn ($query) => $query
-                ->where('e.is_private', false)
-                ->orWhereNull('e.is_private'))
-            ->where(fn ($query) => $query
-                ->whereNull('e.end_date')
-                ->orWhere('e.end_date', '>', $now))
+            ->where(function ($query) use ($appId, $now) {
+                $query->whereNull('p.event_id')
+                    ->orWhere(function ($eventQuery) use ($appId, $now) {
+                        $eventQuery->where('e.app_id', $appId)
+                            ->where('e.is_published', true)
+                            ->where('e.is_cancelled', false)
+                            ->where(fn ($privacyQuery) => $privacyQuery
+                                ->where('e.is_private', false)
+                                ->orWhereNull('e.is_private'))
+                            ->where(fn ($dateQuery) => $dateQuery
+                                ->whereNull('e.end_date')
+                                ->orWhere('e.end_date', '>', $now));
+                    });
+            })
             ->orderByDesc('p.created_at')
             ->limit(12)
             ->get([
