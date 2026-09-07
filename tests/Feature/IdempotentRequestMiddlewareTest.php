@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Http\Middleware\EnsureIdempotentRequest;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
@@ -62,6 +63,53 @@ class IdempotentRequestMiddlewareTest extends TestCase
         $this->assertSame('conflict', $response->headers->get('Idempotency-Status'));
     }
 
+    public function test_same_uploaded_file_is_replayed_without_running_operation_twice(): void
+    {
+        $middleware = new EnsureIdempotentRequest();
+        $calls = 0;
+
+        $first = $middleware->handle(
+            $this->fileRequest('document-front-content'),
+            function () use (&$calls) {
+                $calls++;
+
+                return response()->json(['identity' => ['status' => 'identity_pending']], 201);
+            }
+        );
+
+        $second = $middleware->handle(
+            $this->fileRequest('document-front-content'),
+            function () use (&$calls) {
+                $calls++;
+
+                return response()->json(['identity' => ['status' => 'duplicated']], 201);
+            }
+        );
+
+        $this->assertSame(1, $calls);
+        $this->assertSame('created', $first->headers->get('Idempotency-Status'));
+        $this->assertSame('true', $second->headers->get('Idempotency-Replayed'));
+        $this->assertSame($first->getContent(), $second->getContent());
+    }
+
+    public function test_same_key_with_different_uploaded_file_content_is_rejected(): void
+    {
+        $middleware = new EnsureIdempotentRequest();
+
+        $middleware->handle(
+            $this->fileRequest('document-front-content'),
+            fn () => response()->json(['ok' => true], 201)
+        );
+
+        $response = $middleware->handle(
+            $this->fileRequest('different-document-content'),
+            fn () => response()->json(['ok' => true], 201)
+        );
+
+        $this->assertSame(409, $response->getStatusCode());
+        $this->assertSame('conflict', $response->headers->get('Idempotency-Status'));
+    }
+
     public function test_card_token_rotation_does_not_turn_a_retry_into_a_second_charge(): void
     {
         $middleware = new EnsureIdempotentRequest();
@@ -98,6 +146,22 @@ class IdempotentRequestMiddlewareTest extends TestCase
         $this->assertSame(1, $calls);
         $this->assertSame(201, $response->getStatusCode());
         $this->assertSame('true', $response->headers->get('Idempotency-Replayed'));
+    }
+
+    private function fileRequest(string $contents): Request
+    {
+        $file = UploadedFile::fake()->createWithContent('document.png', $contents);
+        $request = Request::create(
+            '/api/v1/apps/cutinapp/organizations/12/finance/identity/document',
+            'POST',
+            ['consent' => '1'],
+            [],
+            ['front' => $file]
+        );
+        $request->headers->set('Authorization', 'Bearer idempotency-test-token');
+        $request->headers->set('Idempotency-Key', 'identity-document-key-0001');
+
+        return $request;
     }
 
     private function request(array $payload): Request
