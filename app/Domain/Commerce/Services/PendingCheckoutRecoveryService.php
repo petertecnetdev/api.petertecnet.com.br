@@ -59,14 +59,10 @@ final class PendingCheckoutRecoveryService
                 'payment_recovery_eligible' => false,
                 'payment_expires_at' => null,
                 'payment_recovery_seconds_remaining' => 0,
-                'payment_recovery_channel' => null,
-                'payment_recovery_attempt_cost' => null,
             ];
         }
 
         $expiresAt = $order->expires_at;
-        $metadata = is_array($order->metadata) ? $order->metadata : [];
-        $recovery = is_array($metadata['recovery'] ?? null) ? $metadata['recovery'] : [];
 
         return [
             'payment_recovery_eligible' => true,
@@ -74,10 +70,6 @@ final class PendingCheckoutRecoveryService
             'payment_recovery_seconds_remaining' => $expiresAt
                 ? max(0, now()->diffInSeconds($expiresAt, false))
                 : 0,
-            'payment_recovery_channel' => $recovery['channel'] ?? null,
-            'payment_recovery_attempt_cost' => isset($recovery['attempt_cost']) && is_numeric($recovery['attempt_cost'])
-                ? round(max((float) $recovery['attempt_cost'], 0.0), 4)
-                : null,
         ];
     }
 
