@@ -146,6 +146,18 @@ final class RevenueFunnelService
                 (string) $row['payment_method'] => (float) $row['checkout_recovery_conversion_rate'] / 100,
             ])
             ->all();
+        $overallPlatformContributionRate = $platformRevenue != 0.0
+            ? min((float) $paidProfitability['platform_contribution_after_processing'] / $platformRevenue, 1.0)
+            : null;
+        $platformContributionRateByPaymentMethod = collect($paymentMethods)
+            ->filter(fn (array $row): bool => (float) $row['platform_revenue'] != 0.0)
+            ->mapWithKeys(fn (array $row): array => [
+                (string) $row['payment_method'] => min(
+                    (float) $row['platform_contribution_after_processing'] / (float) $row['platform_revenue'],
+                    1.0
+                ),
+            ])
+            ->all();
         $segmentStats = [];
         foreach ((clone $orders)->whereNotNull('recovery_started_at')
             ->select(['id', 'payment_method', 'status', 'created_at', 'recovery_started_at'])
@@ -183,7 +195,9 @@ final class RevenueFunnelService
                 ->lazyById(1000),
             recoveryProbabilityByPaymentMethod: $recoveryProbabilityByPaymentMethod,
             fallbackRecoveryProbability: $overallRecoveryProbability,
-            recoveryProbabilityBySegment: $recoveryProbabilityBySegment
+            recoveryProbabilityBySegment: $recoveryProbabilityBySegment,
+            platformContributionRateByPaymentMethod: $platformContributionRateByPaymentMethod,
+            fallbackPlatformContributionRate: $overallPlatformContributionRate
         );
 
         return [

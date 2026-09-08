@@ -121,6 +121,30 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
         $this->assertSame(24.0, $result['priority_queue'][0]['expected_platform_revenue']);
     }
 
+    public function test_it_prioritizes_expected_platform_contribution_after_processing_cost(): void
+    {
+        $now = CarbonImmutable::parse('2026-09-08 00:00:00');
+        $orders = collect([
+            (object) ['id' => 401, 'payment_method' => 'card', 'total' => 200, 'platform_fee' => 40, 'created_at' => $now->subMinutes(10), 'recovery_started_at' => null],
+            (object) ['id' => 402, 'payment_method' => 'pix', 'total' => 160, 'platform_fee' => 30, 'created_at' => $now->subMinutes(10), 'recovery_started_at' => null],
+        ]);
+
+        $result = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
+            $orders,
+            $now,
+            recoveryProbabilityByPaymentMethod: ['card' => 0.80, 'pix' => 0.80],
+            platformContributionRateByPaymentMethod: ['card' => 0.20, 'pix' => 0.95]
+        );
+
+        $this->assertSame(402, $result['top_opportunities'][0]['order_id']);
+        $this->assertSame(24.0, $result['top_opportunities'][0]['expected_platform_revenue']);
+        $this->assertSame(22.8, $result['top_opportunities'][0]['expected_platform_contribution']);
+        $this->assertSame(0.95, $result['top_opportunities'][0]['platform_contribution_rate']);
+        $this->assertSame('payment_method_history', $result['top_opportunities'][0]['platform_contribution_rate_source']);
+        $this->assertSame(6.4, $result['top_opportunities'][1]['expected_platform_contribution']);
+        $this->assertSame('pix', $result['priority_queue'][0]['payment_method']);
+    }
+
     public function test_it_prefers_payment_method_and_age_segment_probability(): void
     {
         $now = CarbonImmutable::parse('2026-09-08 00:00:00');
