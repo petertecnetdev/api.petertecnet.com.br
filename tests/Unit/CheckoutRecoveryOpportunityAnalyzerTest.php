@@ -70,4 +70,54 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
         $this->assertSame(2, $result['top_opportunities'][1]['priority_rank']);
         $this->assertSame('recover_unattempted_checkout', $result['top_opportunities'][1]['recommended_action']);
     }
+
+    public function test_it_prioritizes_expected_platform_revenue_using_recovery_history(): void
+    {
+        $now = CarbonImmutable::parse('2026-09-07 18:00:00');
+        $orders = collect([
+            (object) [
+                'id' => 201,
+                'payment_method' => 'pix',
+                'total' => 200,
+                'platform_fee' => 40,
+                'created_at' => $now->subMinutes(10),
+                'recovery_started_at' => null,
+            ],
+            (object) [
+                'id' => 202,
+                'payment_method' => 'card',
+                'total' => 180,
+                'platform_fee' => 30,
+                'created_at' => $now->subMinutes(20),
+                'recovery_started_at' => null,
+            ],
+            (object) [
+                'id' => 203,
+                'payment_method' => 'boleto',
+                'total' => 100,
+                'platform_fee' => 20,
+                'created_at' => $now->subMinutes(30),
+                'recovery_started_at' => null,
+            ],
+        ]);
+
+        $result = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
+            $orders,
+            $now,
+            recoveryProbabilityByPaymentMethod: ['pix' => 0.20, 'card' => 0.80],
+            fallbackRecoveryProbability: 0.50
+        );
+
+        $this->assertSame(202, $result['top_opportunities'][0]['order_id']);
+        $this->assertSame(24.0, $result['top_opportunities'][0]['expected_platform_revenue']);
+        $this->assertSame(0.8, $result['top_opportunities'][0]['recovery_probability']);
+        $this->assertSame('payment_method_history', $result['top_opportunities'][0]['recovery_probability_source']);
+        $this->assertSame(203, $result['top_opportunities'][1]['order_id']);
+        $this->assertSame(10.0, $result['top_opportunities'][1]['expected_platform_revenue']);
+        $this->assertSame('overall_history', $result['top_opportunities'][1]['recovery_probability_source']);
+        $this->assertSame(201, $result['top_opportunities'][2]['order_id']);
+        $this->assertSame(8.0, $result['top_opportunities'][2]['expected_platform_revenue']);
+        $this->assertSame('card', $result['priority_queue'][0]['payment_method']);
+        $this->assertSame(24.0, $result['priority_queue'][0]['expected_platform_revenue']);
+    }
 }
