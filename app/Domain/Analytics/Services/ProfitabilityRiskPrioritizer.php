@@ -19,15 +19,16 @@ final class ProfitabilityRiskPrioritizer
         array $recoveryAttemptCostByPaymentMethod = [],
         ?float $fallbackRecoveryAttemptCost = null,
     ): array {
-        if ($recoveryAttemptCostByPaymentMethod === []) {
+        $hasConfig = function_exists('app') && app()->bound('config');
+        if ($recoveryAttemptCostByPaymentMethod === [] && $hasConfig) {
             $recoveryAttemptCostByPaymentMethod = (array) config('checkout_recovery.attempt_cost_by_payment_method', []);
         }
-        if ($fallbackRecoveryAttemptCost === null) {
+        if ($fallbackRecoveryAttemptCost === null && $hasConfig) {
             $configuredDefaultCost = config('checkout_recovery.default_attempt_cost');
             $fallbackRecoveryAttemptCost = is_numeric($configuredDefaultCost)
                 ? max((float) $configuredDefaultCost, 0.0)
                 : null;
-        } else {
+        } elseif ($fallbackRecoveryAttemptCost !== null) {
             $fallbackRecoveryAttemptCost = max($fallbackRecoveryAttemptCost, 0.0);
         }
 
