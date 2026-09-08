@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\InteractionMaintenanceController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
 use App\Http\Controllers\Admin\OperationalRealtimeController;
+use App\Http\Controllers\Admin\ProspectInvitationController;
 use App\Http\Controllers\Admin\ResourceVisibilityController;
 use App\Http\Controllers\Admin\TelemetryController;
 use App\Http\Controllers\Admin\UserCommunicationController;
@@ -35,6 +36,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::get('/notifications', [EcosystemNotificationController::class, 'index']);
     Route::post('/notifications/preview', [EcosystemNotificationController::class, 'preview'])->middleware('throttle:60,1');
     Route::post('/notifications', [EcosystemNotificationController::class, 'store'])->middleware('throttle:10,1');
+    Route::post('/invitations/prospect', [ProspectInvitationController::class, 'store'])->middleware('throttle:20,1');
     Route::get('/visibility', [ResourceVisibilityController::class, 'index']);
     Route::post('/onboarding', [OnboardingController::class, 'store'])->middleware('throttle:20,1');
 
