@@ -83,6 +83,15 @@ final class ProfitabilityRiskPrioritizer
                 $confidenceMarginToBreakEven = $breakEvenConversionRate !== null
                     ? $conversionConfidenceLowerBound - $breakEvenConversionRate
                     : null;
+                $confidenceAdjustedRecoveredContribution = $recoveryContributionPerRecoveredOrder !== null
+                    ? ($conversionConfidenceLowerBound / 100) * $attempts * $recoveryContributionPerRecoveredOrder
+                    : null;
+                $confidenceAdjustedNetContribution = $confidenceAdjustedRecoveredContribution !== null && $totalRecoveryCost !== null
+                    ? $confidenceAdjustedRecoveredContribution - $totalRecoveryCost
+                    : null;
+                $confidenceAdjustedRoi = $confidenceAdjustedNetContribution !== null && $totalRecoveryCost !== null && $totalRecoveryCost > 0
+                    ? ($confidenceAdjustedNetContribution / $totalRecoveryCost) * 100
+                    : null;
 
                 $minimumDecisionSample = 10;
                 $minimumScaleSafetyMargin = 10.0;
@@ -119,6 +128,7 @@ final class ProfitabilityRiskPrioritizer
                     'checkout_recovery_confidence_margin_to_break_even' => $confidenceMarginToBreakEven !== null ? round($confidenceMarginToBreakEven, 2) : null,
                     'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
                     'estimated_recovered_platform_contribution' => round($estimatedRecoveredContribution, 2),
+                    'recovery_confidence_adjusted_platform_contribution' => $confidenceAdjustedRecoveredContribution !== null ? round($confidenceAdjustedRecoveredContribution, 2) : null,
                     'recovery_contribution_per_attempt' => round($recoveryContributionPerAttempt, 2),
                     'recovery_contribution_per_recovered_order' => $recoveryContributionPerRecoveredOrder !== null ? round($recoveryContributionPerRecoveredOrder, 2) : null,
                     'recovery_attempt_cost' => $attemptCost !== null ? round($attemptCost, 4) : null,
@@ -127,8 +137,10 @@ final class ProfitabilityRiskPrioritizer
                         : ($fallbackRecoveryAttemptCost !== null ? 'default_config' : 'not_configured'),
                     'recovery_total_attempt_cost' => $totalRecoveryCost !== null ? round($totalRecoveryCost, 2) : null,
                     'recovery_net_platform_contribution' => $recoveryNetContribution !== null ? round($recoveryNetContribution, 2) : null,
+                    'recovery_confidence_adjusted_net_platform_contribution' => $confidenceAdjustedNetContribution !== null ? round($confidenceAdjustedNetContribution, 2) : null,
                     'recovery_net_shortfall' => round($recoveryNetShortfall, 2),
                     'recovery_roi_percent' => $recoveryRoi !== null ? round($recoveryRoi, 2) : null,
+                    'recovery_confidence_adjusted_roi_percent' => $confidenceAdjustedRoi !== null ? round($confidenceAdjustedRoi, 2) : null,
                     'recovery_economically_sustainable' => $recoveryNetContribution !== null
                         ? $recoveryNetContribution >= 0
                         : null,
@@ -152,8 +164,20 @@ final class ProfitabilityRiskPrioritizer
                     'insufficient_economic_data' => 0,
                 ];
 
-                return ($decisionPriority[$right['recovery_decision']] ?? 0) <=> ($decisionPriority[$left['recovery_decision']] ?? 0)
-                    ?: $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
+                $decisionOrder = ($decisionPriority[$right['recovery_decision']] ?? 0) <=> ($decisionPriority[$left['recovery_decision']] ?? 0);
+                if ($decisionOrder !== 0) {
+                    return $decisionOrder;
+                }
+
+                if ($left['recovery_decision'] === 'scale_carefully' && $right['recovery_decision'] === 'scale_carefully') {
+                    $confidenceAdjustedOrder = ($right['recovery_confidence_adjusted_net_platform_contribution'] ?? 0.0)
+                        <=> ($left['recovery_confidence_adjusted_net_platform_contribution'] ?? 0.0);
+                    if ($confidenceAdjustedOrder !== 0) {
+                        return $confidenceAdjustedOrder;
+                    }
+                }
+
+                return $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
                     ?: $right['recovery_net_shortfall'] <=> $left['recovery_net_shortfall']
                     ?: $right['platform_loss_making_gross_revenue'] <=> $left['platform_loss_making_gross_revenue']
                     ?: $right['platform_collection_fee_rate_gap_to_break_even'] <=> $left['platform_collection_fee_rate_gap_to_break_even'];
