@@ -50,6 +50,12 @@ class AppNotificationService
     private function sendNotificationEmail(AppNotification $notification): void
     {
         try {
+            // EventProducerCommunicationService already sends a richer event-management e-mail
+            // for these event lifecycle notifications. Skipping here prevents duplicate delivery.
+            if (Str::startsWith((string) $notification->type, 'producer_event_')) {
+                return;
+            }
+
             $application = Application::query()->find((int) $notification->app_id);
 
             if (! $application || ! $this->shouldEmailApplication($application)) {
