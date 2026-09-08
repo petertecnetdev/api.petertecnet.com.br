@@ -129,11 +129,12 @@ final class ObservedRecoveryChannelEconomics
                         'recovered_platform_contribution' => (float) ($observed['recovered_platform_contribution'] ?? 0.0),
                     ];
                 })->values()->all();
+                $recommended = collect($channels)->firstWhere('recommended', true);
 
                 return [
                     'payment_method' => $group['payment_method'],
                     'abandonment_age_bucket' => $group['abandonment_age_bucket'],
-                    'recommended_channel' => collect($channels)->firstWhere('recommended', true)['channel'] ?? null,
+                    'recommended_channel' => $recommended['channel'] ?? null,
                     'channels' => $channels,
                 ];
             })
