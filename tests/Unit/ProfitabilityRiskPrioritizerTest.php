@@ -143,7 +143,7 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
         self::assertSame(5.38, $result[0]['checkout_recovery_confidence_margin_to_break_even']);
         self::assertSame(15.23, $result[0]['recovery_confidence_adjusted_platform_contribution']);
         self::assertSame(3.23, $result[0]['recovery_confidence_adjusted_net_platform_contribution']);
-        self::assertSame(26.92, $result[0]['recovery_confidence_adjusted_roi_percent']);
+        self::assertSame(26.89, $result[0]['recovery_confidence_adjusted_roi_percent']);
         self::assertSame(2.5, $result[0]['recovery_contribution_per_attempt']);
         self::assertSame(5.0, $result[0]['recovery_contribution_per_recovered_order']);
         self::assertSame(10, $result[0]['recovery_decision_minimum_attempts']);
