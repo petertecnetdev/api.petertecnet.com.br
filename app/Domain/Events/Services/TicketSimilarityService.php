@@ -63,7 +63,9 @@ final class TicketSimilarityService
 
     private function normalize(mixed $value): string
     {
-        return Str::of((string) $value)
+        $value = str_replace(['º', 'ª', '°'], '', (string) $value);
+
+        return Str::of($value)
             ->lower()
             ->ascii()
             ->replaceMatches('/[^a-z0-9]+/u', ' ')
