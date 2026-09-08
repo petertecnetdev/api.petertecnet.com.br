@@ -15,7 +15,7 @@ use Illuminate\Validation\ValidationException;
 
 class ApplicationAdminService
 {
-    public const ROOT_ADMIN_EMAIL = 'petertecnet@gmail.com';
+    public const ROOT_ADMIN_EMAIL = ApplicationOwnerAuthorityService::BOOTSTRAP_OWNER_EMAIL;
     public const ACCESS_MANAGE_PERMISSION = 'admin.access.manage';
 
     public const PERMISSION_CATALOG = [
@@ -32,10 +32,14 @@ class ApplicationAdminService
         'finance.refund',
         'users.view',
         'users.manage',
+        'users.sessions.manage',
         'moderation.view',
         'moderation.manage',
         'support.view',
         'support.manage',
+        'security.view',
+        'security.manage',
+        'operations.view',
         'audit.view',
     ];
 
@@ -43,14 +47,26 @@ class ApplicationAdminService
         self::ACCESS_MANAGE_PERMISSION,
     ];
 
+    public function __construct(private readonly ApplicationOwnerAuthorityService $ownerAuthority)
+    {
+    }
+
+    /**
+     * Legacy ecosystem root check. Application-level authority must use isOwner().
+     */
     public function isRoot(User $user): bool
     {
-        return strtolower(trim((string) $user->email)) === self::ROOT_ADMIN_EMAIL;
+        return $this->ownerAuthority->matchesBootstrapEmail($user);
+    }
+
+    public function isOwner(User $user, int $applicationId): bool
+    {
+        return $this->ownerAuthority->isOwner($user, $applicationId);
     }
 
     public function hasAccess(User $user, int $applicationId): bool
     {
-        if ($this->isRoot($user)) {
+        if ($this->isOwner($user, $applicationId)) {
             return true;
         }
 
@@ -64,7 +80,7 @@ class ApplicationAdminService
 
     public function hasPermission(User $user, int $applicationId, string $permission): bool
     {
-        if ($this->isRoot($user)) {
+        if ($this->isOwner($user, $applicationId)) {
             return true;
         }
 
@@ -82,15 +98,19 @@ class ApplicationAdminService
 
     public function context(User $user, int $applicationId): array
     {
-        if ($this->isRoot($user)) {
+        if ($this->isOwner($user, $applicationId)) {
             return [
                 'authorized' => true,
                 'is_root' => true,
+                'is_owner' => true,
+                'authority_level' => 'owner',
+                'scope' => 'global_application',
+                'owner_user_id' => (int) $user->id,
                 'root_email' => self::ROOT_ADMIN_EMAIL,
                 'profile' => [
                     'id' => null,
-                    'name' => 'Super Administrador',
-                    'slug' => 'root-super-admin',
+                    'name' => 'Owner Peter Tecnet',
+                    'slug' => 'application-owner',
                 ],
                 'permissions' => array_values(array_merge(self::PERMISSION_CATALOG, self::RESERVED_PERMISSIONS)),
             ];
@@ -102,6 +122,10 @@ class ApplicationAdminService
             return [
                 'authorized' => false,
                 'is_root' => false,
+                'is_owner' => false,
+                'authority_level' => 'none',
+                'scope' => null,
+                'owner_user_id' => $this->ownerAuthority->ownerId($applicationId),
                 'root_email' => self::ROOT_ADMIN_EMAIL,
                 'profile' => null,
                 'permissions' => [],
@@ -111,6 +135,10 @@ class ApplicationAdminService
         return [
             'authorized' => true,
             'is_root' => false,
+            'is_owner' => false,
+            'authority_level' => 'delegated_admin',
+            'scope' => 'global_application',
+            'owner_user_id' => $this->ownerAuthority->ownerId($applicationId),
             'root_email' => self::ROOT_ADMIN_EMAIL,
             'profile' => [
                 'id' => $assignment->profile->id,
@@ -130,13 +158,13 @@ class ApplicationAdminService
         return [
             'permissions' => self::PERMISSION_CATALOG,
             'reserved' => self::RESERVED_PERMISSIONS,
-            'root_email' => self::ROOT_ADMIN_EMAIL,
+            'owner_bootstrap_email' => self::ROOT_ADMIN_EMAIL,
         ];
     }
 
     public function profiles(int $applicationId, User $actor): Collection
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
 
         return ApplicationAdminProfile::query()
             ->where('application_id', $applicationId)
@@ -149,7 +177,7 @@ class ApplicationAdminService
 
     public function createProfile(int $applicationId, User $actor, array $data, array $auditContext = []): ApplicationAdminProfile
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
 
         $name = trim((string) ($data['name'] ?? ''));
         $slug = Str::slug((string) ($data['slug'] ?? $name));
@@ -183,7 +211,7 @@ class ApplicationAdminService
 
     public function updateProfile(int $applicationId, int $profileId, User $actor, array $data, array $auditContext = []): ApplicationAdminProfile
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
         $profile = $this->findProfile($applicationId, $profileId);
 
         $before = Arr::only($profile->toArray(), ['name', 'slug', 'description', 'permissions']);
@@ -226,7 +254,7 @@ class ApplicationAdminService
 
     public function deleteProfile(int $applicationId, int $profileId, User $actor, array $auditContext = []): void
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
         $profile = $this->findProfile($applicationId, $profileId);
 
         $activeAssignments = ApplicationAdminAssignment::query()
@@ -250,7 +278,7 @@ class ApplicationAdminService
 
     public function assignments(int $applicationId, User $actor): Collection
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
 
         return ApplicationAdminAssignment::query()
             ->where('application_id', $applicationId)
@@ -266,16 +294,19 @@ class ApplicationAdminService
 
     public function assign(int $applicationId, User $actor, string $email, int $profileId, array $auditContext = []): ApplicationAdminAssignment
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
         $normalizedEmail = strtolower(trim($email));
 
-        if ($normalizedEmail === '' || $normalizedEmail === self::ROOT_ADMIN_EMAIL) {
+        if ($normalizedEmail === '') {
             throw ValidationException::withMessages(['email' => 'Selecione outro usuário para receber o perfil administrativo.']);
         }
 
         $target = User::query()->whereRaw('LOWER(email) = ?', [$normalizedEmail])->first();
         if (! $target) {
             throw ValidationException::withMessages(['email' => 'Usuário não encontrado.']);
+        }
+        if ($this->isOwner($target, $applicationId) || $normalizedEmail === self::ROOT_ADMIN_EMAIL) {
+            throw ValidationException::withMessages(['email' => 'A identidade Owner não pode receber, perder ou trocar perfil delegado.']);
         }
 
         $profile = $this->findProfile($applicationId, $profileId);
@@ -305,19 +336,23 @@ class ApplicationAdminService
 
     public function revoke(int $applicationId, int $assignmentId, User $actor, array $auditContext = []): ApplicationAdminAssignment
     {
-        $this->assertRoot($actor);
+        $this->assertOwner($applicationId, $actor);
 
         $assignment = ApplicationAdminAssignment::query()
             ->where('application_id', $applicationId)
             ->whereKey($assignmentId)
             ->firstOrFail();
 
+        $target = User::query()->find($assignment->user_id);
+        if ($target && $this->isOwner($target, $applicationId)) {
+            throw new AuthorizationException('A identidade Owner é imutável e não pode ter o acesso revogado.');
+        }
+
         $assignment->forceFill([
             'status' => 'revoked',
             'revoked_at' => now(),
         ])->save();
 
-        $target = User::query()->find($assignment->user_id);
         $this->recordAudit($applicationId, $actor, $target, 'admin_access_revoked', [
             'assignment_id' => $assignment->id,
             'profile_id' => $assignment->profile_id,
@@ -344,6 +379,22 @@ class ApplicationAdminService
             ])
             ->latest('id')
             ->paginate(max(1, min($perPage, 100)));
+    }
+
+    public function auditAction(
+        int $applicationId,
+        User $actor,
+        ?User $target,
+        string $action,
+        array $metadata = [],
+        array $auditContext = [],
+    ): void {
+        $this->recordAudit($applicationId, $actor, $target, $action, $metadata, $auditContext);
+    }
+
+    public function assertOwnerAuthority(int $applicationId, User $actor): void
+    {
+        $this->assertOwner($applicationId, $actor);
     }
 
     private function activeAssignment(User $user, int $applicationId): ?ApplicationAdminAssignment
@@ -382,10 +433,10 @@ class ApplicationAdminService
         return $permissions;
     }
 
-    private function assertRoot(User $actor): void
+    private function assertOwner(int $applicationId, User $actor): void
     {
-        if (! $this->isRoot($actor)) {
-            throw new AuthorizationException('Somente o Super Administrador raiz pode gerenciar perfis e privilégios.');
+        if (! $this->isOwner($actor, $applicationId)) {
+            throw new AuthorizationException('Somente o Owner da aplicação pode gerenciar perfis e privilégios administrativos.');
         }
     }
 

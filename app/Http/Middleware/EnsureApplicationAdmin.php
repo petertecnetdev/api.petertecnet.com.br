@@ -17,18 +17,6 @@ class EnsureApplicationAdmin
     {
         $user = $request->user('api') ?? $request->user();
         $applicationId = (int) $request->attributes->get('app_id');
-        $applicationSlug = strtolower(trim((string) $request->attributes->get('application_slug')));
-
-        // Esta aplicação mantém a administração operacional exclusivamente na conta raiz.
-        // As demais aplicações continuam usando os perfis administrativos delegáveis existentes.
-        if ($applicationSlug === 'cutinapp' && (! $user || ! $this->service->isRoot($user))) {
-            return response()->json([
-                'success' => false,
-                'message' => 'O Admin Center desta aplicação é exclusivo da Peter Tecnet.',
-                'code' => 'APPLICATION_ADMIN_ROOT_ONLY',
-                'request_id' => $request->attributes->get('request_id'),
-            ], 403);
-        }
 
         $authorized = $user && $applicationId > 0 && (
             $permission
@@ -44,6 +32,12 @@ class EnsureApplicationAdmin
                 'request_id' => $request->attributes->get('request_id'),
             ], 403);
         }
+
+        $request->attributes->set(
+            'admin_authority',
+            $this->service->isOwner($user, $applicationId) ? 'owner' : 'delegated_admin',
+        );
+        $request->attributes->set('admin_scope', 'global_application');
 
         return $next($request);
     }

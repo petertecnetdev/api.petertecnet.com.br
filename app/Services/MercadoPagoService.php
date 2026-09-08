@@ -38,8 +38,6 @@ class MercadoPagoService
         $response = $this->postPayment($sellerAccessToken, $payload, $idempotencyKey);
         if ($response->successful()) return $response->json();
 
-        // When seller and platform are the same provider account there is no
-        // marketplace split to perform, so retry without application_fee.
         if (array_key_exists('application_fee',$payload) && $this->isApplicationFeeNotAllowed($response->json()) && $this->sellerIsPlatformAccount($sellerAccessToken)) {
             unset($payload['application_fee']); data_set($payload,'metadata.settlement_mode','same_account');
             $retry = $this->postPayment($sellerAccessToken,$payload,$idempotencyKey.'-same-account');
@@ -53,6 +51,21 @@ class MercadoPagoService
     {
         $response=Http::acceptJson()->withToken($sellerAccessToken)->timeout(20)->get($this->baseUrl.'/v1/payments/'.rawurlencode($paymentId));
         if(!$response->successful())throw new RuntimeException('Não foi possível consultar o pagamento no Mercado Pago.');return$response->json();
+    }
+
+    public function refundPayment(string $sellerAccessToken, string $paymentId, string $idempotencyKey): array
+    {
+        $response = Http::acceptJson()
+            ->withToken($sellerAccessToken)
+            ->withHeaders(['X-Idempotency-Key' => $idempotencyKey])
+            ->timeout(30)
+            ->post($this->baseUrl.'/v1/payments/'.rawurlencode($paymentId).'/refunds', []);
+
+        if (! $response->successful()) {
+            throw new RuntimeException('Mercado Pago recusou o reembolso: '.$response->body());
+        }
+
+        return $response->json();
     }
 
     public function validateWebhookSignature(?string $xSignature,?string $xRequestId,?string $dataId):bool

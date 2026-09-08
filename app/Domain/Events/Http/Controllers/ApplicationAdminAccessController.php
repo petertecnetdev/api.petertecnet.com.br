@@ -2,6 +2,7 @@
 
 namespace App\Domain\Events\Http\Controllers;
 
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use App\Models\EventPass;
 use App\Support\ApplicationContext;
@@ -10,8 +11,10 @@ use Illuminate\Http\Request;
 
 final class ApplicationAdminAccessController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context)
-    {
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ApplicationAdminService $admin,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -68,18 +71,50 @@ final class ApplicationAdminAccessController extends Controller
             'reason' => ['required', 'string', 'max:500'],
         ]);
 
+        $before = [
+            'status' => $model->status,
+            'checked_in_at' => $model->checked_in_at,
+            'checked_in_by' => $model->checked_in_by,
+        ];
+
         $model->forceFill([
             'status' => 'cancelled',
             'checked_in_at' => null,
             'checked_in_by' => null,
         ])->save();
 
+        $fresh = $model->fresh()->load(['ticket', 'event.production', 'user']);
+
+        $this->admin->auditAction($this->context->id(), $request->user(), $fresh->user, 'admin_pass_invalidated', [
+            'pass_id' => $fresh->id,
+            'ticket_id' => $fresh->ticket_id,
+            'event_id' => $fresh->event_id,
+            'reason' => $data['reason'],
+            'before' => $before,
+            'after' => [
+                'status' => $fresh->status,
+                'checked_in_at' => $fresh->checked_in_at,
+                'checked_in_by' => $fresh->checked_in_by,
+            ],
+        ], $this->auditContext($request));
+
         return response()->json([
             'success' => true,
             'scope' => 'global_application',
             'message' => 'Ingresso invalidado administrativamente.',
             'reason' => $data['reason'],
-            'data' => $model->fresh()->load(['ticket', 'event.production', 'user']),
+            'data' => $fresh,
         ]);
+    }
+
+    private function auditContext(Request $request): array
+    {
+        return [
+            'request_id' => $request->attributes->get('request_id') ?: $request->header('X-Request-ID'),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'authority' => $request->attributes->get('admin_authority'),
+            'scope' => $request->attributes->get('admin_scope'),
+        ];
     }
 }

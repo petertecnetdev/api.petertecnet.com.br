@@ -2,16 +2,20 @@
 
 namespace App\Domain\Platform\Http\Controllers;
 
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use App\Models\Production;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 final class ApplicationAdminProductionController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context)
-    {
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ApplicationAdminService $admin,
+    ) {
     }
 
     public function index(Request $request): JsonResponse
@@ -64,12 +68,31 @@ final class ApplicationAdminProductionController extends Controller
             'is_featured' => ['sometimes', 'boolean'],
         ]);
 
+        $before = Arr::only($model->toArray(), array_keys($data));
         $model->fill($data)->save();
+        $fresh = $model->fresh()->load('user:id,first_name,last_name,email')->loadCount(['events', 'employers']);
+
+        $this->admin->auditAction($this->context->id(), $request->user(), $model->user, 'admin_production_updated', [
+            'production_id' => $model->id,
+            'before' => $before,
+            'after' => Arr::only($fresh->toArray(), array_keys($data)),
+        ], $this->auditContext($request));
 
         return response()->json([
             'success' => true,
             'scope' => 'global_application',
-            'data' => $model->fresh()->load('user:id,first_name,last_name,email')->loadCount(['events', 'employers']),
+            'data' => $fresh,
         ]);
+    }
+
+    private function auditContext(Request $request): array
+    {
+        return [
+            'request_id' => $request->attributes->get('request_id') ?: $request->header('X-Request-ID'),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'authority' => $request->attributes->get('admin_authority'),
+            'scope' => $request->attributes->get('admin_scope'),
+        ];
     }
 }
