@@ -157,16 +157,16 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
             'platform_collection_fee_rate_gap_to_break_even' => 0.0,
             'platform_collection_sustainable' => true,
             'checkout_recovery_attempts' => 20,
-            'checkout_recovered_orders' => 4,
-            'recovered_platform_revenue' => 24.0,
+            'checkout_recovered_orders' => 2,
+            'recovered_platform_revenue' => 40.0,
             'gross_at_risk' => 300.0,
         ]], ['pix' => 1.0]);
 
         self::assertCount(1, $result);
-        self::assertSame(20.0, $result[0]['checkout_recovery_conversion_rate']);
-        self::assertSame(16.67, $result[0]['checkout_recovery_break_even_conversion_rate']);
-        self::assertSame(3.33, $result[0]['checkout_recovery_conversion_safety_margin']);
-        self::assertSame(20.0, $result[0]['recovery_roi_percent']);
+        self::assertSame(10.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(5.0, $result[0]['checkout_recovery_break_even_conversion_rate']);
+        self::assertSame(5.0, $result[0]['checkout_recovery_conversion_safety_margin']);
+        self::assertSame(100.0, $result[0]['recovery_roi_percent']);
         self::assertSame('maintain_and_monitor', $result[0]['recovery_decision']);
     }
 
