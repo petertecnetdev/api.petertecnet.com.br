@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Events\Http\Controllers\EventAgendaController;
+use App\Domain\Events\Http\Controllers\RideController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -25,4 +26,19 @@ Route::prefix('v1/apps/{application}')
             ->middleware('throttle:60,1');
         Route::delete('/event-agenda/items/{scheduleId}', [EventAgendaController::class, 'destroy'])
             ->whereNumber('scheduleId');
+
+        Route::get('/events/{eventId}/rides', [RideController::class, 'index'])
+            ->whereNumber('eventId');
+        Route::post('/events/{eventId}/rides', [RideController::class, 'store'])
+            ->whereNumber('eventId')
+            ->middleware('throttle:20,1');
+        Route::post('/rides/{rideId}/requests', [RideController::class, 'requestSeat'])
+            ->whereNumber('rideId')
+            ->middleware('throttle:30,1');
+        Route::patch('/rides/{rideId}/requests/{requestId}', [RideController::class, 'respond'])
+            ->whereNumber('rideId')
+            ->whereNumber('requestId')
+            ->middleware('throttle:60,1');
+        Route::delete('/rides/{rideId}', [RideController::class, 'cancel'])
+            ->whereNumber('rideId');
     });
