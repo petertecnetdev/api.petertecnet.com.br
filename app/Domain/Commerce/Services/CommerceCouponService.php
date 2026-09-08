@@ -5,6 +5,7 @@ namespace App\Domain\Commerce\Services;
 use App\Models\CommerceCoupon;
 use App\Models\CommerceCouponRedemption;
 use App\Models\CommerceOrder;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 final class CommerceCouponService
@@ -20,7 +21,6 @@ final class CommerceCouponService
             ->where('app_id', $appId)
             ->where('code', $normalized)
             ->where('production_id', $productionId)
-            ->lockForUpdate()
             ->first();
 
         if (! $coupon || ! $coupon->is_active) {
@@ -97,21 +97,26 @@ final class CommerceCouponService
         $couponId = (int)data_get($order->metadata, 'coupon_id', 0);
         if ($couponId <= 0 || (float)$order->discount_amount <= 0) return;
 
-        $coupon = CommerceCoupon::query()->whereKey($couponId)->lockForUpdate()->first();
-        if (! $coupon) return;
+        DB::transaction(function () use ($order, $couponId): void {
+            $existing = CommerceCouponRedemption::query()
+                ->where('coupon_id', $couponId)
+                ->where('order_id', $order->id)
+                ->lockForUpdate()
+                ->first();
+            if ($existing) return;
 
-        $created = CommerceCouponRedemption::query()->firstOrCreate(
-            ['coupon_id' => $coupon->id, 'order_id' => $order->id],
-            [
+            $coupon = CommerceCoupon::query()->whereKey($couponId)->lockForUpdate()->first();
+            if (! $coupon) return;
+
+            CommerceCouponRedemption::create([
                 'app_id' => $order->app_id,
+                'coupon_id' => $coupon->id,
+                'order_id' => $order->id,
                 'user_id' => $order->user_id,
                 'discount_amount' => $order->discount_amount,
                 'redeemed_at' => now(),
-            ]
-        );
-
-        if ($created->wasRecentlyCreated) {
+            ]);
             $coupon->increment('uses_count');
-        }
+        });
     }
 }
