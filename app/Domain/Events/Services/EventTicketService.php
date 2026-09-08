@@ -6,12 +6,14 @@ use App\Models\Event;
 use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 final class EventTicketService
 {
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly TicketSalesCutoffService $cutoffs,
+        private readonly TicketSimilarityService $similarity,
     ) {}
 
     public function listForEvent(mixed $user, int $eventId): array
@@ -19,13 +21,67 @@ final class EventTicketService
         $event = $this->ownedEvent($user, $eventId);
 
         return [
-            'event' => $event->only(['id', 'title', 'slug', 'is_published', 'is_cancelled']),
+            'event' => $event->only(['id', 'title', 'slug', 'start_date', 'end_date', 'is_published', 'is_cancelled']),
             'tickets' => Ticket::query()
                 ->where('app_id', $this->context->id())
                 ->where('event_id', $event->id)
                 ->withCount('passes')
                 ->orderBy('created_at')
                 ->get(),
+        ];
+    }
+
+    public function similarTickets(mixed $user, int $ticketId): array
+    {
+        $source = $this->ownedTicket($user, $ticketId)
+            ->loadMissing('event')
+            ->loadCount('passes');
+        $admin = $this->isAdmin($user);
+
+        $candidates = Ticket::query()
+            ->where('app_id', $this->context->id())
+            ->whereKeyNot($source->id)
+            ->where('event_id', '!=', $source->event_id)
+            ->whereHas('event', function ($query) {
+                $query->where('is_cancelled', false)
+                    ->where(function ($events) {
+                        $events->whereNull('end_date')->orWhere('end_date', '>', now());
+                    });
+            })
+            ->whereHas('event.production', function ($query) use ($user, $admin) {
+                $query->where('app_id', $this->context->id());
+                if (! $admin) {
+                    $query->where('user_id', (int) $user->id);
+                }
+            })
+            ->with(['event' => function ($query) {
+                $query->select(['id', 'production_id', 'title', 'slug', 'start_date', 'end_date', 'is_published', 'is_cancelled']);
+            }])
+            ->withCount('passes')
+            ->get()
+            ->map(function (Ticket $candidate) use ($source) {
+                $match = $this->similarity->compare($source, $candidate);
+                if (! $match['similar']) {
+                    return null;
+                }
+
+                $candidate->setAttribute('similarity_score', $match['score']);
+                $candidate->setAttribute('similarity_reasons', $match['reasons']);
+
+                return $candidate;
+            })
+            ->filter()
+            ->sortBy([
+                ['similarity_score', 'desc'],
+                ['event.start_date', 'asc'],
+                ['id', 'asc'],
+            ])
+            ->values();
+
+        return [
+            'source_ticket' => $source,
+            'similar_tickets' => $candidates,
+            'minimum_similarity_score' => TicketSimilarityService::MINIMUM_SCORE,
         ];
     }
 
@@ -139,35 +195,69 @@ final class EventTicketService
     {
         return DB::transaction(function () use ($user, $ticketId, $data) {
             $ticket = $this->ownedTicket($user, $ticketId, true);
-            $issued = $ticket->passes()->count();
+            [$payload] = $this->prepareUpdatePayload($ticket, $data);
+            $ticket->update($payload);
 
-            if (isset($data['quantity'])) {
-                abort_if((int) $data['quantity'] < $issued, 422, "A quantidade não pode ser menor que os {$issued} ingressos já emitidos.");
-            }
+            return $ticket->fresh()->loadCount('passes');
+        }, 3);
+    }
 
-            if (array_key_exists('price', $data)) {
-                $price = round((float) $data['price'], 2);
-                $data['type'] = $price > 0 ? 'paid' : 'courtesy';
-                if ($price <= 0) {
-                    $data['ticket_type'] = 'courtesy';
+    public function bulkUpdateTickets(mixed $user, array $data): array
+    {
+        $ticketIds = collect($data['ticket_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $updates = collect($data)->except('ticket_ids')->all();
+
+        $editable = [
+            'name',
+            'quantity',
+            'price',
+            'ticket_type',
+            'sales_cutoff_mode',
+            'sales_cutoff_offset_minutes',
+            'limit_date',
+            'description',
+        ];
+        $hasChange = collect($editable)->contains(fn ($field) => array_key_exists($field, $updates));
+        if (! $hasChange) {
+            throw ValidationException::withMessages([
+                'ticket_ids' => ['Selecione pelo menos um campo para alterar nos ingressos.'],
+            ]);
+        }
+
+        return DB::transaction(function () use ($user, $ticketIds, $updates) {
+            $updated = collect();
+            $adjustedLimitDates = collect();
+
+            foreach ($ticketIds as $ticketId) {
+                $ticket = $this->ownedTicket($user, $ticketId, true);
+                [$payload, $adjusted] = $this->prepareUpdatePayload($ticket, $updates);
+                $ticket->update($payload);
+                $fresh = $ticket->fresh()->load(['event'])->loadCount('passes');
+                $updated->push($fresh);
+
+                if ($adjusted) {
+                    $adjustedLimitDates->push([
+                        'event_id' => $ticket->event_id,
+                        'ticket_id' => $ticket->id,
+                        'reason' => 'event_end',
+                    ]);
                 }
             }
 
-            if (
-                array_key_exists('sales_cutoff_mode', $data)
-                || array_key_exists('sales_cutoff_offset_minutes', $data)
-                || array_key_exists('limit_date', $data)
-            ) {
-                $rule = $this->cutoffs->ruleFor($data, null, $ticket->event);
-                $cutoff = $this->cutoffs->cutoffForEvent($ticket->event, $rule);
-                $data['sales_cutoff_mode'] = $rule['mode'];
-                $data['sales_cutoff_offset_minutes'] = $rule['offset_minutes'];
-                $data['limit_date'] = $cutoff['limit_date'];
-            }
-
-            $ticket->update($data);
-
-            return $ticket->fresh()->loadCount('passes');
+            return [
+                'message' => sprintf(
+                    '%d ingresso(s) atualizado(s) em %d evento(s).',
+                    $updated->count(),
+                    $updated->pluck('event_id')->unique()->count()
+                ),
+                'tickets' => $updated->values(),
+                'updated_count' => $updated->count(),
+                'event_count' => $updated->pluck('event_id')->unique()->count(),
+                'adjusted_limit_dates' => $adjustedLimitDates->values(),
+            ];
         }, 3);
     }
 
@@ -180,6 +270,58 @@ final class EventTicketService
             }
             $ticket->delete();
         }, 3);
+    }
+
+    private function prepareUpdatePayload(Ticket $ticket, array $data): array
+    {
+        $payload = [];
+        $adjusted = false;
+
+        foreach (['name', 'quantity', 'price', 'ticket_type', 'description'] as $field) {
+            if (array_key_exists($field, $data)) {
+                $payload[$field] = $data[$field];
+            }
+        }
+
+        if (array_key_exists('name', $payload)) {
+            $payload['name'] = trim((string) $payload['name']);
+        }
+
+        if (array_key_exists('quantity', $payload)) {
+            $issued = $ticket->passes()->count();
+            if ((int) $payload['quantity'] < $issued) {
+                $eventTitle = $ticket->event?->title ?: "evento #{$ticket->event_id}";
+                throw ValidationException::withMessages([
+                    'quantity' => ["O ingresso {$ticket->name} de {$eventTitle} já possui {$issued} emissão(ões). A quantidade não pode ser menor que esse total."],
+                ]);
+            }
+        }
+
+        if (array_key_exists('price', $payload)) {
+            $price = round((float) $payload['price'], 2);
+            $payload['price'] = $price;
+            $payload['type'] = $price > 0 ? 'paid' : 'courtesy';
+            if ($price <= 0) {
+                $payload['ticket_type'] = 'courtesy';
+            } elseif (($payload['ticket_type'] ?? $ticket->ticket_type) === 'courtesy') {
+                $payload['ticket_type'] = 'standard';
+            }
+        }
+
+        $changesCutoff = array_key_exists('sales_cutoff_mode', $data)
+            || array_key_exists('sales_cutoff_offset_minutes', $data)
+            || array_key_exists('limit_date', $data);
+
+        if ($changesCutoff) {
+            $rule = $this->cutoffs->ruleFor($data, null, $ticket->event);
+            $cutoff = $this->cutoffs->cutoffForEvent($ticket->event, $rule);
+            $payload['sales_cutoff_mode'] = $rule['mode'];
+            $payload['sales_cutoff_offset_minutes'] = $rule['offset_minutes'];
+            $payload['limit_date'] = $cutoff['limit_date'];
+            $adjusted = (bool) $cutoff['clamped_to_event_end'];
+        }
+
+        return [$payload, $adjusted];
     }
 
     private function payloadForEvent(
@@ -255,7 +397,7 @@ final class EventTicketService
             ->where('app_id', $this->context->id())
             ->with('production')
             ->findOrFail($id);
-        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        $admin = $this->isAdmin($user);
 
         abort_unless(
             $event->production && (int) $event->production->app_id === $this->context->id(),
@@ -286,5 +428,10 @@ final class EventTicketService
         $this->ownedEvent($user, (int) $ticket->event_id);
 
         return $ticket;
+    }
+
+    private function isAdmin(mixed $user): bool
+    {
+        return (bool) ($user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador'));
     }
 }
