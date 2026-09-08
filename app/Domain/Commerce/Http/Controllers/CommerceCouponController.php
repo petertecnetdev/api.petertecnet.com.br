@@ -46,7 +46,7 @@ final class CommerceCouponController extends Controller
     {
         $this->ownedProduction($request, $organizationId);
         $coupon = $this->ownedCoupon($organizationId, $couponId);
-        $data = $this->validated($request, $organizationId, true);
+        $data = $this->validated($request, $organizationId, true, $coupon);
         if ($request->filled('code')) $data['code'] = $this->uniqueCode($request->input('code'), $coupon->id);
         $coupon->update($data);
         return response()->json(['coupon' => $coupon->fresh()->load('event:id,title')]);
@@ -89,7 +89,7 @@ final class CommerceCouponController extends Controller
         ]]);
     }
 
-    private function validated(Request $request, int $organizationId, bool $partial = false): array
+    private function validated(Request $request, int $organizationId, bool $partial = false, ?CommerceCoupon $existing = null): array
     {
         $prefix = $partial ? 'sometimes|' : 'required|';
         $data = $request->validate([
@@ -102,17 +102,29 @@ final class CommerceCouponController extends Controller
             'max_uses' => 'nullable|integer|min:1|max:1000000',
             'max_uses_per_user' => 'nullable|integer|min:1|max:1000',
             'starts_at' => 'nullable|date',
-            'expires_at' => 'nullable|date|after:starts_at',
+            'expires_at' => 'nullable|date',
             'is_active' => 'sometimes|boolean',
         ]);
-        if (($data['discount_type'] ?? null) === 'percentage' && (float)($data['discount_value'] ?? 0) > 100) {
+
+        $discountType = $data['discount_type'] ?? $existing?->discount_type;
+        $discountValue = array_key_exists('discount_value', $data) ? (float)$data['discount_value'] : (float)($existing?->discount_value ?? 0);
+        if ($discountType === 'percentage' && $discountValue > 100) {
             abort(422, 'O desconto percentual não pode ultrapassar 100%.');
         }
+
+        $startsAt = array_key_exists('starts_at', $data) ? $data['starts_at'] : $existing?->starts_at;
+        $expiresAt = array_key_exists('expires_at', $data) ? $data['expires_at'] : $existing?->expires_at;
+        if ($startsAt && $expiresAt && now()->parse($expiresAt)->lt(now()->parse($startsAt))) {
+            abort(422, 'A validade final do cupom deve ser posterior ao início.');
+        }
+
         if (!empty($data['event_id'])) {
             Event::query()->where('app_id',$this->context->id())->where('production_id',$organizationId)->findOrFail($data['event_id']);
         }
-        $data['minimum_subtotal'] = $data['minimum_subtotal'] ?? 0;
-        $data['max_uses_per_user'] = $data['max_uses_per_user'] ?? 1;
+        if (! $partial) {
+            $data['minimum_subtotal'] = $data['minimum_subtotal'] ?? 0;
+            $data['max_uses_per_user'] = $data['max_uses_per_user'] ?? 1;
+        }
         return $data;
     }
 
@@ -121,7 +133,7 @@ final class CommerceCouponController extends Controller
         $base = strtoupper(trim((string)$requested));
         if ($base === '') $base = 'CUT'.strtoupper(Str::random(7));
         $code = $base; $suffix = 1;
-        while (CommerceCoupon::query()->where('app_id',$this->context->id())->where('code',$code)->when($ignoreId,fn($q)=>$q->whereKeyNot($ignoreId))->exists()) {
+        while (CommerceCoupon::query()->where('app_id',$this->context->id())->where('code',$code)->when($ignoreId,fn($q)=>$q->where('id','<>',$ignoreId))->exists()) {
             $code = substr($base,0,32).'-'.$suffix++;
         }
         return $code;
