@@ -216,6 +216,49 @@ final class MarketDataController extends Controller
         );
     }
 
+    public function airdropIntelligence(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'capital_usdt' => ['nullable', 'numeric', 'min:1', 'max:10000000'],
+            'risk_profile' => ['nullable', 'in:conservador,moderado,agressivo'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->airdrops->intelligence(
+                (int) $request->user()->id,
+                (float) ($data['capital_usdt'] ?? 280),
+                (string) ($data['risk_profile'] ?? 'moderado')
+            ),
+        ]);
+    }
+
+    public function airdropWalletEligibility(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'address' => ['required', 'string', 'max:255'],
+        ]);
+
+        return $this->airdropResponse(fn () => $this->airdrops->walletEligibility((int) $request->user()->id, $data['address']));
+    }
+
+    public function airdropWatchlist(Request $request): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $this->airdrops->watchlist((int) $request->user()->id)]);
+    }
+
+    public function saveAirdropWatchlist(Request $request, string $slug): JsonResponse
+    {
+        $data = $request->validate(['saved' => ['required', 'boolean']]);
+
+        return $this->airdropResponse(fn () => $this->airdrops->setWatchlist((int) $request->user()->id, $slug, (bool) $data['saved']));
+    }
+
+    public function airdropCalendar(Request $request): JsonResponse
+    {
+        return response()->json(['success' => true, 'data' => $this->airdrops->calendar((int) $request->user()->id)]);
+    }
+
     public function airdropActionPolicy(Request $request, string $action): JsonResponse
     {
         return response()->json([
