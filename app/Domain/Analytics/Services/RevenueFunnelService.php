@@ -87,6 +87,9 @@ final class RevenueFunnelService
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN platform_fee ELSE 0 END), 0) platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN processor_fee ELSE 0 END), 0) processor_fees")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN producer_net ELSE 0 END), 0) organization_net_before_processing")
+            ->selectRaw("SUM(CASE WHEN recovery_started_at IS NOT NULL THEN 1 ELSE 0 END) recovery_attempts")
+            ->selectRaw("SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN 1 ELSE 0 END) recovered_orders")
+            ->selectRaw("COALESCE(SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN platform_fee ELSE 0 END), 0) recovered_platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
             ->groupByRaw($normalizedPaymentMethodSql)
             ->get()
@@ -95,6 +98,9 @@ final class RevenueFunnelService
                 $paidForMethod = (int) $row->orders_paid;
                 $grossForMethod = (float) $row->gross_revenue;
                 $processorFeesForMethod = (float) $row->processor_fees;
+                $recoveryAttemptsForMethod = (int) $row->recovery_attempts;
+                $recoveredOrdersForMethod = (int) $row->recovered_orders;
+                $recoveredPlatformRevenueForMethod = (float) $row->recovered_platform_revenue;
                 $method = (string) $row->payment_method;
                 $profitability = $profitabilityByPaymentMethod[$method] ?? $this->emptyProfitability();
 
@@ -107,6 +113,15 @@ final class RevenueFunnelService
                     'platform_revenue' => round((float) $row->platform_revenue, 2),
                     'processor_fees' => round($processorFeesForMethod, 2),
                     'processor_fee_rate' => $grossForMethod > 0 ? round(($processorFeesForMethod / $grossForMethod) * 100, 2) : 0.0,
+                    'checkout_recovery_attempts' => $recoveryAttemptsForMethod,
+                    'checkout_recovered_orders' => $recoveredOrdersForMethod,
+                    'checkout_recovery_conversion_rate' => $recoveryAttemptsForMethod > 0
+                        ? round(($recoveredOrdersForMethod / $recoveryAttemptsForMethod) * 100, 2)
+                        : 0.0,
+                    'recovered_platform_revenue' => round($recoveredPlatformRevenueForMethod, 2),
+                    'recovered_platform_revenue_per_attempt' => $recoveryAttemptsForMethod > 0
+                        ? round($recoveredPlatformRevenueForMethod / $recoveryAttemptsForMethod, 2)
+                        : 0.0,
                     'processor_fees_borne_by_platform' => $profitability['processor_fees_borne_by_platform'],
                     'processor_fees_borne_by_organization' => $profitability['processor_fees_borne_by_organization'],
                     'organization_net_after_processing' => $profitability['organization_net_after_processing'],
