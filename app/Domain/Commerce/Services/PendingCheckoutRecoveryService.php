@@ -14,8 +14,13 @@ final class PendingCheckoutRecoveryService
             ->first();
     }
 
-    public function recover(int $appId, int $userId, int $orderId): ?CommerceOrder
-    {
+    public function recover(
+        int $appId,
+        int $userId,
+        int $orderId,
+        string $channel = 'in_app',
+        ?float $attemptCost = 0.0,
+    ): ?CommerceOrder {
         $order = $this->recoverableQuery($appId, $userId)
             ->whereKey($orderId)
             ->first();
@@ -25,7 +30,22 @@ final class PendingCheckoutRecoveryService
         }
 
         if ($order->recovery_started_at === null) {
-            $order->forceFill(['recovery_started_at' => now()])->saveQuietly();
+            $normalizedChannel = $this->normalizeChannel($channel);
+            $normalizedCost = $attemptCost !== null ? max($attemptCost, 0.0) : null;
+            $metadata = is_array($order->metadata) ? $order->metadata : [];
+            $metadata['recovery'] = array_merge(
+                is_array($metadata['recovery'] ?? null) ? $metadata['recovery'] : [],
+                [
+                    'channel' => $normalizedChannel,
+                    'attempt_cost' => $normalizedCost,
+                    'started_at' => now()->toIso8601String(),
+                ],
+            );
+
+            $order->forceFill([
+                'recovery_started_at' => now(),
+                'metadata' => $metadata,
+            ])->saveQuietly();
             $order->refresh();
         }
 
@@ -39,10 +59,14 @@ final class PendingCheckoutRecoveryService
                 'payment_recovery_eligible' => false,
                 'payment_expires_at' => null,
                 'payment_recovery_seconds_remaining' => 0,
+                'payment_recovery_channel' => null,
+                'payment_recovery_attempt_cost' => null,
             ];
         }
 
         $expiresAt = $order->expires_at;
+        $metadata = is_array($order->metadata) ? $order->metadata : [];
+        $recovery = is_array($metadata['recovery'] ?? null) ? $metadata['recovery'] : [];
 
         return [
             'payment_recovery_eligible' => true,
@@ -50,6 +74,10 @@ final class PendingCheckoutRecoveryService
             'payment_recovery_seconds_remaining' => $expiresAt
                 ? max(0, now()->diffInSeconds($expiresAt, false))
                 : 0,
+            'payment_recovery_channel' => $recovery['channel'] ?? null,
+            'payment_recovery_attempt_cost' => isset($recovery['attempt_cost']) && is_numeric($recovery['attempt_cost'])
+                ? round(max((float) $recovery['attempt_cost'], 0.0), 4)
+                : null,
         ];
     }
 
@@ -76,5 +104,15 @@ final class PendingCheckoutRecoveryService
                         ->latest('id');
                 },
             ]);
+    }
+
+    private function normalizeChannel(string $channel): string
+    {
+        $channel = strtolower(trim($channel));
+        if ($channel === '' || ! preg_match('/^[a-z0-9][a-z0-9_-]{0,39}$/', $channel)) {
+            return 'unknown';
+        }
+
+        return $channel;
     }
 }
