@@ -34,6 +34,7 @@ return [
         'Content-Type',
         'Origin',
         'Referer',
+        'Idempotency-Key',
         'X-Requested-With',
         'X-Request-ID',
         'X-App-ID',
