@@ -50,7 +50,13 @@ return [
         'X-Correlation-ID',
         'X-Parent-Interaction-ID',
     ],
-    'exposed_headers' => ['X-Request-ID'],
+    'exposed_headers' => [
+        'X-Request-ID',
+        'Server-Timing',
+        'Idempotency-Status',
+        'Idempotency-Replayed',
+        'Retry-After',
+    ],
     'max_age' => 600,
     'supports_credentials' => false,
 ];
