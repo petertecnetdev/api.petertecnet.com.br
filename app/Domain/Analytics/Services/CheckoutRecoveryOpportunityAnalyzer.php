@@ -14,7 +14,8 @@ final class CheckoutRecoveryOpportunityAnalyzer
         iterable $orders,
         ?CarbonInterface $now = null,
         array $recoveryProbabilityByPaymentMethod = [],
-        ?float $fallbackRecoveryProbability = null
+        ?float $fallbackRecoveryProbability = null,
+        array $recoveryProbabilityBySegment = []
     ): array
     {
         $now ??= now();
@@ -29,16 +30,22 @@ final class CheckoutRecoveryOpportunityAnalyzer
             $platformRevenue = (float) ($order->platform_fee ?? 0);
             $recoveryStarted = $order->recovery_started_at !== null;
             $ageBucket = $this->ageBucket($order->created_at ?? null, $now);
+            $segmentKey = $paymentMethod.'|'.$ageBucket;
+            $hasSegmentProbability = array_key_exists($segmentKey, $recoveryProbabilityBySegment);
             $hasMethodProbability = array_key_exists($paymentMethod, $recoveryProbabilityByPaymentMethod);
-            $methodProbability = $hasMethodProbability
-                ? min(max((float) $recoveryProbabilityByPaymentMethod[$paymentMethod], 0.0), 1.0)
-                : $fallbackRecoveryProbability;
+            $methodProbability = $hasSegmentProbability
+                ? min(max((float) $recoveryProbabilityBySegment[$segmentKey], 0.0), 1.0)
+                : ($hasMethodProbability
+                    ? min(max((float) $recoveryProbabilityByPaymentMethod[$paymentMethod], 0.0), 1.0)
+                    : $fallbackRecoveryProbability);
             $expectedPlatformRevenue = $methodProbability !== null
                 ? $platformRevenue * $methodProbability
                 : $platformRevenue;
-            $probabilitySource = $hasMethodProbability
-                ? 'payment_method_history'
-                : ($fallbackRecoveryProbability !== null ? 'overall_history' : 'no_history');
+            $probabilitySource = $hasSegmentProbability
+                ? 'payment_method_age_history'
+                : ($hasMethodProbability
+                    ? 'payment_method_history'
+                    : ($fallbackRecoveryProbability !== null ? 'overall_history' : 'no_history'));
 
             $this->accumulate($summary, $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue);
 
