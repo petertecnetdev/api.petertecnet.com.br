@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Events\Services\EventTicketService;
+use App\Domain\Events\Services\TicketSalesCutoffService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
@@ -28,6 +29,8 @@ final class EventTicketController extends Controller
             'quantity' => 'nullable|required_without:source_ticket_id|integer|min:1|max:100000',
             'price' => 'nullable|required_without:source_ticket_id|numeric|min:0|max:999999.99',
             'ticket_type' => 'nullable|in:courtesy,standard,vip,premium,student,half,full',
+            'sales_cutoff_mode' => 'nullable|in:'.implode(',', TicketSalesCutoffService::MODES),
+            'sales_cutoff_offset_minutes' => 'nullable|integer|min:0|max:525600',
             'limit_date' => 'nullable|date',
             'description' => 'nullable|string|max:5000',
         ]);
@@ -44,6 +47,8 @@ final class EventTicketController extends Controller
             'quantity' => 'sometimes|required|integer|min:1|max:100000',
             'price' => 'sometimes|required|numeric|min:0|max:999999.99',
             'ticket_type' => 'sometimes|nullable|in:courtesy,standard,vip,premium,student,half,full',
+            'sales_cutoff_mode' => 'sometimes|nullable|in:'.implode(',', TicketSalesCutoffService::MODES),
+            'sales_cutoff_offset_minutes' => 'sometimes|nullable|integer|min:0|max:525600',
             'limit_date' => 'sometimes|nullable|date',
             'description' => 'sometimes|nullable|string|max:5000',
         ]);
