@@ -61,19 +61,32 @@ final class ProfitabilityRiskPrioritizer
                 $recoveryRoi = $totalRecoveryCost !== null && $totalRecoveryCost > 0
                     ? ($recoveryNetContribution / $totalRecoveryCost) * 100
                     : null;
-                $recoveryRevenuePerAttempt = $attempts > 0
+                $recoveryContributionPerAttempt = $attempts > 0
                     ? $estimatedRecoveredContribution / $attempts
                     : 0.0;
                 $recoveryConversionRate = $attempts > 0
                     ? ($recoveredOrders / $attempts) * 100
                     : 0.0;
+                $recoveryContributionPerRecoveredOrder = $recoveredOrders > 0
+                    ? $estimatedRecoveredContribution / $recoveredOrders
+                    : null;
+                $breakEvenConversionRate = $attemptCost !== null
+                    && $attemptCost > 0
+                    && $recoveryContributionPerRecoveredOrder !== null
+                    && $recoveryContributionPerRecoveredOrder > 0
+                        ? min(($attemptCost / $recoveryContributionPerRecoveredOrder) * 100, 100.0)
+                        : null;
+                $conversionSafetyMargin = $breakEvenConversionRate !== null
+                    ? $recoveryConversionRate - $breakEvenConversionRate
+                    : null;
 
                 $minimumDecisionSample = 10;
+                $minimumScaleSafetyMargin = 10.0;
                 $recoveryDecision = 'insufficient_economic_data';
                 if ($attemptCost !== null && $attempts >= $minimumDecisionSample && $recoveryRoi !== null) {
                     $recoveryDecision = match (true) {
                         $recoveryRoi < 0 => 'reduce_or_pause',
-                        $recoveryRoi >= 100 => 'scale_carefully',
+                        $recoveryRoi >= 100 && $conversionSafetyMargin !== null && $conversionSafetyMargin >= $minimumScaleSafetyMargin => 'scale_carefully',
                         default => 'maintain_and_monitor',
                     };
                 } elseif ($attemptCost !== null) {
@@ -92,9 +105,12 @@ final class ProfitabilityRiskPrioritizer
                     'checkout_recovery_attempts' => $attempts,
                     'checkout_recovered_orders' => $recoveredOrders,
                     'checkout_recovery_conversion_rate' => round($recoveryConversionRate, 2),
+                    'checkout_recovery_break_even_conversion_rate' => $breakEvenConversionRate !== null ? round($breakEvenConversionRate, 2) : null,
+                    'checkout_recovery_conversion_safety_margin' => $conversionSafetyMargin !== null ? round($conversionSafetyMargin, 2) : null,
                     'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
                     'estimated_recovered_platform_contribution' => round($estimatedRecoveredContribution, 2),
-                    'recovery_contribution_per_attempt' => round($recoveryRevenuePerAttempt, 2),
+                    'recovery_contribution_per_attempt' => round($recoveryContributionPerAttempt, 2),
+                    'recovery_contribution_per_recovered_order' => $recoveryContributionPerRecoveredOrder !== null ? round($recoveryContributionPerRecoveredOrder, 2) : null,
                     'recovery_attempt_cost' => $attemptCost !== null ? round($attemptCost, 4) : null,
                     'recovery_cost_source' => $hasMethodCost
                         ? 'payment_method_config'
@@ -108,6 +124,7 @@ final class ProfitabilityRiskPrioritizer
                         : null,
                     'recovery_decision' => $recoveryDecision,
                     'recovery_decision_minimum_attempts' => $minimumDecisionSample,
+                    'recovery_scale_minimum_conversion_safety_margin' => $minimumScaleSafetyMargin,
                     'platform_collection_sustainable' => (bool) ($method['platform_collection_sustainable'] ?? true),
                 ];
             })
