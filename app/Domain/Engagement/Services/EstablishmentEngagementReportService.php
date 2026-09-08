@@ -39,20 +39,19 @@ final class EstablishmentEngagementReportService
         $issuedTickets = (int) (clone $validPasses)->count();
         $courtesies = (int) (clone $validPasses)->whereNull('commerce_order_item_id')->count();
 
-        $paidOrders = CommerceOrder::query()
+        $paidOrderIds = CommerceOrder::query()
             ->where('app_id', $application->id)
             ->where('production_id', $establishment->id)
-            ->where('status', 'paid');
-        $paidOrderIds = (clone $paidOrders)->pluck('id');
-        $paidOrdersCount = (int) (clone $paidOrders)->count();
-        $revenue = (float) (clone $paidOrders)->sum('total');
+            ->where('status', 'paid')
+            ->pluck('id');
 
-        $soldTickets = $paidOrderIds->isEmpty()
-            ? 0
-            : (int) CommerceOrderItem::query()
-                ->whereIn('order_id', $paidOrderIds)
-                ->whereNotNull('ticket_id')
-                ->sum('quantity');
+        $paidTicketItems = CommerceOrderItem::query()
+            ->whereIn('order_id', $paidOrderIds)
+            ->whereNotNull('ticket_id');
+
+        $soldTickets = $paidOrderIds->isEmpty() ? 0 : (int) (clone $paidTicketItems)->sum('quantity');
+        $revenue = $paidOrderIds->isEmpty() ? 0.0 : (float) (clone $paidTicketItems)->sum('subtotal');
+        $paidOrdersCount = $paidOrderIds->isEmpty() ? 0 : (int) (clone $paidTicketItems)->distinct()->count('order_id');
 
         $views = $eventIds->isEmpty()
             ? 0
@@ -103,7 +102,7 @@ final class EstablishmentEngagementReportService
 
         return [
             'subject' => $this->subject($establishment, $metrics),
-            'headline' => $this->headline($establishment, $metrics),
+            'headline' => $this->headline($metrics),
             'intro' => $this->intro($metrics, $topEvent),
             'metrics' => $metrics,
             'insights' => $this->insights($metrics, $nextEvent, $draftEvents),
@@ -117,9 +116,7 @@ final class EstablishmentEngagementReportService
 
     private function topEvent(Collection $events, Collection $eventIds): ?array
     {
-        if ($eventIds->isEmpty()) {
-            return null;
-        }
+        if ($eventIds->isEmpty()) return null;
 
         $row = EventPass::query()
             ->selectRaw('event_id, COUNT(*) as issued')
@@ -129,12 +126,9 @@ final class EstablishmentEngagementReportService
             ->orderByDesc('issued')
             ->first();
 
-        if (! $row) {
-            return null;
-        }
+        if (! $row) return null;
 
         $event = $events->firstWhere('id', (int) $row->event_id);
-
         return $event ? ['event' => $event, 'issued' => (int) $row->issued] : null;
     }
 
@@ -161,7 +155,7 @@ final class EstablishmentEngagementReportService
         if ($metrics['tickets_sold'] > 0) {
             $insights[] = ['type' => 'positive', 'title' => 'A plataforma já está gerando vendas', 'message' => 'Você já registrou '.$metrics['tickets_sold'].' ingresso(s) vendido(s) pela plataforma. Continue direcionando o público para o checkout para concentrar vendas e dados em um só lugar.'];
         } elseif ($metrics['events_published'] > 0) {
-            $insights[] = ['type' => 'opportunity', 'title' => 'Transforme visualizações em primeiras vendas', 'message' => 'Seus eventos já podem ser divulgados. Compartilhe o link da Cutinapp para que o público descubra o evento e conclua a compra diretamente pela plataforma.'];
+            $insights[] = ['type' => 'opportunity', 'title' => 'Transforme visualizações em primeiras vendas', 'message' => 'Seus eventos já podem ser divulgados. Compartilhe o link da plataforma para que o público descubra o evento e conclua a compra diretamente por lá.'];
         }
 
         if ($insights === []) {
@@ -173,23 +167,15 @@ final class EstablishmentEngagementReportService
 
     private function subject(Establishment $establishment, array $metrics): string
     {
-        if ($metrics['tickets_sold'] > 0) {
-            return $establishment->name.': veja suas vendas e próximos passos';
-        }
-
-        return $establishment->name.': veja como está sua produção na plataforma';
+        return $metrics['tickets_sold'] > 0
+            ? $establishment->name.': veja suas vendas e próximos passos'
+            : $establishment->name.': veja como está sua produção na plataforma';
     }
 
-    private function headline(Establishment $establishment, array $metrics): string
+    private function headline(array $metrics): string
     {
-        if ($metrics['tickets_sold'] > 0) {
-            return 'Sua produção está ganhando movimento';
-        }
-
-        if ($metrics['events_future'] > 0) {
-            return 'Sua agenda já está pronta para receber mais público';
-        }
-
+        if ($metrics['tickets_sold'] > 0) return 'Sua produção está ganhando movimento';
+        if ($metrics['events_future'] > 0) return 'Sua agenda já está pronta para receber mais público';
         return 'Vamos deixar sua produção ainda mais ativa';
     }
 
@@ -202,7 +188,6 @@ final class EstablishmentEngagementReportService
 
         $intro = $parts !== [] ? implode(', ', $parts).'.' : 'Reunimos os principais dados da sua produção para facilitar as próximas decisões.';
         if ($topEvent) $intro .= ' O evento com maior emissão de ingressos no momento é '.$topEvent['event']->title.'.';
-
         return $intro;
     }
 
@@ -221,10 +206,7 @@ final class EstablishmentEngagementReportService
     private function baseUrl(Application $application): string
     {
         $url = trim((string) $application->url);
-        if ($url === '') {
-            $url = 'https://'.$application->slug.'.petertecnet.com.br';
-        }
-
+        if ($url === '') $url = 'https://'.$application->slug.'.petertecnet.com.br';
         return rtrim($url, '/');
     }
 }
