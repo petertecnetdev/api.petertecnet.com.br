@@ -18,6 +18,13 @@ final class EventTicketController extends Controller
         );
     }
 
+    public function similar(Request $request, int $ticketId)
+    {
+        return response()->json(
+            $this->tickets->similarTickets($request->user(), $ticketId)
+        );
+    }
+
     public function store(Request $request)
     {
         $data = $request->validate([
@@ -38,6 +45,26 @@ final class EventTicketController extends Controller
         $result = $this->tickets->createForEvents($request->user(), $data);
 
         return response()->json($result['payload'], $result['status']);
+    }
+
+    public function bulkUpdate(Request $request)
+    {
+        $data = $request->validate([
+            'ticket_ids' => 'required|array|min:2|max:100',
+            'ticket_ids.*' => 'required|integer|distinct|exists:tickets,id',
+            'name' => 'sometimes|required|string|max:255',
+            'quantity' => 'sometimes|required|integer|min:1|max:100000',
+            'price' => 'sometimes|required|numeric|min:0|max:999999.99',
+            'ticket_type' => 'sometimes|nullable|in:courtesy,standard,vip,premium,student,half,full',
+            'sales_cutoff_mode' => 'sometimes|required|in:'.implode(',', TicketSalesCutoffService::MODES),
+            'sales_cutoff_offset_minutes' => 'sometimes|nullable|integer|min:0|max:525600',
+            'limit_date' => 'sometimes|nullable|date',
+            'description' => 'sometimes|nullable|string|max:5000',
+        ]);
+
+        return response()->json(
+            $this->tickets->bulkUpdateTickets($request->user(), $data)
+        );
     }
 
     public function update(Request $request, int $ticketId)
