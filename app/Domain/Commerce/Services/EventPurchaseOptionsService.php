@@ -103,7 +103,7 @@ final class EventPurchaseOptionsService
             ->where('slug', $slug)
             ->where('is_published', true)
             ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->where(fn ($query) => $query->where('is_private', false)->orWhereNull('is_private'))
             ->whereHas('production', fn ($query) => $query->where('app_id', $this->context->id()))
             ->firstOrFail();
     }
@@ -115,7 +115,7 @@ final class EventPurchaseOptionsService
             ->where('production_id', $event->production_id)
             ->where('is_published', true)
             ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))
             ->where(function ($q) {
                 $q->whereNull('end_date')->orWhere('end_date', '>', now());
             });
