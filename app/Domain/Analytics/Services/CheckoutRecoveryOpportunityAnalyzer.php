@@ -17,7 +17,9 @@ final class CheckoutRecoveryOpportunityAnalyzer
         ?float $fallbackRecoveryProbability = null,
         array $recoveryProbabilityBySegment = [],
         array $platformContributionRateByPaymentMethod = [],
-        ?float $fallbackPlatformContributionRate = null
+        ?float $fallbackPlatformContributionRate = null,
+        array $recoveryAttemptCostByPaymentMethod = [],
+        ?float $fallbackRecoveryAttemptCost = null
     ): array {
         $now ??= now();
         $summary = $this->emptySummary();
@@ -26,6 +28,9 @@ final class CheckoutRecoveryOpportunityAnalyzer
             : null;
         $fallbackPlatformContributionRate = $fallbackPlatformContributionRate !== null
             ? min((float) $fallbackPlatformContributionRate, 1.0)
+            : null;
+        $fallbackRecoveryAttemptCost = $fallbackRecoveryAttemptCost !== null
+            ? max((float) $fallbackRecoveryAttemptCost, 0.0)
             : null;
 
         foreach ($orders as $order) {
@@ -62,21 +67,65 @@ final class CheckoutRecoveryOpportunityAnalyzer
                 ? 'payment_method_history'
                 : ($fallbackPlatformContributionRate !== null ? 'overall_history' : 'no_history');
 
-            $this->accumulate($summary, $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue, $expectedPlatformContribution);
+            $hasMethodRecoveryCost = array_key_exists($paymentMethod, $recoveryAttemptCostByPaymentMethod);
+            $recoveryAttemptCost = $hasMethodRecoveryCost
+                ? max((float) $recoveryAttemptCostByPaymentMethod[$paymentMethod], 0.0)
+                : $fallbackRecoveryAttemptCost;
+            $estimatedRecoveryCost = $recoveryAttemptCost ?? 0.0;
+            $expectedNetPlatformContribution = $expectedPlatformContribution - $estimatedRecoveryCost;
+            $recoveryCostSource = $hasMethodRecoveryCost
+                ? 'payment_method_config'
+                : ($fallbackRecoveryAttemptCost !== null ? 'default_config' : 'not_configured');
+            $economicallyViable = $recoveryAttemptCost !== null
+                ? $expectedNetPlatformContribution > 0.0
+                : null;
+
+            $this->accumulate(
+                $summary,
+                $gross,
+                $platformRevenue,
+                $recoveryStarted,
+                $expectedPlatformRevenue,
+                $expectedPlatformContribution,
+                $estimatedRecoveryCost,
+                $expectedNetPlatformContribution
+            );
 
             if (! isset($summary['by_payment_method'][$paymentMethod])) {
                 $summary['by_payment_method'][$paymentMethod] = $this->emptyBucket();
                 $summary['by_payment_method'][$paymentMethod]['payment_method'] = $paymentMethod;
             }
-            $this->accumulate($summary['by_payment_method'][$paymentMethod], $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue, $expectedPlatformContribution);
+            $this->accumulate(
+                $summary['by_payment_method'][$paymentMethod],
+                $gross,
+                $platformRevenue,
+                $recoveryStarted,
+                $expectedPlatformRevenue,
+                $expectedPlatformContribution,
+                $estimatedRecoveryCost,
+                $expectedNetPlatformContribution
+            );
 
             if (! isset($summary['by_age_bucket'][$ageBucket])) {
                 $summary['by_age_bucket'][$ageBucket] = $this->emptyBucket();
                 $summary['by_age_bucket'][$ageBucket]['age_bucket'] = $ageBucket;
             }
-            $this->accumulate($summary['by_age_bucket'][$ageBucket], $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue, $expectedPlatformContribution);
+            $this->accumulate(
+                $summary['by_age_bucket'][$ageBucket],
+                $gross,
+                $platformRevenue,
+                $recoveryStarted,
+                $expectedPlatformRevenue,
+                $expectedPlatformContribution,
+                $estimatedRecoveryCost,
+                $expectedNetPlatformContribution
+            );
 
             if (! $recoveryStarted) {
+                $recommendedAction = $economicallyViable === false
+                    ? 'skip_negative_expected_value'
+                    : 'recover_unattempted_checkout';
+
                 $summary['top_opportunities'][] = [
                     'order_id' => isset($order->id) ? (int) $order->id : null,
                     'payment_method' => $paymentMethod,
@@ -89,10 +138,14 @@ final class CheckoutRecoveryOpportunityAnalyzer
                     'platform_contribution_rate' => $contributionRate !== null ? round($contributionRate, 4) : null,
                     'platform_contribution_rate_source' => $contributionRateSource,
                     'expected_platform_contribution' => $expectedPlatformContribution,
+                    'estimated_recovery_cost' => $recoveryAttemptCost !== null ? $estimatedRecoveryCost : null,
+                    'recovery_cost_source' => $recoveryCostSource,
+                    'expected_net_platform_contribution' => $expectedNetPlatformContribution,
+                    'economically_viable' => $economicallyViable,
                     'created_at' => $order->created_at instanceof CarbonInterface
                         ? $order->created_at->toIso8601String()
                         : null,
-                    'recommended_action' => 'recover_unattempted_checkout',
+                    'recommended_action' => $recommendedAction,
                 ];
 
                 $priorityKey = $paymentMethod.'|'.$ageBucket;
@@ -100,13 +153,23 @@ final class CheckoutRecoveryOpportunityAnalyzer
                     $summary['priority_queue'][$priorityKey] = $this->emptyBucket();
                     $summary['priority_queue'][$priorityKey]['payment_method'] = $paymentMethod;
                     $summary['priority_queue'][$priorityKey]['age_bucket'] = $ageBucket;
-                    $summary['priority_queue'][$priorityKey]['recommended_action'] = 'recover_unattempted_checkout';
                 }
-                $this->accumulate($summary['priority_queue'][$priorityKey], $gross, $platformRevenue, false, $expectedPlatformRevenue, $expectedPlatformContribution);
+                $this->accumulate(
+                    $summary['priority_queue'][$priorityKey],
+                    $gross,
+                    $platformRevenue,
+                    false,
+                    $expectedPlatformRevenue,
+                    $expectedPlatformContribution,
+                    $estimatedRecoveryCost,
+                    $expectedNetPlatformContribution
+                );
                 $summary['priority_queue'][$priorityKey]['recovery_probability'] = $methodProbability !== null ? round($methodProbability, 4) : null;
                 $summary['priority_queue'][$priorityKey]['recovery_probability_source'] = $probabilitySource;
                 $summary['priority_queue'][$priorityKey]['platform_contribution_rate'] = $contributionRate !== null ? round($contributionRate, 4) : null;
                 $summary['priority_queue'][$priorityKey]['platform_contribution_rate_source'] = $contributionRateSource;
+                $summary['priority_queue'][$priorityKey]['recovery_attempt_cost'] = $recoveryAttemptCost;
+                $summary['priority_queue'][$priorityKey]['recovery_cost_source'] = $recoveryCostSource;
             }
         }
 
@@ -120,7 +183,16 @@ final class CheckoutRecoveryOpportunityAnalyzer
             ->sortBy(fn (array $row): int => $this->ageBucketPriority((string) $row['age_bucket']))
             ->values()->all();
         $summary['priority_queue'] = collect($summary['priority_queue'])
-            ->map(fn (array $row): array => $this->finalize($row))
+            ->map(function (array $row): array {
+                $row = $this->finalize($row);
+                $row['economically_viable'] = $row['recovery_attempt_cost'] !== null
+                    ? (float) $row['expected_net_platform_contribution'] > 0.0
+                    : null;
+                $row['recommended_action'] = $row['economically_viable'] === false
+                    ? 'skip_negative_expected_value'
+                    : 'recover_unattempted_checkout';
+                return $row;
+            })
             ->sort(function (array $left, array $right): int {
                 $comparison = $this->compareRecoveryValue($left, $right);
                 return $comparison !== 0
@@ -130,6 +202,10 @@ final class CheckoutRecoveryOpportunityAnalyzer
             ->values()->all();
         $summary['top_opportunities'] = collect($summary['top_opportunities'])
             ->sort(function (array $left, array $right): int {
+                $netComparison = (float) $right['expected_net_platform_contribution'] <=> (float) $left['expected_net_platform_contribution'];
+                if ($netComparison !== 0) {
+                    return $netComparison;
+                }
                 $contributionComparison = (float) $right['expected_platform_contribution'] <=> (float) $left['expected_platform_contribution'];
                 if ($contributionComparison !== 0) {
                     return $contributionComparison;
@@ -150,8 +226,10 @@ final class CheckoutRecoveryOpportunityAnalyzer
             })
             ->take(25)->values()
             ->map(function (array $row, int $index): array {
-                foreach (['gross_revenue', 'platform_revenue', 'expected_platform_revenue', 'expected_platform_contribution'] as $key) {
-                    $row[$key] = round((float) $row[$key], 2);
+                foreach (['gross_revenue', 'platform_revenue', 'expected_platform_revenue', 'expected_platform_contribution', 'estimated_recovery_cost', 'expected_net_platform_contribution'] as $key) {
+                    if ($row[$key] !== null) {
+                        $row[$key] = round((float) $row[$key], 2);
+                    }
                 }
                 $row['priority_rank'] = $index + 1;
                 return $row;
@@ -198,6 +276,8 @@ final class CheckoutRecoveryOpportunityAnalyzer
             'unattempted_platform_revenue' => 0.0,
             'expected_platform_revenue' => 0.0,
             'expected_platform_contribution' => 0.0,
+            'estimated_recovery_cost' => 0.0,
+            'expected_net_platform_contribution' => 0.0,
             'recovery_started_orders' => 0,
             'recovery_started_gross_revenue' => 0.0,
         ];
@@ -210,7 +290,9 @@ final class CheckoutRecoveryOpportunityAnalyzer
         float $platformRevenue,
         bool $recoveryStarted,
         float $expectedPlatformRevenue = 0.0,
-        float $expectedPlatformContribution = 0.0
+        float $expectedPlatformContribution = 0.0,
+        float $estimatedRecoveryCost = 0.0,
+        float $expectedNetPlatformContribution = 0.0
     ): void {
         $row['orders']++;
         $row['gross_revenue'] += $gross;
@@ -225,12 +307,14 @@ final class CheckoutRecoveryOpportunityAnalyzer
         $row['unattempted_platform_revenue'] += $platformRevenue;
         $row['expected_platform_revenue'] += $expectedPlatformRevenue;
         $row['expected_platform_contribution'] += $expectedPlatformContribution;
+        $row['estimated_recovery_cost'] += $estimatedRecoveryCost;
+        $row['expected_net_platform_contribution'] += $expectedNetPlatformContribution;
     }
 
     /** @param array<string, mixed> $row @return array<string, mixed> */
     private function finalize(array $row): array
     {
-        foreach (['gross_revenue', 'platform_revenue', 'unattempted_gross_revenue', 'unattempted_platform_revenue', 'expected_platform_revenue', 'expected_platform_contribution', 'recovery_started_gross_revenue'] as $key) {
+        foreach (['gross_revenue', 'platform_revenue', 'unattempted_gross_revenue', 'unattempted_platform_revenue', 'expected_platform_revenue', 'expected_platform_contribution', 'estimated_recovery_cost', 'expected_net_platform_contribution', 'recovery_started_gross_revenue'] as $key) {
             $row[$key] = round((float) ($row[$key] ?? 0), 2);
         }
         return $row;
@@ -239,6 +323,10 @@ final class CheckoutRecoveryOpportunityAnalyzer
     /** @param array<string, mixed> $left @param array<string, mixed> $right */
     private function compareRecoveryValue(array $left, array $right): int
     {
+        $netComparison = (float) ($right['expected_net_platform_contribution'] ?? 0) <=> (float) ($left['expected_net_platform_contribution'] ?? 0);
+        if ($netComparison !== 0) {
+            return $netComparison;
+        }
         $contributionComparison = (float) ($right['expected_platform_contribution'] ?? 0) <=> (float) ($left['expected_platform_contribution'] ?? 0);
         if ($contributionComparison !== 0) {
             return $contributionComparison;
