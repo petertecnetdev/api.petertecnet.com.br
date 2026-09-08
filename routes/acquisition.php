@@ -21,3 +21,5 @@ Route::prefix('v1/apps/{application}')
             Route::put('/events/{eventId}/commission', [AcquisitionController::class, 'updateCommission'])->whereNumber('eventId');
         });
     });
+
+require base_path('routes/promotion_campaigns.php');

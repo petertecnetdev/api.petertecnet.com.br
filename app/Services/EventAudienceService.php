@@ -42,6 +42,12 @@ class EventAudienceService
     {
         $order=CommerceOrder::query()->with(['event.application','user','items'])->find($orderId);
         if(!$order || $order->status!=='paid' || !$order->event || !$order->user) return;
+
+        // Campaign conversion and reward consumption happen for every paid campaign order,
+        // including item-only orders, before ticket-specific audience work can return early.
+        app(PromotionCampaignService::class)->finalizeOrderReward($order);
+        app(PromotionCampaignAttributionService::class)->recordPaidOrder($order);
+
         $ticketQuantity=(int)$order->items->where('type','ticket')->sum('quantity'); if($ticketQuantity<=0) return;
         $appId=(int)$order->event->app_id;
         $this->markInterested($appId,(int)$order->event_id,(int)$order->user_id);
