@@ -92,6 +92,15 @@ final class ProfitabilityRiskPrioritizer
                 $confidenceAdjustedRoi = $confidenceAdjustedNetContribution !== null && $totalRecoveryCost !== null && $totalRecoveryCost > 0
                     ? ($confidenceAdjustedNetContribution / $totalRecoveryCost) * 100
                     : null;
+                $confidenceAdjustedMaxAttemptCost = $recoveryContributionPerRecoveredOrder !== null
+                    ? ($conversionConfidenceLowerBound / 100) * $recoveryContributionPerRecoveredOrder
+                    : null;
+                $confidenceAdjustedCostHeadroom = $confidenceAdjustedMaxAttemptCost !== null && $attemptCost !== null
+                    ? $confidenceAdjustedMaxAttemptCost - $attemptCost
+                    : null;
+                $confidenceAdjustedCostHeadroomPercent = $confidenceAdjustedCostHeadroom !== null && $attemptCost !== null && $attemptCost > 0
+                    ? ($confidenceAdjustedCostHeadroom / $attemptCost) * 100
+                    : null;
 
                 $minimumDecisionSample = 10;
                 $minimumScaleSafetyMargin = 10.0;
@@ -132,6 +141,9 @@ final class ProfitabilityRiskPrioritizer
                     'recovery_contribution_per_attempt' => round($recoveryContributionPerAttempt, 2),
                     'recovery_contribution_per_recovered_order' => $recoveryContributionPerRecoveredOrder !== null ? round($recoveryContributionPerRecoveredOrder, 2) : null,
                     'recovery_attempt_cost' => $attemptCost !== null ? round($attemptCost, 4) : null,
+                    'recovery_confidence_adjusted_max_attempt_cost' => $confidenceAdjustedMaxAttemptCost !== null ? round($confidenceAdjustedMaxAttemptCost, 4) : null,
+                    'recovery_confidence_adjusted_cost_headroom' => $confidenceAdjustedCostHeadroom !== null ? round($confidenceAdjustedCostHeadroom, 4) : null,
+                    'recovery_confidence_adjusted_cost_headroom_percent' => $confidenceAdjustedCostHeadroomPercent !== null ? round($confidenceAdjustedCostHeadroomPercent, 2) : null,
                     'recovery_cost_source' => $hasMethodCost
                         ? 'payment_method_config'
                         : ($fallbackRecoveryAttemptCost !== null ? 'default_config' : 'not_configured'),
