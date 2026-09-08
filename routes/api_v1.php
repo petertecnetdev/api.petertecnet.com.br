@@ -16,6 +16,7 @@ use App\Domain\CRM\Http\Controllers\SalesPipelineController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
+use App\Domain\Events\Http\Controllers\EventSocialPreviewController;
 use App\Domain\Events\Http\Controllers\EventTicketController;
 use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PaymentProviderController;
@@ -90,6 +91,8 @@ Route::prefix('v1/apps/{application}')
             Route::get('/events', [EventDiscoveryController::class, 'events']);
             Route::get('/events/facets', [EventDiscoveryController::class, 'facets']);
             Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
+            Route::get('/events/public/{slug}/share-preview', [EventSocialPreviewController::class, 'show']);
+            Route::get('/events/public/{slug}/share-image.jpg', [EventSocialPreviewController::class, 'image']);
         });
 
         Route::middleware('app.capability:events,social')->group(function () {
