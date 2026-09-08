@@ -79,6 +79,10 @@ final class ProfitabilityRiskPrioritizer
                 $conversionSafetyMargin = $breakEvenConversionRate !== null
                     ? $recoveryConversionRate - $breakEvenConversionRate
                     : null;
+                $conversionConfidenceLowerBound = $this->wilsonLowerBound($recoveredOrders, $attempts) * 100;
+                $confidenceMarginToBreakEven = $breakEvenConversionRate !== null
+                    ? $conversionConfidenceLowerBound - $breakEvenConversionRate
+                    : null;
 
                 $minimumDecisionSample = 10;
                 $minimumScaleSafetyMargin = 10.0;
@@ -86,7 +90,11 @@ final class ProfitabilityRiskPrioritizer
                 if ($attemptCost !== null && $attempts >= $minimumDecisionSample && $recoveryRoi !== null) {
                     $recoveryDecision = match (true) {
                         $recoveryRoi < 0 => 'reduce_or_pause',
-                        $recoveryRoi >= 100 && $conversionSafetyMargin !== null && $conversionSafetyMargin >= $minimumScaleSafetyMargin => 'scale_carefully',
+                        $recoveryRoi >= 100
+                            && $conversionSafetyMargin !== null
+                            && $conversionSafetyMargin >= $minimumScaleSafetyMargin
+                            && $confidenceMarginToBreakEven !== null
+                            && $confidenceMarginToBreakEven > 0 => 'scale_carefully',
                         default => 'maintain_and_monitor',
                     };
                 } elseif ($attemptCost !== null) {
@@ -105,8 +113,10 @@ final class ProfitabilityRiskPrioritizer
                     'checkout_recovery_attempts' => $attempts,
                     'checkout_recovered_orders' => $recoveredOrders,
                     'checkout_recovery_conversion_rate' => round($recoveryConversionRate, 2),
+                    'checkout_recovery_conversion_confidence_lower_bound' => round($conversionConfidenceLowerBound, 2),
                     'checkout_recovery_break_even_conversion_rate' => $breakEvenConversionRate !== null ? round($breakEvenConversionRate, 2) : null,
                     'checkout_recovery_conversion_safety_margin' => $conversionSafetyMargin !== null ? round($conversionSafetyMargin, 2) : null,
+                    'checkout_recovery_confidence_margin_to_break_even' => $confidenceMarginToBreakEven !== null ? round($confidenceMarginToBreakEven, 2) : null,
                     'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
                     'estimated_recovered_platform_contribution' => round($estimatedRecoveredContribution, 2),
                     'recovery_contribution_per_attempt' => round($recoveryContributionPerAttempt, 2),
@@ -150,5 +160,22 @@ final class ProfitabilityRiskPrioritizer
             })
             ->values()
             ->all();
+    }
+
+    private function wilsonLowerBound(int $successes, int $trials): float
+    {
+        if ($trials <= 0) {
+            return 0.0;
+        }
+
+        $successes = max(0, min($successes, $trials));
+        $proportion = $successes / $trials;
+        $z = 1.96;
+        $zSquared = $z * $z;
+        $denominator = 1 + ($zSquared / $trials);
+        $centre = $proportion + ($zSquared / (2 * $trials));
+        $adjustment = $z * sqrt((($proportion * (1 - $proportion)) + ($zSquared / (4 * $trials))) / $trials);
+
+        return max(0.0, ($centre - $adjustment) / $denominator);
     }
 }
