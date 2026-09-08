@@ -8,6 +8,7 @@ use App\Services\EventLineupNotificationService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class Event extends Model
@@ -49,14 +50,66 @@ class Event extends Model
         });
 
         static::saved(function (Event $event) {
-            if ($event->wasChanged('is_published') && $event->is_published && ! $event->is_cancelled) app(EventLineupNotificationService::class)->notifyPublishedEvent($event);
+            $publishedNow = $event->wasChanged('is_published') && $event->is_published && ! $event->is_cancelled;
+            if ($publishedNow) {
+                app(EventLineupNotificationService::class)->notifyPublishedEvent($event);
+                static::publishFeedActivity($event, 'Publicou o evento '.$event->title.'.');
+            }
+
             if ($event->wasRecentlyCreated || ! $event->is_published) return;
             $materialFields = ['title','description','category','image','event_format','address','address_number','neighborhood','address_complement','formatted_address','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city','uf','cep','max_attendees','is_cancelled'];
-            $changed = collect(array_keys($event->getChanges()))->intersect($materialFields)->values(); if ($changed->isEmpty()) return;
+            $changed = collect(array_keys($event->getChanges()))->intersect($materialFields)->values();
+            if ($changed->isEmpty()) return;
+
             $labels = ['title'=>'nome','description'=>'descrição','category'=>'categoria','image'=>'imagem','event_format'=>'formato','address'=>'endereço','address_number'=>'endereço','neighborhood'=>'endereço','address_complement'=>'endereço','formatted_address'=>'endereço','google_maps_url'=>'localização','online_platform'=>'acesso online','online_url'=>'acesso online','online_instructions'=>'acesso online','start_date'=>'horário','end_date'=>'horário','venue'=>'local','city'=>'cidade','uf'=>'estado','cep'=>'endereço','max_attendees'=>'capacidade','is_cancelled'=>'status'];
             $what = $changed->map(fn ($field) => $labels[$field] ?? $field)->unique()->take(3)->implode(', ');
-            app(EventAudienceService::class)->notifyAttendees($event, ['type'=>'event_updated','title'=>$event->is_cancelled?'Atualização importante do evento':'Seu evento foi atualizado','message'=>$event->is_cancelled?$event->title.' teve uma atualização de status. Confira os detalhes.':$event->title.' teve atualização em '.$what.'. Confira os detalhes.','data'=>['event_id'=>$event->id,'changed_fields'=>$changed->all()]]);
+
+            static::publishFeedActivity(
+                $event,
+                $event->is_cancelled
+                    ? 'Atualizou o status do evento '.$event->title.'.'
+                    : 'Atualizou '.$what.' no evento '.$event->title.'.'
+            );
+
+            app(EventAudienceService::class)->notifyAttendees($event, [
+                'type'=>'event_updated',
+                'title'=>$event->is_cancelled?'Atualização importante do evento':'Seu evento foi atualizado',
+                'message'=>$event->is_cancelled?$event->title.' teve uma atualização de status. Confira os detalhes.':$event->title.' teve atualização em '.$what.'. Confira os detalhes.',
+                'data'=>['event_id'=>$event->id,'changed_fields'=>$changed->all()],
+            ]);
         });
+    }
+
+    private static function publishFeedActivity(Event $event, string $body): void
+    {
+        if (! $event->is_published || $event->is_private) return;
+
+        $actorId = request()->user()?->id;
+        if (! $actorId) $actorId = $event->production()->value('user_id');
+        if (! $actorId) return;
+
+        $body = trim($body);
+        $duplicate = DB::table('event_posts')
+            ->where('app_id', $event->app_id)
+            ->where('event_id', $event->id)
+            ->where('user_id', $actorId)
+            ->whereNull('parent_id')
+            ->where('body', $body)
+            ->where('created_at', '>=', now()->subSeconds(30))
+            ->exists();
+        if ($duplicate) return;
+
+        DB::table('event_posts')->insert([
+            'app_id' => $event->app_id,
+            'event_id' => $event->id,
+            'user_id' => $actorId,
+            'parent_id' => null,
+            'body' => $body,
+            'status' => 'published',
+            'is_pinned' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 
     public function temporalStatus(?Carbon $at = null): string
