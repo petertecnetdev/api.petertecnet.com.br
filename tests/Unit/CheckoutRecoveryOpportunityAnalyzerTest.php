@@ -13,6 +13,7 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
         $now = CarbonImmutable::parse('2026-09-07 18:00:00');
         $orders = collect([
             (object) [
+                'id' => 101,
                 'payment_method' => 'pix',
                 'total' => 120.50,
                 'platform_fee' => 40.00,
@@ -20,6 +21,7 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
                 'recovery_started_at' => null,
             ],
             (object) [
+                'id' => 102,
                 'payment_method' => 'card',
                 'total' => 300,
                 'platform_fee' => 30,
@@ -27,6 +29,7 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
                 'recovery_started_at' => null,
             ],
             (object) [
+                'id' => 103,
                 'payment_method' => 'pix',
                 'total' => 80,
                 'platform_fee' => 8,
@@ -58,5 +61,13 @@ final class CheckoutRecoveryOpportunityAnalyzerTest extends TestCase
         $this->assertSame(40.0, $result['priority_queue'][0]['unattempted_platform_revenue']);
         $this->assertSame('recover_unattempted_checkout', $result['priority_queue'][0]['recommended_action']);
         $this->assertSame('card', $result['priority_queue'][1]['payment_method']);
+
+        $this->assertCount(2, $result['top_opportunities']);
+        $this->assertSame(101, $result['top_opportunities'][0]['order_id']);
+        $this->assertSame(1, $result['top_opportunities'][0]['priority_rank']);
+        $this->assertSame(40.0, $result['top_opportunities'][0]['platform_revenue']);
+        $this->assertSame(102, $result['top_opportunities'][1]['order_id']);
+        $this->assertSame(2, $result['top_opportunities'][1]['priority_rank']);
+        $this->assertSame('recover_unattempted_checkout', $result['top_opportunities'][1]['recommended_action']);
     }
 }

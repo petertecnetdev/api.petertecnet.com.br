@@ -37,6 +37,18 @@ final class CheckoutRecoveryOpportunityAnalyzer
             $this->accumulate($summary['by_age_bucket'][$ageBucket], $gross, $platformRevenue, $recoveryStarted);
 
             if (! $recoveryStarted) {
+                $summary['top_opportunities'][] = [
+                    'order_id' => isset($order->id) ? (int) $order->id : null,
+                    'payment_method' => $paymentMethod,
+                    'age_bucket' => $ageBucket,
+                    'gross_revenue' => $gross,
+                    'platform_revenue' => $platformRevenue,
+                    'created_at' => $order->created_at instanceof CarbonInterface
+                        ? $order->created_at->toIso8601String()
+                        : null,
+                    'recommended_action' => 'recover_unattempted_checkout',
+                ];
+
                 $priorityKey = $paymentMethod.'|'.$ageBucket;
                 if (! isset($summary['priority_queue'][$priorityKey])) {
                     $summary['priority_queue'][$priorityKey] = $this->emptyBucket();
@@ -74,6 +86,31 @@ final class CheckoutRecoveryOpportunityAnalyzer
             })
             ->values()
             ->all();
+        $summary['top_opportunities'] = collect($summary['top_opportunities'])
+            ->sort(function (array $left, array $right): int {
+                $platformComparison = (float) $right['platform_revenue'] <=> (float) $left['platform_revenue'];
+                if ($platformComparison !== 0) {
+                    return $platformComparison;
+                }
+
+                $grossComparison = (float) $right['gross_revenue'] <=> (float) $left['gross_revenue'];
+                if ($grossComparison !== 0) {
+                    return $grossComparison;
+                }
+
+                return $this->ageBucketPriority((string) $left['age_bucket'])
+                    <=> $this->ageBucketPriority((string) $right['age_bucket']);
+            })
+            ->take(25)
+            ->values()
+            ->map(function (array $row, int $index): array {
+                $row['gross_revenue'] = round((float) $row['gross_revenue'], 2);
+                $row['platform_revenue'] = round((float) $row['platform_revenue'], 2);
+                $row['priority_rank'] = $index + 1;
+
+                return $row;
+            })
+            ->all();
 
         return $summary;
     }
@@ -102,6 +139,7 @@ final class CheckoutRecoveryOpportunityAnalyzer
             'by_payment_method' => [],
             'by_age_bucket' => [],
             'priority_queue' => [],
+            'top_opportunities' => [],
         ]);
     }
 
