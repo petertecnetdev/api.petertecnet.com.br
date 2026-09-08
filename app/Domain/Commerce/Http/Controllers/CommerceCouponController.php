@@ -11,23 +11,17 @@ use App\Models\Production;
 use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
 
 final class CommerceCouponController extends Controller
 {
-    public function __construct(
-        private readonly ApplicationContext $context,
-        private readonly CommerceCouponService $coupons,
-    ) {}
+    public function __construct(private readonly ApplicationContext $context, private readonly CommerceCouponService $coupons) {}
 
     public function index(Request $request, int $organizationId)
     {
         $this->ownedProduction($request, $organizationId);
-        return response()->json(['coupons' => CommerceCoupon::query()
-            ->where('app_id', $this->context->id())
-            ->where('production_id', $organizationId)
-            ->with('event:id,title')
-            ->latest()->get()]);
+        return response()->json(['coupons' => CommerceCoupon::query()->where('app_id', $this->context->id())->where('production_id', $organizationId)->with('event:id,title')->latest()->get()]);
     }
 
     public function store(Request $request, int $organizationId)
@@ -81,50 +75,26 @@ final class CommerceCouponController extends Controller
             $subtotal += (float)$item->price * (int)$line['quantity'];
         }
         $result = $this->coupons->validateForCheckout($this->context->id(), $event->id, (int)$event->production_id, (int)$user->id, $data['coupon_code'], round($subtotal,2));
-        return response()->json(['coupon' => [
-            'code' => $result['code'],
-            'discount_amount' => $result['discount_amount'],
-            'subtotal' => $result['subtotal'],
-            'total' => $result['total'],
-        ]]);
+        return response()->json(['coupon' => ['code'=>$result['code'],'discount_amount'=>$result['discount_amount'],'subtotal'=>$result['subtotal'],'total'=>$result['total']]]);
     }
 
     private function validated(Request $request, int $organizationId, bool $partial = false, ?CommerceCoupon $existing = null): array
     {
         $prefix = $partial ? 'sometimes|' : 'required|';
         $data = $request->validate([
-            'name' => 'nullable|string|max:120',
-            'code' => 'nullable|string|min:3|max:40|regex:/^[A-Za-z0-9_-]+$/',
-            'event_id' => 'nullable|integer|exists:events,id',
-            'discount_type' => $prefix.'in:percentage,fixed',
-            'discount_value' => $prefix.'numeric|min:0.01|max:999999.99',
-            'minimum_subtotal' => 'nullable|numeric|min:0|max:999999.99',
-            'max_uses' => 'nullable|integer|min:1|max:1000000',
-            'max_uses_per_user' => 'nullable|integer|min:1|max:1000',
-            'starts_at' => 'nullable|date',
-            'expires_at' => 'nullable|date',
-            'is_active' => 'sometimes|boolean',
+            'name' => 'nullable|string|max:120', 'code' => 'nullable|string|min:3|max:40|regex:/^[A-Za-z0-9_-]+$/', 'event_id' => 'nullable|integer|exists:events,id',
+            'discount_type' => $prefix.'in:percentage,fixed', 'discount_value' => $prefix.'numeric|min:0.01|max:999999.99',
+            'minimum_subtotal' => 'nullable|numeric|min:0|max:999999.99', 'max_uses' => 'nullable|integer|min:1|max:1000000', 'max_uses_per_user' => 'nullable|integer|min:1|max:1000',
+            'starts_at' => 'nullable|date', 'expires_at' => 'nullable|date', 'is_active' => 'sometimes|boolean',
         ]);
-
         $discountType = $data['discount_type'] ?? $existing?->discount_type;
         $discountValue = array_key_exists('discount_value', $data) ? (float)$data['discount_value'] : (float)($existing?->discount_value ?? 0);
-        if ($discountType === 'percentage' && $discountValue > 100) {
-            abort(422, 'O desconto percentual não pode ultrapassar 100%.');
-        }
-
+        abort_if($discountType === 'percentage' && $discountValue > 100, 422, 'O desconto percentual não pode ultrapassar 100%.');
         $startsAt = array_key_exists('starts_at', $data) ? $data['starts_at'] : $existing?->starts_at;
         $expiresAt = array_key_exists('expires_at', $data) ? $data['expires_at'] : $existing?->expires_at;
-        if ($startsAt && $expiresAt && now()->parse($expiresAt)->lt(now()->parse($startsAt))) {
-            abort(422, 'A validade final do cupom deve ser posterior ao início.');
-        }
-
-        if (!empty($data['event_id'])) {
-            Event::query()->where('app_id',$this->context->id())->where('production_id',$organizationId)->findOrFail($data['event_id']);
-        }
-        if (! $partial) {
-            $data['minimum_subtotal'] = $data['minimum_subtotal'] ?? 0;
-            $data['max_uses_per_user'] = $data['max_uses_per_user'] ?? 1;
-        }
+        abort_if($startsAt && $expiresAt && Carbon::parse($expiresAt)->lt(Carbon::parse($startsAt)), 422, 'A validade final do cupom deve ser posterior ao início.');
+        if (!empty($data['event_id'])) Event::query()->where('app_id',$this->context->id())->where('production_id',$organizationId)->findOrFail($data['event_id']);
+        if (! $partial) { $data['minimum_subtotal'] = $data['minimum_subtotal'] ?? 0; $data['max_uses_per_user'] = $data['max_uses_per_user'] ?? 1; }
         return $data;
     }
 
@@ -133,17 +103,14 @@ final class CommerceCouponController extends Controller
         $base = strtoupper(trim((string)$requested));
         if ($base === '') $base = 'CUT'.strtoupper(Str::random(7));
         $code = $base; $suffix = 1;
-        while (CommerceCoupon::query()->where('app_id',$this->context->id())->where('code',$code)->when($ignoreId,fn($q)=>$q->where('id','<>',$ignoreId))->exists()) {
-            $code = substr($base,0,32).'-'.$suffix++;
-        }
+        while (CommerceCoupon::query()->where('app_id',$this->context->id())->where('code',$code)->when($ignoreId,fn($q)=>$q->where('id','<>',$ignoreId))->exists()) $code = substr($base,0,32).'-'.$suffix++;
         return $code;
     }
 
     private function ownedProduction(Request $request, int $organizationId): Production
     {
         $userId = (int)$request->user()->id;
-        return Production::query()->where('app_id',$this->context->id())->whereKey($organizationId)
-            ->where(fn($q)=>$q->where('user_id',$userId)->orWhere('created_by',$userId))->firstOrFail();
+        return Production::query()->where('app_id',$this->context->id())->whereKey($organizationId)->where(fn($q)=>$q->where('user_id',$userId)->orWhere('created_by',$userId))->firstOrFail();
     }
 
     private function ownedCoupon(int $organizationId, int $couponId): CommerceCoupon
