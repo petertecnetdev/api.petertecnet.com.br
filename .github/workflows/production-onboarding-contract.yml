@@ -1,0 +1,65 @@
+name: Production Onboarding Contract
+
+on:
+  push:
+    branches: [main, staging, develop, 'fix/**', 'refactor/**']
+  pull_request:
+    branches: [main, staging, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-onboarding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Prepare isolated API
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/production-onboarding.sqlite
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          touch /tmp/production-onboarding.sqlite
+          php artisan config:clear
+          php artisan route:clear
+          php artisan migrate --force
+      - name: Protect browser mutation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "'Idempotency-Key'" config/cors.php
+          routes="$(php artisan route:list)"
+          grep -q 'api/v1/apps/{application}/organizations' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/events' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/tickets' <<< "$routes"
+          grep -q 'api/v1/apps/{application}/health/mutation-probe' <<< "$routes"
+          grep -q 'api/v1/health/ready' <<< "$routes"
+      - name: Run production onboarding gates
+        run: >-
+          php artisan test
+          tests/Feature/CorsMutationPreflightTest.php
+          tests/Feature/ProductionOnboardingContractTest.php
+          tests/Feature/PlatformReadinessTest.php
+          tests/Feature/ProductionOnboardingMonitorTest.php
+          tests/Feature/IdempotentRequestMiddlewareTest.php
