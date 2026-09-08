@@ -48,15 +48,19 @@ class EventAudienceService
         $passes=EventPass::query()->where('event_id',$order->event_id)->where('user_id',$order->user_id)
             ->whereIn('commerce_order_item_id',$order->items->where('type','ticket')->pluck('id'))
             ->whereNotIn('status',['cancelled','refunded','charged_back'])->with('ticket')->orderBy('id')->get();
-        app(AppNotificationService::class)->sendToUser($appId,(int)$order->user_id,[
+        app(AppNotificationService::class)->sendToUserOnce($appId,(int)$order->user_id,'ticket-purchase-confirmed:order:'.$order->id,[
             'type'=>'ticket_purchase_confirmed','title'=>'Presença confirmada',
             'message'=>'Sua compra foi aprovada. Você tem '.$ticketQuantity.' '.($ticketQuantity===1?'ingresso':'ingressos').' para '.$order->event->title.'.',
             'reference_type'=>'event','reference_id'=>$order->event_id,'reference_url'=>'/passes',
             'data'=>['event_id'=>$order->event_id,'order_id'=>$order->id,'ticket_count'=>$ticketQuantity],
         ]);
         if($passes->isNotEmpty() && $order->user->email){
-            try{Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));}
-            catch(\Throwable $e){Log::error('Falha ao enviar ingressos por e-mail.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);}
+            try{
+                app(OutboundDeliveryService::class)->deliverOnce($appId,'mail','ticket-passes:order:'.$order->id,
+                    fn()=>Mail::to($order->user->email)->send(new EventPassesMail($order,$passes)),
+                    ['order_id'=>(int)$order->id,'user_id'=>(int)$order->user_id,'type'=>'event_passes']
+                );
+            }catch(\Throwable $e){Log::error('Falha ao enviar ingressos por e-mail.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);}
         }
         app(ImportantEventService::class)->recordTicketPurchase($order);
     }
