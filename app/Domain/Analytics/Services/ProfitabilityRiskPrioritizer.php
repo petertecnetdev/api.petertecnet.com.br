@@ -7,27 +7,92 @@ final class ProfitabilityRiskPrioritizer
     /**
      * Convert payment-method economics into an actionable queue ordered by realized margin loss.
      *
+     * Recovery economics are only evaluated when a real marginal attempt cost is configured.
+     * This keeps the default behavior conservative and avoids inventing operational costs.
+     *
      * @param array<int, array<string, mixed>> $paymentMethods
+     * @param array<string, mixed> $recoveryAttemptCostByPaymentMethod
      * @return array<int, array<string, mixed>>
      */
-    public function prioritize(array $paymentMethods): array
-    {
+    public function prioritize(
+        array $paymentMethods,
+        array $recoveryAttemptCostByPaymentMethod = [],
+        ?float $fallbackRecoveryAttemptCost = null,
+    ): array {
+        if ($recoveryAttemptCostByPaymentMethod === []) {
+            $recoveryAttemptCostByPaymentMethod = (array) config('checkout_recovery.attempt_cost_by_payment_method', []);
+        }
+        if ($fallbackRecoveryAttemptCost === null) {
+            $configuredDefaultCost = config('checkout_recovery.default_attempt_cost');
+            $fallbackRecoveryAttemptCost = is_numeric($configuredDefaultCost)
+                ? max((float) $configuredDefaultCost, 0.0)
+                : null;
+        } else {
+            $fallbackRecoveryAttemptCost = max($fallbackRecoveryAttemptCost, 0.0);
+        }
+
         return collect($paymentMethods)
+            ->map(function (array $method) use ($recoveryAttemptCostByPaymentMethod, $fallbackRecoveryAttemptCost): array {
+                $paymentMethod = (string) ($method['payment_method'] ?? 'unknown');
+                $hasMethodCost = array_key_exists($paymentMethod, $recoveryAttemptCostByPaymentMethod)
+                    && is_numeric($recoveryAttemptCostByPaymentMethod[$paymentMethod]);
+                $attemptCost = $hasMethodCost
+                    ? max((float) $recoveryAttemptCostByPaymentMethod[$paymentMethod], 0.0)
+                    : $fallbackRecoveryAttemptCost;
+                $attempts = (int) ($method['checkout_recovery_attempts'] ?? 0);
+                $recoveredPlatformRevenue = (float) ($method['recovered_platform_revenue'] ?? 0);
+                $platformRevenue = (float) ($method['platform_revenue'] ?? 0);
+                $platformContribution = (float) ($method['platform_contribution_after_processing'] ?? 0);
+                $contributionRate = $platformRevenue != 0.0
+                    ? min($platformContribution / $platformRevenue, 1.0)
+                    : null;
+                $estimatedRecoveredContribution = $contributionRate !== null
+                    ? $recoveredPlatformRevenue * $contributionRate
+                    : $recoveredPlatformRevenue;
+                $totalRecoveryCost = $attemptCost !== null ? $attempts * $attemptCost : null;
+                $recoveryNetContribution = $totalRecoveryCost !== null
+                    ? $estimatedRecoveredContribution - $totalRecoveryCost
+                    : null;
+                $recoveryNetShortfall = $recoveryNetContribution !== null && $recoveryNetContribution < 0
+                    ? abs($recoveryNetContribution)
+                    : 0.0;
+                $recoveryRoi = $totalRecoveryCost !== null && $totalRecoveryCost > 0
+                    ? ($recoveryNetContribution / $totalRecoveryCost) * 100
+                    : null;
+
+                return [
+                    'payment_method' => $paymentMethod,
+                    'platform_contribution_shortfall' => round((float) ($method['platform_contribution_shortfall'] ?? 0), 2),
+                    'platform_loss_making_orders' => (int) ($method['platform_loss_making_orders'] ?? 0),
+                    'platform_loss_making_gross_revenue' => round((float) ($method['platform_loss_making_gross_revenue'] ?? 0), 2),
+                    'platform_collection_effective_fee_rate' => round((float) ($method['platform_collection_effective_fee_rate'] ?? 0), 2),
+                    'platform_collection_break_even_fee_rate' => round((float) ($method['platform_collection_break_even_fee_rate'] ?? 0), 2),
+                    'platform_collection_fee_rate_gap_to_break_even' => round((float) ($method['platform_collection_fee_rate_gap_to_break_even'] ?? 0), 2),
+                    'gross_at_risk' => round((float) ($method['gross_at_risk'] ?? 0), 2),
+                    'checkout_recovery_attempts' => $attempts,
+                    'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
+                    'estimated_recovered_platform_contribution' => round($estimatedRecoveredContribution, 2),
+                    'recovery_attempt_cost' => $attemptCost !== null ? round($attemptCost, 4) : null,
+                    'recovery_cost_source' => $hasMethodCost
+                        ? 'payment_method_config'
+                        : ($fallbackRecoveryAttemptCost !== null ? 'default_config' : 'not_configured'),
+                    'recovery_total_attempt_cost' => $totalRecoveryCost !== null ? round($totalRecoveryCost, 2) : null,
+                    'recovery_net_platform_contribution' => $recoveryNetContribution !== null ? round($recoveryNetContribution, 2) : null,
+                    'recovery_net_shortfall' => round($recoveryNetShortfall, 2),
+                    'recovery_roi_percent' => $recoveryRoi !== null ? round($recoveryRoi, 2) : null,
+                    'recovery_economically_sustainable' => $recoveryNetContribution !== null
+                        ? $recoveryNetContribution >= 0
+                        : null,
+                    'platform_collection_sustainable' => (bool) ($method['platform_collection_sustainable'] ?? true),
+                ];
+            })
             ->filter(static fn (array $method): bool =>
-                (float) ($method['platform_contribution_shortfall'] ?? 0) > 0
-                || ! (bool) ($method['platform_collection_sustainable'] ?? true))
-            ->map(static fn (array $method): array => [
-                'payment_method' => (string) ($method['payment_method'] ?? 'unknown'),
-                'platform_contribution_shortfall' => round((float) ($method['platform_contribution_shortfall'] ?? 0), 2),
-                'platform_loss_making_orders' => (int) ($method['platform_loss_making_orders'] ?? 0),
-                'platform_loss_making_gross_revenue' => round((float) ($method['platform_loss_making_gross_revenue'] ?? 0), 2),
-                'platform_collection_effective_fee_rate' => round((float) ($method['platform_collection_effective_fee_rate'] ?? 0), 2),
-                'platform_collection_break_even_fee_rate' => round((float) ($method['platform_collection_break_even_fee_rate'] ?? 0), 2),
-                'platform_collection_fee_rate_gap_to_break_even' => round((float) ($method['platform_collection_fee_rate_gap_to_break_even'] ?? 0), 2),
-                'gross_at_risk' => round((float) ($method['gross_at_risk'] ?? 0), 2),
-            ])
+                (float) $method['platform_contribution_shortfall'] > 0
+                || ! $method['platform_collection_sustainable']
+                || (float) $method['recovery_net_shortfall'] > 0)
             ->sort(function (array $left, array $right): int {
                 return $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
+                    ?: $right['recovery_net_shortfall'] <=> $left['recovery_net_shortfall']
                     ?: $right['platform_loss_making_gross_revenue'] <=> $left['platform_loss_making_gross_revenue']
                     ?: $right['platform_collection_fee_rate_gap_to_break_even'] <=> $left['platform_collection_fee_rate_gap_to_break_even'];
             })
