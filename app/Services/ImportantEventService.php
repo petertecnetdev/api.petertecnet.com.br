@@ -87,15 +87,19 @@ class ImportantEventService
         }
 
         if ($producer?->email) {
+            $deliveryKey = 'ticket-sale-producer:order:'.$order->id;
+            $delivery = app(OutboundDeliveryService::class);
             try {
-                app(OutboundDeliveryService::class)->deliverOnce(
+                $delivery->deliverOnce(
                     (int)$event->app_id,
                     'mail',
-                    'ticket-sale-producer:order:'.$order->id,
+                    $deliveryKey,
                     fn()=>Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity)),
                     ['order_id'=>(int)$order->id,'producer_user_id'=>(int)$producer->id,'type'=>'ticket_sale_producer']
                 );
-                $this->updateEmailStatus($importantEvent,'delivered');
+                if ($delivery->isDelivered((int)$event->app_id,'mail',$deliveryKey)) {
+                    $this->updateEmailStatus($importantEvent,'delivered');
+                }
             } catch (\Throwable $e) {
                 $this->updateEmailStatus($importantEvent,'failed');
                 Log::error('Falha ao enviar e-mail de nova venda ao produtor.',[
