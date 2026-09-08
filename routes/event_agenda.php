@@ -1,7 +1,15 @@
 <?php
 
 use App\Domain\Events\Http\Controllers\EventAgendaController;
+use App\Domain\Events\Http\Controllers\EventSoundtrackController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('v1/apps/{application}')
+    ->middleware(['app.context', 'app.capability:events'])
+    ->group(function () {
+        Route::get('/events/public/{slug}/soundtrack', [EventSoundtrackController::class, 'show'])
+            ->where('slug', '[A-Za-z0-9\-]+');
+    });
 
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:events'])
@@ -25,4 +33,15 @@ Route::prefix('v1/apps/{application}')
             ->middleware('throttle:60,1');
         Route::delete('/event-agenda/items/{scheduleId}', [EventAgendaController::class, 'destroy'])
             ->whereNumber('scheduleId');
+
+        Route::put('/events/{id}/soundtrack', [EventSoundtrackController::class, 'update'])
+            ->whereNumber('id')
+            ->middleware('throttle:60,1');
+        Route::post('/events/{id}/soundtrack/upload', [EventSoundtrackController::class, 'upload'])
+            ->whereNumber('id')
+            ->middleware('throttle:20,1');
+        Route::delete('/events/{id}/soundtrack/items/{itemId}', [EventSoundtrackController::class, 'destroyItem'])
+            ->whereNumber('id')
+            ->where('itemId', '[A-Za-z0-9\-]+')
+            ->middleware('throttle:60,1');
     });
