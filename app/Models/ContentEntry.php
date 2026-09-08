@@ -92,8 +92,6 @@ class ContentEntry extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->where(function (Builder $scope) use ($id) {
-            $scope->whereNull('application_id')->orWhere('application_id', $id);
-        });
+        return $query->where('application_id', $id);
     }
 }
