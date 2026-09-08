@@ -146,12 +146,44 @@ final class RevenueFunnelService
                 (string) $row['payment_method'] => (float) $row['checkout_recovery_conversion_rate'] / 100,
             ])
             ->all();
+        $segmentStats = [];
+        foreach ((clone $orders)->whereNotNull('recovery_started_at')
+            ->select(['id', 'payment_method', 'status', 'created_at', 'recovery_started_at'])
+            ->lazyById(1000) as $attemptedOrder) {
+            if (! $attemptedOrder->created_at || ! $attemptedOrder->recovery_started_at) {
+                continue;
+            }
+            $minutes = max(0, $attemptedOrder->created_at->diffInMinutes($attemptedOrder->recovery_started_at, false));
+            $ageBucket = match (true) {
+                $minutes < 15 => '0_15m',
+                $minutes < 60 => '15_60m',
+                $minutes < 360 => '1_6h',
+                $minutes < 1440 => '6_24h',
+                default => '24h_plus',
+            };
+            $method = trim((string) $attemptedOrder->payment_method) ?: 'unknown';
+            $key = $method.'|'.$ageBucket;
+            $segmentStats[$key] ??= ['attempts' => 0, 'recovered' => 0, 'method' => $method];
+            $segmentStats[$key]['attempts']++;
+            $segmentStats[$key]['recovered'] += $attemptedOrder->status === 'paid' ? 1 : 0;
+        }
+        $recoveryProbabilityBySegment = collect($segmentStats)->mapWithKeys(function (array $row, string $key) use ($recoveryProbabilityByPaymentMethod, $overallRecoveryProbability): array {
+            $prior = $recoveryProbabilityByPaymentMethod[$row['method']] ?? $overallRecoveryProbability;
+            if ($prior === null) {
+                return [];
+            }
+            $priorWeight = 5;
+
+            return [$key => ($row['recovered'] + ($prior * $priorWeight)) / ($row['attempts'] + $priorWeight)];
+        })->all();
+
         $checkoutRecoveryOpportunities = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
             (clone $atRiskOrders)
                 ->select(['id', 'payment_method', 'total', 'platform_fee', 'created_at', 'recovery_started_at'])
                 ->lazyById(1000),
             recoveryProbabilityByPaymentMethod: $recoveryProbabilityByPaymentMethod,
-            fallbackRecoveryProbability: $overallRecoveryProbability
+            fallbackRecoveryProbability: $overallRecoveryProbability,
+            recoveryProbabilityBySegment: $recoveryProbabilityBySegment
         );
 
         return [
