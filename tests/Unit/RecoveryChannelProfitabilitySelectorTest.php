@@ -30,6 +30,7 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
         self::assertTrue($ranked[0]['recommended']);
         self::assertTrue($ranked[0]['has_minimum_sample']);
         self::assertTrue($ranked[0]['has_safe_cost_ceiling']);
+        self::assertSame(0.60, $ranked[0]['safe_attempt_cost_ceiling']);
         self::assertGreaterThan($ranked[1]['expected_net_contribution_per_attempt'], $ranked[0]['expected_net_contribution_per_attempt']);
     }
 
@@ -126,6 +127,7 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
 
         self::assertTrue($ranked[0]['economically_viable']);
         self::assertFalse($ranked[0]['has_safe_cost_ceiling']);
+        self::assertNull($ranked[0]['safe_attempt_cost_ceiling']);
         self::assertNull($ranked[0]['within_safe_cost_ceiling']);
         self::assertContains('missing_safe_cost_ceiling', $ranked[0]['recommendation_blockers']);
         self::assertFalse($ranked[0]['recommended']);
@@ -146,6 +148,59 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
         self::assertTrue($ranked[0]['has_safe_cost_ceiling']);
         self::assertTrue($ranked[0]['within_safe_cost_ceiling']);
         self::assertTrue($ranked[0]['economically_viable']);
+        self::assertNotContains('missing_safe_cost_ceiling', $ranked[0]['recommendation_blockers']);
+        self::assertTrue($ranked[0]['recommended']);
+    }
+
+    public function test_channel_specific_cost_ceiling_overrides_the_global_ceiling(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'email',
+                'attempt_cost' => 0.08,
+                'max_safe_attempt_cost' => 0.10,
+                'conversion_rate' => 8.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 200,
+            ],
+            [
+                'channel' => 'whatsapp',
+                'attempt_cost' => 0.40,
+                'max_safe_attempt_cost' => 0.30,
+                'conversion_rate' => 20.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 200,
+            ],
+        ], 0.50);
+
+        $email = collect($ranked)->firstWhere('channel', 'email');
+        $whatsapp = collect($ranked)->firstWhere('channel', 'whatsapp');
+
+        self::assertSame(0.10, $email['safe_attempt_cost_ceiling']);
+        self::assertTrue($email['within_safe_cost_ceiling']);
+        self::assertTrue($email['recommended']);
+        self::assertSame(0.30, $whatsapp['safe_attempt_cost_ceiling']);
+        self::assertFalse($whatsapp['within_safe_cost_ceiling']);
+        self::assertFalse($whatsapp['recommended']);
+        self::assertContains('above_safe_cost_ceiling', $whatsapp['recommendation_blockers']);
+    }
+
+    public function test_channel_specific_ceiling_can_authorize_a_paid_channel_without_a_global_ceiling(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'whatsapp',
+                'attempt_cost' => 0.20,
+                'max_safe_attempt_cost' => 0.25,
+                'conversion_rate' => 20.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 200,
+            ],
+        ]);
+
+        self::assertSame(0.25, $ranked[0]['safe_attempt_cost_ceiling']);
+        self::assertTrue($ranked[0]['has_safe_cost_ceiling']);
+        self::assertTrue($ranked[0]['within_safe_cost_ceiling']);
         self::assertNotContains('missing_safe_cost_ceiling', $ranked[0]['recommendation_blockers']);
         self::assertTrue($ranked[0]['recommended']);
     }
