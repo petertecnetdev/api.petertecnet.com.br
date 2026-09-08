@@ -4,21 +4,31 @@ namespace App\Domain\Analytics\Services;
 
 final class RecoveryChannelProfitabilitySelector
 {
+    public const DEFAULT_MIN_SAMPLE_ATTEMPTS = 30;
+
     /**
      * Rank recovery channels by conservative expected net contribution per attempt.
      *
      * Required channel keys: channel, attempt_cost, conversion_rate, contribution_per_recovered_order.
      * Optional: attempts (used for Wilson 95% lower bound when >= 1).
      *
+     * A channel is only recommended after reaching the minimum sample size. This prevents
+     * operational routing from scaling a channel whose apparent profitability is based on
+     * too few attempts, while still exposing its economics for observation.
+     *
      * @param array<int, array<string, mixed>> $channels
      * @return array<int, array<string, mixed>>
      */
-    public function rank(array $channels, ?float $maxSafeAttemptCost = null): array
-    {
+    public function rank(
+        array $channels,
+        ?float $maxSafeAttemptCost = null,
+        int $minSampleAttempts = self::DEFAULT_MIN_SAMPLE_ATTEMPTS,
+    ): array {
         $maxSafeAttemptCost = $maxSafeAttemptCost !== null ? max($maxSafeAttemptCost, 0.0) : null;
+        $minSampleAttempts = max($minSampleAttempts, 1);
 
         return collect($channels)
-            ->map(function (array $channel) use ($maxSafeAttemptCost): array {
+            ->map(function (array $channel) use ($maxSafeAttemptCost, $minSampleAttempts): array {
                 $name = trim((string) ($channel['channel'] ?? '')) ?: 'unknown';
                 $attemptCost = is_numeric($channel['attempt_cost'] ?? null)
                     ? max((float) $channel['attempt_cost'], 0.0)
@@ -30,6 +40,7 @@ final class RecoveryChannelProfitabilitySelector
                     ? max((float) $channel['contribution_per_recovered_order'], 0.0)
                     : null;
                 $attempts = max((int) ($channel['attempts'] ?? 0), 0);
+                $hasMinimumSample = $attempts >= $minSampleAttempts;
 
                 $confidenceAdjustedConversionRate = $conversionRate;
                 if ($conversionRate !== null && $attempts > 0) {
@@ -52,6 +63,23 @@ final class RecoveryChannelProfitabilitySelector
                 $economicallyViable = $expectedNetContributionPerAttempt !== null
                     ? $expectedNetContributionPerAttempt > 0
                     : null;
+                $recommended = $economicallyViable === true
+                    && $withinSafeCostCeiling !== false
+                    && $hasMinimumSample;
+
+                $recommendationBlockers = [];
+                if (! $hasMinimumSample) {
+                    $recommendationBlockers[] = 'insufficient_sample';
+                }
+                if ($withinSafeCostCeiling === false) {
+                    $recommendationBlockers[] = 'above_safe_cost_ceiling';
+                }
+                if ($economicallyViable === false) {
+                    $recommendationBlockers[] = 'non_positive_expected_net_contribution';
+                }
+                if ($economicallyViable === null) {
+                    $recommendationBlockers[] = 'incomplete_economics';
+                }
 
                 return [
                     'channel' => $name,
@@ -64,7 +92,10 @@ final class RecoveryChannelProfitabilitySelector
                     'confidence_adjusted_roi_percent' => $roiPercent !== null ? round($roiPercent, 2) : null,
                     'within_safe_cost_ceiling' => $withinSafeCostCeiling,
                     'economically_viable' => $economicallyViable,
-                    'recommended' => $economicallyViable === true && $withinSafeCostCeiling !== false,
+                    'has_minimum_sample' => $hasMinimumSample,
+                    'minimum_sample_attempts' => $minSampleAttempts,
+                    'recommendation_blockers' => $recommendationBlockers,
+                    'recommended' => $recommended,
                     'sample_attempts' => $attempts,
                 ];
             })
