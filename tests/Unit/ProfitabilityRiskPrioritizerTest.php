@@ -87,6 +87,7 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
                 'platform_collection_fee_rate_gap_to_break_even' => 0.0,
                 'platform_collection_sustainable' => true,
                 'checkout_recovery_attempts' => 10,
+                'checkout_recovered_orders' => 2,
                 'recovered_platform_revenue' => 8.0,
                 'gross_at_risk' => 200.0,
             ],
@@ -102,7 +103,60 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
         self::assertSame(6.0, $result[0]['recovery_net_shortfall']);
         self::assertSame(-60.0, $result[0]['recovery_roi_percent']);
         self::assertFalse($result[0]['recovery_economically_sustainable']);
+        self::assertSame('reduce_or_pause', $result[0]['recovery_decision']);
+        self::assertSame(20.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(0.4, $result[0]['recovery_contribution_per_attempt']);
         self::assertSame('payment_method_config', $result[0]['recovery_cost_source']);
+    }
+
+    public function test_it_recommends_scaling_only_after_minimum_sample_with_strong_positive_roi(): void
+    {
+        $result = (new ProfitabilityRiskPrioritizer())->prioritize([[
+            'payment_method' => 'pix',
+            'platform_revenue' => 100.0,
+            'platform_contribution_after_processing' => 100.0,
+            'platform_contribution_shortfall' => 0.0,
+            'platform_loss_making_orders' => 0,
+            'platform_loss_making_gross_revenue' => 0.0,
+            'platform_collection_effective_fee_rate' => 3.0,
+            'platform_collection_break_even_fee_rate' => 1.0,
+            'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_sustainable' => true,
+            'checkout_recovery_attempts' => 12,
+            'checkout_recovered_orders' => 6,
+            'recovered_platform_revenue' => 30.0,
+            'gross_at_risk' => 300.0,
+        ]], ['pix' => 1.0]);
+
+        self::assertCount(1, $result);
+        self::assertSame('scale_carefully', $result[0]['recovery_decision']);
+        self::assertSame(150.0, $result[0]['recovery_roi_percent']);
+        self::assertSame(50.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(2.5, $result[0]['recovery_contribution_per_attempt']);
+        self::assertSame(10, $result[0]['recovery_decision_minimum_attempts']);
+    }
+
+    public function test_it_does_not_scale_from_a_small_sample_even_with_positive_roi(): void
+    {
+        $result = (new ProfitabilityRiskPrioritizer())->prioritize([[
+            'payment_method' => 'pix',
+            'platform_revenue' => 50.0,
+            'platform_contribution_after_processing' => 50.0,
+            'platform_contribution_shortfall' => 5.0,
+            'platform_loss_making_orders' => 1,
+            'platform_loss_making_gross_revenue' => 50.0,
+            'platform_collection_effective_fee_rate' => 3.0,
+            'platform_collection_break_even_fee_rate' => 1.0,
+            'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_sustainable' => true,
+            'checkout_recovery_attempts' => 3,
+            'checkout_recovered_orders' => 2,
+            'recovered_platform_revenue' => 12.0,
+            'gross_at_risk' => 100.0,
+        ]], ['pix' => 1.0]);
+
+        self::assertCount(1, $result);
+        self::assertSame('collect_more_data', $result[0]['recovery_decision']);
     }
 
     public function test_it_does_not_invent_recovery_roi_without_configured_cost(): void
@@ -119,6 +173,7 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
             'platform_collection_fee_rate_gap_to_break_even' => 0.0,
             'platform_collection_sustainable' => true,
             'checkout_recovery_attempts' => 20,
+            'checkout_recovered_orders' => 0,
             'recovered_platform_revenue' => 0.0,
             'gross_at_risk' => 300.0,
         ]], [], null);
