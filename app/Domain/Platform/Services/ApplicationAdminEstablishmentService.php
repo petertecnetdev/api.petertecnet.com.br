@@ -2,24 +2,17 @@
 
 namespace App\Domain\Platform\Services;
 
-use App\Models\Establishment;
+use App\Models\Production;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 final class ApplicationAdminEstablishmentService
 {
-    public function paginate(int $applicationId, string $category, array $filters): LengthAwarePaginator
+    public function paginateProductions(int $applicationId, array $filters): LengthAwarePaginator
     {
-        $query = Establishment::query()
+        $query = Production::query()
             ->where('app_id', $applicationId)
-            ->where('category', $category)
-            ->with('user:id,first_name,last_name,email');
-
-        if ($category === 'production') {
-            $query->withCount([
-                'employers',
-                'events as events_count' => fn ($eventQuery) => $eventQuery,
-            ]);
-        }
+            ->with('user:id,first_name,last_name,email')
+            ->withCount(['events', 'employers']);
 
         if ($term = trim((string) ($filters['q'] ?? ''))) {
             $query->where(fn ($builder) => $builder
@@ -40,17 +33,16 @@ final class ApplicationAdminEstablishmentService
         return $query->latest('id')->paginate((int) ($filters['per_page'] ?? 25));
     }
 
-    public function update(int $applicationId, string $category, int $establishmentId, array $changes): Establishment
+    public function updateProduction(int $applicationId, int $productionId, array $changes): Production
     {
-        $model = Establishment::query()
+        $model = Production::query()
             ->where('app_id', $applicationId)
-            ->where('category', $category)
-            ->findOrFail($establishmentId);
+            ->findOrFail($productionId);
 
         $model->fill($changes)->save();
 
         return $model->fresh()
             ->load('user:id,first_name,last_name,email')
-            ->loadCount('employers');
+            ->loadCount(['events', 'employers']);
     }
 }
