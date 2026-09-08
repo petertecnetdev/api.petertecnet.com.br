@@ -1,0 +1,91 @@
+name: Post-deploy Production Smoke
+
+on:
+  workflow_run:
+    workflows: ["Deploy VPS"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API_BASE: https://api.petertecnet.com.br
+      CUTINAPP_ORIGIN: https://cutinapp.petertecnet.com.br
+      SMOKE_TOKEN: ${{ secrets.CUTINAPP_SMOKE_TOKEN }}
+    steps:
+      - name: Functional readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          payload="$(curl --fail --silent --show-error --max-time 12 "$API_BASE/api/v1/health/ready")"
+          echo "$payload" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d.get("ready") is True; checks=d.get("checks",{}); assert all(checks.get(k) is True for k in ("database","cache","idempotency","auth_guard"))'
+
+      - name: Critical mutation CORS preflights
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            /api/v1/apps/cutinapp/organizations \
+            /api/v1/apps/cutinapp/events \
+            /api/v1/apps/cutinapp/tickets \
+            /api/v1/apps/cutinapp/checkin \
+            /api/v1/apps/cutinapp/commerce/checkout
+          do
+            headers="$(mktemp)"
+            code="$(curl --silent --show-error --max-time 12 -o /dev/null -D "$headers" -w '%{http_code}' \
+              -X OPTIONS "$API_BASE$path" \
+              -H "Origin: $CUTINAPP_ORIGIN" \
+              -H 'Access-Control-Request-Method: POST' \
+              -H 'Access-Control-Request-Headers: authorization,content-type,idempotency-key,x-request-id,x-peter-app,x-frontend-page')"
+            [[ "$code" == "200" || "$code" == "204" ]]
+            grep -qi '^access-control-allow-origin: https://cutinapp.petertecnet.com.br' "$headers"
+            grep -qi '^access-control-allow-headers:.*idempotency-key' "$headers"
+            rm -f "$headers"
+          done
+
+      - name: Verify authenticated probe is protected
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(curl --silent --show-error --max-time 12 -o /tmp/auth-probe.json -w '%{http_code}' \
+            -X POST "$API_BASE/api/v1/apps/cutinapp/health/mutation-probe" \
+            -H 'Accept: application/json' -H 'X-Peter-App: cutinapp')"
+          [[ "$code" == "401" ]]
+
+      - name: Authenticated idempotent mutation smoke
+        if: env.SMOKE_TOKEN != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          key="deploy-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          first_headers="$(mktemp)"; second_headers="$(mktemp)"
+          first_body="$(mktemp)"; second_body="$(mktemp)"
+
+          curl --fail --silent --show-error --max-time 12 -D "$first_headers" -o "$first_body" \
+            -X POST "$API_BASE/api/v1/apps/cutinapp/health/mutation-probe" \
+            -H "Authorization: Bearer $SMOKE_TOKEN" \
+            -H 'Accept: application/json' \
+            -H 'X-Peter-App: cutinapp' \
+            -H "Idempotency-Key: $key"
+          grep -qi '^idempotency-status: created' "$first_headers"
+
+          curl --fail --silent --show-error --max-time 12 -D "$second_headers" -o "$second_body" \
+            -X POST "$API_BASE/api/v1/apps/cutinapp/health/mutation-probe" \
+            -H "Authorization: Bearer $SMOKE_TOKEN" \
+            -H 'Accept: application/json' \
+            -H 'X-Peter-App: cutinapp' \
+            -H "Idempotency-Key: $key"
+          grep -qi '^idempotency-status: replayed' "$second_headers"
+          grep -qi '^idempotency-replayed: true' "$second_headers"
+          cmp "$first_body" "$second_body"
+
+      - name: Explain optional authenticated credential
+        if: env.SMOKE_TOKEN == ''
+        run: echo '::warning::CUTINAPP_SMOKE_TOKEN is not configured; protection is verified with 401 and successful authenticated replay remains wired for the secret when available.'
