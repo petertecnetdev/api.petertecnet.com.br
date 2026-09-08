@@ -29,6 +29,16 @@ final class CheckoutRecoveryOpportunityAnalyzer
         $fallbackPlatformContributionRate = $fallbackPlatformContributionRate !== null
             ? min((float) $fallbackPlatformContributionRate, 1.0)
             : null;
+
+        if ($recoveryAttemptCostByPaymentMethod === []) {
+            $recoveryAttemptCostByPaymentMethod = (array) config('checkout_recovery.attempt_cost_by_payment_method', []);
+        }
+        if ($fallbackRecoveryAttemptCost === null) {
+            $configuredDefaultCost = config('checkout_recovery.default_attempt_cost');
+            $fallbackRecoveryAttemptCost = is_numeric($configuredDefaultCost)
+                ? (float) $configuredDefaultCost
+                : null;
+        }
         $fallbackRecoveryAttemptCost = $fallbackRecoveryAttemptCost !== null
             ? max((float) $fallbackRecoveryAttemptCost, 0.0)
             : null;
@@ -67,7 +77,8 @@ final class CheckoutRecoveryOpportunityAnalyzer
                 ? 'payment_method_history'
                 : ($fallbackPlatformContributionRate !== null ? 'overall_history' : 'no_history');
 
-            $hasMethodRecoveryCost = array_key_exists($paymentMethod, $recoveryAttemptCostByPaymentMethod);
+            $hasMethodRecoveryCost = array_key_exists($paymentMethod, $recoveryAttemptCostByPaymentMethod)
+                && is_numeric($recoveryAttemptCostByPaymentMethod[$paymentMethod]);
             $recoveryAttemptCost = $hasMethodRecoveryCost
                 ? max((float) $recoveryAttemptCostByPaymentMethod[$paymentMethod], 0.0)
                 : $fallbackRecoveryAttemptCost;
