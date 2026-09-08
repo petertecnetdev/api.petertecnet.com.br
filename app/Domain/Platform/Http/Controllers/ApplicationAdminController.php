@@ -3,9 +3,11 @@
 namespace App\Domain\Platform\Http\Controllers;
 
 use App\Domain\Platform\Services\ApplicationAdminOverviewService;
+use App\Domain\Platform\Services\ApplicationAdminSecurityService;
 use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Domain\Platform\Services\ApplicationAdminUserService;
 use App\Http\Controllers\Controller;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -15,6 +17,7 @@ class ApplicationAdminController extends Controller
         private readonly ApplicationAdminService $service,
         private readonly ApplicationAdminOverviewService $overviewService,
         private readonly ApplicationAdminUserService $userService,
+        private readonly ApplicationAdminSecurityService $securityService,
     ) {
     }
 
@@ -69,6 +72,16 @@ class ApplicationAdminController extends Controller
         ]);
 
         $result = $this->userService->createOrAttach($this->applicationId($request), $validated);
+        $target = $result['user'] instanceof User ? $result['user'] : User::query()->find($result['user']['id'] ?? null);
+
+        $this->service->auditAction(
+            $this->applicationId($request),
+            $request->user(),
+            $target,
+            $result['created'] ? 'application_user_created' : 'application_user_attached',
+            ['role' => $validated['role'] ?? 'participant'],
+            $this->auditContext($request),
+        );
 
         return response()->json([
             'success' => true,
@@ -77,6 +90,54 @@ class ApplicationAdminController extends Controller
                 : 'Usuário existente vinculado à aplicação com sucesso.',
             'data' => $result['user'],
         ], $result['created'] ? 201 : 200);
+    }
+
+    public function userSecurity(Request $request, int $userId): JsonResponse
+    {
+        $target = User::query()->findOrFail($userId);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->securityService->snapshot(
+                $this->applicationId($request),
+                $request->user(),
+                $target,
+            ),
+        ]);
+    }
+
+    public function updateUserAccess(Request $request, int $userId): JsonResponse
+    {
+        $validated = $request->validate([
+            'status' => ['required', 'string', 'in:active,suspended,blocked'],
+        ]);
+        $target = User::query()->findOrFail($userId);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->securityService->updateMembershipStatus(
+                $this->applicationId($request),
+                $request->user(),
+                $target,
+                $validated['status'],
+                $this->auditContext($request),
+            ),
+        ]);
+    }
+
+    public function revokeUserSessions(Request $request, int $userId): JsonResponse
+    {
+        $target = User::query()->findOrFail($userId);
+
+        return response()->json([
+            'success' => true,
+            'data' => $this->securityService->revokeSessions(
+                $this->applicationId($request),
+                $request->user(),
+                $target,
+                $this->auditContext($request),
+            ),
+        ]);
     }
 
     public function profiles(Request $request): JsonResponse
@@ -203,6 +264,8 @@ class ApplicationAdminController extends Controller
             'request_id' => $request->attributes->get('request_id') ?: $request->header('X-Request-ID'),
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
+            'authority' => $request->attributes->get('admin_authority'),
+            'scope' => $request->attributes->get('admin_scope'),
         ];
     }
 }

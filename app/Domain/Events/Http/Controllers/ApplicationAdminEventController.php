@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Events\Services\EventSeriesService;
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Support\ApplicationContext;
@@ -14,6 +15,7 @@ final class ApplicationAdminEventController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly EventSeriesService $series,
+        private readonly ApplicationAdminService $admin,
     ) {}
 
     public function index(Request $request)
@@ -40,6 +42,7 @@ final class ApplicationAdminEventController extends Controller
         }
 
         return response()->json([
+            'scope' => 'global_application',
             'events' => $query->orderByDesc('start_date')->paginate($data['per_page'] ?? 100),
         ]);
     }
@@ -125,11 +128,43 @@ final class ApplicationAdminEventController extends Controller
 
     public function series(Request $request, int $event)
     {
-        $source = Event::query()->where('app_id', $this->context->id())->findOrFail($event);
+        $source = Event::query()
+            ->where('app_id', $this->context->id())
+            ->with('production:id,user_id,name')
+            ->findOrFail($event);
 
-        return response()->json(
-            $this->series->create($source, $this->context->id(), $this->context->slug(), $request->all()),
-            201,
+        $result = $this->series->create(
+            $source,
+            $this->context->id(),
+            $this->context->slug(),
+            $request->all(),
         );
+
+        $this->admin->auditAction(
+            $this->context->id(),
+            $request->user(),
+            $source->production?->user,
+            'admin_event_series_created',
+            [
+                'source_event_id' => $source->id,
+                'production_id' => $source->production_id,
+                'request' => $request->except(['password', 'token']),
+                'result' => is_array($result) ? $result : ['created' => true],
+            ],
+            $this->auditContext($request),
+        );
+
+        return response()->json($result, 201);
+    }
+
+    private function auditContext(Request $request): array
+    {
+        return [
+            'request_id' => $request->attributes->get('request_id') ?: $request->header('X-Request-ID'),
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+            'authority' => $request->attributes->get('admin_authority'),
+            'scope' => $request->attributes->get('admin_scope'),
+        ];
     }
 }
