@@ -110,7 +110,7 @@ class DiscoveryService
             'description' => $this->limit($description ?: "{$item->name}: {$category} disponível em {$company}. Consulte detalhes, disponibilidade e informações no catálogo digital.", 158),
             'canonical_path' => '/solucoes/' . rawurlencode($item->slug ?: (string) $item->id),
             'keywords' => array_values(array_filter([$item->name, $category, $item->subcategory, $item->brand, $company, $establishment->city, $establishment->uf])),
-            'og_image' => $item->og_image ?: $this->socialImageUrl('item', $item->slug ?: (string) $item->id),
+            'og_image' => $this->socialImageUrl('item', $item->slug ?: (string) $item->id),
             'location' => $location,
         ];
     }
