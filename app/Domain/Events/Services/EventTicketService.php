@@ -5,12 +5,14 @@ namespace App\Domain\Events\Services;
 use App\Models\Event;
 use App\Models\Ticket;
 use App\Support\ApplicationContext;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
 final class EventTicketService
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly TicketSalesCutoffService $cutoffs,
+    ) {}
 
     public function listForEvent(mixed $user, int $eventId): array
     {
@@ -34,11 +36,13 @@ final class EventTicketService
             ->unique()
             ->values();
 
+        $referenceEvent = $this->ownedEvent($user, (int) $eventIds->first());
         $sourceTicket = isset($data['source_ticket_id'])
             ? $this->ownedTicket($user, (int) $data['source_ticket_id'])
             : null;
+        $cutoffRule = $this->cutoffs->ruleFor($data, $sourceTicket, $referenceEvent);
 
-        $result = DB::transaction(function () use ($user, $data, $eventIds, $sourceTicket) {
+        $result = DB::transaction(function () use ($user, $data, $eventIds, $sourceTicket, $cutoffRule) {
             $created = collect();
             $linked = collect();
             $skipped = collect();
@@ -49,12 +53,32 @@ final class EventTicketService
                 $event = $this->ownedEvent($user, $eventId);
                 abort_if($event->is_cancelled, 422, "Não é possível criar ingressos para o evento cancelado {$event->title}.");
 
+                $cutoff = $this->cutoffs->cutoffForEvent($event, $cutoffRule);
+
                 if ($sourceTicket && (int) $sourceTicket->event_id === (int) $event->id) {
+                    $sourceTicket->update([
+                        'sales_cutoff_mode' => $cutoffRule['mode'],
+                        'sales_cutoff_offset_minutes' => $cutoffRule['offset_minutes'],
+                        'limit_date' => $cutoff['limit_date'],
+                    ]);
                     $linked->push($sourceTicket->fresh()->loadCount('passes'));
+                    if ($cutoff['clamped_to_event_end']) {
+                        $adjustedLimitDates->push([
+                            'event_id' => $event->id,
+                            'ticket_id' => $sourceTicket->id,
+                            'reason' => 'event_end',
+                        ]);
+                    }
                     continue;
                 }
 
-                [$payload, $limitAdjusted] = $this->payloadForEvent($data, $sourceTicket, $event);
+                $payload = $this->payloadForEvent(
+                    $data,
+                    $sourceTicket,
+                    $event,
+                    $cutoffRule,
+                    $cutoff['limit_date']
+                );
                 $equivalent = $shouldDeduplicate
                     ? $this->findEquivalentTicket($event, $payload)
                     : null;
@@ -67,10 +91,11 @@ final class EventTicketService
                 $ticket = Ticket::create($payload)->loadCount('passes');
                 $created->push($ticket);
 
-                if ($limitAdjusted) {
+                if ($cutoff['clamped_to_event_end']) {
                     $adjustedLimitDates->push([
                         'event_id' => $event->id,
                         'ticket_id' => $ticket->id,
+                        'reason' => 'event_end',
                     ]);
                 }
             }
@@ -105,6 +130,7 @@ final class EventTicketService
                 'created_count' => $result['created']->count(),
                 'existing_count' => $existingCount,
                 'adjusted_limit_dates' => $result['adjustedLimitDates'],
+                'sales_cutoff_rule' => $cutoffRule,
             ],
         ];
     }
@@ -127,6 +153,18 @@ final class EventTicketService
                 }
             }
 
+            if (
+                array_key_exists('sales_cutoff_mode', $data)
+                || array_key_exists('sales_cutoff_offset_minutes', $data)
+                || array_key_exists('limit_date', $data)
+            ) {
+                $rule = $this->cutoffs->ruleFor($data, null, $ticket->event);
+                $cutoff = $this->cutoffs->cutoffForEvent($ticket->event, $rule);
+                $data['sales_cutoff_mode'] = $rule['mode'];
+                $data['sales_cutoff_offset_minutes'] = $rule['offset_minutes'];
+                $data['limit_date'] = $cutoff['limit_date'];
+            }
+
             $ticket->update($data);
 
             return $ticket->fresh()->loadCount('passes');
@@ -144,13 +182,17 @@ final class EventTicketService
         }, 3);
     }
 
-    private function payloadForEvent(array $data, ?Ticket $sourceTicket, Event $event): array
-    {
+    private function payloadForEvent(
+        array $data,
+        ?Ticket $sourceTicket,
+        Event $event,
+        array $cutoffRule,
+        mixed $limitDate,
+    ): array {
         if ($sourceTicket) {
             $price = round((float) $sourceTicket->price, 2);
-            [$limitDate, $limitAdjusted] = $this->cloneLimitDate($sourceTicket, $event);
 
-            return [[
+            return [
                 'app_id' => $this->context->id(),
                 'app_slug' => $this->context->slug(),
                 'event_id' => $event->id,
@@ -160,14 +202,16 @@ final class EventTicketService
                 'price' => $price,
                 'quantity' => (int) $sourceTicket->quantity,
                 'limit_date' => $limitDate,
+                'sales_cutoff_mode' => $cutoffRule['mode'],
+                'sales_cutoff_offset_minutes' => $cutoffRule['offset_minutes'],
                 'description' => $sourceTicket->description,
-            ], $limitAdjusted];
+            ];
         }
 
         $price = round((float) $data['price'], 2);
         $paid = $price > 0;
 
-        return [[
+        return [
             'app_id' => $this->context->id(),
             'app_slug' => $this->context->slug(),
             'event_id' => $event->id,
@@ -176,39 +220,11 @@ final class EventTicketService
             'type' => $paid ? 'paid' : 'courtesy',
             'price' => $price,
             'quantity' => (int) $data['quantity'],
-            'limit_date' => $data['limit_date'] ?? null,
+            'limit_date' => $limitDate,
+            'sales_cutoff_mode' => $cutoffRule['mode'],
+            'sales_cutoff_offset_minutes' => $cutoffRule['offset_minutes'],
             'description' => $data['description'] ?? null,
-        ], false];
-    }
-
-    private function cloneLimitDate(Ticket $sourceTicket, Event $targetEvent): array
-    {
-        if (! $sourceTicket->limit_date) {
-            return [null, false];
-        }
-
-        $sourceLimit = Carbon::parse($sourceTicket->limit_date);
-        $minimum = now()->addHour();
-        $targetStart = $targetEvent->start_date ? Carbon::parse($targetEvent->start_date) : null;
-
-        if ($sourceLimit->gte($minimum) && (! $targetStart || $sourceLimit->lte($targetStart))) {
-            return [$sourceLimit, false];
-        }
-
-        $sourceStart = optional($sourceTicket->event)->start_date
-            ? Carbon::parse($sourceTicket->event->start_date)
-            : null;
-
-        if ($sourceStart && $targetStart && $sourceLimit->lte($sourceStart)) {
-            $secondsBeforeStart = $sourceLimit->diffInSeconds($sourceStart);
-            $adapted = $targetStart->copy()->subSeconds($secondsBeforeStart);
-
-            if ($adapted->gte($minimum) && $adapted->lte($targetStart)) {
-                return [$adapted, true];
-            }
-        }
-
-        return [null, true];
+        ];
     }
 
     private function findEquivalentTicket(Event $event, array $payload): ?Ticket
@@ -221,6 +237,9 @@ final class EventTicketService
             ->where('type', $payload['type'])
             ->where('price', $payload['price'])
             ->where('quantity', $payload['quantity'])
+            ->where('sales_cutoff_mode', $payload['sales_cutoff_mode'])
+            ->where('sales_cutoff_offset_minutes', $payload['sales_cutoff_offset_minutes'])
+            ->where('limit_date', $payload['limit_date'])
             ->where(function ($query) use ($payload) {
                 $description = $payload['description'] ?? null;
                 $description === null
