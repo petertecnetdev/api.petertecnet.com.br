@@ -33,6 +33,7 @@ class Kernel extends HttpKernel
             \App\Http\Middleware\EnsureIdempotentRequest::class,
             \App\Http\Middleware\NormalizeHomeLocationFilters::class,
             \App\Http\Middleware\EnsureOrderContext::class,
+            \App\Http\Middleware\ApiPerformanceHeaders::class,
             \App\Http\Middleware\TrackApiInteraction::class,
         ],
     ];
