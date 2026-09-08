@@ -10,6 +10,7 @@ class AppNotification extends Model
         'app_id',
         'user_id',
         'campaign_id',
+        'dedupe_key',
         'type',
         'title',
         'message',

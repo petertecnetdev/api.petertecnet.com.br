@@ -69,24 +69,37 @@ class ImportantEventService
             if (!$importantEvent) throw $e;
         }
 
-        if (!$importantEvent->wasRecentlyCreated) return $importantEvent;
-
         if ($producer?->id) {
-            app(AppNotificationService::class)->sendToUser((int)$event->app_id,(int)$producer->id,[
-                'type'=>'ticket_sale_completed',
-                'title'=>'Nova venda de ingresso',
-                'message'=>$this->producerMessage($order,$ticketQuantity),
-                'reference_type'=>'commerce_order',
-                'reference_id'=>$order->id,
-                'reference_url'=>$producerUrl,
-                'data'=>array_merge($metadata,['important_event_id'=>$importantEvent->id]),
-            ]);
+            app(AppNotificationService::class)->sendToUserOnce(
+                (int)$event->app_id,
+                (int)$producer->id,
+                'ticket-sale-completed:order:'.$order->id,
+                [
+                    'type'=>'ticket_sale_completed',
+                    'title'=>'Nova venda de ingresso',
+                    'message'=>$this->producerMessage($order,$ticketQuantity),
+                    'reference_type'=>'commerce_order',
+                    'reference_id'=>$order->id,
+                    'reference_url'=>$producerUrl,
+                    'data'=>array_merge($metadata,['important_event_id'=>$importantEvent->id]),
+                ]
+            );
         }
 
         if ($producer?->email) {
+            $deliveryKey = 'ticket-sale-producer:order:'.$order->id;
+            $delivery = app(OutboundDeliveryService::class);
             try {
-                Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity));
-                $this->updateEmailStatus($importantEvent,'delivered');
+                $delivery->deliverOnce(
+                    (int)$event->app_id,
+                    'mail',
+                    $deliveryKey,
+                    fn()=>Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity)),
+                    ['order_id'=>(int)$order->id,'producer_user_id'=>(int)$producer->id,'type'=>'ticket_sale_producer']
+                );
+                if ($delivery->isDelivered((int)$event->app_id,'mail',$deliveryKey)) {
+                    $this->updateEmailStatus($importantEvent,'delivered');
+                }
             } catch (\Throwable $e) {
                 $this->updateEmailStatus($importantEvent,'failed');
                 Log::error('Falha ao enviar e-mail de nova venda ao produtor.',[
