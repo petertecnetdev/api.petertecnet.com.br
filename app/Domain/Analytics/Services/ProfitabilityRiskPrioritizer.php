@@ -41,6 +41,7 @@ final class ProfitabilityRiskPrioritizer
                     ? max((float) $recoveryAttemptCostByPaymentMethod[$paymentMethod], 0.0)
                     : $fallbackRecoveryAttemptCost;
                 $attempts = (int) ($method['checkout_recovery_attempts'] ?? 0);
+                $recoveredOrders = (int) ($method['checkout_recovered_orders'] ?? 0);
                 $recoveredPlatformRevenue = (float) ($method['recovered_platform_revenue'] ?? 0);
                 $platformRevenue = (float) ($method['platform_revenue'] ?? 0);
                 $platformContribution = (float) ($method['platform_contribution_after_processing'] ?? 0);
@@ -60,6 +61,24 @@ final class ProfitabilityRiskPrioritizer
                 $recoveryRoi = $totalRecoveryCost !== null && $totalRecoveryCost > 0
                     ? ($recoveryNetContribution / $totalRecoveryCost) * 100
                     : null;
+                $recoveryRevenuePerAttempt = $attempts > 0
+                    ? $estimatedRecoveredContribution / $attempts
+                    : 0.0;
+                $recoveryConversionRate = $attempts > 0
+                    ? ($recoveredOrders / $attempts) * 100
+                    : 0.0;
+
+                $minimumDecisionSample = 10;
+                $recoveryDecision = 'insufficient_economic_data';
+                if ($attemptCost !== null && $attempts >= $minimumDecisionSample && $recoveryRoi !== null) {
+                    $recoveryDecision = match (true) {
+                        $recoveryRoi < 0 => 'reduce_or_pause',
+                        $recoveryRoi >= 100 => 'scale_carefully',
+                        default => 'maintain_and_monitor',
+                    };
+                } elseif ($attemptCost !== null) {
+                    $recoveryDecision = 'collect_more_data';
+                }
 
                 return [
                     'payment_method' => $paymentMethod,
@@ -71,8 +90,11 @@ final class ProfitabilityRiskPrioritizer
                     'platform_collection_fee_rate_gap_to_break_even' => round((float) ($method['platform_collection_fee_rate_gap_to_break_even'] ?? 0), 2),
                     'gross_at_risk' => round((float) ($method['gross_at_risk'] ?? 0), 2),
                     'checkout_recovery_attempts' => $attempts,
+                    'checkout_recovered_orders' => $recoveredOrders,
+                    'checkout_recovery_conversion_rate' => round($recoveryConversionRate, 2),
                     'recovered_platform_revenue' => round($recoveredPlatformRevenue, 2),
                     'estimated_recovered_platform_contribution' => round($estimatedRecoveredContribution, 2),
+                    'recovery_contribution_per_attempt' => round($recoveryRevenuePerAttempt, 2),
                     'recovery_attempt_cost' => $attemptCost !== null ? round($attemptCost, 4) : null,
                     'recovery_cost_source' => $hasMethodCost
                         ? 'payment_method_config'
@@ -84,15 +106,27 @@ final class ProfitabilityRiskPrioritizer
                     'recovery_economically_sustainable' => $recoveryNetContribution !== null
                         ? $recoveryNetContribution >= 0
                         : null,
+                    'recovery_decision' => $recoveryDecision,
+                    'recovery_decision_minimum_attempts' => $minimumDecisionSample,
                     'platform_collection_sustainable' => (bool) ($method['platform_collection_sustainable'] ?? true),
                 ];
             })
             ->filter(static fn (array $method): bool =>
                 (float) $method['platform_contribution_shortfall'] > 0
                 || ! $method['platform_collection_sustainable']
-                || (float) $method['recovery_net_shortfall'] > 0)
+                || (float) $method['recovery_net_shortfall'] > 0
+                || $method['recovery_decision'] === 'scale_carefully')
             ->sort(function (array $left, array $right): int {
-                return $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
+                $decisionPriority = [
+                    'reduce_or_pause' => 4,
+                    'scale_carefully' => 3,
+                    'maintain_and_monitor' => 2,
+                    'collect_more_data' => 1,
+                    'insufficient_economic_data' => 0,
+                ];
+
+                return ($decisionPriority[$right['recovery_decision']] ?? 0) <=> ($decisionPriority[$left['recovery_decision']] ?? 0)
+                    ?: $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
                     ?: $right['recovery_net_shortfall'] <=> $left['recovery_net_shortfall']
                     ?: $right['platform_loss_making_gross_revenue'] <=> $left['platform_loss_making_gross_revenue']
                     ?: $right['platform_collection_fee_rate_gap_to_break_even'] <=> $left['platform_collection_fee_rate_gap_to_break_even'];
