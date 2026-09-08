@@ -55,7 +55,7 @@ class EventAudienceService
             'data'=>['event_id'=>$order->event_id,'order_id'=>$order->id,'ticket_count'=>$ticketQuantity],
         ]);
         if($passes->isNotEmpty() && $order->user->email){
-            try{Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));}
+            try{Mail::to($order->user->email)->queue(new EventPassesMail($order,$passes));}
             catch(\Throwable $e){Log::error('Falha ao enviar ingressos por e-mail.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);}
         }
         app(ImportantEventService::class)->recordTicketPurchase($order);

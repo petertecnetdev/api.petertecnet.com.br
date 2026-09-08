@@ -124,7 +124,7 @@ class UserOnboardingCommunicationService
                 'establishment_id' => $establishment?->id,
             ]);
 
-            Mail::to($user->email)->send(new InviteUserMail(
+            Mail::to($user->email)->queue(new InviteUserMail(
                 $user,
                 $issued['code'],
                 $application->name,
@@ -141,7 +141,7 @@ class UserOnboardingCommunicationService
             ];
         }
 
-        Mail::to($user->email)->send(new UserAccessContextMail($user, $application, $establishment));
+        Mail::to($user->email)->queue(new UserAccessContextMail($user, $application, $establishment));
 
         return [
             'mode' => 'access_context',

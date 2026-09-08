@@ -165,7 +165,7 @@ class AuthController extends Controller
             return $user;
         });
 
-        Mail::to($user->email)->send(new VerificationCodeMail($rawCode, $user));
+        Mail::to($user->email)->queue(new VerificationCodeMail($rawCode, $user));
         $this->recordInteraction($user, 'register');
 
         return response()->json(['message' => 'Registro bem-sucedido'], 201);
@@ -203,7 +203,7 @@ class AuthController extends Controller
             'verification_code' => Hash::make($rawCode),
             'verification_code_expires_at' => now()->addMinutes(30),
         ])->save();
-        Mail::to($user->email)->send(new ResendVerificationCodeMail($rawCode, $user));
+        Mail::to($user->email)->queue(new ResendVerificationCodeMail($rawCode, $user));
         $this->recordInteraction($user, 'verification_code_resent');
 
         return response()->json(['message' => 'Novo código de verificação enviado com sucesso.']);
@@ -245,7 +245,7 @@ class AuthController extends Controller
             ])->save();
 
             try {
-                Mail::to($user->email)->send(new ResetPasswordMail($rawCode, $user));
+                Mail::to($user->email)->queue(new ResetPasswordMail($rawCode, $user));
                 $this->recordInteraction($user, 'password_reset_requested');
             } catch (\Throwable $e) {
                 Log::error('Falha ao enviar e-mail de recuperação.', [
@@ -393,7 +393,7 @@ class AuthController extends Controller
             return $user;
         });
 
-        Mail::to($user->email)->send(new InviteUserMail($user, $rawCode, $application->name, $application->url));
+        Mail::to($user->email)->queue(new InviteUserMail($user, $rawCode, $application->name, $application->url));
         $this->recordInteraction($user, 'invite_sent', ['application_id' => $application->id]);
 
         return response()->json([
@@ -438,7 +438,7 @@ class AuthController extends Controller
         });
 
         try {
-            Mail::to($user->email)->send(new InviteCompleteMail($user));
+            Mail::to($user->email)->queue(new InviteCompleteMail($user));
         } catch (\Throwable $e) {
             Log::warning('Convite concluído, mas e-mail de confirmação falhou.', [
                 'user_id' => $user->id,

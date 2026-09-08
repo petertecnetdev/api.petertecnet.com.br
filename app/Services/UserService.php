@@ -69,7 +69,7 @@ class UserService
         ]);
 
         Interaction::register('create', $user, Auth::user());
-        Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $temporaryPassword));
+        Mail::to($user->email)->queue(new WelcomeMail($verificationCode, $user, $temporaryPassword));
 
         return response()->json(['message' => 'Usuário criado com sucesso.', 'user' => $user], 201);
     }
@@ -159,7 +159,7 @@ class UserService
         });
 
         if ($emailVerificationCode !== null) {
-            Mail::to($user->email)->send(new VerificationCodeMail($emailVerificationCode, $user));
+            Mail::to($user->email)->queue(new VerificationCodeMail($emailVerificationCode, $user));
         }
 
         return response()->json(['message' => 'Usuário atualizado com sucesso.', 'user' => $user->fresh()->load(['profile', 'files'])]);
