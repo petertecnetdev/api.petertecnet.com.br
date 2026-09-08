@@ -2,18 +2,19 @@
 
 namespace Tests\Feature;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class CorsMutationPreflightTest extends TestCase
 {
-    /** @dataProvider criticalMutationRoutes */
+    #[DataProvider('criticalMutationRoutes')]
     public function test_cutinapp_critical_mutations_accept_idempotency_preflight(string $path): void
     {
-        $response = $this->withHeaders([
-            'Origin' => 'https://cutinapp.petertecnet.com.br',
-            'Access-Control-Request-Method' => 'POST',
-            'Access-Control-Request-Headers' => 'authorization, content-type, idempotency-key, x-request-id, x-peter-app, x-frontend-page',
-        ])->call('OPTIONS', $path);
+        $response = $this->call('OPTIONS', $path, [], [], [], [
+            'HTTP_ORIGIN' => 'https://cutinapp.petertecnet.com.br',
+            'HTTP_ACCESS_CONTROL_REQUEST_METHOD' => 'POST',
+            'HTTP_ACCESS_CONTROL_REQUEST_HEADERS' => 'authorization, content-type, idempotency-key, x-request-id, x-peter-app, x-frontend-page',
+        ]);
 
         $this->assertContains($response->getStatusCode(), [200, 204]);
         $this->assertSame(
