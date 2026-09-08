@@ -164,9 +164,20 @@ final class ProfitabilityRiskPrioritizer
                     'insufficient_economic_data' => 0,
                 ];
 
-                return ($decisionPriority[$right['recovery_decision']] ?? 0) <=> ($decisionPriority[$left['recovery_decision']] ?? 0)
-                    ?: ($right['recovery_confidence_adjusted_net_platform_contribution'] ?? PHP_FLOAT_MIN) <=> ($left['recovery_confidence_adjusted_net_platform_contribution'] ?? PHP_FLOAT_MIN)
-                    ?: $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
+                $decisionOrder = ($decisionPriority[$right['recovery_decision']] ?? 0) <=> ($decisionPriority[$left['recovery_decision']] ?? 0);
+                if ($decisionOrder !== 0) {
+                    return $decisionOrder;
+                }
+
+                if ($left['recovery_decision'] === 'scale_carefully' && $right['recovery_decision'] === 'scale_carefully') {
+                    $confidenceAdjustedOrder = ($right['recovery_confidence_adjusted_net_platform_contribution'] ?? 0.0)
+                        <=> ($left['recovery_confidence_adjusted_net_platform_contribution'] ?? 0.0);
+                    if ($confidenceAdjustedOrder !== 0) {
+                        return $confidenceAdjustedOrder;
+                    }
+                }
+
+                return $right['platform_contribution_shortfall'] <=> $left['platform_contribution_shortfall']
                     ?: $right['recovery_net_shortfall'] <=> $left['recovery_net_shortfall']
                     ?: $right['platform_loss_making_gross_revenue'] <=> $left['platform_loss_making_gross_revenue']
                     ?: $right['platform_collection_fee_rate_gap_to_break_even'] <=> $left['platform_collection_fee_rate_gap_to_break_even'];
