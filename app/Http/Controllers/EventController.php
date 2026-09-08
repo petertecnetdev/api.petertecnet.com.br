@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Event;
 use App\Models\Interaction;
 use App\Models\Production;
+use App\Services\EventProducerCommunicationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -51,6 +52,12 @@ class EventController extends Controller
 
         $event = Event::create($data);
 
+        try {
+            app(EventProducerCommunicationService::class)->notify($event, 'created');
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'message' => 'Evento cadastrado com sucesso.',
             'event' => $event->load(self::PRODUCTION_RELATION),
@@ -85,6 +92,28 @@ class EventController extends Controller
         }
 
         $event->update($data);
+
+        $changedFields = collect(array_keys($event->getChanges()))
+            ->reject(fn ($field) => in_array($field, ['created_at', 'updated_at'], true))
+            ->values()
+            ->all();
+
+        if ($changedFields !== []) {
+            $action = 'updated';
+
+            if (in_array('is_cancelled', $changedFields, true)) {
+                $action = $event->is_cancelled ? 'deactivated' : 'reactivated';
+            } elseif (in_array('is_published', $changedFields, true)) {
+                $action = $event->is_published ? 'activated' : 'deactivated';
+            }
+
+            try {
+                $event->refresh();
+                app(EventProducerCommunicationService::class)->notify($event, $action, $changedFields);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'message' => 'Evento atualizado com sucesso.',
