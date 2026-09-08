@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Domain\Commerce\Services\CommerceCouponService;
 use App\Services\EventAudienceService;
 use Illuminate\Database\Eloquent\Model;
 
@@ -14,8 +15,16 @@ class CommerceOrder extends Model
 
     protected static function booted(): void
     {
+        static::updating(function (CommerceOrder $order) {
+            if (! $order->isDirty('subtotal')) return;
+            $couponCode = trim((string) request()->input('coupon_code', ''));
+            if ($couponCode === '') return;
+            app(CommerceCouponService::class)->applyToOrder($order, $couponCode);
+        });
+
         static::updated(function (CommerceOrder $order) {
             if ($order->wasChanged('status') && $order->status === 'paid') {
+                app(CommerceCouponService::class)->redeemPaidOrder($order);
                 app(EventAudienceService::class)->confirmPaidOrder((int) $order->id);
             }
         });
