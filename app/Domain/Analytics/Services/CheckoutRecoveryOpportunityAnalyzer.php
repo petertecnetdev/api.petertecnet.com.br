@@ -10,10 +10,18 @@ final class CheckoutRecoveryOpportunityAnalyzer
      * @param iterable<object> $orders
      * @return array<string, mixed>
      */
-    public function summarize(iterable $orders, ?CarbonInterface $now = null): array
+    public function summarize(
+        iterable $orders,
+        ?CarbonInterface $now = null,
+        array $recoveryProbabilityByPaymentMethod = [],
+        ?float $fallbackRecoveryProbability = null
+    ): array
     {
         $now ??= now();
         $summary = $this->emptySummary();
+        $fallbackRecoveryProbability = $fallbackRecoveryProbability !== null
+            ? min(max($fallbackRecoveryProbability, 0.0), 1.0)
+            : null;
 
         foreach ($orders as $order) {
             $paymentMethod = trim((string) ($order->payment_method ?? '')) ?: 'unknown';
@@ -21,20 +29,30 @@ final class CheckoutRecoveryOpportunityAnalyzer
             $platformRevenue = (float) ($order->platform_fee ?? 0);
             $recoveryStarted = $order->recovery_started_at !== null;
             $ageBucket = $this->ageBucket($order->created_at ?? null, $now);
+            $hasMethodProbability = array_key_exists($paymentMethod, $recoveryProbabilityByPaymentMethod);
+            $methodProbability = $hasMethodProbability
+                ? min(max((float) $recoveryProbabilityByPaymentMethod[$paymentMethod], 0.0), 1.0)
+                : $fallbackRecoveryProbability;
+            $expectedPlatformRevenue = $methodProbability !== null
+                ? $platformRevenue * $methodProbability
+                : $platformRevenue;
+            $probabilitySource = $hasMethodProbability
+                ? 'payment_method_history'
+                : ($fallbackRecoveryProbability !== null ? 'overall_history' : 'no_history');
 
-            $this->accumulate($summary, $gross, $platformRevenue, $recoveryStarted);
+            $this->accumulate($summary, $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue);
 
             if (! isset($summary['by_payment_method'][$paymentMethod])) {
                 $summary['by_payment_method'][$paymentMethod] = $this->emptyBucket();
                 $summary['by_payment_method'][$paymentMethod]['payment_method'] = $paymentMethod;
             }
-            $this->accumulate($summary['by_payment_method'][$paymentMethod], $gross, $platformRevenue, $recoveryStarted);
+            $this->accumulate($summary['by_payment_method'][$paymentMethod], $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue);
 
             if (! isset($summary['by_age_bucket'][$ageBucket])) {
                 $summary['by_age_bucket'][$ageBucket] = $this->emptyBucket();
                 $summary['by_age_bucket'][$ageBucket]['age_bucket'] = $ageBucket;
             }
-            $this->accumulate($summary['by_age_bucket'][$ageBucket], $gross, $platformRevenue, $recoveryStarted);
+            $this->accumulate($summary['by_age_bucket'][$ageBucket], $gross, $platformRevenue, $recoveryStarted, $expectedPlatformRevenue);
 
             if (! $recoveryStarted) {
                 $summary['top_opportunities'][] = [
@@ -43,6 +61,9 @@ final class CheckoutRecoveryOpportunityAnalyzer
                     'age_bucket' => $ageBucket,
                     'gross_revenue' => $gross,
                     'platform_revenue' => $platformRevenue,
+                    'recovery_probability' => $methodProbability !== null ? round($methodProbability, 4) : null,
+                    'recovery_probability_source' => $probabilitySource,
+                    'expected_platform_revenue' => $expectedPlatformRevenue,
                     'created_at' => $order->created_at instanceof CarbonInterface
                         ? $order->created_at->toIso8601String()
                         : null,
@@ -56,7 +77,9 @@ final class CheckoutRecoveryOpportunityAnalyzer
                     $summary['priority_queue'][$priorityKey]['age_bucket'] = $ageBucket;
                     $summary['priority_queue'][$priorityKey]['recommended_action'] = 'recover_unattempted_checkout';
                 }
-                $this->accumulate($summary['priority_queue'][$priorityKey], $gross, $platformRevenue, false);
+                $this->accumulate($summary['priority_queue'][$priorityKey], $gross, $platformRevenue, false, $expectedPlatformRevenue);
+                $summary['priority_queue'][$priorityKey]['recovery_probability'] = $methodProbability !== null ? round($methodProbability, 4) : null;
+                $summary['priority_queue'][$priorityKey]['recovery_probability_source'] = $probabilitySource;
             }
         }
 
@@ -88,6 +111,11 @@ final class CheckoutRecoveryOpportunityAnalyzer
             ->all();
         $summary['top_opportunities'] = collect($summary['top_opportunities'])
             ->sort(function (array $left, array $right): int {
+                $expectedComparison = (float) $right['expected_platform_revenue'] <=> (float) $left['expected_platform_revenue'];
+                if ($expectedComparison !== 0) {
+                    return $expectedComparison;
+                }
+
                 $platformComparison = (float) $right['platform_revenue'] <=> (float) $left['platform_revenue'];
                 if ($platformComparison !== 0) {
                     return $platformComparison;
@@ -106,6 +134,7 @@ final class CheckoutRecoveryOpportunityAnalyzer
             ->map(function (array $row, int $index): array {
                 $row['gross_revenue'] = round((float) $row['gross_revenue'], 2);
                 $row['platform_revenue'] = round((float) $row['platform_revenue'], 2);
+                $row['expected_platform_revenue'] = round((float) $row['expected_platform_revenue'], 2);
                 $row['priority_rank'] = $index + 1;
 
                 return $row;
@@ -153,13 +182,14 @@ final class CheckoutRecoveryOpportunityAnalyzer
             'unattempted_orders' => 0,
             'unattempted_gross_revenue' => 0.0,
             'unattempted_platform_revenue' => 0.0,
+            'expected_platform_revenue' => 0.0,
             'recovery_started_orders' => 0,
             'recovery_started_gross_revenue' => 0.0,
         ];
     }
 
     /** @param array<string, mixed> $row */
-    private function accumulate(array &$row, float $gross, float $platformRevenue, bool $recoveryStarted): void
+    private function accumulate(array &$row, float $gross, float $platformRevenue, bool $recoveryStarted, float $expectedPlatformRevenue = 0.0): void
     {
         $row['orders']++;
         $row['gross_revenue'] += $gross;
@@ -174,6 +204,7 @@ final class CheckoutRecoveryOpportunityAnalyzer
         $row['unattempted_orders']++;
         $row['unattempted_gross_revenue'] += $gross;
         $row['unattempted_platform_revenue'] += $platformRevenue;
+        $row['expected_platform_revenue'] += $expectedPlatformRevenue;
     }
 
     /** @param array<string, mixed> $row @return array<string, mixed> */
@@ -184,6 +215,7 @@ final class CheckoutRecoveryOpportunityAnalyzer
             'platform_revenue',
             'unattempted_gross_revenue',
             'unattempted_platform_revenue',
+            'expected_platform_revenue',
             'recovery_started_gross_revenue',
         ] as $key) {
             $row[$key] = round((float) ($row[$key] ?? 0), 2);
@@ -195,6 +227,12 @@ final class CheckoutRecoveryOpportunityAnalyzer
     /** @param array<string, mixed> $left @param array<string, mixed> $right */
     private function compareRecoveryValue(array $left, array $right): int
     {
+        $expectedComparison = (float) ($right['expected_platform_revenue'] ?? 0)
+            <=> (float) ($left['expected_platform_revenue'] ?? 0);
+        if ($expectedComparison !== 0) {
+            return $expectedComparison;
+        }
+
         $platformComparison = (float) ($right['unattempted_platform_revenue'] ?? 0)
             <=> (float) ($left['unattempted_platform_revenue'] ?? 0);
 

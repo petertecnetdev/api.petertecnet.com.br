@@ -62,12 +62,6 @@ final class RevenueFunnelService
             });
         $atRiskGross = (float) (clone $atRiskOrders)->sum('total');
         $atRiskPlatformRevenue = (float) (clone $atRiskOrders)->sum('platform_fee');
-        $checkoutRecoveryOpportunities = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
-            (clone $atRiskOrders)
-                ->select(['id', 'payment_method', 'total', 'platform_fee', 'created_at', 'recovery_started_at'])
-                ->lazyById(1000)
-        );
-
         $lostOrders = (clone $orders)->where(function ($query): void {
             $query->where('status', 'cancelled')
                 ->orWhere(function ($expiredQuery): void {
@@ -142,6 +136,23 @@ final class RevenueFunnelService
             ->sortByDesc('platform_contribution_after_processing')
             ->values()
             ->all();
+
+        $overallRecoveryProbability = $recoveryAttempts > 0
+            ? $recoveredOrders / $recoveryAttempts
+            : null;
+        $recoveryProbabilityByPaymentMethod = collect($paymentMethods)
+            ->filter(fn (array $row): bool => (int) $row['checkout_recovery_attempts'] > 0)
+            ->mapWithKeys(fn (array $row): array => [
+                (string) $row['payment_method'] => (float) $row['checkout_recovery_conversion_rate'] / 100,
+            ])
+            ->all();
+        $checkoutRecoveryOpportunities = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
+            (clone $atRiskOrders)
+                ->select(['id', 'payment_method', 'total', 'platform_fee', 'created_at', 'recovery_started_at'])
+                ->lazyById(1000),
+            recoveryProbabilityByPaymentMethod: $recoveryProbabilityByPaymentMethod,
+            fallbackRecoveryProbability: $overallRecoveryProbability
+        );
 
         return [
             'period_days' => $days,
