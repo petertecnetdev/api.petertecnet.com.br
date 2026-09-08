@@ -2,6 +2,7 @@
 
 use App\Domain\Events\Http\Controllers\EventAgendaController;
 use App\Domain\Events\Http\Controllers\EventSoundtrackController;
+use App\Domain\Events\Http\Controllers\RideController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')
@@ -44,4 +45,20 @@ Route::prefix('v1/apps/{application}')
             ->whereNumber('id')
             ->where('itemId', '[A-Za-z0-9\-]+')
             ->middleware('throttle:60,1');
+
+        Route::get('/events/{eventId}/rides', [RideController::class, 'index'])
+            ->whereNumber('eventId');
+        Route::post('/events/{eventId}/rides', [RideController::class, 'store'])
+            ->whereNumber('eventId')
+            ->middleware('throttle:30,1');
+        Route::post('/rides/{rideId}/requests', [RideController::class, 'requestSeat'])
+            ->whereNumber('rideId')
+            ->middleware('throttle:30,1');
+        Route::patch('/rides/{rideId}/requests/{requestId}', [RideController::class, 'respond'])
+            ->whereNumber('rideId')
+            ->whereNumber('requestId')
+            ->middleware('throttle:60,1');
+        Route::delete('/rides/{rideId}', [RideController::class, 'cancel'])
+            ->whereNumber('rideId')
+            ->middleware('throttle:30,1');
     });
