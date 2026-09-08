@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Closure;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
@@ -49,6 +50,16 @@ class OutboundDeliveryService
         }
     }
 
+    public function isDelivered(int $appId, string $channel, string $dedupeKey): bool
+    {
+        return DB::table('outbound_deliveries')
+            ->where('app_id', $appId)
+            ->where('channel', trim($channel))
+            ->where('dedupe_key', trim($dedupeKey))
+            ->where('status', 'delivered')
+            ->exists();
+    }
+
     private function claim(array $identity, array $metadata): ?int
     {
         try {
@@ -73,7 +84,7 @@ class OutboundDeliveryService
             if ($row->status === 'delivered') {
                 return null;
             }
-            if ($row->status === 'processing' && $row->locked_at && now()->diffInMinutes($row->locked_at) < self::STALE_LOCK_MINUTES) {
+            if ($row->status === 'processing' && $row->locked_at && Carbon::parse($row->locked_at)->greaterThan(now()->subMinutes(self::STALE_LOCK_MINUTES))) {
                 return null;
             }
 
