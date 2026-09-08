@@ -69,23 +69,32 @@ class ImportantEventService
             if (!$importantEvent) throw $e;
         }
 
-        if (!$importantEvent->wasRecentlyCreated) return $importantEvent;
-
         if ($producer?->id) {
-            app(AppNotificationService::class)->sendToUser((int)$event->app_id,(int)$producer->id,[
-                'type'=>'ticket_sale_completed',
-                'title'=>'Nova venda de ingresso',
-                'message'=>$this->producerMessage($order,$ticketQuantity),
-                'reference_type'=>'commerce_order',
-                'reference_id'=>$order->id,
-                'reference_url'=>$producerUrl,
-                'data'=>array_merge($metadata,['important_event_id'=>$importantEvent->id]),
-            ]);
+            app(AppNotificationService::class)->sendToUserOnce(
+                (int)$event->app_id,
+                (int)$producer->id,
+                'ticket-sale-completed:order:'.$order->id,
+                [
+                    'type'=>'ticket_sale_completed',
+                    'title'=>'Nova venda de ingresso',
+                    'message'=>$this->producerMessage($order,$ticketQuantity),
+                    'reference_type'=>'commerce_order',
+                    'reference_id'=>$order->id,
+                    'reference_url'=>$producerUrl,
+                    'data'=>array_merge($metadata,['important_event_id'=>$importantEvent->id]),
+                ]
+            );
         }
 
         if ($producer?->email) {
             try {
-                Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity));
+                app(OutboundDeliveryService::class)->deliverOnce(
+                    (int)$event->app_id,
+                    'mail',
+                    'ticket-sale-producer:order:'.$order->id,
+                    fn()=>Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity)),
+                    ['order_id'=>(int)$order->id,'producer_user_id'=>(int)$producer->id,'type'=>'ticket_sale_producer']
+                );
                 $this->updateEmailStatus($importantEvent,'delivered');
             } catch (\Throwable $e) {
                 $this->updateEmailStatus($importantEvent,'failed');
