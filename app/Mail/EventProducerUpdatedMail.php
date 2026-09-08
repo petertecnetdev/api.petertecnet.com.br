@@ -24,6 +24,9 @@ class EventProducerUpdatedMail extends Mailable
     public string $eventUrl;
     public string $eventManagementUrl;
     public string $appName;
+    public ?string $flyerUrl;
+    public string $shareUrl;
+    public string $createEventUrl;
 
     public function __construct(
         User $owner,
@@ -36,7 +39,10 @@ class EventProducerUpdatedMail extends Mailable
         string $appUrl,
         string $eventUrl,
         string $eventManagementUrl,
-        string $appName
+        string $appName,
+        ?string $flyerUrl = null,
+        string $shareUrl = '',
+        string $createEventUrl = ''
     ) {
         $this->owner = $owner;
         $this->event = $event;
@@ -49,6 +55,9 @@ class EventProducerUpdatedMail extends Mailable
         $this->eventUrl = $eventUrl;
         $this->eventManagementUrl = $eventManagementUrl;
         $this->appName = $appName;
+        $this->flyerUrl = $flyerUrl;
+        $this->shareUrl = $shareUrl;
+        $this->createEventUrl = $createEventUrl;
     }
 
     public function build()
@@ -68,6 +77,9 @@ class EventProducerUpdatedMail extends Mailable
                 'eventUrl' => $this->eventUrl,
                 'eventManagementUrl' => $this->eventManagementUrl,
                 'appName' => $this->appName,
+                'flyerUrl' => $this->flyerUrl,
+                'shareUrl' => $this->shareUrl,
+                'createEventUrl' => $this->createEventUrl,
             ]);
     }
 }
