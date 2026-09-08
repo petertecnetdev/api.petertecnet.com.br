@@ -49,13 +49,16 @@ final class EventCommunityController extends Controller
     {
         $user=$request->user();$appId=$this->context->id();$data=$request->validate(['body'=>'required|string|min:2|max:3000','parent_id'=>'nullable|integer|min:1']);
 
-        // eventId=0 is the authenticated global timeline publishing contract.
-        // Event-specific community routes keep their existing semantics, while
-        // the feed no longer needs to invent or select an event relationship.
+        // eventId=0 represents the authenticated global timeline. Root posts and
+        // replies both live in event_posts; global replies simply keep event_id null.
         if($eventId===0){
-            abort_if(isset($data['parent_id']),422,'Publicações gerais da timeline não aceitam respostas neste endpoint.');
-            $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>null,'user_id'=>$user->id,'parent_id'=>null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
-            return response()->json(['message'=>'Publicação adicionada à timeline.','post_id'=>$id],201);
+            $parent=null;
+            if($parentId=$data['parent_id']??null){
+                $parent=DB::table('event_posts')->where('id',$parentId)->where('app_id',$appId)->whereNull('event_id')->whereNull('parent_id')->where('status','published')->first();
+                abort_unless($parent,422,'A publicação que você tentou comentar não está mais disponível.');
+            }
+            $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>null,'user_id'=>$user->id,'parent_id'=>$data['parent_id']??null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
+            return response()->json(['message'=>$parent?'Comentário publicado.':'Publicação adicionada à timeline.','post_id'=>$id],201);
         }
 
         $event=$this->publicEventById($eventId);$parent=null;
