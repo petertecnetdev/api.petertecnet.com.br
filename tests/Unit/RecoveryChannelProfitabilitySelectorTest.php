@@ -29,6 +29,7 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
         self::assertSame('whatsapp', $ranked[0]['channel']);
         self::assertTrue($ranked[0]['recommended']);
         self::assertTrue($ranked[0]['has_minimum_sample']);
+        self::assertTrue($ranked[0]['has_safe_cost_ceiling']);
         self::assertGreaterThan($ranked[1]['expected_net_contribution_per_attempt'], $ranked[0]['expected_net_contribution_per_attempt']);
     }
 
@@ -109,5 +110,43 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
         self::assertFalse($ranked[0]['has_minimum_sample']);
         self::assertSame(100, $ranked[0]['minimum_sample_attempts']);
         self::assertFalse($ranked[0]['recommended']);
+    }
+
+    public function test_it_does_not_recommend_a_paid_channel_without_an_explicit_safe_cost_ceiling(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'whatsapp',
+                'attempt_cost' => 0.10,
+                'conversion_rate' => 20.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 200,
+            ],
+        ]);
+
+        self::assertTrue($ranked[0]['economically_viable']);
+        self::assertFalse($ranked[0]['has_safe_cost_ceiling']);
+        self::assertNull($ranked[0]['within_safe_cost_ceiling']);
+        self::assertContains('missing_safe_cost_ceiling', $ranked[0]['recommendation_blockers']);
+        self::assertFalse($ranked[0]['recommended']);
+    }
+
+    public function test_it_can_recommend_a_zero_cost_channel_without_an_external_cost_ceiling(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'in_app',
+                'attempt_cost' => 0.0,
+                'conversion_rate' => 10.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 200,
+            ],
+        ]);
+
+        self::assertTrue($ranked[0]['has_safe_cost_ceiling']);
+        self::assertTrue($ranked[0]['within_safe_cost_ceiling']);
+        self::assertTrue($ranked[0]['economically_viable']);
+        self::assertNotContains('missing_safe_cost_ceiling', $ranked[0]['recommendation_blockers']);
+        self::assertTrue($ranked[0]['recommended']);
     }
 }
