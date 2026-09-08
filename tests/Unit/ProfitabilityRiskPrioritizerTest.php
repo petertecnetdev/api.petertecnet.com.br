@@ -71,4 +71,58 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
         self::assertSame(0.2, $result[0]['platform_collection_fee_rate_gap_to_break_even']);
         self::assertSame(500.0, $result[0]['gross_at_risk']);
     }
+
+    public function test_it_surfaces_negative_checkout_recovery_roi_when_real_attempt_cost_is_known(): void
+    {
+        $result = (new ProfitabilityRiskPrioritizer())->prioritize([
+            [
+                'payment_method' => 'credit_card',
+                'platform_revenue' => 100.0,
+                'platform_contribution_after_processing' => 50.0,
+                'platform_contribution_shortfall' => 0.0,
+                'platform_loss_making_orders' => 0,
+                'platform_loss_making_gross_revenue' => 0.0,
+                'platform_collection_effective_fee_rate' => 5.0,
+                'platform_collection_break_even_fee_rate' => 3.0,
+                'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+                'platform_collection_sustainable' => true,
+                'checkout_recovery_attempts' => 10,
+                'recovered_platform_revenue' => 8.0,
+                'gross_at_risk' => 200.0,
+            ],
+        ], [
+            'credit_card' => 1.0,
+        ]);
+
+        self::assertCount(1, $result);
+        self::assertSame('credit_card', $result[0]['payment_method']);
+        self::assertSame(4.0, $result[0]['estimated_recovered_platform_contribution']);
+        self::assertSame(10.0, $result[0]['recovery_total_attempt_cost']);
+        self::assertSame(-6.0, $result[0]['recovery_net_platform_contribution']);
+        self::assertSame(6.0, $result[0]['recovery_net_shortfall']);
+        self::assertSame(-60.0, $result[0]['recovery_roi_percent']);
+        self::assertFalse($result[0]['recovery_economically_sustainable']);
+        self::assertSame('payment_method_config', $result[0]['recovery_cost_source']);
+    }
+
+    public function test_it_does_not_invent_recovery_roi_without_configured_cost(): void
+    {
+        $result = (new ProfitabilityRiskPrioritizer())->prioritize([[
+            'payment_method' => 'pix',
+            'platform_revenue' => 100.0,
+            'platform_contribution_after_processing' => 100.0,
+            'platform_contribution_shortfall' => 0.0,
+            'platform_loss_making_orders' => 0,
+            'platform_loss_making_gross_revenue' => 0.0,
+            'platform_collection_effective_fee_rate' => 3.0,
+            'platform_collection_break_even_fee_rate' => 1.0,
+            'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_sustainable' => true,
+            'checkout_recovery_attempts' => 20,
+            'recovered_platform_revenue' => 0.0,
+            'gross_at_risk' => 300.0,
+        ]], [], null);
+
+        self::assertSame([], $result);
+    }
 }
