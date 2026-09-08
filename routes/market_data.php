@@ -38,5 +38,18 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/alerts', [MarketDataController::class, 'alerts']);
                 Route::post('/alerts', [MarketDataController::class, 'addAlert'])->middleware('throttle:30,1');
                 Route::delete('/alerts/{alert}', [MarketDataController::class, 'removeAlert'])->whereNumber('alert');
+
+                Route::get('/airdrops', [MarketDataController::class, 'airdrops'])->middleware('throttle:market-read');
+                Route::get('/airdrops/{slug}', [MarketDataController::class, 'airdrop'])
+                    ->where('slug', '[A-Za-z0-9\-]+')
+                    ->middleware('throttle:market-read');
+                Route::post('/airdrops/plan', [MarketDataController::class, 'airdropPlan'])->middleware('throttle:60,1');
+                Route::post('/airdrops/{slug}/tasks/{task}/complete', [MarketDataController::class, 'completeAirdropTask'])
+                    ->where('slug', '[A-Za-z0-9\-]+')
+                    ->where('task', '[A-Za-z0-9\-]+')
+                    ->middleware('throttle:30,1');
+                Route::get('/airdrops/policy/{action}', [MarketDataController::class, 'airdropActionPolicy'])
+                    ->where('action', '[A-Za-z0-9_\-]+')
+                    ->middleware('throttle:market-read');
             });
     });

@@ -19,6 +19,7 @@ use App\Models\Profile;
 use App\Models\User;
 use App\Observers\CognitiveInteractionObserver;
 use App\Observers\EstablishmentOwnershipNotificationObserver;
+use App\Observers\EventFeedActivityObserver;
 use App\Observers\EventProducerNotificationObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Services\AsaasPayoutService;
@@ -73,6 +74,7 @@ class AppServiceProvider extends ServiceProvider
 
         Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
         EventModel::observe(EventProducerNotificationObserver::class);
+        EventModel::observe(EventFeedActivityObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
         Interaction::observe(CognitiveInteractionObserver::class);

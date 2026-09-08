@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Services\EventPassService;
+use App\Services\EventPassTransferHistoryService;
 use Illuminate\Http\Request;
 
 class EventPassController extends Controller
 {
-    public function __construct(private readonly EventPassService $passes)
-    {
+    public function __construct(
+        private readonly EventPassService $passes,
+        private readonly EventPassTransferHistoryService $transferHistory,
+    ) {
     }
 
     public function claim(Request $request, int $ticketId)
@@ -22,7 +25,10 @@ class EventPassController extends Controller
 
     public function mine(Request $request)
     {
-        return response()->json($this->passes->mine($request->user()));
+        $wallet = $this->passes->mine($request->user());
+        $wallet['transfers'] = $this->transferHistory->mine($request->user());
+
+        return response()->json($wallet);
     }
 
     public function show(Request $request, int $passId)

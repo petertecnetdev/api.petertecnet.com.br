@@ -20,8 +20,13 @@ class EventProducerUpdatedMail extends Mailable
     public array $changedLabels;
     public string $notificationTitle;
     public string $notificationMessage;
+    public string $appUrl;
     public string $eventUrl;
+    public string $eventManagementUrl;
     public string $appName;
+    public ?string $flyerUrl;
+    public string $shareUrl;
+    public string $createEventUrl;
 
     public function __construct(
         User $owner,
@@ -31,8 +36,13 @@ class EventProducerUpdatedMail extends Mailable
         array $changedLabels,
         string $notificationTitle,
         string $notificationMessage,
+        string $appUrl,
         string $eventUrl,
-        string $appName
+        string $eventManagementUrl,
+        string $appName,
+        ?string $flyerUrl = null,
+        string $shareUrl = '',
+        string $createEventUrl = ''
     ) {
         $this->owner = $owner;
         $this->event = $event;
@@ -41,8 +51,13 @@ class EventProducerUpdatedMail extends Mailable
         $this->changedLabels = $changedLabels;
         $this->notificationTitle = $notificationTitle;
         $this->notificationMessage = $notificationMessage;
+        $this->appUrl = $appUrl;
         $this->eventUrl = $eventUrl;
+        $this->eventManagementUrl = $eventManagementUrl;
         $this->appName = $appName;
+        $this->flyerUrl = $flyerUrl;
+        $this->shareUrl = $shareUrl;
+        $this->createEventUrl = $createEventUrl;
     }
 
     public function build()
@@ -58,8 +73,13 @@ class EventProducerUpdatedMail extends Mailable
                 'changedLabels' => $this->changedLabels,
                 'notificationTitle' => $this->notificationTitle,
                 'notificationMessage' => $this->notificationMessage,
+                'appUrl' => $this->appUrl,
                 'eventUrl' => $this->eventUrl,
+                'eventManagementUrl' => $this->eventManagementUrl,
                 'appName' => $this->appName,
+                'flyerUrl' => $this->flyerUrl,
+                'shareUrl' => $this->shareUrl,
+                'createEventUrl' => $this->createEventUrl,
             ]);
     }
 }

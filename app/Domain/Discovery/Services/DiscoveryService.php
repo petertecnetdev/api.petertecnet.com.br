@@ -133,11 +133,7 @@ class DiscoveryService
         return ContentEntry::query()
             ->published()
             ->whereKeyNot($entry->id)
-            ->when($entry->application_id, function (Builder $query) use ($entry) {
-                $query->where(function (Builder $apps) use ($entry) {
-                    $apps->whereNull('application_id')->orWhere('application_id', $entry->application_id);
-                });
-            })
+            ->when($entry->application_id, fn (Builder $query) => $query->where('application_id', $entry->application_id))
             ->where(function (Builder $related) use ($entry, $tags) {
                 if ($entry->cluster) {
                     $related->where('cluster', $entry->cluster);

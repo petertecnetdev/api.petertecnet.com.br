@@ -6,7 +6,6 @@ use App\Models\CommerceOrder;
 use App\Models\Establishment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
-use Illuminate\Support\Collection;
 
 final class RevenueFunnelService
 {
@@ -39,9 +38,9 @@ final class RevenueFunnelService
         $processorFees = (float) (clone $paidOrders)->sum('processor_fee');
         $discounts = (float) (clone $paidOrders)->sum('discount_amount');
         $producerNet = (float) (clone $paidOrders)->sum('producer_net');
-        $paidProfitability = $this->settlementProfitability((clone $paidOrders)->get([
-            'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        $paidProfitability = $this->settlementProfitability((clone $paidOrders)
+            ->select(['id', 'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata'])
+            ->lazyById(1000));
 
         $recoveryAttempts = (clone $orders)->whereNotNull('recovery_started_at')->count();
         $recoveredOrders = (clone $orders)
@@ -52,9 +51,9 @@ final class RevenueFunnelService
         $recoveredGross = (float) (clone $recoveredPaidOrders)->sum('total');
         $recoveredPlatformRevenue = (float) (clone $recoveredPaidOrders)->sum('platform_fee');
         $recoveredProcessorFees = (float) (clone $recoveredPaidOrders)->sum('processor_fee');
-        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)->get([
-            'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata',
-        ]));
+        $recoveredProfitability = $this->settlementProfitability((clone $recoveredPaidOrders)
+            ->select(['id', 'payment_method', 'total', 'platform_fee', 'processor_fee', 'producer_net', 'metadata'])
+            ->lazyById(1000));
 
         $atRiskOrders = (clone $orders)
             ->where('status', 'pending')
@@ -63,7 +62,6 @@ final class RevenueFunnelService
             });
         $atRiskGross = (float) (clone $atRiskOrders)->sum('total');
         $atRiskPlatformRevenue = (float) (clone $atRiskOrders)->sum('platform_fee');
-
         $lostOrders = (clone $orders)->where(function ($query): void {
             $query->where('status', 'cancelled')
                 ->orWhere(function ($expiredQuery): void {
@@ -83,6 +81,9 @@ final class RevenueFunnelService
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN platform_fee ELSE 0 END), 0) platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN processor_fee ELSE 0 END), 0) processor_fees")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'paid' THEN producer_net ELSE 0 END), 0) organization_net_before_processing")
+            ->selectRaw("SUM(CASE WHEN recovery_started_at IS NOT NULL THEN 1 ELSE 0 END) recovery_attempts")
+            ->selectRaw("SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN 1 ELSE 0 END) recovered_orders")
+            ->selectRaw("COALESCE(SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN platform_fee ELSE 0 END), 0) recovered_platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
             ->groupByRaw($normalizedPaymentMethodSql)
             ->get()
@@ -91,6 +92,9 @@ final class RevenueFunnelService
                 $paidForMethod = (int) $row->orders_paid;
                 $grossForMethod = (float) $row->gross_revenue;
                 $processorFeesForMethod = (float) $row->processor_fees;
+                $recoveryAttemptsForMethod = (int) $row->recovery_attempts;
+                $recoveredOrdersForMethod = (int) $row->recovered_orders;
+                $recoveredPlatformRevenueForMethod = (float) $row->recovered_platform_revenue;
                 $method = (string) $row->payment_method;
                 $profitability = $profitabilityByPaymentMethod[$method] ?? $this->emptyProfitability();
 
@@ -103,6 +107,15 @@ final class RevenueFunnelService
                     'platform_revenue' => round((float) $row->platform_revenue, 2),
                     'processor_fees' => round($processorFeesForMethod, 2),
                     'processor_fee_rate' => $grossForMethod > 0 ? round(($processorFeesForMethod / $grossForMethod) * 100, 2) : 0.0,
+                    'checkout_recovery_attempts' => $recoveryAttemptsForMethod,
+                    'checkout_recovered_orders' => $recoveredOrdersForMethod,
+                    'checkout_recovery_conversion_rate' => $recoveryAttemptsForMethod > 0
+                        ? round(($recoveredOrdersForMethod / $recoveryAttemptsForMethod) * 100, 2)
+                        : 0.0,
+                    'recovered_platform_revenue' => round($recoveredPlatformRevenueForMethod, 2),
+                    'recovered_platform_revenue_per_attempt' => $recoveryAttemptsForMethod > 0
+                        ? round($recoveredPlatformRevenueForMethod / $recoveryAttemptsForMethod, 2)
+                        : 0.0,
                     'processor_fees_borne_by_platform' => $profitability['processor_fees_borne_by_platform'],
                     'processor_fees_borne_by_organization' => $profitability['processor_fees_borne_by_organization'],
                     'organization_net_after_processing' => $profitability['organization_net_after_processing'],
@@ -123,6 +136,69 @@ final class RevenueFunnelService
             ->sortByDesc('platform_contribution_after_processing')
             ->values()
             ->all();
+
+        $overallRecoveryProbability = $recoveryAttempts > 0
+            ? $recoveredOrders / $recoveryAttempts
+            : null;
+        $recoveryProbabilityByPaymentMethod = collect($paymentMethods)
+            ->filter(fn (array $row): bool => (int) $row['checkout_recovery_attempts'] > 0)
+            ->mapWithKeys(fn (array $row): array => [
+                (string) $row['payment_method'] => (float) $row['checkout_recovery_conversion_rate'] / 100,
+            ])
+            ->all();
+        $overallPlatformContributionRate = $platformRevenue != 0.0
+            ? min((float) $paidProfitability['platform_contribution_after_processing'] / $platformRevenue, 1.0)
+            : null;
+        $platformContributionRateByPaymentMethod = collect($paymentMethods)
+            ->filter(fn (array $row): bool => (float) $row['platform_revenue'] != 0.0)
+            ->mapWithKeys(fn (array $row): array => [
+                (string) $row['payment_method'] => min(
+                    (float) $row['platform_contribution_after_processing'] / (float) $row['platform_revenue'],
+                    1.0
+                ),
+            ])
+            ->all();
+        $segmentStats = [];
+        foreach ((clone $orders)->whereNotNull('recovery_started_at')
+            ->select(['id', 'payment_method', 'status', 'created_at', 'recovery_started_at'])
+            ->lazyById(1000) as $attemptedOrder) {
+            if (! $attemptedOrder->created_at || ! $attemptedOrder->recovery_started_at) {
+                continue;
+            }
+            $minutes = max(0, $attemptedOrder->created_at->diffInMinutes($attemptedOrder->recovery_started_at, false));
+            $ageBucket = match (true) {
+                $minutes < 15 => '0_15m',
+                $minutes < 60 => '15_60m',
+                $minutes < 360 => '1_6h',
+                $minutes < 1440 => '6_24h',
+                default => '24h_plus',
+            };
+            $method = trim((string) $attemptedOrder->payment_method) ?: 'unknown';
+            $key = $method.'|'.$ageBucket;
+            $segmentStats[$key] ??= ['attempts' => 0, 'recovered' => 0, 'method' => $method];
+            $segmentStats[$key]['attempts']++;
+            $segmentStats[$key]['recovered'] += $attemptedOrder->status === 'paid' ? 1 : 0;
+        }
+        $recoveryProbabilityBySegment = collect($segmentStats)->mapWithKeys(function (array $row, string $key) use ($recoveryProbabilityByPaymentMethod, $overallRecoveryProbability): array {
+            $prior = $recoveryProbabilityByPaymentMethod[$row['method']] ?? $overallRecoveryProbability;
+            if ($prior === null) {
+                return [];
+            }
+            $priorWeight = 5;
+
+            return [$key => ($row['recovered'] + ($prior * $priorWeight)) / ($row['attempts'] + $priorWeight)];
+        })->all();
+
+        $checkoutRecoveryOpportunities = (new CheckoutRecoveryOpportunityAnalyzer())->summarize(
+            (clone $atRiskOrders)
+                ->select(['id', 'payment_method', 'total', 'platform_fee', 'created_at', 'recovery_started_at'])
+                ->lazyById(1000),
+            recoveryProbabilityByPaymentMethod: $recoveryProbabilityByPaymentMethod,
+            fallbackRecoveryProbability: $overallRecoveryProbability,
+            recoveryProbabilityBySegment: $recoveryProbabilityBySegment,
+            platformContributionRateByPaymentMethod: $platformContributionRateByPaymentMethod,
+            fallbackPlatformContributionRate: $overallPlatformContributionRate
+        );
 
         return [
             'period_days' => $days,
@@ -170,6 +246,7 @@ final class RevenueFunnelService
             'recovered_platform_contribution_shortfall' => $recoveredProfitability['platform_contribution_shortfall'],
             'gross_revenue_at_risk' => round($atRiskGross, 2),
             'platform_revenue_at_risk' => round($atRiskPlatformRevenue, 2),
+            'checkout_recovery_opportunities' => $checkoutRecoveryOpportunities,
             'gross_revenue_lost_to_abandonment' => round($lostGross, 2),
             'platform_revenue_lost_to_abandonment' => round($lostPlatformRevenue, 2),
             'payment_methods' => $paymentMethods,
@@ -184,10 +261,10 @@ final class RevenueFunnelService
      * the platform contribution while the organization's contractual net is preserved.
      * Unknown legacy rows are treated conservatively as merchant-borne to avoid overstating platform margin.
      *
-     * @param Collection<int, CommerceOrder> $orders
+     * @param iterable<CommerceOrder> $orders
      * @return array<string, mixed>
      */
-    private function settlementProfitability(Collection $orders): array
+    private function settlementProfitability(iterable $orders): array
     {
         $summary = $this->emptyProfitability(false);
         $byPaymentMethod = [];

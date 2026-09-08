@@ -23,7 +23,6 @@ final class FeedController extends Controller
         ]);
         $perPage = (int) ($data['per_page'] ?? 12);
 
-        // One social-graph query replaces separate production/artist queries.
         $follows = DB::table('follows')
             ->where('app_id', $appId)
             ->where('user_id', $user->id)
@@ -53,7 +52,6 @@ final class FeedController extends Controller
             ->map(fn ($id) => (int) $id)
             ->all();
 
-        // Direct join avoids hydrating EventPass models and a whereHas subquery.
         $ticketEvents = DB::table('event_passes as ep')
             ->join('events as te', 'te.id', '=', 'ep.event_id')
             ->where('ep.user_id', $user->id)
@@ -125,6 +123,7 @@ final class FeedController extends Controller
 
         $community = DB::table('event_posts as p')
             ->leftJoin('events as e', 'e.id', '=', 'p.event_id')
+            ->leftJoin('productions as pr', 'pr.id', '=', 'e.production_id')
             ->join('users as u', 'u.id', '=', 'p.user_id')
             ->where('p.app_id', $appId)
             ->whereNull('p.parent_id')
@@ -143,16 +142,64 @@ final class FeedController extends Controller
                                 ->orWhere('e.end_date', '>', $now));
                     });
             })
-            ->orderByDesc('p.created_at')
-            ->limit(12)
-            ->get([
+            ->select([
                 'p.id', 'p.event_id', 'p.body', 'p.created_at', 'p.is_pinned',
                 'e.title as event_title', 'e.slug as event_slug',
+                'pr.id as production_id', 'pr.name as production_name', 'pr.slug as production_slug',
                 'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
-            ]);
+            ])
+            ->selectSub(fn ($q) => $q->from('event_post_likes as l')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('l.post_id', 'p.id')
+                ->where('l.app_id', $appId), 'likes_count')
+            ->selectSub(fn ($q) => $q->from('event_posts as r')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('r.parent_id', 'p.id')
+                ->where('r.status', 'published'), 'comments_count')
+            ->orderByDesc('p.created_at')
+            ->limit(24)
+            ->get();
 
-        // Notification data has its own endpoint and navbar lifecycle. Avoid two
-        // extra notification queries on every feed request while preserving shape.
+        $postIds = $community->pluck('id')->filter()->values();
+        $replies = $postIds->isEmpty() ? collect() : DB::table('event_posts as p')
+            ->leftJoin('events as e', 'e.id', '=', 'p.event_id')
+            ->leftJoin('productions as pr', 'pr.id', '=', 'e.production_id')
+            ->join('users as u', 'u.id', '=', 'p.user_id')
+            ->where('p.app_id', $appId)
+            ->whereIn('p.parent_id', $postIds)
+            ->where('p.status', 'published')
+            ->select([
+                'p.id', 'p.parent_id', 'p.event_id', 'p.body', 'p.created_at',
+                'e.title as event_title', 'e.slug as event_slug',
+                'pr.id as production_id', 'pr.name as production_name', 'pr.slug as production_slug',
+                'u.id as user_id', 'u.first_name', 'u.last_name', 'u.avatar',
+            ])
+            ->selectSub(fn ($q) => $q->from('event_post_likes as l')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('l.post_id', 'p.id')
+                ->where('l.app_id', $appId), 'likes_count')
+            ->orderBy('p.created_at')
+            ->get()
+            ->groupBy('parent_id');
+
+        $allPostIds = $postIds->merge($replies->flatten(1)->pluck('id'))->filter()->values();
+        $liked = $allPostIds->isEmpty() ? collect() : DB::table('event_post_likes')
+            ->where('app_id', $appId)
+            ->where('user_id', $user->id)
+            ->whereIn('post_id', $allPostIds)
+            ->pluck('post_id');
+
+        $community = $community->map(function ($post) use ($replies, $liked) {
+            $post->is_liked = $liked->contains($post->id);
+            $post->replies = collect($replies->get($post->id, []))->map(function ($reply) use ($liked) {
+                $reply->is_liked = $liked->contains($reply->id);
+                $reply->comments_count = 0;
+                $reply->replies = [];
+                return $reply;
+            })->values();
+            return $post;
+        })->values();
+
         return response()->json([
             'feed' => $feed,
             'community_activity' => $community,

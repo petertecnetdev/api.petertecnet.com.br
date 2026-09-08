@@ -23,9 +23,9 @@ class EventProducerCommunicationTest extends TestCase
         Mail::fake();
 
         $application = Application::create([
-            'name' => 'Aplicativo de Eventos',
-            'slug' => 'events-communication-test',
-            'url' => 'https://events.example.test',
+            'name' => 'Cutinapp',
+            'slug' => 'cutinapp',
+            'url' => 'https://cutinapp.example.test',
             'is_active' => true,
         ]);
 
@@ -79,11 +79,18 @@ class EventProducerCommunicationTest extends TestCase
         $this->assertNotNull($notification);
         $this->assertSame('/event/edit/'.$event->id, $notification->reference_url);
         $this->assertSame(['title', 'start_date'], $notification->data['changed_fields']);
+        $this->assertSame('https://cutinapp.example.test', $notification->data['app_url']);
+        $this->assertSame('https://cutinapp.example.test/event/evento-comunicacao', $notification->data['event_url']);
+        $this->assertSame('https://cutinapp.example.test/event/edit/'.$event->id, $notification->data['event_management_url']);
 
         Mail::assertSent(EventProducerUpdatedMail::class, function (EventProducerUpdatedMail $mail) use ($owner, $event) {
             return $mail->hasTo($owner->email)
                 && $mail->event->is($event)
                 && $mail->action === 'updated'
+                && $mail->appName === 'Cutinapp'
+                && $mail->appUrl === 'https://cutinapp.example.test'
+                && $mail->eventUrl === 'https://cutinapp.example.test/event/evento-comunicacao'
+                && $mail->eventManagementUrl === 'https://cutinapp.example.test/event/edit/'.$event->id
                 && str_contains($mail->notificationTitle, 'Evento atualizado');
         });
     }

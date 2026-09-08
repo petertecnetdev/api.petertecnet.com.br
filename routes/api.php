@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Admin\ApplicationController as AdminApplicationController;
+use App\Http\Controllers\Admin\AdminFileManagementController;
 use App\Http\Controllers\{
     ApplicationController,
     AuthController,
@@ -243,4 +244,10 @@ Route::prefix('admin/applications')->middleware(['api', 'auth:api', \App\Http\Mi
     Route::post('/', [AdminApplicationController::class, 'store']);
     Route::put('/{application}', [AdminApplicationController::class, 'update'])->whereNumber('application');
     Route::delete('/{application}', [AdminApplicationController::class, 'destroy'])->whereNumber('application');
+});
+
+Route::prefix('admin/ecosystem/files')->middleware(['api', 'auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
+    Route::get('/', [AdminFileManagementController::class, 'index']);
+    Route::post('/cleanup', [AdminFileManagementController::class, 'cleanup'])->middleware('throttle:10,1');
+    Route::delete('/{file}', [AdminFileManagementController::class, 'destroy'])->whereNumber('file')->middleware('throttle:20,1');
 });

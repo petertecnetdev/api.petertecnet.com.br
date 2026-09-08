@@ -15,6 +15,7 @@ use App\Domain\Discovery\Http\Controllers\SitemapController;
 use App\Domain\Discovery\Http\Controllers\SocialCardController;
 use App\Domain\Discovery\Http\Controllers\WebVitalAnalyticsController;
 use App\Domain\Discovery\Http\Controllers\WebVitalController;
+use App\Domain\Messaging\Http\Controllers\MessagingController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
@@ -25,6 +26,19 @@ Route::prefix('v1')->group(function () {
         ->middleware(['app.context', 'app.capability:crm'])
         ->group(function () {
             Route::post('/crm/inquiries', [PublicInquiryController::class, 'store'])->middleware('throttle:12,1');
+        });
+
+    Route::prefix('apps/{application}')
+        ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:social'])
+        ->group(function () {
+            Route::get('/messaging/conversations', [MessagingController::class, 'index'])->middleware('throttle:180,1');
+            Route::get('/messaging/people', [MessagingController::class, 'people'])->middleware('throttle:120,1');
+            Route::post('/messaging/direct', [MessagingController::class, 'openDirect'])->middleware('throttle:60,1');
+            Route::get('/messaging/conversations/{conversationId}', [MessagingController::class, 'showConversation'])->whereNumber('conversationId')->middleware('throttle:180,1');
+            Route::get('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'messages'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::post('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'send'])->whereNumber('conversationId')->middleware('throttle:120,1');
+            Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:180,1');
+            Route::delete('/messaging/conversations/{conversationId}', [MessagingController::class, 'archive'])->whereNumber('conversationId')->middleware('throttle:60,1');
         });
 
     Route::prefix('discovery')->group(function () {
