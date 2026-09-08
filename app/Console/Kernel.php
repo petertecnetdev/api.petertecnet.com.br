@@ -13,6 +13,10 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->withoutOverlapping(10);
 
+        $schedule->command('operations:monitor-production-onboarding')
+            ->everyFiveMinutes()
+            ->withoutOverlapping(10);
+
         // Database backups are created by the verified encrypted backup workflow.
         // The workflow streams the dump off-host, restores it in an isolated database,
         // encrypts it before retention, and stores an off-VPS copy. Do not schedule the
