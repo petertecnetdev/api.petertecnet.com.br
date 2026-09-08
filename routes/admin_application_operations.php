@@ -19,3 +19,9 @@ Route::prefix('admin/ecosystem')
         Route::post('/creative/images', [AdminCreativePromptController::class, 'image'])
             ->middleware('throttle:6,1');
     });
+
+// Application-scoped administration and signed communication tracking are
+// separate route contracts, loaded here because this file is part of the
+// central API route provider registration.
+require_once __DIR__.'/application_admin.php';
+require_once __DIR__.'/communications.php';
