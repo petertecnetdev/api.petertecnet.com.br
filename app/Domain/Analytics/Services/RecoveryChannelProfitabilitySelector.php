@@ -12,9 +12,9 @@ final class RecoveryChannelProfitabilitySelector
      * Required channel keys: channel, attempt_cost, conversion_rate, contribution_per_recovered_order.
      * Optional: attempts (used for Wilson 95% lower bound when >= 1).
      *
-     * A channel is only recommended after reaching the minimum sample size. This prevents
-     * operational routing from scaling a channel whose apparent profitability is based on
-     * too few attempts, while still exposing its economics for observation.
+     * A channel is only recommended after reaching the minimum sample size. Paid channels also
+     * require an explicit safe attempt-cost ceiling so observational analytics cannot silently
+     * become permission to spend. Zero-cost channels remain eligible without an external ceiling.
      *
      * @param array<int, array<string, mixed>> $channels
      * @return array<int, array<string, mixed>>
@@ -57,19 +57,27 @@ final class RecoveryChannelProfitabilitySelector
                 $roiPercent = $expectedNetContributionPerAttempt !== null && $attemptCost !== null && $attemptCost > 0
                     ? ($expectedNetContributionPerAttempt / $attemptCost) * 100
                     : null;
-                $withinSafeCostCeiling = $attemptCost !== null && $maxSafeAttemptCost !== null
-                    ? $attemptCost <= $maxSafeAttemptCost
-                    : null;
+                $isZeroCostChannel = $attemptCost !== null && $attemptCost === 0.0;
+                $hasSafeCostCeiling = $isZeroCostChannel || $maxSafeAttemptCost !== null;
+                $withinSafeCostCeiling = match (true) {
+                    $isZeroCostChannel => true,
+                    $attemptCost !== null && $maxSafeAttemptCost !== null => $attemptCost <= $maxSafeAttemptCost,
+                    default => null,
+                };
                 $economicallyViable = $expectedNetContributionPerAttempt !== null
                     ? $expectedNetContributionPerAttempt > 0
                     : null;
                 $recommended = $economicallyViable === true
                     && $withinSafeCostCeiling !== false
+                    && $hasSafeCostCeiling
                     && $hasMinimumSample;
 
                 $recommendationBlockers = [];
                 if (! $hasMinimumSample) {
                     $recommendationBlockers[] = 'insufficient_sample';
+                }
+                if ($attemptCost !== null && $attemptCost > 0 && $maxSafeAttemptCost === null) {
+                    $recommendationBlockers[] = 'missing_safe_cost_ceiling';
                 }
                 if ($withinSafeCostCeiling === false) {
                     $recommendationBlockers[] = 'above_safe_cost_ceiling';
@@ -90,6 +98,7 @@ final class RecoveryChannelProfitabilitySelector
                     'expected_contribution_per_attempt' => $expectedContributionPerAttempt !== null ? round($expectedContributionPerAttempt, 4) : null,
                     'expected_net_contribution_per_attempt' => $expectedNetContributionPerAttempt !== null ? round($expectedNetContributionPerAttempt, 4) : null,
                     'confidence_adjusted_roi_percent' => $roiPercent !== null ? round($roiPercent, 2) : null,
+                    'has_safe_cost_ceiling' => $hasSafeCostCeiling,
                     'within_safe_cost_ceiling' => $withinSafeCostCeiling,
                     'economically_viable' => $economicallyViable,
                     'has_minimum_sample' => $hasMinimumSample,
