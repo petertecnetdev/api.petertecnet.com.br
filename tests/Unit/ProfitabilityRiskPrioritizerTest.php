@@ -105,8 +105,10 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
         self::assertFalse($result[0]['recovery_economically_sustainable']);
         self::assertSame('reduce_or_pause', $result[0]['recovery_decision']);
         self::assertSame(20.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(5.67, $result[0]['checkout_recovery_conversion_confidence_lower_bound']);
         self::assertSame(50.0, $result[0]['checkout_recovery_break_even_conversion_rate']);
         self::assertSame(-30.0, $result[0]['checkout_recovery_conversion_safety_margin']);
+        self::assertSame(-44.33, $result[0]['checkout_recovery_confidence_margin_to_break_even']);
         self::assertSame(0.4, $result[0]['recovery_contribution_per_attempt']);
         self::assertSame(2.0, $result[0]['recovery_contribution_per_recovered_order']);
         self::assertSame('payment_method_config', $result[0]['recovery_cost_source']);
@@ -135,8 +137,10 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
         self::assertSame('scale_carefully', $result[0]['recovery_decision']);
         self::assertSame(150.0, $result[0]['recovery_roi_percent']);
         self::assertSame(50.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(25.38, $result[0]['checkout_recovery_conversion_confidence_lower_bound']);
         self::assertSame(20.0, $result[0]['checkout_recovery_break_even_conversion_rate']);
         self::assertSame(30.0, $result[0]['checkout_recovery_conversion_safety_margin']);
+        self::assertSame(5.38, $result[0]['checkout_recovery_confidence_margin_to_break_even']);
         self::assertSame(2.5, $result[0]['recovery_contribution_per_attempt']);
         self::assertSame(5.0, $result[0]['recovery_contribution_per_recovered_order']);
         self::assertSame(10, $result[0]['recovery_decision_minimum_attempts']);
@@ -164,9 +168,40 @@ final class ProfitabilityRiskPrioritizerTest extends TestCase
 
         self::assertCount(1, $result);
         self::assertSame(10.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(2.79, $result[0]['checkout_recovery_conversion_confidence_lower_bound']);
         self::assertSame(5.0, $result[0]['checkout_recovery_break_even_conversion_rate']);
         self::assertSame(5.0, $result[0]['checkout_recovery_conversion_safety_margin']);
+        self::assertSame(-2.21, $result[0]['checkout_recovery_confidence_margin_to_break_even']);
         self::assertSame(100.0, $result[0]['recovery_roi_percent']);
+        self::assertSame('maintain_and_monitor', $result[0]['recovery_decision']);
+    }
+
+    public function test_it_does_not_scale_when_observed_margin_is_safe_but_confidence_still_crosses_break_even(): void
+    {
+        $result = (new ProfitabilityRiskPrioritizer())->prioritize([[
+            'payment_method' => 'pix',
+            'platform_revenue' => 100.0,
+            'platform_contribution_after_processing' => 100.0,
+            'platform_contribution_shortfall' => 1.0,
+            'platform_loss_making_orders' => 0,
+            'platform_loss_making_gross_revenue' => 0.0,
+            'platform_collection_effective_fee_rate' => 3.0,
+            'platform_collection_break_even_fee_rate' => 1.0,
+            'platform_collection_fee_rate_gap_to_break_even' => 0.0,
+            'platform_collection_sustainable' => true,
+            'checkout_recovery_attempts' => 10,
+            'checkout_recovered_orders' => 3,
+            'recovered_platform_revenue' => 20.0,
+            'gross_at_risk' => 300.0,
+        ]], ['pix' => 1.0]);
+
+        self::assertCount(1, $result);
+        self::assertSame(100.0, $result[0]['recovery_roi_percent']);
+        self::assertSame(30.0, $result[0]['checkout_recovery_conversion_rate']);
+        self::assertSame(10.78, $result[0]['checkout_recovery_conversion_confidence_lower_bound']);
+        self::assertSame(15.0, $result[0]['checkout_recovery_break_even_conversion_rate']);
+        self::assertSame(15.0, $result[0]['checkout_recovery_conversion_safety_margin']);
+        self::assertSame(-4.22, $result[0]['checkout_recovery_confidence_margin_to_break_even']);
         self::assertSame('maintain_and_monitor', $result[0]['recovery_decision']);
     }
 
