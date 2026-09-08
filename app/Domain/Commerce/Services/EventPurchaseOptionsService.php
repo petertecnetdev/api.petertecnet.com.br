@@ -20,6 +20,7 @@ final class EventPurchaseOptionsService
     public function forSlug(string $slug): array
     {
         $event = $this->publicEvent($slug);
+        $salesClosed = $event->salesClosed();
 
         $tickets = Ticket::query()
             ->where('app_id', $this->context->id())
@@ -27,7 +28,7 @@ final class EventPurchaseOptionsService
             ->where('price', '>', 0)
             ->orderBy('price')
             ->get()
-            ->map(function (Ticket $ticket) {
+            ->map(function (Ticket $ticket) use ($salesClosed) {
                 $issued = EventPass::query()
                     ->where('ticket_id', $ticket->id)
                     ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
@@ -39,7 +40,7 @@ final class EventPurchaseOptionsService
                     ->where('expires_at', '>', now())
                     ->sum('quantity');
                 $remaining = max(0, (int) $ticket->quantity - $issued - $reserved);
-                $expired = (bool) ($ticket->limit_date && now()->greaterThan($ticket->limit_date));
+                $expired = $salesClosed || (bool) ($ticket->limit_date && now()->greaterThanOrEqualTo($ticket->limit_date));
 
                 return array_merge($ticket->toArray(), [
                     'remaining' => $remaining,
@@ -54,7 +55,7 @@ final class EventPurchaseOptionsService
             ->where('is_active', true)
             ->orderBy('name')
             ->get()
-            ->map(function (EventItem $item) {
+            ->map(function (EventItem $item) use ($salesClosed) {
                 $reserved = (int) DB::table('inventory_reservations')
                     ->where('app_id', $this->context->id())
                     ->where('event_item_id', $item->id)
@@ -72,26 +73,28 @@ final class EventPurchaseOptionsService
 
                 return array_merge($item->toArray(), [
                     'remaining' => $remaining,
-                    'available' => $remaining > 0,
+                    'available' => ! $salesClosed && $remaining > 0,
                 ]);
             })->values();
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
+        $paymentAvailable = ! $salesClosed && $readiness['available'];
 
         return [
             'event' => $event->only(['id', 'title', 'slug', 'start_date', 'end_date', 'event_schedule_id', 'event_schedule_occurrence_date']),
+            'sales_closed' => $salesClosed,
             'available_dates' => $this->availableDates($event),
             'tickets' => $tickets,
             'items' => $items,
             'payment_config' => [
                 'provider' => 'mercadopago',
                 'connected' => $readiness['available'],
-                'available' => $readiness['available'],
+                'available' => $paymentAvailable,
                 'merchant_connected' => $readiness['merchant_connected'],
                 'settlement_mode' => $readiness['settlement_mode'],
                 'public_key' => $readiness['public_key'],
-                'methods' => $readiness['methods'],
-                'message' => $readiness['message'],
+                'methods' => $paymentAvailable ? $readiness['methods'] : [],
+                'message' => $salesClosed ? 'As vendas deste evento foram encerradas.' : $readiness['message'],
             ],
         ];
     }
