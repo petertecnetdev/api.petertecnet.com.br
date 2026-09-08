@@ -61,6 +61,7 @@ class ProductionOnboardingContractTest extends TestCase
             'end_date' => now()->addDays(2)->addHours(4)->format('Y-m-d H:i:s'),
             'city' => 'Goiânia',
             'uf' => 'GO',
+            'address' => 'Endereço de teste do evento',
         ];
         $event = $this->withHeaders(array_merge($headers, ['Idempotency-Key' => 'event-'.str_repeat('c', 32)]))
             ->postJson('/api/v1/apps/cutinapp/events', $eventPayload)
