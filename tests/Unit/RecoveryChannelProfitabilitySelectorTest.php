@@ -28,6 +28,7 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
 
         self::assertSame('whatsapp', $ranked[0]['channel']);
         self::assertTrue($ranked[0]['recommended']);
+        self::assertTrue($ranked[0]['has_minimum_sample']);
         self::assertGreaterThan($ranked[1]['expected_net_contribution_per_attempt'], $ranked[0]['expected_net_contribution_per_attempt']);
     }
 
@@ -53,6 +54,7 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
         $whatsapp = collect($ranked)->firstWhere('channel', 'whatsapp');
         self::assertFalse($whatsapp['within_safe_cost_ceiling']);
         self::assertFalse($whatsapp['recommended']);
+        self::assertContains('above_safe_cost_ceiling', $whatsapp['recommendation_blockers']);
         self::assertSame('email', $ranked[0]['channel']);
     }
 
@@ -69,6 +71,43 @@ final class RecoveryChannelProfitabilitySelectorTest extends TestCase
 
         self::assertNull($ranked[0]['expected_net_contribution_per_attempt']);
         self::assertNull($ranked[0]['economically_viable']);
+        self::assertFalse($ranked[0]['recommended']);
+        self::assertContains('incomplete_economics', $ranked[0]['recommendation_blockers']);
+    }
+
+    public function test_it_does_not_recommend_a_profitable_channel_before_minimum_sample(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'whatsapp',
+                'attempt_cost' => 0.10,
+                'conversion_rate' => 100.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 1,
+            ],
+        ], 1.00);
+
+        self::assertTrue($ranked[0]['economically_viable']);
+        self::assertFalse($ranked[0]['has_minimum_sample']);
+        self::assertSame(RecoveryChannelProfitabilitySelector::DEFAULT_MIN_SAMPLE_ATTEMPTS, $ranked[0]['minimum_sample_attempts']);
+        self::assertContains('insufficient_sample', $ranked[0]['recommendation_blockers']);
+        self::assertFalse($ranked[0]['recommended']);
+    }
+
+    public function test_it_allows_an_explicit_higher_sample_threshold_for_sensitive_channels(): void
+    {
+        $ranked = (new RecoveryChannelProfitabilitySelector())->rank([
+            [
+                'channel' => 'whatsapp',
+                'attempt_cost' => 0.10,
+                'conversion_rate' => 20.0,
+                'contribution_per_recovered_order' => 20.0,
+                'attempts' => 50,
+            ],
+        ], 1.00, 100);
+
+        self::assertFalse($ranked[0]['has_minimum_sample']);
+        self::assertSame(100, $ranked[0]['minimum_sample_attempts']);
         self::assertFalse($ranked[0]['recommended']);
     }
 }
