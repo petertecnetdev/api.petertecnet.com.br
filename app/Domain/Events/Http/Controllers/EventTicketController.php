@@ -59,6 +59,7 @@ final class EventTicketController extends Controller
             $linked = collect();
             $skipped = collect();
             $adjustedLimitDates = collect();
+            $shouldDeduplicate = $sourceTicket !== null || $eventIds->count() > 1;
 
             foreach ($eventIds as $eventId) {
                 $event = $this->ownedEvent($request, $eventId);
@@ -70,7 +71,9 @@ final class EventTicketController extends Controller
                 }
 
                 [$payload, $limitAdjusted] = $this->payloadForEvent($data, $sourceTicket, $event);
-                $equivalent = $this->findEquivalentTicket($event, $payload);
+                $equivalent = $shouldDeduplicate
+                    ? $this->findEquivalentTicket($event, $payload)
+                    : null;
 
                 if ($equivalent) {
                     $skipped->push($equivalent->loadCount('passes'));
