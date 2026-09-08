@@ -53,6 +53,9 @@ class EventProducerCommunicationService
         $appUrl = $this->applicationUrl($application, $event);
         $eventUrl = $this->eventPublicUrl($appUrl, $event);
         $eventManagementUrl = $appUrl.'/event/edit/'.$event->id;
+        $createEventUrl = $appUrl.'/event/create';
+        $flyerUrl = $this->flyerUrl($event);
+        $shareUrl = $this->shareUrl($event, $eventUrl, $appName);
         [$title, $message] = $this->copyFor($event, $action, $changedLabels, $productionName, $appName);
 
         if ($appId > 0) {
@@ -72,6 +75,8 @@ class EventProducerCommunicationService
                         'app_url' => $appUrl,
                         'event_url' => $eventUrl,
                         'event_management_url' => $eventManagementUrl,
+                        'flyer_url' => $flyerUrl,
+                        'share_url' => $shareUrl,
                     ],
                 ]);
             } catch (\Throwable $e) {
@@ -110,7 +115,10 @@ class EventProducerCommunicationService
                 $appUrl,
                 $eventUrl,
                 $eventManagementUrl,
-                $appName
+                $appName,
+                $flyerUrl,
+                $shareUrl,
+                $createEventUrl
             ));
         } catch (\Throwable $e) {
             Log::error('Falha ao enviar e-mail de atualização do evento ao produtor.', [
@@ -131,8 +139,8 @@ class EventProducerCommunicationService
 
         return match ($action) {
             'created' => [
-                'Novo evento criado: '.$eventName,
-                'O evento "'.$eventName.'" foi criado para '.$productionName.'. Confira os dados e continue a gestão pela '.$appName.'.',
+                'Seu evento está pronto: '.$eventName,
+                'O evento "'.$eventName.'" foi criado com sucesso para '.$productionName.'. Seu flyer e a página do evento já podem ser conferidos e compartilhados para começar a divulgação e a venda de ingressos pela '.$appName.'.',
             ],
             'activated' => [
                 'Evento ativado: '.$eventName,
@@ -197,6 +205,39 @@ class EventProducerCommunicationService
         }
 
         return $appUrl.'/event/edit/'.$event->id;
+    }
+
+    private function flyerUrl(Event $event): ?string
+    {
+        $image = trim((string) $event->image);
+        if ($image === '') {
+            return null;
+        }
+
+        if (filter_var($image, FILTER_VALIDATE_URL)) {
+            return $image;
+        }
+
+        $apiUrl = rtrim(trim((string) config('app.url')), '/');
+        $apiIdentity = Str::lower($apiUrl);
+        if (! filter_var($apiUrl, FILTER_VALIDATE_URL) || Str::contains($apiIdentity, ['localhost', '127.0.0.1'])) {
+            $apiUrl = 'https://api.petertecnet.com.br';
+        }
+
+        $image = ltrim($image, '/');
+        if (Str::startsWith($image, 'storage/')) {
+            return $apiUrl.'/'.$image;
+        }
+
+        return $apiUrl.'/storage/'.$image;
+    }
+
+    private function shareUrl(Event $event, string $eventUrl, string $appName): string
+    {
+        $eventName = trim((string) $event->title) ?: 'este evento';
+        $text = 'Confira o evento "'.$eventName.'" na '.$appName.': '.$eventUrl;
+
+        return 'https://wa.me/?text='.rawurlencode($text);
     }
 
     private function fieldLabels(array $fields): array
