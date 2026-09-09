@@ -29,6 +29,29 @@ final class ObservedRecoveryChannelEconomicsTest extends TestCase
         );
     }
 
+    public function test_it_estimates_incremental_recovery_against_control_without_recommending_control(): void
+    {
+        $orders = [];
+        for ($i = 0; $i < 100; $i++) {
+            $orders[] = $this->order('in_app', 0.0, $i < 20, 'pix', 10, 10.0, 0.0);
+        }
+        for ($i = 0; $i < 50; $i++) {
+            $orders[] = $this->order('control', 0.0, $i < 5, 'pix', 10, 10.0, 0.0);
+        }
+
+        $group = (new ObservedRecoveryChannelEconomics())->summarize($orders)[0];
+        $channel = $group['channels'][0];
+
+        self::assertSame(50, $group['control']['attempts']);
+        self::assertSame(5, $group['control']['paid_orders']);
+        self::assertSame(10.0, $group['control']['natural_conversion_rate']);
+        self::assertSame('in_app', $group['recommended_channel']);
+        self::assertSame(10.0, $channel['incremental_conversion_rate_pp']);
+        self::assertSame(10.0, $channel['incremental_recovered_orders_estimate']);
+        self::assertSame(100.0, $channel['incremental_net_contribution_estimate']);
+        self::assertCount(1, $group['channels']);
+    }
+
     public function test_it_exposes_realized_net_contribution_and_roi_when_cost_is_fully_attributed(): void
     {
         $groups = (new ObservedRecoveryChannelEconomics())->summarize([
