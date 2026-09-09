@@ -8,6 +8,7 @@ use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
 use App\Support\ApplicationContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ReconcilePaymentsCommand extends Command
@@ -57,6 +58,17 @@ class ReconcilePaymentsCommand extends Command
                 }
             }
 
+            $pendingDeliveryEffects = DB::table('delivery_effects')
+                ->when($appId, fn ($query) => $query->where('app_id', $appId))
+                ->where('aggregate_type', 'commerce_order')
+                ->where('status', '!=', 'completed')
+                ->orderBy('updated_at')
+                ->limit($limit)
+                ->get(['app_id', 'aggregate_id']);
+            $pendingDeliveryKeys = $pendingDeliveryEffects->mapWithKeys(
+                fn ($row) => [((int) $row->app_id).':'.((int) $row->aggregate_id) => true]
+            );
+
             $candidates = CommercePayment::query()
                 ->when($appId, fn ($query) => $query->where('app_id', $appId))
                 ->where('provider', 'mercadopago')
@@ -66,13 +78,32 @@ class ReconcilePaymentsCommand extends Command
                 ->limit($limit * 3)
                 ->get();
 
+            if ($pendingDeliveryEffects->isNotEmpty()) {
+                $deliveryCandidates = CommercePayment::query()
+                    ->when($appId, fn ($query) => $query->where('app_id', $appId))
+                    ->where('provider', 'mercadopago')
+                    ->whereNotNull('provider_payment_id')
+                    ->where(function ($query) use ($pendingDeliveryEffects) {
+                        foreach ($pendingDeliveryEffects as $effect) {
+                            $query->orWhere(function ($pair) use ($effect) {
+                                $pair->where('app_id', (int) $effect->app_id)
+                                    ->where('order_id', (int) $effect->aggregate_id);
+                            });
+                        }
+                    })
+                    ->with('order')
+                    ->get();
+                $candidates = $candidates->concat($deliveryCandidates)->unique('id')->values();
+            }
+
             $payments = $candidates
-                ->filter(function (CommercePayment $payment) {
+                ->filter(function (CommercePayment $payment) use ($pendingDeliveryKeys) {
                     $order = $payment->order;
                     if (! $order) return false;
                     if ($order->status === 'pending') return true;
                     if ($order->status !== 'paid') return false;
-                    return data_get($order->metadata, 'fulfillment_status') !== 'completed';
+                    if (data_get($order->metadata, 'fulfillment_status') !== 'completed') return true;
+                    return $pendingDeliveryKeys->has(((int) $payment->app_id).':'.((int) $order->id));
                 })
                 ->take($limit)
                 ->values();
