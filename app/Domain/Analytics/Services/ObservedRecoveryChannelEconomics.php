@@ -15,7 +15,7 @@ final class ObservedRecoveryChannelEconomics
     }
 
     /**
-     * Build observed recovery economics grouped by payment method and abandonment age.
+     * Build observed recovery economics grouped by payment method, abandonment age and experiment arm.
      *
      * Orders may be Eloquent models or array-like snapshots containing payment_method, status,
      * platform_fee, processor_fee, created_at, recovery_started_at and metadata.
@@ -37,13 +37,22 @@ final class ObservedRecoveryChannelEconomics
             $paymentMethod = trim((string) data_get($order, 'payment_method')) ?: 'unknown';
             $channel = trim((string) data_get($order, 'metadata.recovery.channel')) ?: 'unknown';
             $ageBucket = $this->ageBucket($createdAt, $recoveryStartedAt);
-            $groupKey = $paymentMethod.'|'.$ageBucket;
+            $experimentName = trim((string) data_get($order, 'metadata.recovery.experiment_name')) ?: null;
+            $rawTimingMinutes = data_get($order, 'metadata.recovery.timing_minutes');
+            $timingMinutes = is_numeric($rawTimingMinutes) && (int) $rawTimingMinutes > 0
+                ? (int) $rawTimingMinutes
+                : null;
+            $experimentKey = $experimentName ?? 'legacy';
+            $timingKey = $timingMinutes !== null ? (string) $timingMinutes : 'legacy';
+            $groupKey = $paymentMethod.'|'.$ageBucket.'|'.$experimentKey.'|'.$timingKey;
             $channelKey = $groupKey.'|'.$channel;
 
             if (! isset($segments[$channelKey])) {
                 $segments[$channelKey] = [
                     'payment_method' => $paymentMethod,
                     'abandonment_age_bucket' => $ageBucket,
+                    'experiment_name' => $experimentName,
+                    'timing_minutes' => $timingMinutes,
                     'channel' => $channel,
                     'attempts' => 0,
                     'recovered_orders' => 0,
@@ -102,10 +111,14 @@ final class ObservedRecoveryChannelEconomics
                 'derive_safe_attempt_cost_ceiling' => $hasCompleteCostData,
             ];
 
-            $groupKey = $segment['payment_method'].'|'.$segment['abandonment_age_bucket'];
+            $experimentKey = $segment['experiment_name'] ?? 'legacy';
+            $timingKey = $segment['timing_minutes'] !== null ? (string) $segment['timing_minutes'] : 'legacy';
+            $groupKey = $segment['payment_method'].'|'.$segment['abandonment_age_bucket'].'|'.$experimentKey.'|'.$timingKey;
             $groups[$groupKey] ??= [
                 'payment_method' => $segment['payment_method'],
                 'abandonment_age_bucket' => $segment['abandonment_age_bucket'],
+                'experiment_name' => $segment['experiment_name'],
+                'timing_minutes' => $segment['timing_minutes'],
                 'channels' => [],
             ];
             $groups[$groupKey]['channels'][] = [
@@ -192,6 +205,8 @@ final class ObservedRecoveryChannelEconomics
                 return [
                     'payment_method' => $group['payment_method'],
                     'abandonment_age_bucket' => $group['abandonment_age_bucket'],
+                    'experiment_name' => $group['experiment_name'],
+                    'timing_minutes' => $group['timing_minutes'],
                     'recommended_channel' => $recommended['channel'] ?? null,
                     'control' => $control ? [
                         'attempts' => $controlAttempts,
@@ -202,7 +217,7 @@ final class ObservedRecoveryChannelEconomics
                     'channels' => $channels,
                 ];
             })
-            ->sortBy(fn (array $group): string => $group['payment_method'].'|'.$group['abandonment_age_bucket'])
+            ->sortBy(fn (array $group): string => $group['payment_method'].'|'.$group['abandonment_age_bucket'].'|'.($group['experiment_name'] ?? 'legacy').'|'.($group['timing_minutes'] ?? 0))
             ->values()
             ->all();
     }
