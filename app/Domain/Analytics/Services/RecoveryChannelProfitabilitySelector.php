@@ -6,17 +6,20 @@ final class RecoveryChannelProfitabilitySelector
 {
     public const DEFAULT_MIN_SAMPLE_ATTEMPTS = 30;
 
+    public const DEFAULT_MAX_SAFE_COST_SHARE = 0.80;
+
     /**
      * Rank recovery channels by conservative expected net contribution per attempt.
      *
      * Required channel keys: channel, attempt_cost, conversion_rate, contribution_per_recovered_order.
-     * Optional: attempts (used for Wilson 95% lower bound when >= 1) and max_safe_attempt_cost.
+     * Optional: attempts, max_safe_attempt_cost, derive_safe_attempt_cost_ceiling and max_safe_cost_share.
      *
-     * A channel is only recommended after reaching the minimum sample size. Paid channels also
-     * require an explicit safe attempt-cost ceiling so observational analytics cannot silently
-     * become permission to spend. A channel-specific ceiling takes precedence over the optional
-     * global ceiling, allowing budgets to reflect the economics of each channel/segment. Zero-cost
-     * channels remain eligible without an external ceiling.
+     * A channel is only recommended after reaching the minimum sample size. Paid channels require
+     * a safe attempt-cost ceiling. The ceiling may be explicitly configured or, when the caller
+     * opts in, derived from observed economics using the Wilson 95% lower conversion bound. Derived
+     * ceilings reserve part of conservative contribution as margin instead of allowing channel cost
+     * to consume all expected contribution. Explicit and derived ceilings are combined by choosing
+     * the stricter value. Zero-cost channels remain eligible without an external ceiling.
      *
      * @param array<int, array<string, mixed>> $channels
      * @return array<int, array<string, mixed>>
@@ -43,9 +46,14 @@ final class RecoveryChannelProfitabilitySelector
                     : null;
                 $attempts = max((int) ($channel['attempts'] ?? 0), 0);
                 $hasMinimumSample = $attempts >= $minSampleAttempts;
-                $channelMaxSafeAttemptCost = is_numeric($channel['max_safe_attempt_cost'] ?? null)
+                $channelConfiguredCeiling = is_numeric($channel['max_safe_attempt_cost'] ?? null)
                     ? max((float) $channel['max_safe_attempt_cost'], 0.0)
-                    : $maxSafeAttemptCost;
+                    : null;
+                $configuredCeiling = $channelConfiguredCeiling ?? $maxSafeAttemptCost;
+                $deriveSafeCeiling = ($channel['derive_safe_attempt_cost_ceiling'] ?? false) === true;
+                $maxSafeCostShare = is_numeric($channel['max_safe_cost_share'] ?? null)
+                    ? min(max((float) $channel['max_safe_cost_share'], 0.0), 1.0)
+                    : self::DEFAULT_MAX_SAFE_COST_SHARE;
 
                 $confidenceAdjustedConversionRate = $conversionRate;
                 if ($conversionRate !== null && $attempts > 0) {
@@ -56,6 +64,26 @@ final class RecoveryChannelProfitabilitySelector
                 $expectedContributionPerAttempt = $confidenceAdjustedConversionRate !== null && $contributionPerRecoveredOrder !== null
                     ? ($confidenceAdjustedConversionRate / 100) * $contributionPerRecoveredOrder
                     : null;
+                $derivedSafeCeiling = $deriveSafeCeiling
+                    && $hasMinimumSample
+                    && $attemptCost !== null
+                    && $expectedContributionPerAttempt !== null
+                    ? $expectedContributionPerAttempt * $maxSafeCostShare
+                    : null;
+                $channelMaxSafeAttemptCost = match (true) {
+                    $configuredCeiling !== null && $derivedSafeCeiling !== null => min($configuredCeiling, $derivedSafeCeiling),
+                    $configuredCeiling !== null => $configuredCeiling,
+                    $derivedSafeCeiling !== null => $derivedSafeCeiling,
+                    default => null,
+                };
+                $safeCeilingSource = match (true) {
+                    $configuredCeiling !== null && $derivedSafeCeiling !== null => 'configured_and_observed_min',
+                    $channelConfiguredCeiling !== null => 'channel_configured',
+                    $maxSafeAttemptCost !== null => 'global_configured',
+                    $derivedSafeCeiling !== null => 'observed_conservative',
+                    default => null,
+                };
+
                 $expectedNetContributionPerAttempt = $expectedContributionPerAttempt !== null && $attemptCost !== null
                     ? $expectedContributionPerAttempt - $attemptCost
                     : null;
@@ -103,7 +131,10 @@ final class RecoveryChannelProfitabilitySelector
                     'expected_contribution_per_attempt' => $expectedContributionPerAttempt !== null ? round($expectedContributionPerAttempt, 4) : null,
                     'expected_net_contribution_per_attempt' => $expectedNetContributionPerAttempt !== null ? round($expectedNetContributionPerAttempt, 4) : null,
                     'confidence_adjusted_roi_percent' => $roiPercent !== null ? round($roiPercent, 2) : null,
+                    'derived_safe_attempt_cost_ceiling' => $derivedSafeCeiling !== null ? round($derivedSafeCeiling, 4) : null,
                     'safe_attempt_cost_ceiling' => $channelMaxSafeAttemptCost !== null ? round($channelMaxSafeAttemptCost, 4) : null,
+                    'safe_attempt_cost_ceiling_source' => $safeCeilingSource,
+                    'max_safe_cost_share' => $deriveSafeCeiling ? round($maxSafeCostShare, 4) : null,
                     'has_safe_cost_ceiling' => $hasSafeCostCeiling,
                     'within_safe_cost_ceiling' => $withinSafeCostCeiling,
                     'economically_viable' => $economicallyViable,
