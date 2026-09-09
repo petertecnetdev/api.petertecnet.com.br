@@ -7,9 +7,12 @@ use App\Models\Interaction;
 
 final class RevenueRecoveryEconomicsService
 {
+    private const NAVBAR_PROMINENCE_EXPERIMENT = 'pix_recovery_navbar_prominence_v1';
+
     public function __construct(
         private readonly ObservedRecoveryChannelEconomics $observedEconomics,
         private readonly RecoverySurfaceEconomics $surfaceEconomics,
+        private readonly RecoveryProminenceExperimentEconomics $prominenceExperimentEconomics,
     ) {
     }
 
@@ -70,6 +73,24 @@ final class RevenueRecoveryEconomicsService
         $metrics['checkout_recovery_surface_economics'] = $this->surfaceEconomics->summarize(
             $interactions,
             $surfaceOrders,
+        );
+
+        $experimentInteractions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('created_at', '>=', $since)
+            ->whereIn('interaction_type', [
+                'frontend_checkout_recovery_notification_cta_viewed',
+                'frontend_checkout_recovery_notification_cta_clicked',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $metrics['checkout_recovery_prominence_experiment'] = $this->prominenceExperimentEconomics->summarize(
+            $experimentInteractions,
+            $surfaceOrders,
+            self::NAVBAR_PROMINENCE_EXPERIMENT,
         );
 
         return $metrics;
