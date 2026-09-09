@@ -99,6 +99,11 @@ class EstablishmentController extends Controller
         $user = $request->user();
         $data = $request->safe()->except(['business_profile', 'logo', 'background']);
         $businessProfile = $request->validated('business_profile');
+        $requiresApproval = in_array(
+            $this->context->slug(),
+            config('platform.approval_required_apps', []),
+            true
+        );
 
         $data['app_id'] = $this->context->id();
         $data['user_id'] = $user->id;
@@ -106,9 +111,9 @@ class EstablishmentController extends Controller
         $data['updated_by'] = $user->id;
         $data['slug'] = $this->uniqueSlug($data['fantasy'] ?? $data['name']);
         $data['is_featured'] = false;
-        $data['is_approved'] = false;
+        $data['is_approved'] = ! $requiresApproval;
         $data['is_cancelled'] = false;
-        $data['is_published'] = false;
+        $data['is_published'] = ! $requiresApproval;
 
         $establishment = DB::transaction(function () use ($request, $user, $data, $businessProfile) {
             $establishment = Establishment::create($data);
