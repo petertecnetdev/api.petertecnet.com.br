@@ -69,17 +69,20 @@ final class AutomatedCheckoutRecoveryService
                     continue;
                 }
 
+                $referenceUrl = $this->recoveryReferenceUrl($applicationUrl, (string) ($order->public_id ?: $order->id));
+
                 $this->notifications->sendToUser((int) $order->app_id, (int) $order->user_id, [
                     'type' => 'checkout_recovery',
                     'title' => 'Seu pagamento PIX ainda está pendente',
                     'message' => 'Se quiser concluir seu pedido, ele continua disponível até o vencimento.',
                     'reference_type' => 'commerce_order',
                     'reference_id' => (string) ($order->public_id ?: $order->id),
-                    'reference_url' => $applicationUrl,
+                    'reference_url' => $referenceUrl,
                     'data' => [
                         'order_public_id' => $order->public_id,
                         'payment_expires_at' => $order->expires_at?->toIso8601String(),
                         'recovery_channel' => 'in_app',
+                        'recovery_deep_link' => $referenceUrl !== $applicationUrl,
                     ],
                     'send_email' => false,
                 ]);
@@ -111,5 +114,24 @@ final class AutomatedCheckoutRecoveryService
             'dispatched' => $dispatched,
             'failed' => $failed,
         ];
+    }
+
+    private function recoveryReferenceUrl(string $applicationUrl, string $publicId): string
+    {
+        $host = strtolower((string) parse_url($applicationUrl, PHP_URL_HOST));
+        $paths = (array) config('checkout_recovery.automated_in_app.deep_link_paths_by_host', []);
+        $template = trim((string) ($paths[$host] ?? ''));
+
+        // Only relative application paths are accepted. This prevents configuration
+        // from turning a trusted in-app notification into an external redirect.
+        if ($template === '' || ! str_starts_with($template, '/') || str_starts_with($template, '//')) {
+            return $applicationUrl;
+        }
+
+        $path = str_replace('{public_id}', rawurlencode($publicId), $template);
+
+        return str_contains($path, '{') || str_contains($path, '}')
+            ? $applicationUrl
+            : $path;
     }
 }
