@@ -230,17 +230,7 @@ class Order extends Model
             $additions = $entry['additions'] ?? [];
             $removals = $entry['removals'] ?? [];
 
-            $item = \App\Models\Item::findOrFail($itemId);
-
-            $orderEntityName = strtolower(trim($this->entity_name));
-            $itemEntityName = strtolower(trim($item->entity_name));
-
-            if (
-                $itemEntityName !== $orderEntityName ||
-                (int) $item->entity_id !== (int) $this->entity_id
-            ) {
-                throw new \Exception("O item '{$item->name}' n�o pertence ao estabelecimento desta ordem.");
-            }
+            $item = $this->resolveContextItem($itemId, 'item');
 
             $unitPrice = (float) $item->price;
             $subtotal = $unitPrice * $quantity;
@@ -253,20 +243,44 @@ class Order extends Model
             ]);
 
             foreach ($additions as $add) {
+                $modifier = $this->resolveContextItem((int) $add['id'], 'adicional');
+
                 $orderItem->modifiers()->create([
-                    'modifier_id' => $add['id'],
-                    'quantity' => $add['quantity'] ?? 1,
+                    'modifier_id' => $modifier->id,
+                    'quantity' => max(1, (int) ($add['quantity'] ?? 1)),
                     'type' => 'addition',
                 ]);
             }
 
             foreach ($removals as $remId) {
+                $modifier = $this->resolveContextItem((int) $remId, 'remoção');
+
                 $orderItem->modifiers()->create([
-                    'modifier_id' => $remId,
+                    'modifier_id' => $modifier->id,
                     'type' => 'removal',
                 ]);
             }
         }
+    }
+
+    private function resolveContextItem(int $itemId, string $label): Item
+    {
+        $item = Item::query()
+            ->forApplication((int) $this->app_id)
+            ->find($itemId);
+
+        if (!$item) {
+            throw \Illuminate\Validation\ValidationException::withMessages(["items" => "O {$label} informado não está disponível para esta aplicação."]);
+        }
+
+        if (
+            strtolower(trim((string) $item->entity_name)) !== strtolower(trim((string) $this->entity_name)) ||
+            (int) $item->entity_id !== (int) $this->entity_id
+        ) {
+            throw \Illuminate\Validation\ValidationException::withMessages(["items" => "O {$label} '{$item->name}' não pertence ao estabelecimento desta ordem."]);
+        }
+
+        return $item;
     }
 
     /* ===============================
