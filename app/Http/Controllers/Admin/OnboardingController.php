@@ -180,7 +180,7 @@ class OnboardingController extends Controller
         });
 
         try {
-            Mail::to($user->email)->send(new InviteUserMail(
+            Mail::to($user->email)->queue(new InviteUserMail(
                 $user,
                 $issued['code'],
                 $application->name,

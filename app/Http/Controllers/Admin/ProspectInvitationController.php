@@ -37,7 +37,7 @@ class ProspectInvitationController extends Controller
         $email = strtolower(trim($data['email']));
 
         try {
-            Mail::to($email)->send(new ProspectInvitationMail(
+            Mail::to($email)->queue(new ProspectInvitationMail(
                 $application,
                 $data['persona'],
                 $recipientName

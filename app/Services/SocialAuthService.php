@@ -266,7 +266,7 @@ class SocialAuthService
 
         $user = $result['user'];
         try {
-            Mail::to($user->email)->send(new VerificationCodeMail($verificationCode, $user));
+            Mail::to($user->email)->queue(new VerificationCodeMail($verificationCode, $user));
         } catch (\Throwable $exception) {
             Log::warning('Instagram account created but verification email failed.', [
                 'user_id' => $user->id,

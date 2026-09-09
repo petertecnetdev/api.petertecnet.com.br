@@ -83,7 +83,7 @@ class ApplicationAdminUserService
         });
 
         if ($created) {
-            Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $temporaryPassword));
+            Mail::to($user->email)->queue(new WelcomeMail($verificationCode, $user, $temporaryPassword));
         }
 
         return [

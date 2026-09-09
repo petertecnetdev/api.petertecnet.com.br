@@ -64,7 +64,7 @@ class EventAudienceService
         if($passes->isNotEmpty() && $order->user->email){
             try{
                 $delivery->run($appId,'commerce_order',(int)$order->id,'buyer_event_passes_email',function()use($order,$passes){
-                    Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));
+                    Mail::to($order->user->email)->queue(new EventPassesMail($order,$passes));
                 },$deliveryContext);
             }catch(\Throwable $e){
                 Log::error('Falha ao enviar ingressos por e-mail; entrega ficará pendente para nova reconciliação.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);

@@ -42,7 +42,7 @@ class UserCommunicationController extends Controller
             );
         }
 
-        Mail::to($user->email)->send(new AdminUserCommunicationMail(
+        Mail::to($user->email)->queue(new AdminUserCommunicationMail(
             $user,
             $subject,
             $message,
@@ -130,7 +130,7 @@ class UserCommunicationController extends Controller
                 'verification_code_expires_at' => now()->addMinutes(30),
             ])->save();
 
-            Mail::to($user->email)->send(new ResendVerificationCodeMail($rawCode, $user));
+            Mail::to($user->email)->queue(new ResendVerificationCodeMail($rawCode, $user));
             $this->audit($request, $user, ['mode' => 'verification_code']);
 
             return response()->json([
