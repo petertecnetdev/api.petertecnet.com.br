@@ -79,7 +79,9 @@ class InviteUserMail extends Mailable
                 $query['app_id'] = $this->appId;
             }
 
-            $this->activationUrl = $activationBaseUrl.'/invite-complete?'.http_build_query($query);
+            // Code-based invitations are completed inside the destination application.
+            // Token-based invitations above continue to use the central activation flow.
+            $this->activationUrl = $this->appUrl.'/invite-complete?'.http_build_query($query);
         }
     }
 
