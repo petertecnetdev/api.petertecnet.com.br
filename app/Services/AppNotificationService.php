@@ -76,7 +76,7 @@ class AppNotificationService
 
             $actionUrl = $this->resolveActionUrl($notification, $application);
 
-            Mail::to($recipient->email)->send(new AppNotificationMail(
+            Mail::to($recipient->email)->queue(new AppNotificationMail(
                 $recipient,
                 $notification,
                 $application,

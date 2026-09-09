@@ -175,7 +175,7 @@ class InvitationActivationController extends Controller
     private function sendCompletionMail(User $user, Application $application): void
     {
         try {
-            Mail::to($user->email)->send(new InviteCompleteMail($user));
+            Mail::to($user->email)->queue(new InviteCompleteMail($user));
         } catch (\Throwable $e) {
             Log::warning('Ativação concluída, mas o e-mail de confirmação falhou.', [
                 'user_id' => $user->id,

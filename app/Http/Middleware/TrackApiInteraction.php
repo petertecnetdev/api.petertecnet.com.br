@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Jobs\RecordInteractionTelemetry;
 use App\Models\Establishment;
 use App\Models\Interaction;
 use App\Models\Item;
@@ -68,7 +69,7 @@ class TrackApiInteraction
         $entity = $this->entitySnapshot($routeName, $parameters, $input);
         $type = $status >= 400 ? 'request_error' : $this->interactionType($request, $routeName);
 
-        Interaction::create([
+        $this->persist([
             'user_id' => $user?->id,
             'interaction_type' => $type,
             'outcome' => $this->outcome($status),
@@ -95,7 +96,7 @@ class TrackApiInteraction
         $entity = $this->entitySnapshot($routeName, $parameters, $input);
         $status = method_exists($exception, 'getStatusCode') ? $exception->getStatusCode() : 500;
 
-        Interaction::create([
+        $this->persist([
             'user_id' => $user?->id,
             'interaction_type' => 'request_error',
             'outcome' => $this->outcome($status),
@@ -262,6 +263,16 @@ class TrackApiInteraction
             elseif (is_object($value)) $data[$key] = '[OBJECT]';
         }
         return $data;
+    }
+
+    private function persist(array $attributes): void
+    {
+        if (app()->runningUnitTests()) {
+            Interaction::create($attributes);
+            return;
+        }
+
+        RecordInteractionTelemetry::dispatch($attributes);
     }
 
     private function logTrackingFailure(Request $request, \Throwable $exception): void

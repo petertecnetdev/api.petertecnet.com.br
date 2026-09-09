@@ -187,7 +187,7 @@ final class MarketSignalService
 
             try {
                 $name = trim((string) ($user->first_name ?: $user->user_name ?: ''));
-                Mail::to((string) $user->email)->send(new KryvionOpportunityReportMail($report, $name));
+                Mail::to((string) $user->email)->queue(new KryvionOpportunityReportMail($report, $name));
                 Cache::put($cacheKey, true, now()->addHours(self::REPORT_EMAIL_COOLDOWN_HOURS));
                 $sent++;
             } catch (\Throwable $e) {

@@ -85,7 +85,7 @@ class ImportantEventService
 
         if ($producer?->email) {
             try {
-                Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity));
+                Mail::to($producer->email)->queue(new TicketSaleProducerMail($order,$ticketQuantity));
                 $this->updateEmailStatus($importantEvent,'delivered');
             } catch (\Throwable $e) {
                 $this->updateEmailStatus($importantEvent,'failed');

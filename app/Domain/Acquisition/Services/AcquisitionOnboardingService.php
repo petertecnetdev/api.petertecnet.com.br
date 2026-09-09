@@ -318,7 +318,7 @@ final class AcquisitionOnboardingService
     private function sendReferralMail(AcquisitionReferral $referral, User $user, Production $production, $events, string $rawToken, string $rawCode): bool
     {
         try {
-            Mail::to($referral->email)->send(new AcquisitionReferralMail(
+            Mail::to($referral->email)->queue(new AcquisitionReferralMail(
                 user: $user,
                 application: $this->context->application(),
                 production: $production,
