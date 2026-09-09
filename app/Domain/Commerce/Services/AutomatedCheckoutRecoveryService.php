@@ -44,7 +44,10 @@ final class AutomatedCheckoutRecoveryService
             ->where('expires_at', '>', now()->addMinutes($minimumRemainingMinutes))
             ->whereHas('application', function ($query) {
                 $query->where('is_active', true)
-                    ->whereNotIn('operational_status', ['maintenance', 'down']);
+                    ->where(function ($operational) {
+                        $operational->whereNull('operational_status')
+                            ->orWhereNotIn('operational_status', ['maintenance', 'down']);
+                    });
             })
             ->whereHas('payments', function ($query) {
                 $query->where('provider', 'mercadopago')
