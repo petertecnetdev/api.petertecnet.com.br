@@ -22,6 +22,7 @@ use App\Observers\EstablishmentOwnershipNotificationObserver;
 use App\Observers\EventFeedActivityObserver;
 use App\Observers\EventProducerNotificationObserver;
 use App\Observers\InteractionAuditObserver;
+use App\Observers\OrderPricingObserver;
 use App\Services\AsaasPayoutService;
 use App\Services\Operations\OperationalIssueService;
 use App\Services\Operations\OperationalTelemetryService;
@@ -72,6 +73,7 @@ class AppServiceProvider extends ServiceProvider
             $auditedModel::observe(InteractionAuditObserver::class);
         }
 
+        Order::observe(OrderPricingObserver::class);
         Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
         EventModel::observe(EventProducerNotificationObserver::class);
         EventModel::observe(EventFeedActivityObserver::class);
