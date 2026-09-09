@@ -88,6 +88,7 @@ final class ObservedRecoveryChannelEconomics
                 'conversion_rate' => $conversionRate,
                 'contribution_per_recovered_order' => $contributionPerRecoveredOrder,
                 'attempts' => $attempts,
+                'derive_safe_attempt_cost_ceiling' => $hasCompleteCostData,
             ];
 
             $groupKey = $segment['payment_method'].'|'.$segment['abandonment_age_bucket'];
@@ -116,6 +117,7 @@ final class ObservedRecoveryChannelEconomics
                     'conversion_rate' => $channel['conversion_rate'],
                     'contribution_per_recovered_order' => $channel['contribution_per_recovered_order'],
                     'attempts' => $channel['attempts'],
+                    'derive_safe_attempt_cost_ceiling' => $channel['derive_safe_attempt_cost_ceiling'],
                 ], $rawChannels));
                 $observedByChannel = collect($rawChannels)->keyBy('channel');
                 $channels = collect($ranked)->map(function (array $rank) use ($observedByChannel): array {
