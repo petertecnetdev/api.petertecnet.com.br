@@ -3,11 +3,13 @@
 namespace App\Domain\Analytics\Services;
 
 use App\Models\CommerceOrder;
+use App\Models\Interaction;
 
 final class RevenueRecoveryEconomicsService
 {
     public function __construct(
         private readonly ObservedRecoveryChannelEconomics $observedEconomics,
+        private readonly RecoverySurfaceEconomics $surfaceEconomics,
     ) {
     }
 
@@ -15,10 +17,12 @@ final class RevenueRecoveryEconomicsService
     public function enrich(int $appId, int $organizationId, int $days, array $metrics): array
     {
         $days = min(max($days, 1), 365);
+        $since = now()->subDays($days);
+
         $orders = CommerceOrder::query()
             ->where('app_id', $appId)
             ->where('production_id', $organizationId)
-            ->where('created_at', '>=', now()->subDays($days))
+            ->where('created_at', '>=', $since)
             ->whereNotNull('recovery_started_at')
             ->select([
                 'id',
@@ -33,6 +37,40 @@ final class RevenueRecoveryEconomicsService
             ->lazyById(1000);
 
         $metrics['checkout_recovery_channel_economics'] = $this->observedEconomics->summarize($orders);
+
+        $surfaceOrders = CommerceOrder::query()
+            ->where('app_id', $appId)
+            ->where('production_id', $organizationId)
+            ->where('created_at', '>=', $since)
+            ->whereNotNull('recovery_started_at')
+            ->select([
+                'id',
+                'public_id',
+                'status',
+                'platform_fee',
+                'processor_fee',
+                'metadata',
+            ])
+            ->get();
+
+        $interactions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('created_at', '>=', $since)
+            ->whereIn('interaction_type', [
+                'frontend_checkout_recovery_notification_cta_viewed',
+                'frontend_checkout_recovery_notification_cta_clicked',
+                'frontend_checkout_recovery_landed',
+                'frontend_checkout_recovery_resumed',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $metrics['checkout_recovery_surface_economics'] = $this->surfaceEconomics->summarize(
+            $interactions,
+            $surfaceOrders,
+        );
 
         return $metrics;
     }
