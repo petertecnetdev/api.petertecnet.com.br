@@ -6,15 +6,18 @@ use App\Models\Event;
 use App\Models\Interaction;
 use App\Models\Production;
 use App\Services\EventProducerCommunicationService;
+use App\Services\Media\ImageMediaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Intervention\Image\Facades\Image;
 
 class EventController extends Controller
 {
     private const PRODUCTION_RELATION = 'production:id,name,slug,user_id,phone,contact_phone';
+
+    public function __construct(private readonly ImageMediaService $imageMedia)
+    {
+    }
 
     public function list(Request $request)
     {
@@ -209,7 +212,7 @@ class EventController extends Controller
             'production_id' => "$required|integer|exists:productions,id",
             'title' => "$required|string|max:255",
             'description' => "$required|string|max:50000",
-            'image' => ($creating ? 'nullable' : 'sometimes|nullable') . '|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'image' => ($creating ? 'nullable' : 'sometimes|nullable') . '|image|mimes:jpeg,png,jpg,webp|max:8192',
             'address' => "$required|string|max:500",
             'start_date' => "$required|date",
             'end_date' => "$required|date|after_or_equal:start_date",
@@ -291,20 +294,11 @@ class EventController extends Controller
 
     private function storeImage($uploaded): string
     {
-        $path = 'images/events/' . Str::uuid() . '.webp';
-        $absolute = Storage::disk('public')->path($path);
-        if (! is_dir(dirname($absolute))) {
-            mkdir(dirname($absolute), 0755, true);
-        }
-
-        Image::make($uploaded->getRealPath())->orientate()->fit(850, 450)->encode('webp', 85)->save($absolute);
-        return $path;
+        return $this->imageMedia->store($uploaded, 'events')['path'];
     }
 
     private function deleteImage(?string $path): void
     {
-        if ($path && str_starts_with($path, 'images/events/')) {
-            Storage::disk('public')->delete($path);
-        }
+        $this->imageMedia->delete($path);
     }
 }
