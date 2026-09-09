@@ -19,6 +19,7 @@ final class EventMediaLibraryController extends Controller
         $data = $request->validate([
             'q' => 'nullable|string|max:120',
             'production_id' => 'nullable|integer|min:1',
+            'type' => 'nullable|in:image,audio,video,file',
             'per_page' => 'nullable|integer|min:1|max:60',
         ]);
 
@@ -48,6 +49,16 @@ final class EventMediaLibraryController extends Controller
             $this->context->id(),
             $request->user(),
             $eventId,
+        );
+    }
+
+    public function downloadSoundtrackItem(Request $request, int $eventId, string $itemId)
+    {
+        return $this->mediaLibrary->downloadSoundtrackItem(
+            $this->context->id(),
+            $request->user(),
+            $eventId,
+            $itemId,
         );
     }
 }
