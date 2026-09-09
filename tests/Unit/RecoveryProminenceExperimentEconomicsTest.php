@@ -3,7 +3,7 @@
 namespace Tests\Unit;
 
 use App\Domain\Analytics\Services\RecoveryProminenceExperimentEconomics;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 final class RecoveryProminenceExperimentEconomicsTest extends TestCase
 {
@@ -28,8 +28,8 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         );
 
         self::assertFalse($result['comparison']['sample_is_mature']);
-        self::assertNull($result['comparison']['incremental_paid_orders_per_100_impressions']);
-        self::assertNull($result['comparison']['incremental_platform_contribution_per_impression']);
+        self::assertNull($result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertNull($result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertNull($result['comparison']['relative_contribution_lift_percent']);
     }
 
@@ -48,10 +48,11 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
             $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $controlId, 'control');
             $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $prominentId, 'prominent');
 
-            if ($i <= 3) {
+            // Keep click behavior diagnostic: paid outcomes do not depend on clicking.
+            if ($i <= 2) {
                 $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $controlId, 'control');
             }
-            if ($i <= 6) {
+            if ($i <= 4) {
                 $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $prominentId, 'prominent');
             }
         }
@@ -62,10 +63,28 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
             'pix_recovery_navbar_prominence_v1',
         );
 
+        self::assertSame('exposed_order', $result['unit_of_analysis']);
         self::assertTrue($result['comparison']['sample_is_mature']);
-        self::assertSame(10.0, $result['comparison']['incremental_paid_orders_per_100_impressions']);
-        self::assertSame(0.8, $result['comparison']['incremental_platform_contribution_per_impression']);
+        self::assertSame(10.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertSame(0.8, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertSame(100.0, $result['comparison']['relative_contribution_lift_percent']);
+    }
+
+    public function test_paid_outcome_requires_exposure_but_not_a_click(): void
+    {
+        $result = (new RecoveryProminenceExperimentEconomics())->summarize([
+            $this->event('checkout_recovery_notification_cta_viewed', 'paid-after-view', 'prominent'),
+            $this->event('checkout_recovery_notification_cta_clicked', 'clicked-without-view', 'prominent'),
+        ], [
+            $this->order('paid-after-view', 'paid', 10.0, 2.0),
+            $this->order('clicked-without-view', 'paid', 10.0, 2.0),
+        ], 'pix_recovery_navbar_prominence_v1');
+
+        $prominent = collect($result['variants'])->firstWhere('variant', 'prominent');
+
+        self::assertSame(1, $prominent['exposed_orders']);
+        self::assertSame(1, $prominent['paid_orders']);
+        self::assertSame(8.0, $prominent['platform_contribution']);
     }
 
     public function test_it_ignores_other_experiments_and_orders_outside_the_scoped_set(): void
