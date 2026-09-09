@@ -9,6 +9,8 @@ final class ObservedRecoveryChannelEconomics
 {
     public function __construct(
         private readonly ?RecoveryChannelProfitabilitySelector $selector = null,
+        private readonly int $minimumIncrementalityTreatmentAttempts = 30,
+        private readonly int $minimumIncrementalityControlAttempts = 30,
     ) {
     }
 
@@ -139,10 +141,13 @@ final class ObservedRecoveryChannelEconomics
                     'derive_safe_attempt_cost_ceiling' => $channel['derive_safe_attempt_cost_ceiling'],
                 ], $treatments));
                 $observedByChannel = collect($treatments)->keyBy('channel');
-                $channels = collect($ranked)->map(function (array $rank) use ($observedByChannel, $controlConversionRate): array {
+                $channels = collect($ranked)->map(function (array $rank) use ($observedByChannel, $controlConversionRate, $controlAttempts): array {
                     $observed = $observedByChannel->get($rank['channel'], []);
                     $attempts = (int) ($observed['attempts'] ?? 0);
-                    $incrementalConversionRatePp = $controlConversionRate !== null
+                    $incrementalitySampleReady = $controlConversionRate !== null
+                        && $controlAttempts >= max(1, $this->minimumIncrementalityControlAttempts)
+                        && $attempts >= max(1, $this->minimumIncrementalityTreatmentAttempts);
+                    $incrementalConversionRatePp = $incrementalitySampleReady
                         ? (float) ($observed['conversion_rate'] ?? 0.0) - $controlConversionRate
                         : null;
                     $incrementalRecoveredOrders = $incrementalConversionRatePp !== null
@@ -152,6 +157,13 @@ final class ObservedRecoveryChannelEconomics
                         && (float) ($observed['cost_coverage_percent'] ?? 0.0) === 100.0
                         ? ($incrementalRecoveredOrders * (float) ($observed['contribution_per_recovered_order'] ?? 0.0))
                             - (float) ($observed['total_attempt_cost'] ?? 0.0)
+                        : null;
+                    $incrementalNetContributionPerAttempt = $incrementalNetContribution !== null && $attempts > 0
+                        ? $incrementalNetContribution / $attempts
+                        : null;
+                    $incrementalRoiPercent = $incrementalNetContribution !== null
+                        && (float) ($observed['total_attempt_cost'] ?? 0.0) > 0
+                        ? ($incrementalNetContribution / (float) $observed['total_attempt_cost']) * 100
                         : null;
 
                     return [
@@ -163,9 +175,16 @@ final class ObservedRecoveryChannelEconomics
                         'realized_net_contribution' => $observed['realized_net_contribution'] ?? null,
                         'realized_net_contribution_per_attempt' => $observed['realized_net_contribution_per_attempt'] ?? null,
                         'realized_roi_percent' => $observed['realized_roi_percent'] ?? null,
+                        'incrementality_sample_ready' => $incrementalitySampleReady,
+                        'incrementality_sample_shortfall' => [
+                            'control_attempts' => max(0, max(1, $this->minimumIncrementalityControlAttempts) - $controlAttempts),
+                            'treatment_attempts' => max(0, max(1, $this->minimumIncrementalityTreatmentAttempts) - $attempts),
+                        ],
                         'incremental_conversion_rate_pp' => $incrementalConversionRatePp !== null ? round($incrementalConversionRatePp, 2) : null,
                         'incremental_recovered_orders_estimate' => $incrementalRecoveredOrders !== null ? round($incrementalRecoveredOrders, 2) : null,
                         'incremental_net_contribution_estimate' => $incrementalNetContribution !== null ? round($incrementalNetContribution, 2) : null,
+                        'incremental_net_contribution_per_attempt_estimate' => $incrementalNetContributionPerAttempt !== null ? round($incrementalNetContributionPerAttempt, 4) : null,
+                        'incremental_roi_percent_estimate' => $incrementalRoiPercent !== null ? round($incrementalRoiPercent, 2) : null,
                     ];
                 })->values()->all();
                 $recommended = collect($channels)->firstWhere('recommended', true);
@@ -178,6 +197,7 @@ final class ObservedRecoveryChannelEconomics
                         'attempts' => $controlAttempts,
                         'paid_orders' => (int) ($control['recovered_orders'] ?? 0),
                         'natural_conversion_rate' => round((float) $controlConversionRate, 2),
+                        'minimum_attempts_for_incrementality' => max(1, $this->minimumIncrementalityControlAttempts),
                     ] : null,
                     'channels' => $channels,
                 ];
