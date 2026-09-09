@@ -11,8 +11,9 @@ final class RecoveryProminenceExperimentEconomics
     /**
      * Summarize a deterministic recovery prominence experiment by assigned variant.
      *
-     * Paid value is attributed only to orders that clicked a CTA carrying the same
-     * experiment metadata, keeping unrelated recovery traffic out of the comparison.
+     * Paid outcomes are measured across orders actually exposed to each assigned
+     * variant. Clicks remain a diagnostic funnel metric and are not required for
+     * an order to count as paid, avoiding post-treatment selection bias.
      *
      * @param iterable<mixed> $interactions
      * @param iterable<mixed> $orders
@@ -38,7 +39,7 @@ final class RecoveryProminenceExperimentEconomics
         }
 
         $variants = [];
-        $clickedVariantByOrder = [];
+        $exposedVariantByOrder = [];
 
         foreach ($interactions as $interaction) {
             $type = trim((string) data_get($interaction, 'interaction_type'));
@@ -66,15 +67,15 @@ final class RecoveryProminenceExperimentEconomics
             if ($type === self::VIEWED) {
                 $variants[$variant]['impressions']++;
                 $variants[$variant]['exposed_orders'][$publicId] = true;
+                $exposedVariantByOrder[$publicId] = $variant;
                 continue;
             }
 
             $variants[$variant]['clicks']++;
             $variants[$variant]['clicked_orders'][$publicId] = true;
-            $clickedVariantByOrder[$publicId] = $variant;
         }
 
-        foreach ($clickedVariantByOrder as $publicId => $variant) {
+        foreach ($exposedVariantByOrder as $publicId => $variant) {
             $order = $ordersByPublicId[$publicId] ?? null;
             if (! $order || (string) data_get($order, 'status') !== 'paid') {
                 continue;
@@ -103,8 +104,10 @@ final class RecoveryProminenceExperimentEconomics
                 'paid_orders' => $paidOrders,
                 'cta_ctr_percent' => $impressions > 0 ? round(($clicks / $impressions) * 100, 2) : null,
                 'paid_orders_per_100_impressions' => $impressions > 0 ? round(($paidOrders / $impressions) * 100, 2) : null,
+                'paid_orders_per_100_exposed_orders' => $exposedOrders > 0 ? round(($paidOrders / $exposedOrders) * 100, 2) : null,
                 'platform_contribution' => round($contribution, 2),
                 'platform_contribution_per_impression' => $impressions > 0 ? round($contribution / $impressions, 4) : null,
+                'platform_contribution_per_exposed_order' => $exposedOrders > 0 ? round($contribution / $exposedOrders, 4) : null,
                 'sample_is_mature' => $exposedOrders >= self::MIN_EXPOSED_ORDERS_PER_VARIANT,
                 'min_exposed_orders_required' => self::MIN_EXPOSED_ORDERS_PER_VARIANT,
                 'remaining_exposed_orders_to_maturity' => max(0, self::MIN_EXPOSED_ORDERS_PER_VARIANT - $exposedOrders),
@@ -120,26 +123,35 @@ final class RecoveryProminenceExperimentEconomics
             'control_variant' => 'control',
             'treatment_variant' => 'prominent',
             'sample_is_mature' => $comparisonIsMature,
-            'incremental_paid_orders_per_100_impressions' => null,
-            'incremental_platform_contribution_per_impression' => null,
+            'incremental_paid_orders_per_100_exposed_orders' => null,
+            'incremental_platform_contribution_per_exposed_order' => null,
             'relative_contribution_lift_percent' => null,
+            'diagnostic_incremental_paid_orders_per_100_impressions' => null,
+            'diagnostic_incremental_platform_contribution_per_impression' => null,
         ];
 
         if ($comparisonIsMature) {
-            $controlPaidRate = (float) ($control['paid_orders_per_100_impressions'] ?? 0);
-            $treatmentPaidRate = (float) ($treatment['paid_orders_per_100_impressions'] ?? 0);
-            $controlContribution = (float) ($control['platform_contribution_per_impression'] ?? 0);
-            $treatmentContribution = (float) ($treatment['platform_contribution_per_impression'] ?? 0);
+            $controlPaidRate = (float) ($control['paid_orders_per_100_exposed_orders'] ?? 0);
+            $treatmentPaidRate = (float) ($treatment['paid_orders_per_100_exposed_orders'] ?? 0);
+            $controlContribution = (float) ($control['platform_contribution_per_exposed_order'] ?? 0);
+            $treatmentContribution = (float) ($treatment['platform_contribution_per_exposed_order'] ?? 0);
+            $controlContributionPerImpression = (float) ($control['platform_contribution_per_impression'] ?? 0);
+            $treatmentContributionPerImpression = (float) ($treatment['platform_contribution_per_impression'] ?? 0);
+            $controlPaidPerImpression = (float) ($control['paid_orders_per_100_impressions'] ?? 0);
+            $treatmentPaidPerImpression = (float) ($treatment['paid_orders_per_100_impressions'] ?? 0);
 
-            $comparison['incremental_paid_orders_per_100_impressions'] = round($treatmentPaidRate - $controlPaidRate, 2);
-            $comparison['incremental_platform_contribution_per_impression'] = round($treatmentContribution - $controlContribution, 4);
+            $comparison['incremental_paid_orders_per_100_exposed_orders'] = round($treatmentPaidRate - $controlPaidRate, 2);
+            $comparison['incremental_platform_contribution_per_exposed_order'] = round($treatmentContribution - $controlContribution, 4);
             $comparison['relative_contribution_lift_percent'] = $controlContribution !== 0.0
                 ? round((($treatmentContribution - $controlContribution) / abs($controlContribution)) * 100, 2)
                 : null;
+            $comparison['diagnostic_incremental_paid_orders_per_100_impressions'] = round($treatmentPaidPerImpression - $controlPaidPerImpression, 2);
+            $comparison['diagnostic_incremental_platform_contribution_per_impression'] = round($treatmentContributionPerImpression - $controlContributionPerImpression, 4);
         }
 
         return [
             'experiment' => $experiment,
+            'unit_of_analysis' => 'exposed_order',
             'variants' => $rows->values()->all(),
             'comparison' => $comparison,
         ];
