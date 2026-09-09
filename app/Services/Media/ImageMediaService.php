@@ -17,6 +17,8 @@ class ImageMediaService
         'hero' => [1440, 2560, 86],
     ];
 
+    private const PIPELINE_FILE_PATTERN = '/\/(?:original|thumbnail|card|feed|hero|background|og)\.webp$/i';
+
     public function store(UploadedFile $file, string $collection = 'media'): array
     {
         $collection = trim($collection, '/');
@@ -25,6 +27,7 @@ class ImageMediaService
         $extension = preg_replace('/[^a-z0-9]+/', '', $extension) ?: 'bin';
         $sourcePath = $directory . '/source.' . $extension;
         $originalPath = $directory . '/original.webp';
+        $heroPath = $directory . '/hero.webp';
 
         Storage::disk('public')->putFileAs($directory, $file, basename($sourcePath));
 
@@ -36,17 +39,27 @@ class ImageMediaService
         $this->ensureDirectory(dirname($absoluteOriginal));
         $image->encode('webp', 92)->save($absoluteOriginal);
 
+        $hero = clone $image;
+        [$heroWidth, $heroHeight, $heroQuality] = self::VARIANTS['hero'];
+        $hero->resize($heroWidth, $heroHeight, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        });
+        $hero->encode('webp', $heroQuality)->save(Storage::disk('public')->path($heroPath));
+        $hero->destroy();
+        $image->destroy();
+
         GenerateImageVariants::dispatch($sourcePath);
 
         return [
-            'path' => $originalPath,
+            'path' => $heroPath,
             'source_path' => $sourcePath,
             'width' => $width,
             'height' => $height,
             'aspect_ratio' => $height > 0 ? round($width / $height, 5) : null,
             'orientation' => $this->orientation($width, $height),
             'quality' => $this->quality($width),
-            'variants' => $this->variantPaths($originalPath),
+            'variants' => $this->variantPaths($heroPath),
         ];
     }
 
@@ -57,7 +70,7 @@ class ImageMediaService
         }
 
         $normalized = ltrim($path, '/');
-        if (! str_ends_with($normalized, '/original.webp')) {
+        if (! preg_match(self::PIPELINE_FILE_PATTERN, $normalized)) {
             return [
                 'original' => $normalized,
                 'thumbnail' => $normalized,
@@ -93,7 +106,7 @@ class ImageMediaService
             return;
         }
 
-        if (str_ends_with($normalized, '/original.webp')) {
+        if (preg_match(self::PIPELINE_FILE_PATTERN, $normalized)) {
             Storage::disk('public')->deleteDirectory(dirname($normalized));
             return;
         }
