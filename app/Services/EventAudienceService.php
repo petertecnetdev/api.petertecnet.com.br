@@ -44,20 +44,33 @@ class EventAudienceService
         if(!$order || $order->status!=='paid' || !$order->event || !$order->user) return;
         $ticketQuantity=(int)$order->items->where('type','ticket')->sum('quantity'); if($ticketQuantity<=0) return;
         $appId=(int)$order->event->app_id;
+        $delivery=app(DeliveryEffectService::class);
+        $deliveryContext=['order_id'=>(int)$order->id,'event_id'=>(int)$order->event_id,'user_id'=>(int)$order->user_id,'ticket_count'=>$ticketQuantity];
+
         $this->markInterested($appId,(int)$order->event_id,(int)$order->user_id);
         $passes=EventPass::query()->where('event_id',$order->event_id)->where('user_id',$order->user_id)
             ->whereIn('commerce_order_item_id',$order->items->where('type','ticket')->pluck('id'))
             ->whereNotIn('status',['cancelled','refunded','charged_back'])->with('ticket')->orderBy('id')->get();
-        app(AppNotificationService::class)->sendToUser($appId,(int)$order->user_id,[
-            'type'=>'ticket_purchase_confirmed','title'=>'Presença confirmada',
-            'message'=>'Sua compra foi aprovada. Você tem '.$ticketQuantity.' '.($ticketQuantity===1?'ingresso':'ingressos').' para '.$order->event->title.'.',
-            'reference_type'=>'event','reference_id'=>$order->event_id,'reference_url'=>'/passes',
-            'data'=>['event_id'=>$order->event_id,'order_id'=>$order->id,'ticket_count'=>$ticketQuantity],
-        ]);
+
+        $delivery->run($appId,'commerce_order',(int)$order->id,'buyer_ticket_notification',function()use($appId,$order,$ticketQuantity){
+            app(AppNotificationService::class)->sendToUser($appId,(int)$order->user_id,[
+                'type'=>'ticket_purchase_confirmed','title'=>'Presença confirmada',
+                'message'=>'Sua compra foi aprovada. Você tem '.$ticketQuantity.' '.($ticketQuantity===1?'ingresso':'ingressos').' para '.$order->event->title.'.',
+                'reference_type'=>'event','reference_id'=>$order->event_id,'reference_url'=>'/passes','send_email'=>false,
+                'data'=>['event_id'=>$order->event_id,'order_id'=>$order->id,'ticket_count'=>$ticketQuantity],
+            ]);
+        },$deliveryContext);
+
         if($passes->isNotEmpty() && $order->user->email){
-            try{Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));}
-            catch(\Throwable $e){Log::error('Falha ao enviar ingressos por e-mail.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);}
+            try{
+                $delivery->run($appId,'commerce_order',(int)$order->id,'buyer_event_passes_email',function()use($order,$passes){
+                    Mail::to($order->user->email)->send(new EventPassesMail($order,$passes));
+                },$deliveryContext);
+            }catch(\Throwable $e){
+                Log::error('Falha ao enviar ingressos por e-mail; entrega ficará pendente para nova reconciliação.',['order_id'=>$order->id,'user_id'=>$order->user_id,'message'=>$e->getMessage()]);
+            }
         }
+
         app(ImportantEventService::class)->recordTicketPurchase($order);
     }
 
