@@ -3,6 +3,7 @@
 use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
+use App\Domain\Commerce\Http\Controllers\CommerceCouponController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
 use App\Domain\Commerce\Http\Controllers\OrderHistoryController;
 use App\Domain\Connections\Http\Controllers\ConnectionController;
@@ -79,6 +80,12 @@ $publicCompatibility('cutinapp', static function (): void {
 
 $authenticatedCompatibility('cutinapp', static function (): void {
     Route::get('/profile/overview', [UserActivityProfileController::class, 'overview']);
+
+    Route::post('/commerce/coupons/validate', [CommerceCouponController::class, 'validateCode'])->middleware('throttle:60,1');
+    Route::get('/productions/{organizationId}/coupons', [CommerceCouponController::class, 'index'])->whereNumber('organizationId');
+    Route::post('/productions/{organizationId}/coupons', [CommerceCouponController::class, 'store'])->whereNumber('organizationId')->middleware('throttle:30,1');
+    Route::patch('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'update'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
+    Route::delete('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'destroy'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
 
     Route::post('/checkout', [EventCommerceController::class, 'checkout'])->middleware('throttle:30,1');
     Route::get('/orders/mine', [EventCommerceController::class, 'mine']);

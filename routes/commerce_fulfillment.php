@@ -51,14 +51,3 @@ Route::prefix('v1/apps/{application}')
         Route::post('/commerce/item-redemptions/redeem', [EventItemRedemptionController::class, 'redeem'])
             ->middleware('throttle:120,1');
     });
-
-// Compatibility aliases for the currently deployed Cutinapp client.
-Route::prefix('cutinapp')
-    ->middleware(['api', 'app.bind:cutinapp', 'compatibility.route', 'auth:api', 'token.version'])
-    ->group(function () {
-        Route::post('/commerce/coupons/validate', [CommerceCouponController::class, 'validateCode'])->middleware('throttle:60,1');
-        Route::get('/productions/{organizationId}/coupons', [CommerceCouponController::class, 'index'])->whereNumber('organizationId');
-        Route::post('/productions/{organizationId}/coupons', [CommerceCouponController::class, 'store'])->whereNumber('organizationId')->middleware('throttle:30,1');
-        Route::patch('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'update'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
-        Route::delete('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'destroy'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
-    });
