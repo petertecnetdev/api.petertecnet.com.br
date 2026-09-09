@@ -4,6 +4,7 @@ namespace App\Domain\Scheduling\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Employer;
+use App\Models\EmployerSchedule;
 use App\Models\Establishment;
 use App\Models\Order;
 use App\Models\User;
@@ -260,6 +261,8 @@ class AppointmentWorkflowController extends Controller
 
         $start = Carbon::parse($order->order_datetime, self::TZ);
         $end = $start->copy()->addMinutes(max(1, (int) ($order->total_duration ?: 30)));
+        $this->assertAttendantAvailability($employer, $start, $end);
+
         if (method_exists(Order::class, 'hasScheduleConflict')) {
             abort_if(
                 Order::hasScheduleConflict($employer->id, $start, $end, $order->id),
@@ -373,6 +376,71 @@ class AppointmentWorkflowController extends Controller
             'employments' => $employers,
             'managed_establishments' => $ownedEstablishments,
         ]);
+    }
+
+    private function assertAttendantAvailability(Employer $employer, Carbon $start, Carbon $end): void
+    {
+        $start = $start->copy()->setTimezone(self::TZ)->startOfMinute();
+        $end = $end->copy()->setTimezone(self::TZ)->startOfMinute();
+        $date = $start->toDateString();
+        $dayOfWeek = strtolower($start->format('l'));
+
+        $workSchedules = EmployerSchedule::query()
+            ->where('employer_id', $employer->id)
+            ->where('type', 'work')
+            ->where('day_of_week', $dayOfWeek)
+            ->where('is_active', true)
+            ->get(['start_time', 'end_time']);
+
+        $fitsWorkSchedule = $workSchedules->contains(function ($schedule) use ($date, $start, $end) {
+            $workStart = Carbon::parse($date . ' ' . $schedule->start_time, self::TZ)->startOfMinute();
+            $workEnd = Carbon::parse($date . ' ' . $schedule->end_time, self::TZ)->startOfMinute();
+
+            return $start->gte($workStart) && $end->lte($workEnd);
+        });
+
+        abort_unless(
+            $fitsWorkSchedule,
+            422,
+            'O colaborador selecionado não atende durante todo o horário deste agendamento.'
+        );
+
+        $blockedSchedules = EmployerSchedule::query()
+            ->where('employer_id', $employer->id)
+            ->whereIn('type', ['break', 'holiday'])
+            ->where('is_active', true)
+            ->where(function ($query) use ($date, $dayOfWeek) {
+                $query->whereDate('reserved_date', $date)
+                    ->orWhere(function ($recurring) use ($dayOfWeek) {
+                        $recurring->whereNull('reserved_date')
+                            ->where('day_of_week', $dayOfWeek);
+                    });
+            })
+            ->get(['type', 'start_time', 'end_time']);
+
+        foreach ($blockedSchedules as $blockedSchedule) {
+            if ($blockedSchedule->type === 'holiday' && ! $blockedSchedule->start_time && ! $blockedSchedule->end_time) {
+                abort(422, 'O colaborador selecionado está indisponível nesta data.');
+            }
+
+            $blockedStart = Carbon::parse(
+                $date . ' ' . ($blockedSchedule->start_time ?: '00:00'),
+                self::TZ
+            )->startOfMinute();
+            $blockedEnd = Carbon::parse(
+                $date . ' ' . ($blockedSchedule->end_time ?: '23:59'),
+                self::TZ
+            )->startOfMinute();
+
+            if ($start->lt($blockedEnd) && $end->gt($blockedStart)) {
+                abort(
+                    422,
+                    $blockedSchedule->type === 'holiday'
+                        ? 'O colaborador selecionado está indisponível neste horário.'
+                        : 'O colaborador selecionado possui uma pausa neste horário.'
+                );
+            }
+        }
     }
 
     private function orderedAppointmentsQuery()
