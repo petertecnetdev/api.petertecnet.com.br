@@ -117,7 +117,7 @@ final class AutomatedCheckoutRecoveryService
                 $this->notifications->sendToUser((int) $order->app_id, (int) $order->user_id, [
                     'type' => 'checkout_recovery',
                     'title' => 'Seu pagamento PIX ainda está pendente',
-                    'message' => 'Se quiser concluir seu pedido, ele continua disponível até o vencimento.',
+                    'message' => 'Seu pedido continua disponível até o vencimento. Toque para retomar o pagamento PIX.',
                     'reference_type' => 'commerce_order',
                     'reference_id' => (string) ($order->public_id ?: $order->id),
                     'reference_url' => $referenceUrl,
@@ -128,6 +128,8 @@ final class AutomatedCheckoutRecoveryService
                         'recovery_deep_link' => $referenceUrl !== $applicationUrl,
                         'recovery_experiment' => $recoveryContext['experiment_name'] ?? null,
                         'recovery_timing_minutes' => $recoveryContext['timing_minutes'] ?? null,
+                        'recovery_action' => 'resume_pix',
+                        'recovery_cta_label' => 'Retomar pagamento PIX',
                     ],
                     'send_email' => false,
                 ]);
