@@ -31,17 +31,24 @@ final class AutomatedCheckoutRecoveryService
             return ['eligible' => 0, 'dispatched' => 0, 'control' => 0, 'failed' => 0];
         }
 
-        $delayMinutes = max((int) config('checkout_recovery.automated_in_app.delay_minutes', 5), 1);
+        $fallbackDelay = max((int) config('checkout_recovery.automated_in_app.delay_minutes', 5), 1);
+        $experimentEnabled = (bool) config('checkout_recovery.automated_in_app.timing_experiment_enabled', true);
+        $experimentName = trim((string) config('checkout_recovery.automated_in_app.timing_experiment_name', 'pix_in_app_timing_v1'));
+        $timingDelays = $experimentEnabled
+            ? $this->timingDelays((string) config('checkout_recovery.automated_in_app.timing_delays_minutes', '5,15,30,60'), $fallbackDelay)
+            : [$fallbackDelay];
+        $minimumDelay = min($timingDelays);
         $minimumRemainingMinutes = max((int) config('checkout_recovery.automated_in_app.minimum_remaining_minutes', 5), 1);
         $limit = min(max($limit ?? (int) config('checkout_recovery.automated_in_app.batch_limit', 100), 1), 500);
         $controlPercent = min(max((int) config('checkout_recovery.automated_in_app.control_group_percent', 10), 0), 50);
+        $scanLimit = min(max($limit * max(count($timingDelays), 1) * 2, $limit), 2000);
 
         $orders = CommerceOrder::query()
             ->where('status', 'pending')
             ->where('payment_method', 'pix')
             ->whereNull('recovery_started_at')
             ->whereNotNull('user_id')
-            ->where('created_at', '<=', now()->subMinutes($delayMinutes))
+            ->where('created_at', '<=', now()->subMinutes($minimumDelay))
             ->where('expires_at', '>', now()->addMinutes($minimumRemainingMinutes))
             ->whereHas('application', function ($query) {
                 $query->where('is_active', true)
@@ -56,14 +63,31 @@ final class AutomatedCheckoutRecoveryService
             })
             ->with('application:id,url')
             ->orderBy('id')
-            ->limit($limit)
+            ->limit($scanLimit)
             ->get();
 
+        $eligible = 0;
         $dispatched = 0;
         $control = 0;
         $failed = 0;
 
         foreach ($orders as $order) {
+            if (($dispatched + $control) >= $limit) {
+                break;
+            }
+
+            $timingMinutes = $this->assignedTimingMinutes($order, $timingDelays, $experimentName);
+            if ($order->created_at?->isAfter(now()->subMinutes($timingMinutes))) {
+                continue;
+            }
+
+            $eligible++;
+            $recoveryContext = $experimentEnabled ? [
+                'experiment_name' => $experimentName !== '' ? $experimentName : 'pix_in_app_timing_v1',
+                'timing_minutes' => $timingMinutes,
+                'timing_variant' => $timingMinutes.'m',
+            ] : [];
+
             try {
                 if ($this->isControlOrder($order, $controlPercent)) {
                     $marked = $this->recovery->recover(
@@ -72,6 +96,7 @@ final class AutomatedCheckoutRecoveryService
                         (int) $order->id,
                         'control',
                         0.0,
+                        $recoveryContext,
                     );
 
                     if ($marked) {
@@ -101,6 +126,8 @@ final class AutomatedCheckoutRecoveryService
                         'payment_expires_at' => $order->expires_at?->toIso8601String(),
                         'recovery_channel' => 'in_app',
                         'recovery_deep_link' => $referenceUrl !== $applicationUrl,
+                        'recovery_experiment' => $recoveryContext['experiment_name'] ?? null,
+                        'recovery_timing_minutes' => $recoveryContext['timing_minutes'] ?? null,
                     ],
                     'send_email' => false,
                 ]);
@@ -111,6 +138,7 @@ final class AutomatedCheckoutRecoveryService
                     (int) $order->id,
                     'in_app',
                     0.0,
+                    $recoveryContext,
                 );
 
                 if ($recovered) {
@@ -128,11 +156,39 @@ final class AutomatedCheckoutRecoveryService
         }
 
         return [
-            'eligible' => $orders->count(),
+            'eligible' => $eligible,
             'dispatched' => $dispatched,
             'control' => $control,
             'failed' => $failed,
         ];
+    }
+
+    /** @return array<int, int> */
+    private function timingDelays(string $configured, int $fallbackDelay): array
+    {
+        $delays = collect(explode(',', $configured))
+            ->map(static fn (string $value): int => (int) trim($value))
+            ->filter(static fn (int $value): bool => $value > 0 && $value <= 1440)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
+
+        return $delays !== [] ? $delays : [$fallbackDelay];
+    }
+
+    /** @param array<int, int> $timingDelays */
+    private function assignedTimingMinutes(CommerceOrder $order, array $timingDelays, string $experimentName): int
+    {
+        if (count($timingDelays) === 1) {
+            return $timingDelays[0];
+        }
+
+        $stableKey = ($experimentName !== '' ? $experimentName : 'pix_in_app_timing_v1')
+            .'|'.(string) ($order->public_id ?: $order->id);
+        $bucket = ((int) sprintf('%u', crc32($stableKey))) % count($timingDelays);
+
+        return $timingDelays[$bucket];
     }
 
     private function isControlOrder(CommerceOrder $order, int $controlPercent): bool
