@@ -15,11 +15,12 @@ class Ticket extends Model
 
     protected $fillable = [
         'app_id','app_slug','event_id','name','type','price','limit_date','sales_cutoff_mode',
-        'sales_cutoff_offset_minutes','ticket_type','quantity','description',
+        'sales_cutoff_offset_minutes','ticket_type','quantity','max_per_user','description',
     ];
     protected $casts = [
         'price'=>'decimal:2',
         'quantity'=>'integer',
+        'max_per_user'=>'integer',
         'limit_date'=>'datetime',
         'sales_cutoff_offset_minutes'=>'integer',
     ];
@@ -39,7 +40,7 @@ class Ticket extends Model
             $timezone = config('app.timezone', 'America/Sao_Paulo');
             $limit = Carbon::parse($ticket->limit_date, $timezone);
             if ($event->end_date && $limit->gt(Carbon::parse($event->end_date, $timezone))) {
-                $eventEnd = Carbon::parse($event->end_date, $timezone)->format('d/m/Y \à\s H:i');
+                $eventEnd = Carbon::parse($event->end_date, $timezone)->format('d/m/Y \\à\\s H:i');
                 throw ValidationException::withMessages([
                     'limit_date' => ["O encerramento das vendas não pode ultrapassar o término do evento ({$eventEnd})."],
                 ]);
@@ -61,7 +62,7 @@ class Ticket extends Model
 
     public function getRemainingAttribute(): int
     {
-        $total=max(0,(int)$this->quantity); if(!$this->exists) return $total;
+        $total=max(0,(int)$this->quantity; if(!$this->exists) return $total;
         $issued=EventPass::query()->where('ticket_id',$this->id)->whereNotIn('status',['cancelled','refunded','charged_back'])->count();
         $reserved=(int)DB::table('inventory_reservations')->where('ticket_id',$this->id)->whereNull('released_at')->where('expires_at','>',now())->sum('quantity');
         return max(0,$total-$issued-$reserved);
