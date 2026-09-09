@@ -14,10 +14,13 @@ final class CloudflareImageGenerator
     {
         $accountId = trim((string) config('creative.cloudflare.account_id'));
         $token = trim((string) config('creative.cloudflare.api_token'));
+        $requestedModel = trim((string) ($options['model'] ?? ''));
         $qualityModel = trim((string) config('creative.cloudflare.quality_model'));
-        $model = $qualityModel !== ''
-            ? $qualityModel
-            : trim((string) config('creative.cloudflare.model', '@cf/black-forest-labs/flux-1-schnell'));
+        $model = $requestedModel !== ''
+            ? $requestedModel
+            : ($qualityModel !== ''
+                ? $qualityModel
+                : trim((string) config('creative.cloudflare.model', '@cf/black-forest-labs/flux-1-schnell')));
 
         if ($accountId === '' || $token === '') {
             throw new RuntimeException('O gerador de imagem por IA ainda não foi configurado no servidor.');
@@ -33,6 +36,7 @@ final class CloudflareImageGenerator
 
         $width = $this->normalizeDimension($options['width'] ?? 1024);
         $height = $this->normalizeDimension($options['height'] ?? 1024);
+        $steps = $this->normalizeSteps($options['steps'] ?? null, $model);
 
         try {
             $request = Http::withToken($token)
@@ -41,8 +45,8 @@ final class CloudflareImageGenerator
                 ->retry(1, 350, throw: false);
 
             $response = $this->usesMultipartPayload($model)
-                ? $request->asMultipart()->post($url, $this->multipartPayload($model, $prompt, $width, $height))
-                : $request->asJson()->post($url, $this->jsonPayload($model, $prompt, $width, $height));
+                ? $request->asMultipart()->post($url, $this->multipartPayload($model, $prompt, $width, $height, $steps))
+                : $request->asJson()->post($url, $this->jsonPayload($model, $prompt, $width, $height, $steps));
         } catch (ConnectionException $exception) {
             throw new RuntimeException('O serviço de criação por IA está temporariamente indisponível.', 0, $exception);
         }
@@ -66,10 +70,11 @@ final class CloudflareImageGenerator
             'provider' => 'cloudflare_workers_ai',
             'requested_width' => $width,
             'requested_height' => $height,
+            'requested_steps' => $steps,
         ];
     }
 
-    private function jsonPayload(string $model, string $prompt, int $width, int $height): array
+    private function jsonPayload(string $model, string $prompt, int $width, int $height, int $steps): array
     {
         $prompt = mb_substr($prompt, 0, 2048);
 
@@ -79,17 +84,17 @@ final class CloudflareImageGenerator
                 'width' => $width,
                 'height' => $height,
                 'guidance' => (float) config('creative.cloudflare.guidance', 4.5),
-                'num_steps' => (int) config('creative.cloudflare.quality_steps', 12),
+                'num_steps' => $steps,
             ];
         }
 
         return [
             'prompt' => $prompt,
-            'steps' => (int) config('creative.cloudflare.steps', 4),
+            'steps' => $steps,
         ];
     }
 
-    private function multipartPayload(string $model, string $prompt, int $width, int $height): array
+    private function multipartPayload(string $model, string $prompt, int $width, int $height, int $steps): array
     {
         $parts = [
             ['name' => 'prompt', 'contents' => mb_substr($prompt, 0, 2048)],
@@ -101,7 +106,7 @@ final class CloudflareImageGenerator
         if (str_contains($model, 'flux-2-dev')) {
             $parts[] = [
                 'name' => 'steps',
-                'contents' => (string) config('creative.cloudflare.quality_steps', 12),
+                'contents' => (string) $steps,
             ];
         }
 
@@ -116,6 +121,17 @@ final class CloudflareImageGenerator
     private function normalizeDimension(mixed $value): int
     {
         return min(1920, max(256, (int) $value));
+    }
+
+    private function normalizeSteps(mixed $value, string $model): int
+    {
+        if ($value !== null && $value !== '') {
+            return min(40, max(1, (int) $value));
+        }
+
+        return str_contains($model, 'flux-1-schnell')
+            ? (int) config('creative.cloudflare.steps', 4)
+            : (int) config('creative.cloudflare.quality_steps', 12);
     }
 
     private function consumeQuota(int $userId, int $applicationId): void
