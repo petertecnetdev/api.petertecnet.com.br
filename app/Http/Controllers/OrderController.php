@@ -469,7 +469,12 @@ class OrderController extends ApiController
                 );
             }
 
-            $employer = Employer::with('user')->findOrFail($data['attendant_id']);
+            // Serializa agendamentos do mesmo profissional dentro da transação.
+            // Assim duas requisições simultâneas não conseguem validar o mesmo slot
+            // antes de uma delas persistir o agendamento.
+            $employer = Employer::with('user')
+                ->lockForUpdate()
+                ->findOrFail($data['attendant_id']);
             $this->validateClientIsNotEmployer((int)$user->id, $employer);
 
             $duration = $this->calculateDuration($data['items']);
