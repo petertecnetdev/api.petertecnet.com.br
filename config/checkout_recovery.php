@@ -29,12 +29,17 @@ return [
     | This path explicitly suppresses e-mail and external providers, so enabling
     | it does not authorize paid messaging. recovery_started_at prevents repeats.
     |
+    | A small deterministic holdout measures how many pending checkouts would have
+    | converted without the reminder, so profitability can be based on incremental
+    | revenue instead of attributing every later payment to the recovery action.
+    |
     */
     'automated_in_app' => [
         'enabled' => env('CHECKOUT_RECOVERY_IN_APP_ENABLED', true),
         'delay_minutes' => env('CHECKOUT_RECOVERY_IN_APP_DELAY_MINUTES', 5),
         'minimum_remaining_minutes' => env('CHECKOUT_RECOVERY_IN_APP_MIN_REMAINING_MINUTES', 5),
         'batch_limit' => env('CHECKOUT_RECOVERY_IN_APP_BATCH_LIMIT', 100),
+        'control_group_percent' => env('CHECKOUT_RECOVERY_IN_APP_CONTROL_PERCENT', 10),
 
         // Internal routes keep the user inside the SPA and remove a navigation step.
         // The source marker lets ecosystem telemetry attribute the landing to the
