@@ -6,6 +6,8 @@ use App\Domain\Finance\Http\Controllers\PaymentProviderController;
 use App\Models\Application;
 use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
+use App\Services\DeliveryEffectService;
+use App\Services\EventAudienceService;
 use App\Support\ApplicationContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +18,12 @@ class ReconcilePaymentsCommand extends Command
     protected $signature = 'platform:reconcile-payments {order? : ID ou public_id de um pedido específico} {--application= : Slug da aplicação} {--limit=50 : Máximo de pagamentos no modo automático}';
     protected $description = 'Reconcilia pagamentos e reprocessa fulfillment pendente em qualquer aplicação.';
 
-    public function handle(PaymentProviderController $controller, ApplicationContext $context): int
+    public function handle(
+        PaymentProviderController $controller,
+        EventAudienceService $audience,
+        DeliveryEffectService $deliveries,
+        ApplicationContext $context
+    ): int
     {
         $orderRef = $this->argument('order');
         $applicationSlug = trim((string) $this->option('application'));
@@ -119,7 +126,20 @@ class ReconcilePaymentsCommand extends Command
             try {
                 $application = Application::query()->whereKey((int) $payment->app_id)->where('is_active', true)->firstOrFail();
                 $context->set($application);
-                $order = $controller->reconcilePaymentId((int) $payment->id);
+
+                $order = $payment->order;
+                $deliveryOnlyRetry = $order
+                    && $order->status === 'paid'
+                    && data_get($order->metadata, 'fulfillment_status') === 'completed'
+                    && $deliveries->hasPendingForAggregate((int) $payment->app_id, 'commerce_order', (int) $order->id);
+
+                if ($deliveryOnlyRetry) {
+                    $audience->confirmPaidOrder((int) $order->id);
+                    $order = $order->fresh(['items', 'event', 'payments']);
+                } else {
+                    $order = $controller->reconcilePaymentId((int) $payment->id);
+                }
+
                 $this->info(sprintf(
                     'OK app=%s pedido=%s status=%s fulfillment=%s pagamento=%s',
                     $application->slug,
