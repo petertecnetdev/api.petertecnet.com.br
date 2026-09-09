@@ -169,8 +169,13 @@ class ImpersonationService
 
     private function handoffUrl(string $applicationUrl, string $plainHandoff): string
     {
-        $separator = str_contains($applicationUrl, '?') ? '&' : '?';
-        return rtrim($applicationUrl, '/') . '/' . $separator . http_build_query(['pt_impersonation' => $plainHandoff]);
+        $url = rtrim($applicationUrl, '/');
+        $separator = str_contains($url, '?') ? '&' : '?';
+
+        return $url . $separator . http_build_query([
+            'peter_sso' => $plainHandoff,
+            'peter_from' => 'admincenter',
+        ]);
     }
 
     private function assertTrustedApplicationUrl(string $url): void
