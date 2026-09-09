@@ -37,9 +37,10 @@ return [
         'batch_limit' => env('CHECKOUT_RECOVERY_IN_APP_BATCH_LIMIT', 100),
 
         // Internal routes keep the user inside the SPA and remove a navigation step.
-        // Add another host here when an ecosystem app exposes a compatible route.
+        // The source marker lets ecosystem telemetry attribute the landing to the
+        // zero-cost reminder without exposing user data or changing checkout state.
         'deep_link_paths_by_host' => [
-            'cutinapp.petertecnet.com.br' => '/purchases/{public_id}',
+            'cutinapp.petertecnet.com.br' => '/purchases/{public_id}?recovery_source=in_app',
         ],
     ],
 ];
