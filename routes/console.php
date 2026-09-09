@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Commerce\Services\AutomatedCheckoutRecoveryService;
 use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
@@ -62,6 +63,15 @@ Artisan::command('ecosystem:dispatch-scheduled-notifications', function () {
     $this->info("{$dispatched} campanha(s) agendada(s) despachada(s).");
 })->purpose('Dispatch notification campaigns whose scheduled time has arrived');
 
+Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
+    $limit = $this->option('limit');
+    $result = app(AutomatedCheckoutRecoveryService::class)->run(
+        $limit !== null && $limit !== '' ? (int) $limit : null,
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Create one zero-cost in-app reminder for eligible pending PIX checkouts');
+
 Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
@@ -72,4 +82,8 @@ Schedule::command('kryvion:market-signal-notifications')
 Schedule::command('ecosystem:dispatch-scheduled-notifications')
     ->everyMinute()
     ->withoutOverlapping(5)
+    ->onOneServer();
+Schedule::command('commerce:recover-pending-checkouts')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
     ->onOneServer();
