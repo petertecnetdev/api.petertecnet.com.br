@@ -30,6 +30,7 @@ class Kernel extends HttpKernel
         'api' => [
             'throttle:api',
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
+            \App\Http\Middleware\HandleImpersonation::class,
             \App\Http\Middleware\NormalizeHomeLocationFilters::class,
             \App\Http\Middleware\EnsureOrderContext::class,
             \App\Http\Middleware\TrackApiInteraction::class,
