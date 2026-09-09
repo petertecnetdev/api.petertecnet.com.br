@@ -35,5 +35,11 @@ return [
         'delay_minutes' => env('CHECKOUT_RECOVERY_IN_APP_DELAY_MINUTES', 5),
         'minimum_remaining_minutes' => env('CHECKOUT_RECOVERY_IN_APP_MIN_REMAINING_MINUTES', 5),
         'batch_limit' => env('CHECKOUT_RECOVERY_IN_APP_BATCH_LIMIT', 100),
+
+        // Internal routes keep the user inside the SPA and remove a navigation step.
+        // Add another host here when an ecosystem app exposes a compatible route.
+        'deep_link_paths_by_host' => [
+            'cutinapp.petertecnet.com.br' => '/purchases/{public_id}',
+        ],
     ],
 ];
