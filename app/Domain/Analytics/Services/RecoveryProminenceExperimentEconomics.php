@@ -62,12 +62,17 @@ final class RecoveryProminenceExperimentEconomics
                 continue;
             }
 
+            $assignedVariant = $exposedVariantByOrder[$publicId] ?? null;
+            if ($assignedVariant !== null && $assignedVariant !== $variant) {
+                continue;
+            }
+
             $this->initializeVariant($variants, $variant);
 
             if ($type === self::VIEWED) {
+                $exposedVariantByOrder[$publicId] ??= $variant;
                 $variants[$variant]['impressions']++;
                 $variants[$variant]['exposed_orders'][$publicId] = true;
-                $exposedVariantByOrder[$publicId] = $variant;
                 continue;
             }
 
