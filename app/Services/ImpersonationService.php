@@ -173,7 +173,7 @@ class ImpersonationService
         $separator = str_contains($url, '?') ? '&' : '?';
 
         return $url . $separator . http_build_query([
-            'peter_sso' => $plainHandoff,
+            'pt_impersonation' => $plainHandoff,
             'peter_from' => 'admincenter',
         ]);
     }
