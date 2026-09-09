@@ -46,7 +46,7 @@ final class CreativeGenerationController extends Controller
             'style' => ['nullable', Rule::in(array_values(array_unique(array_merge(
                 $this->templates->eventStyleKeys(),
                 ['editorial', 'technology']
-            ))))],
+            )))],
             'intensity' => ['nullable', Rule::in($this->templates->eventIntensityKeys())],
             'production_name' => 'nullable|string|max:180',
             'venue' => 'nullable|string|max:180',
@@ -64,11 +64,19 @@ final class CreativeGenerationController extends Controller
         ]);
 
         $direction = null;
+        $generationOptions = [];
 
         if ($data['purpose'] === CreativePromptTemplateService::EVENT_FLYER_BACKGROUND) {
             $this->context->requireCapability('events');
             $direction = $this->templates->eventDirection($data);
             $prompt = $this->templates->renderEventFlyer($data);
+            $generationOptions = [
+                'width' => $direction['width'],
+                'height' => $direction['height'],
+                'format' => $direction['format_key'],
+                'model' => config('creative.cloudflare.event_quality_model'),
+                'steps' => config('creative.cloudflare.event_quality_steps'),
+            ];
         } else {
             abort_unless(
                 $this->context->slug() === 'peter-tecnet'
@@ -84,11 +92,7 @@ final class CreativeGenerationController extends Controller
                 $prompt,
                 (int) $request->user()->id,
                 $this->context->id(),
-                $direction ? [
-                    'width' => $direction['width'],
-                    'height' => $direction['height'],
-                    'format' => $direction['format_key'],
-                ] : [],
+                $generationOptions,
             );
         } catch (RuntimeException $exception) {
             report($exception);
@@ -118,6 +122,12 @@ final class CreativeGenerationController extends Controller
                     'intensity' => $direction['intensity_key'],
                     'format' => $direction['format_key'],
                     'ratio' => $direction['ratio'],
+                ] : null,
+                'generation_profile' => $direction ? [
+                    'model' => $result['model'],
+                    'steps' => $result['requested_steps'] ?? null,
+                    'width' => $result['requested_width'] ?? $direction['width'],
+                    'height' => $result['requested_height'] ?? $direction['height'],
                 ] : null,
             ],
         ]);
