@@ -12,7 +12,12 @@ class OrderItemModifier extends Model
     protected $fillable = [
         'order_item_id',
         'modifier_id',
+        'quantity',
         'type',
+    ];
+
+    protected $casts = [
+        'quantity' => 'integer',
     ];
 
     public function orderItem()
