@@ -27,8 +27,10 @@ final class AdminEstablishmentEventService
             ->orderByDesc('start_date')
             ->limit(100)
             ->get([
-                'id', 'app_id', 'app_slug', 'production_id', 'title', 'slug', 'start_date', 'end_date',
-                'venue', 'city', 'uf', 'is_published', 'is_cancelled', 'image',
+                'id', 'app_id', 'app_slug', 'production_id', 'title', 'slug', 'description', 'category', 'event_format',
+                'start_date', 'end_date', 'venue', 'address', 'google_maps_url', 'city', 'uf', 'country',
+                'online_platform', 'online_url', 'online_instructions', 'max_attendees', 'contact_email', 'contact_phone',
+                'is_private', 'requires_approval', 'approval_message', 'is_published', 'is_cancelled', 'image',
             ]);
 
         return [
@@ -122,6 +124,7 @@ final class AdminEstablishmentEventService
         ?int $actorId,
         ?string $ip,
         ?string $userAgent,
+        array $overrides = [],
     ): array {
         $this->assertApplicationLinked($establishment, $appId);
 
@@ -131,7 +134,7 @@ final class AdminEstablishmentEventService
             ]);
         }
 
-        $duplicate = $this->duplicator->duplicate($event, $date, $appId, $event->app_slug);
+        $duplicate = $this->duplicator->duplicate($event, $date, $appId, $event->app_slug, $overrides);
 
         EcosystemAuditLog::create([
             'user_id' => $actorId,
@@ -145,13 +148,14 @@ final class AdminEstablishmentEventService
                 'production_id' => $establishment->id,
                 'app_id' => $appId,
                 'new_date' => $date,
+                'edited_before_duplicate' => ! empty($overrides),
             ],
             'ip' => $ip,
             'user_agent' => Str::limit((string) $userAgent, 1000, ''),
         ]);
 
         return [
-            'message' => 'Evento duplicado como rascunho pelo Admin Center.',
+            'message' => 'Evento duplicado como rascunho pelo Admin Center com os dados revisados.',
             'event' => $duplicate,
             'copied' => [
                 'tickets' => $duplicate->tickets_count,
