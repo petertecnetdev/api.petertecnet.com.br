@@ -19,21 +19,22 @@ final class AutomatedCheckoutRecoveryService
      * Dispatch one zero-marginal-cost in-app reminder per recoverable PIX checkout.
      *
      * The existing recovery_started_at field is the idempotency guard: once an order
-     * is attributed to a recovery attempt it will not be selected again by this job.
-     * E-mail is explicitly disabled here so this automation cannot create provider
-     * spend or message users outside the application.
+     * is attributed to a recovery attempt or control cohort it will not be selected
+     * again by this job. E-mail is explicitly disabled here so this automation cannot
+     * create provider spend or message users outside the application.
      *
-     * @return array{eligible:int,dispatched:int,failed:int}
+     * @return array{eligible:int,dispatched:int,control:int,failed:int}
      */
     public function run(?int $limit = null): array
     {
         if (! (bool) config('checkout_recovery.automated_in_app.enabled', true)) {
-            return ['eligible' => 0, 'dispatched' => 0, 'failed' => 0];
+            return ['eligible' => 0, 'dispatched' => 0, 'control' => 0, 'failed' => 0];
         }
 
         $delayMinutes = max((int) config('checkout_recovery.automated_in_app.delay_minutes', 5), 1);
         $minimumRemainingMinutes = max((int) config('checkout_recovery.automated_in_app.minimum_remaining_minutes', 5), 1);
         $limit = min(max($limit ?? (int) config('checkout_recovery.automated_in_app.batch_limit', 100), 1), 500);
+        $controlPercent = min(max((int) config('checkout_recovery.automated_in_app.control_group_percent', 10), 0), 50);
 
         $orders = CommerceOrder::query()
             ->where('status', 'pending')
@@ -59,10 +60,27 @@ final class AutomatedCheckoutRecoveryService
             ->get();
 
         $dispatched = 0;
+        $control = 0;
         $failed = 0;
 
         foreach ($orders as $order) {
             try {
+                if ($this->isControlOrder($order, $controlPercent)) {
+                    $marked = $this->recovery->recover(
+                        (int) $order->app_id,
+                        (int) $order->user_id,
+                        (int) $order->id,
+                        'control',
+                        0.0,
+                    );
+
+                    if ($marked) {
+                        $control++;
+                    }
+
+                    continue;
+                }
+
                 $applicationUrl = rtrim(trim((string) $order->application?->url), '/');
                 if (! filter_var($applicationUrl, FILTER_VALIDATE_URL)) {
                     $failed++;
@@ -112,8 +130,21 @@ final class AutomatedCheckoutRecoveryService
         return [
             'eligible' => $orders->count(),
             'dispatched' => $dispatched,
+            'control' => $control,
             'failed' => $failed,
         ];
+    }
+
+    private function isControlOrder(CommerceOrder $order, int $controlPercent): bool
+    {
+        if ($controlPercent <= 0) {
+            return false;
+        }
+
+        $stableKey = (string) ($order->public_id ?: $order->id);
+        $bucket = ((int) sprintf('%u', crc32($stableKey))) % 100;
+
+        return $bucket < $controlPercent;
     }
 
     private function recoveryReferenceUrl(string $applicationUrl, string $publicId): string
