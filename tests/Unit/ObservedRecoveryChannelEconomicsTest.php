@@ -45,11 +45,55 @@ final class ObservedRecoveryChannelEconomicsTest extends TestCase
         self::assertSame(50, $group['control']['attempts']);
         self::assertSame(5, $group['control']['paid_orders']);
         self::assertSame(10.0, $group['control']['natural_conversion_rate']);
+        self::assertSame(30, $group['control']['minimum_attempts_for_incrementality']);
         self::assertSame('in_app', $group['recommended_channel']);
+        self::assertTrue($channel['incrementality_sample_ready']);
+        self::assertSame(['control_attempts' => 0, 'treatment_attempts' => 0], $channel['incrementality_sample_shortfall']);
         self::assertSame(10.0, $channel['incremental_conversion_rate_pp']);
         self::assertSame(10.0, $channel['incremental_recovered_orders_estimate']);
         self::assertSame(100.0, $channel['incremental_net_contribution_estimate']);
+        self::assertSame(1.0, $channel['incremental_net_contribution_per_attempt_estimate']);
+        self::assertNull($channel['incremental_roi_percent_estimate']);
         self::assertCount(1, $group['channels']);
+    }
+
+    public function test_incremental_profit_stays_unknown_until_control_and_treatment_samples_are_mature(): void
+    {
+        $orders = [];
+        for ($i = 0; $i < 20; $i++) {
+            $orders[] = $this->order('in_app', 0.0, $i < 8, 'pix', 10, 10.0, 0.0);
+        }
+        for ($i = 0; $i < 10; $i++) {
+            $orders[] = $this->order('control', 0.0, $i < 1, 'pix', 10, 10.0, 0.0);
+        }
+
+        $channel = (new ObservedRecoveryChannelEconomics())->summarize($orders)[0]['channels'][0];
+
+        self::assertFalse($channel['incrementality_sample_ready']);
+        self::assertSame(['control_attempts' => 20, 'treatment_attempts' => 10], $channel['incrementality_sample_shortfall']);
+        self::assertNull($channel['incremental_conversion_rate_pp']);
+        self::assertNull($channel['incremental_recovered_orders_estimate']);
+        self::assertNull($channel['incremental_net_contribution_estimate']);
+        self::assertNull($channel['incremental_net_contribution_per_attempt_estimate']);
+        self::assertNull($channel['incremental_roi_percent_estimate']);
+    }
+
+    public function test_incremental_roi_is_exposed_only_for_mature_paid_channel_with_complete_cost_data(): void
+    {
+        $orders = [];
+        for ($i = 0; $i < 100; $i++) {
+            $orders[] = $this->order('whatsapp', 0.50, $i < 20, 'pix', 30, 10.0, 0.0);
+        }
+        for ($i = 0; $i < 50; $i++) {
+            $orders[] = $this->order('control', 0.0, $i < 5, 'pix', 30, 10.0, 0.0);
+        }
+
+        $channel = (new ObservedRecoveryChannelEconomics())->summarize($orders)[0]['channels'][0];
+
+        self::assertTrue($channel['incrementality_sample_ready']);
+        self::assertSame(50.0, $channel['incremental_net_contribution_estimate']);
+        self::assertSame(0.5, $channel['incremental_net_contribution_per_attempt_estimate']);
+        self::assertSame(100.0, $channel['incremental_roi_percent_estimate']);
     }
 
     public function test_it_exposes_realized_net_contribution_and_roi_when_cost_is_fully_attributed(): void
