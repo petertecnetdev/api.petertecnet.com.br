@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Facades\DB;
 
 class Order extends Model
 {
@@ -185,6 +186,16 @@ class Order extends Model
 
     public static function nextOrderNumber($appId): string
     {
+        // Order creation flows run inside a database transaction. Locking the
+        // application row serializes number allocation across establishments
+        // of the same app so concurrent orders cannot receive the same number.
+        if (DB::transactionLevel() > 0) {
+            DB::table('applications')
+                ->where('id', $appId)
+                ->lockForUpdate()
+                ->first();
+        }
+
         $last = self::where('app_id', $appId)->max('order_number') ?: 0;
         return str_pad($last + 1, 3, '0', STR_PAD_LEFT);
     }
