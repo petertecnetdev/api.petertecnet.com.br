@@ -24,23 +24,20 @@ class ResetPasswordMail extends Mailable
         $this->user = $user;
 
         $application = $this->resolveApplication($user);
-        $baseUrl = rtrim(trim((string) ($application?->url ?? '')), '/');
-        if (! $this->isPublicHttpsUrl($baseUrl)) {
-            $baseUrl = 'https://petertecnet.com.br';
-        }
-
         $branding = is_array($application?->branding) ? $application->branding : [];
+
         $this->brand = [
             'name' => $application?->name ?: 'Peter Tecnet',
             'slug' => $application?->slug ?: 'peter-tecnet',
             'logo' => $application?->logo ?: 'https://petertecnet.com.br/petertecnetlogo.png',
-            'primary_color' => $branding['primary_color'] ?? $branding['primary'] ?? '#00BFFF',
-            'background_color' => $branding['background_color'] ?? $branding['background'] ?? '#0B1F30',
-            'surface_color' => $branding['surface_color'] ?? $branding['surface'] ?? '#132A3A',
+            'primary_color' => $branding['primary_color'] ?? $branding['primary'] ?? data_get($branding, 'colors.primary') ?? '#00BFFF',
+            'background_color' => $branding['background_color'] ?? $branding['background'] ?? data_get($branding, 'colors.background') ?? '#0B1F30',
+            'surface_color' => $branding['surface_color'] ?? $branding['surface'] ?? data_get($branding, 'colors.surface') ?? '#132A3A',
         ];
 
-        $this->resetUrl = $baseUrl.'/account/password/reset?'.http_build_query([
+        $this->resetUrl = 'https://petertecnet.com.br/account/password/reset?'.http_build_query([
             'email' => $user->email,
+            'app' => $this->brand['slug'],
         ]);
     }
 
@@ -100,23 +97,8 @@ class ResetPasswordMail extends Mailable
         }
 
         return $linked
-            ->sortByDesc(fn (Application $application) => $application->pivot?->updated_at?->getTimestamp() ?? 0)
+            ->sortByDesc(fn (Application $application) => (string) ($application->pivot?->updated_at ?? ''))
             ->first()
             ?: Application::query()->where('slug', 'peter-tecnet')->first();
-    }
-
-    private function isPublicHttpsUrl(string $url): bool
-    {
-        if (! filter_var($url, FILTER_VALIDATE_URL)) {
-            return false;
-        }
-
-        $parts = parse_url($url);
-        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
-        $host = strtolower((string) ($parts['host'] ?? ''));
-
-        return $scheme === 'https'
-            && $host !== ''
-            && ! in_array($host, ['localhost', '127.0.0.1', '::1'], true);
     }
 }
