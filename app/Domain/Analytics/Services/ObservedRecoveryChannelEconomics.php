@@ -122,7 +122,14 @@ final class ObservedRecoveryChannelEconomics
 
         return collect($groups)
             ->map(function (array $group) use ($selector): array {
-                $rawChannels = $group['channels'];
+                $rawChannels = collect($group['channels']);
+                $control = $rawChannels->firstWhere('channel', 'control');
+                $controlAttempts = (int) ($control['attempts'] ?? 0);
+                $controlConversionRate = $controlAttempts > 0
+                    ? (float) ($control['conversion_rate'] ?? 0.0)
+                    : null;
+
+                $treatments = $rawChannels->reject(fn (array $channel): bool => $channel['channel'] === 'control')->values()->all();
                 $ranked = $selector->rank(array_map(static fn (array $channel): array => [
                     'channel' => $channel['channel'],
                     'attempt_cost' => $channel['attempt_cost'],
@@ -130,10 +137,22 @@ final class ObservedRecoveryChannelEconomics
                     'contribution_per_recovered_order' => $channel['contribution_per_recovered_order'],
                     'attempts' => $channel['attempts'],
                     'derive_safe_attempt_cost_ceiling' => $channel['derive_safe_attempt_cost_ceiling'],
-                ], $rawChannels));
-                $observedByChannel = collect($rawChannels)->keyBy('channel');
-                $channels = collect($ranked)->map(function (array $rank) use ($observedByChannel): array {
+                ], $treatments));
+                $observedByChannel = collect($treatments)->keyBy('channel');
+                $channels = collect($ranked)->map(function (array $rank) use ($observedByChannel, $controlConversionRate): array {
                     $observed = $observedByChannel->get($rank['channel'], []);
+                    $attempts = (int) ($observed['attempts'] ?? 0);
+                    $incrementalConversionRatePp = $controlConversionRate !== null
+                        ? (float) ($observed['conversion_rate'] ?? 0.0) - $controlConversionRate
+                        : null;
+                    $incrementalRecoveredOrders = $incrementalConversionRatePp !== null
+                        ? $attempts * ($incrementalConversionRatePp / 100)
+                        : null;
+                    $incrementalNetContribution = $incrementalRecoveredOrders !== null
+                        && (float) ($observed['cost_coverage_percent'] ?? 0.0) === 100.0
+                        ? ($incrementalRecoveredOrders * (float) ($observed['contribution_per_recovered_order'] ?? 0.0))
+                            - (float) ($observed['total_attempt_cost'] ?? 0.0)
+                        : null;
 
                     return [
                         ...$rank,
@@ -144,6 +163,9 @@ final class ObservedRecoveryChannelEconomics
                         'realized_net_contribution' => $observed['realized_net_contribution'] ?? null,
                         'realized_net_contribution_per_attempt' => $observed['realized_net_contribution_per_attempt'] ?? null,
                         'realized_roi_percent' => $observed['realized_roi_percent'] ?? null,
+                        'incremental_conversion_rate_pp' => $incrementalConversionRatePp !== null ? round($incrementalConversionRatePp, 2) : null,
+                        'incremental_recovered_orders_estimate' => $incrementalRecoveredOrders !== null ? round($incrementalRecoveredOrders, 2) : null,
+                        'incremental_net_contribution_estimate' => $incrementalNetContribution !== null ? round($incrementalNetContribution, 2) : null,
                     ];
                 })->values()->all();
                 $recommended = collect($channels)->firstWhere('recommended', true);
@@ -152,6 +174,11 @@ final class ObservedRecoveryChannelEconomics
                     'payment_method' => $group['payment_method'],
                     'abandonment_age_bucket' => $group['abandonment_age_bucket'],
                     'recommended_channel' => $recommended['channel'] ?? null,
+                    'control' => $control ? [
+                        'attempts' => $controlAttempts,
+                        'paid_orders' => (int) ($control['recovered_orders'] ?? 0),
+                        'natural_conversion_rate' => round((float) $controlConversionRate, 2),
+                    ] : null,
                     'channels' => $channels,
                 ];
             })
