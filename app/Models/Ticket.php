@@ -62,7 +62,7 @@ class Ticket extends Model
 
     public function getRemainingAttribute(): int
     {
-        $total=max(0,(int)$this->quantity; if(!$this->exists) return $total;
+        $total=max(0,(int)$this->quantity); if(!$this->exists) return $total;
         $issued=EventPass::query()->where('ticket_id',$this->id)->whereNotIn('status',['cancelled','refunded','charged_back'])->count();
         $reserved=(int)DB::table('inventory_reservations')->where('ticket_id',$this->id)->whereNull('released_at')->where('expires_at','>',now())->sum('quantity');
         return max(0,$total-$issued-$reserved);
