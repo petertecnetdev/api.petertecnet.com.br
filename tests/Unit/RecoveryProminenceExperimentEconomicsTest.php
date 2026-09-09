@@ -74,6 +74,23 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertSame(8.0, $prominent['platform_contribution']);
     }
 
+    public function test_first_exposed_variant_wins_when_telemetry_conflicts(): void
+    {
+        $result = (new RecoveryProminenceExperimentEconomics())->summarize([
+            $this->event('checkout_recovery_notification_cta_viewed', 'order-1', 'control'),
+            $this->event('checkout_recovery_notification_cta_viewed', 'order-1', 'prominent'),
+            $this->event('checkout_recovery_notification_cta_clicked', 'order-1', 'prominent'),
+            $this->event('checkout_recovery_notification_cta_clicked', 'order-1', 'control'),
+        ], [$this->order('order-1', 'paid', 10.0, 2.0)], 'pix_recovery_navbar_prominence_v1');
+
+        $control = collect($result['variants'])->firstWhere('variant', 'control');
+        self::assertSame(1, $control['cta_impressions']);
+        self::assertSame(1, $control['exposed_orders']);
+        self::assertSame(1, $control['cta_clicks']);
+        self::assertSame(1, $control['paid_orders']);
+        self::assertNull(collect($result['variants'])->firstWhere('variant', 'prominent'));
+    }
+
     public function test_it_ignores_other_experiments_and_orders_outside_the_scoped_set(): void
     {
         $result = (new RecoveryProminenceExperimentEconomics())->summarize([
