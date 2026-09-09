@@ -141,7 +141,8 @@ class TicketController extends Controller
             'ticket_type' => $required . 'string|max:255',
             'type' => 'sometimes|nullable|string|max:255',
             'price' => $required . 'numeric|min:0',
-            'quantity' => $required . 'integer|min:0',
+            'quantity' => $required . 'integer|min:0|max:1000000',
+            'max_per_user' => 'sometimes|nullable|integer|min:1|max:1000000',
             'limit_date' => 'sometimes|nullable|date',
             'description' => 'sometimes|nullable|string|max:5000',
         ];
