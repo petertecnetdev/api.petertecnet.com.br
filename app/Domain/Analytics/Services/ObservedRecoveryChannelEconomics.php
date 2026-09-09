@@ -81,6 +81,15 @@ final class ObservedRecoveryChannelEconomics
                 ? (float) $segment['recovered_platform_contribution'] / $recovered
                 : 0.0;
             $conversionRate = $attempts > 0 ? ($recovered / $attempts) * 100 : 0.0;
+            $realizedNetContribution = $hasCompleteCostData
+                ? (float) $segment['recovered_platform_contribution'] - (float) $segment['total_attempt_cost']
+                : null;
+            $realizedNetContributionPerAttempt = $realizedNetContribution !== null && $attempts > 0
+                ? $realizedNetContribution / $attempts
+                : null;
+            $realizedRoiPercent = $realizedNetContribution !== null && (float) $segment['total_attempt_cost'] > 0
+                ? ($realizedNetContribution / (float) $segment['total_attempt_cost']) * 100
+                : null;
 
             $candidate = [
                 'channel' => $segment['channel'],
@@ -103,6 +112,9 @@ final class ObservedRecoveryChannelEconomics
                 'cost_coverage_percent' => round($costCoverage * 100, 2),
                 'total_attempt_cost' => round((float) $segment['total_attempt_cost'], 4),
                 'recovered_platform_contribution' => round((float) $segment['recovered_platform_contribution'], 2),
+                'realized_net_contribution' => $realizedNetContribution !== null ? round($realizedNetContribution, 2) : null,
+                'realized_net_contribution_per_attempt' => $realizedNetContributionPerAttempt !== null ? round($realizedNetContributionPerAttempt, 4) : null,
+                'realized_roi_percent' => $realizedRoiPercent !== null ? round($realizedRoiPercent, 2) : null,
             ];
         }
 
@@ -129,6 +141,9 @@ final class ObservedRecoveryChannelEconomics
                         'cost_coverage_percent' => (float) ($observed['cost_coverage_percent'] ?? 0.0),
                         'total_attempt_cost' => (float) ($observed['total_attempt_cost'] ?? 0.0),
                         'recovered_platform_contribution' => (float) ($observed['recovered_platform_contribution'] ?? 0.0),
+                        'realized_net_contribution' => $observed['realized_net_contribution'] ?? null,
+                        'realized_net_contribution_per_attempt' => $observed['realized_net_contribution_per_attempt'] ?? null,
+                        'realized_roi_percent' => $observed['realized_roi_percent'] ?? null,
                     ];
                 })->values()->all();
                 $recommended = collect($channels)->firstWhere('recommended', true);

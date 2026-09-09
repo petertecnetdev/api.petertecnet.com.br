@@ -29,6 +29,51 @@ final class ObservedRecoveryChannelEconomicsTest extends TestCase
         );
     }
 
+    public function test_it_exposes_realized_net_contribution_and_roi_when_cost_is_fully_attributed(): void
+    {
+        $groups = (new ObservedRecoveryChannelEconomics())->summarize([
+            $this->order('whatsapp', 0.50, true, 'pix', 30, 10.0, 0.0),
+            $this->order('whatsapp', 0.50, false, 'pix', 30, 10.0, 0.0),
+        ]);
+
+        $channel = $groups[0]['channels'][0];
+
+        self::assertSame(1.0, $channel['total_attempt_cost']);
+        self::assertSame(10.0, $channel['recovered_platform_contribution']);
+        self::assertSame(9.0, $channel['realized_net_contribution']);
+        self::assertSame(4.5, $channel['realized_net_contribution_per_attempt']);
+        self::assertSame(900.0, $channel['realized_roi_percent']);
+    }
+
+    public function test_realized_profit_is_unknown_when_cost_attribution_is_incomplete(): void
+    {
+        $groups = (new ObservedRecoveryChannelEconomics())->summarize([
+            $this->order('whatsapp', 0.50, true, 'pix', 30, 10.0, 0.0),
+            $this->order('whatsapp', null, false, 'pix', 30, 10.0, 0.0),
+        ]);
+
+        $channel = $groups[0]['channels'][0];
+
+        self::assertSame(50.0, $channel['cost_coverage_percent']);
+        self::assertNull($channel['realized_net_contribution']);
+        self::assertNull($channel['realized_net_contribution_per_attempt']);
+        self::assertNull($channel['realized_roi_percent']);
+    }
+
+    public function test_zero_cost_channel_exposes_realized_profit_without_fake_infinite_roi(): void
+    {
+        $groups = (new ObservedRecoveryChannelEconomics())->summarize([
+            $this->order('in_app', 0.0, true, 'pix', 10, 7.0, 0.0),
+            $this->order('in_app', 0.0, false, 'pix', 10, 7.0, 0.0),
+        ]);
+
+        $channel = $groups[0]['channels'][0];
+
+        self::assertSame(7.0, $channel['realized_net_contribution']);
+        self::assertSame(3.5, $channel['realized_net_contribution_per_attempt']);
+        self::assertNull($channel['realized_roi_percent']);
+    }
+
     public function test_it_does_not_recommend_a_channel_with_incomplete_cost_attribution(): void
     {
         $orders = [
