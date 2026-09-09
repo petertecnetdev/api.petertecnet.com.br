@@ -77,7 +77,7 @@ class OrderingController extends Controller
         [$order, $establishment] = DB::transaction(function () use ($data, $user) {
             $establishment = Establishment::query()
                 ->whereKey($data['establishment_id'])
-                ->where('app_id', $this->context->id())
+                ->forApplication($this->context->id())
                 ->where('is_cancelled', false)
                 ->where('is_published', true)
                 ->lockForUpdate()
@@ -321,7 +321,7 @@ class OrderingController extends Controller
     public function dashboard(Request $request): JsonResponse
     {
         $establishments = Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->get(['id', 'name', 'fantasy', 'slug', 'logo', 'accepting_orders']);
@@ -524,7 +524,7 @@ class OrderingController extends Controller
     private function publicEstablishment(string $slug): Establishment
     {
         return Establishment::query()
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('slug', $slug)
             ->where('is_cancelled', false)
             ->where('is_published', true)
@@ -535,7 +535,7 @@ class OrderingController extends Controller
     {
         $establishment = Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('is_cancelled', false)
             ->firstOrFail();
 
@@ -644,7 +644,7 @@ class OrderingController extends Controller
     {
         $establishment = Establishment::query()
             ->whereKey($order->entity_id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->first(['id', 'name', 'fantasy', 'slug', 'logo']);
 
         return [
