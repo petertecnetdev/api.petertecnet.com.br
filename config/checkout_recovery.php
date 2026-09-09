@@ -33,10 +33,17 @@ return [
     | converted without the reminder, so profitability can be based on incremental
     | revenue instead of attributing every later payment to the recovery action.
     |
+    | Timing variants are deterministically assigned per order. Control orders are
+    | only marked after their assigned delay too, keeping treatment and holdout
+    | cohorts comparable without increasing message volume or external spend.
+    |
     */
     'automated_in_app' => [
         'enabled' => env('CHECKOUT_RECOVERY_IN_APP_ENABLED', true),
         'delay_minutes' => env('CHECKOUT_RECOVERY_IN_APP_DELAY_MINUTES', 5),
+        'timing_experiment_enabled' => env('CHECKOUT_RECOVERY_TIMING_EXPERIMENT_ENABLED', true),
+        'timing_experiment_name' => env('CHECKOUT_RECOVERY_TIMING_EXPERIMENT_NAME', 'pix_in_app_timing_v1'),
+        'timing_delays_minutes' => env('CHECKOUT_RECOVERY_TIMING_DELAYS_MINUTES', '5,15,30,60'),
         'minimum_remaining_minutes' => env('CHECKOUT_RECOVERY_IN_APP_MIN_REMAINING_MINUTES', 5),
         'batch_limit' => env('CHECKOUT_RECOVERY_IN_APP_BATCH_LIMIT', 100),
         'control_group_percent' => env('CHECKOUT_RECOVERY_IN_APP_CONTROL_PERCENT', 10),
