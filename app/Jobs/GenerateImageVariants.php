@@ -42,17 +42,17 @@ class GenerateImageVariants implements ShouldQueue
             $variant->destroy();
         }
 
+        // Backgrounds may safely upscale because they are deliberately blurred and
+        // must fill an exact landscape canvas without affecting the readable flyer.
         $background = clone $source;
-        $background->fit(1600, 900, function ($constraint) {
-            $constraint->upsize();
-        })->blur(24);
+        $background->fit(1600, 900)->blur(24);
         $background->encode('webp', 72)->save($disk->path($directory . '/background.webp'));
         $background->destroy();
 
+        // Open Graph always receives a real 1200x630 canvas: blurred artwork behind
+        // the uncropped flyer, so WhatsApp/social previews never crop the information.
         $og = clone $source;
-        $og->fit(1200, 630, function ($constraint) {
-            $constraint->upsize();
-        })->blur(28);
+        $og->fit(1200, 630)->blur(28);
 
         $foreground = clone $source;
         $foreground->resize(1200, 630, function ($constraint) {
