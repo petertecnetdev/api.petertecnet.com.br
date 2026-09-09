@@ -4,6 +4,7 @@ namespace App\Domain\Commerce\Services;
 
 use App\Models\CommerceOrder;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Arr;
 
 final class PendingCheckoutRecoveryService
 {
@@ -20,6 +21,7 @@ final class PendingCheckoutRecoveryService
         int $orderId,
         string $channel = 'in_app',
         ?float $attemptCost = 0.0,
+        array $recoveryContext = [],
     ): ?CommerceOrder {
         $order = $this->recoverableQuery($appId, $userId)
             ->whereKey($orderId)
@@ -33,8 +35,25 @@ final class PendingCheckoutRecoveryService
             $normalizedChannel = $this->normalizeChannel($channel);
             $normalizedCost = $attemptCost !== null ? max($attemptCost, 0.0) : null;
             $metadata = is_array($order->metadata) ? $order->metadata : [];
+            $context = Arr::only($recoveryContext, [
+                'experiment_name',
+                'timing_minutes',
+                'timing_variant',
+            ]);
+
+            if (isset($context['timing_minutes'])) {
+                $context['timing_minutes'] = max(1, (int) $context['timing_minutes']);
+            }
+
+            foreach (['experiment_name', 'timing_variant'] as $key) {
+                if (isset($context[$key])) {
+                    $context[$key] = mb_substr(trim((string) $context[$key]), 0, 80);
+                }
+            }
+
             $metadata['recovery'] = array_merge(
                 is_array($metadata['recovery'] ?? null) ? $metadata['recovery'] : [],
+                $context,
                 [
                     'channel' => $normalizedChannel,
                     'attempt_cost' => $normalizedCost,
