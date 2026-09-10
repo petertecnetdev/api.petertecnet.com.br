@@ -42,6 +42,61 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/unpublish")->assertOk()->assertJsonPath('event.is_published',false);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
     }
 
+    public function test_owner_can_delete_multiple_selected_events_atomically(): void
+    {
+        $user=$this->user('Produtor Exclusao','bulk-delete-owner@cutinapp.test');
+        $headers=$this->headersFor($user);
+        $production=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Exclusão'])->assertCreated()->json('production');
+        $base=[
+            'production_id'=>$production['id'],
+            'description'=>'Evento para validar exclusão em massa.',
+            'address'=>'Rua Exclusão, 10',
+            'city'=>'Goiânia',
+            'uf'=>'GO',
+            'start_date'=>now()->addDays(5)->format('Y-m-d H:i:s'),
+            'end_date'=>now()->addDays(5)->addHours(3)->format('Y-m-d H:i:s'),
+        ];
+        $first=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Bulk 1'])->assertCreated()->json('event');
+        $second=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Bulk 2'])->assertCreated()->json('event');
+
+        $this->withHeaders($headers)
+            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>[$first['id'],$second['id']]])
+            ->assertOk()
+            ->assertJsonPath('deleted',2)
+            ->assertJsonPath('event_ids.0',$first['id'])
+            ->assertJsonPath('event_ids.1',$second['id']);
+
+        $this->assertDatabaseMissing('events',['id'=>$first['id']]);
+        $this->assertDatabaseMissing('events',['id'=>$second['id']]);
+    }
+
+    public function test_bulk_delete_rejects_events_owned_by_another_producer_without_partial_deletion(): void
+    {
+        $owner=$this->user('Produtor A','bulk-owner-a@cutinapp.test');
+        $other=$this->user('Produtor B','bulk-owner-b@cutinapp.test');
+        $ownerHeaders=$this->headersFor($owner);
+        $otherHeaders=$this->headersFor($other);
+        $ownerProduction=$this->withHeaders($ownerHeaders)->postJson('/api/cutinapp/productions',['name'=>'Produção A'])->assertCreated()->json('production');
+        $otherProduction=$this->withHeaders($otherHeaders)->postJson('/api/cutinapp/productions',['name'=>'Produção B'])->assertCreated()->json('production');
+        $base=[
+            'description'=>'Evento para validar isolamento da exclusão.',
+            'address'=>'Rua Isolamento, 20',
+            'city'=>'Goiânia',
+            'uf'=>'GO',
+            'start_date'=>now()->addDays(6)->format('Y-m-d H:i:s'),
+            'end_date'=>now()->addDays(6)->addHours(3)->format('Y-m-d H:i:s'),
+        ];
+        $owned=$this->withHeaders($ownerHeaders)->postJson('/api/cutinapp/events',$base+['production_id'=>$ownerProduction['id'],'title'=>'Evento do Produtor A'])->assertCreated()->json('event');
+        $foreign=$this->withHeaders($otherHeaders)->postJson('/api/cutinapp/events',$base+['production_id'=>$otherProduction['id'],'title'=>'Evento do Produtor B'])->assertCreated()->json('event');
+
+        $this->withHeaders($ownerHeaders)
+            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>[$owned['id'],$foreign['id']]])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('events',['id'=>$owned['id']]);
+        $this->assertDatabaseHas('events',['id'=>$foreign['id']]);
+    }
+
     public function test_management_counts_only_inventory_that_is_currently_sellable(): void
     {
         $user=$this->user('Produtor Estoque','inventory-owner@cutinapp.test');$headers=$this->headersFor($user);$application=Application::query()->where('slug','cutinapp')->firstOrFail();
