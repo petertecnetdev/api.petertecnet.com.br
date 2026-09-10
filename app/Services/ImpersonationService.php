@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Application;
+use App\Models\ImpersonationAuditLog;
 use App\Models\ImpersonationSession;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -12,6 +13,21 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ImpersonationService
 {
+    public function startById(User $actor, int $targetUserId, int $applicationId, string $reason, Request $request): array
+    {
+        $target = User::query()->findOrFail($targetUserId);
+        $application = Application::query()->findOrFail($applicationId);
+
+        $result = $this->start($actor, $target, $application, $reason, $request);
+
+        return [
+            'message' => 'Acesso temporário criado com segurança.',
+            'impersonation' => $this->payload($result['session']),
+            'handoff_url' => $result['handoff_url'],
+            'handoff_expires_at' => $result['handoff_expires_at']?->toIso8601String(),
+        ];
+    }
+
     public function start(User $actor, User $target, Application $application, string $reason, Request $request): array
     {
         if ($actor->is($target)) {
@@ -136,6 +152,103 @@ class ImpersonationService
         }
     }
 
+
+    public function currentPayload(): ?array
+    {
+        $session = $this->currentFromToken();
+
+        return $session ? $this->payload($session) : null;
+    }
+
+    public function endCurrent(): bool
+    {
+        $session = $this->currentFromToken();
+        if (! $session) return false;
+
+        $session->finish($session->impersonator, 'ended_from_application');
+
+        try {
+            auth('api')->logout();
+        } catch (\Throwable) {
+            // Database state remains authoritative if JWT blacklisting is unavailable.
+        }
+
+        return true;
+    }
+
+    public function history(array $filters): array
+    {
+        $query = ImpersonationSession::query()
+            ->with([
+                'impersonator:id,first_name,last_name,user_name,email',
+                'impersonatedUser:id,first_name,last_name,user_name,email',
+                'application:id,name,slug,url',
+            ])
+            ->withCount('auditLogs')
+            ->latest('id');
+
+        if (! empty($filters['user_id'])) {
+            $userId = (int) $filters['user_id'];
+            $query->where(function ($builder) use ($userId) {
+                $builder->where('impersonated_user_id', $userId)
+                    ->orWhere('impersonator_user_id', $userId);
+            });
+        }
+
+        if (! empty($filters['application_id'])) {
+            $query->where('application_id', (int) $filters['application_id']);
+        }
+
+        if (($filters['status'] ?? null) === 'active') {
+            $query->whereNull('ended_at')->where('expires_at', '>', now());
+        } elseif (($filters['status'] ?? null) === 'ended') {
+            $query->whereNotNull('ended_at');
+        } elseif (($filters['status'] ?? null) === 'expired') {
+            $query->whereNull('ended_at')->where('expires_at', '<=', now());
+        }
+
+        $page = $query->paginate((int) ($filters['per_page'] ?? 25));
+
+        return [
+            'sessions' => collect($page->items())->map(fn (ImpersonationSession $session) => array_merge(
+                $this->payload($session),
+                [
+                    'end_reason' => $session->end_reason,
+                    'audit_logs_count' => (int) $session->audit_logs_count,
+                    'ip_address' => $session->ip_address,
+                    'created_at' => $session->created_at?->toIso8601String(),
+                ]
+            ))->values(),
+            'pagination' => $this->pagination($page),
+        ];
+    }
+
+    public function audit(int $sessionId, array $filters): array
+    {
+        $session = ImpersonationSession::query()->findOrFail($sessionId);
+        $page = ImpersonationAuditLog::query()
+            ->where('impersonation_session_id', $session->id)
+            ->latest('id')
+            ->paginate((int) ($filters['per_page'] ?? 50));
+
+        return [
+            'impersonation' => $this->payload($session),
+            'audit' => $page->items(),
+            'pagination' => $this->pagination($page),
+        ];
+    }
+
+    public function forceEnd(int $sessionId, User $actor): array
+    {
+        $session = ImpersonationSession::query()->findOrFail($sessionId);
+        $session->finish($actor, 'ended_from_admincenter');
+
+        return [
+            'message' => 'Sessão de impersonação encerrada.',
+            'impersonation' => $this->payload($session->fresh()),
+        ];
+    }
+
     public function payload(ImpersonationSession $session): array
     {
         $session->loadMissing(['impersonator', 'impersonatedUser', 'application']);
@@ -164,6 +277,16 @@ class ImpersonationService
                 'slug' => $session->application->slug,
                 'url' => $session->application->url,
             ] : null,
+        ];
+    }
+
+    private function pagination($page): array
+    {
+        return [
+            'current_page' => $page->currentPage(),
+            'last_page' => $page->lastPage(),
+            'per_page' => $page->perPage(),
+            'total' => $page->total(),
         ];
     }
 
