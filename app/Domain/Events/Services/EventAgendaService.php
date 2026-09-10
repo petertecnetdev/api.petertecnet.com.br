@@ -99,7 +99,6 @@ final class EventAgendaService
     public function updateSettings(int $productionId, User $user, int $generationWeeks): array
     {
         $production = $this->ownedProduction($productionId, $user);
-        $this->ensureProducerAgreement($production);
         $setting = $this->setting($production);
         $setting->update(['generation_weeks' => max(1, min(3, $generationWeeks))]);
 
@@ -196,12 +195,14 @@ final class EventAgendaService
     public function destroy(int $scheduleId, User $user): array
     {
         $schedule = $this->ownedSchedule($scheduleId, $user);
+        $retired = $this->maintenance->retireRemovedSchedule($schedule);
         $image = $schedule->image;
         $schedule->delete();
         $this->deleteScheduleImage($image);
 
         return [
             'message' => 'Evento removido da agenda semanal. O evento original continua preservado.',
+            'retired_count' => $retired,
         ];
     }
 
@@ -254,6 +255,8 @@ final class EventAgendaService
 
     private function linkExistingEvent(Production $production, array $input, ?EventSchedule $targetSchedule = null): array
     {
+        $this->ensureProducerAgreement($production);
+
         $data = Validator::make($input, [
             'event_id' => 'required|integer|min:1',
             'day_of_week' => 'required|integer|between:0,6',
