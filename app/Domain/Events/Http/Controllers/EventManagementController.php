@@ -128,6 +128,74 @@ final class EventManagementController extends Controller
         return response()->json(['message'=>'Nova edição criada como rascunho. Ingressos, itens e line-up foram reaproveitados; vendas, passes, check-ins e histórico não foram copiados.','event'=>$duplicate->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']),'copied'=>['tickets'=>$duplicate->tickets()->count(),'items'=>EventItem::query()->where('event_id',$duplicate->id)->count(),'artists'=>$duplicate->artists()->count()]],201);
     }
 
+    public function destroyMany(Request $request)
+    {
+        $data=$request->validate([
+            'event_ids'=>'required|array|min:1',
+            'event_ids.*'=>'required|integer|min:1|distinct',
+        ]);
+
+        $ids=collect($data['event_ids'])->map(fn($id)=>(int)$id)->unique()->values();
+        $appId=$this->context->id();
+        $user=$request->user();
+        $events=collect();
+
+        foreach($ids->chunk(500) as$chunk){
+            Event::query()
+                ->where('app_id',$appId)
+                ->whereIn('id',$chunk->all())
+                ->with('production')
+                ->get()
+                ->each(function(Event $event)use($events){
+                    $events->put((int)$event->id,$event);
+                });
+        }
+
+        abort_unless($events->count()===$ids->count(),404,'Um ou mais eventos não foram encontrados neste contexto.');
+
+        $isAdmin=$user->hasProfile('Administrador')||strtolower(trim((string)$user->email))==='petertecnet@gmail.com';
+        foreach($ids as$id){
+            $event=$events->get((int)$id);
+            abort_unless($event?->production&&(int)$event->production->app_id===$appId,404,'Um ou mais eventos não foram encontrados neste contexto.');
+            abort_unless($isAdmin||(int)$event->production->user_id===(int)$user->id,403,'Você não pode excluir um ou mais dos eventos selecionados.');
+        }
+
+        DB::transaction(function()use($ids,$events,$appId){
+            $blockedEventIds=collect();
+
+            foreach($ids->chunk(500) as$chunk){
+                $blockedEventIds=$blockedEventIds->merge(
+                    Ticket::query()
+                        ->where('app_id',$appId)
+                        ->whereIn('event_id',$chunk->all())
+                        ->whereHas('passes')
+                        ->pluck('event_id')
+                );
+            }
+
+            $blockedEventIds=$blockedEventIds
+                ->map(fn($id)=>(int)$id)
+                ->unique()
+                ->values();
+
+            abort_if(
+                $blockedEventIds->isNotEmpty(),
+                409,
+                'Um ou mais eventos possuem ingressos emitidos. Nenhum evento foi excluído.'
+            );
+
+            foreach($ids as$id){
+                $events->get((int)$id)->delete();
+            }
+        },3);
+
+        return response()->json([
+            'message'=>$ids->count().' evento(s) excluído(s) com sucesso.',
+            'deleted'=>$ids->count(),
+            'event_ids'=>$ids,
+        ]);
+    }
+
     public function destroy(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());abort_if($event->tickets()->whereHas('passes')->exists(),409,'Eventos com ingressos emitidos não podem ser excluídos. Cancele ou despublique o evento.');$event->delete();return response()->json(['message'=>'Evento excluído com sucesso.']);}
 
     private function attachSellableTicketCounts($events): void
