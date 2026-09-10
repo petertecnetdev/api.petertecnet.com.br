@@ -12,9 +12,20 @@ class SubscriptionIntentTest extends TestCase
 {
     use RefreshDatabase;
 
+    private function user(): User
+    {
+        return User::query()->create([
+            'first_name' => 'Subscription',
+            'last_name' => 'Tester',
+            'email' => Str::uuid().'@example.com',
+            'password' => bcrypt('password'),
+            'email_verified_at' => now(),
+        ]);
+    }
+
     public function test_authenticated_user_can_create_idempotent_subscription_intent_with_server_price(): void
     {
-        $user = User::factory()->create();
+        $user = $this->user();
         $key = (string) Str::uuid();
 
         $payload = [
@@ -44,7 +55,7 @@ class SubscriptionIntentTest extends TestCase
 
     public function test_idempotency_key_cannot_be_reused_for_another_plan(): void
     {
-        $user = User::factory()->create();
+        $user = $this->user();
         $key = (string) Str::uuid();
 
         $this->actingAs($user, 'api')
@@ -60,7 +71,7 @@ class SubscriptionIntentTest extends TestCase
 
     public function test_transaction_only_application_cannot_create_subscription_intent(): void
     {
-        $user = User::factory()->create();
+        $user = $this->user();
 
         $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
