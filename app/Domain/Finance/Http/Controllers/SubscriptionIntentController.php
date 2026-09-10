@@ -40,12 +40,21 @@ class SubscriptionIntentController extends Controller
         }
 
         $user = $request->user();
-        $intent = SubscriptionIntent::firstOrCreate(
-            [
-                'user_id' => $user->getKey(),
-                'application' => $application,
-                'idempotency_key' => $idempotencyKey,
-            ],
+        $identity = [
+            'user_id' => $user->getKey(),
+            'application' => $application,
+            'idempotency_key' => $idempotencyKey,
+        ];
+
+        $existing = SubscriptionIntent::query()->where($identity)->first();
+        if ($existing && $existing->plan_code !== $validated['plan_code']) {
+            return response()->json([
+                'message' => 'Este Idempotency-Key já foi utilizado para outro plano.',
+            ], 409);
+        }
+
+        $intent = $existing ?: SubscriptionIntent::firstOrCreate(
+            $identity,
             [
                 'public_id' => (string) Str::uuid(),
                 'plan_code' => (string) $plan['code'],
@@ -61,11 +70,13 @@ class SubscriptionIntentController extends Controller
             ]
         );
 
-        if (! $intent->wasRecentlyCreated && $intent->plan_code !== $validated['plan_code']) {
+        if (! $existing && ! $intent->wasRecentlyCreated && $intent->plan_code !== $validated['plan_code']) {
             return response()->json([
                 'message' => 'Este Idempotency-Key já foi utilizado para outro plano.',
             ], 409);
         }
+
+        $status = $existing || ! $intent->wasRecentlyCreated ? 200 : 201;
 
         return response()->json([
             'data' => [
@@ -82,7 +93,7 @@ class SubscriptionIntentController extends Controller
                 'handoff_channel' => $intent->handoff_channel,
                 'created_at' => $intent->created_at,
             ],
-        ], $intent->wasRecentlyCreated ? 201 : 200);
+        ], $status);
     }
 
     public function show(Request $request, string $application, string $intent): JsonResponse
