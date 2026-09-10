@@ -31,6 +31,9 @@ class EventSchedule extends Model
         'is_private',
         'event_format',
         'online_url',
+        'generation_mode',
+        'generation_delay_days',
+        'generation_weeks',
         'is_active',
     ];
 
@@ -43,6 +46,8 @@ class EventSchedule extends Model
         'latitude' => 'decimal:7',
         'longitude' => 'decimal:7',
         'is_private' => 'boolean',
+        'generation_delay_days' => 'integer',
+        'generation_weeks' => 'integer',
         'is_active' => 'boolean',
     ];
 
