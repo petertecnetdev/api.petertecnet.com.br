@@ -125,8 +125,11 @@ final class EventDuplicationService
                         'type' => $type !== '' ? $type : ($paid ? 'paid' : 'courtesy'),
                         'price' => $price,
                         'limit_date' => $this->shiftTicketDeadline($ticket->limit_date, $deltaSeconds, $targetStart, $timezone),
+                        'sales_cutoff_mode' => $ticket->sales_cutoff_mode,
+                        'sales_cutoff_offset_minutes' => $ticket->sales_cutoff_offset_minutes,
                         'ticket_type' => $ticketType !== '' ? $ticketType : ($paid ? 'standard' : 'courtesy'),
                         'quantity' => $ticket->quantity,
+                        'max_per_user' => $ticket->max_per_user,
                         'description' => $ticket->description,
                     ]);
                 }
