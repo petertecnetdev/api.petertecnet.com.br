@@ -6,6 +6,8 @@ use App\Domain\Commerce\Services\TicketInventoryService;
 use App\Models\Application;
 use App\Models\Artist;
 use App\Models\Event;
+use App\Models\EventAgendaSetting;
+use App\Models\EventSchedule;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
@@ -168,21 +170,53 @@ final class OrganizationService
             ->where('is_cancelled', false)
             ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'));
 
+        $agendaEnabled = EventAgendaSetting::query()
+            ->where('app_id', $appId)
+            ->where('production_id', $organization->id)
+            ->value('is_active');
+
+        $weeklyAgenda = collect();
+        if ($agendaEnabled !== false) {
+            $weeklyAgenda = EventSchedule::query()
+                ->where('app_id', $appId)
+                ->where('production_id', $organization->id)
+                ->where('is_active', true)
+                ->whereNotNull('source_event_id')
+                ->with(['sourceEvent' => fn ($events) => $events
+                    ->where('app_id', $appId)
+                    ->where('is_published', true)
+                    ->where('is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))])
+                ->get()
+                ->filter(fn (EventSchedule $schedule) => $schedule->sourceEvent !== null)
+                ->map(fn (EventSchedule $schedule) => [
+                    'day_of_week' => (int) $schedule->day_of_week,
+                    'event' => $schedule->sourceEvent,
+                ])
+                ->values();
+        }
+
         $upcoming = (clone $visibleEvents)
             ->where('end_date', '>', now())
             ->orderBy('start_date')
             ->limit(24)
             ->get();
 
-        $upcomingEventIds = $upcoming->pluck('id')->map(fn ($id) => (int) $id)->values();
-        if ($upcomingEventIds->isNotEmpty()) {
+        $ticketEventIds = $upcoming->pluck('id')
+            ->merge($weeklyAgenda->pluck('event.id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($ticketEventIds->isNotEmpty()) {
             $tickets = Ticket::query()
                 ->where('app_id', $appId)
-                ->whereIn('event_id', $upcomingEventIds)
+                ->whereIn('event_id', $ticketEventIds)
                 ->get(['id', 'app_id', 'event_id', 'price', 'quantity', 'limit_date']);
             $availabilityByEvent = $this->ticketInventory->availabilityByEvent($tickets);
 
-            $upcoming->each(function (Event $event) use ($availabilityByEvent) {
+            $applyAvailability = function (Event $event) use ($availabilityByEvent) {
                 $summary = $availabilityByEvent->get((int) $event->id, [
                     'status' => 'tickets_pending',
                     'configured_lots_count' => 0,
@@ -192,7 +226,10 @@ final class OrganizationService
                 $event->setAttribute('ticket_availability_status', $summary['status']);
                 $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
                 $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
-            });
+            };
+
+            $upcoming->each($applyAvailability);
+            $weeklyAgenda->each(fn (array $slot) => $applyAvailability($slot['event']));
         }
 
         $past = (clone $visibleEvents)
@@ -213,7 +250,13 @@ final class OrganizationService
             ->limit(30)
             ->get();
 
-        return compact('organization', 'upcoming', 'past', 'artists');
+        return [
+            'organization' => $organization,
+            'weekly_agenda' => $weeklyAgenda,
+            'upcoming' => $upcoming,
+            'past' => $past,
+            'artists' => $artists,
+        ];
     }
 
     public function mine(int $appId, User $user)
