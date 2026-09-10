@@ -60,10 +60,43 @@ final class EventCommerceController extends Controller
             ->where('event_id', $event->id)
             ->where('is_active', true)
             ->orderBy('name')
-            ->get()
-            ->each(function (EventItem $item) use ($salesClosed) {
-                if ($salesClosed) $item->setAttribute('available', false);
-            });
+            ->get();
+
+        $itemIds = $items->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $reservedByItem = collect();
+        $soldByItem = collect();
+
+        if ($itemIds !== []) {
+            $reservedByItem = DB::table('inventory_reservations')
+                ->where('app_id', $this->context->id())
+                ->whereIn('event_item_id', $itemIds)
+                ->whereNull('released_at')
+                ->where('expires_at', '>', now())
+                ->selectRaw('event_item_id, SUM(quantity) as aggregate')
+                ->groupBy('event_item_id')
+                ->pluck('aggregate', 'event_item_id');
+
+            $soldByItem = DB::table('commerce_order_items as oi')
+                ->join('commerce_orders as o', 'o.id', '=', 'oi.order_id')
+                ->where('oi.app_id', $this->context->id())
+                ->where('o.app_id', $this->context->id())
+                ->whereIn('oi.event_item_id', $itemIds)
+                ->where('o.status', 'paid')
+                ->selectRaw('oi.event_item_id, SUM(oi.quantity) as aggregate')
+                ->groupBy('oi.event_item_id')
+                ->pluck('aggregate', 'oi.event_item_id');
+        }
+
+        $items->each(function (EventItem $item) use ($salesClosed, $reservedByItem, $soldByItem) {
+            $reserved = (int) ($reservedByItem->get($item->id) ?? 0);
+            $sold = (int) ($soldByItem->get($item->id) ?? 0);
+            $remaining = max(0, (int) $item->quantity - $sold - $reserved);
+
+            $item->setAttribute('reserved', $reserved);
+            $item->setAttribute('sold', $sold);
+            $item->setAttribute('remaining', $remaining);
+            $item->setAttribute('available', ! $salesClosed && $remaining > 0);
+        });
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
         $paymentAvailable = ! $salesClosed && $readiness['available'];
