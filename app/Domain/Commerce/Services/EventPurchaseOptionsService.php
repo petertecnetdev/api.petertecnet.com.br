@@ -94,9 +94,7 @@ final class EventPurchaseOptionsService
         return Event::query()
             ->where('app_id', $this->context->id())
             ->where('slug', $slug)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->publiclyVisible()
             ->whereHas('production', fn ($query) => $query->where('app_id', $this->context->id()))
             ->firstOrFail();
     }
@@ -106,9 +104,7 @@ final class EventPurchaseOptionsService
         $query = Event::query()
             ->where('app_id', $this->context->id())
             ->where('production_id', $event->production_id)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->publiclyVisible()
             ->where(function ($q) {
                 $q->whereNull('end_date')->orWhere('end_date', '>', now());
             });
