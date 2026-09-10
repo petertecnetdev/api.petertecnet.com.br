@@ -2,20 +2,15 @@
 
 namespace App\Domain\Social\Http\Controllers;
 
-use App\Domain\Commerce\Services\TicketInventoryService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
-use App\Models\Ticket;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
 final class FeedController extends Controller
 {
-    public function __construct(
-        private readonly ApplicationContext $context,
-        private readonly TicketInventoryService $ticketInventory,
-    ) {}
+    public function __construct(private readonly ApplicationContext $context) {}
 
     public function index(Request $request)
     {
@@ -187,22 +182,6 @@ final class FeedController extends Controller
             ->get()
             ->groupBy('parent_id');
 
-        $communityEventIds = $community->pluck('event_id')
-            ->merge($replies->flatten(1)->pluck('event_id'))
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->unique()
-            ->values();
-        $communityTicketAvailability = $communityEventIds->isEmpty()
-            ? collect()
-            : $this->ticketInventory->availabilityByEvent(
-                Ticket::query()
-                    ->where('app_id', $appId)
-                    ->whereIn('event_id', $communityEventIds)
-                    ->get(['id', 'event_id', 'price', 'quantity', 'limit_date']),
-                $now
-            );
-
         $allPostIds = $postIds->merge($replies->flatten(1)->pluck('id'))->filter()->values();
         $liked = $allPostIds->isEmpty() ? collect() : DB::table('event_post_likes')
             ->where('app_id', $appId)
@@ -210,31 +189,13 @@ final class FeedController extends Controller
             ->whereIn('post_id', $allPostIds)
             ->pluck('post_id');
 
-        $decoratePostAvailability = static function ($post) use ($communityTicketAvailability) {
-            if (! $post->event_id) {
-                return $post;
-            }
-
-            $availability = $communityTicketAvailability->get((int) $post->event_id, [
-                'status' => 'tickets_pending',
-                'sellable_lots_count' => 0,
-                'sellable_free_lots_count' => 0,
-            ]);
-            $post->ticket_availability_status = $availability['status'];
-            $post->sellable_ticket_lots_count = (int) $availability['sellable_lots_count'];
-            $post->sellable_free_ticket_lots_count = (int) $availability['sellable_free_lots_count'];
-
-            return $post;
-        };
-
-        $community = $community->map(function ($post) use ($replies, $liked, $decoratePostAvailability) {
+        $community = $community->map(function ($post) use ($replies, $liked) {
             $post->is_liked = $liked->contains($post->id);
-            $decoratePostAvailability($post);
-            $post->replies = collect($replies->get($post->id, []))->map(function ($reply) use ($liked, $decoratePostAvailability) {
+            $post->replies = collect($replies->get($post->id, []))->map(function ($reply) use ($liked) {
                 $reply->is_liked = $liked->contains($reply->id);
                 $reply->comments_count = 0;
                 $reply->replies = [];
-                return $decoratePostAvailability($reply);
+                return $reply;
             })->values();
             return $post;
         })->values();
