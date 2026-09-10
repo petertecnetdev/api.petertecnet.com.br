@@ -7,7 +7,9 @@ use App\Models\Production;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -38,6 +40,22 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk()->assertJsonPath('event.is_published',true);
         $this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertOk()->assertJsonPath('event.id',$eventId)->assertJsonPath('event.google_maps_url','https://maps.google.com/?q=Campinas')->assertJsonPath('event.production.id',$production['id'])->assertJsonPath('tickets.0.remaining',10);
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/unpublish")->assertOk()->assertJsonPath('event.is_published',false);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
+    }
+
+    public function test_management_counts_only_inventory_that_is_currently_sellable(): void
+    {
+        $user=$this->user('Produtor Estoque','inventory-owner@cutinapp.test');$headers=$this->headersFor($user);$application=Application::query()->where('slug','cutinapp')->firstOrFail();
+        $production=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Estoque'])->assertCreated()->json('production');
+        $event=$this->withHeaders($headers)->postJson('/api/cutinapp/events',['production_id'=>$production['id'],'title'=>'Evento Estoque','description'=>'Teste de inventário vendável.','address'=>'Rua Estoque, 10','city'=>'São Paulo','uf'=>'SP','start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s')])->assertCreated()->json('event');
+        $ticket=$this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',['event_id'=>$event['id'],'name'=>'Lote Estoque','quantity'=>2])->assertCreated()->json('ticket');
+        $orderId=DB::table('commerce_orders')->insertGetId(['app_id'=>$application->id,'public_id'=>(string)Str::uuid(),'event_id'=>$event['id'],'production_id'=>$production['id'],'user_id'=>$user->id,'status'=>'pending','currency'=>'BRL','subtotal'=>0,'platform_fee'=>0,'processor_fee'=>0,'discount_amount'=>0,'total'=>0,'producer_net'=>0,'expires_at'=>now()->addMinutes(20),'created_at'=>now(),'updated_at'=>now()]);
+        DB::table('inventory_reservations')->insert(['app_id'=>$application->id,'order_id'=>$orderId,'type'=>'ticket','ticket_id'=>$ticket['id'],'quantity'=>2,'expires_at'=>now()->addMinutes(20),'created_at'=>now(),'updated_at'=>now()]);
+
+        $this->withHeaders($headers)->getJson('/api/cutinapp/events/mine')->assertOk()->assertJsonPath('events.data.0.available_tickets_count',0);
+        $this->withHeaders($headers)->getJson('/api/cutinapp/events/show/'.$event['id'])->assertOk()->assertJsonPath('event.available_tickets_count',0);
+
+        DB::table('inventory_reservations')->where('order_id',$orderId)->update(['expires_at'=>now()->subMinute(),'updated_at'=>now()]);
+        $this->withHeaders($headers)->getJson('/api/cutinapp/events/mine')->assertOk()->assertJsonPath('events.data.0.available_tickets_count',1);
     }
 
     public function test_same_day_future_event_is_allowed_but_past_and_invalid_dates_are_rejected(): void
