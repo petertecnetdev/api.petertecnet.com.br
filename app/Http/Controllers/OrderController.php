@@ -105,7 +105,7 @@ class OrderController extends ApiController
             'entity_id' => 'required|integer',
 
             'attendant_id' => 'required|integer|exists:employers,id',
-            'client_id' => 'required|integer|exists:users,id',
+            'client_id' => 'nullable|integer|exists:users,id',
 
             'customer_name' => 'required|string',
 
@@ -598,7 +598,7 @@ class OrderController extends ApiController
                 'order_datetime' => now('America/Sao_Paulo')->format('Y-m-d H:i:s'),
 
                 'created_by' => $request->user()->id,
-                'client_id' => $data['client_id'],
+                'client_id' => $data['client_id'] ?? null,
                 'attendant_id' => $employer->id,
 
                 'customer_name' => $data['customer_name'],
