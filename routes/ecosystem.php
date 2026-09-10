@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\InvitationActivationController;
+use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
@@ -27,6 +28,15 @@ Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 
 Route::post('/auth/invitations/{token}/activate', [InvitationActivationController::class, 'activate'])
     ->where('token', '[A-Za-z0-9]{40,128}')
     ->middleware(['api', 'throttle:10,1']);
+
+Route::post('/auth/impersonation/exchange', [ImpersonationController::class, 'exchange'])
+    ->middleware(['api', 'throttle:20,1'])
+    ->name('impersonation.exchange');
+
+Route::prefix('auth/impersonation')->middleware(['api', 'auth:api'])->group(function () {
+    Route::get('/current', [ImpersonationController::class, 'current'])->name('impersonation.current');
+    Route::post('/end', [ImpersonationController::class, 'endCurrent'])->name('impersonation.end');
+});
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
@@ -119,6 +129,10 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::delete('/users/{user}', [EcosystemController::class, 'destroyUser'])->whereNumber('user');
     Route::put('/users/{user}/applications/{application}', [EcosystemController::class, 'setUserAccess'])->whereNumber('user')->whereNumber('application');
     Route::delete('/users/{user}/applications/{application}', [EcosystemController::class, 'removeUserAccess'])->whereNumber('user')->whereNumber('application');
+    Route::post('/users/{user}/impersonate', [ImpersonationController::class, 'start'])->whereNumber('user')->middleware('throttle:20,1');
+    Route::get('/impersonations', [ImpersonationController::class, 'history']);
+    Route::get('/impersonations/{session}/audit', [ImpersonationController::class, 'audit'])->whereNumber('session');
+    Route::post('/impersonations/{session}/end', [ImpersonationController::class, 'forceEnd'])->whereNumber('session');
     Route::get('/profiles', [EcosystemController::class, 'profiles']);
     Route::post('/profiles', [EcosystemController::class, 'storeProfile']);
     Route::put('/profiles/{profile}', [EcosystemController::class, 'updateProfile'])->whereNumber('profile');
