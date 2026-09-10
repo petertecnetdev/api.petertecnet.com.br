@@ -183,6 +183,25 @@ final class EventDiscoveryController extends Controller
         }
 
         $events = $query->paginate($data['per_page'] ?? 18)->appends($request->query());
+        $eventIds = $events->getCollection()->pluck('id')->map(fn ($id) => (int) $id)->values();
+        if ($eventIds->isNotEmpty()) {
+            $pageTickets = Ticket::query()
+                ->where('app_id', $appId)
+                ->whereIn('event_id', $eventIds)
+                ->get(['id', 'app_id', 'event_id', 'price', 'quantity', 'limit_date']);
+            $availabilityByEvent = $this->ticketInventory->availabilityByEvent($pageTickets, $now);
+
+            $events->getCollection()->each(function (Event $event) use ($availabilityByEvent) {
+                $summary = $availabilityByEvent->get((int) $event->id, [
+                    'status' => 'tickets_pending',
+                    'configured_lots_count' => 0,
+                    'sellable_lots_count' => 0,
+                    'sellable_free_lots_count' => 0,
+                ]);
+                $event->setAttribute('ticket_availability_status', $summary['status']);
+            });
+        }
+
         $payload = [
             'events' => $events->toArray(),
             'context' => [
