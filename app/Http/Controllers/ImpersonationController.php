@@ -2,10 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Application;
-use App\Models\ImpersonationAuditLog;
-use App\Models\ImpersonationSession;
-use App\Models\User;
 use App\Services\ImpersonationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,23 +13,25 @@ class ImpersonationController extends Controller
     {
     }
 
-    public function start(Request $request, User $user): JsonResponse
+    public function start(Request $request, $user): JsonResponse
     {
         $this->authorizeSuperAdmin($request);
+
         $data = $request->validate([
             'application_id' => ['required', 'integer', 'exists:applications,id'],
             'reason' => ['required', 'string', 'min:3', 'max:500'],
         ]);
 
-        $application = Application::query()->findOrFail((int) $data['application_id']);
-        $result = $this->service->start($request->user(), $user, $application, $data['reason'], $request);
-
-        return response()->json([
-            'message' => 'Acesso temporário criado com segurança.',
-            'impersonation' => $this->service->payload($result['session']),
-            'handoff_url' => $result['handoff_url'],
-            'handoff_expires_at' => $result['handoff_expires_at']?->toIso8601String(),
-        ], 201);
+        return response()->json(
+            $this->service->startById(
+                $request->user(),
+                (int) $user,
+                (int) $data['application_id'],
+                $data['reason'],
+                $request
+            ),
+            201
+        );
     }
 
     public function exchange(Request $request): JsonResponse
@@ -43,40 +41,33 @@ class ImpersonationController extends Controller
             'application_slug' => ['nullable', 'string', 'max:100'],
         ]);
 
-        return response()->json($this->service->exchange($data['handoff'], $data['application_slug'] ?? null));
+        return response()->json(
+            $this->service->exchange($data['handoff'], $data['application_slug'] ?? null)
+        );
     }
 
-    public function current(Request $request): JsonResponse
+    public function current(): JsonResponse
     {
-        $session = $this->service->currentFromToken();
-        if (! $session) {
-            return response()->json(['impersonation' => null]);
-        }
-
-        return response()->json(['impersonation' => $this->service->payload($session)]);
+        return response()->json([
+            'impersonation' => $this->service->currentPayload(),
+        ]);
     }
 
-    public function endCurrent(Request $request): JsonResponse
+    public function endCurrent(): JsonResponse
     {
-        $session = $this->service->currentFromToken();
-        if (! $session) {
-            return response()->json(['message' => 'Nenhuma sessão de impersonação ativa.']);
-        }
+        $ended = $this->service->endCurrent();
 
-        $session->finish($session->impersonator, 'ended_from_application');
-
-        try {
-            auth('api')->logout();
-        } catch (\Throwable) {
-            // The database state is authoritative even if JWT blacklisting is unavailable.
-        }
-
-        return response()->json(['message' => 'Acesso como usuário encerrado.']);
+        return response()->json([
+            'message' => $ended
+                ? 'Acesso como usuário encerrado.'
+                : 'Nenhuma sessão de impersonação ativa.',
+        ]);
     }
 
     public function history(Request $request): JsonResponse
     {
         $this->authorizeSuperAdmin($request);
+
         $data = $request->validate([
             'user_id' => ['nullable', 'integer', 'exists:users,id'],
             'application_id' => ['nullable', 'integer', 'exists:applications,id'],
@@ -85,83 +76,28 @@ class ImpersonationController extends Controller
             'per_page' => ['nullable', 'integer', 'min:10', 'max:100'],
         ]);
 
-        $query = ImpersonationSession::query()
-            ->with(['impersonator:id,first_name,last_name,user_name,email', 'impersonatedUser:id,first_name,last_name,user_name,email', 'application:id,name,slug,url'])
-            ->withCount('auditLogs')
-            ->latest('id');
-
-        if (! empty($data['user_id'])) {
-            $query->where(function ($q) use ($data) {
-                $q->where('impersonated_user_id', $data['user_id'])
-                    ->orWhere('impersonator_user_id', $data['user_id']);
-            });
-        }
-        if (! empty($data['application_id'])) $query->where('application_id', $data['application_id']);
-
-        if (($data['status'] ?? null) === 'active') {
-            $query->whereNull('ended_at')->where('expires_at', '>', now());
-        } elseif (($data['status'] ?? null) === 'ended') {
-            $query->whereNotNull('ended_at');
-        } elseif (($data['status'] ?? null) === 'expired') {
-            $query->whereNull('ended_at')->where('expires_at', '<=', now());
-        }
-
-        $perPage = (int) ($data['per_page'] ?? 25);
-        $page = $query->paginate($perPage);
-
-        return response()->json([
-            'sessions' => collect($page->items())->map(fn (ImpersonationSession $session) => array_merge(
-                $this->service->payload($session),
-                [
-                    'end_reason' => $session->end_reason,
-                    'audit_logs_count' => (int) $session->audit_logs_count,
-                    'ip_address' => $session->ip_address,
-                    'created_at' => $session->created_at?->toIso8601String(),
-                ]
-            ))->values(),
-            'pagination' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'per_page' => $page->perPage(),
-                'total' => $page->total(),
-            ],
-        ]);
+        return response()->json($this->service->history($data));
     }
 
-    public function audit(Request $request, ImpersonationSession $session): JsonResponse
+    public function audit(Request $request, $session): JsonResponse
     {
         $this->authorizeSuperAdmin($request);
+
         $data = $request->validate([
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:20', 'max:100'],
         ]);
 
-        $page = ImpersonationAuditLog::query()
-            ->where('impersonation_session_id', $session->id)
-            ->latest('id')
-            ->paginate((int) ($data['per_page'] ?? 50));
-
-        return response()->json([
-            'impersonation' => $this->service->payload($session),
-            'audit' => $page->items(),
-            'pagination' => [
-                'current_page' => $page->currentPage(),
-                'last_page' => $page->lastPage(),
-                'per_page' => $page->perPage(),
-                'total' => $page->total(),
-            ],
-        ]);
+        return response()->json($this->service->audit((int) $session, $data));
     }
 
-    public function forceEnd(Request $request, ImpersonationSession $session): JsonResponse
+    public function forceEnd(Request $request, $session): JsonResponse
     {
         $this->authorizeSuperAdmin($request);
-        $session->finish($request->user(), 'ended_from_admincenter');
 
-        return response()->json([
-            'message' => 'Sessão de impersonação encerrada.',
-            'impersonation' => $this->service->payload($session->fresh()),
-        ]);
+        return response()->json(
+            $this->service->forceEnd((int) $session, $request->user())
+        );
     }
 
     private function authorizeSuperAdmin(Request $request): void
@@ -169,6 +105,10 @@ class ImpersonationController extends Controller
         $email = strtolower(trim((string) $request->user()?->email));
         $allowed = config('impersonation.super_admin_emails', []);
 
-        abort_unless($email !== '' && in_array($email, $allowed, true), 403, 'Somente o Super Admin autorizado pode assumir usuários.');
+        abort_unless(
+            $email !== '' && in_array($email, $allowed, true),
+            403,
+            'Somente o Super Admin autorizado pode assumir usuários.'
+        );
     }
 }
