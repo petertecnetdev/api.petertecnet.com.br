@@ -19,6 +19,8 @@ Route::prefix('v1/apps/{application}')
             ->whereNumber('productionId');
         Route::patch('/event-agenda/productions/{productionId}/status', [EventAgendaController::class, 'setAgendaStatus'])
             ->whereNumber('productionId');
+        Route::patch('/event-agenda/productions/{productionId}/settings', [EventAgendaController::class, 'updateSettings'])
+            ->whereNumber('productionId');
         Route::post('/event-agenda/productions/{productionId}/items', [EventAgendaController::class, 'store'])
             ->whereNumber('productionId');
         Route::post('/event-agenda/productions/{productionId}/generate-upcoming', [EventAgendaController::class, 'generateUpcoming'])

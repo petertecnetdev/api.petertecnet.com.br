@@ -28,6 +28,21 @@ final class EventAgendaController extends Controller
         );
     }
 
+    public function updateSettings(Request $request, int $productionId)
+    {
+        $data = $request->validate([
+            'generation_weeks' => 'required|integer|between:1,3',
+        ]);
+
+        return response()->json(
+            $this->agenda->updateSettings(
+                $productionId,
+                $request->user(),
+                (int) $data['generation_weeks'],
+            )
+        );
+    }
+
     public function store(Request $request, int $productionId)
     {
         return response()->json(

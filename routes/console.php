@@ -4,6 +4,7 @@ use App\Domain\Commerce\Services\AutomatedCheckoutRecoveryService;
 use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
+use App\Domain\Events\Services\EventAgendaMaintenanceService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Jobs\DispatchNotificationCampaign;
 use App\Models\NotificationCampaign;
@@ -63,6 +64,11 @@ Artisan::command('ecosystem:dispatch-scheduled-notifications', function () {
     $this->info("{$dispatched} campanha(s) agendada(s) despachada(s).");
 })->purpose('Dispatch notification campaigns whose scheduled time has arrived');
 
+Artisan::command('events:replenish-weekly-agendas', function () {
+    $result = app(EventAgendaMaintenanceService::class)->replenishAll();
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Keep each recurring weekly agenda filled only to its configured 1-3 week horizon');
+
 Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
     $limit = $this->option('limit');
     $result = app(AutomatedCheckoutRecoveryService::class)->run(
@@ -82,6 +88,10 @@ Schedule::command('kryvion:market-signal-notifications')
 Schedule::command('ecosystem:dispatch-scheduled-notifications')
     ->everyMinute()
     ->withoutOverlapping(5)
+    ->onOneServer();
+Schedule::command('events:replenish-weekly-agendas')
+    ->dailyAt('00:10')
+    ->withoutOverlapping(30)
     ->onOneServer();
 Schedule::command('commerce:recover-pending-checkouts')
     ->everyFiveMinutes()
