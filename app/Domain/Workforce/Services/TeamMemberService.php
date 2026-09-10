@@ -2,6 +2,8 @@
 
 namespace App\Domain\Workforce\Services;
 
+use App\Domain\Finance\Exceptions\SubscriptionUpgradeRequired;
+use App\Domain\Finance\Services\EntitlementAccessService;
 use App\Domain\Notifications\Services\NotificationDispatcher;
 use App\Mail\NewEmployerCollaborator;
 use App\Mail\OwnerNotifiedNewCollaborator;
@@ -14,7 +16,10 @@ use Illuminate\Validation\ValidationException;
 
 final class TeamMemberService
 {
-    public function __construct(private readonly NotificationDispatcher $notifications) {}
+    public function __construct(
+        private readonly NotificationDispatcher $notifications,
+        private readonly EntitlementAccessService $entitlements,
+    ) {}
 
     public function list(int $applicationId, User $actor, int $establishmentId): Collection
     {
@@ -128,6 +133,19 @@ final class TeamMemberService
             ];
         }
 
+        $isOwner = $userId === (int) $establishment->user_id;
+        if (! $isOwner) {
+            $decision = $this->entitlements->check($applicationId, (int) $actor->id, 'staff.management');
+
+            if (! $decision['allowed']) {
+                throw new SubscriptionUpgradeRequired(
+                    'staff.management',
+                    $decision['plan_code'],
+                    'Seu plano atual não inclui colaboradores adicionais. Faça upgrade para adicionar sua equipe.',
+                );
+            }
+        }
+
         $employer = Employer::create([
             'user_id' => $userId,
             'establishment_id' => $establishment->id,
@@ -137,8 +155,6 @@ final class TeamMemberService
             'updated_by' => $actor->id,
         ]);
         $employer->load(['user', 'establishment.user']);
-
-        $isOwner = (int) $employer->user_id === (int) $establishment->user_id;
 
         if (! $isOwner && $establishment->user?->email) {
             $this->notifications->queueMailable(
