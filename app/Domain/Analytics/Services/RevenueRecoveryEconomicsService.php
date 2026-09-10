@@ -50,6 +50,7 @@ final class RevenueRecoveryEconomicsService
                 'id',
                 'public_id',
                 'status',
+                'total',
                 'platform_fee',
                 'processor_fee',
                 'metadata',
