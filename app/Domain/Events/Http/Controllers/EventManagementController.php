@@ -131,19 +131,25 @@ final class EventManagementController extends Controller
     public function destroyMany(Request $request)
     {
         $data=$request->validate([
-            'event_ids'=>'required|array|min:1|max:100',
+            'event_ids'=>'required|array|min:1',
             'event_ids.*'=>'required|integer|min:1|distinct',
         ]);
 
         $ids=collect($data['event_ids'])->map(fn($id)=>(int)$id)->unique()->values();
         $appId=$this->context->id();
         $user=$request->user();
-        $events=Event::query()
-            ->where('app_id',$appId)
-            ->whereIn('id',$ids)
-            ->with('production')
-            ->get()
-            ->keyBy(fn(Event $event)=>(int)$event->id);
+        $events=collect();
+
+        foreach($ids->chunk(500) as$chunk){
+            Event::query()
+                ->where('app_id',$appId)
+                ->whereIn('id',$chunk->all())
+                ->with('production')
+                ->get()
+                ->each(function(Event $event)use($events){
+                    $events->put((int)$event->id,$event);
+                });
+        }
 
         abort_unless($events->count()===$ids->count(),404,'Um ou mais eventos não foram encontrados neste contexto.');
 
@@ -154,23 +160,30 @@ final class EventManagementController extends Controller
             abort_unless($isAdmin||(int)$event->production->user_id===(int)$user->id,403,'Você não pode excluir um ou mais dos eventos selecionados.');
         }
 
-        $blockedEventIds=Ticket::query()
-            ->where('app_id',$appId)
-            ->whereIn('event_id',$ids)
-            ->whereHas('passes')
-            ->pluck('event_id')
-            ->map(fn($id)=>(int)$id)
-            ->unique()
-            ->values();
+        DB::transaction(function()use($ids,$events,$appId){
+            $blockedEventIds=collect();
 
-        if($blockedEventIds->isNotEmpty()){
-            return response()->json([
-                'message'=>'Um ou mais eventos possuem ingressos emitidos. Nenhum evento foi excluído.',
-                'blocked_event_ids'=>$blockedEventIds,
-            ],409);
-        }
+            foreach($ids->chunk(500) as$chunk){
+                $blockedEventIds=$blockedEventIds->merge(
+                    Ticket::query()
+                        ->where('app_id',$appId)
+                        ->whereIn('event_id',$chunk->all())
+                        ->whereHas('passes')
+                        ->pluck('event_id')
+                );
+            }
 
-        DB::transaction(function()use($ids,$events){
+            $blockedEventIds=$blockedEventIds
+                ->map(fn($id)=>(int)$id)
+                ->unique()
+                ->values();
+
+            abort_if(
+                $blockedEventIds->isNotEmpty(),
+                409,
+                'Um ou mais eventos possuem ingressos emitidos. Nenhum evento foi excluído.'
+            );
+
             foreach($ids as$id){
                 $events->get((int)$id)->delete();
             }

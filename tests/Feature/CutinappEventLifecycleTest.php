@@ -97,6 +97,46 @@ class CutinappEventLifecycleTest extends TestCase
         $this->assertDatabaseHas('events',['id'=>$foreign['id']]);
     }
 
+    public function test_bulk_delete_accepts_more_than_one_hundred_selected_events(): void
+    {
+        $user=$this->user('Produtor Exclusao Grande','bulk-delete-many@cutinapp.test');
+        $headers=$this->headersFor($user);
+        $application=Application::query()->where('slug','cutinapp')->firstOrFail();
+        $production=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Exclusão Grande'])->assertCreated()->json('production');
+
+        $now=now();
+        $rows=[];
+        for($index=1;$index<=105;$index++){
+            $rows[]=[
+                'app_id'=>$application->id,
+                'app_slug'=>'cutinapp',
+                'production_id'=>$production['id'],
+                'title'=>'Evento Selecionado '.$index,
+                'slug'=>'evento-selecionado-'.$index.'-'.Str::random(8),
+                'description'=>'Evento criado para validar exclusão acima de cem registros.',
+                'address'=>'Rua Exclusão, 100',
+                'city'=>'Goiânia',
+                'uf'=>'GO',
+                'start_date'=>$now->copy()->addDays(10)->addMinutes($index),
+                'end_date'=>$now->copy()->addDays(10)->addMinutes($index)->addHours(3),
+                'is_published'=>false,
+                'is_cancelled'=>false,
+                'created_at'=>$now,
+                'updated_at'=>$now,
+            ];
+        }
+        DB::table('events')->insert($rows);
+        $ids=DB::table('events')->where('production_id',$production['id'])->pluck('id')->map(fn($id)=>(int)$id)->values()->all();
+
+        $this->assertCount(105,$ids);
+        $this->withHeaders($headers)
+            ->deleteJson('/api/cutinapp/events/bulk',['event_ids'=>$ids])
+            ->assertOk()
+            ->assertJsonPath('deleted',105);
+
+        $this->assertSame(0,DB::table('events')->whereIn('id',$ids)->count());
+    }
+
     public function test_management_counts_only_inventory_that_is_currently_sellable(): void
     {
         $user=$this->user('Produtor Estoque','inventory-owner@cutinapp.test');$headers=$this->headersFor($user);$application=Application::query()->where('slug','cutinapp')->firstOrFail();
