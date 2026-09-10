@@ -94,7 +94,14 @@ final class EventDuplicationService
 
         try {
             $duplicate = DB::transaction(function () use ($source, $sourceItems, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
-                $event = $source->replicate(['id', 'slug', 'created_at', 'updated_at']);
+                $event = $source->replicate([
+                    'id',
+                    'slug',
+                    'event_schedule_id',
+                    'event_schedule_occurrence_date',
+                    'created_at',
+                    'updated_at',
+                ]);
                 $event->forceFill([
                     'slug' => $this->uniqueSlug($source->title.' '.$targetStart->format('Y-m-d')),
                     'start_date' => $targetStart->format('Y-m-d H:i:s'),
