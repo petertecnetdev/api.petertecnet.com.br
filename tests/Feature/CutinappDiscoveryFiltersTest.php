@@ -9,7 +9,9 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class CutinappDiscoveryFiltersTest extends TestCase
@@ -53,10 +55,10 @@ class CutinappDiscoveryFiltersTest extends TestCase
     public function test_custom_ranges_pagination_closed_events_and_available_tickets(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 8, 31, 19, 0, 0, 'America/Sao_Paulo'));
-        [$app, $production] = $this->base();
+        [$app, $production, $user] = $this->base();
 
         $available = $this->event($app->id, $production->id, 'Disponível', 'Campinas', 'SP', '2026-09-05 18:00:00');
-        Ticket::create([
+        $ticket = Ticket::create([
             'app_id' => $app->id, 'app_slug' => 'cutinapp', 'event_id' => $available->id,
             'name' => 'Cortesia', 'ticket_type' => 'courtesy', 'type' => 'courtesy', 'price' => 0,
             'quantity' => 10, 'limit_date' => Carbon::create(2026, 9, 5, 17, 0, 0, 'America/Sao_Paulo'),
@@ -72,6 +74,45 @@ class CutinappDiscoveryFiltersTest extends TestCase
                 'is_published' => true, 'is_cancelled' => false,
             ]);
         });
+
+        $orderId = DB::table('commerce_orders')->insertGetId([
+            'app_id' => $app->id,
+            'public_id' => (string) Str::uuid(),
+            'event_id' => $available->id,
+            'production_id' => $production->id,
+            'user_id' => $user->id,
+            'status' => 'pending',
+            'currency' => 'BRL',
+            'subtotal' => 0,
+            'platform_fee' => 0,
+            'processor_fee' => 0,
+            'discount_amount' => 0,
+            'total' => 0,
+            'producer_net' => 0,
+            'expires_at' => now()->addMinutes(20),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        DB::table('inventory_reservations')->insert([
+            'app_id' => $app->id,
+            'order_id' => $orderId,
+            'type' => 'ticket',
+            'ticket_id' => $ticket->id,
+            'quantity' => 10,
+            'expires_at' => now()->addMinutes(20),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->getJson('/api/cutinapp/events?city=Campinas&available=1&free=1')
+            ->assertOk()->assertJsonCount(0, 'events.data');
+        $this->getJson('/api/cutinapp/events/public/'.$available->slug)
+            ->assertOk()->assertJsonPath('tickets.0.remaining', 0)->assertJsonPath('tickets.0.available', false);
+
+        DB::table('inventory_reservations')->where('order_id', $orderId)->update([
+            'expires_at' => now()->subMinute(),
+            'updated_at' => now(),
+        ]);
 
         $this->getJson('/api/cutinapp/events?city=Campinas&available=1&free=1')
             ->assertOk()->assertJsonCount(1, 'events.data')->assertJsonPath('events.data.0.id', $available->id);
@@ -97,7 +138,7 @@ class CutinappDiscoveryFiltersTest extends TestCase
             'app_id' => $app->id, 'app_slug' => 'cutinapp', 'user_id' => $user->id,
             'name' => 'Discovery Produções', 'slug' => 'discovery-producoes', 'is_published' => true, 'is_cancelled' => false,
         ]);
-        return [$app, $production];
+        return [$app, $production, $user];
     }
 
     private function event(int $appId, int $productionId, string $title, string $city, string $uf, string $start): Event
