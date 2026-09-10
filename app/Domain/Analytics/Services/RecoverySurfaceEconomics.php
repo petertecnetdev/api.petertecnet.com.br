@@ -86,6 +86,8 @@ final class RecoverySurfaceEconomics
             $this->initializeSurface($surfaces, $surface);
             if (! isset($surfaces[$surface]['paid_orders'][$publicId])) {
                 $surfaces[$surface]['paid_orders'][$publicId] = true;
+                $surfaces[$surface]['observed_gross_revenue'] += $this->grossRevenue($order);
+                $surfaces[$surface]['observed_platform_revenue'] += $this->platformRevenue($order);
                 $surfaces[$surface]['observed_platform_contribution'] += $this->platformContribution($order);
             }
         }
@@ -97,6 +99,8 @@ final class RecoverySurfaceEconomics
                 $clicks = (int) $stats['cta_clicks'];
                 $clickedOrders = count($stats['clicked_orders']);
                 $paidOrders = count($stats['paid_orders']);
+                $grossRevenue = (float) $stats['observed_gross_revenue'];
+                $platformRevenue = (float) $stats['observed_platform_revenue'];
                 $contribution = (float) $stats['observed_platform_contribution'];
                 $observedContributionPerImpression = $impressions > 0 ? round($contribution / $impressions, 4) : null;
                 $sampleIsMature = $impressionOrders >= self::MIN_IMPRESSION_ORDERS_FOR_DECISION;
@@ -113,6 +117,11 @@ final class RecoverySurfaceEconomics
                     'paid_orders' => $paidOrders,
                     'click_to_paid_rate_percent' => $clickedOrders > 0 ? round(($paidOrders / $clickedOrders) * 100, 2) : null,
                     'observed_paid_orders_per_100_impressions' => $impressions > 0 ? round(($paidOrders / $impressions) * 100, 2) : null,
+                    'observed_gross_revenue' => round($grossRevenue, 2),
+                    'observed_gross_revenue_per_impression' => $impressions > 0 ? round($grossRevenue / $impressions, 4) : null,
+                    'observed_platform_revenue' => round($platformRevenue, 2),
+                    'observed_platform_revenue_per_impression' => $impressions > 0 ? round($platformRevenue / $impressions, 4) : null,
+                    'observed_platform_take_rate_percent' => $grossRevenue > 0 ? round(($platformRevenue / $grossRevenue) * 100, 2) : null,
                     'observed_platform_contribution' => round($contribution, 2),
                     'observed_platform_contribution_per_impression' => $observedContributionPerImpression,
                     'sample_is_mature' => $sampleIsMature,
@@ -149,6 +158,8 @@ final class RecoverySurfaceEconomics
             'landed_orders' => [],
             'resumed_orders' => [],
             'paid_orders' => [],
+            'observed_gross_revenue' => 0.0,
+            'observed_platform_revenue' => 0.0,
             'observed_platform_contribution' => 0.0,
         ];
     }
@@ -158,6 +169,16 @@ final class RecoverySurfaceEconomics
         $surface = strtolower(trim((string) $value));
 
         return preg_match('/^[a-z][a-z0-9_\-]{0,79}$/', $surface) ? $surface : 'unknown';
+    }
+
+    private function grossRevenue(mixed $order): float
+    {
+        return max(0.0, (float) data_get($order, 'total', 0));
+    }
+
+    private function platformRevenue(mixed $order): float
+    {
+        return max(0.0, (float) data_get($order, 'platform_fee', 0));
     }
 
     private function platformContribution(mixed $order): float
