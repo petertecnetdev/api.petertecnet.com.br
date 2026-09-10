@@ -148,6 +148,9 @@ class TrackApiInteraction
             'ip' => $request->ip(),
             'location' => array_filter(['city' => $input['city'] ?? null, 'uf' => $input['uf'] ?? null]),
             'user_snapshot' => $this->userSnapshot($user),
+            'actor_user_id' => $request->attributes->get('actor_user')?->id,
+            'effective_user_id' => $request->attributes->get('effective_user')?->id ?: $user?->id,
+            'impersonation_session_id' => $request->attributes->get('impersonation_session')?->id,
             'entity_snapshot' => $entity ?: null,
         ], fn ($value) => $value !== null && $value !== [] && $value !== '');
     }
