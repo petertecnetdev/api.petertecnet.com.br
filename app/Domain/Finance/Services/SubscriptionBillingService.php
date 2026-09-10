@@ -15,6 +15,7 @@ final class SubscriptionBillingService
     public function __construct(
         private readonly MercadoPagoService $mercadoPago,
         private readonly ApplicationContext $context,
+        private readonly SubscriptionEntitlementService $entitlements,
     ) {}
 
     public function createPixCheckout(SubscriptionIntent $intent, string $idempotencyKey): array
@@ -147,10 +148,10 @@ final class SubscriptionBillingService
             ->where('user_id', $userId)
             ->first();
 
-        $entitlement = $subscription ? DB::table('ecosystem_entitlements')
-            ->where('subscription_id', $subscription->id)
-            ->where('key', 'application_access')
-            ->first() : null;
+        $entitlements = $subscription
+            ? $this->entitlements->activeForSubscription((int) $subscription->id)
+            : [];
+        $applicationAccess = collect($entitlements)->firstWhere('key', 'application_access');
 
         return [
             'intent' => ['id' => $intent->public_id, 'status' => $intent->status, 'plan_code' => $intent->plan_code],
@@ -161,11 +162,8 @@ final class SubscriptionBillingService
                 'plan_code' => $subscription->plan_code,
                 'current_period_end' => $subscription->current_period_end,
             ] : null,
-            'entitlement' => $entitlement ? [
-                'key' => $entitlement->key,
-                'status' => $entitlement->status,
-                'expires_at' => $entitlement->expires_at,
-            ] : null,
+            'entitlement' => $applicationAccess,
+            'entitlements' => $entitlements,
         ];
     }
 
@@ -212,17 +210,21 @@ final class SubscriptionBillingService
                 ];
                 if ($subscription) {
                     DB::table('ecosystem_subscriptions')->where('id', $subscription->id)->update($values);
-                    $subscriptionId = $subscription->id;
+                    $subscriptionId = (int) $subscription->id;
                 } else {
-                    $subscriptionId = DB::table('ecosystem_subscriptions')->insertGetId($values + [
+                    $subscriptionId = (int) DB::table('ecosystem_subscriptions')->insertGetId($values + [
                         'public_id' => (string) Str::uuid(), 'app_id' => $payment->app_id, 'user_id' => $payment->user_id, 'created_at' => $now,
                     ]);
                 }
 
-                DB::table('ecosystem_entitlements')->updateOrInsert(
-                    ['app_id' => $payment->app_id, 'user_id' => $payment->user_id, 'key' => 'application_access'],
-                    ['subscription_id' => $subscriptionId, 'status' => 'active', 'starts_at' => $now, 'expires_at' => $periodEnd,
-                        'metadata' => json_encode(['plan_code' => $intent->plan_code], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'updated_at' => $now, 'created_at' => $now]
+                $this->entitlements->syncForPlan(
+                    (int) $payment->app_id,
+                    (int) $payment->user_id,
+                    $subscriptionId,
+                    (string) $intent->application,
+                    (string) $intent->plan_code,
+                    $now,
+                    $periodEnd,
                 );
 
                 $intent->forceFill(['status' => 'active', 'paid_at' => $intent->paid_at ?: $now, 'activated_at' => $intent->activated_at ?: $now])->save();
@@ -240,7 +242,7 @@ final class SubscriptionBillingService
             if (in_array($status, ['refunded', 'charged_back'], true)) {
                 DB::table('ecosystem_payments')->where('id', $payment->id)->update(['status' => $status, 'refunded_at' => $now, 'updated_at' => $now]);
                 DB::table('ecosystem_subscriptions')->where('app_id', $payment->app_id)->where('user_id', $payment->user_id)->update(['status' => 'suspended', 'updated_at' => $now]);
-                DB::table('ecosystem_entitlements')->where('app_id', $payment->app_id)->where('user_id', $payment->user_id)->where('key', 'application_access')->update(['status' => 'inactive', 'expires_at' => $now, 'updated_at' => $now]);
+                DB::table('ecosystem_entitlements')->where('app_id', $payment->app_id)->where('user_id', $payment->user_id)->update(['status' => 'inactive', 'expires_at' => $now, 'updated_at' => $now]);
                 $intent->forceFill(['status' => 'reversed'])->save();
                 return;
             }
