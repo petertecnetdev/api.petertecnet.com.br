@@ -23,6 +23,7 @@ class SubscriptionIntentController extends Controller
             'source' => ['nullable', 'string', 'max:120'],
             'handoff_channel' => ['nullable', 'string', 'max:40'],
             'metadata' => ['nullable', 'array', 'max:25'],
+            'metadata.client_price' => ['nullable', 'numeric', 'min:0', 'max:9999999'],
             'metadata.client_price_cents' => ['nullable', 'integer', 'min:0', 'max:999999999'],
             'metadata.currency' => ['nullable', 'string', 'size:3'],
             'metadata.page' => ['nullable', 'string', 'max:255'],
@@ -57,7 +58,9 @@ class SubscriptionIntentController extends Controller
         }
 
         $metadata = Arr::get($validated, 'metadata', []);
-        $priceCents = max(0, (int) Arr::get($metadata, 'client_price_cents', 0));
+        $priceCents = Arr::has($metadata, 'client_price_cents')
+            ? max(0, (int) Arr::get($metadata, 'client_price_cents'))
+            : max(0, (int) round(((float) Arr::get($metadata, 'client_price', 0)) * 100));
         $currency = strtoupper((string) Arr::get($metadata, 'currency', 'BRL'));
 
         // Client pricing is captured only for funnel telemetry. Billing must resolve
