@@ -47,11 +47,14 @@ final class CreativeGenerationController extends Controller
             ...$this->templates->eventPresets(),
             'candidate_variations' => $this->candidates->variationKeys(),
             'regeneration_modes' => $this->regeneration->keys(),
+            'generation_modes' => ['preview', 'final'],
+            'max_reference_images' => (int) config('creative.event_flyer.max_reference_images', 4),
         ]);
     }
 
     public function image(Request $request)
     {
+        $maxReferences = (int) config('creative.event_flyer.max_reference_images', 4);
         $data = $request->validate([
             'purpose' => ['required', Rule::in(array_merge([CreativePromptTemplateService::EVENT_FLYER_BACKGROUND], self::MARKETING_PURPOSES))],
             'subject' => 'required|string|min:2|max:180',
@@ -74,12 +77,15 @@ final class CreativeGenerationController extends Controller
             'brand_colors' => 'nullable|array|max:5',
             'brand_colors.*' => ['string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'reference_notes' => 'nullable|string|max:500',
+            'reference_images' => 'nullable|array|max:'.$maxReferences,
+            'reference_images.*' => 'string|max:2000000',
             'creative_memory' => 'nullable|array|max:8',
             'creative_memory.*' => 'string|max:120',
             'promotions' => 'nullable|array|max:8',
             'promotions.*' => 'string|max:140',
             'featured_items' => 'nullable|array|max:8',
             'featured_items.*' => 'string|max:140',
+            'generation_mode' => ['nullable', Rule::in(['preview', 'final'])],
             'candidate_count' => 'nullable|integer|min:1|max:4',
             'candidate_variation' => ['nullable', Rule::in($this->candidates->variationKeys())],
             'regeneration_mode' => ['nullable', Rule::in($this->regeneration->keys())],
@@ -96,24 +102,39 @@ final class CreativeGenerationController extends Controller
         $zones = $this->safeZones->forFormat($direction['format_key']);
         $brief = $this->briefs->build($data, $direction, $zones);
         $profile = $this->profiles->resolve($data);
+        $generationMode = (string) ($data['generation_mode'] ?? 'preview');
 
         $prompt = implode("\n", array_filter([
             $this->templates->renderEventFlyer($data),
             $this->safeZones->prompt($zones),
             $this->briefs->toPromptContext($brief),
             $this->profiles->prompt($profile),
+            ! empty($data['reference_images'])
+                ? 'REFERENCE POLICY: use the supplied reference images only for style, venue, product or subject continuity as requested; never copy readable text, logos or typography from them.'
+                : null,
         ]));
         $prompt = $this->regeneration->apply($prompt, $data['regeneration_mode'] ?? null);
 
+        [$width, $height] = $generationMode === 'final'
+            ? [$direction['width'], $direction['height']]
+            : $this->previewDimensions($direction['width'], $direction['height']);
+
         $generationOptions = [
-            'width' => $direction['width'],
-            'height' => $direction['height'],
+            'width' => $width,
+            'height' => $height,
             'format' => $direction['format_key'],
-            'model' => config('creative.cloudflare.event_quality_model'),
-            'steps' => config('creative.cloudflare.event_quality_steps'),
+            'model' => $generationMode === 'final'
+                ? config('creative.cloudflare.event_quality_model')
+                : config('creative.cloudflare.event_preview_model'),
+            'steps' => $generationMode === 'final'
+                ? config('creative.cloudflare.event_quality_steps')
+                : config('creative.cloudflare.event_preview_steps', 4),
+            'reference_images' => $data['reference_images'] ?? [],
         ];
 
-        $candidateCount = (int) ($data['candidate_count'] ?? config('creative.event_flyer.candidate_count', 3));
+        $candidateCount = $generationMode === 'final'
+            ? 1
+            : (int) ($data['candidate_count'] ?? config('creative.event_flyer.candidate_count', 3));
         $planned = $this->candidates->prompts(
             $prompt,
             $candidateCount,
@@ -161,7 +182,8 @@ final class CreativeGenerationController extends Controller
 
         $winner = $generated[0];
         $result = $winner['result'];
-        $includeCandidates = (bool) ($data['include_candidates'] ?? config('creative.event_flyer.return_candidates', false));
+        $includeCandidates = $generationMode === 'preview'
+            && (bool) ($data['include_candidates'] ?? config('creative.event_flyer.return_candidates', false));
 
         return response()->json([
             'image' => $this->imagePayload($result),
@@ -169,6 +191,7 @@ final class CreativeGenerationController extends Controller
                 'brief' => $brief,
                 'safe_zones' => $zones,
                 'profile' => $profile,
+                'generation_mode' => $generationMode,
                 'selected_candidate' => [
                     'variation' => $winner['variation'],
                     'quality' => $winner['evaluation'],
@@ -184,9 +207,11 @@ final class CreativeGenerationController extends Controller
             'usage' => [
                 'plan' => 'free_guarded',
                 'purpose' => $data['purpose'],
+                'generation_mode' => $generationMode,
                 'text_rendering' => 'client_canonical_overlay',
                 'prompt_version' => $this->templates->definition(CreativePromptTemplateService::EVENT_FLYER_BACKGROUND)['version'],
                 'candidate_count' => count($generated),
+                'reference_count' => $result['reference_count'] ?? 0,
                 'creative_direction' => [
                     'style' => $direction['style_key'],
                     'intensity' => $direction['intensity_key'],
@@ -196,11 +221,27 @@ final class CreativeGenerationController extends Controller
                 'generation_profile' => [
                     'model' => $result['model'],
                     'steps' => $result['requested_steps'] ?? null,
-                    'width' => $result['requested_width'] ?? $direction['width'],
-                    'height' => $result['requested_height'] ?? $direction['height'],
+                    'width' => $result['requested_width'] ?? $width,
+                    'height' => $result['requested_height'] ?? $height,
                 ],
             ],
         ]);
+    }
+
+    private function previewDimensions(int $width, int $height): array
+    {
+        $limit = (int) config('creative.event_flyer.preview_long_edge', 960);
+        $longEdge = max($width, $height);
+        if ($longEdge <= $limit) {
+            return [$width, $height];
+        }
+
+        $scale = $limit / $longEdge;
+
+        return [
+            max(256, (int) round($width * $scale)),
+            max(256, (int) round($height * $scale)),
+        ];
     }
 
     private function generateMarketingImage(Request $request, array $data)
