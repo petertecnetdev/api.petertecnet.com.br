@@ -3,6 +3,7 @@
 use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PayoutController;
 use App\Domain\Finance\Http\Controllers\SubscriptionIntentController;
+use App\Domain\Finance\Http\Controllers\SubscriptionPaymentController;
 use App\Domain\Finance\Http\Controllers\SubscriptionPlanController;
 use Illuminate\Support\Facades\Route;
 
@@ -25,7 +26,19 @@ Route::prefix('v1/apps/{application}/subscription-intents')
         Route::get('/{intent}', [SubscriptionIntentController::class, 'show'])
             ->whereUuid('intent')
             ->name('finance.subscription-intents.show');
+        Route::post('/{intent}/checkout', [SubscriptionPaymentController::class, 'checkout'])
+            ->whereUuid('intent')
+            ->middleware('throttle:20,1')
+            ->name('finance.subscription-payments.checkout');
+        Route::post('/{intent}/sync', [SubscriptionPaymentController::class, 'sync'])
+            ->whereUuid('intent')
+            ->middleware('throttle:60,1')
+            ->name('finance.subscription-payments.sync');
     });
+
+Route::post('v1/subscription-payments/mercadopago/webhook', [SubscriptionPaymentController::class, 'webhook'])
+    ->middleware('throttle:240,1')
+    ->name('finance.subscription-payments.webhook');
 
 Route::prefix('finance/webhooks')->group(function () {
     Route::post('/asaas', [FinancialController::class, 'providerWebhook'])
