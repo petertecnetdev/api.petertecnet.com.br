@@ -20,13 +20,25 @@ class SubscriptionIntentTest extends TestCase
             'email' => Str::uuid().'@example.com',
             'password' => bcrypt('password'),
             'email_verified_at' => now(),
+            'auth_version' => 1,
         ]);
+    }
+
+    private function headers(User $user, string $idempotencyKey): array
+    {
+        $token = auth('api')->login($user);
+
+        return [
+            'Authorization' => 'Bearer '.$token,
+            'Idempotency-Key' => $idempotencyKey,
+        ];
     }
 
     public function test_authenticated_user_can_create_idempotent_subscription_intent_with_server_price(): void
     {
         $user = $this->user();
         $key = (string) Str::uuid();
+        $headers = $this->headers($user, $key);
 
         $payload = [
             'plan_code' => 'pro',
@@ -35,8 +47,7 @@ class SubscriptionIntentTest extends TestCase
             'metadata' => ['client_price_cents' => 1],
         ];
 
-        $first = $this->actingAs($user, 'api')
-            ->withHeader('Idempotency-Key', $key)
+        $first = $this->withHeaders($headers)
             ->postJson('/api/v1/apps/payflow/subscription-intents', $payload);
 
         $first->assertCreated()
@@ -45,8 +56,7 @@ class SubscriptionIntentTest extends TestCase
             ->assertJsonPath('data.currency', 'BRL')
             ->assertJsonPath('data.status', 'created');
 
-        $second = $this->actingAs($user, 'api')
-            ->withHeader('Idempotency-Key', $key)
+        $second = $this->withHeaders($headers)
             ->postJson('/api/v1/apps/payflow/subscription-intents', $payload);
 
         $second->assertOk();
@@ -57,14 +67,13 @@ class SubscriptionIntentTest extends TestCase
     {
         $user = $this->user();
         $key = (string) Str::uuid();
+        $headers = $this->headers($user, $key);
 
-        $this->actingAs($user, 'api')
-            ->withHeader('Idempotency-Key', $key)
+        $this->withHeaders($headers)
             ->postJson('/api/v1/apps/payflow/subscription-intents', ['plan_code' => 'starter'])
             ->assertCreated();
 
-        $this->actingAs($user, 'api')
-            ->withHeader('Idempotency-Key', $key)
+        $this->withHeaders($headers)
             ->postJson('/api/v1/apps/payflow/subscription-intents', ['plan_code' => 'business'])
             ->assertStatus(409);
     }
@@ -73,8 +82,7 @@ class SubscriptionIntentTest extends TestCase
     {
         $user = $this->user();
 
-        $this->actingAs($user, 'api')
-            ->withHeader('Idempotency-Key', (string) Str::uuid())
+        $this->withHeaders($this->headers($user, (string) Str::uuid()))
             ->postJson('/api/v1/apps/cutinapp/subscription-intents', ['plan_code' => 'pro'])
             ->assertStatus(422);
     }
