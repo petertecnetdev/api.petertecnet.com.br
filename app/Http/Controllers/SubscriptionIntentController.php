@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Models\Application;
-use App\Models\SubscriptionIntent;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
@@ -38,8 +38,28 @@ class SubscriptionIntentController extends Controller
             ], 422);
         }
 
+        $appSlug = strtolower((string) $app->slug);
+        $subscriptionDefinition = config("subscriptions.applications.{$appSlug}");
+
+        if (! is_array($subscriptionDefinition) || ! ($subscriptionDefinition['subscription_enabled'] ?? false)) {
+            return response()->json([
+                'message' => 'Subscriptions are not enabled for this application.',
+            ], 422);
+        }
+
+        $planCode = strtolower((string) $validated['plan_code']);
+        $plan = collect($subscriptionDefinition['plans'] ?? [])->first(
+            static fn (array $candidate): bool => strtolower((string) ($candidate['code'] ?? '')) === $planCode
+        );
+
+        if (! is_array($plan)) {
+            return response()->json([
+                'message' => 'The selected subscription plan is not available for this application.',
+                'errors' => ['plan_code' => ['The selected subscription plan is invalid.']],
+            ], 422);
+        }
+
         $userId = (int) $request->user()->getAuthIdentifier();
-        $appSlug = (string) $app->slug;
 
         $existing = SubscriptionIntent::query()
             ->where('application', $appSlug)
@@ -48,7 +68,7 @@ class SubscriptionIntentController extends Controller
             ->first();
 
         if ($existing) {
-            if ($existing->plan_code !== $validated['plan_code']) {
+            if ($existing->plan_code !== $planCode) {
                 return response()->json([
                     'message' => 'Idempotency-Key already used for a different subscription plan.',
                 ], 409);
@@ -58,14 +78,14 @@ class SubscriptionIntentController extends Controller
         }
 
         $metadata = Arr::get($validated, 'metadata', []);
-        $priceCents = Arr::has($metadata, 'client_price_cents')
-            ? max(0, (int) Arr::get($metadata, 'client_price_cents'))
-            : max(0, (int) round(((float) Arr::get($metadata, 'client_price', 0)) * 100));
-        $currency = strtoupper((string) Arr::get($metadata, 'currency', 'BRL'));
-
-        // Client pricing is captured only for funnel telemetry. Billing must resolve
-        // the authoritative server-side plan price before creating a payment.
+        // Browser-provided pricing is telemetry only. Billing always uses the
+        // authoritative server-side catalog in config/subscriptions.php.
         $metadata['pricing_authoritative'] = false;
+
+        $priceCents = max(0, (int) ($plan['price_cents'] ?? 0));
+        $currency = strtoupper((string) config('subscriptions.currency', 'BRL'));
+        $billingInterval = (string) ($plan['billing_interval'] ?? config('subscriptions.billing_interval', 'month'));
+        $billingIntervalCount = max(1, (int) ($plan['billing_interval_count'] ?? config('subscriptions.billing_interval_count', 1)));
 
         $intent = SubscriptionIntent::query()->firstOrCreate(
             [
@@ -75,12 +95,12 @@ class SubscriptionIntentController extends Controller
             ],
             [
                 'public_id' => (string) Str::uuid(),
-                'plan_code' => $validated['plan_code'],
-                'plan_name' => $validated['plan_code'],
+                'plan_code' => $planCode,
+                'plan_name' => (string) ($plan['name'] ?? $planCode),
                 'price_cents' => $priceCents,
                 'currency' => $currency,
-                'billing_interval' => 'month',
-                'billing_interval_count' => 1,
+                'billing_interval' => $billingInterval,
+                'billing_interval_count' => $billingIntervalCount,
                 'source' => Arr::get($validated, 'source'),
                 'handoff_channel' => Arr::get($validated, 'handoff_channel'),
                 'status' => 'created',
@@ -88,7 +108,7 @@ class SubscriptionIntentController extends Controller
             ]
         );
 
-        if (! $intent->wasRecentlyCreated && $intent->plan_code !== $validated['plan_code']) {
+        if (! $intent->wasRecentlyCreated && $intent->plan_code !== $planCode) {
             return response()->json([
                 'message' => 'Idempotency-Key already used for a different subscription plan.',
             ], 409);
