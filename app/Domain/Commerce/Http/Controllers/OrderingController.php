@@ -300,7 +300,12 @@ class OrderingController extends Controller
             $this->manageable($request, (int) $model->entity_id);
             $previous = (string) $model->status;
             abort_if($previous === 'cancelled' && $data['status'] !== 'cancelled', 422, 'Pedido cancelado não pode ser reaberto automaticamente.');
-            if ($data['status'] === 'cancelled' && $previous !== 'cancelled') $this->restoreStock($model);
+            abort_if($previous === 'completed' && $data['status'] !== 'completed', 422, 'Pedido concluído não pode ser reaberto automaticamente.');
+
+            if ($data['status'] === 'cancelled' && $previous !== 'cancelled') {
+                abort_if($model->isPaid(), 422, 'Pedido pago exige estorno antes do cancelamento.');
+                $this->restoreStock($model);
+            }
 
             $model->forceFill([
                 'status' => $data['status'],
