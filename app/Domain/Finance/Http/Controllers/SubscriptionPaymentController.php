@@ -4,6 +4,7 @@ namespace App\Domain\Finance\Http\Controllers;
 
 use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Domain\Finance\Services\SubscriptionBillingService;
+use App\Domain\Finance\Services\SubscriptionPaymentLocator;
 use App\Http\Controllers\Controller;
 use App\Services\MercadoPagoService;
 use Illuminate\Http\JsonResponse;
@@ -15,6 +16,7 @@ final class SubscriptionPaymentController extends Controller
 {
     public function __construct(
         private readonly SubscriptionBillingService $billing,
+        private readonly SubscriptionPaymentLocator $payments,
         private readonly MercadoPagoService $mercadoPago,
     ) {}
 
@@ -31,7 +33,7 @@ final class SubscriptionPaymentController extends Controller
             return response()->json($this->billing->status($record->public_id, (int) $record->user_id, $application));
         }
 
-        $data = $request->validate(['method' => ['required', 'string', 'in:pix']]);
+        $request->validate(['method' => ['required', 'string', 'in:pix']]);
         $idempotencyKey = trim((string) $request->header('Idempotency-Key', ''));
         if ($idempotencyKey === '' || strlen($idempotencyKey) > 120) {
             return response()->json(['message' => 'Envie um Idempotency-Key válido para iniciar o checkout.'], 422);
@@ -54,15 +56,10 @@ final class SubscriptionPaymentController extends Controller
             ->where('user_id', $request->user()->getKey())
             ->firstOrFail();
 
-        $payment = \Illuminate\Support\Facades\DB::table('ecosystem_payments')
-            ->where('app_slug', $application)
-            ->where('source_type', 'subscription_intent')
-            ->where('source_reference', $record->public_id)
-            ->first();
-
-        if ($payment?->provider_payment_id) {
+        $providerPaymentId = $this->payments->providerPaymentId($record);
+        if ($providerPaymentId) {
             try {
-                $this->billing->reconcileProviderPayment((string) $payment->provider_payment_id);
+                $this->billing->reconcileProviderPayment($providerPaymentId);
             } catch (Throwable $exception) {
                 report($exception);
                 return response()->json([
@@ -74,7 +71,7 @@ final class SubscriptionPaymentController extends Controller
 
         return response()->json([
             ...$this->billing->status($record->public_id, (int) $record->user_id, $application),
-            'reconciliation' => $payment ? 'ok' : 'no_payment',
+            'reconciliation' => $providerPaymentId ? 'ok' : 'no_payment',
         ]);
     }
 
