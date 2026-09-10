@@ -13,13 +13,25 @@ use Illuminate\Validation\ValidationException;
 
 class Event extends Model
 {
+    protected $attributes = ['is_private' => false];
+
     protected $fillable = ['app_id','app_slug','production_id','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','max_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'];
     protected $casts = ['start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer'];
     protected $appends = ['temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions'];
 
+    public function scopePubliclyVisible($query)
+    {
+        return $query
+            ->where('is_published', true)
+            ->where(fn ($status) => $status->where('is_cancelled', false)->orWhereNull('is_cancelled'))
+            ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'));
+    }
+
     protected static function booted(): void
     {
         static::saving(function (Event $event) {
+            if ($event->getAttribute('is_private') === null) $event->setAttribute('is_private', false);
+
             foreach (['event_format','city_id','cep','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','latitude','longitude','google_maps_url','online_platform','online_url','online_instructions'] as $field) {
                 if (request()->exists($field)) $event->setAttribute($field, request()->input($field));
             }
