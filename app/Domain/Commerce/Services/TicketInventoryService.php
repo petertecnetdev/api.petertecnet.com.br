@@ -36,7 +36,7 @@ final class TicketInventoryService
      * checkout allocation semantics.
      *
      * @param Collection<int, Ticket> $tickets
-     * @return Collection<int, array{remaining:int,expired:bool,available:bool}>
+     * @return Collection<int, array{remaining:int,capacity_remaining:int,issued:int,reserved:int,expired:bool,available:bool}>
      */
     public function states(Collection $tickets, ?Carbon $now = null): Collection
     {
@@ -63,19 +63,99 @@ final class TicketInventoryService
             ->pluck('aggregate', 'ticket_id');
 
         return $tickets->mapWithKeys(function (Ticket $ticket) use ($issued, $reserved, $now) {
-            $remaining = max(
-                0,
-                (int) $ticket->quantity
-                    - (int) ($issued[$ticket->id] ?? 0)
-                    - (int) ($reserved[$ticket->id] ?? 0)
-            );
+            $issuedCount = (int) ($issued[$ticket->id] ?? 0);
+            $reservedCount = (int) ($reserved[$ticket->id] ?? 0);
+            $capacityRemaining = max(0, (int) $ticket->quantity - $issuedCount);
+            $remaining = max(0, $capacityRemaining - $reservedCount);
             $expired = (bool) ($ticket->limit_date && $now->greaterThanOrEqualTo($ticket->limit_date));
 
             return [(int) $ticket->id => [
                 'remaining' => $remaining,
+                'capacity_remaining' => $capacityRemaining,
+                'issued' => $issuedCount,
+                'reserved' => $reservedCount,
                 'expired' => $expired,
                 'available' => ! $expired && $remaining > 0,
             ]];
         });
+    }
+
+    /**
+     * Classify a collection of ticket lots using the same inventory facts as
+     * checkout. The result is intentionally generic so any application can
+     * explain availability without duplicating financial/inventory rules.
+     *
+     * @param Collection<int, Ticket> $tickets
+     * @param Collection<int, array>|null $states
+     * @return array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int}
+     */
+    public function availability(Collection $tickets, ?Carbon $now = null, ?Collection $states = null): array
+    {
+        $now ??= Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+
+        if ($tickets->isEmpty()) {
+            return [
+                'status' => 'tickets_pending',
+                'configured_lots_count' => 0,
+                'sellable_lots_count' => 0,
+                'sellable_free_lots_count' => 0,
+            ];
+        }
+
+        $states ??= $this->states($tickets, $now);
+        $sellable = $tickets->filter(fn (Ticket $ticket) => (bool) ($states->get((int) $ticket->id)['available'] ?? false));
+        $sellableFree = $sellable->filter(fn (Ticket $ticket) => (float) $ticket->price <= 0);
+
+        if ($sellable->isNotEmpty()) {
+            return [
+                'status' => $sellableFree->isNotEmpty() ? 'free_available' : 'available',
+                'configured_lots_count' => $tickets->count(),
+                'sellable_lots_count' => $sellable->count(),
+                'sellable_free_lots_count' => $sellableFree->count(),
+            ];
+        }
+
+        $activeLots = $tickets->filter(fn (Ticket $ticket) => ! (bool) ($states->get((int) $ticket->id)['expired'] ?? true));
+        $temporarilyReserved = $activeLots->contains(function (Ticket $ticket) use ($states) {
+            $state = $states->get((int) $ticket->id, []);
+
+            return (int) ($state['capacity_remaining'] ?? 0) > 0
+                && (int) ($state['remaining'] ?? 0) === 0
+                && (int) ($state['reserved'] ?? 0) > 0;
+        });
+
+        $status = match (true) {
+            $temporarilyReserved => 'temporarily_reserved',
+            $activeLots->isEmpty() => 'sales_ended',
+            default => 'sold_out',
+        };
+
+        return [
+            'status' => $status,
+            'configured_lots_count' => $tickets->count(),
+            'sellable_lots_count' => 0,
+            'sellable_free_lots_count' => 0,
+        ];
+    }
+
+    /**
+     * Compute availability summaries for many events with one pair of issued /
+     * reservation aggregate queries, keeping discovery free from N+1 lookups.
+     *
+     * @param Collection<int, Ticket> $tickets
+     * @return Collection<int, array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int}>
+     */
+    public function availabilityByEvent(Collection $tickets, ?Carbon $now = null): Collection
+    {
+        if ($tickets->isEmpty()) {
+            return collect();
+        }
+
+        $now ??= Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
+        $states = $this->states($tickets, $now);
+
+        return $tickets
+            ->groupBy(fn (Ticket $ticket) => (int) $ticket->event_id)
+            ->map(fn (Collection $eventTickets) => $this->availability($eventTickets, $now, $states));
     }
 }
