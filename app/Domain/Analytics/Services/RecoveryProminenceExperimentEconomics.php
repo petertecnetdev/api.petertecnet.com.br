@@ -7,6 +7,7 @@ final class RecoveryProminenceExperimentEconomics
     private const VIEWED = 'frontend_checkout_recovery_notification_cta_viewed';
     private const CLICKED = 'frontend_checkout_recovery_notification_cta_clicked';
     private const MIN_EXPOSED_ORDERS_PER_VARIANT = 30;
+    private const CONFIDENCE_Z_95 = 1.959963984540054;
 
     /**
      * Summarize a deterministic recovery prominence experiment by assigned variant.
@@ -133,7 +134,8 @@ final class RecoveryProminenceExperimentEconomics
             'relative_contribution_lift_percent' => null,
             'diagnostic_incremental_paid_orders_per_100_impressions' => null,
             'diagnostic_incremental_platform_contribution_per_impression' => null,
-            'decision' => $this->decision(false, null, null),
+            'paid_conversion_difference_confidence_95' => null,
+            'decision' => $this->decision(false, null, null, null),
         ];
 
         if ($comparisonIsMature) {
@@ -148,6 +150,12 @@ final class RecoveryProminenceExperimentEconomics
 
             $incrementalPaidRate = round($treatmentPaidRate - $controlPaidRate, 2);
             $incrementalContribution = round($treatmentContribution - $controlContribution, 4);
+            $paidConversionConfidence = $this->paidConversionDifferenceConfidence(
+                (int) ($control['paid_orders'] ?? 0),
+                (int) ($control['exposed_orders'] ?? 0),
+                (int) ($treatment['paid_orders'] ?? 0),
+                (int) ($treatment['exposed_orders'] ?? 0),
+            );
 
             $comparison['incremental_paid_orders_per_100_exposed_orders'] = $incrementalPaidRate;
             $comparison['incremental_platform_contribution_per_exposed_order'] = $incrementalContribution;
@@ -156,7 +164,8 @@ final class RecoveryProminenceExperimentEconomics
                 : null;
             $comparison['diagnostic_incremental_paid_orders_per_100_impressions'] = round($treatmentPaidPerImpression - $controlPaidPerImpression, 2);
             $comparison['diagnostic_incremental_platform_contribution_per_impression'] = round($treatmentContributionPerImpression - $controlContributionPerImpression, 4);
-            $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution);
+            $comparison['paid_conversion_difference_confidence_95'] = $paidConversionConfidence;
+            $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution, $paidConversionConfidence);
         }
 
         return [
@@ -167,29 +176,72 @@ final class RecoveryProminenceExperimentEconomics
         ];
     }
 
+    /** @return array<string, mixed>|null */
+    private function paidConversionDifferenceConfidence(
+        int $controlPaid,
+        int $controlExposed,
+        int $treatmentPaid,
+        int $treatmentExposed,
+    ): ?array {
+        if ($controlExposed <= 0 || $treatmentExposed <= 0) {
+            return null;
+        }
+
+        $controlRate = $controlPaid / $controlExposed;
+        $treatmentRate = $treatmentPaid / $treatmentExposed;
+        $difference = $treatmentRate - $controlRate;
+        $standardError = sqrt(
+            (($controlRate * (1 - $controlRate)) / $controlExposed)
+            + (($treatmentRate * (1 - $treatmentRate)) / $treatmentExposed)
+        );
+        $margin = self::CONFIDENCE_Z_95 * $standardError;
+        $lower = ($difference - $margin) * 100;
+        $upper = ($difference + $margin) * 100;
+
+        return [
+            'level_percent' => 95,
+            'lower_paid_orders_per_100_exposed_orders' => round($lower, 2),
+            'upper_paid_orders_per_100_exposed_orders' => round($upper, 2),
+            'excludes_zero' => $lower > 0.0 || $upper < 0.0,
+            'supports_non_decreasing_conversion' => $lower >= 0.0,
+            'supports_conversion_harm' => $upper < 0.0,
+        ];
+    }
+
+    /** @param array<string, mixed>|null $paidConversionConfidence */
     /** @return array<string, mixed> */
-    private function decision(bool $sampleIsMature, ?float $incrementalPaidRate, ?float $incrementalContribution): array
-    {
+    private function decision(
+        bool $sampleIsMature,
+        ?float $incrementalPaidRate,
+        ?float $incrementalContribution,
+        ?array $paidConversionConfidence,
+    ): array {
         if (! $sampleIsMature) {
-            return $this->decisionPayload('inconclusive', 'control', 'sample_immature', false, null, null);
+            return $this->decisionPayload('inconclusive', 'control', 'sample_immature', false, null, null, false);
         }
 
         $paidConversionNonDecreasing = $incrementalPaidRate !== null && $incrementalPaidRate >= 0.0;
         $platformContributionPositive = $incrementalContribution !== null && $incrementalContribution > 0.0;
+        $conversionConfidenceSupportsNonDecrease = (bool) ($paidConversionConfidence['supports_non_decreasing_conversion'] ?? false);
+        $conversionConfidenceSupportsHarm = (bool) ($paidConversionConfidence['supports_conversion_harm'] ?? false);
 
-        if (! $paidConversionNonDecreasing) {
-            return $this->decisionPayload('harmful', 'control', 'paid_conversion_guardrail_failed', false, false, $platformContributionPositive);
+        if ($conversionConfidenceSupportsHarm) {
+            return $this->decisionPayload('harmful', 'control', 'paid_conversion_guardrail_failed_with_95_confidence', false, false, $platformContributionPositive, true);
         }
 
         if ($incrementalContribution !== null && $incrementalContribution < 0.0) {
-            return $this->decisionPayload('harmful', 'control', 'platform_contribution_guardrail_failed', false, true, false);
+            return $this->decisionPayload('harmful', 'control', 'platform_contribution_guardrail_failed', false, $paidConversionNonDecreasing, false, $conversionConfidenceSupportsNonDecrease);
+        }
+
+        if (! $conversionConfidenceSupportsNonDecrease) {
+            return $this->decisionPayload('inconclusive', 'control', 'paid_conversion_uncertainty', false, $paidConversionNonDecreasing, $platformContributionPositive, false);
         }
 
         if ($platformContributionPositive) {
-            return $this->decisionPayload('winner', 'prominent', 'conversion_preserved_and_contribution_improved', true, true, true);
+            return $this->decisionPayload('winner', 'prominent', 'conversion_preserved_with_95_confidence_and_contribution_improved', true, true, true, true);
         }
 
-        return $this->decisionPayload('inconclusive', 'control', 'no_positive_net_contribution_lift', false, true, false);
+        return $this->decisionPayload('inconclusive', 'control', 'no_positive_net_contribution_lift', false, true, false, true);
     }
 
     /** @return array<string, mixed> */
@@ -200,6 +252,7 @@ final class RecoveryProminenceExperimentEconomics
         bool $eligibleForRollout,
         ?bool $paidConversionNonDecreasing,
         ?bool $platformContributionPositive,
+        bool $conversionConfidenceSatisfied,
     ): array {
         return [
             'status' => $status,
@@ -207,6 +260,10 @@ final class RecoveryProminenceExperimentEconomics
             'reason' => $reason,
             'eligible_for_rollout' => $eligibleForRollout,
             'requires_manual_review' => true,
+            'confidence' => [
+                'level_percent' => 95,
+                'paid_conversion_guardrail_satisfied' => $conversionConfidenceSatisfied,
+            ],
             'guardrails' => [
                 'paid_conversion_non_decreasing' => $paidConversionNonDecreasing,
                 'platform_contribution_positive' => $platformContributionPositive,
