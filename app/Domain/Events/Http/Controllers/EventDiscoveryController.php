@@ -239,13 +239,18 @@ final class EventDiscoveryController extends Controller
             ])
             ->firstOrFail();
         $eventEnded = $event->hasEnded($now);
-        $tickets = Ticket::query()
+        $allTickets = Ticket::query()
             ->where('app_id', $appId)
             ->where('event_id', $event->id)
-            ->where('price', 0)
             ->orderBy('created_at')
             ->get();
-        $ticketStates = $this->ticketInventory->states($tickets, $now);
+        $ticketStates = $this->ticketInventory->states($allTickets, $now);
+        $availability = $this->ticketInventory->availability($allTickets, $now, $ticketStates);
+        $event->setAttribute('ticket_availability_status', $availability['status']);
+        $event->setAttribute('sellable_ticket_lots_count', $availability['sellable_lots_count']);
+        $event->setAttribute('sellable_free_ticket_lots_count', $availability['sellable_free_lots_count']);
+
+        $tickets = $allTickets->filter(fn (Ticket $ticket) => (float) $ticket->price <= 0)->values();
         $tickets->each(function (Ticket $ticket) use ($ticketStates, $eventEnded) {
             $state = $ticketStates->get((int) $ticket->id, ['remaining' => 0, 'expired' => true, 'available' => false]);
             if ($eventEnded) {
@@ -319,6 +324,7 @@ final class EventDiscoveryController extends Controller
             ->selectRaw('category, COUNT(*) total')
             ->groupBy('category')
             ->orderByDesc('total')
+            ->orderBy('category')
             ->limit(50)
             ->get();
 
