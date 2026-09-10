@@ -34,9 +34,7 @@ final class EventCommerceController extends Controller
         $event = Event::query()
             ->where('app_id', $this->context->id())
             ->where('slug', $slug)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->publiclyVisible()
             ->whereHas('production', fn ($q) => $q->where('app_id', $this->context->id()))
             ->firstOrFail();
 
