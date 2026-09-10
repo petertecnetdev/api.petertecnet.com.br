@@ -137,6 +137,32 @@ final class EventAgendaMaintenanceService
         ];
     }
 
+    public function retireRemovedSchedule(EventSchedule $schedule): int
+    {
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $future = Event::query()
+            ->where('app_id', $schedule->app_id)
+            ->where('event_schedule_id', $schedule->id)
+            ->where('start_date', '>', Carbon::now($timezone))
+            ->get();
+
+        $retired = 0;
+        foreach ($future as $event) {
+            if ($this->hasCommercialActivity($event)) {
+                $event->forceFill([
+                    'event_schedule_id' => null,
+                    'event_schedule_occurrence_date' => null,
+                ])->saveQuietly();
+                continue;
+            }
+
+            $this->retireOccurrence($event, (int) $schedule->source_event_id);
+            $retired++;
+        }
+
+        return $retired;
+    }
+
     public function reconcileTemplateChange(EventSchedule $schedule, ?int $previousSourceEventId): int
     {
         if (! $previousSourceEventId || $previousSourceEventId === (int) $schedule->source_event_id) {
