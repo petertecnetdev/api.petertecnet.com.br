@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Facades\DB;
 
 class Order extends Model
 {
@@ -51,10 +52,6 @@ class Order extends Model
 
     protected $appends = ['attendant_user', 'client_user'];
 
-    /* ===============================
-       RELACIONAMENTOS DIRETOS
-    ================================ */
-
     public function items(): HasMany
     {
         return $this->hasMany(OrderItem::class);
@@ -95,10 +92,6 @@ class Order extends Model
         return $this->entity;
     }
 
-    /* ===============================
-       ATTENDANT USER (EMPLOYER -> USER)
-    ================================ */
-
     public function getAttendantUserAttribute()
     {
         if (empty($this->attendant_id)) {
@@ -118,8 +111,8 @@ class Order extends Model
                     'created_at',
                     'updated_at',
                 ])->with([
-                            'user:id,first_name,last_name,user_name,avatar,email',
-                        ]);
+                    'user:id,first_name,last_name,user_name,avatar,email',
+                ]);
             },
         ]);
 
@@ -142,8 +135,8 @@ class Order extends Model
                     'email',
                     'avatar',
                 ])->with([
-                            'avatarFile:id,entity_id,path',
-                        ]);
+                    'avatarFile:id,entity_id,path',
+                ]);
             },
         ]);
 
@@ -163,28 +156,27 @@ class Order extends Model
         ];
     }
 
-
-    /* ===============================
-       M�TODOS EST�TICOS AUXILIARES
-    ================================ */
-
-    public static function hasScheduleConflict($attendantId, $start, $end): bool
+    public static function hasScheduleConflict($attendantId, $start, $end, ?int $ignoreOrderId = null): bool
     {
-        return self::where('attendant_id', $attendantId)
+        return self::query()
+            ->where('attendant_id', $attendantId)
             ->where('type', 'appointment')
             ->whereIn('appointment_status', ['pending', 'confirmed'])
-            ->where(function ($query) use ($start, $end) {
-                $query->whereBetween('order_datetime', [$start, $end])
-                    ->orWhere(function ($q) use ($start, $end) {
-                        $q->where('order_datetime', '<', $start)
-                            ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start]);
-                    });
-            })
+            ->when($ignoreOrderId, fn ($query) => $query->whereKeyNot($ignoreOrderId))
+            ->where('order_datetime', '<', $end)
+            ->whereRaw('DATE_ADD(order_datetime, INTERVAL total_duration MINUTE) > ?', [$start])
             ->exists();
     }
 
     public static function nextOrderNumber($appId): string
     {
+        if (DB::transactionLevel() > 0) {
+            DB::table('applications')
+                ->where('id', $appId)
+                ->lockForUpdate()
+                ->first();
+        }
+
         $last = self::where('app_id', $appId)->max('order_number') ?: 0;
         return str_pad($last + 1, 3, '0', STR_PAD_LEFT);
     }
@@ -230,17 +222,7 @@ class Order extends Model
             $additions = $entry['additions'] ?? [];
             $removals = $entry['removals'] ?? [];
 
-            $item = \App\Models\Item::findOrFail($itemId);
-
-            $orderEntityName = strtolower(trim($this->entity_name));
-            $itemEntityName = strtolower(trim($item->entity_name));
-
-            if (
-                $itemEntityName !== $orderEntityName ||
-                (int) $item->entity_id !== (int) $this->entity_id
-            ) {
-                throw new \Exception("O item '{$item->name}' n�o pertence ao estabelecimento desta ordem.");
-            }
+            $item = $this->resolveContextItem($itemId, 'item');
 
             $unitPrice = (float) $item->price;
             $subtotal = $unitPrice * $quantity;
@@ -253,25 +235,45 @@ class Order extends Model
             ]);
 
             foreach ($additions as $add) {
+                $modifier = $this->resolveContextItem((int) $add['id'], 'adicional');
+
                 $orderItem->modifiers()->create([
-                    'modifier_id' => $add['id'],
-                    'quantity' => $add['quantity'] ?? 1,
+                    'modifier_id' => $modifier->id,
+                    'quantity' => max(1, (int) ($add['quantity'] ?? 1)),
                     'type' => 'addition',
                 ]);
             }
 
             foreach ($removals as $remId) {
+                $modifier = $this->resolveContextItem((int) $remId, 'remoção');
+
                 $orderItem->modifiers()->create([
-                    'modifier_id' => $remId,
+                    'modifier_id' => $modifier->id,
                     'type' => 'removal',
                 ]);
             }
         }
     }
 
-    /* ===============================
-       INTERA��ES E M�TRICAS
-    ================================ */
+    private function resolveContextItem(int $itemId, string $label): Item
+    {
+        $item = Item::query()
+            ->forApplication((int) $this->app_id)
+            ->find($itemId);
+
+        if (!$item) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['items' => "O {$label} informado não está disponível para esta aplicação."]);
+        }
+
+        if (
+            strtolower(trim((string) $item->entity_name)) !== strtolower(trim((string) $this->entity_name)) ||
+            (int) $item->entity_id !== (int) $this->entity_id
+        ) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['items' => "O {$label} '{$item->name}' não pertence ao estabelecimento desta ordem."]);
+        }
+
+        return $item;
+    }
 
     public function interactions(): HasMany
     {
@@ -352,10 +354,6 @@ class Order extends Model
         ];
     }
 
-    /* ===============================
-       STATUS E UTILIT�RIOS
-    ================================ */
-
     public function isPaid(): bool
     {
         return $this->payment_status === 'paid';
@@ -392,8 +390,8 @@ class Order extends Model
     }
 
     public function establishment()
-{
-    return $this->belongsTo(Establishment::class, 'entity_id')
-        ->where('entity_name', 'establishment');
-}
+    {
+        return $this->belongsTo(Establishment::class, 'entity_id')
+            ->where('entity_name', 'establishment');
+    }
 }

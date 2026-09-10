@@ -9,6 +9,7 @@ class EventSchedule extends Model
     protected $fillable = [
         'app_id',
         'production_id',
+        'source_event_id',
         'title',
         'description',
         'category',
@@ -36,6 +37,7 @@ class EventSchedule extends Model
     protected $casts = [
         'app_id' => 'integer',
         'production_id' => 'integer',
+        'source_event_id' => 'integer',
         'day_of_week' => 'integer',
         'max_attendees' => 'integer',
         'latitude' => 'decimal:7',
@@ -47,6 +49,11 @@ class EventSchedule extends Model
     public function production()
     {
         return $this->belongsTo(Production::class);
+    }
+
+    public function sourceEvent()
+    {
+        return $this->belongsTo(Event::class, 'source_event_id');
     }
 
     public function generatedEvents()

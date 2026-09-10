@@ -2,10 +2,14 @@
 
 namespace App\Domain\Organizations\Services;
 
+use App\Domain\Commerce\Services\TicketInventoryService;
 use App\Models\Application;
 use App\Models\Artist;
 use App\Models\Event;
+use App\Models\EventAgendaSetting;
+use App\Models\EventSchedule;
 use App\Models\Production;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -18,6 +22,8 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 final class OrganizationService
 {
+    public function __construct(private readonly TicketInventoryService $ticketInventory) {}
+
     public function publicIndex(int $appId, array $data, array $queryParameters = []): LengthAwarePaginator
     {
         $query = Production::query()
@@ -164,11 +170,67 @@ final class OrganizationService
             ->where('is_cancelled', false)
             ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'));
 
+        $agendaEnabled = EventAgendaSetting::query()
+            ->where('app_id', $appId)
+            ->where('production_id', $organization->id)
+            ->value('is_active');
+
+        $weeklyAgenda = collect();
+        if ($agendaEnabled !== false) {
+            $weeklyAgenda = EventSchedule::query()
+                ->where('app_id', $appId)
+                ->where('production_id', $organization->id)
+                ->where('is_active', true)
+                ->whereNotNull('source_event_id')
+                ->with(['sourceEvent' => fn ($events) => $events
+                    ->where('app_id', $appId)
+                    ->where('is_published', true)
+                    ->where('is_cancelled', false)
+                    ->where(fn ($privacy) => $privacy->where('is_private', false)->orWhereNull('is_private'))])
+                ->get()
+                ->filter(fn (EventSchedule $schedule) => $schedule->sourceEvent !== null)
+                ->map(fn (EventSchedule $schedule) => [
+                    'day_of_week' => (int) $schedule->day_of_week,
+                    'event' => $schedule->sourceEvent,
+                ])
+                ->values();
+        }
+
         $upcoming = (clone $visibleEvents)
             ->where('end_date', '>', now())
             ->orderBy('start_date')
             ->limit(24)
             ->get();
+
+        $ticketEventIds = $upcoming->pluck('id')
+            ->merge($weeklyAgenda->pluck('event.id'))
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($ticketEventIds->isNotEmpty()) {
+            $tickets = Ticket::query()
+                ->where('app_id', $appId)
+                ->whereIn('event_id', $ticketEventIds)
+                ->get(['id', 'app_id', 'event_id', 'price', 'quantity', 'limit_date']);
+            $availabilityByEvent = $this->ticketInventory->availabilityByEvent($tickets);
+
+            $applyAvailability = function (Event $event) use ($availabilityByEvent) {
+                $summary = $availabilityByEvent->get((int) $event->id, [
+                    'status' => 'tickets_pending',
+                    'configured_lots_count' => 0,
+                    'sellable_lots_count' => 0,
+                    'sellable_free_lots_count' => 0,
+                ]);
+                $event->setAttribute('ticket_availability_status', $summary['status']);
+                $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
+                $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
+            };
+
+            $upcoming->each($applyAvailability);
+            $weeklyAgenda->each(fn (array $slot) => $applyAvailability($slot['event']));
+        }
 
         $past = (clone $visibleEvents)
             ->where('end_date', '<=', now())
@@ -188,7 +250,13 @@ final class OrganizationService
             ->limit(30)
             ->get();
 
-        return compact('organization', 'upcoming', 'past', 'artists');
+        return [
+            'organization' => $organization,
+            'weekly_agenda' => $weeklyAgenda,
+            'upcoming' => $upcoming,
+            'past' => $past,
+            'artists' => $artists,
+        ];
     }
 
     public function mine(int $appId, User $user)

@@ -57,7 +57,7 @@ class OrderingSettingsController extends Controller
     {
         return Establishment::query()
             ->whereKey($id)
-            ->where('app_id', $this->context->id())
+            ->forApplication($this->context->id())
             ->where('user_id', $request->user()->id)
             ->where('is_cancelled', false)
             ->firstOrFail();

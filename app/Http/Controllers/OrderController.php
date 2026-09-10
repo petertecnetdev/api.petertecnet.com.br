@@ -105,7 +105,7 @@ class OrderController extends ApiController
             'entity_id' => 'required|integer',
 
             'attendant_id' => 'required|integer|exists:employers,id',
-            'client_id' => 'required|integer|exists:users,id',
+            'client_id' => 'nullable|integer|exists:users,id',
 
             'customer_name' => 'required|string',
 
@@ -381,24 +381,6 @@ class OrderController extends ApiController
             // valida mode antes
             $request->validate($this->storeRules(), $this->messages());
 
-            // valida regra de negócio cliente != employer quando vier direto
-            if ($request->filled('employer_id') && $request->filled('client_id')) {
-                $employer = Employer::with('user')->find($request->input('employer_id'));
-                if (!$employer) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Colaborador informado não foi encontrado.',
-                    ], 422);
-                }
-
-                if ((int)$employer->user_id === (int)$request->input('client_id')) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Não é possível realizar um agendamento onde o cliente e o colaborador são a mesma pessoa.',
-                    ], 422);
-                }
-            }
-
             return match ($request->input('mode')) {
                 'appointment' => $this->storeAppointment($request),
                 'direct' => $this->storeDirect($request),
@@ -469,7 +451,12 @@ class OrderController extends ApiController
                 );
             }
 
-            $employer = Employer::with('user')->findOrFail($data['attendant_id']);
+            // Serializa agendamentos do mesmo profissional dentro da transação.
+            // Assim duas requisições simultâneas não conseguem validar o mesmo slot
+            // antes de uma delas persistir o agendamento.
+            $employer = Employer::with('user')
+                ->lockForUpdate()
+                ->findOrFail($data['attendant_id']);
             $this->validateClientIsNotEmployer((int)$user->id, $employer);
 
             $duration = $this->calculateDuration($data['items']);
@@ -579,9 +566,8 @@ class OrderController extends ApiController
 
     /**
      * ✅ DIRECT ORDER
-     * Corrigido para:
-     * - validar client != employer
-     * - sempre retornar success + order
+     * Pedido operacional de balcão/atendimento imediato.
+     * A regra de autoagendamento pertence exclusivamente ao modo appointment.
      */
     public function storeDirect(Request $request)
     {
@@ -599,7 +585,6 @@ class OrderController extends ApiController
             }
 
             $employer = Employer::with('user')->findOrFail($data['attendant_id']);
-            $this->validateClientIsNotEmployer((int)$data['client_id'], $employer);
 
             $order = Order::create([
                 'app_id' => $data['app_id'],
@@ -613,7 +598,7 @@ class OrderController extends ApiController
                 'order_datetime' => now('America/Sao_Paulo')->format('Y-m-d H:i:s'),
 
                 'created_by' => $request->user()->id,
-                'client_id' => $data['client_id'],
+                'client_id' => $data['client_id'] ?? null,
                 'attendant_id' => $employer->id,
 
                 'customer_name' => $data['customer_name'],

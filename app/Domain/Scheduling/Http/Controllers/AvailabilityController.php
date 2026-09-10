@@ -107,16 +107,28 @@ class AvailabilityController extends Controller
             return [];
         }
 
-        $reservations = EmployerSchedule::query()
+        $blockedSchedules = EmployerSchedule::query()
             ->where('employer_id', $employerId)
-            ->whereDate('reserved_date', $dateString)
             ->whereIn('type', ['break', 'holiday'])
-            ->get();
-        if ($reservations->contains(fn ($reservation) => $reservation->type === 'holiday')) {
+            ->where('is_active', true)
+            ->where(function ($query) use ($dateString, $dayOfWeek) {
+                $query->whereDate('reserved_date', $dateString)
+                    ->orWhere(function ($recurring) use ($dayOfWeek) {
+                        $recurring->whereNull('reserved_date')
+                            ->where('day_of_week', $dayOfWeek);
+                    });
+            })
+            ->get(['type', 'start_time', 'end_time', 'reserved_date', 'day_of_week']);
+
+        $hasFullDayHoliday = $blockedSchedules->contains(
+            fn ($schedule) => $schedule->type === 'holiday'
+                && ! $schedule->start_time
+                && ! $schedule->end_time
+        );
+        if ($hasFullDayHoliday) {
             return [];
         }
 
-        $breaks = $reservations->where('type', 'break')->values();
         $orders = Order::query()
             ->where('app_id', $this->context->id())
             ->where('attendant_id', $employerId)
@@ -135,10 +147,17 @@ class AvailabilityController extends Controller
                 $slotEnd = $slotStart->copy()->addMinutes($duration);
                 $isPast = $date->isSameDay($now) && $slotStart->lte($now);
 
-                $hitsBreak = $breaks->contains(function ($break) use ($dateString, $slotStart, $slotEnd) {
-                    $breakStart = Carbon::parse($dateString . ' ' . ($break->start_time ?: '00:00'), self::TZ);
-                    $breakEnd = Carbon::parse($dateString . ' ' . ($break->end_time ?: '23:59'), self::TZ);
-                    return $slotStart->lt($breakEnd) && $slotEnd->gt($breakStart);
+                $hitsBlockedSchedule = $blockedSchedules->contains(function ($blockedSchedule) use ($dateString, $slotStart, $slotEnd) {
+                    $blockedStart = Carbon::parse(
+                        $dateString . ' ' . ($blockedSchedule->start_time ?: '00:00'),
+                        self::TZ
+                    );
+                    $blockedEnd = Carbon::parse(
+                        $dateString . ' ' . ($blockedSchedule->end_time ?: '23:59'),
+                        self::TZ
+                    );
+
+                    return $slotStart->lt($blockedEnd) && $slotEnd->gt($blockedStart);
                 });
 
                 $hitsOrder = $orders->contains(function ($order) use ($slotStart, $slotEnd) {
@@ -148,7 +167,7 @@ class AvailabilityController extends Controller
                     return $slotStart->lt($orderEnd) && $slotEnd->gt($orderStart);
                 });
 
-                if (! $isPast && ! $hitsBreak && ! $hitsOrder) {
+                if (! $isPast && ! $hitsBlockedSchedule && ! $hitsOrder) {
                     $available[] = $slotStart->format('H:i');
                 }
                 $pointer->addMinutes(15);

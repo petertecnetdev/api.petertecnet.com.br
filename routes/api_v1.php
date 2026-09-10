@@ -229,6 +229,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
                 Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
                 Route::post('/events/{id}/duplicate', [EventManagementController::class, 'duplicate'])->whereNumber('id');
+                Route::delete('/events/bulk', [EventManagementController::class, 'destroyMany']);
                 Route::delete('/events/{id}', [EventManagementController::class, 'destroy'])->whereNumber('id');
             });
 

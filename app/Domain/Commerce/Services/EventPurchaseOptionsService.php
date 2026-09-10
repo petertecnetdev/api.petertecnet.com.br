@@ -4,7 +4,6 @@ namespace App\Domain\Commerce\Services;
 
 use App\Models\Event;
 use App\Models\EventItem;
-use App\Models\EventPass;
 use App\Models\Ticket;
 use App\Services\MerchantPaymentAccountService;
 use App\Support\ApplicationContext;
@@ -15,6 +14,7 @@ final class EventPurchaseOptionsService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly MerchantPaymentAccountService $accounts,
+        private readonly TicketInventoryService $ticketInventory,
     ) {}
 
     public function forSlug(string $slug): array
@@ -22,32 +22,22 @@ final class EventPurchaseOptionsService
         $event = $this->publicEvent($slug);
         $salesClosed = $event->salesClosed();
 
-        $tickets = Ticket::query()
+        $ticketModels = Ticket::query()
             ->where('app_id', $this->context->id())
             ->where('event_id', $event->id)
             ->where('price', '>', 0)
             ->orderBy('price')
-            ->get()
-            ->map(function (Ticket $ticket) use ($salesClosed) {
-                $issued = EventPass::query()
-                    ->where('ticket_id', $ticket->id)
-                    ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
-                    ->count();
-                $reserved = (int) DB::table('inventory_reservations')
-                    ->where('app_id', $this->context->id())
-                    ->where('ticket_id', $ticket->id)
-                    ->whereNull('released_at')
-                    ->where('expires_at', '>', now())
-                    ->sum('quantity');
-                $remaining = max(0, (int) $ticket->quantity - $issued - $reserved);
-                $expired = $salesClosed || (bool) ($ticket->limit_date && now()->greaterThanOrEqualTo($ticket->limit_date));
+            ->get();
+        $ticketStates = $this->ticketInventory->states($ticketModels);
+        $tickets = $ticketModels->map(function (Ticket $ticket) use ($salesClosed, $ticketStates) {
+            $state = $ticketStates->get((int) $ticket->id, ['remaining' => 0, 'expired' => true, 'available' => false]);
+            if ($salesClosed) {
+                $state['expired'] = true;
+                $state['available'] = false;
+            }
 
-                return array_merge($ticket->toArray(), [
-                    'remaining' => $remaining,
-                    'expired' => $expired,
-                    'available' => ! $expired && $remaining > 0,
-                ]);
-            })->values();
+            return array_merge($ticket->setAppends([])->toArray(), $state);
+        })->values();
 
         $items = EventItem::query()
             ->where('app_id', $this->context->id())
@@ -104,9 +94,7 @@ final class EventPurchaseOptionsService
         return Event::query()
             ->where('app_id', $this->context->id())
             ->where('slug', $slug)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->publiclyVisible()
             ->whereHas('production', fn ($query) => $query->where('app_id', $this->context->id()))
             ->firstOrFail();
     }
@@ -116,9 +104,7 @@ final class EventPurchaseOptionsService
         $query = Event::query()
             ->where('app_id', $this->context->id())
             ->where('production_id', $event->production_id)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where('is_private', false)
+            ->publiclyVisible()
             ->where(function ($q) {
                 $q->whereNull('end_date')->orWhere('end_date', '>', now());
             });

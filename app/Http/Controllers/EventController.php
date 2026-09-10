@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Event;
+use App\Models\EventItem;
+use App\Models\Item;
 use App\Models\Interaction;
 use App\Models\Production;
 use App\Services\EventProducerCommunicationService;
@@ -51,6 +53,9 @@ class EventController extends Controller
         $data['image'] = $request->hasFile('image') ? $this->storeImage($request->file('image')) : null;
 
         $event = Event::create($data);
+        $importedItems = $request->boolean('use_production_items')
+            ? $this->attachProductionItems($event)
+            : 0;
 
         try {
             app(EventProducerCommunicationService::class)->notify($event, 'created');
@@ -61,6 +66,7 @@ class EventController extends Controller
         return response()->json([
             'message' => 'Evento cadastrado com sucesso.',
             'event' => $event->load(self::PRODUCTION_RELATION),
+            'event_items_imported' => $importedItems,
         ], 201);
     }
 
@@ -257,6 +263,39 @@ class EventController extends Controller
             'segments' => 'sometimes|nullable|array',
             'establishment_name' => 'sometimes|nullable|string|max:255',
         ]);
+    }
+
+    private function attachProductionItems(Event $event): int
+    {
+        $items = Item::query()
+            ->forApplication((int) $event->app_id)
+            ->active()
+            ->where('entity_name', 'establishment')
+            ->where('entity_id', $event->production_id)
+            ->where('price', '>', 0)
+            ->where('stock', '>', 0)
+            ->get(['id', 'name', 'description', 'price', 'stock']);
+
+        foreach ($items as $item) {
+            EventItem::query()->updateOrCreate(
+                [
+                    'app_id' => (int) $event->app_id,
+                    'event_id' => (int) $event->id,
+                    'source_item_id' => (int) $item->id,
+                ],
+                [
+                    'name' => $item->name,
+                    'description' => $item->description,
+                    'price' => $item->price,
+                    'quantity' => max(0, (int) $item->stock),
+                    'promotion_enabled' => false,
+                    'promotion_price' => null,
+                    'is_active' => true,
+                ],
+            );
+        }
+
+        return $items->count();
     }
 
     private function canManageProduction(?Production $production, string $permission): bool
