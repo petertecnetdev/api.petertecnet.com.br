@@ -4,6 +4,7 @@ use App\Domain\Commerce\Http\Controllers\CommerceCouponController;
 use App\Domain\Commerce\Http\Controllers\CommerceFulfillmentController;
 use App\Domain\Commerce\Http\Controllers\EventItemRedemptionController;
 use App\Domain\Commerce\Http\Controllers\EventPurchaseController;
+use App\Domain\Commerce\Http\Controllers\TicketAvailabilityController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -23,6 +24,8 @@ Route::prefix('v1/apps/{application}')
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'auth:api', 'token.version', 'app.capability:commerce'])
     ->group(function () {
+        Route::get('/commerce/ticket-availability', [TicketAvailabilityController::class, 'index'])
+            ->middleware('throttle:120,1');
         Route::post('/commerce/coupons/validate', [CommerceCouponController::class, 'validateCode'])->middleware('throttle:60,1');
         Route::get('/organizations/{organizationId}/coupons', [CommerceCouponController::class, 'index'])->whereNumber('organizationId');
         Route::post('/organizations/{organizationId}/coupons', [CommerceCouponController::class, 'store'])->whereNumber('organizationId')->middleware('throttle:30,1');
