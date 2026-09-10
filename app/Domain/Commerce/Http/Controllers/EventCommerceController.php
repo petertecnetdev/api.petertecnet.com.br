@@ -415,10 +415,13 @@ final class EventCommerceController extends Controller
     {
         $event = $this->ownedEvent($request, $eventId);
         $data = $request->validate([
+            'source_item_id' => $itemId ? 'sometimes|nullable|integer' : 'required|integer',
             'name' => 'required|string|max:140',
             'description' => 'nullable|string|max:2000',
             'price' => 'required|numeric|min:0.01|max:999999.99',
             'quantity' => 'required|integer|min:0|max:1000000',
+            'promotion_enabled' => 'sometimes|boolean',
+            'promotion_price' => 'sometimes|nullable|numeric|min:0.01|max:999999.99',
             'is_active' => 'sometimes|boolean',
         ]);
 
