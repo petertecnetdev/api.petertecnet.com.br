@@ -2,19 +2,19 @@
 
 namespace App\Domain\Platform\Http\Controllers;
 
-use App\Domain\Platform\Services\ApplicationAdminService;
+use App\Domain\Engagement\Services\EstablishmentEngagementCommunicationService;
+use App\Domain\Platform\Services\ApplicationAdminEstablishmentService;
 use App\Http\Controllers\Controller;
-use App\Models\Production;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Arr;
 
 final class ApplicationAdminProductionController extends Controller
 {
     public function __construct(
         private readonly ApplicationContext $context,
-        private readonly ApplicationAdminService $admin,
+        private readonly ApplicationAdminEstablishmentService $establishments,
+        private readonly EstablishmentEngagementCommunicationService $engagement,
     ) {
     }
 
@@ -26,37 +26,15 @@ final class ApplicationAdminProductionController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $query = Production::query()
-            ->where('app_id', $this->context->id())
-            ->with('user:id,first_name,last_name,email')
-            ->withCount(['events', 'employers']);
-
-        if ($term = trim((string) ($data['q'] ?? ''))) {
-            $query->where(fn ($builder) => $builder
-                ->where('name', 'like', '%'.$term.'%')
-                ->orWhere('fantasy', 'like', '%'.$term.'%')
-                ->orWhere('city', 'like', '%'.$term.'%')
-                ->orWhere('email', 'like', '%'.$term.'%')
-                ->orWhereHas('user', fn ($user) => $user->where('email', 'like', '%'.$term.'%')));
-        }
-
-        match ($data['status'] ?? null) {
-            'published' => $query->where('is_published', true)->where('is_cancelled', false),
-            'draft' => $query->where('is_published', false)->where('is_cancelled', false),
-            'cancelled' => $query->where('is_cancelled', true),
-            default => null,
-        };
-
         return response()->json([
             'success' => true,
             'scope' => 'global_application',
-            'data' => $query->latest('id')->paginate((int) ($data['per_page'] ?? 25)),
+            'data' => $this->establishments->paginate($this->context->id(), 'production', $data),
         ]);
     }
 
     public function update(Request $request, int $production): JsonResponse
     {
-        $model = Production::query()->where('app_id', $this->context->id())->findOrFail($production);
         $data = $request->validate([
             'name' => ['sometimes', 'required', 'string', 'max:180'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
@@ -68,21 +46,41 @@ final class ApplicationAdminProductionController extends Controller
             'is_featured' => ['sometimes', 'boolean'],
         ]);
 
-        $before = Arr::only($model->toArray(), array_keys($data));
-        $model->fill($data)->save();
-        $fresh = $model->fresh()->load('user:id,first_name,last_name,email')->loadCount(['events', 'employers']);
+        $updated = $this->establishments->update(
+            $this->context->id(),
+            'production',
+            $production,
+            $data,
+            $request->user('api') ?? $request->user(),
+            $this->auditContext($request),
+        );
 
-        $this->admin->auditAction($this->context->id(), $request->user(), $model->user, 'admin_production_updated', [
-            'production_id' => $model->id,
-            'before' => $before,
-            'after' => Arr::only($fresh->toArray(), array_keys($data)),
-        ], $this->auditContext($request));
+        return response()->json(['success'=>true,'scope'=>'global_application','data'=>$updated]);
+    }
+
+    public function engagementPreview(Request $request, int $production): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->engagement->preview($this->context->id(), $production),
+        ]);
+    }
+
+    public function sendEngagementEmail(Request $request, int $production): JsonResponse
+    {
+        $data = $this->engagement->send(
+            $this->context->id(),
+            $production,
+            $request->user('api')?->id ?? $request->user()?->id,
+            $request->ip(),
+            $request->userAgent(),
+        );
 
         return response()->json([
             'success' => true,
-            'scope' => 'global_application',
-            'data' => $fresh,
-        ]);
+            'message' => 'Resumo enviado ao produtor com sucesso.',
+            'data' => $data,
+        ], 202);
     }
 
     private function auditContext(Request $request): array

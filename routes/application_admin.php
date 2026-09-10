@@ -39,6 +39,12 @@ Route::prefix('v1/apps/{application}')
             Route::put('/productions/{production}', [ApplicationAdminProductionController::class, 'update'])
                 ->whereNumber('production')
                 ->middleware([EnsureApplicationAdmin::class.':establishments.manage', 'throttle:30,1']);
+            Route::get('/productions/{production}/engagement-email/preview', [ApplicationAdminProductionController::class, 'engagementPreview'])
+                ->whereNumber('production')
+                ->middleware(EnsureApplicationAdmin::class.':establishments.view');
+            Route::post('/productions/{production}/engagement-email', [ApplicationAdminProductionController::class, 'sendEngagementEmail'])
+                ->whereNumber('production')
+                ->middleware([EnsureApplicationAdmin::class.':establishments.manage', 'throttle:5,1']);
 
             Route::get('/events', [ApplicationAdminEventController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':events.view');
