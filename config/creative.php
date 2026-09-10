@@ -17,4 +17,13 @@ return [
         'daily_request_budget' => max(1, (int) env('CLOUDFLARE_AI_DAILY_REQUEST_BUDGET', 1000)),
         'per_user_daily_limit' => max(1, (int) env('CLOUDFLARE_AI_USER_DAILY_LIMIT', 100)),
     ],
+
+    'event_flyer' => [
+        'candidate_count' => min(4, max(1, (int) env('CREATIVE_EVENT_CANDIDATE_COUNT', 3))),
+        'return_candidates' => (bool) env('CREATIVE_EVENT_RETURN_CANDIDATES', false),
+    ],
+
+    'quality' => [
+        'minimum_score' => min(100, max(0, (int) env('CREATIVE_MINIMUM_QUALITY_SCORE', 70))),
+    ],
 ];
