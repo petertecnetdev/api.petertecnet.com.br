@@ -11,24 +11,35 @@ class SubscriptionIntent extends Model
     use HasFactory;
 
     protected $fillable = [
-        'application_id',
+        'public_id',
         'user_id',
+        'application',
         'plan_code',
+        'plan_name',
+        'price_cents',
+        'currency',
+        'billing_interval',
+        'billing_interval_count',
         'source',
         'handoff_channel',
         'status',
         'idempotency_key',
         'metadata',
+        'checkout_started_at',
+        'payment_pending_at',
+        'paid_at',
+        'activated_at',
+        'abandoned_at',
     ];
 
     protected $casts = [
         'metadata' => 'array',
+        'checkout_started_at' => 'datetime',
+        'payment_pending_at' => 'datetime',
+        'paid_at' => 'datetime',
+        'activated_at' => 'datetime',
+        'abandoned_at' => 'datetime',
     ];
-
-    public function application(): BelongsTo
-    {
-        return $this->belongsTo(Application::class);
-    }
 
     public function user(): BelongsTo
     {
