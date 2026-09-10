@@ -2,6 +2,7 @@
 
 namespace App\Domain\Events\Http\Controllers;
 
+use App\Domain\Commerce\Services\TicketInventoryService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Ticket;
@@ -13,7 +14,10 @@ use Illuminate\Support\Facades\DB;
 
 final class EventDiscoveryController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly TicketInventoryService $ticketInventory,
+    ) {}
 
     public function events(Request $request)
     {
@@ -118,12 +122,8 @@ final class EventDiscoveryController extends Controller
 
         if (($data['free'] ?? false) || ($data['available'] ?? false)) {
             $query->whereHas('tickets', function ($q) use ($appId, $data, $now) {
-                $q->where('tickets.app_id', $appId)
-                    ->where('tickets.quantity', '>', 0)
-                    ->where(fn ($d) => $d
-                        ->whereNull('tickets.limit_date')
-                        ->orWhere('tickets.limit_date', '>', $now))
-                    ->whereRaw('tickets.quantity > (SELECT COUNT(*) FROM event_passes WHERE event_passes.ticket_id = tickets.id)');
+                $q->where('tickets.app_id', $appId);
+                $this->ticketInventory->constrainSellable($q, $appId, $now);
 
                 if ($data['free'] ?? false) {
                     $q->where('tickets.price', 0);
@@ -212,18 +212,19 @@ final class EventDiscoveryController extends Controller
             ->where('app_id', $appId)
             ->where('event_id', $event->id)
             ->where('price', 0)
-            ->withCount('passes')
             ->orderBy('created_at')
-            ->get()
-            ->map(function (Ticket $ticket) use ($now, $eventEnded) {
-                $remaining = max(0, (int) $ticket->quantity - (int) $ticket->passes_count);
-                $limitExpired = $ticket->limit_date && $now->greaterThan(Carbon::parse($ticket->limit_date, config('app.timezone', 'America/Sao_Paulo')));
-                $expired = $eventEnded || $limitExpired;
-                $ticket->setAttribute('remaining', $remaining);
-                $ticket->setAttribute('available', $remaining > 0 && !$expired);
-                $ticket->setAttribute('expired', (bool) $expired);
-                return $ticket;
-            });
+            ->get();
+        $ticketStates = $this->ticketInventory->states($tickets, $now);
+        $tickets->each(function (Ticket $ticket) use ($ticketStates, $eventEnded) {
+            $state = $ticketStates->get((int) $ticket->id, ['remaining' => 0, 'expired' => true, 'available' => false]);
+            if ($eventEnded) {
+                $state['expired'] = true;
+                $state['available'] = false;
+            }
+            foreach ($state as $key => $value) {
+                $ticket->setAttribute($key, $value);
+            }
+        });
 
         $history = null;
         if ($eventEnded) {
