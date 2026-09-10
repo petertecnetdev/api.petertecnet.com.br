@@ -133,6 +133,7 @@ final class RecoveryProminenceExperimentEconomics
             'relative_contribution_lift_percent' => null,
             'diagnostic_incremental_paid_orders_per_100_impressions' => null,
             'diagnostic_incremental_platform_contribution_per_impression' => null,
+            'decision' => $this->decision(false, null, null),
         ];
 
         if ($comparisonIsMature) {
@@ -145,13 +146,17 @@ final class RecoveryProminenceExperimentEconomics
             $controlPaidPerImpression = (float) ($control['paid_orders_per_100_impressions'] ?? 0);
             $treatmentPaidPerImpression = (float) ($treatment['paid_orders_per_100_impressions'] ?? 0);
 
-            $comparison['incremental_paid_orders_per_100_exposed_orders'] = round($treatmentPaidRate - $controlPaidRate, 2);
-            $comparison['incremental_platform_contribution_per_exposed_order'] = round($treatmentContribution - $controlContribution, 4);
+            $incrementalPaidRate = round($treatmentPaidRate - $controlPaidRate, 2);
+            $incrementalContribution = round($treatmentContribution - $controlContribution, 4);
+
+            $comparison['incremental_paid_orders_per_100_exposed_orders'] = $incrementalPaidRate;
+            $comparison['incremental_platform_contribution_per_exposed_order'] = $incrementalContribution;
             $comparison['relative_contribution_lift_percent'] = $controlContribution !== 0.0
                 ? round((($treatmentContribution - $controlContribution) / abs($controlContribution)) * 100, 2)
                 : null;
             $comparison['diagnostic_incremental_paid_orders_per_100_impressions'] = round($treatmentPaidPerImpression - $controlPaidPerImpression, 2);
             $comparison['diagnostic_incremental_platform_contribution_per_impression'] = round($treatmentContributionPerImpression - $controlContributionPerImpression, 4);
+            $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution);
         }
 
         return [
@@ -159,6 +164,76 @@ final class RecoveryProminenceExperimentEconomics
             'unit_of_analysis' => 'exposed_order',
             'variants' => $rows->values()->all(),
             'comparison' => $comparison,
+        ];
+    }
+
+    /**
+     * Return a conservative directional decision for downstream UIs/automation.
+     *
+     * This is intentionally not an auto-rollout signal: an immature sample is
+     * always inconclusive, and a mature treatment can only win when it improves
+     * both paid conversion and net platform contribution. Any deterioration in
+     * either guardrail is classified as harmful so callers keep the control.
+     *
+     * @return array<string, mixed>
+     */
+    private function decision(bool $sampleIsMature, ?float $incrementalPaidRate, ?float $incrementalContribution): array
+    {
+        if (! $sampleIsMature) {
+            return [
+                'status' => 'inconclusive',
+                'recommended_variant' => 'control',
+                'reason' => 'sample_immature',
+                'eligible_for_rollout' => false,
+                'requires_manual_review' => true,
+                'guardrails' => [
+                    'paid_conversion_non_decreasing' => null,
+                    'platform_contribution_positive' => null,
+                ],
+            ];
+        }
+
+        $paidConversionNonDecreasing = $incrementalPaidRate !== null && $incrementalPaidRate >= 0.0;
+        $platformContributionPositive = $incrementalContribution !== null && $incrementalContribution > 0.0;
+
+        if (! $paidConversionNonDecreasing || ($incrementalContribution !== null && $incrementalContribution < 0.0)) {
+            return [
+                'status' => 'harmful',
+                'recommended_variant' => 'control',
+                'reason' => ! $paidConversionNonDecreasing ? 'paid_conversion_guardrail_failed' : 'platform_contribution_guardrail_failed',
+                'eligible_for_rollout' => false,
+                'requires_manual_review' => true,
+                'guardrails' => [
+                    'paid_conversion_non_decreasing' => $paidConversionNonDecreasing,
+                    'platform_contribution_positive' => $platformContributionPositive,
+                ],
+            ];
+        }
+
+        if ($paidConversionNonDecreasing && $platformContributionPositive) {
+            return [
+                'status' => 'winner',
+                'recommended_variant' => 'prominent',
+                'reason' => 'conversion_preserved_and_contribution_improved',
+                'eligible_for_rollout' => true,
+                'requires_manual_review' => true,
+                'guardrails' => [
+                    'paid_conversion_non_decreasing' => true,
+                    'platform_contribution_positive' => true,
+                ],
+            ];
+        }
+
+        return [
+            'status' => 'inconclusive',
+            'recommended_variant' => 'control',
+            'reason' => 'no_positive_net_contribution_lift',
+            'eligible_for_rollout' => false,
+            'requires_manual_review' => true,
+            'guardrails' => [
+                'paid_conversion_non_decreasing' => $paidConversionNonDecreasing,
+                'platform_contribution_positive' => $platformContributionPositive,
+            ],
         ];
     }
 
