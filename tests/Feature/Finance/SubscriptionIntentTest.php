@@ -56,10 +56,13 @@ class SubscriptionIntentTest extends TestCase
             ->assertJsonPath('data.currency', 'BRL')
             ->assertJsonPath('data.status', 'created');
 
+        $firstId = $first->json('data.id');
+
         $second = $this->withHeaders($headers)
             ->postJson('/api/v1/apps/payflow/subscription-intents', $payload);
 
-        $second->assertOk();
+        $second->assertSuccessful()
+            ->assertJsonPath('data.id', $firstId);
         $this->assertSame(1, SubscriptionIntent::query()->count());
     }
 
