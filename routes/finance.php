@@ -2,6 +2,7 @@
 
 use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PayoutController;
+use App\Domain\Finance\Http\Controllers\SubscriptionIntentController;
 use App\Domain\Finance\Http\Controllers\SubscriptionPlanController;
 use Illuminate\Support\Facades\Route;
 
@@ -13,6 +14,18 @@ Route::get('v1/apps/{application}/subscription-plans', [SubscriptionPlanControll
 Route::get('v1/subscription-bundles', [SubscriptionPlanController::class, 'bundles'])
     ->middleware('throttle:120,1')
     ->name('finance.subscription-bundles.index');
+
+Route::prefix('v1/apps/{application}/subscription-intents')
+    ->where(['application' => '[A-Za-z0-9._-]+'])
+    ->middleware(['api', 'auth:api', 'token.version'])
+    ->group(function () {
+        Route::post('/', [SubscriptionIntentController::class, 'store'])
+            ->middleware('throttle:30,1')
+            ->name('finance.subscription-intents.store');
+        Route::get('/{intent}', [SubscriptionIntentController::class, 'show'])
+            ->whereUuid('intent')
+            ->name('finance.subscription-intents.show');
+    });
 
 Route::prefix('finance/webhooks')->group(function () {
     Route::post('/asaas', [FinancialController::class, 'providerWebhook'])
