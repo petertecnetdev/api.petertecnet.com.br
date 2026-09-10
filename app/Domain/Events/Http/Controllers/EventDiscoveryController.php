@@ -70,6 +70,14 @@ final class EventDiscoveryController extends Controller
             ->withCount([
                 'tickets as ticket_lots_count' => fn ($q) => $q->where('app_id', $appId),
                 'tickets as free_ticket_lots_count' => fn ($q) => $q->where('app_id', $appId)->where('price', 0),
+                'tickets as sellable_ticket_lots_count' => function ($q) use ($appId, $now) {
+                    $q->where('tickets.app_id', $appId);
+                    $this->ticketInventory->constrainSellable($q, $appId, $now);
+                },
+                'tickets as sellable_free_ticket_lots_count' => function ($q) use ($appId, $now) {
+                    $q->where('tickets.app_id', $appId)->where('tickets.price', 0);
+                    $this->ticketInventory->constrainSellable($q, $appId, $now);
+                },
             ]);
 
         if (!empty($data['city'])) {
