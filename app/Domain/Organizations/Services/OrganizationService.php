@@ -2,10 +2,12 @@
 
 namespace App\Domain\Organizations\Services;
 
+use App\Domain\Commerce\Services\TicketInventoryService;
 use App\Models\Application;
 use App\Models\Artist;
 use App\Models\Event;
 use App\Models\Production;
+use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -18,6 +20,8 @@ use Tymon\JWTAuth\Facades\JWTAuth;
 
 final class OrganizationService
 {
+    public function __construct(private readonly TicketInventoryService $ticketInventory) {}
+
     public function publicIndex(int $appId, array $data, array $queryParameters = []): LengthAwarePaginator
     {
         $query = Production::query()
@@ -169,6 +173,27 @@ final class OrganizationService
             ->orderBy('start_date')
             ->limit(24)
             ->get();
+
+        $upcomingEventIds = $upcoming->pluck('id')->map(fn ($id) => (int) $id)->values();
+        if ($upcomingEventIds->isNotEmpty()) {
+            $tickets = Ticket::query()
+                ->where('app_id', $appId)
+                ->whereIn('event_id', $upcomingEventIds)
+                ->get(['id', 'app_id', 'event_id', 'price', 'quantity', 'limit_date']);
+            $availabilityByEvent = $this->ticketInventory->availabilityByEvent($tickets);
+
+            $upcoming->each(function (Event $event) use ($availabilityByEvent) {
+                $summary = $availabilityByEvent->get((int) $event->id, [
+                    'status' => 'tickets_pending',
+                    'configured_lots_count' => 0,
+                    'sellable_lots_count' => 0,
+                    'sellable_free_lots_count' => 0,
+                ]);
+                $event->setAttribute('ticket_availability_status', $summary['status']);
+                $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
+                $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
+            });
+        }
 
         $past = (clone $visibleEvents)
             ->where('end_date', '<=', now())
