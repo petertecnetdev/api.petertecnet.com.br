@@ -22,6 +22,7 @@ final class EventAgendaService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly ProducerAgreementService $agreements,
+        private readonly EventAgendaMaintenanceService $maintenance,
     ) {}
 
     public function index(int $productionId, User $user): array
@@ -55,6 +56,8 @@ final class EventAgendaService
             'agenda' => [
                 'production_id' => $production->id,
                 'is_active' => (bool) $setting->is_active,
+                'generation_weeks' => (int) ($setting->generation_weeks ?: 1),
+                'max_future_occurrences' => 7 * (int) ($setting->generation_weeks ?: 1),
             ],
             'schedules' => $schedules,
             'available_events' => $availableEvents,
@@ -65,14 +68,59 @@ final class EventAgendaService
     {
         $production = $this->ownedProduction($productionId, $user);
         $setting = $this->setting($production);
+
+        if ($isActive) {
+            $this->ensureProducerAgreement($production);
+        }
+
         $setting->update(['is_active' => $isActive]);
+
+        $generation = $isActive
+            ? $this->maintenance->replenishProduction(
+                (int) $setting->app_id,
+                (int) $setting->production_id,
+                (int) ($setting->generation_weeks ?: 1),
+                $this->context->slug(),
+            )
+            : ['created_count' => 0, 'existing_count' => 0, 'retired_count' => 0];
 
         return [
             'message' => $setting->is_active ? 'Agenda semanal ativada.' : 'Agenda semanal pausada.',
             'agenda' => [
                 'production_id' => $production->id,
                 'is_active' => (bool) $setting->is_active,
+                'generation_weeks' => (int) ($setting->generation_weeks ?: 1),
+                'max_future_occurrences' => 7 * (int) ($setting->generation_weeks ?: 1),
             ],
+            'generation' => $generation,
+        ];
+    }
+
+    public function updateSettings(int $productionId, User $user, int $generationWeeks): array
+    {
+        $production = $this->ownedProduction($productionId, $user);
+        $this->ensureProducerAgreement($production);
+        $setting = $this->setting($production);
+        $setting->update(['generation_weeks' => max(1, min(3, $generationWeeks))]);
+
+        $generation = $setting->is_active
+            ? $this->maintenance->replenishProduction(
+                (int) $setting->app_id,
+                (int) $setting->production_id,
+                (int) $setting->generation_weeks,
+                $this->context->slug(),
+            )
+            : ['created_count' => 0, 'existing_count' => 0, 'retired_count' => 0];
+
+        return [
+            'message' => 'Horizonte da agenda semanal atualizado.',
+            'agenda' => [
+                'production_id' => $production->id,
+                'is_active' => (bool) $setting->is_active,
+                'generation_weeks' => (int) $setting->generation_weeks,
+                'max_future_occurrences' => 7 * (int) $setting->generation_weeks,
+            ],
+            'generation' => $generation,
         ];
     }
 
@@ -163,18 +211,22 @@ final class EventAgendaService
         $production = $schedule->production;
         $this->ensureAgendaCanGenerate($production, $schedule);
         $this->ensureProducerAgreement($production);
+        $setting = $this->setting($production);
 
-        [$event, $created] = $this->generateScheduleOccurrence($schedule->id);
+        $generation = $this->maintenance->replenishSchedule(
+            $schedule,
+            (int) ($setting->generation_weeks ?: 1),
+            $this->context->slug(),
+        );
 
         return [
             'body' => [
-                'message' => $created
-                    ? 'Próxima ocorrência criada como rascunho.'
-                    : 'Esta ocorrência já havia sido criada. Abrimos o evento existente.',
-                'created' => $created,
-                'event' => $event,
+                'message' => $generation['created_count'] > 0
+                    ? $generation['created_count'].' ocorrência(s) reposta(s) dentro do horizonte semanal.'
+                    : 'O horizonte deste dia já está preenchido.',
+                ...$generation,
             ],
-            'status' => $created ? 201 : 200,
+            'status' => $generation['created_count'] > 0 ? 201 : 200,
         ];
     }
 
@@ -185,33 +237,18 @@ final class EventAgendaService
         abort_unless($setting->is_active, 422, 'Ative a agenda semanal antes de gerar os próximos eventos.');
         $this->ensureProducerAgreement($production);
 
-        $schedules = EventSchedule::query()
-            ->where('app_id', $this->context->id())
-            ->where('production_id', $production->id)
-            ->where('is_active', true)
-            ->orderBy('day_of_week')
-            ->orderBy('start_time')
-            ->get();
-
-        abort_if($schedules->isEmpty(), 422, 'Não há eventos ativos na agenda desta produção.');
-
-        $events = [];
-        $createdCount = 0;
-        $existingCount = 0;
-
-        foreach ($schedules as $schedule) {
-            [$event, $created] = $this->generateScheduleOccurrence($schedule->id);
-            $events[] = $event;
-            $created ? $createdCount++ : $existingCount++;
-        }
+        $generation = $this->maintenance->replenishProduction(
+            (int) $setting->app_id,
+            (int) $setting->production_id,
+            (int) ($setting->generation_weeks ?: 1),
+            $this->context->slug(),
+        );
 
         return [
-            'message' => $createdCount > 0
-                ? $createdCount.' evento(s) criado(s) como rascunho.'
-                : 'As próximas ocorrências já estavam criadas.',
-            'created_count' => $createdCount,
-            'existing_count' => $existingCount,
-            'events' => $events,
+            'message' => $generation['created_count'] > 0
+                ? $generation['created_count'].' ocorrência(s) reposta(s) dentro do horizonte semanal.'
+                : 'A agenda já está preenchida até o horizonte escolhido.',
+            ...$generation,
         ];
     }
 
@@ -234,6 +271,8 @@ final class EventAgendaService
             (int) $data['day_of_week'],
             array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true
         );
+
+        $previousSourceEventId = $targetSchedule?->source_event_id;
 
         $schedule = DB::transaction(function () use ($production, $payload, $targetSchedule) {
             $schedule = $targetSchedule;
@@ -277,11 +316,26 @@ final class EventAgendaService
             return $schedule->fresh('sourceEvent');
         });
 
-        $this->setting($production);
+        $this->ensureProducerAgreement($production);
+        $setting = $this->setting($production);
+        $retiredFromTemplateChange = $this->maintenance->reconcileTemplateChange(
+            $schedule,
+            $previousSourceEventId ? (int) $previousSourceEventId : null,
+        );
+        $generation = $setting->is_active
+            ? $this->maintenance->replenishSchedule(
+                $schedule,
+                (int) ($setting->generation_weeks ?: 1),
+                $this->context->slug(),
+            )
+            : ['created_count' => 0, 'existing_count' => 0, 'retired_count' => 0, 'events' => []];
+
+        $generation['retired_count'] = (int) ($generation['retired_count'] ?? 0) + $retiredFromTemplateChange;
 
         return [
-            'message' => 'Evento fixo definido para a agenda semanal.',
-            'schedule' => $this->presentSchedule($schedule),
+            'message' => 'Evento-modelo definido para este dia da agenda semanal.',
+            'schedule' => $this->presentSchedule($schedule->fresh('sourceEvent')),
+            'generation' => $generation,
         ];
     }
 
@@ -398,101 +452,6 @@ final class EventAgendaService
         return $data;
     }
 
-    private function generateScheduleOccurrence(int $scheduleId): array
-    {
-        return DB::transaction(function () use ($scheduleId) {
-            $schedule = EventSchedule::query()
-                ->where('app_id', $this->context->id())
-                ->with('production')
-                ->lockForUpdate()
-                ->findOrFail($scheduleId);
-
-            $occurrence = $this->nextOccurrence($schedule);
-            $date = $occurrence['date'];
-
-            $existing = Event::query()
-                ->where('app_id', $this->context->id())
-                ->where('event_schedule_id', $schedule->id)
-                ->whereDate('event_schedule_occurrence_date', $date->toDateString())
-                ->first();
-
-            if ($existing) {
-                return [$existing->load('production:id,app_id,name,slug,user_id,app_slug'), false];
-            }
-
-            $image = $this->copyScheduleImageToEvent($schedule->image);
-
-            try {
-                $event = Event::create([
-                    'app_id' => $this->context->id(),
-                    'app_slug' => $this->context->slug(),
-                    'production_id' => $schedule->production_id,
-                    'title' => $schedule->title,
-                    'description' => $schedule->description,
-                    'category' => $schedule->category,
-                    'image' => $image,
-                    'event_format' => $schedule->event_format ?: 'in_person',
-                    'address' => $schedule->address,
-                    'google_maps_url' => $schedule->google_maps_url,
-                    'start_date' => $occurrence['start'],
-                    'end_date' => $occurrence['end'],
-                    'venue' => $schedule->venue,
-                    'city' => $schedule->city,
-                    'uf' => $schedule->uf,
-                    'state' => $schedule->uf,
-                    'cep' => $schedule->cep,
-                    'latitude' => $schedule->latitude,
-                    'longitude' => $schedule->longitude,
-                    'max_attendees' => $schedule->max_attendees,
-                    'contact_email' => $schedule->contact_email,
-                    'contact_phone' => $schedule->contact_phone,
-                    'is_private' => (bool) $schedule->is_private,
-                    'online_url' => $schedule->online_url,
-                    'slug' => $this->uniqueSlug($schedule->title),
-                    'is_published' => false,
-                    'is_cancelled' => false,
-                ]);
-            } catch (\Throwable $exception) {
-                if ($image) {
-                    Storage::disk('public')->delete($image);
-                }
-                throw $exception;
-            }
-
-            $event->forceFill([
-                'event_schedule_id' => $schedule->id,
-                'event_schedule_occurrence_date' => $date->toDateString(),
-            ])->saveQuietly();
-
-            return [$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug'), true];
-        });
-    }
-
-    private function nextOccurrence(EventSchedule $schedule): array
-    {
-        $timezone = config('app.timezone', 'America/Sao_Paulo');
-        $now = Carbon::now($timezone);
-        $daysAhead = ((int) $schedule->day_of_week - (int) $now->dayOfWeek + 7) % 7;
-        $date = $now->copy()->startOfDay()->addDays($daysAhead);
-        $start = $date->copy()->setTimeFromTimeString(substr((string) $schedule->start_time, 0, 8));
-
-        if ($start->lte($now)) {
-            $date->addWeek();
-            $start->addWeek();
-        }
-
-        $end = $date->copy()->setTimeFromTimeString(substr((string) $schedule->end_time, 0, 8));
-        if ($end->lte($start)) {
-            $end->addDay();
-        }
-
-        return [
-            'date' => $date,
-            'start' => $start,
-            'end' => $end,
-        ];
-    }
-
     private function ensureAgendaCanGenerate(Production $production, EventSchedule $schedule): void
     {
         $setting = $this->setting($production);
@@ -522,6 +481,7 @@ final class EventAgendaService
             'production_id' => $production->id,
         ], [
             'is_active' => true,
+            'generation_weeks' => 1,
         ]);
     }
 
@@ -589,19 +549,6 @@ final class EventAgendaService
         ];
     }
 
-    private function uniqueSlug(string $title): string
-    {
-        $base = Str::slug($title) ?: 'evento';
-        $slug = $base;
-        $counter = 2;
-
-        while (Event::query()->where('slug', $slug)->exists()) {
-            $slug = $base.'-'.$counter++;
-        }
-
-        return $slug;
-    }
-
     private function storeScheduleImage($file): string
     {
         $directory = 'images/apps/'.$this->context->slug().'/event-agenda';
@@ -616,16 +563,6 @@ final class EventAgendaService
 
         Storage::disk('public')->put($path, (string) $image);
         return $path;
-    }
-
-    private function copyScheduleImageToEvent(?string $path): ?string
-    {
-        if (! $path || ! Storage::disk('public')->exists($path)) {
-            return null;
-        }
-
-        $target = 'images/apps/'.$this->context->slug().'/events/'.Str::uuid().'.webp';
-        return Storage::disk('public')->copy($path, $target) ? $target : null;
     }
 
     private function deleteScheduleImage(?string $path): void
