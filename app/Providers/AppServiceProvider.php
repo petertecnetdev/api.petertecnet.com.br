@@ -32,8 +32,10 @@ use App\Services\Operations\ResilientOperationalTelemetryService;
 use App\Services\ResilientRealtimePublisher;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use LogicException;
@@ -56,6 +58,17 @@ class AppServiceProvider extends ServiceProvider
     public function boot()
     {
         Relation::morphMap(['establishment' => 'App\\Models\\Establishment', 'event' => 'App\\Models\\Event']);
+        if ($this->app->environment('production')) {
+            DB::listen(function ($query): void {
+                if ($query->time < 200) return;
+                Log::warning('Slow database query.', [
+                    'duration_ms' => round($query->time, 1),
+                    'connection' => $query->connectionName,
+                    'sql' => mb_substr($query->sql, 0, 2000),
+                ]);
+            });
+        }
+
         Event::listen(DocumentSignatureRecorded::class, SyncLeaseDocumentSignature::class);
 
         Route::prefix('api/v1/apps/{application}')

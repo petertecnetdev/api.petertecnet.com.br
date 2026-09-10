@@ -213,7 +213,7 @@ final class EventDiscoveryController extends Controller
                 'period' => $data['period'] ?? null,
             ],
         ];
-        Cache::put($cacheKey, $payload, now()->addSeconds(20));
+        Cache::put($cacheKey, $payload, now()->addSeconds(30));
 
         return response()->json($payload)->header('X-Peter-Cache', 'MISS');
     }
@@ -223,6 +223,11 @@ final class EventDiscoveryController extends Controller
         $appId = $this->context->id();
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($timezone);
+        $cacheKey = 'event-public:v4:'.$appId.':'.$slug;
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return response()->json($cached)->header('X-Peter-Cache', 'HIT');
+        }
+
         $event = Event::query()
             ->where('app_id', $appId)
             ->where('slug', $slug)
@@ -282,7 +287,10 @@ final class EventDiscoveryController extends Controller
             ];
         }
 
-        return response()->json(['event' => $event, 'tickets' => $tickets, 'history' => $history]);
+        $payload = ['event' => $event->toArray(), 'tickets' => $tickets->toArray(), 'history' => $history];
+        Cache::put($cacheKey, $payload, now()->addSeconds(20));
+
+        return response()->json($payload)->header('X-Peter-Cache', 'MISS');
     }
 
     public function facets(Request $request)
@@ -329,7 +337,7 @@ final class EventDiscoveryController extends Controller
             ->get();
 
         $payload = ['cities' => $cities->toArray(), 'categories' => $categories->toArray()];
-        Cache::put($cacheKey, $payload, now()->addMinutes(2));
+        Cache::put($cacheKey, $payload, now()->addMinutes(5));
 
         return response()->json($payload)->header('X-Peter-Cache', 'MISS');
     }

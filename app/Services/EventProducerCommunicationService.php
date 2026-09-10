@@ -104,7 +104,7 @@ class EventProducerCommunicationService
         }
 
         try {
-            Mail::to($owner->email)->send(new EventProducerUpdatedMail(
+            Mail::to($owner->email)->queue(new EventProducerUpdatedMail(
                 $owner,
                 $event,
                 $production,

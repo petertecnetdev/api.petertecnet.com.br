@@ -95,7 +95,7 @@ class ImportantEventService
         if ($producer?->email) {
             try {
                 $delivery->run((int)$event->app_id,'commerce_order',(int)$order->id,'producer_ticket_sale_email',function()use($producer,$order,$ticketQuantity,$importantEvent){
-                    Mail::to($producer->email)->send(new TicketSaleProducerMail($order,$ticketQuantity));
+                    Mail::to($producer->email)->queue(new TicketSaleProducerMail($order,$ticketQuantity));
                     $this->updateEmailStatus($importantEvent,'delivered');
                 },$deliveryContext);
             } catch (\Throwable $e) {

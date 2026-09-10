@@ -63,11 +63,11 @@ Route::prefix('v1/payments/mercadopago')->group(function () {
 Route::prefix('v1/apps/{application}')
     ->middleware('app.context')
     ->group(function () {
-        Route::get('/config', [ApplicationConfigController::class, 'show']);
+        Route::get('/config', [ApplicationConfigController::class, 'show'])->middleware('public.cache:300,900');
         Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
 
         // Shared infrastructure available to every application context.
-        Route::get('/locations/states', [LocationController::class, 'states']);
+        Route::get('/locations/states', [LocationController::class, 'states'])->middleware('public.cache:3600,86400');
         Route::get('/locations/cities', [LocationController::class, 'cities'])->middleware('throttle:120,1');
         Route::get('/locations/cep/{cep}', [LocationController::class, 'cep'])->where('cep', '[0-9-]{8,9}')->middleware('throttle:60,1');
 
@@ -88,15 +88,15 @@ Route::prefix('v1/apps/{application}')
         });
 
         Route::middleware('app.capability:events')->group(function () {
-            Route::get('/events', [EventDiscoveryController::class, 'events']);
-            Route::get('/events/facets', [EventDiscoveryController::class, 'facets']);
-            Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
+            Route::get('/events', [EventDiscoveryController::class, 'events'])->middleware('public.cache:15,120');
+            Route::get('/events/facets', [EventDiscoveryController::class, 'facets'])->middleware('public.cache:120,600');
+            Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent'])->middleware('public.cache:30,300');
             Route::get('/events/public/{slug}/share-preview', [EventSocialPreviewController::class, 'show']);
             Route::get('/events/public/{slug}/share-image.jpg', [EventSocialPreviewController::class, 'image']);
         });
 
         Route::middleware('app.capability:events,social')->group(function () {
-            Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists']);
+            Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists'])->middleware('public.cache:30,300');
         });
 
         Route::middleware('app.capability:events,event_community')->group(function () {
@@ -108,14 +108,14 @@ Route::prefix('v1/apps/{application}')
         });
 
         Route::middleware('app.capability:organizations')->group(function () {
-            Route::get('/organizations/public', [OrganizationController::class, 'publicIndex']);
-            Route::get('/organizations/public/{slug}', [OrganizationController::class, 'publicShow']);
+            Route::get('/organizations/public', [OrganizationController::class, 'publicIndex'])->middleware('public.cache:30,300');
+            Route::get('/organizations/public/{slug}', [OrganizationController::class, 'publicShow'])->middleware('public.cache:30,300');
         });
 
         Route::middleware('app.capability:social')->group(function () {
-            Route::get('/artists', [SocialGraphController::class, 'artists']);
+            Route::get('/artists', [SocialGraphController::class, 'artists'])->middleware('public.cache:30,300');
             Route::get('/artists/{slug}/members', [ArtistMemberController::class, 'publicIndex']);
-            Route::get('/artists/{slug}', [SocialGraphController::class, 'publicArtist']);
+            Route::get('/artists/{slug}', [SocialGraphController::class, 'publicArtist'])->middleware('public.cache:30,300');
         });
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
