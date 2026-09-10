@@ -60,7 +60,7 @@ final class CreativeGenerationController extends Controller
             'style' => ['nullable', Rule::in(array_values(array_unique(array_merge(
                 $this->templates->eventStyleKeys(),
                 ['editorial', 'technology']
-            )))],
+            ))))],
             'intensity' => ['nullable', Rule::in($this->templates->eventIntensityKeys())],
             'production_name' => 'nullable|string|max:180',
             'venue' => 'nullable|string|max:180',
