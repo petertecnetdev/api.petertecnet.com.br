@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Services;
 
 use App\Models\Event;
+use App\Models\EventItem;
 use App\Models\Ticket;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -46,6 +47,10 @@ final class EventDuplicationService
             'artists:id,app_id,slug,stage_name',
             'tickets' => fn ($query) => $query->where('app_id', $appId),
         ]);
+        $sourceItems = EventItem::query()
+            ->where('app_id', $appId)
+            ->where('event_id', $source->id)
+            ->get();
 
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         if (! $source->start_date || ! $source->end_date) {
@@ -88,7 +93,7 @@ final class EventDuplicationService
         $resolvedAppSlug = $appSlug ?: $source->app_slug;
 
         try {
-            $duplicate = DB::transaction(function () use ($source, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
+            $duplicate = DB::transaction(function () use ($source, $sourceItems, $targetStart, $targetEnd, $deltaSeconds, $copiedImage, $timezone, $appId, $resolvedAppSlug) {
                 $event = $source->replicate(['id', 'slug', 'created_at', 'updated_at']);
                 $event->forceFill([
                     'slug' => $this->uniqueSlug($source->title.' '.$targetStart->format('Y-m-d')),
@@ -138,6 +143,21 @@ final class EventDuplicationService
                         'description' => $artist->pivot?->description,
                         'sort_order' => $artist->pivot?->sort_order,
                         'is_headliner' => (bool) $artist->pivot?->is_headliner,
+                    ]);
+                }
+
+                foreach ($sourceItems as $item) {
+                    EventItem::create([
+                        'app_id' => $appId,
+                        'event_id' => $event->id,
+                        'source_item_id' => $item->source_item_id,
+                        'name' => $item->name,
+                        'description' => $item->description,
+                        'price' => $item->price,
+                        'quantity' => $item->quantity,
+                        'promotion_enabled' => (bool) $item->promotion_enabled,
+                        'promotion_price' => $item->promotion_price,
+                        'is_active' => (bool) $item->is_active,
                     ]);
                 }
 
