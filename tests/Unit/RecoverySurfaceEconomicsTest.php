@@ -10,8 +10,8 @@ final class RecoverySurfaceEconomicsTest extends TestCase
     public function test_it_measures_observed_recovery_value_per_surface_impression(): void
     {
         $orders = [
-            $this->order('order-paid', 'paid', 10.0, 2.0, 'platform_collection'),
-            $this->order('order-pending', 'pending', 10.0, 2.0, 'platform_collection'),
+            $this->order('order-paid', 'paid', 10.0, 2.0, 'platform_collection', 120.0),
+            $this->order('order-pending', 'pending', 10.0, 2.0, 'platform_collection', 80.0),
         ];
         $interactions = [
             $this->event('checkout_recovery_notification_cta_viewed', 'order-paid', 'navbar_popover'),
@@ -35,6 +35,11 @@ final class RecoverySurfaceEconomicsTest extends TestCase
         self::assertSame(1, $surfaces[0]['paid_orders']);
         self::assertSame(100.0, $surfaces[0]['click_to_paid_rate_percent']);
         self::assertSame(50.0, $surfaces[0]['observed_paid_orders_per_100_impressions']);
+        self::assertSame(120.0, $surfaces[0]['observed_gross_revenue']);
+        self::assertSame(60.0, $surfaces[0]['observed_gross_revenue_per_impression']);
+        self::assertSame(10.0, $surfaces[0]['observed_platform_revenue']);
+        self::assertSame(5.0, $surfaces[0]['observed_platform_revenue_per_impression']);
+        self::assertSame(8.33, $surfaces[0]['observed_platform_take_rate_percent']);
         self::assertSame(8.0, $surfaces[0]['observed_platform_contribution']);
         self::assertSame(4.0, $surfaces[0]['observed_platform_contribution_per_impression']);
         self::assertFalse($surfaces[0]['sample_is_mature']);
@@ -89,7 +94,7 @@ final class RecoverySurfaceEconomicsTest extends TestCase
 
     public function test_paid_order_is_attributed_only_to_latest_clicked_surface(): void
     {
-        $orders = [$this->order('order-paid', 'paid', 5.0, 0.0, 'producer_collection')];
+        $orders = [$this->order('order-paid', 'paid', 5.0, 0.0, 'producer_collection', 50.0)];
         $interactions = [
             $this->event('checkout_recovery_notification_cta_viewed', 'order-paid', 'navbar_popover'),
             $this->event('checkout_recovery_notification_cta_clicked', 'order-paid', 'navbar_popover'),
@@ -101,8 +106,12 @@ final class RecoverySurfaceEconomicsTest extends TestCase
         $surfaces = collect((new RecoverySurfaceEconomics())->summarize($interactions, $orders))->keyBy('surface');
 
         self::assertSame(0, $surfaces['navbar_popover']['paid_orders']);
+        self::assertSame(0.0, $surfaces['navbar_popover']['observed_gross_revenue']);
+        self::assertSame(0.0, $surfaces['navbar_popover']['observed_platform_revenue']);
         self::assertSame(0.0, $surfaces['navbar_popover']['observed_platform_contribution']);
         self::assertSame(1, $surfaces['notifications_page']['paid_orders']);
+        self::assertSame(50.0, $surfaces['notifications_page']['observed_gross_revenue']);
+        self::assertSame(5.0, $surfaces['notifications_page']['observed_platform_revenue']);
         self::assertSame(5.0, $surfaces['notifications_page']['observed_platform_contribution']);
         self::assertSame(1, $surfaces['notifications_page']['landed_orders']);
     }
@@ -120,11 +129,12 @@ final class RecoverySurfaceEconomicsTest extends TestCase
     }
 
     /** @return array<string, mixed> */
-    private function order(string $publicId, string $status, float $platformFee, float $processorFee, string $settlementMode): array
+    private function order(string $publicId, string $status, float $platformFee, float $processorFee, string $settlementMode, float $total = 100.0): array
     {
         return [
             'public_id' => $publicId,
             'status' => $status,
+            'total' => $total,
             'platform_fee' => $platformFee,
             'processor_fee' => $processorFee,
             'metadata' => ['settlement_mode' => $settlementMode],
