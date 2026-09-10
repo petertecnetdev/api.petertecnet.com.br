@@ -59,6 +59,10 @@ class HandleImpersonation
             throw $exception;
         }
 
+        if ($request->isMethod('POST') && strtolower(trim($request->path(), '/')) === 'api/auth/logout') {
+            $session->finish($actor, 'logout_from_application');
+        }
+
         $this->audit($request, $response, $session, $actor, $effective, false);
         return $response;
     }
