@@ -32,11 +32,23 @@ final class EventAgendaService
         $schedules = EventSchedule::query()
             ->where('app_id', $this->context->id())
             ->where('production_id', $production->id)
+            ->with('sourceEvent')
             ->orderBy('day_of_week')
             ->orderBy('start_time')
             ->orderBy('title')
             ->get()
             ->map(fn (EventSchedule $schedule) => $this->presentSchedule($schedule))
+            ->values();
+
+        $availableEvents = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('production_id', $production->id)
+            ->where('is_cancelled', false)
+            ->orderByDesc('start_date')
+            ->orderByDesc('id')
+            ->limit(250)
+            ->get()
+            ->map(fn (Event $event) => $this->presentSourceEvent($event))
             ->values();
 
         return [
@@ -45,6 +57,7 @@ final class EventAgendaService
                 'is_active' => (bool) $setting->is_active,
             ],
             'schedules' => $schedules,
+            'available_events' => $availableEvents,
         ];
     }
 
@@ -66,6 +79,11 @@ final class EventAgendaService
     public function store(int $productionId, User $user, array $input, mixed $imageFile = null): array
     {
         $production = $this->ownedProduction($productionId, $user);
+
+        if (array_key_exists('event_id', $input)) {
+            return $this->linkExistingEvent($production, $input);
+        }
+
         $data = $this->validateSchedule($input, true, null, $imageFile);
         $image = ! empty($data['image']) ? $this->storeScheduleImage($data['image']) : null;
         unset($data['image']);
@@ -90,6 +108,13 @@ final class EventAgendaService
     public function update(int $scheduleId, User $user, array $input, mixed $imageFile = null): array
     {
         $schedule = $this->ownedSchedule($scheduleId, $user);
+
+        if (array_key_exists('event_id', $input)) {
+            $production = $schedule->production;
+            $input['day_of_week'] = $input['day_of_week'] ?? $schedule->day_of_week;
+            return $this->linkExistingEvent($production, $input, $schedule);
+        }
+
         $data = $this->validateSchedule($input, false, $schedule, $imageFile);
         $newImage = $data['image'] ?? null;
         unset($data['image']);
@@ -105,7 +130,7 @@ final class EventAgendaService
 
         return [
             'message' => 'Evento da agenda atualizado.',
-            'schedule' => $this->presentSchedule($schedule->fresh()),
+            'schedule' => $this->presentSchedule($schedule->fresh('sourceEvent')),
         ];
     }
 
@@ -116,7 +141,7 @@ final class EventAgendaService
 
         return [
             'message' => $schedule->is_active ? 'Evento fixo ativado.' : 'Evento fixo pausado.',
-            'schedule' => $this->presentSchedule($schedule),
+            'schedule' => $this->presentSchedule($schedule->fresh('sourceEvent')),
         ];
     }
 
@@ -128,7 +153,7 @@ final class EventAgendaService
         $this->deleteScheduleImage($image);
 
         return [
-            'message' => 'Evento removido da agenda. Eventos já criados continuam preservados.',
+            'message' => 'Evento removido da agenda semanal. O evento original continua preservado.',
         ];
     }
 
@@ -187,6 +212,115 @@ final class EventAgendaService
             'created_count' => $createdCount,
             'existing_count' => $existingCount,
             'events' => $events,
+        ];
+    }
+
+    private function linkExistingEvent(Production $production, array $input, ?EventSchedule $targetSchedule = null): array
+    {
+        $data = Validator::make($input, [
+            'event_id' => 'required|integer|min:1',
+            'day_of_week' => 'required|integer|between:0,6',
+            'is_active' => 'sometimes|boolean',
+        ])->validate();
+
+        $event = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('production_id', $production->id)
+            ->where('is_cancelled', false)
+            ->findOrFail((int) $data['event_id']);
+
+        $payload = $this->schedulePayloadFromEvent(
+            $event,
+            (int) $data['day_of_week'],
+            array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true
+        );
+
+        $schedule = DB::transaction(function () use ($production, $payload, $targetSchedule) {
+            $schedule = $targetSchedule;
+
+            if (! $schedule) {
+                $schedule = EventSchedule::query()
+                    ->where('app_id', $this->context->id())
+                    ->where('production_id', $production->id)
+                    ->where('day_of_week', $payload['day_of_week'])
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->first();
+            }
+
+            if ($schedule) {
+                $oldImage = $schedule->image;
+                $schedule->update($payload);
+                if ($oldImage !== $payload['image']) {
+                    $this->deleteScheduleImage($oldImage);
+                }
+
+                EventSchedule::query()
+                    ->where('app_id', $this->context->id())
+                    ->where('production_id', $production->id)
+                    ->where('day_of_week', $payload['day_of_week'])
+                    ->where('id', '!=', $schedule->id)
+                    ->get()
+                    ->each(function (EventSchedule $duplicate) {
+                        $oldImage = $duplicate->image;
+                        $duplicate->delete();
+                        $this->deleteScheduleImage($oldImage);
+                    });
+            } else {
+                $schedule = EventSchedule::create([
+                    ...$payload,
+                    'app_id' => $this->context->id(),
+                    'production_id' => $production->id,
+                ]);
+            }
+
+            return $schedule->fresh('sourceEvent');
+        });
+
+        $this->setting($production);
+
+        return [
+            'message' => 'Evento fixo definido para a agenda semanal.',
+            'schedule' => $this->presentSchedule($schedule),
+        ];
+    }
+
+    private function schedulePayloadFromEvent(Event $event, int $dayOfWeek, bool $isActive): array
+    {
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $start = Carbon::parse((string) $event->start_date, $timezone);
+        $end = $event->end_date
+            ? Carbon::parse((string) $event->end_date, $timezone)
+            : $start->copy()->addHours(3);
+
+        if ($end->equalTo($start)) {
+            $end = $start->copy()->addHours(3);
+        }
+
+        return [
+            'source_event_id' => (int) $event->id,
+            'title' => (string) ($event->title ?: 'Evento'),
+            'description' => (string) ($event->description ?: $event->title ?: 'Evento da agenda semanal'),
+            'category' => $event->category,
+            'image' => $event->image,
+            'day_of_week' => $dayOfWeek,
+            'start_time' => $start->format('H:i'),
+            'end_time' => $end->format('H:i'),
+            'venue' => $event->venue,
+            'address' => $event->address,
+            'google_maps_url' => $event->google_maps_url,
+            'city' => $event->city,
+            'uf' => $event->uf ?: $event->state,
+            'cep' => $event->cep,
+            'latitude' => $event->latitude,
+            'longitude' => $event->longitude,
+            'max_attendees' => $event->max_attendees,
+            'contact_email' => $event->contact_email,
+            'contact_phone' => $event->contact_phone,
+            'is_private' => (bool) $event->is_private,
+            'event_format' => $event->event_format ?: 'in_person',
+            'online_url' => $event->online_url,
+            'is_active' => $isActive,
         ];
     }
 
@@ -410,7 +544,7 @@ final class EventAgendaService
     {
         $schedule = EventSchedule::query()
             ->where('app_id', $this->context->id())
-            ->with('production')
+            ->with(['production', 'sourceEvent'])
             ->findOrFail($id);
 
         abort_unless($schedule->production, 404, 'Produção da agenda não encontrada.');
@@ -425,13 +559,34 @@ final class EventAgendaService
 
     private function presentSchedule(EventSchedule $schedule): array
     {
+        $schedule->loadMissing('sourceEvent');
         $data = $schedule->toArray();
         $data['start_time'] = substr((string) $schedule->start_time, 0, 5);
         $data['end_time'] = substr((string) $schedule->end_time, 0, 5);
         $data['is_active'] = (bool) $schedule->is_active;
         $data['is_private'] = (bool) $schedule->is_private;
+        $data['source_event'] = $schedule->sourceEvent
+            ? $this->presentSourceEvent($schedule->sourceEvent)
+            : null;
 
         return $data;
+    }
+
+    private function presentSourceEvent(Event $event): array
+    {
+        return [
+            'id' => (int) $event->id,
+            'title' => (string) $event->title,
+            'slug' => $event->slug,
+            'image' => $event->image,
+            'start_date' => $event->start_date,
+            'end_date' => $event->end_date,
+            'venue' => $event->venue,
+            'city' => $event->city,
+            'uf' => $event->uf ?: $event->state,
+            'is_published' => (bool) $event->is_published,
+            'is_cancelled' => (bool) $event->is_cancelled,
+        ];
     }
 
     private function uniqueSlug(string $title): string
