@@ -37,7 +37,7 @@ class SubscriptionIntentTest extends TestCase
 
         $first = $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', $key)
-            ->postJson('/v1/apps/payflow/subscription-intents', $payload);
+            ->postJson('/api/v1/apps/payflow/subscription-intents', $payload);
 
         $first->assertCreated()
             ->assertJsonPath('data.plan_code', 'pro')
@@ -47,7 +47,7 @@ class SubscriptionIntentTest extends TestCase
 
         $second = $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', $key)
-            ->postJson('/v1/apps/payflow/subscription-intents', $payload);
+            ->postJson('/api/v1/apps/payflow/subscription-intents', $payload);
 
         $second->assertOk();
         $this->assertSame(1, SubscriptionIntent::query()->count());
@@ -60,12 +60,12 @@ class SubscriptionIntentTest extends TestCase
 
         $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', $key)
-            ->postJson('/v1/apps/payflow/subscription-intents', ['plan_code' => 'starter'])
+            ->postJson('/api/v1/apps/payflow/subscription-intents', ['plan_code' => 'starter'])
             ->assertCreated();
 
         $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', $key)
-            ->postJson('/v1/apps/payflow/subscription-intents', ['plan_code' => 'business'])
+            ->postJson('/api/v1/apps/payflow/subscription-intents', ['plan_code' => 'business'])
             ->assertStatus(409);
     }
 
@@ -75,7 +75,7 @@ class SubscriptionIntentTest extends TestCase
 
         $this->actingAs($user, 'api')
             ->withHeader('Idempotency-Key', (string) Str::uuid())
-            ->postJson('/v1/apps/cutinapp/subscription-intents', ['plan_code' => 'pro'])
+            ->postJson('/api/v1/apps/cutinapp/subscription-intents', ['plan_code' => 'pro'])
             ->assertStatus(422);
     }
 }
