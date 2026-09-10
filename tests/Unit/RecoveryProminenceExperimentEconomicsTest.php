@@ -27,27 +27,14 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertNull($result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
         self::assertNull($result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertNull($result['comparison']['relative_contribution_lift_percent']);
+        self::assertSame('inconclusive', $result['comparison']['decision']['status']);
+        self::assertSame('sample_immature', $result['comparison']['decision']['reason']);
+        self::assertFalse($result['comparison']['decision']['eligible_for_rollout']);
     }
 
     public function test_it_calculates_incremental_margin_after_both_variants_reach_maturity(): void
     {
-        $orders = [];
-        $interactions = [];
-
-        for ($i = 1; $i <= 30; $i++) {
-            $controlId = 'control-'.$i;
-            $prominentId = 'prominent-'.$i;
-            $orders[] = $this->order($controlId, $i <= 3 ? 'paid' : 'pending', 10.0, 2.0);
-            $orders[] = $this->order($prominentId, $i <= 6 ? 'paid' : 'pending', 10.0, 2.0);
-            $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $controlId, 'control');
-            $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $prominentId, 'prominent');
-            if ($i <= 2) {
-                $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $controlId, 'control');
-            }
-            if ($i <= 4) {
-                $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $prominentId, 'prominent');
-            }
-        }
+        [$orders, $interactions] = $this->experimentFixture(3, 6, 10.0, 2.0, 10.0, 2.0);
 
         $result = (new RecoveryProminenceExperimentEconomics())->summarize($interactions, $orders, 'pix_recovery_navbar_prominence_v1');
 
@@ -56,6 +43,51 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertSame(10.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
         self::assertSame(0.8, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertSame(100.0, $result['comparison']['relative_contribution_lift_percent']);
+        self::assertSame('winner', $result['comparison']['decision']['status']);
+        self::assertSame('prominent', $result['comparison']['decision']['recommended_variant']);
+        self::assertTrue($result['comparison']['decision']['eligible_for_rollout']);
+        self::assertTrue($result['comparison']['decision']['requires_manual_review']);
+    }
+
+    public function test_it_marks_a_mature_treatment_harmful_when_paid_conversion_drops(): void
+    {
+        [$orders, $interactions] = $this->experimentFixture(6, 3, 10.0, 2.0, 20.0, 2.0);
+
+        $result = (new RecoveryProminenceExperimentEconomics())->summarize($interactions, $orders, 'pix_recovery_navbar_prominence_v1');
+
+        self::assertTrue($result['comparison']['sample_is_mature']);
+        self::assertSame(-10.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertSame('harmful', $result['comparison']['decision']['status']);
+        self::assertSame('control', $result['comparison']['decision']['recommended_variant']);
+        self::assertSame('paid_conversion_guardrail_failed', $result['comparison']['decision']['reason']);
+        self::assertFalse($result['comparison']['decision']['guardrails']['paid_conversion_non_decreasing']);
+        self::assertFalse($result['comparison']['decision']['eligible_for_rollout']);
+    }
+
+    public function test_it_marks_a_mature_treatment_harmful_when_net_contribution_drops(): void
+    {
+        [$orders, $interactions] = $this->experimentFixture(3, 3, 10.0, 2.0, 8.0, 2.0);
+
+        $result = (new RecoveryProminenceExperimentEconomics())->summarize($interactions, $orders, 'pix_recovery_navbar_prominence_v1');
+
+        self::assertSame(0.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertLessThan(0.0, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
+        self::assertSame('harmful', $result['comparison']['decision']['status']);
+        self::assertSame('platform_contribution_guardrail_failed', $result['comparison']['decision']['reason']);
+        self::assertFalse($result['comparison']['decision']['guardrails']['platform_contribution_positive']);
+    }
+
+    public function test_it_keeps_a_mature_flat_result_inconclusive(): void
+    {
+        [$orders, $interactions] = $this->experimentFixture(3, 3, 10.0, 2.0, 10.0, 2.0);
+
+        $result = (new RecoveryProminenceExperimentEconomics())->summarize($interactions, $orders, 'pix_recovery_navbar_prominence_v1');
+
+        self::assertSame(0.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertSame(0.0, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
+        self::assertSame('inconclusive', $result['comparison']['decision']['status']);
+        self::assertSame('no_positive_net_contribution_lift', $result['comparison']['decision']['reason']);
+        self::assertFalse($result['comparison']['decision']['eligible_for_rollout']);
     }
 
     public function test_paid_outcome_requires_exposure_but_not_a_click(): void
@@ -100,6 +132,37 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
 
         self::assertSame([], $result['variants']);
         self::assertFalse($result['comparison']['sample_is_mature']);
+        self::assertSame('inconclusive', $result['comparison']['decision']['status']);
+    }
+
+    /** @return array{0: array<int, array<string, mixed>>, 1: array<int, array<string, mixed>>} */
+    private function experimentFixture(
+        int $controlPaid,
+        int $prominentPaid,
+        float $controlPlatformFee,
+        float $controlProcessorFee,
+        float $prominentPlatformFee,
+        float $prominentProcessorFee,
+    ): array {
+        $orders = [];
+        $interactions = [];
+
+        for ($i = 1; $i <= 30; $i++) {
+            $controlId = 'control-'.$i;
+            $prominentId = 'prominent-'.$i;
+            $orders[] = $this->order($controlId, $i <= $controlPaid ? 'paid' : 'pending', $controlPlatformFee, $controlProcessorFee);
+            $orders[] = $this->order($prominentId, $i <= $prominentPaid ? 'paid' : 'pending', $prominentPlatformFee, $prominentProcessorFee);
+            $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $controlId, 'control');
+            $interactions[] = $this->event('checkout_recovery_notification_cta_viewed', $prominentId, 'prominent');
+            if ($i <= min($controlPaid, 2)) {
+                $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $controlId, 'control');
+            }
+            if ($i <= min($prominentPaid, 4)) {
+                $interactions[] = $this->event('checkout_recovery_notification_cta_clicked', $prominentId, 'prominent');
+            }
+        }
+
+        return [$orders, $interactions];
     }
 
     private function order(string $publicId, string $status, float $platformFee, float $processorFee): array
