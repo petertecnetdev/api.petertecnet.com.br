@@ -9,6 +9,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -113,6 +114,7 @@ class CutinappDiscoveryFiltersTest extends TestCase
             'expires_at' => now()->subMinute(),
             'updated_at' => now(),
         ]);
+        Cache::flush();
 
         $this->getJson('/api/cutinapp/events?city=Campinas&available=1&free=1')
             ->assertOk()->assertJsonCount(1, 'events.data')->assertJsonPath('events.data.0.id', $available->id);
