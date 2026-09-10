@@ -17,6 +17,22 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 {
     use RefreshDatabase;
 
+    public function test_catalog_treats_legacy_null_privacy_as_public(): void
+    {
+        [, $event, $ticket] = $this->paidEventFixture('legacy-null-privacy');
+
+        DB::table('events')
+            ->where('id', $event['id'])
+            ->update(['is_private' => null]);
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('event.id', $event['id'])
+            ->assertJsonPath('sales_closed', false)
+            ->assertJsonPath('tickets.0.id', $ticket['id'])
+            ->assertJsonPath('tickets.0.available', true);
+    }
+
     public function test_paid_sales_are_disabled_until_producer_has_verified_pix_recipient(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
