@@ -8,8 +8,8 @@ use Illuminate\Validation\ValidationException;
 class EventItem extends Model
 {
     protected $table = 'event_items';
-    protected $fillable = ['app_id','event_id','name','description','price','quantity','is_active'];
-    protected $casts = ['app_id'=>'integer','price'=>'decimal:2','quantity'=>'integer','is_active'=>'boolean'];
+    protected $fillable = ['app_id','event_id','source_item_id','name','description','price','quantity','promotion_enabled','promotion_price','is_active'];
+    protected $casts = ['app_id'=>'integer','source_item_id'=>'integer','price'=>'decimal:2','quantity'=>'integer','promotion_enabled'=>'boolean','promotion_price'=>'decimal:2','is_active'=>'boolean'];
 
     protected static function booted(): void
     {
