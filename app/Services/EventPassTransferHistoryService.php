@@ -32,6 +32,7 @@ final class EventPassTransferHistoryService
         $events = Event::query()
             ->where('app_id', $appId)
             ->whereIn('id', $eventIds)
+            ->with('production:id,name,slug,logo,background')
             ->get()
             ->keyBy('id');
 
@@ -71,7 +72,18 @@ final class EventPassTransferHistoryService
                         'venue' => $event->venue,
                         'city' => $event->city,
                         'uf' => $event->uf,
+                        'image' => $event->image,
+                        'address' => $event->address,
+                        'formatted_address' => $event->formatted_address,
+                        'google_maps_url' => $event->google_maps_url,
                         'is_cancelled' => (bool) $event->is_cancelled,
+                        'production' => $event->production ? [
+                            'id' => (int) $event->production->id,
+                            'name' => (string) $event->production->name,
+                            'slug' => $event->production->slug,
+                            'logo' => $event->production->logo,
+                            'background' => $event->production->background,
+                        ] : null,
                     ],
                     'ticket' => $ticket ? [
                         'id' => (int) $ticket->id,
