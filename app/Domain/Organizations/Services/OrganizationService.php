@@ -237,10 +237,12 @@ final class OrganizationService
                     'configured_lots_count' => 0,
                     'sellable_lots_count' => 0,
                     'sellable_free_lots_count' => 0,
+                    'starting_price' => null,
                 ]);
                 $event->setAttribute('ticket_availability_status', $summary['status']);
                 $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
                 $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
+                $event->setAttribute('ticket_starting_price', $summary['starting_price']);
             };
 
             $upcoming->each($applyAvailability);
