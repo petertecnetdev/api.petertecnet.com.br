@@ -571,6 +571,13 @@ final class GlobalSearchService
                 ->where('applications.id', $appId)
                 ->where('application_user.status', 'active'))
             ->whereNotNull('email_verified_at')
+            ->when(Schema::hasTable('user_social_preferences'), fn (Builder $q) => $q->whereNotExists(function ($privacy) use ($appId) {
+                $privacy->selectRaw('1')
+                    ->from('user_social_preferences')
+                    ->whereColumn('user_social_preferences.user_id', 'users.id')
+                    ->where('user_social_preferences.app_id', $appId)
+                    ->where('user_social_preferences.discoverable', false);
+            }))
             ->when($blocked, fn (Builder $q) => $q->whereNotIn('users.id', $blocked))
             ->when($promotersOnly, fn (Builder $q) => $q->where('is_promoter', true));
 
