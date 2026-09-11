@@ -100,7 +100,7 @@ Schedule::command('kryvion:market-signal-notifications')
     ->everyMinute()
     ->when(function (): bool {
         $runtime = app(ApplicationRuntimeControlService::class);
-        return $runtime->allowsScheduledMarketProcessing('kryvion')
+        return $runtime->shouldRunScheduledMarketScan('kryvion')
             && $runtime->allows('kryvion', 'notifications_enabled');
     })
     ->withoutOverlapping(20)
