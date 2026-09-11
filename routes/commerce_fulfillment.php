@@ -5,6 +5,7 @@ use App\Domain\Commerce\Http\Controllers\CommerceFulfillmentController;
 use App\Domain\Commerce\Http\Controllers\EventItemRedemptionController;
 use App\Domain\Commerce\Http\Controllers\EventPurchaseController;
 use App\Domain\Commerce\Http\Controllers\OrderPaymentRetryController;
+use App\Domain\Commerce\Http\Controllers\OrderingController;
 use App\Domain\Commerce\Http\Controllers\TicketAvailabilityController;
 use Illuminate\Support\Facades\Route;
 
@@ -19,6 +20,15 @@ Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'app.capability:events,commerce'])
     ->group(function () {
         Route::get('/events/public/{slug}/purchase-options', [EventPurchaseController::class, 'show'])
+            ->middleware('throttle:120,1');
+    });
+
+Route::prefix('v1/apps/{application}')
+    ->middleware(['app.context', 'app.capability:commerce'])
+    ->group(function () {
+        // Compatibility for ordering payments already created with this callback URL.
+        // Keep /ordering/payments/... as the canonical contract for new integrations.
+        Route::post('/payments/mercadopago/webhook', [OrderingController::class, 'paymentWebhook'])
             ->middleware('throttle:120,1');
     });
 
