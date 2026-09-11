@@ -7,6 +7,7 @@ use App\Models\Application;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Services\AppNotificationService;
+use App\Services\EventProducerCommunicationService;
 use Illuminate\Console\Command;
 
 class EventReminderCommand extends Command
@@ -14,7 +15,7 @@ class EventReminderCommand extends Command
     protected $signature = 'platform:remind-events {--application= : Limita o processamento a um slug de aplicação}';
     protected $description = 'Envia lembretes de eventos para qualquer aplicação com a capacidade events habilitada.';
 
-    public function handle(AppNotificationService $notifications): int
+    public function handle(AppNotificationService $notifications, EventProducerCommunicationService $producerCommunications): int
     {
         $requestedSlug = trim((string) $this->option('application'));
         $applications = Application::query()
@@ -27,9 +28,22 @@ class EventReminderCommand extends Command
         $to = now($timezone)->addMinutes(125);
 
         foreach ($applications as $application) {
-            if (! (bool) config('platform.capabilities.' . $application->slug . '.events', false)) {
+            $capabilities = (array) config('platform.applications.' . $application->slug . '.capabilities', []);
+            if (! in_array('events', $capabilities, true)) {
                 continue;
             }
+
+            Event::query()
+                ->where('app_id', $application->id)
+                ->where(fn ($query) => $query->where('is_cancelled', false)->orWhereNull('is_cancelled'))
+                ->where('start_date', '>', now($timezone))
+                ->where('start_date', '<=', now($timezone)->addHours(24))
+                ->orderBy('id')
+                ->chunkById(100, function ($events) use ($producerCommunications) {
+                    foreach ($events as $event) {
+                        $producerCommunications->notifyUpcoming($event, 24);
+                    }
+                });
 
             $events = Event::query()
                 ->where('app_id', $application->id)
