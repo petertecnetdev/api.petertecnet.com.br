@@ -254,6 +254,17 @@ final class EventManagementController extends Controller
             ->groupBy('o.event_id')
             ->pluck('tickets_sold', 'o.event_id');
 
+        $reservedTicketMetrics = DB::table('inventory_reservations as ir')
+            ->join('tickets as t', 't.id', '=', 'ir.ticket_id')
+            ->where('ir.app_id', $appId)
+            ->where('t.app_id', $appId)
+            ->whereIn('t.event_id', $eventIds)
+            ->whereNull('ir.released_at')
+            ->where('ir.expires_at', '>', $now)
+            ->selectRaw('t.event_id, SUM(ir.quantity) AS tickets_reserved')
+            ->groupBy('t.event_id')
+            ->pluck('tickets_reserved', 't.event_id');
+
         $views = DB::table('interactions')
             ->where('app_id', $appId)
             ->whereIn('entity_id', $eventIds)
@@ -278,10 +289,11 @@ final class EventManagementController extends Controller
             $capacity = max(0, (int) ($ticketCapacity->get($eventId) ?? 0));
             $passesIssued = max(0, (int) ($passes->passes_issued ?? 0));
             $sold = max(0, (int) ($paidTicketMetrics->get($eventId) ?? 0));
+            $reserved = max(0, (int) ($reservedTicketMetrics->get($eventId) ?? 0));
             $checkedIn = max(0, (int) ($passes->checked_in_count ?? 0));
             $viewsCount = max(0, (int) ($views->get($eventId) ?? 0));
             $paidOrders = max(0, (int) ($orders->paid_orders_count ?? 0));
-            $remaining = max(0, $capacity - $passesIssued);
+            $remaining = max(0, $capacity - $passesIssued - $reserved);
 
             $event->setAttribute('operational_metrics', [
                 'paid_orders_count' => $paidOrders,
@@ -291,10 +303,11 @@ final class EventManagementController extends Controller
                 'last_sale_at' => $orders->last_sale_at ?? null,
                 'tickets_sold' => $sold,
                 'passes_issued' => $passesIssued,
+                'tickets_reserved' => $reserved,
                 'ticket_capacity' => $capacity,
                 'tickets_remaining' => $remaining,
                 'sell_through_rate' => $capacity > 0 ? round(($sold / $capacity) * 100, 2) : 0,
-                'inventory_utilization_rate' => $capacity > 0 ? round(($passesIssued / $capacity) * 100, 2) : 0,
+                'inventory_utilization_rate' => $capacity > 0 ? round((($passesIssued + $reserved) / $capacity) * 100, 2) : 0,
                 'checked_in_count' => $checkedIn,
                 'checkin_rate' => $passesIssued > 0 ? round(($checkedIn / $passesIssued) * 100, 2) : 0,
                 'views_count' => $viewsCount,
