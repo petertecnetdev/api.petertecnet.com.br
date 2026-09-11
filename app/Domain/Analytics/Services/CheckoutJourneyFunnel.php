@@ -24,8 +24,14 @@ final class CheckoutJourneyFunnel
      * @param iterable<int|string> $eventIds Events that belong to the producer/organization in scope.
      * @return array<string, mixed>
      */
-    public function summarize(iterable $interactions, iterable $eventIds): array
-    {
+    public function summarize(
+        iterable $interactions,
+        iterable $eventIds,
+        ?float $platformContributionMarginPercent = null,
+        array $platformContributionMarginByPaymentMethod = [],
+    ): array {
+        $platformContributionMarginPercent = $this->normalizeMargin($platformContributionMarginPercent);
+        $platformContributionMarginByPaymentMethod = $this->normalizePaymentMethodMargins($platformContributionMarginByPaymentMethod);
         $allowedEventIds = [];
         foreach ($eventIds as $eventId) {
             if (is_numeric($eventId) && (int) $eventId > 0) {
@@ -93,6 +99,7 @@ final class CheckoutJourneyFunnel
 
         $stageCounts = array_fill_keys(array_keys(self::STAGES), 0);
         $stageGmv = array_fill_keys(array_keys(self::STAGES), 0.0);
+        $stagePlatformContribution = array_fill_keys(array_keys(self::STAGES), 0.0);
         $methods = [];
         $openedGmv = 0.0;
         $approvedGmv = 0.0;
@@ -102,11 +109,20 @@ final class CheckoutJourneyFunnel
 
         foreach ($journeys as $journey) {
             $amount = (float) ($journey['amount'] ?? 0.0);
+            $estimatedPlatformContribution = $this->estimatePlatformContribution(
+                $amount,
+                (string) ($journey['payment_method'] ?: 'unknown'),
+                $platformContributionMarginPercent,
+                $platformContributionMarginByPaymentMethod,
+            );
 
             foreach (array_keys(self::STAGES) as $stage) {
                 if ($journey['stages'][$stage]) {
                     $stageCounts[$stage]++;
                     $stageGmv[$stage] += $amount;
+                    if ($estimatedPlatformContribution !== null) {
+                        $stagePlatformContribution[$stage] += $estimatedPlatformContribution;
+                    }
                 }
             }
 
@@ -133,20 +149,26 @@ final class CheckoutJourneyFunnel
         }
 
         $opened = $stageCounts['opened'];
+        $hasContributionEstimate = $platformContributionMarginPercent !== null;
         $steps = [
-            $this->step('checkout_opened', $opened, $stageCounts['payment_attempted'], $stageGmv['opened'], $stageGmv['payment_attempted']),
-            $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved'], $stageGmv['payment_attempted'], $stageGmv['payment_approved']),
-            $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled'], $stageGmv['payment_approved'], $stageGmv['fulfilled']),
+            $this->step('checkout_opened', $opened, $stageCounts['payment_attempted'], $stageGmv['opened'], $stageGmv['payment_attempted'], $stagePlatformContribution['opened'], $stagePlatformContribution['payment_attempted'], $hasContributionEstimate),
+            $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved'], $stageGmv['payment_attempted'], $stageGmv['payment_approved'], $stagePlatformContribution['payment_attempted'], $stagePlatformContribution['payment_approved'], $hasContributionEstimate),
+            $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled'], $stageGmv['payment_approved'], $stageGmv['fulfilled'], $stagePlatformContribution['payment_approved'], $stagePlatformContribution['fulfilled'], $hasContributionEstimate),
         ];
 
         $largestDropoff = null;
         $largestEconomicDropoff = null;
+        $largestContributionDropoff = null;
         foreach ($steps as $step) {
             if ($largestDropoff === null || $step['dropoff_journeys'] > $largestDropoff['dropoff_journeys']) {
                 $largestDropoff = $step;
             }
             if ($largestEconomicDropoff === null || $step['gmv_at_risk'] > $largestEconomicDropoff['gmv_at_risk']) {
                 $largestEconomicDropoff = $step;
+            }
+            if (($step['platform_contribution_at_risk'] ?? 0) > 0
+                && ($largestContributionDropoff === null || $step['platform_contribution_at_risk'] > $largestContributionDropoff['platform_contribution_at_risk'])) {
+                $largestContributionDropoff = $step;
             }
         }
 
@@ -177,12 +199,22 @@ final class CheckoutJourneyFunnel
                 'steps' => $steps,
                 'largest_step' => $largestDropoff,
                 'largest_economic_step' => $largestEconomicDropoff,
+                'largest_contribution_step' => $largestContributionDropoff,
             ],
             'gmv' => [
                 'opened' => round($openedGmv, 2),
                 'approved' => round($approvedGmv, 2),
                 'explicit_abandoned_at_risk' => round($abandonedGmv, 2),
                 'by_stage' => array_map(static fn (float $value): float => round($value, 2), $stageGmv),
+            ],
+            'platform_contribution_estimate' => [
+                'available' => $hasContributionEstimate,
+                'basis' => $hasContributionEstimate ? 'observed_paid_order_margin' : null,
+                'fallback_margin_percent' => $platformContributionMarginPercent,
+                'payment_method_margin_percent' => $platformContributionMarginByPaymentMethod,
+                'by_stage' => $hasContributionEstimate
+                    ? array_map(static fn (float $value): float => round($value, 2), $stagePlatformContribution)
+                    : array_fill_keys(array_keys(self::STAGES), null),
             ],
             'by_payment_method' => $byPaymentMethod,
         ];
@@ -202,8 +234,16 @@ final class CheckoutJourneyFunnel
     }
 
     /** @return array<string, mixed> */
-    private function step(string $from, int $fromCount, int $toCount, float $fromGmv, float $toGmv): array
-    {
+    private function step(
+        string $from,
+        int $fromCount,
+        int $toCount,
+        float $fromGmv,
+        float $toGmv,
+        float $fromPlatformContribution,
+        float $toPlatformContribution,
+        bool $hasContributionEstimate,
+    ): array {
         $dropoff = max(0, $fromCount - $toCount);
 
         return [
@@ -220,7 +260,49 @@ final class CheckoutJourneyFunnel
             'gmv_from' => round($fromGmv, 2),
             'gmv_to' => round($toGmv, 2),
             'gmv_at_risk' => round(max(0.0, $fromGmv - $toGmv), 2),
+            'platform_contribution_from' => $hasContributionEstimate ? round($fromPlatformContribution, 2) : null,
+            'platform_contribution_to' => $hasContributionEstimate ? round($toPlatformContribution, 2) : null,
+            'platform_contribution_at_risk' => $hasContributionEstimate
+                ? round(max(0.0, $fromPlatformContribution - $toPlatformContribution), 2)
+                : null,
         ];
+    }
+
+    private function normalizeMargin(?float $margin): ?float
+    {
+        if ($margin === null || ! is_finite($margin)) {
+            return null;
+        }
+
+        return round(min(max($margin, -100.0), 100.0), 4);
+    }
+
+    /** @param array<string, mixed> $margins @return array<string, float> */
+    private function normalizePaymentMethodMargins(array $margins): array
+    {
+        $normalized = [];
+        foreach ($margins as $method => $margin) {
+            $method = strtolower(trim((string) $method));
+            if (! preg_match('/^[a-z][a-z0-9_-]{1,39}$/', $method) || ! is_numeric($margin)) {
+                continue;
+            }
+            $normalizedMargin = $this->normalizeMargin((float) $margin);
+            if ($normalizedMargin !== null) {
+                $normalized[$method] = $normalizedMargin;
+            }
+        }
+        ksort($normalized);
+        return $normalized;
+    }
+
+    /** @param array<string, float> $margins */
+    private function estimatePlatformContribution(float $amount, string $paymentMethod, ?float $fallbackMargin, array $margins): ?float
+    {
+        if ($fallbackMargin === null) {
+            return null;
+        }
+        $margin = $margins[$paymentMethod] ?? $fallbackMargin;
+        return $amount * ($margin / 100);
     }
 
     private function rate(int $numerator, int $denominator): ?float
@@ -277,12 +359,20 @@ final class CheckoutJourneyFunnel
                 'steps' => [],
                 'largest_step' => null,
                 'largest_economic_step' => null,
+                'largest_contribution_step' => null,
             ],
             'gmv' => [
                 'opened' => 0.0,
                 'approved' => 0.0,
                 'explicit_abandoned_at_risk' => 0.0,
                 'by_stage' => array_fill_keys(array_keys(self::STAGES), 0.0),
+            ],
+            'platform_contribution_estimate' => [
+                'available' => false,
+                'basis' => null,
+                'fallback_margin_percent' => null,
+                'payment_method_margin_percent' => [],
+                'by_stage' => array_fill_keys(array_keys(self::STAGES), null),
             ],
             'by_payment_method' => [],
         ];
