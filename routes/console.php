@@ -145,6 +145,10 @@ Schedule::command('commerce:recover-pending-checkouts')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
+Schedule::command('platform:reconcile-payments')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
 Schedule::command('finance:recover-pending-subscriptions')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
