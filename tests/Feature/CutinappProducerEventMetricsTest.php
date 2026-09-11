@@ -93,6 +93,36 @@ class CutinappProducerEventMetricsTest extends TestCase
             'updated_at'=>now(),
         ]);
 
+        $pendingOrderId=DB::table('commerce_orders')->insertGetId([
+            'app_id'=>$application->id,
+            'public_id'=>(string)Str::uuid(),
+            'event_id'=>$event['id'],
+            'production_id'=>$production['id'],
+            'user_id'=>$user->id,
+            'status'=>'pending',
+            'currency'=>'BRL',
+            'subtotal'=>150,
+            'platform_fee'=>0,
+            'processor_fee'=>0,
+            'discount_amount'=>0,
+            'total'=>150,
+            'producer_net'=>150,
+            'payment_method'=>'pix',
+            'expires_at'=>now()->addMinutes(20),
+            'created_at'=>now(),
+            'updated_at'=>now(),
+        ]);
+        DB::table('inventory_reservations')->insert([
+            'app_id'=>$application->id,
+            'order_id'=>$pendingOrderId,
+            'type'=>'ticket',
+            'ticket_id'=>$ticket['id'],
+            'quantity'=>3,
+            'expires_at'=>now()->addMinutes(20),
+            'created_at'=>now(),
+            'updated_at'=>now(),
+        ]);
+
         $pass=EventPass::create([
             'ticket_id'=>$ticket['id'],
             'event_id'=>$event['id'],
@@ -112,11 +142,14 @@ class CutinappProducerEventMetricsTest extends TestCase
             ->getJson('/api/cutinapp/events/mine')
             ->assertOk()
             ->assertJsonPath('events.data.0.operational_metrics.paid_orders_count',1)
+            ->assertJsonPath('events.data.0.operational_metrics.pending_orders_count',1)
             ->assertJsonPath('events.data.0.operational_metrics.gross_sales',100)
             ->assertJsonPath('events.data.0.operational_metrics.tickets_sold',2)
             ->assertJsonPath('events.data.0.operational_metrics.passes_issued',1)
+            ->assertJsonPath('events.data.0.operational_metrics.tickets_reserved',3)
             ->assertJsonPath('events.data.0.operational_metrics.ticket_capacity',20)
-            ->assertJsonPath('events.data.0.operational_metrics.tickets_remaining',19)
+            ->assertJsonPath('events.data.0.operational_metrics.tickets_remaining',16)
+            ->assertJsonPath('events.data.0.operational_metrics.inventory_utilization_rate',20)
             ->assertJsonPath('events.data.0.operational_metrics.checked_in_count',1)
             ->assertJsonPath('events.data.0.operational_metrics.agenda_active',false);
     }
