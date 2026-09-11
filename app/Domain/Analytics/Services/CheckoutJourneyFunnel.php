@@ -92,6 +92,7 @@ final class CheckoutJourneyFunnel
         }
 
         $stageCounts = array_fill_keys(array_keys(self::STAGES), 0);
+        $stageGmv = array_fill_keys(array_keys(self::STAGES), 0.0);
         $methods = [];
         $openedGmv = 0.0;
         $approvedGmv = 0.0;
@@ -100,13 +101,15 @@ final class CheckoutJourneyFunnel
         $paymentFailed = 0;
 
         foreach ($journeys as $journey) {
+            $amount = (float) ($journey['amount'] ?? 0.0);
+
             foreach (array_keys(self::STAGES) as $stage) {
                 if ($journey['stages'][$stage]) {
                     $stageCounts[$stage]++;
+                    $stageGmv[$stage] += $amount;
                 }
             }
 
-            $amount = (float) ($journey['amount'] ?? 0.0);
             if ($journey['stages']['opened']) {
                 $openedGmv += $amount;
             }
@@ -131,15 +134,19 @@ final class CheckoutJourneyFunnel
 
         $opened = $stageCounts['opened'];
         $steps = [
-            $this->step('checkout_opened', $opened, $stageCounts['payment_attempted']),
-            $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved']),
-            $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled']),
+            $this->step('checkout_opened', $opened, $stageCounts['payment_attempted'], $stageGmv['opened'], $stageGmv['payment_attempted']),
+            $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved'], $stageGmv['payment_attempted'], $stageGmv['payment_approved']),
+            $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled'], $stageGmv['payment_approved'], $stageGmv['fulfilled']),
         ];
 
         $largestDropoff = null;
+        $largestEconomicDropoff = null;
         foreach ($steps as $step) {
             if ($largestDropoff === null || $step['dropoff_journeys'] > $largestDropoff['dropoff_journeys']) {
                 $largestDropoff = $step;
+            }
+            if ($largestEconomicDropoff === null || $step['gmv_at_risk'] > $largestEconomicDropoff['gmv_at_risk']) {
+                $largestEconomicDropoff = $step;
             }
         }
 
@@ -169,11 +176,13 @@ final class CheckoutJourneyFunnel
                 'payment_failed_journeys' => $paymentFailed,
                 'steps' => $steps,
                 'largest_step' => $largestDropoff,
+                'largest_economic_step' => $largestEconomicDropoff,
             ],
             'gmv' => [
                 'opened' => round($openedGmv, 2),
                 'approved' => round($approvedGmv, 2),
                 'explicit_abandoned_at_risk' => round($abandonedGmv, 2),
+                'by_stage' => array_map(static fn (float $value): float => round($value, 2), $stageGmv),
             ],
             'by_payment_method' => $byPaymentMethod,
         ];
@@ -193,7 +202,7 @@ final class CheckoutJourneyFunnel
     }
 
     /** @return array<string, mixed> */
-    private function step(string $from, int $fromCount, int $toCount): array
+    private function step(string $from, int $fromCount, int $toCount, float $fromGmv, float $toGmv): array
     {
         $dropoff = max(0, $fromCount - $toCount);
 
@@ -208,6 +217,9 @@ final class CheckoutJourneyFunnel
             'to_journeys' => $toCount,
             'dropoff_journeys' => $dropoff,
             'dropoff_percent' => $fromCount > 0 ? round(($dropoff / $fromCount) * 100, 2) : null,
+            'gmv_from' => round($fromGmv, 2),
+            'gmv_to' => round($toGmv, 2),
+            'gmv_at_risk' => round(max(0.0, $fromGmv - $toGmv), 2),
         ];
     }
 
@@ -259,8 +271,19 @@ final class CheckoutJourneyFunnel
                 'attempted_to_approved_percent' => null,
                 'approved_to_fulfilled_percent' => null,
             ],
-            'dropoff' => ['explicit_abandoned_journeys' => 0, 'payment_failed_journeys' => 0, 'steps' => [], 'largest_step' => null],
-            'gmv' => ['opened' => 0.0, 'approved' => 0.0, 'explicit_abandoned_at_risk' => 0.0],
+            'dropoff' => [
+                'explicit_abandoned_journeys' => 0,
+                'payment_failed_journeys' => 0,
+                'steps' => [],
+                'largest_step' => null,
+                'largest_economic_step' => null,
+            ],
+            'gmv' => [
+                'opened' => 0.0,
+                'approved' => 0.0,
+                'explicit_abandoned_at_risk' => 0.0,
+                'by_stage' => array_fill_keys(array_keys(self::STAGES), 0.0),
+            ],
             'by_payment_method' => [],
         ];
     }
