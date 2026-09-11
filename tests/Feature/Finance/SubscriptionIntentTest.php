@@ -89,4 +89,86 @@ class SubscriptionIntentTest extends TestCase
             ->postJson('/api/v1/apps/cutinapp/subscription-intents', ['plan_code' => 'pro'])
             ->assertStatus(422);
     }
+
+    public function test_user_can_recover_latest_pending_intent_for_current_application(): void
+    {
+        $user = $this->user();
+        $headers = $this->headers($user, (string) Str::uuid());
+
+        SubscriptionIntent::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $user->getKey(),
+            'application' => 'plat',
+            'plan_code' => 'pro',
+            'plan_name' => 'Pro',
+            'price_cents' => 9990,
+            'currency' => 'BRL',
+            'billing_interval' => 'month',
+            'billing_interval_count' => 1,
+            'status' => 'active',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $recoverable = SubscriptionIntent::query()->create([
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $user->getKey(),
+            'application' => 'plat',
+            'plan_code' => 'business',
+            'plan_name' => 'Business',
+            'price_cents' => 19990,
+            'currency' => 'BRL',
+            'billing_interval' => 'month',
+            'billing_interval_count' => 1,
+            'status' => 'payment_pending',
+            'source' => 'subscription_plans',
+            'metadata' => ['referral' => 'bar-do-peter'],
+            'idempotency_key' => (string) Str::uuid(),
+            'payment_pending_at' => now(),
+        ]);
+
+        $response = $this->withHeaders($headers)
+            ->getJson('/api/v1/apps/plat/subscription-intents/recoverable');
+
+        $response->assertSuccessful()
+            ->assertJsonPath('data.id', $recoverable->public_id)
+            ->assertJsonPath('data.application', 'plat')
+            ->assertJsonPath('data.status', 'payment_pending')
+            ->assertJsonPath('data.metadata.referral', 'bar-do-peter');
+        $response->assertJsonMissingPath('data.user_id');
+        $response->assertJsonMissingPath('data.idempotency_key');
+    }
+
+    public function test_recovery_is_scoped_to_user_application_status_and_seven_day_window(): void
+    {
+        $user = $this->user();
+        $otherUser = $this->user();
+        $headers = $this->headers($user, (string) Str::uuid());
+
+        $base = [
+            'plan_code' => 'pro',
+            'plan_name' => 'Pro',
+            'price_cents' => 9990,
+            'currency' => 'BRL',
+            'billing_interval' => 'month',
+            'billing_interval_count' => 1,
+        ];
+
+        foreach ([
+            ['user_id' => $otherUser->getKey(), 'application' => 'plat', 'status' => 'payment_pending', 'created_at' => now()],
+            ['user_id' => $user->getKey(), 'application' => 'rasoio', 'status' => 'payment_pending', 'created_at' => now()],
+            ['user_id' => $user->getKey(), 'application' => 'plat', 'status' => 'payment_failed', 'created_at' => now()],
+            ['user_id' => $user->getKey(), 'application' => 'plat', 'status' => 'payment_pending', 'created_at' => now()->subDays(8)],
+        ] as $candidate) {
+            SubscriptionIntent::query()->create($base + $candidate + [
+                'public_id' => (string) Str::uuid(),
+                'idempotency_key' => (string) Str::uuid(),
+                'updated_at' => $candidate['created_at'],
+            ]);
+        }
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/apps/plat/subscription-intents/recoverable')
+            ->assertSuccessful()
+            ->assertExactJson(['data' => null]);
+    }
 }
