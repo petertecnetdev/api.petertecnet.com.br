@@ -123,6 +123,9 @@ return new class extends Migration
         $postsTable = $this->physicalTable('event_posts', 'cutinapp_event_posts');
         $ratingsTable = $this->physicalTable('event_ratings', 'cutinapp_event_ratings');
 
+        $this->dropCompatibilityView('event_posts', $postsTable);
+        $this->dropCompatibilityView('event_ratings', $ratingsTable);
+
         if (Schema::hasTable($ratingsTable)) {
             $columns = [
                 'comment',
@@ -159,6 +162,27 @@ return new class extends Migration
         }
 
         return $generic;
+    }
+
+    private function dropCompatibilityView(string $generic, string $physical): void
+    {
+        if (DB::getDriverName() === 'sqlite' || $generic === $physical) {
+            return;
+        }
+
+        $database = DB::connection()->getDatabaseName();
+        if (! $database) {
+            return;
+        }
+
+        $type = DB::table('information_schema.tables')
+            ->where('table_schema', $database)
+            ->where('table_name', $generic)
+            ->value('table_type');
+
+        if (strtoupper((string) $type) === 'VIEW') {
+            DB::statement('DROP VIEW IF EXISTS '.$generic);
+        }
     }
 
     private function refreshCompatibilityView(string $generic, string $physical): void
