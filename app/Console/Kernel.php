@@ -29,7 +29,7 @@ class Kernel extends ConsoleKernel
             ->everyMinute()
             ->when(function (): bool {
                 $runtime = app(ApplicationRuntimeControlService::class);
-                return $runtime->allowsScheduledMarketProcessing('kryvion')
+                return $runtime->shouldRunScheduledMarketScan('kryvion')
                     && $runtime->allows('kryvion', 'notifications_enabled');
             })
             ->withoutOverlapping(5);
