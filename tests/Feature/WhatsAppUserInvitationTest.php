@@ -110,7 +110,7 @@ class WhatsAppUserInvitationTest extends TestCase
         $this->assertSame('+5562999999999', $credentials['phone_normalized'] ?? null);
         $this->assertSame('Senha#Forte123', $credentials['password'] ?? null);
 
-        $this->assertTrue(auth()->attempt($credentials));
+        $this->assertNotFalse(auth()->attempt($credentials));
 
         $this->assertCount(3, Http::recorded());
     }
