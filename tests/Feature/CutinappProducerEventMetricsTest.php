@@ -93,7 +93,7 @@ class CutinappProducerEventMetricsTest extends TestCase
             'updated_at'=>now(),
         ]);
 
-        EventPass::create([
+        $pass=EventPass::create([
             'ticket_id'=>$ticket['id'],
             'event_id'=>$event['id'],
             'user_id'=>$user->id,
@@ -101,10 +101,12 @@ class CutinappProducerEventMetricsTest extends TestCase
             'holder_email'=>$user->email,
             'token'=>(string)Str::uuid(),
             'status'=>'issued',
-        ])->forceFill([
+        ]);
+        DB::table('event_passes')->where('id',$pass->id)->update([
             'checked_in_at'=>now(),
             'checked_in_by'=>$user->id,
-        ])->save();
+            'updated_at'=>now(),
+        ]);
 
         $this->withHeaders($headers)
             ->getJson('/api/cutinapp/events/mine')
