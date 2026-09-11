@@ -31,8 +31,8 @@ final class CheckoutJourneyPeriodComparisonTest extends TestCase
     public function test_compares_recommended_action_against_the_same_checkout_step(): void
     {
         $service = new CheckoutJourneyPeriodComparison();
-        $current = $this->summary(60, 60, 80, 72, 46, 'payment_attempted', 'payment_approved', 'attempted_to_approved_percent');
-        $previous = $this->summary(55, 58, 200, 61, 70, 'checkout_opened', 'payment_attempted', 'opened_to_attempted_percent');
+        $current = $this->summary(60, 60, 46, 72, 46, 'payment_attempted', 'payment_approved', 'attempted_to_approved_percent');
+        $previous = $this->summary(55, 58, 200, 61, 70, 'checkout_opened', 'payment_attempted', 'attempted_to_approved_percent');
 
         $result = $service->compare($current, $previous, 7);
         $effectiveness = $result['recommended_action_effectiveness'];
@@ -69,9 +69,9 @@ final class CheckoutJourneyPeriodComparisonTest extends TestCase
             'stages' => ['opened' => $opened],
             'conversion' => [
                 'opened_to_approved_percent' => $conversion,
-                'opened_to_attempted_percent' => $largestFrom === 'checkout_opened' ? $targetRate : 80,
-                'attempted_to_approved_percent' => $largestFrom === 'payment_attempted' ? $targetRate : 65,
-                'approved_to_fulfilled_percent' => $largestFrom === 'payment_approved' ? $targetRate : 95,
+                'opened_to_attempted_percent' => $targetMetric === 'opened_to_attempted_percent' ? $targetRate : 80,
+                'attempted_to_approved_percent' => $targetMetric === 'attempted_to_approved_percent' ? $targetRate : 65,
+                'approved_to_fulfilled_percent' => $targetMetric === 'approved_to_fulfilled_percent' ? $targetRate : 95,
             ],
             'dropoff' => [
                 'largest_contribution_step' => [
