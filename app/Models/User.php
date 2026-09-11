@@ -17,7 +17,7 @@ class User extends Authenticatable implements JWTSubject
     protected $fillable = [
         'user_name', 'first_name', 'last_name', 'email', 'verification_code', 'verification_code_expires_at', 'password',
         'auth_version', 'reset_password_code', 'reset_password_expires_at', 'remember_token', 'profile_id',
-        'cpf', 'google_id', 'avatar', 'background', 'address', 'phone', 'city', 'uf', 'postal_code', 'birthdate',
+        'cpf', 'google_id', 'avatar', 'background', 'address', 'phone', 'phone_normalized', 'whatsapp_verified_at', 'city', 'uf', 'postal_code', 'birthdate',
         'gender', 'marital_status', 'occupation', 'about', 'favorite_artist', 'favorite_genre',
         'payment_method', 'newsletter_subscription', 'ticket_purchases', 'account_balance',
         'is_producer', 'is_participant', 'is_promoter', 'is_barber', 'is_barbershoper',
@@ -36,6 +36,7 @@ class User extends Authenticatable implements JWTSubject
 
     protected $casts = [
         'email_verified_at' => 'datetime',
+        'whatsapp_verified_at' => 'datetime',
         'verification_code_expires_at' => 'datetime',
         'reset_password_expires_at' => 'datetime',
         'birthdate' => 'date',
