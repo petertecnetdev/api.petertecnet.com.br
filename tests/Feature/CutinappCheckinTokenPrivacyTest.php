@@ -35,6 +35,13 @@ class CutinappCheckinTokenPrivacyTest extends TestCase
         $claimedPass = $this->withHeaders($this->headersFor($participant))->postJson('/api/cutinapp/passes/claim/' . $secondTicket['id'])->assertCreated()->json('pass');
         $token = $claimedPass['token'];
 
+        $walletPass = $this->withHeaders($this->headersFor($participant))
+            ->getJson('/api/cutinapp/passes/mine')
+            ->assertOk()
+            ->json('passes.0');
+        $this->assertArrayNotHasKey('token', $walletPass);
+        $this->assertTrue((bool) data_get($walletPass, 'secure_qr.available'));
+
         DB::table('application_user')->updateOrInsert(
             ['application_id'=>$application->id,'user_id'=>$operator->id],
             ['role'=>'staff','status'=>'active','metadata'=>json_encode(['event_ids'=>[$firstEvent['id']]], JSON_THROW_ON_ERROR),'joined_at'=>now(),'created_at'=>now(),'updated_at'=>now()]
