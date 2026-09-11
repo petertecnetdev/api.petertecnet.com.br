@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\File;
+use App\Models\Interaction;
 use App\Models\User;
 use App\Services\AppNotificationService;
 use App\Support\ApplicationContext;
@@ -671,6 +672,54 @@ final class EventCommunityController extends Controller
         return response()->json(['message' => 'Resposta publicada.']);
     }
 
+    public function trackReviveInteraction(Request $request, int $eventId)
+    {
+        $event = $this->publicEventById($eventId);
+        abort_unless($event->hasEnded(), 422, 'O Reviva só está disponível para eventos encerrados.');
+
+        $data = $request->validate([
+            'type' => 'required|string|in:revive_view,revive_share,revive_moment_share,revive_next_click,revive_related_click,revive_follow,revive_review,revive_post,revive_reply,revive_reaction,revive_media_upload',
+            'target_id' => 'nullable|integer|min:1',
+            'metadata' => 'nullable|array|max:20',
+        ]);
+
+        $user = $this->optionalUser($request);
+        $type = (string) $data['type'];
+
+        if ($type === 'revive_view') {
+            $recent = Interaction::query()
+                ->where('app_id', $this->context->id())
+                ->where('entity_type', 'Event')
+                ->where('entity_id', $event->id)
+                ->where('interaction_type', 'revive_view')
+                ->when(
+                    $user,
+                    fn ($q) => $q->where('user_id', $user->id),
+                    fn ($q) => $q->whereNull('user_id')->where('session_key', substr(hash('sha256', (string) $request->ip().'|'.(string) $request->userAgent()), 0, 40))
+                )
+                ->where('created_at', '>=', now()->subMinutes(10))
+                ->exists();
+
+            if ($recent) {
+                return response()->json(['tracked' => false, 'deduplicated' => true]);
+            }
+        }
+
+        Interaction::register(
+            $type,
+            $event,
+            $user,
+            array_filter([
+                'source_channel' => 'revive',
+                'target_id' => isset($data['target_id']) ? (int) $data['target_id'] : null,
+                'metadata' => $data['metadata'] ?? null,
+            ], fn ($value) => $value !== null && $value !== ''),
+            'Reviva · '.str_replace('_', ' ', substr($type, 7))
+        );
+
+        return response()->json(['tracked' => true], 201);
+    }
+
     public function report(Request $request, int $eventId)
     {
         $event = $this->publicEventById($eventId);
@@ -997,6 +1046,19 @@ final class EventCommunityController extends Controller
                 ->where('status', 'paid')
                 ->where('metadata->source_event_id', (int) $event->id);
 
+            $reviveInteractions = Interaction::query()
+                ->where('app_id', $appId)
+                ->where('entity_type', 'Event')
+                ->where('entity_id', $event->id)
+                ->where('interaction_type', 'like', 'revive_%');
+
+            $uniqueVisitors = (clone $reviveInteractions)
+                ->where('interaction_type', 'revive_view')
+                ->whereNotNull('session_key')
+                ->distinct()
+                ->count('session_key');
+            $attributedOrders = (clone $attributed)->count();
+
             $metrics = [
                 'gallery_items' => $gallery->count(),
                 'posts' => DB::table('event_posts')->where([
@@ -1008,9 +1070,17 @@ final class EventCommunityController extends Controller
                     'app_id' => $appId,
                     'event_id' => $event->id,
                 ])->count(),
-                'followers_from_revive' => null,
-                'attributed_orders' => (clone $attributed)->count(),
+                'views' => (clone $reviveInteractions)->where('interaction_type', 'revive_view')->count(),
+                'unique_visitors' => $uniqueVisitors,
+                'shares' => (clone $reviveInteractions)->whereIn('interaction_type', ['revive_share', 'revive_moment_share'])->count(),
+                'next_event_clicks' => (clone $reviveInteractions)->where('interaction_type', 'revive_next_click')->count(),
+                'related_event_clicks' => (clone $reviveInteractions)->where('interaction_type', 'revive_related_click')->count(),
+                'followers_from_revive' => (clone $reviveInteractions)->where('interaction_type', 'revive_follow')->count(),
+                'attributed_orders' => $attributedOrders,
                 'attributed_gmv' => round((float) (clone $attributed)->sum('total'), 2),
+                'post_event_conversion_rate' => $uniqueVisitors > 0
+                    ? round(($attributedOrders / $uniqueVisitors) * 100, 2)
+                    : 0,
             ];
         }
 
