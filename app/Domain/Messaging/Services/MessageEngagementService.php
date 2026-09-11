@@ -198,6 +198,15 @@ final class MessageEngagementService
         DB::table('messaging_notification_deliveries')
             ->whereIn('engagement_cycle_id', $cycleIds)
             ->update(['read_at' => $now, 'updated_at' => $now]);
+
+        DB::table('messaging_notification_deliveries')
+            ->whereIn('engagement_cycle_id', $cycleIds)
+            ->where('email_status', 'pending')
+            ->update([
+                'email_status' => 'read_before_email',
+                'skip_reason' => 'read_before_email',
+                'updated_at' => $now,
+            ]);
     }
 
     public function markResponse(int $conversationId, int $userId): void
@@ -709,6 +718,14 @@ final class MessageEngagementService
             'read_at' => $now,
             'updated_at' => $now,
         ]);
+        DB::table('messaging_notification_deliveries')
+            ->where('engagement_cycle_id', $cycle->id)
+            ->where('email_status', 'pending')
+            ->update([
+                'email_status' => 'read_before_email',
+                'skip_reason' => 'read_before_email',
+                'updated_at' => $now,
+            ]);
     }
 
     private function recalculateCycle(int $cycleId): void
