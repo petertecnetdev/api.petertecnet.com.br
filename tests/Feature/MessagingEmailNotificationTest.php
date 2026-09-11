@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Domain\Media\Services\ManagedFileStorageService;
+use App\Domain\Messaging\Services\MessageEngagementService;
 use App\Domain\Messaging\Services\MessagingService;
 use App\Models\AppNotification;
 use App\Models\User;
@@ -87,7 +88,11 @@ class MessagingEmailNotificationTest extends TestCase
             )
             ->andReturn(new AppNotification());
 
-        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications);
+        $engagement = Mockery::mock(MessageEngagementService::class);
+        $engagement->shouldReceive('markResponse')->once()->with($conversationId, (int) $sender->id);
+        $engagement->shouldReceive('queueMessage')->once()->with(Mockery::type('int'), (int) $recipient->id);
+
+        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications, $engagement);
         $message = $service->send($conversationId, (int) $sender->id, [
             'body' => 'Olá Maria, tudo bem?',
             'type' => 'text',
@@ -152,7 +157,11 @@ class MessagingEmailNotificationTest extends TestCase
             ->once()
             ->andThrow(new RuntimeException('Notification transport unavailable'));
 
-        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications);
+        $engagement = Mockery::mock(MessageEngagementService::class);
+        $engagement->shouldReceive('markResponse')->once()->with($conversationId, (int) $sender->id);
+        $engagement->shouldReceive('queueMessage')->once()->with(Mockery::type('int'), (int) $recipient->id);
+
+        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications, $engagement);
 
         try {
             $service->send($conversationId, (int) $sender->id, [
