@@ -342,7 +342,11 @@ final class EventDiscoveryController extends Controller
             ->selectRaw('COALESCE(pp.participants, 0) participants')
             ->selectRaw('COALESCE(pp.checkins, 0) checkins')
             ->selectRaw('COALESCE(cp.community_posts, 0) community_posts')
-            ->selectRaw('(COALESCE(rr.rating_average, 0) * 18 + LEAST(COALESCE(rr.rating_total, 0), 100) * 0.7 + LEAST(COALESCE(cp.community_posts, 0), 150) * 0.35 + LEAST(COALESCE(pp.participants, 0), 500) * 0.08) revive_score')
+            ->selectRaw('(COALESCE(rr.rating_average, 0) * 18
+                + (CASE WHEN COALESCE(rr.rating_total, 0) > 100 THEN 100 ELSE COALESCE(rr.rating_total, 0) END) * 0.7
+                + (CASE WHEN COALESCE(cp.community_posts, 0) > 150 THEN 150 ELSE COALESCE(cp.community_posts, 0) END) * 0.35
+                + (CASE WHEN COALESCE(pp.participants, 0) > 500 THEN 500 ELSE COALESCE(pp.participants, 0) END) * 0.08
+            ) revive_score')
             ->orderByDesc('revive_score')
             ->orderByDesc('e.end_date');
 
