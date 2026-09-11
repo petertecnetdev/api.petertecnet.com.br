@@ -152,11 +152,72 @@ final class EventPassService
         $passes = EventPass::query()
             ->where('user_id', $user->id)
             ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
-            ->with(['ticket', 'event.production'])
+            ->with([
+                'ticket',
+                'event.production',
+                'orderItem.order.payments' => fn ($query) => $query->latest('id'),
+            ])
             ->latest()
             ->get();
 
-        return ['passes' => $passes];
+        $passes->each(function (EventPass $pass): void {
+            $orderItem = $pass->orderItem;
+            $order = $orderItem?->order;
+            $event = $pass->event;
+            $ticket = $pass->ticket;
+
+            // The wallet index never needs the credential itself. The holder can
+            // retrieve the QR only from the authenticated pass detail endpoint.
+            $pass->makeHidden('token');
+            $pass->setAttribute('secure_qr', [
+                'available' => true,
+                'detail_url' => '/passes/'.$pass->id,
+            ]);
+            $pass->setAttribute('is_complimentary', (float) ($ticket?->price ?? 0) <= 0);
+            $pass->setAttribute('purchase', $order ? [
+                'id' => (int) $order->id,
+                'public_id' => (string) $order->public_id,
+                'status' => (string) $order->status,
+                'payment_method' => $order->payment_method,
+                'total' => $order->total,
+                'subtotal' => $order->subtotal,
+                'discount_amount' => $order->discount_amount,
+                'platform_fee' => $order->platform_fee,
+                'processor_fee' => $order->processor_fee,
+                'paid_at' => optional($order->paid_at)->toIso8601String(),
+                'purchased_at' => optional($order->created_at)->toIso8601String(),
+                'line_unit_price' => $orderItem?->unit_price,
+                'line_subtotal' => $orderItem?->subtotal,
+                'latest_payment_status' => optional($order->payments->first())->status,
+            ] : null);
+            $pass->setAttribute('wallet_state', [
+                'event_status' => $event?->temporal_status,
+                'event_cancelled' => (bool) ($event?->is_cancelled),
+                'checked_in' => $pass->checked_in_at !== null || (string) $pass->status === 'checked_in',
+                'transferable' => ! in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true)
+                    && $pass->checked_in_at === null
+                    && (string) $pass->status !== 'checked_in'
+                    && ! (bool) ($event?->is_cancelled)
+                    && ! (bool) ($event?->has_ended),
+            ]);
+
+            // Avoid duplicating the complete commerce graph in the wallet payload.
+            $pass->unsetRelation('orderItem');
+        });
+
+        $summary = [
+            'total' => $passes->count(),
+            'valid' => $passes->filter(fn (EventPass $pass) => ! in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true))->count(),
+            'upcoming' => $passes->filter(fn (EventPass $pass) => $pass->event?->temporal_status === 'future' && ! $pass->event?->is_cancelled)->count(),
+            'happening_now' => $passes->filter(fn (EventPass $pass) => $pass->event?->temporal_status === 'ongoing' && ! $pass->event?->is_cancelled)->count(),
+            'used' => $passes->filter(fn (EventPass $pass) => $pass->checked_in_at !== null || (string) $pass->status === 'checked_in')->count(),
+            'past' => $passes->filter(fn (EventPass $pass) => $pass->event?->temporal_status === 'past')->count(),
+            'cancelled' => $passes->filter(fn (EventPass $pass) => (string) $pass->status === 'cancelled' || (bool) ($pass->event?->is_cancelled))->count(),
+            'refunded' => $passes->where('status', 'refunded')->count(),
+            'complimentary' => $passes->filter(fn (EventPass $pass) => (bool) $pass->getAttribute('is_complimentary'))->count(),
+        ];
+
+        return ['passes' => $passes, 'summary' => $summary];
     }
 
     public function show(User $user, int $passId): array
