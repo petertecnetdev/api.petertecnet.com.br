@@ -141,6 +141,7 @@ final class RecoveryProminenceExperimentEconomics
             'diagnostic_incremental_platform_contribution_per_impression' => null,
             'paid_conversion_difference_confidence_95' => null,
             'observed_volume_projection' => null,
+            'treatment_observed_incremental_estimate' => null,
             'decision' => $this->decision(false, null, null, null),
         ];
 
@@ -182,6 +183,12 @@ final class RecoveryProminenceExperimentEconomics
                 $incrementalGmv,
                 $incrementalContribution,
             );
+            $comparison['treatment_observed_incremental_estimate'] = $this->treatmentObservedIncrementalEstimate(
+                (int) ($treatment['exposed_orders'] ?? 0),
+                $incrementalPaidRate,
+                $incrementalGmv,
+                $incrementalContribution,
+            );
             $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution, $paidConversionConfidence);
         }
 
@@ -212,6 +219,26 @@ final class RecoveryProminenceExperimentEconomics
             'projected_incremental_gmv' => round($incrementalGmv * $observedExposedOrders, 2),
             'projected_incremental_platform_contribution' => round($incrementalContribution * $observedExposedOrders, 2),
             'is_projection_not_realized_revenue' => true,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function treatmentObservedIncrementalEstimate(
+        int $treatmentExposed,
+        float $incrementalPaidRate,
+        float $incrementalGmv,
+        float $incrementalContribution,
+    ): array {
+        $treatmentExposed = max(0, $treatmentExposed);
+
+        return [
+            'basis' => 'treatment_exposed_orders',
+            'attribution_method' => 'randomized_variant_difference',
+            'treatment_exposed_orders' => $treatmentExposed,
+            'estimated_incremental_paid_orders' => round(($incrementalPaidRate / 100) * $treatmentExposed, 2),
+            'estimated_incremental_gmv' => round($incrementalGmv * $treatmentExposed, 2),
+            'estimated_incremental_platform_contribution' => round($incrementalContribution * $treatmentExposed, 2),
+            'is_causal_estimate_not_booked_revenue' => true,
         ];
     }
 
