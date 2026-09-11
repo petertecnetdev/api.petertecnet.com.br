@@ -78,22 +78,29 @@ class SubscriptionIntentController extends Controller
 
         $status = $existing || ! $intent->wasRecentlyCreated ? 200 : 201;
 
+        return response()->json(['data' => $this->resource($intent)], $status);
+    }
+
+    public function recoverable(Request $request, string $application): JsonResponse
+    {
+        $application = strtolower(trim($application));
+        $definition = config("subscriptions.applications.{$application}");
+
+        if (! is_array($definition) || ! ($definition['subscription_enabled'] ?? false)) {
+            return response()->json(['message' => 'Assinaturas não estão disponíveis para este aplicativo.'], 422);
+        }
+
+        $intent = SubscriptionIntent::query()
+            ->where('application', $application)
+            ->where('user_id', $request->user()->getKey())
+            ->whereIn('status', ['created', 'payment_pending'])
+            ->where('created_at', '>=', now()->subDays(7))
+            ->latest('id')
+            ->first();
+
         return response()->json([
-            'data' => [
-                'id' => $intent->public_id,
-                'application' => $intent->application,
-                'plan_code' => $intent->plan_code,
-                'plan_name' => $intent->plan_name,
-                'price_cents' => $intent->price_cents,
-                'currency' => $intent->currency,
-                'billing_interval' => $intent->billing_interval,
-                'billing_interval_count' => $intent->billing_interval_count,
-                'status' => $intent->status,
-                'source' => $intent->source,
-                'handoff_channel' => $intent->handoff_channel,
-                'created_at' => $intent->created_at,
-            ],
-        ], $status);
+            'data' => $intent ? $this->resource($intent) : null,
+        ]);
     }
 
     public function show(Request $request, string $application, string $intent): JsonResponse
@@ -104,6 +111,27 @@ class SubscriptionIntentController extends Controller
             ->where('user_id', $request->user()->getKey())
             ->firstOrFail();
 
-        return response()->json(['data' => $record]);
+        return response()->json(['data' => $this->resource($record)]);
+    }
+
+    private function resource(SubscriptionIntent $intent): array
+    {
+        return [
+            'id' => $intent->public_id,
+            'application' => $intent->application,
+            'plan_code' => $intent->plan_code,
+            'plan_name' => $intent->plan_name,
+            'price_cents' => $intent->price_cents,
+            'currency' => $intent->currency,
+            'billing_interval' => $intent->billing_interval,
+            'billing_interval_count' => $intent->billing_interval_count,
+            'status' => $intent->status,
+            'source' => $intent->source,
+            'handoff_channel' => $intent->handoff_channel,
+            'metadata' => $intent->metadata,
+            'created_at' => $intent->created_at,
+            'checkout_started_at' => $intent->checkout_started_at,
+            'payment_pending_at' => $intent->payment_pending_at,
+        ];
     }
 }
