@@ -87,7 +87,7 @@ final class EventPassTransferHistoryService
                     ],
                     'ticket' => $ticket ? [
                         'id' => (int) $ticket->id,
-                        'name' => (string) ($ticket->name ?: 'Ingresso Cutinapp'),
+                        'name' => (string) ($ticket->name ?: 'Ingresso'),
                         'ticket_type' => $ticket->getAttribute('ticket_type') ?: $ticket->getAttribute('type'),
                     ] : null,
                 ];
