@@ -7,9 +7,12 @@ use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\Events\Services\EventAgendaMaintenanceService;
 use App\Domain\Finance\Services\AutomatedSubscriptionIntentRecoveryService;
 use App\Domain\MarketData\Services\MarketSignalService;
+use App\Domain\Messaging\Services\MessageEngagementService;
 use App\Jobs\DispatchNotificationCampaign;
+use App\Models\Application;
 use App\Models\NotificationCampaign;
 use App\Services\ApplicationRuntimeControlService;
+use App\Support\ApplicationContext;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -103,6 +106,21 @@ Artisan::command('finance:recover-pending-subscriptions {--limit=}', function ()
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending subscription PIX checkouts');
 
+Artisan::command('messaging:dispatch-engagement', function () {
+    $dispatched = 0;
+    $context = app(ApplicationContext::class);
+
+    Application::query()
+        ->where('is_active', true)
+        ->orderBy('id')
+        ->each(function (Application $application) use (&$dispatched, $context) {
+            $context->set($application);
+            $dispatched += app(MessageEngagementService::class)->prepareAndDispatchDue();
+        });
+
+    $this->info("{$dispatched} usuário(s) com e-mail de mensagem agendado(s).");
+})->purpose('Dispatch grouped message emails and unread reminders');
+
 Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
@@ -130,4 +148,8 @@ Schedule::command('commerce:recover-pending-checkouts')
 Schedule::command('finance:recover-pending-subscriptions')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('messaging:dispatch-engagement')
+    ->everyMinute()
+    ->withoutOverlapping(5)
     ->onOneServer();
