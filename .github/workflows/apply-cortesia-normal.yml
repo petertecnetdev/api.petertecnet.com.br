@@ -1,0 +1,138 @@
+name: Apply courtesy normal ticket fix
+
+on:
+  push:
+    branches:
+      - fix/cortesia-ingresso-normal
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/cortesia-ingresso-normal
+          fetch-depth: 0
+
+      - name: Patch EventCommerceController
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/Domain/Commerce/Http/Controllers/EventCommerceController.php')
+          text = path.read_text()
+
+          replacements = [
+              ("            ->where('price', '>', 0)\n", "            ->where('price', '>=', 0)\n"),
+              ("            'payment_method' => 'required|in:pix,card',\n", "            'payment_method' => 'required|in:pix,card,free',\n"),
+              ("        $readiness = $this->accounts->readiness((int) $eventForReadiness->production_id);\n        abort_unless($readiness['available'], 422, $readiness['message']);\n        abort_unless(in_array($data['payment_method'], $readiness['methods'], true), 422, 'Esta forma de pagamento não está disponível para esta organização.');\n\n", ""),
+              ("                abort_if((float) $ticket->price <= 0, 422, 'Cortesias gratuitas não entram no checkout pago.');\n", ""),
+          ]
+
+          for old, new in replacements:
+              if old not in text:
+                  raise SystemExit(f'Expected source not found: {old!r}')
+              text = text.replace(old, new, 1)
+
+          marker = "        $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);\n"
+          if marker not in text:
+              raise SystemExit('Payment account marker not found')
+
+          free_flow = r'''        if ((float) $order->total <= 0) {
+            $order = DB::transaction(function () use ($order) {
+                $lockedOrder = CommerceOrder::query()
+                    ->where('app_id', $this->context->id())
+                    ->with(['items','event','production','user'])
+                    ->lockForUpdate()
+                    ->findOrFail($order->id);
+
+                foreach ($lockedOrder->items->where('type', 'ticket') as $line) {
+                    $alreadyIssued = EventPass::query()
+                        ->where('commerce_order_item_id', $line->id)
+                        ->count();
+                    $toIssue = max(0, (int) $line->quantity - $alreadyIssued);
+
+                    for ($i = 0; $i < $toIssue; $i++) {
+                        EventPass::create([
+                            'event_id' => $lockedOrder->event_id,
+                            'ticket_id' => $line->ticket_id,
+                            'commerce_order_item_id' => $line->id,
+                            'user_id' => $lockedOrder->user_id,
+                            'holder_name' => trim(($lockedOrder->user->first_name ?? '').' '.($lockedOrder->user->last_name ?? '')) ?: null,
+                            'holder_email' => $lockedOrder->user->email ?? null,
+                            'token' => 'PASS-'.Str::upper(Str::replace('-', '', (string) Str::uuid())),
+                            'status' => 'issued',
+                        ]);
+                    }
+                }
+
+                foreach ($lockedOrder->items->where('type', 'ticket') as $line) {
+                    $issued = EventPass::query()->where('commerce_order_item_id', $line->id)->count();
+                    abort_if($issued < (int) $line->quantity, 500, 'Não foi possível concluir a emissão dos ingressos.');
+                }
+
+                $metadata = $lockedOrder->metadata ?? [];
+                $metadata['fulfillment_status'] = 'completed';
+                $metadata['fulfilled_at'] = now()->toIso8601String();
+                $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
+                $metadata['zero_total_order'] = true;
+
+                $lockedOrder->update([
+                    'status' => 'paid',
+                    'payment_method' => 'free',
+                    'paid_at' => now(),
+                    'cancelled_at' => null,
+                    'expires_at' => null,
+                    'metadata' => $metadata,
+                ]);
+
+                DB::table('inventory_reservations')
+                    ->where('app_id', $this->context->id())
+                    ->where('order_id', $lockedOrder->id)
+                    ->whereNull('released_at')
+                    ->update(['released_at' => now(), 'updated_at' => now()]);
+
+                return $lockedOrder->fresh(['items','event','production','user']);
+            });
+
+            return response()->json([
+                'message' => 'Pedido gratuito confirmado. Seus ingressos já foram emitidos.',
+                'order' => $order,
+                'payment' => null,
+            ], 201);
+        }
+
+        if ($data['payment_method'] === 'free') {
+            $this->cancelOrder($order);
+            return response()->json(['message' => 'Este pedido possui valor a pagar. Escolha PIX ou cartão.'], 422);
+        }
+
+        $readiness = $this->accounts->readiness((int) $order->production_id);
+        if (! $readiness['available']) {
+            $this->cancelOrder($order);
+            return response()->json(['message' => $readiness['message']], 422);
+        }
+        if (! in_array($data['payment_method'], $readiness['methods'], true)) {
+            $this->cancelOrder($order);
+            return response()->json(['message' => 'Esta forma de pagamento não está disponível para esta organização.'], 422);
+        }
+
+'''
+          text = text.replace(marker, free_flow + marker, 1)
+          path.write_text(text)
+
+      - name: Validate PHP syntax
+        run: php -l app/Domain/Commerce/Http/Controllers/EventCommerceController.php
+
+      - name: Commit patch and remove helper workflow
+        run: |
+          rm .github/workflows/apply-cortesia-normal.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: tratar cortesia como ingresso normal no checkout"
+          git push origin HEAD:fix/cortesia-ingresso-normal
