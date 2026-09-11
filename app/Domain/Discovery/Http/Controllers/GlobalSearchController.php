@@ -11,7 +11,6 @@ use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Str;
 
 final class GlobalSearchController extends Controller
 {
@@ -206,7 +205,11 @@ final class GlobalSearchController extends Controller
 
     private function people(int $appId, string $term, int $limit): Collection
     {
-        $like = '%'.$term.'%';
+        $personTerm = ltrim(trim($term), '@');
+        if ($personTerm === '') {
+            $personTerm = $term;
+        }
+        $like = '%'.$personTerm.'%';
 
         return User::query()
             ->whereHas('applications', fn (Builder $application) => $application
@@ -221,7 +224,7 @@ final class GlobalSearchController extends Controller
             })
             ->orderByRaw(
                 "CASE WHEN LOWER(COALESCE(user_name, '')) = LOWER(?) THEN 0 WHEN LOWER(COALESCE(user_name, '')) LIKE LOWER(?) THEN 1 WHEN LOWER(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) LIKE LOWER(?) THEN 2 ELSE 3 END",
-                [$term, $term.'%', $term.'%']
+                [$personTerm, $personTerm.'%', $personTerm.'%']
             )
             ->orderBy('first_name')
             ->limit($limit)
