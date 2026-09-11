@@ -23,6 +23,9 @@ Route::prefix('v1/apps/{application}/subscription-intents')
         Route::post('/', [SubscriptionIntentController::class, 'store'])
             ->middleware('throttle:30,1')
             ->name('finance.subscription-intents.store');
+        Route::get('/recoverable', [SubscriptionIntentController::class, 'recoverable'])
+            ->middleware('throttle:60,1')
+            ->name('finance.subscription-intents.recoverable');
         Route::get('/{intent}', [SubscriptionIntentController::class, 'show'])
             ->whereUuid('intent')
             ->name('finance.subscription-intents.show');
