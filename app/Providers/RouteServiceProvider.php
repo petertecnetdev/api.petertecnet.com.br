@@ -43,6 +43,7 @@ class RouteServiceProvider extends ServiceProvider
             Route::middleware('api')->prefix('api')->group(base_path('routes/finance.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/ecosystem.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/user_invitations.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/whatsapp_webhooks.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/admin_application_operations.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/admin_establishment_resources.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/cognition.php'));
