@@ -199,7 +199,7 @@ class ReconcilePaymentsCommand extends Command
         int $failures,
         float $recoveredGmv
     ): void {
-        Log::info('commerce.payment_reconciliation.completed', [
+        $context = [
             'application' => $applicationSlug !== '' ? $applicationSlug : 'all',
             'selected' => $selected,
             'recovered_paid_orders' => $recoveredPaidOrders,
@@ -208,6 +208,21 @@ class ReconcilePaymentsCommand extends Command
             'failures' => $failures,
             'recovered_gmv' => round($recoveredGmv, 2),
             'duration_ms' => max(0, (int) round((microtime(true) - $startedAt) * 1000)),
-        ]);
+        ];
+
+        Log::info('commerce.payment_reconciliation.completed', $context);
+
+        if ($failures > 0) {
+            Log::error('commerce.payment_reconciliation.failed', $context + [
+                'alert_reason' => 'reconciliation_failures',
+            ]);
+            return;
+        }
+
+        if ($recoveredPaidOrders > 0 || $recoveredFulfillments > 0 || $recoveredDeliveryRetries > 0) {
+            Log::warning('commerce.payment_reconciliation.recovery_detected', $context + [
+                'alert_reason' => 'payment_or_fulfillment_recovered',
+            ]);
+        }
     }
 }
