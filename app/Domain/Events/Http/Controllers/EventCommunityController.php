@@ -671,12 +671,46 @@ final class EventCommunityController extends Controller
         $data = $request->validate([
             'reason' => 'required|in:fraud,misleading,inappropriate,safety,cancelled,illegal,hate,harassment,spam,copyright,other',
             'details' => 'nullable|string|max:3000',
+            'target_type' => 'sometimes|string|in:event,post,media,rating',
+            'target_id' => 'sometimes|nullable|integer|min:1',
         ]);
 
-        DB::table('event_reports')->updateOrInsert(
+        $targetType = (string) ($data['target_type'] ?? 'event');
+        $targetId = (int) ($data['target_id'] ?? $event->id);
+
+        if ($targetType === 'event') {
+            $targetId = (int) $event->id;
+            DB::table('event_reports')->updateOrInsert(
+                [
+                    'app_id' => $this->context->id(),
+                    'event_id' => $event->id,
+                    'user_id' => $request->user()->id,
+                ],
+                [
+                    'reason' => $data['reason'],
+                    'details' => trim((string) ($data['details'] ?? '')) ?: null,
+                    'status' => 'open',
+                    'reviewed_by' => null,
+                    'reviewed_at' => null,
+                    'moderation_note' => null,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]
+            );
+
+            return response()->json(['message' => 'Denúncia enviada para revisão.']);
+        }
+
+        abort_unless(Schema::hasTable('content_reports'), 503, 'A moderação de conteúdo está temporariamente indisponível.');
+        $this->assertReportTargetBelongsToEvent($event, $targetType, $targetId);
+
+        DB::table('content_reports')->updateOrInsert(
             [
                 'app_id' => $this->context->id(),
-                'event_id' => $event->id,
+                'entity_type' => 'Event',
+                'entity_id' => $event->id,
+                'target_type' => $targetType,
+                'target_id' => $targetId,
                 'user_id' => $request->user()->id,
             ],
             [
@@ -691,7 +725,113 @@ final class EventCommunityController extends Controller
             ]
         );
 
-        return response()->json(['message' => 'Denúncia enviada para revisão.']);
+        return response()->json(['message' => 'Conteúdo enviado para moderação.']);
+    }
+
+    public function moderationQueue(Request $request, int $eventId)
+    {
+        $event = $this->publicEventById($eventId)->loadMissing('production');
+        abort_unless($this->isManager($event, $request->user()), 403, 'Somente a produção pode acessar a moderação.');
+
+        $reports = Schema::hasTable('content_reports')
+            ? DB::table('content_reports as r')
+                ->leftJoin('users as u', 'u.id', '=', 'r.user_id')
+                ->where('r.app_id', $this->context->id())
+                ->where('r.entity_type', 'Event')
+                ->where('r.entity_id', $event->id)
+                ->select([
+                    'r.id', 'r.target_type', 'r.target_id', 'r.reason', 'r.details',
+                    'r.status', 'r.moderation_note', 'r.created_at', 'r.reviewed_at',
+                    'u.first_name', 'u.last_name', 'u.user_name',
+                ])
+                ->orderByRaw("CASE WHEN r.status = 'open' THEN 0 ELSE 1 END")
+                ->orderByDesc('r.created_at')
+                ->paginate(min(max((int) $request->input('per_page', 30), 1), 100))
+            : collect();
+
+        return response()->json(['reports' => $reports]);
+    }
+
+    public function moderateContentReport(Request $request, int $eventId, int $reportId)
+    {
+        $event = $this->publicEventById($eventId)->loadMissing('production');
+        abort_unless($this->isManager($event, $request->user()), 403, 'Somente a produção pode moderar este conteúdo.');
+
+        $data = $request->validate([
+            'status' => 'required|in:reviewed,dismissed,actioned',
+            'moderation_note' => 'nullable|string|max:2000',
+            'hide_content' => 'sometimes|boolean',
+        ]);
+
+        $report = DB::table('content_reports')
+            ->where('app_id', $this->context->id())
+            ->where('entity_type', 'Event')
+            ->where('entity_id', $event->id)
+            ->where('id', $reportId)
+            ->first();
+        abort_unless($report, 404, 'Denúncia não encontrada.');
+
+        if (($data['hide_content'] ?? false) === true) {
+            if ($report->target_type === 'post') {
+                DB::table('event_posts')
+                    ->where('app_id', $this->context->id())
+                    ->where('event_id', $event->id)
+                    ->where('id', $report->target_id)
+                    ->update(['status' => 'hidden', 'updated_at' => now()]);
+            } elseif ($report->target_type === 'media') {
+                File::query()
+                    ->where('app_id', $this->context->id())
+                    ->where('entity_name', 'Event')
+                    ->where('entity_id', $event->id)
+                    ->where('group', 'event_revive')
+                    ->where('id', $report->target_id)
+                    ->update(['status' => 'inactive', 'updated_by' => $request->user()->id]);
+            }
+
+            // Reviews remain immutable to producers. Negative feedback can be
+            // reported and reviewed, but only platform moderation may remove it.
+            abort_if(
+                $report->target_type === 'rating' && ! $request->user()->hasProfile('Administrador'),
+                403,
+                'Avaliações não podem ser removidas pela produção.'
+            );
+        }
+
+        DB::table('content_reports')->where('id', $report->id)->update([
+            'status' => $data['status'],
+            'moderation_note' => trim((string) ($data['moderation_note'] ?? '')) ?: null,
+            'reviewed_by' => $request->user()->id,
+            'reviewed_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Moderação atualizada.']);
+    }
+
+    private function assertReportTargetBelongsToEvent(Event $event, string $targetType, int $targetId): void
+    {
+        $exists = match ($targetType) {
+            'post' => DB::table('event_posts')
+                ->where('app_id', $this->context->id())
+                ->where('event_id', $event->id)
+                ->where('id', $targetId)
+                ->exists(),
+            'media' => File::query()
+                ->where('app_id', $this->context->id())
+                ->where('entity_name', 'Event')
+                ->where('entity_id', $event->id)
+                ->where('group', 'event_revive')
+                ->where('id', $targetId)
+                ->exists(),
+            'rating' => DB::table('event_ratings')
+                ->where('app_id', $this->context->id())
+                ->where('event_id', $event->id)
+                ->where('user_id', $targetId)
+                ->exists(),
+            default => false,
+        };
+
+        abort_unless($exists, 404, 'O conteúdo denunciado não pertence a este evento.');
     }
 
     private function revivePayload(Event $event, ?User $user, array $access): array
