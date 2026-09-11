@@ -101,6 +101,8 @@ return [
         'invitation_template' => env('WHATSAPP_INVITATION_TEMPLATE', 'petertecnet_user_invitation'),
         'authentication_template' => env('WHATSAPP_AUTH_TEMPLATE', 'petertecnet_authentication_code'),
         'activation_template' => env('WHATSAPP_ACTIVATION_TEMPLATE', 'petertecnet_account_activated'),
+        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
+        'app_secret' => env('META_APP_SECRET'),
         'timeout' => (int) env('WHATSAPP_API_TIMEOUT', 15),
     ],
 
