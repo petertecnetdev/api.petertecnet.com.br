@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Media\Services\ManagedFileStorageService;
 use App\Domain\Messaging\Services\MessagingService;
 use App\Models\AppNotification;
 use App\Models\User;
@@ -53,6 +54,7 @@ class MessagingEmailNotificationTest extends TestCase
                 'conversation_id' => $conversationId,
                 'user_id' => $sender->id,
                 'joined_at' => now(),
+                'archived_at' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -86,8 +88,11 @@ class MessagingEmailNotificationTest extends TestCase
             )
             ->andReturn(new AppNotification());
 
-        $service = new MessagingService($context, $notifications);
-        $message = $service->send($conversationId, (int) $sender->id, 'Olá Maria, tudo bem?');
+        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications);
+        $message = $service->send($conversationId, (int) $sender->id, [
+            'body' => 'Olá Maria, tudo bem?',
+            'type' => 'text',
+        ]);
 
         $this->assertSame($conversationId, $message['conversation_id']);
         $this->assertSame((int) $sender->id, $message['sender_user_id']);
@@ -128,6 +133,7 @@ class MessagingEmailNotificationTest extends TestCase
                 'conversation_id' => $conversationId,
                 'user_id' => $sender->id,
                 'joined_at' => now(),
+                'archived_at' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -135,6 +141,7 @@ class MessagingEmailNotificationTest extends TestCase
                 'conversation_id' => $conversationId,
                 'user_id' => $recipient->id,
                 'joined_at' => now(),
+                'archived_at' => null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
@@ -146,8 +153,11 @@ class MessagingEmailNotificationTest extends TestCase
             ->once()
             ->andThrow(new RuntimeException('SMTP unavailable'));
 
-        $service = new MessagingService($context, $notifications);
-        $message = $service->send($conversationId, (int) $sender->id, 'Mensagem importante');
+        $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications);
+        $message = $service->send($conversationId, (int) $sender->id, [
+            'body' => 'Mensagem importante',
+            'type' => 'text',
+        ]);
 
         $this->assertSame('Mensagem importante', $message['body']);
         $this->assertDatabaseHas('messages', [
