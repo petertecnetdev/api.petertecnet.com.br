@@ -206,27 +206,69 @@ final class GlobalSearchController extends Controller
     private function people(int $appId, string $term, int $limit): Collection
     {
         $personTerm = ltrim(trim($term), '@');
+        $personTerm = preg_replace('/\\s+/u', ' ', $personTerm) ?: $personTerm;
+
         if ($personTerm === '') {
-            $personTerm = $term;
+            $personTerm = trim($term);
         }
-        $like = '%'.$personTerm.'%';
+
+        $tokens = collect(preg_split('/\\s+/u', $personTerm, -1, PREG_SPLIT_NO_EMPTY))
+            ->map(fn (string $token) => trim($token))
+            ->filter()
+            ->values();
+
+        $fullNameSql = "TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))";
 
         return User::query()
             ->whereHas('applications', fn (Builder $application) => $application
                 ->where('applications.id', $appId)
                 ->where('application_user.status', 'active'))
-            ->whereNotNull('email_verified_at')
-            ->where(function (Builder $query) use ($like) {
-                $query->where('user_name', 'like', $like)
-                    ->orWhere('first_name', 'like', $like)
-                    ->orWhere('last_name', 'like', $like)
-                    ->orWhereRaw("CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')) LIKE ?", [$like]);
+            // Active membership is the visibility boundary. Email verification can be
+            // deferred by the application and must not make an otherwise active user
+            // disappear from people search.
+            ->where(function (Builder $query) use ($tokens, $personTerm, $fullNameSql) {
+                if ($tokens->isEmpty()) {
+                    $like = '%'.$personTerm.'%';
+                    $query->where('user_name', 'like', $like)
+                        ->orWhere('first_name', 'like', $like)
+                        ->orWhere('last_name', 'like', $like)
+                        ->orWhereRaw($fullNameSql.' LIKE ?', [$like]);
+
+                    return;
+                }
+
+                foreach ($tokens as $token) {
+                    $tokenLike = '%'.$token.'%';
+
+                    $query->where(function (Builder $tokenQuery) use ($tokenLike, $fullNameSql) {
+                        $tokenQuery->where('user_name', 'like', $tokenLike)
+                            ->orWhere('first_name', 'like', $tokenLike)
+                            ->orWhere('last_name', 'like', $tokenLike)
+                            ->orWhereRaw($fullNameSql.' LIKE ?', [$tokenLike]);
+                    });
+                }
             })
             ->orderByRaw(
-                "CASE WHEN LOWER(COALESCE(user_name, '')) = LOWER(?) THEN 0 WHEN LOWER(COALESCE(user_name, '')) LIKE LOWER(?) THEN 1 WHEN LOWER(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, ''))) LIKE LOWER(?) THEN 2 ELSE 3 END",
-                [$personTerm, $personTerm.'%', $personTerm.'%']
+                "CASE
+                    WHEN LOWER(COALESCE(user_name, '')) = LOWER(?) THEN 0
+                    WHEN LOWER({$fullNameSql}) = LOWER(?) THEN 1
+                    WHEN LOWER(COALESCE(user_name, '')) LIKE LOWER(?) THEN 2
+                    WHEN LOWER({$fullNameSql}) LIKE LOWER(?) THEN 3
+                    WHEN LOWER(COALESCE(first_name, '')) LIKE LOWER(?) THEN 4
+                    WHEN LOWER(COALESCE(last_name, '')) LIKE LOWER(?) THEN 5
+                    ELSE 6
+                END",
+                [
+                    $personTerm,
+                    $personTerm,
+                    $personTerm.'%',
+                    $personTerm.'%',
+                    $personTerm.'%',
+                    $personTerm.'%',
+                ]
             )
             ->orderBy('first_name')
+            ->orderBy('last_name')
             ->limit($limit)
             ->get(['id', 'user_name', 'first_name', 'last_name', 'avatar', 'city', 'uf'])
             ->map(function (User $user) {
