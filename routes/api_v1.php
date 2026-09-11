@@ -319,6 +319,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/events/{eventId}/revive/media', [EventCommunityController::class, 'uploadMedia'])->whereNumber('eventId')->middleware('throttle:12,1');
                 Route::patch('/events/{eventId}/revive/media/{fileId}', [EventCommunityController::class, 'updateMedia'])->whereNumber('eventId')->whereNumber('fileId')->middleware('throttle:30,1');
                 Route::delete('/events/{eventId}/revive/media/{fileId}', [EventCommunityController::class, 'deleteMedia'])->whereNumber('eventId')->whereNumber('fileId')->middleware('throttle:30,1');
+                Route::put('/events/{eventId}/revive/media-order', [EventCommunityController::class, 'reorderMedia'])->whereNumber('eventId')->middleware('throttle:30,1');
                 Route::put('/events/{eventId}/revive/preferences', [EventCommunityController::class, 'saveRevivePreferences'])->whereNumber('eventId')->middleware('throttle:30,1');
                 Route::get('/events/{eventId}/revive/moderation', [EventCommunityController::class, 'moderationQueue'])->whereNumber('eventId');
                 Route::patch('/events/{eventId}/revive/moderation/{reportId}', [EventCommunityController::class, 'moderateContentReport'])->whereNumber('eventId')->whereNumber('reportId')->middleware('throttle:30,1');
