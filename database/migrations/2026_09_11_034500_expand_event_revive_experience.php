@@ -153,9 +153,9 @@ return new class extends Migration
         }
 
         DB::statement(sprintf(
-            'CREATE OR REPLACE ALGORITHM=MERGE VIEW \`%s\` AS SELECT * FROM \`%s\`',
-            str_replace('\`', '\`\`', $generic),
-            str_replace('\`', '\`\`', $physical),
+            'CREATE OR REPLACE ALGORITHM=MERGE VIEW %s AS SELECT * FROM %s',
+            $generic,
+            $physical,
         ));
     }
 };
