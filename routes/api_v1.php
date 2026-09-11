@@ -70,6 +70,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/global-search/suggestions', [GlobalSearchController::class, 'suggestions'])->middleware('throttle:search-read');
         Route::get('/global-search/discover', [GlobalSearchController::class, 'discover'])->middleware('throttle:search-read');
         Route::get('/global-search/trending', [GlobalSearchController::class, 'trending'])->middleware('throttle:search-read');
+        Route::post('/global-search/click', [GlobalSearchController::class, 'click'])->middleware('throttle:120,1');
 
         // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
@@ -125,7 +126,6 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
-            Route::post('/global-search/click', [GlobalSearchController::class, 'click'])->middleware('throttle:240,1');
             Route::post('/global-search/convert', [GlobalSearchController::class, 'convert'])->middleware('throttle:120,1');
             Route::get('/global-search/recent', [GlobalSearchController::class, 'recent']);
             Route::delete('/global-search/recent', [GlobalSearchController::class, 'clearRecent']);
