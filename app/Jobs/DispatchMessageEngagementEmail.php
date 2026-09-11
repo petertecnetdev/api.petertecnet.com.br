@@ -22,7 +22,6 @@ class DispatchMessageEngagementEmail implements ShouldQueue
         public int $appId,
         public int $userId,
     ) {
-        $this->onQueue('notifications');
     }
 
     public function handle(ApplicationContext $context, MessageEngagementService $service): void
