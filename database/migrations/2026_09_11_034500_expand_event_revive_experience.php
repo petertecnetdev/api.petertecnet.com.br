@@ -70,6 +70,34 @@ return new class extends Migration
             });
         }
 
+        if (! Schema::hasTable('content_reports')) {
+            Schema::create('content_reports', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('app_id');
+                $table->string('entity_type', 64);
+                $table->unsignedBigInteger('entity_id');
+                $table->string('target_type', 32);
+                $table->unsignedBigInteger('target_id');
+                $table->unsignedBigInteger('user_id');
+                $table->string('reason', 40);
+                $table->text('details')->nullable();
+                $table->string('status', 24)->default('open');
+                $table->text('moderation_note')->nullable();
+                $table->unsignedBigInteger('reviewed_by')->nullable();
+                $table->timestamp('reviewed_at')->nullable();
+                $table->timestamps();
+
+                $table->unique(
+                    ['app_id', 'entity_type', 'entity_id', 'target_type', 'target_id', 'user_id'],
+                    'content_report_unique'
+                );
+                $table->index(
+                    ['app_id', 'entity_type', 'entity_id', 'status', 'created_at'],
+                    'content_report_scope_idx'
+                );
+            });
+        }
+
         if (! Schema::hasTable('event_revive_preferences')) {
             Schema::create('event_revive_preferences', function (Blueprint $table) {
                 $table->id();
@@ -89,6 +117,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('event_revive_preferences');
+        Schema::dropIfExists('content_reports');
         Schema::dropIfExists('event_rating_helpful');
 
         $postsTable = $this->physicalTable('event_posts', 'cutinapp_event_posts');
