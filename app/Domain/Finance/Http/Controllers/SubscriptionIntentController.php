@@ -2,6 +2,7 @@
 
 namespace App\Domain\Finance\Http\Controllers;
 
+use App\Domain\Finance\Actions\FindRecoverableSubscriptionIntent;
 use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -96,8 +97,11 @@ class SubscriptionIntentController extends Controller
         ], $status);
     }
 
-    public function recoverable(Request $request, string $application): JsonResponse
-    {
+    public function recoverable(
+        Request $request,
+        string $application,
+        FindRecoverableSubscriptionIntent $findRecoverableSubscriptionIntent
+    ): JsonResponse {
         $application = strtolower(trim($application));
         $definition = config("subscriptions.applications.{$application}");
 
@@ -105,13 +109,10 @@ class SubscriptionIntentController extends Controller
             return response()->json(['message' => 'Assinaturas não estão disponíveis para este aplicativo.'], 422);
         }
 
-        $intent = SubscriptionIntent::query()
-            ->where('application', $application)
-            ->where('user_id', $request->user()->getKey())
-            ->whereIn('status', ['created', 'payment_pending'])
-            ->where('created_at', '>=', now()->subDays(7))
-            ->latest('id')
-            ->first();
+        $intent = $findRecoverableSubscriptionIntent->handle(
+            $request->user()->getKey(),
+            $application
+        );
 
         return response()->json([
             'data' => $intent ? $this->recoveryResource($intent) : null,
