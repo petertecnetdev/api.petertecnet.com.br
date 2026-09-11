@@ -7,6 +7,7 @@ use App\Models\EcosystemPayment;
 use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\Item;
+use App\Models\Interaction;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Services\MercadoPagoService;
@@ -17,6 +18,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Throwable;
 
 class OrderingController extends Controller
 {
@@ -62,6 +64,15 @@ class OrderingController extends Controller
             'customer_phone' => ['required', 'string', 'max:30'],
             'delivery_address' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],
+            'acquisition_attribution' => ['nullable', 'array:utm_source,utm_medium,utm_campaign,utm_content,utm_term,acquisition_source,acquisition_landing,acquisition_captured_at'],
+            'acquisition_attribution.utm_source' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.utm_medium' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.utm_campaign' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.utm_content' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.utm_term' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.acquisition_source' => ['nullable', 'string', 'max:160'],
+            'acquisition_attribution.acquisition_landing' => ['nullable', 'string', 'max:1000'],
+            'acquisition_attribution.acquisition_captured_at' => ['nullable', 'date'],
             'items' => ['required', 'array', 'min:1', 'max:60'],
             'items.*.item_id' => ['required', 'integer'],
             'items.*.quantity' => ['required', 'integer', 'min:1', 'max:99'],
@@ -224,7 +235,9 @@ class OrderingController extends Controller
             return [$order->fresh(['items.item']), $establishment];
         }, 3);
 
-        $payment = $data['payment_method'] === 'pix' ? $this->createPixPayment($order, $establishment, $user) : null;
+        $payment = $data['payment_method'] === 'pix'
+            ? $this->createPixPayment($order, $establishment, $user, $data['acquisition_attribution'] ?? [])
+            : null;
 
         return response()->json([
             'success' => true,
@@ -386,12 +399,20 @@ class OrderingController extends Controller
         $remote = $this->paymentProvider->getPayment($token, $dataId);
 
         $payment = EcosystemPayment::query()
+            ->where('app_id', $this->context->id())
             ->where('app_slug', $this->context->slug())
             ->where('provider', 'mercadopago')
             ->where('provider_payment_id', (string) ($remote['id'] ?? $dataId))
             ->first();
 
         if (! $payment) return response()->json(['success' => true]);
+
+        $remoteId = (string) ($remote['id'] ?? '');
+        $externalReference = (string) ($remote['external_reference'] ?? '');
+        $remoteAmount = round((float) ($remote['transaction_amount'] ?? 0), 2);
+        abort_if($remoteId === '' || $remoteId !== (string) $payment->provider_payment_id, 422, 'Pagamento remoto não corresponde ao pagamento local.');
+        abort_if($externalReference === '' || $externalReference !== (string) $payment->source_reference, 422, 'Referência externa do pagamento é inválida.');
+        abort_if(abs($remoteAmount - (float) $payment->gross_amount) > 0.009, 422, 'Valor confirmado pelo provedor é diferente do pedido.');
 
         $mapped = match ((string) ($remote['status'] ?? '')) {
             'approved' => 'paid',
@@ -421,10 +442,59 @@ class OrderingController extends Controller
             }
         });
 
+        if ($mapped === 'paid') {
+            $this->recordPaidInteraction((int) $payment->id);
+        }
+
         return response()->json(['success' => true]);
     }
 
-    private function createPixPayment(Order $order, Establishment $establishment, $user): array
+    private function recordPaidInteraction(int $paymentId): void
+    {
+        try {
+            $payment = EcosystemPayment::query()
+                ->where('app_id', $this->context->id())
+                ->whereKey($paymentId)
+                ->first();
+            if (! $payment || $payment->status !== 'paid' || $payment->source_type !== 'order' || ! $payment->source_id) return;
+
+            $order = Order::query()
+                ->where('app_id', $this->context->id())
+                ->whereKey($payment->source_id)
+                ->first();
+            if (! $order || $order->payment_status !== 'paid') return;
+
+            $alreadyRecorded = Interaction::query()
+                ->where('app_id', $this->context->id())
+                ->where('entity_type', 'Order')
+                ->where('entity_id', $order->id)
+                ->where('interaction_type', 'payment_paid')
+                ->exists();
+            if ($alreadyRecorded) return;
+
+            $attribution = data_get($payment->metadata, 'acquisition_attribution', []);
+            if (! is_array($attribution)) $attribution = [];
+
+            Interaction::register('payment_paid', $order, $order->client, array_merge([
+                'source_channel' => 'payment_provider',
+                'order_number' => $order->order_number,
+                'payment_id' => $payment->id,
+                'provider' => $payment->provider,
+                'provider_payment_id' => $payment->provider_payment_id,
+                'establishment_id' => $payment->establishment_id ?: $order->entity_id,
+                'payment_method' => $payment->method ?: $order->payment_method,
+                'currency' => $payment->currency,
+                'amount' => (float) $payment->gross_amount,
+                'platform_fee' => (float) $payment->platform_fee,
+                'provider_fee' => (float) $payment->provider_fee,
+                'seller_net' => (float) $payment->seller_net,
+            ], $attribution), 'Pagamento confirmado');
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    private function createPixPayment(Order $order, Establishment $establishment, $user, array $acquisitionAttribution = []): array
     {
         $token = trim((string) config('services.mercadopago.access_token'));
         if ($token === '') {
@@ -465,7 +535,10 @@ class OrderingController extends Controller
             'platform_fee' => 0,
             'provider_fee' => 0,
             'seller_net' => $order->total_price,
-            'metadata' => ['order_number' => $order->order_number],
+            'metadata' => [
+                'order_number' => $order->order_number,
+                'acquisition_attribution' => $acquisitionAttribution,
+            ],
         ]);
 
         try {
