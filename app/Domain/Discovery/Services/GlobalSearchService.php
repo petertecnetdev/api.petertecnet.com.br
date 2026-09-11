@@ -116,6 +116,7 @@ final class GlobalSearchService
             'type' => $type,
             'page' => $page,
             'has_more' => $type !== 'all' && $this->hasMore($groups, $type, $limit),
+            'next_cursor' => $type !== 'all' && $this->hasMore($groups, $type, $limit) ? $this->encodeCursor($page + 1) : null,
             'results' => $results,
             'groups' => [
                 'people' => $groups['people']->values(),
@@ -533,8 +534,12 @@ final class GlobalSearchService
         $candidates = $builder->orderBy('stage_name')->limit(max(80, $limit * 6))->get();
 
         if ($query !== '' && $candidates->count() < min(10, $limit)) {
+            $fallbackBuilder = Artist::query()->where('app_id', $appId)->where('is_published', true);
+            if (! empty($filters['city'])) $fallbackBuilder->whereRaw('LOWER(city) = LOWER(?)', [trim($filters['city'])]);
+            if (! empty($filters['uf'])) $fallbackBuilder->where('uf', strtoupper($filters['uf']));
+            if (! empty($filters['genre'])) $fallbackBuilder->where('genres', 'like', '%'.trim($filters['genre']).'%');
             $candidates = $candidates->merge(
-                Artist::query()->where('app_id', $appId)->where('is_published', true)->latest('updated_at')->limit(100)->get()
+                $fallbackBuilder->latest('updated_at')->limit(100)->get()
             )->unique('id')->values();
         }
 
@@ -950,6 +955,9 @@ final class GlobalSearchService
         if (! empty($filters['artist_id'])) {
             $builder->whereHas('artists', fn ($q) => $q->where('artists.id', (int) $filters['artist_id']));
         }
+        if (! empty($filters['genre'])) {
+            $builder->whereHas('artists', fn ($q) => $q->where('artists.genres', 'like', '%'.trim($filters['genre']).'%'));
+        }
         if (! empty($filters['format'])) {
             $builder->where('events.event_format', $filters['format']);
         }
@@ -1149,6 +1157,11 @@ final class GlobalSearchService
         $max = max(strlen($left), strlen($right), 1);
 
         return $distance <= 2 || (1 - ($distance / $max)) >= .72;
+    }
+
+    private function encodeCursor(int $page): string
+    {
+        return rtrim(strtr(base64_encode(json_encode(['page' => max(1, $page)])), '+/', '-_'), '=');
     }
 
     private function hasMore(array $groups, string $type, int $limit): bool
