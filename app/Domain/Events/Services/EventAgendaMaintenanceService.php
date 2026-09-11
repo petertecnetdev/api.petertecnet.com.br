@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Log;
 
 final class EventAgendaMaintenanceService
 {
+    private const MAX_GENERATION_WEEKS = 52;
+
     public function __construct(private readonly EventDuplicationService $duplicator) {}
 
     public function replenishAll(): array
@@ -21,13 +23,14 @@ final class EventAgendaMaintenanceService
         $created = 0;
         $existing = 0;
         $retired = 0;
+        $waiting = 0;
         $failed = [];
         $appSlugs = [];
 
         EventAgendaSetting::query()
             ->where('is_active', true)
             ->orderBy('id')
-            ->chunkById(100, function ($settings) use (&$created, &$existing, &$retired, &$failed, &$appSlugs) {
+            ->chunkById(100, function ($settings) use (&$created, &$existing, &$retired, &$waiting, &$failed, &$appSlugs) {
                 foreach ($settings as $setting) {
                     try {
                         $appId = (int) $setting->app_id;
@@ -45,6 +48,7 @@ final class EventAgendaMaintenanceService
                         $created += $result['created_count'];
                         $existing += $result['existing_count'];
                         $retired += $result['retired_count'];
+                        $waiting += $result['waiting_count'];
                     } catch (\Throwable $exception) {
                         $failed[] = [
                             'setting_id' => (int) $setting->id,
@@ -64,14 +68,20 @@ final class EventAgendaMaintenanceService
             'created_count' => $created,
             'existing_count' => $existing,
             'retired_count' => $retired,
+            'waiting_count' => $waiting,
             'failed_count' => count($failed),
             'failed' => $failed,
         ];
     }
 
-    public function replenishProduction(int $appId, int $productionId, int $weeks, ?string $appSlug = null): array
-    {
-        $weeks = $this->normalizeWeeks($weeks);
+    public function replenishProduction(
+        int $appId,
+        int $productionId,
+        int $defaultWeeks,
+        ?string $appSlug = null,
+        bool $force = false,
+    ): array {
+        $defaultWeeks = $this->normalizeWeeks($defaultWeeks);
         $appSlug ??= Application::query()->whereKey($appId)->value('slug');
 
         $schedules = EventSchedule::query()
@@ -86,13 +96,16 @@ final class EventAgendaMaintenanceService
         $created = 0;
         $existing = 0;
         $retired = 0;
+        $waiting = 0;
         $events = [];
 
         foreach ($schedules as $schedule) {
-            $result = $this->replenishSchedule($schedule, $weeks, $appSlug);
+            $weeks = $schedule->generation_weeks ?: $defaultWeeks;
+            $result = $this->replenishSchedule($schedule, (int) $weeks, $appSlug, $force);
             $created += $result['created_count'];
             $existing += $result['existing_count'];
             $retired += $result['retired_count'];
+            $waiting += $result['waiting'] ? 1 : 0;
             array_push($events, ...$result['events']);
         }
 
@@ -100,23 +113,77 @@ final class EventAgendaMaintenanceService
             'created_count' => $created,
             'existing_count' => $existing,
             'retired_count' => $retired,
+            'waiting_count' => $waiting,
             'events' => $events,
         ];
     }
 
-    public function replenishSchedule(EventSchedule $schedule, int $weeks, ?string $appSlug = null): array
-    {
-        $weeks = $this->normalizeWeeks($weeks);
+    public function replenishSchedule(
+        EventSchedule $schedule,
+        ?int $weeks = null,
+        ?string $appSlug = null,
+        bool $force = false,
+    ): array {
+        $weeks = $this->normalizeWeeks($weeks ?: (int) ($schedule->generation_weeks ?: 1));
+        $mode = $this->normalizeMode($schedule->generation_mode);
+        $delayDays = $this->normalizeDelayDays((int) ($schedule->generation_delay_days ?: 1));
+
         $schedule->loadMissing('sourceEvent');
         $source = $schedule->sourceEvent;
 
         if (! $source || (int) $source->app_id !== (int) $schedule->app_id || (int) $source->production_id !== (int) $schedule->production_id) {
-            return ['created_count' => 0, 'existing_count' => 0, 'retired_count' => 0, 'events' => []];
+            return $this->emptyResult($mode, $delayDays, $weeks);
         }
 
         $appSlug ??= Application::query()->whereKey($schedule->app_id)->value('slug');
         $targetDates = $this->targetDates($schedule, $weeks);
         $retired = $this->retireExcessFutureOccurrences($schedule, $targetDates);
+
+        if ($mode === 'delayed' && ! $force) {
+            $linkedOccurrences = Event::query()
+                ->where('app_id', $schedule->app_id)
+                ->where('event_schedule_id', $schedule->id)
+                ->orderBy('event_schedule_occurrence_date')
+                ->get();
+
+            if ($linkedOccurrences->isEmpty()) {
+                [$event, $created] = $this->ensureOccurrence(
+                    $schedule,
+                    $source,
+                    $targetDates[0],
+                    $appSlug,
+                );
+
+                return [
+                    'created_count' => $created ? 1 : 0,
+                    'existing_count' => $created ? 0 : 1,
+                    'retired_count' => $retired,
+                    'target_dates' => [$targetDates[0]],
+                    'events' => [$event],
+                    'waiting' => true,
+                    'generation_mode' => $mode,
+                    'generation_delay_days' => $delayDays,
+                    'generation_weeks' => $weeks,
+                    'next_generation_at' => $this->generationAtForOccurrence($targetDates[0], $delayDays)->toIso8601String(),
+                ];
+            }
+
+            $gate = $this->delayedGenerationGate($schedule, $linkedOccurrences, $delayDays);
+            if (! $gate['eligible']) {
+                return [
+                    'created_count' => 0,
+                    'existing_count' => 0,
+                    'retired_count' => $retired,
+                    'target_dates' => $targetDates,
+                    'events' => [],
+                    'waiting' => true,
+                    'generation_mode' => $mode,
+                    'generation_delay_days' => $delayDays,
+                    'generation_weeks' => $weeks,
+                    'next_generation_at' => $gate['next_generation_at'],
+                ];
+            }
+        }
 
         $created = 0;
         $existing = 0;
@@ -134,6 +201,11 @@ final class EventAgendaMaintenanceService
             'retired_count' => $retired,
             'target_dates' => $targetDates,
             'events' => $events,
+            'waiting' => false,
+            'generation_mode' => $mode,
+            'generation_delay_days' => $delayDays,
+            'generation_weeks' => $weeks,
+            'next_generation_at' => null,
         ];
     }
 
@@ -187,6 +259,65 @@ final class EventAgendaMaintenanceService
         }
 
         return $retired;
+    }
+
+    private function delayedGenerationGate(EventSchedule $schedule, $linkedOccurrences, int $delayDays): array
+    {
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $today = Carbon::now($timezone)->startOfDay();
+
+        $completed = $linkedOccurrences
+            ->filter(function (Event $event) use ($today, $timezone) {
+                if (! $event->event_schedule_occurrence_date) {
+                    return false;
+                }
+
+                return Carbon::parse($event->event_schedule_occurrence_date, $timezone)
+                    ->startOfDay()
+                    ->lt($today);
+            })
+            ->sortByDesc('event_schedule_occurrence_date')
+            ->first();
+
+        if ($completed) {
+            $date = Carbon::parse($completed->event_schedule_occurrence_date, $timezone)->format('Y-m-d');
+            $eligibleAt = $this->generationAtForOccurrence($date, $delayDays);
+
+            return [
+                'eligible' => Carbon::now($timezone)->gte($eligibleAt),
+                'next_generation_at' => $eligibleAt->toIso8601String(),
+            ];
+        }
+
+        $nextLinked = $linkedOccurrences
+            ->filter(fn (Event $event) => (bool) $event->event_schedule_occurrence_date)
+            ->sortBy('event_schedule_occurrence_date')
+            ->first();
+
+        if ($nextLinked) {
+            $date = Carbon::parse($nextLinked->event_schedule_occurrence_date, $timezone)->format('Y-m-d');
+
+            return [
+                'eligible' => false,
+                'next_generation_at' => $this->generationAtForOccurrence($date, $delayDays)->toIso8601String(),
+            ];
+        }
+
+        $fallbackDate = $this->targetDates($schedule, 1)[0];
+
+        return [
+            'eligible' => false,
+            'next_generation_at' => $this->generationAtForOccurrence($fallbackDate, $delayDays)->toIso8601String(),
+        ];
+    }
+
+    private function generationAtForOccurrence(string $occurrenceDate, int $delayDays): Carbon
+    {
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+
+        return Carbon::createFromFormat('Y-m-d', $occurrenceDate, $timezone)
+            ->startOfDay()
+            ->addDays($delayDays);
     }
 
     private function ensureOccurrence(EventSchedule $schedule, Event $source, string $date, ?string $appSlug): array
@@ -310,8 +441,34 @@ final class EventAgendaMaintenanceService
             ->exists();
     }
 
+    private function normalizeMode(?string $mode): string
+    {
+        return $mode === 'delayed' ? 'delayed' : 'immediate';
+    }
+
+    private function normalizeDelayDays(int $days): int
+    {
+        return max(1, min(7, $days));
+    }
+
     private function normalizeWeeks(int $weeks): int
     {
-        return max(1, min(3, $weeks));
+        return max(1, min(self::MAX_GENERATION_WEEKS, $weeks));
+    }
+
+    private function emptyResult(string $mode, int $delayDays, int $weeks): array
+    {
+        return [
+            'created_count' => 0,
+            'existing_count' => 0,
+            'retired_count' => 0,
+            'target_dates' => [],
+            'events' => [],
+            'waiting' => false,
+            'generation_mode' => $mode,
+            'generation_delay_days' => $delayDays,
+            'generation_weeks' => $weeks,
+            'next_generation_at' => null,
+        ];
     }
 }
