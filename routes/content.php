@@ -34,11 +34,36 @@ Route::prefix('v1')->group(function () {
             Route::get('/messaging/conversations', [MessagingController::class, 'index'])->middleware('throttle:180,1');
             Route::get('/messaging/people', [MessagingController::class, 'people'])->middleware('throttle:120,1');
             Route::post('/messaging/direct', [MessagingController::class, 'openDirect'])->middleware('throttle:60,1');
+            Route::post('/messaging/groups', [MessagingController::class, 'createGroup'])->middleware('throttle:30,1');
+            Route::get('/messaging/settings', [MessagingController::class, 'settings'])->middleware('throttle:120,1');
+            Route::put('/messaging/settings', [MessagingController::class, 'updateSettings'])->middleware('throttle:30,1');
+            Route::post('/messaging/presence/heartbeat', [MessagingController::class, 'heartbeat'])->middleware('throttle:120,1');
+            Route::get('/messaging/presence/{userId}', [MessagingController::class, 'presence'])->whereNumber('userId')->middleware('throttle:180,1');
+            Route::post('/messaging/users/{userId}/block', [MessagingController::class, 'block'])->whereNumber('userId')->middleware('throttle:30,1');
+            Route::delete('/messaging/users/{userId}/block', [MessagingController::class, 'unblock'])->whereNumber('userId')->middleware('throttle:30,1');
+            Route::get('/messaging/attachments/{attachmentId}', [MessagingController::class, 'attachment'])->whereNumber('attachmentId')->middleware('throttle:240,1');
+
             Route::get('/messaging/conversations/{conversationId}', [MessagingController::class, 'showConversation'])->whereNumber('conversationId')->middleware('throttle:180,1');
-            Route::get('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'messages'])->whereNumber('conversationId')->middleware('throttle:240,1');
-            Route::post('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'send'])->whereNumber('conversationId')->middleware('throttle:120,1');
-            Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:180,1');
+            Route::patch('/messaging/conversations/{conversationId}', [MessagingController::class, 'updateConversation'])->whereNumber('conversationId')->middleware('throttle:60,1');
+            Route::post('/messaging/conversations/{conversationId}/accept-request', [MessagingController::class, 'acceptRequest'])->whereNumber('conversationId')->middleware('throttle:30,1');
+            Route::delete('/messaging/conversations/{conversationId}/request', [MessagingController::class, 'rejectRequest'])->whereNumber('conversationId')->middleware('throttle:30,1');
             Route::delete('/messaging/conversations/{conversationId}', [MessagingController::class, 'archive'])->whereNumber('conversationId')->middleware('throttle:60,1');
+            Route::post('/messaging/conversations/{conversationId}/participants', [MessagingController::class, 'addParticipants'])->whereNumber('conversationId')->middleware('throttle:30,1');
+            Route::delete('/messaging/conversations/{conversationId}/participants/{userId}', [MessagingController::class, 'removeParticipant'])->whereNumber('conversationId')->whereNumber('userId')->middleware('throttle:30,1');
+            Route::get('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'messages'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::get('/messaging/conversations/{conversationId}/scheduled', [MessagingController::class, 'scheduledMessages'])->whereNumber('conversationId')->middleware('throttle:120,1');
+            Route::post('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'send'])->whereNumber('conversationId')->middleware('throttle:120,1');
+            Route::patch('/messaging/conversations/{conversationId}/messages/{messageId}', [MessagingController::class, 'editMessage'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:60,1');
+            Route::delete('/messaging/conversations/{conversationId}/messages/{messageId}', [MessagingController::class, 'deleteMessage'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:60,1');
+            Route::delete('/messaging/conversations/{conversationId}/scheduled/{messageId}', [MessagingController::class, 'cancelScheduledMessage'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:60,1');
+            Route::post('/messaging/conversations/{conversationId}/messages/{messageId}/reactions', [MessagingController::class, 'react'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:120,1');
+            Route::delete('/messaging/conversations/{conversationId}/messages/{messageId}/reactions', [MessagingController::class, 'removeReaction'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:120,1');
+            Route::put('/messaging/conversations/{conversationId}/messages/{messageId}/pin', [MessagingController::class, 'pinMessage'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:60,1');
+            Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:180,1');
+            Route::post('/messaging/conversations/{conversationId}/typing', [MessagingController::class, 'typing'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::post('/messaging/conversations/{conversationId}/reports', [MessagingController::class, 'report'])->whereNumber('conversationId')->middleware('throttle:20,1');
+            Route::post('/messaging/conversations/{conversationId}/calls', [MessagingController::class, 'startCall'])->whereNumber('conversationId')->middleware('throttle:30,1');
+            Route::patch('/messaging/conversations/{conversationId}/calls/{callId}', [MessagingController::class, 'updateCall'])->whereNumber('conversationId')->whereNumber('callId')->middleware('throttle:60,1');
         });
 
     Route::prefix('discovery')->group(function () {
