@@ -8,11 +8,13 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('conversation_participants', function (Blueprint $table) {
-            if (! Schema::hasColumn('conversation_participants', 'pinned_at')) {
+        $hasPinnedAt = Schema::hasColumn('conversation_participants', 'pinned_at');
+        $hasMarkedUnreadAt = Schema::hasColumn('conversation_participants', 'marked_unread_at');
+        Schema::table('conversation_participants', function (Blueprint $table) use ($hasPinnedAt, $hasMarkedUnreadAt) {
+            if (! $hasPinnedAt) {
                 $table->timestamp('pinned_at')->nullable()->after('muted_until')->index();
             }
-            if (! Schema::hasColumn('conversation_participants', 'marked_unread_at')) {
+            if (! $hasMarkedUnreadAt) {
                 $table->timestamp('marked_unread_at')->nullable()->after('last_read_at')->index();
             }
         });
@@ -63,19 +65,53 @@ return new class extends Migration
                 $table->foreign('message_id')->references('id')->on('messages')->cascadeOnDelete();
             });
         }
+
+        if (! Schema::hasTable('messaging_blocks')) {
+            Schema::create('messaging_blocks', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('app_id')->index();
+                $table->unsignedBigInteger('user_id');
+                $table->unsignedBigInteger('blocked_user_id');
+                $table->timestamps();
+                $table->unique(['app_id', 'user_id', 'blocked_user_id'], 'messaging_block_unique');
+                $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+                $table->foreign('blocked_user_id')->references('id')->on('users')->cascadeOnDelete();
+            });
+        }
+
+        if (! Schema::hasTable('messaging_reports')) {
+            Schema::create('messaging_reports', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('app_id')->index();
+                $table->unsignedBigInteger('reporter_user_id');
+                $table->unsignedBigInteger('reported_user_id');
+                $table->unsignedBigInteger('conversation_id')->nullable();
+                $table->string('reason', 60);
+                $table->text('details')->nullable();
+                $table->string('status', 24)->default('open')->index();
+                $table->timestamps();
+                $table->foreign('reporter_user_id')->references('id')->on('users')->cascadeOnDelete();
+                $table->foreign('reported_user_id')->references('id')->on('users')->cascadeOnDelete();
+                $table->foreign('conversation_id')->references('id')->on('conversations')->nullOnDelete();
+            });
+        }
     }
 
     public function down(): void
     {
+        Schema::dropIfExists('messaging_reports');
+        Schema::dropIfExists('messaging_blocks');
         Schema::dropIfExists('message_attachments');
         Schema::dropIfExists('message_reactions');
         Schema::dropIfExists('message_receipts');
 
-        Schema::table('conversation_participants', function (Blueprint $table) {
-            if (Schema::hasColumn('conversation_participants', 'pinned_at')) {
+        $hasPinnedAt = Schema::hasColumn('conversation_participants', 'pinned_at');
+        $hasMarkedUnreadAt = Schema::hasColumn('conversation_participants', 'marked_unread_at');
+        Schema::table('conversation_participants', function (Blueprint $table) use ($hasPinnedAt, $hasMarkedUnreadAt) {
+            if ($hasPinnedAt) {
                 $table->dropColumn('pinned_at');
             }
-            if (Schema::hasColumn('conversation_participants', 'marked_unread_at')) {
+            if ($hasMarkedUnreadAt) {
                 $table->dropColumn('marked_unread_at');
             }
         });
