@@ -37,9 +37,8 @@ class WhatsAppUserInvitationTest extends TestCase
                 'messages' => [['id' => 'wamid.activated']],
             ], 200);
 
-        $application = Application::create([
+        $application = $this->applicationFixture('plat', [
             'name' => 'Plat',
-            'slug' => 'plat',
             'url' => 'https://plat.petertecnet.com.br',
             'is_active' => true,
         ]);
@@ -124,9 +123,8 @@ class WhatsAppUserInvitationTest extends TestCase
         config()->set('services.whatsapp.invitation_template', 'petertecnet_user_invitation');
         config()->set('services.whatsapp.authentication_template', 'petertecnet_authentication_code');
 
-        $application = Application::create([
+        $application = $this->applicationFixture('rasoio', [
             'name' => 'Rasoio',
-            'slug' => 'rasoio',
             'url' => 'https://rasoio.petertecnet.com.br',
             'is_active' => true,
         ]);
