@@ -5,6 +5,7 @@ use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\Events\Services\EventAgendaMaintenanceService;
+use App\Domain\Events\Services\EventReviveLifecycleService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Jobs\DispatchNotificationCampaign;
 use App\Models\NotificationCampaign;
@@ -69,6 +70,18 @@ Artisan::command('events:replenish-weekly-agendas', function () {
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Keep each recurring weekly agenda filled only to its configured 1-3 week horizon');
 
+Artisan::command('events:revive-post-event-prompts', function () {
+    $this->line(json_encode(app(EventReviveLifecycleService::class)->dispatchPostEventPrompts(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Invite verified event participants to review and share moments after an event');
+
+Artisan::command('events:revive-next-editions', function () {
+    $this->line(json_encode(app(EventReviveLifecycleService::class)->dispatchNextEditionNotifications(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Notify Reviva participants when a next edition becomes available');
+
+Artisan::command('events:revive-memories', function () {
+    $this->line(json_encode(app(EventReviveLifecycleService::class)->dispatchOneYearMemories(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Send one-year event memories to verified participants');
+
 Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
     $limit = $this->option('limit');
     $result = app(AutomatedCheckoutRecoveryService::class)->run(
@@ -91,6 +104,18 @@ Schedule::command('ecosystem:dispatch-scheduled-notifications')
     ->onOneServer();
 Schedule::command('events:replenish-weekly-agendas')
     ->dailyAt('00:10')
+    ->withoutOverlapping(30)
+    ->onOneServer();
+Schedule::command('events:revive-post-event-prompts')
+    ->hourly()
+    ->withoutOverlapping(20)
+    ->onOneServer();
+Schedule::command('events:revive-next-editions')
+    ->hourly()
+    ->withoutOverlapping(20)
+    ->onOneServer();
+Schedule::command('events:revive-memories')
+    ->dailyAt('10:15')
     ->withoutOverlapping(30)
     ->onOneServer();
 Schedule::command('commerce:recover-pending-checkouts')
