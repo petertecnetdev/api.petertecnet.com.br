@@ -245,6 +245,7 @@ final class EventCommunityController extends Controller
         ]);
 
         $this->notifyCommunityActivity($event, $user, $id, $parent);
+        $this->notifyMentions($event, $user, (string) $data['body']);
 
         return response()->json([
             'message' => $parent ? 'Comentário publicado.' : 'Publicação adicionada ao evento.',
@@ -326,6 +327,11 @@ final class EventCommunityController extends Controller
                 ];
             }
         });
+
+        if (! empty($created[0]['post_id'])) {
+            $this->notifyCommunityActivity($event, $user, (int) $created[0]['post_id'], null);
+            $this->notifyMentions($event, $user, (string) ($data['caption'] ?? ''));
+        }
 
         return response()->json([
             'message' => count($created) === 1 ? 'Momento publicado.' : 'Momentos publicados.',
@@ -1238,6 +1244,55 @@ final class EventCommunityController extends Controller
 
         if ($parentAuthor && $parentAuthor !== (int) $actor->id) {
             $this->safeNotify($appId, $parentAuthor, $payload);
+        }
+    }
+
+    private function notifyMentions(Event $event, User $actor, string $text): void
+    {
+        if (! preg_match_all('/@([A-Za-z0-9._-]{2,50})/u', $text, $matches)) {
+            return;
+        }
+
+        $usernames = collect($matches[1] ?? [])
+            ->map(fn ($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->unique()
+            ->take(10)
+            ->values();
+
+        if ($usernames->isEmpty()) {
+            return;
+        }
+
+        $mentioned = User::query()
+            ->whereIn(DB::raw('LOWER(user_name)'), $usernames->all())
+            ->where('id', '!=', $actor->id)
+            ->get(['id', 'user_name']);
+
+        if ($event->hasEnded()) {
+            $participantIds = EventPass::query()
+                ->where('event_id', $event->id)
+                ->whereNotIn('status', self::INVALID_PASS_STATUSES)
+                ->whereIn('user_id', $mentioned->pluck('id'))
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $mentioned = $mentioned->filter(
+                fn (User $candidate) => in_array((int) $candidate->id, $participantIds, true)
+            );
+        }
+
+        foreach ($mentioned as $candidate) {
+            $this->safeNotify($this->context->id(), (int) $candidate->id, [
+                'type' => 'event_mention',
+                'title' => 'Você foi mencionado',
+                'message' => (trim((string) $actor->first_name) ?: 'Alguém').' mencionou você em '.$event->title.'.',
+                'reference_type' => 'event',
+                'reference_id' => $event->id,
+                'reference_url' => '/event/'.$event->slug.($event->hasEnded() ? '#reviva' : '#comunidade'),
+                'data' => ['event_id' => $event->id, 'actor_id' => $actor->id],
+            ]);
         }
     }
 
