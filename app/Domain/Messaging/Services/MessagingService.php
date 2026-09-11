@@ -3,12 +3,18 @@
 namespace App\Domain\Messaging\Services;
 
 use App\Models\User;
+use App\Services\AppNotificationService;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 final class MessagingService
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly AppNotificationService $notifications,
+    ) {}
 
     public function conversations(int $userId, string $search = ''): array
     {
@@ -129,10 +135,15 @@ final class MessagingService
             DB::table('conversations')->where('id', $conversationId)->update(['last_message_at' => $now, 'updated_at' => $now]);
             DB::table('conversation_participants')->where('conversation_id', $conversationId)->where('user_id', $userId)
                 ->update(['last_read_at' => $now, 'archived_at' => null, 'updated_at' => $now]);
+            DB::table('conversation_participants')->where('conversation_id', $conversationId)->where('user_id', '<>', $userId)
+                ->update(['archived_at' => null, 'updated_at' => $now]);
             return $id;
         });
 
-        return $this->messagePayload(DB::table('messages')->where('id', $id)->first());
+        $message = DB::table('messages')->where('id', $id)->first();
+        $this->notifyRecipient($conversationId, $userId, trim($body));
+
+        return $this->messagePayload($message);
     }
 
     public function markRead(int $conversationId, int $userId): void
@@ -173,6 +184,45 @@ final class MessagingService
     {
         $name = trim((string) $user->first_name.' '.(string) $user->last_name);
         return $name !== '' ? $name : ((string) $user->user_name ?: 'Usuário');
+    }
+
+    private function notifyRecipient(int $conversationId, int $senderUserId, string $body): void
+    {
+        $recipient = $this->otherParticipant($conversationId, $senderUserId);
+        $sender = User::query()->find($senderUserId);
+
+        if (! $recipient || ! $sender) {
+            return;
+        }
+
+        $preview = trim((string) preg_replace('/\s+/', ' ', $body));
+        $preview = $preview !== '' ? Str::limit($preview, 180) : 'Você recebeu uma nova mensagem.';
+
+        try {
+            $this->notifications->sendToUser($this->context->id(), (int) $recipient->id, [
+                'type' => 'direct_message_received',
+                'title' => $this->displayName($sender).' enviou uma mensagem',
+                'message' => $preview,
+                'reference_type' => 'conversation',
+                'reference_id' => $conversationId,
+                'reference_url' => '/messages?user='.$senderUserId,
+                'data' => [
+                    'conversation_id' => $conversationId,
+                    'sender_user_id' => $senderUserId,
+                    'action_label' => 'Responder agora',
+                    'preview' => $preview,
+                ],
+                'send_email' => true,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Falha ao notificar destinatário sobre nova mensagem.', [
+                'app_id' => $this->context->id(),
+                'conversation_id' => $conversationId,
+                'sender_user_id' => $senderUserId,
+                'recipient_user_id' => $recipient->id,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function messagePayload(object $message): array
