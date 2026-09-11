@@ -172,6 +172,15 @@ class EventAgendaRollingHorizonTest extends TestCase
         ]);
     }
 
+    public function test_delayed_generation_never_accepts_seven_days_because_it_would_recreate_on_the_event_weekday(): void
+    {
+        $this->assertSame(6, (new \ReflectionMethod(EventAgendaMaintenanceService::class, 'normalizeDelayDays'))
+            ->invoke(app(EventAgendaMaintenanceService::class), 7));
+
+        $this->assertSame(6, (new \ReflectionMethod(EventAgendaMaintenanceService::class, 'normalizeDelayDays'))
+            ->invoke(app(EventAgendaMaintenanceService::class), 6));
+    }
+
     protected function tearDown(): void
     {
         Carbon::setTestNow();

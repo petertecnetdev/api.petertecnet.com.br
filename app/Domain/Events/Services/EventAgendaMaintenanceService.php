@@ -448,7 +448,7 @@ final class EventAgendaMaintenanceService
 
     private function normalizeDelayDays(int $days): int
     {
-        return max(1, min(7, $days));
+        return max(1, min(6, $days));
     }
 
     private function normalizeWeeks(int $weeks): int
