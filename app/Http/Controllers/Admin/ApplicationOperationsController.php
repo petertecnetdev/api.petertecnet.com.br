@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Application;
+use App\Models\ApplicationAdminAudit;
 use App\Services\Admin\ApplicationOperationsService;
 use App\Services\ApplicationRuntimeControlService;
 use Illuminate\Http\JsonResponse;
@@ -49,13 +50,31 @@ class ApplicationOperationsController extends Controller
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
 
+        $before = $runtime->settings($application);
+        $after = $runtime->update($application, $validated, $request->user()?->id);
+
+        ApplicationAdminAudit::query()->create([
+            'application_id' => (int) $application->id,
+            'actor_user_id' => $request->user()?->id,
+            'target_user_id' => null,
+            'action' => 'application.runtime.updated',
+            'metadata' => [
+                'before' => $before,
+                'after' => $after,
+                'changed_fields' => array_keys($validated),
+            ],
+            'request_id' => $request->attributes->get('request_id'),
+            'ip_address' => $request->ip(),
+            'user_agent' => mb_substr((string) $request->userAgent(), 0, 500),
+        ]);
+
         return response()->json([
             'application' => [
                 'id' => (int) $application->id,
                 'name' => $application->name,
                 'slug' => $application->slug,
             ],
-            'runtime' => $runtime->update($application, $validated, $request->user()?->id),
+            'runtime' => $after,
             'message' => 'Controle operacional atualizado.',
         ]);
     }
