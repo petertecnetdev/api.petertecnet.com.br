@@ -237,11 +237,22 @@ final class EventManagementController extends Controller
             ->whereIn('event_id', $eventIds)
             ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
             ->selectRaw(
-                'event_id, COUNT(*) AS tickets_sold, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in_count'
+                'event_id, COUNT(*) AS passes_issued, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in_count'
             )
             ->groupBy('event_id')
             ->get()
             ->keyBy(fn ($row) => (int) $row->event_id);
+
+        $paidTicketMetrics = DB::table('commerce_order_items as oi')
+            ->join('commerce_orders as o', 'o.id', '=', 'oi.order_id')
+            ->where('oi.app_id', $appId)
+            ->where('o.app_id', $appId)
+            ->whereIn('o.event_id', $eventIds)
+            ->where('o.status', 'paid')
+            ->where('oi.type', 'ticket')
+            ->selectRaw('o.event_id, SUM(oi.quantity) AS tickets_sold')
+            ->groupBy('o.event_id')
+            ->pluck('tickets_sold', 'o.event_id');
 
         $views = DB::table('interactions')
             ->where('app_id', $appId)
@@ -265,11 +276,12 @@ final class EventManagementController extends Controller
             $orders = $orderMetrics->get($eventId);
             $passes = $passMetrics->get($eventId);
             $capacity = max(0, (int) ($ticketCapacity->get($eventId) ?? 0));
-            $sold = max(0, (int) ($passes->tickets_sold ?? 0));
+            $passesIssued = max(0, (int) ($passes->passes_issued ?? 0));
+            $sold = max(0, (int) ($paidTicketMetrics->get($eventId) ?? 0));
             $checkedIn = max(0, (int) ($passes->checked_in_count ?? 0));
             $viewsCount = max(0, (int) ($views->get($eventId) ?? 0));
             $paidOrders = max(0, (int) ($orders->paid_orders_count ?? 0));
-            $remaining = max(0, $capacity - $sold);
+            $remaining = max(0, $capacity - $passesIssued);
 
             $event->setAttribute('operational_metrics', [
                 'paid_orders_count' => $paidOrders,
@@ -278,11 +290,13 @@ final class EventManagementController extends Controller
                 'gross_sales_today' => round((float) ($orders->gross_sales_today ?? 0), 2),
                 'last_sale_at' => $orders->last_sale_at ?? null,
                 'tickets_sold' => $sold,
+                'passes_issued' => $passesIssued,
                 'ticket_capacity' => $capacity,
                 'tickets_remaining' => $remaining,
                 'sell_through_rate' => $capacity > 0 ? round(($sold / $capacity) * 100, 2) : 0,
+                'inventory_utilization_rate' => $capacity > 0 ? round(($passesIssued / $capacity) * 100, 2) : 0,
                 'checked_in_count' => $checkedIn,
-                'checkin_rate' => $sold > 0 ? round(($checkedIn / $sold) * 100, 2) : 0,
+                'checkin_rate' => $passesIssued > 0 ? round(($checkedIn / $passesIssued) * 100, 2) : 0,
                 'views_count' => $viewsCount,
                 'conversion_rate' => $viewsCount > 0 ? round(($paidOrders / $viewsCount) * 100, 2) : 0,
                 'agenda_days' => $agendaDays->get($eventId, []),
