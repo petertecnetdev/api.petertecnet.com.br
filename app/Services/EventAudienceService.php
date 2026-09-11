@@ -75,6 +75,17 @@ class EventAudienceService
         $this->notifyUsers($event, $this->productionFollowerUserIds($event), $payload, $excludeUserId);
     }
 
+    public function notifyEngagedAudience(Event $event, array $payload, ?int $excludeUserId = null): void
+    {
+        $userIds = $this->attendeeUserIds($event)
+            ->merge($this->interestedUserIds($event))
+            ->merge($this->productionFollowerUserIds($event))
+            ->unique()
+            ->values();
+
+        $this->notifyUsers($event, $userIds, $payload, $excludeUserId);
+    }
+
     public function notifyInterested(Event $event, array $payload, ?int $excludeUserId = null): void
     {
         $this->notifyUsers($event, $this->interestedUserIds($event), $payload, $excludeUserId);
