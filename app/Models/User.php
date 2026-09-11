@@ -235,12 +235,55 @@ class User extends Authenticatable implements JWTSubject
             return ['email' => strtolower($identifier), 'password' => $password];
         }
 
-        $cpf = preg_replace('/[^0-9]/', '', $identifier);
-        if (strlen($cpf) === 11) {
-            return ['cpf' => $cpf, 'password' => $password];
+        $digits = preg_replace('/[^0-9]/', '', $identifier) ?: '';
+        $phone = self::normalizeLoginPhone($identifier);
+
+        if ($phone && self::query()->where('phone_normalized', $phone)->exists()) {
+            return ['phone_normalized' => $phone, 'password' => $password];
+        }
+
+        if (strlen($digits) === 11 && self::query()->where('cpf', $digits)->exists()) {
+            return ['cpf' => $digits, 'password' => $password];
+        }
+
+        if ($digits !== '' && self::query()->where('phone', $identifier)->exists()) {
+            return ['phone' => $identifier, 'password' => $password];
         }
 
         return ['user_name' => $identifier, 'password' => $password];
+    }
+
+    public static function findByLoginIdentifier(string $identifier): ?self
+    {
+        $credentials = self::credentials($identifier, '__lookup__');
+        unset($credentials['password']);
+
+        $field = array_key_first($credentials);
+        if (! $field) {
+            return null;
+        }
+
+        return self::query()->where($field, $credentials[$field])->first();
+    }
+
+    private static function normalizeLoginPhone(string $identifier): ?string
+    {
+        $raw = trim($identifier);
+        $digits = preg_replace('/\D+/', '', $raw) ?: '';
+
+        if (str_starts_with($digits, '00')) {
+            $digits = substr($digits, 2);
+        }
+
+        if (str_starts_with($raw, '+')) {
+            return strlen($digits) >= 8 && strlen($digits) <= 15 ? '+'.$digits : null;
+        }
+
+        if (strlen($digits) === 10 || strlen($digits) === 11) {
+            $digits = '55'.$digits;
+        }
+
+        return strlen($digits) >= 12 && strlen($digits) <= 15 ? '+'.$digits : null;
     }
 
     public function files()
