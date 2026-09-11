@@ -44,6 +44,9 @@ Route::prefix('v1')->group(function () {
             Route::patch('/messaging/messages/{messageId}', [MessagingController::class, 'updateMessage'])->whereNumber('messageId')->middleware('throttle:90,1');
             Route::delete('/messaging/messages/{messageId}', [MessagingController::class, 'deleteMessage'])->whereNumber('messageId')->middleware('throttle:60,1');
             Route::post('/messaging/messages/{messageId}/reaction', [MessagingController::class, 'reaction'])->whereNumber('messageId')->middleware('throttle:180,1');
+            Route::post('/messaging/users/{targetUserId}/block', [MessagingController::class, 'block'])->whereNumber('targetUserId')->middleware('throttle:30,1');
+            Route::delete('/messaging/users/{targetUserId}/block', [MessagingController::class, 'unblock'])->whereNumber('targetUserId')->middleware('throttle:30,1');
+            Route::post('/messaging/users/{targetUserId}/report', [MessagingController::class, 'report'])->whereNumber('targetUserId')->middleware('throttle:10,1');
         });
 
     Route::prefix('discovery')->group(function () {
@@ -75,7 +78,7 @@ Route::middleware(['auth:api', 'token.version', \App\Http\Middleware\PeterTecnet
     Route::get('/content', [ContentManagementController::class, 'index']);
     Route::post('/content', [ContentManagementController::class, 'store']);
     Route::patch('/content/{content}', [ContentManagementController::class, 'update'])->whereNumber('content');
-    Route::post('/content/{content}/publish', [ContentManagementController::class, 'publish']);
+    Route::post('/content/{content}/publish', [ContentManagementController::class, 'publish'])->whereNumber('content');
     Route::delete('/content/{content}', [ContentManagementController::class, 'destroy'])->whereNumber('content');
     Route::get('/discovery/analytics', [DiscoveryAnalyticsController::class, 'summary']);
     Route::get('/discovery/web-vitals', [WebVitalAnalyticsController::class, 'index']);
