@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ $notification->title }}</title>
 </head>
+@php
+    $notificationData = is_array($notification->data) ? $notification->data : [];
+    $actionLabel = trim((string) ($notificationData['action_label'] ?? ''));
+@endphp
 <body style="margin:0;padding:0;background:#f4f6f8;font-family:Arial,Helvetica,sans-serif;color:#111827;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
     <tr>
@@ -28,7 +32,7 @@
                         <table role="presentation" cellspacing="0" cellpadding="0">
                             <tr>
                                 <td style="border-radius:12px;background:#111827;">
-                                    <a href="{{ $actionUrl }}" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">Abrir na {{ $application->name ?: 'Cutinapp' }}</a>
+                                    <a href="{{ $actionUrl }}" style="display:inline-block;padding:14px 22px;color:#ffffff;text-decoration:none;font-weight:700;font-size:15px;">{{ $actionLabel !== '' ? $actionLabel : 'Abrir na '.($application->name ?: 'Cutinapp') }}</a>
                                 </td>
                             </tr>
                         </table>
