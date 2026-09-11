@@ -90,6 +90,7 @@ Route::prefix('v1/apps/{application}')
         Route::middleware('app.capability:events')->group(function () {
             Route::get('/events', [EventDiscoveryController::class, 'events']);
             Route::get('/events/facets', [EventDiscoveryController::class, 'facets']);
+            Route::get('/events/revive/highlights', [EventDiscoveryController::class, 'reviveHighlights']);
             Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
             Route::get('/events/public/{slug}/share-preview', [EventSocialPreviewController::class, 'show']);
             Route::get('/events/public/{slug}/share-image.jpg', [EventSocialPreviewController::class, 'image']);
