@@ -100,7 +100,7 @@ final class EventAgendaService
     {
         $production = $this->ownedProduction($productionId, $user);
         $setting = $this->setting($production);
-        $setting->update(['generation_weeks' => max(1, min(3, $generationWeeks))]);
+        $setting->update(['generation_weeks' => max(1, min(52, $generationWeeks))]);
 
         $generation = $setting->is_active
             ? $this->maintenance->replenishProduction(
@@ -216,8 +216,9 @@ final class EventAgendaService
 
         $generation = $this->maintenance->replenishSchedule(
             $schedule,
-            (int) ($setting->generation_weeks ?: 1),
+            (int) ($schedule->generation_weeks ?: $setting->generation_weeks ?: 1),
             $this->context->slug(),
+            true,
         );
 
         return [
@@ -260,6 +261,9 @@ final class EventAgendaService
         $data = Validator::make($input, [
             'event_id' => 'required|integer|min:1',
             'day_of_week' => 'required|integer|between:0,6',
+            'generation_mode' => 'sometimes|in:immediate,delayed',
+            'generation_delay_days' => 'sometimes|integer|between:1,7',
+            'generation_weeks' => 'sometimes|integer|between:1,52',
             'is_active' => 'sometimes|boolean',
         ])->validate();
 
@@ -272,7 +276,10 @@ final class EventAgendaService
         $payload = $this->schedulePayloadFromEvent(
             $event,
             (int) $data['day_of_week'],
-            array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true
+            array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
+            (string) ($data['generation_mode'] ?? $targetSchedule?->generation_mode ?? 'immediate'),
+            (int) ($data['generation_delay_days'] ?? $targetSchedule?->generation_delay_days ?? 1),
+            (int) ($data['generation_weeks'] ?? $targetSchedule?->generation_weeks ?? 1),
         );
 
         $previousSourceEventId = $targetSchedule?->source_event_id;
@@ -328,7 +335,7 @@ final class EventAgendaService
         $generation = $setting->is_active
             ? $this->maintenance->replenishSchedule(
                 $schedule,
-                (int) ($setting->generation_weeks ?: 1),
+                (int) ($schedule->generation_weeks ?: $setting->generation_weeks ?: 1),
                 $this->context->slug(),
             )
             : ['created_count' => 0, 'existing_count' => 0, 'retired_count' => 0, 'events' => []];
@@ -336,13 +343,20 @@ final class EventAgendaService
         $generation['retired_count'] = (int) ($generation['retired_count'] ?? 0) + $retiredFromTemplateChange;
 
         return [
-            'message' => 'Evento-modelo definido para este dia da agenda semanal.',
+            'message' => 'Evento fixo definido exclusivamente para este dia da agenda semanal.',
             'schedule' => $this->presentSchedule($schedule->fresh('sourceEvent')),
             'generation' => $generation,
         ];
     }
 
-    private function schedulePayloadFromEvent(Event $event, int $dayOfWeek, bool $isActive): array
+    private function schedulePayloadFromEvent(
+        Event $event,
+        int $dayOfWeek,
+        bool $isActive,
+        string $generationMode = 'immediate',
+        int $generationDelayDays = 1,
+        int $generationWeeks = 1,
+    ): array
     {
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         $start = Carbon::parse((string) $event->start_date, $timezone);
@@ -377,6 +391,9 @@ final class EventAgendaService
             'is_private' => (bool) $event->is_private,
             'event_format' => $event->event_format ?: 'in_person',
             'online_url' => $event->online_url,
+            'generation_mode' => $generationMode === 'delayed' ? 'delayed' : 'immediate',
+            'generation_delay_days' => max(1, min(7, $generationDelayDays)),
+            'generation_weeks' => max(1, min(52, $generationWeeks)),
             'is_active' => $isActive,
         ];
     }
