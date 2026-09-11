@@ -152,6 +152,7 @@ final class GlobalSearchService
             ->merge($productions)
             ->merge($artists)
             ->sortByDesc('score')
+            ->unique(fn ($item) => $item['identity_key'] ?? (($item['type'] ?? '').':'.($item['id'] ?? '')))
             ->take($limit)
             ->values();
 
@@ -252,16 +253,20 @@ final class GlobalSearchService
             return collect();
         }
 
-        return DB::table('search_queries')
+        $boundedDays = max(1, min(90, $days));
+        $boundedLimit = max(1, min(100, $limit));
+        $cacheKey = 'search:popular:'.$appId.':'.$boundedDays.':'.sha1(mb_strtolower((string) $city)).':'.$boundedLimit;
+
+        return Cache::remember($cacheKey, now()->addSeconds(60), fn () => DB::table('search_queries')
             ->where('app_id', $appId)
-            ->where('created_at', '>=', now()->subDays(max(1, $days)))
+            ->where('created_at', '>=', now()->subDays($boundedDays))
             ->where('normalized_query', '<>', '')
             ->when($city, fn ($q) => $q->whereRaw('LOWER(city) = LOWER(?)', [$city]))
             ->selectRaw('normalized_query, MAX(query) as query, COUNT(*) as searches, SUM(zero_result) as zero_results')
             ->groupBy('normalized_query')
             ->orderByDesc('searches')
-            ->limit(max(1, min(100, $limit)))
-            ->get();
+            ->limit($boundedLimit)
+            ->get());
     }
 
     private function events(
@@ -298,6 +303,13 @@ final class GlobalSearchService
                         ->orWhere('events.description', 'like', $like)
                         ->orWhere('events.city', 'like', $like)
                         ->orWhere('events.venue', 'like', $like)
+                        ->orWhere('events.address', 'like', $like)
+                        ->orWhere('events.neighborhood', 'like', $like)
+                        ->orWhere('events.formatted_address', 'like', $like)
+                        ->orWhere('events.establishment_name', 'like', $like)
+                        ->orWhere('events.organizer_name', 'like', $like)
+                        ->orWhere('events.agenda', 'like', $like)
+                        ->orWhere('events.additional_info', 'like', $like)
                         ->orWhere('events.category', 'like', $like)
                         ->orWhereHas('production', fn ($p) => $p->where('name', 'like', $like))
                         ->orWhereHas('artists', fn ($a) => $a->where('stage_name', 'like', $like));
@@ -313,11 +325,13 @@ final class GlobalSearchService
             ->get();
 
         if ($query !== '' && $candidates->count() < min(10, $limit)) {
-            $fallback = Event::query()
+            $fallbackBuilder = Event::query()
                 ->where('events.app_id', $appId)
                 ->publiclyVisible()
                 ->with(['production:id,name,slug,logo', 'artists:id,stage_name,slug,photo'])
-                ->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', $now->copy()->subDays(7)))
+                ->where(fn ($q) => $q->whereNull('end_date')->orWhere('end_date', '>', $now->copy()->subDays(7)));
+            $this->applyEventFilters($fallbackBuilder, $filters, $now);
+            $fallback = $fallbackBuilder
                 ->orderByDesc('is_featured')
                 ->orderByDesc('created_at')
                 ->limit(120)
@@ -329,19 +343,26 @@ final class GlobalSearchService
         $passCounts = $eventIds
             ? DB::table('event_passes')->whereIn('event_id', $eventIds)->selectRaw('event_id, COUNT(*) total')->groupBy('event_id')->pluck('total', 'event_id')
             : collect();
+        $recentPassCounts = $eventIds
+            ? DB::table('event_passes')->whereIn('event_id', $eventIds)->where('created_at', '>=', now()->subDays(7))->selectRaw('event_id, COUNT(*) total')->groupBy('event_id')->pluck('total', 'event_id')
+            : collect();
+        $searchPerformance = $this->performanceSignals($appId, 'event', $eventIds);
         $viewerPasses = $viewer && $eventIds
             ? DB::table('event_passes')->where('user_id', $viewer->id)->whereIn('event_id', $eventIds)->pluck('event_id')->map(fn ($id) => (int) $id)->flip()
             : collect();
 
-        return $candidates
+        $ranked = $candidates
             ->map(fn (Event $event) => $this->eventPayload($event, $viewer, $viewerSignals, $query, [
                 'passes' => (int) ($passCounts[$event->id] ?? 0),
+                'recent_passes' => (int) ($recentPassCounts[$event->id] ?? 0),
+                'search_performance' => (float) ($searchPerformance[$event->id] ?? 0),
                 'purchased' => $viewerPasses->has((int) $event->id),
                 'filters' => $filters,
                 'now' => $now,
             ]))
-            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28)
-            ->sortByDesc(fn ($item) => $item['score'] ?? 0)
+            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28);
+
+        return $this->sortResults($ranked, $filters)
             ->slice($offset, $limit)
             ->values();
     }
@@ -377,6 +398,9 @@ final class GlobalSearchService
         if (! empty($filters['uf'])) {
             $builder->where('uf', strtoupper($filters['uf']));
         }
+        if (! empty($filters['genre'])) {
+            $builder->where('genres', 'like', '%'.trim($filters['genre']).'%');
+        }
 
         if ($query !== '') {
             $terms = collect(array_merge([$query], $expanded->all()))->filter()->unique()->take(8);
@@ -399,10 +423,13 @@ final class GlobalSearchService
             ->get();
 
         if ($query !== '' && $candidates->count() < min(10, $limit)) {
-            $fallback = Production::query()
+            $fallbackBuilder = Production::query()
                 ->where('app_id', $appId)
                 ->where('is_published', true)
-                ->where(fn (Builder $q) => $q->where('is_cancelled', false)->orWhereNull('is_cancelled'))
+                ->where(fn (Builder $q) => $q->where('is_cancelled', false)->orWhereNull('is_cancelled'));
+            if (! empty($filters['city'])) $fallbackBuilder->whereRaw('LOWER(city) = LOWER(?)', [trim($filters['city'])]);
+            if (! empty($filters['uf'])) $fallbackBuilder->where('uf', strtoupper($filters['uf']));
+            $fallback = $fallbackBuilder
                 ->orderByDesc('is_featured')
                 ->orderByDesc('updated_at')
                 ->limit(100)
@@ -417,9 +444,10 @@ final class GlobalSearchService
         $eventCounts = $ids
             ? Event::query()->where('app_id', $appId)->publiclyVisible()->whereIn('production_id', $ids)->where('end_date', '>', now())->selectRaw('production_id, COUNT(*) total')->groupBy('production_id')->pluck('total', 'production_id')
             : collect();
+        $searchPerformance = $this->performanceSignals($appId, $venuesOnly ? 'venue' : 'production', $ids);
 
-        return $candidates
-            ->map(function (Production $production) use ($query, $viewerSignals, $followers, $eventCounts, $filters, $venuesOnly) {
+        $ranked = $candidates
+            ->map(function (Production $production) use ($query, $viewerSignals, $followers, $eventCounts, $filters, $venuesOnly, $searchPerformance) {
                 $distance = $this->distanceFor($production->latitude, $production->longitude, $filters);
                 $followed = isset($viewerSignals['followed']['production'][(int) $production->id]);
                 $subtitle = collect([
@@ -431,7 +459,7 @@ final class GlobalSearchService
                     (string) $production->category,
                 ], [
                     'followers' => (int) ($followers[$production->id] ?? 0),
-                    'popularity' => (int) ($eventCounts[$production->id] ?? 0),
+                    'popularity' => (int) ($eventCounts[$production->id] ?? 0) + (float) ($searchPerformance[$production->id] ?? 0),
                     'followed' => $followed,
                     'featured' => (bool) $production->is_featured,
                     'distance_km' => $distance,
@@ -456,11 +484,14 @@ final class GlobalSearchService
                         'upcoming_events_count' => (int) ($eventCounts[$production->id] ?? 0),
                         'distance_km' => $distance,
                         'is_following' => $followed,
+                        'search_performance' => (float) ($searchPerformance[$production->id] ?? 0),
+                        'updated_at' => optional($production->updated_at)->toIso8601String(),
                     ],
                 ];
             })
-            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28)
-            ->sortByDesc('score')
+            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28);
+
+        return $this->sortResults($ranked, $filters)
             ->slice($offset, $limit)
             ->values();
     }
@@ -511,9 +542,10 @@ final class GlobalSearchService
         $followers = $ids && Schema::hasTable('follows')
             ? DB::table('follows')->where('app_id', $appId)->where('target_type', 'artist')->whereIn('target_id', $ids)->selectRaw('target_id, COUNT(*) total')->groupBy('target_id')->pluck('total', 'target_id')
             : collect();
+        $searchPerformance = $this->performanceSignals($appId, 'artist', $ids);
 
-        return $candidates
-            ->map(function (Artist $artist) use ($query, $viewerSignals, $followers) {
+        $ranked = $candidates
+            ->map(function (Artist $artist) use ($query, $viewerSignals, $followers, $searchPerformance) {
                 $followed = isset($viewerSignals['followed']['artist'][(int) $artist->id]);
                 $genres = is_array($artist->genres) ? $artist->genres : [];
                 $subtitle = collect([
@@ -526,12 +558,14 @@ final class GlobalSearchService
                     implode(' ', $genres),
                 ], [
                     'followers' => (int) ($followers[$artist->id] ?? 0),
+                    'popularity' => (float) ($searchPerformance[$artist->id] ?? 0),
                     'followed' => $followed,
                 ]);
 
                 return [
                     'type' => 'artist',
                     'id' => (int) $artist->id,
+                    'identity_key' => $artist->user_id ? 'user:'.(int) $artist->user_id : 'artist:'.(int) $artist->id,
                     'title' => $artist->stage_name,
                     'subtitle' => $subtitle,
                     'image' => $artist->photo,
@@ -543,11 +577,15 @@ final class GlobalSearchService
                         'genres' => $genres,
                         'followers_count' => (int) ($followers[$artist->id] ?? 0),
                         'is_following' => $followed,
+                        'related_user_id' => $artist->user_id ? (int) $artist->user_id : null,
+                        'search_performance' => (float) ($searchPerformance[$artist->id] ?? 0),
+                        'updated_at' => optional($artist->updated_at)->toIso8601String(),
                     ],
                 ];
             })
-            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28)
-            ->sortByDesc('score')
+            ->filter(fn ($item) => $query === '' || ($item['score'] ?? 0) >= 28);
+
+        return $this->sortResults($ranked, $filters)
             ->slice($offset, $limit)
             ->values();
     }
@@ -611,14 +649,24 @@ final class GlobalSearchService
         $followers = $ids && Schema::hasTable('follows')
             ? DB::table('follows')->where('app_id', $appId)->where('target_type', 'user')->whereIn('target_id', $ids)->selectRaw('target_id, COUNT(*) total')->groupBy('target_id')->pluck('total', 'target_id')
             : collect();
+        $privacy = $ids && Schema::hasTable('user_social_preferences')
+            ? DB::table('user_social_preferences')->where('app_id', $appId)->whereIn('user_id', $ids)->get()->keyBy('user_id')
+            : collect();
+        $artistByUser = $ids
+            ? Artist::query()->where('app_id', $appId)->where('is_published', true)->whereIn('user_id', $ids)->get(['id','user_id','slug','stage_name'])->keyBy('user_id')
+            : collect();
+        $searchPerformance = $this->performanceSignals($appId, $promotersOnly ? 'promoter' : 'user', $ids);
 
-        return $candidates
-            ->map(function (User $user) use ($personQuery, $viewerSignals, $followers, $promotersOnly) {
+        $ranked = $candidates
+            ->map(function (User $user) use ($personQuery, $viewerSignals, $followers, $promotersOnly, $privacy, $artistByUser, $searchPerformance) {
                 $name = trim(implode(' ', array_filter([$user->first_name, $user->last_name])));
                 $title = $name !== '' ? $name : ($user->user_name ?: 'Usuário Cutinapp');
+                $social = $privacy->get((int) $user->id);
+                $showCity = ! $social || (bool) ($social->show_city ?? true);
+                $relatedArtist = $artistByUser->get((int) $user->id);
                 $subtitle = collect([
                     $user->user_name ? '@'.ltrim($user->user_name, '@') : null,
-                    trim(implode(' - ', array_filter([$user->city, $user->uf]))),
+                    $showCity ? trim(implode(' - ', array_filter([$user->city, $user->uf]))) : null,
                 ])->filter()->implode(' · ');
                 $followed = isset($viewerSignals['followed']['user'][(int) $user->id]);
                 $score = $this->relevance->score($personQuery, $title, $subtitle, [
@@ -627,12 +675,14 @@ final class GlobalSearchService
                     (string) $user->about,
                 ], [
                     'followers' => (int) ($followers[$user->id] ?? 0),
+                    'popularity' => (float) ($searchPerformance[$user->id] ?? 0),
                     'followed' => $followed,
                 ]);
 
                 return [
                     'type' => $promotersOnly ? 'promoter' : 'user',
                     'id' => (int) $user->id,
+                    'identity_key' => 'user:'.(int) $user->id,
                     'title' => $title,
                     'subtitle' => $subtitle,
                     'image' => $user->avatar,
@@ -641,17 +691,22 @@ final class GlobalSearchService
                     'badges' => array_values(array_filter([
                         $followed ? 'Você segue' : null,
                         $promotersOnly ? 'Promoter' : null,
+                        $relatedArtist ? 'Artista' : null,
                     ])),
                     'meta' => [
                         'user_name' => $user->user_name,
                         'followers_count' => (int) ($followers[$user->id] ?? 0),
                         'is_following' => $followed,
                         'is_promoter' => (bool) $user->is_promoter,
+                        'related_artist' => $relatedArtist ? ['id' => (int) $relatedArtist->id, 'slug' => $relatedArtist->slug, 'stage_name' => $relatedArtist->stage_name] : null,
+                        'search_performance' => (float) ($searchPerformance[$user->id] ?? 0),
+                        'updated_at' => optional($user->updated_at)->toIso8601String(),
                     ],
                 ];
             })
-            ->filter(fn ($item) => $personQuery === '' || ($item['score'] ?? 0) >= 28)
-            ->sortByDesc('score')
+            ->filter(fn ($item) => $personQuery === '' || ($item['score'] ?? 0) >= 28);
+
+        return $this->sortResults($ranked, $filters)
             ->slice($offset, $limit)
             ->values();
     }
@@ -826,8 +881,16 @@ final class GlobalSearchService
         $score = $this->relevance->score($query, (string) $event->title, $subtitle, array_merge([
             (string) $event->description,
             (string) $event->category,
+            (string) $event->venue,
+            (string) $event->address,
+            (string) $event->neighborhood,
+            (string) $event->formatted_address,
+            (string) $event->establishment_name,
+            (string) $event->organizer_name,
+            json_encode($event->agenda, JSON_UNESCAPED_UNICODE) ?: '',
+            json_encode($event->additional_info, JSON_UNESCAPED_UNICODE) ?: '',
         ], $artistNames), [
-            'sales' => (int) ($context['passes'] ?? 0),
+            'sales' => (int) ($context['passes'] ?? 0) + ((int) ($context['recent_passes'] ?? 0) * 3) + (float) ($context['search_performance'] ?? 0),
             'purchased' => (bool) ($context['purchased'] ?? false),
             'happening_now' => $happeningNow,
             'upcoming' => $upcoming,
@@ -862,6 +925,10 @@ final class GlobalSearchService
                 'happening_now' => $happeningNow,
                 'ticket_owned' => (bool) ($context['purchased'] ?? false),
                 'ticket' => $ticketMeta,
+                'sales_count' => (int) ($context['passes'] ?? 0),
+                'recent_sales_count' => (int) ($context['recent_passes'] ?? 0),
+                'search_performance' => (float) ($context['search_performance'] ?? 0),
+                'created_at' => optional($event->created_at)->toIso8601String(),
             ],
         ];
     }
@@ -1020,6 +1087,36 @@ final class GlobalSearchService
         $distance = acos(min(1, max(-1, sin($lat1) * sin($lat2) + cos($lat1) * cos($lat2) * cos($delta)))) * 6371;
 
         return round($distance, 1);
+    }
+
+    private function performanceSignals(int $appId, string $type, array $ids): Collection
+    {
+        if (! $ids || ! Schema::hasTable('search_clicks')) {
+            return collect();
+        }
+
+        return DB::table('search_clicks')
+            ->where('app_id', $appId)
+            ->where('target_type', $type)
+            ->whereIn('target_id', $ids)
+            ->where('created_at', '>=', now()->subDays(30))
+            ->selectRaw('target_id, COUNT(*) clicks, SUM(conversion_type IS NOT NULL) conversions')
+            ->groupBy('target_id')
+            ->get()
+            ->mapWithKeys(fn ($row) => [
+                (int) $row->target_id => min(50, (int) $row->clicks) + min(25, (int) $row->conversions) * 5,
+            ]);
+    }
+
+    private function sortResults(Collection $items, array $filters): Collection
+    {
+        return match ($filters['sort'] ?? 'relevance') {
+            'nearby' => $items->sortBy(fn ($item) => $item['meta']['distance_km'] ?? PHP_FLOAT_MAX)->values(),
+            'newest' => $items->sortByDesc(fn ($item) => $item['meta']['created_at'] ?? $item['meta']['updated_at'] ?? '')->values(),
+            'soonest' => $items->sortBy(fn ($item) => $item['meta']['start_date'] ?? '9999-12-31T23:59:59Z')->values(),
+            'popular' => $items->sortByDesc(fn ($item) => ($item['meta']['recent_sales_count'] ?? 0) * 10 + ($item['meta']['search_performance'] ?? 0) + ($item['score'] ?? 0))->values(),
+            default => $items->sortByDesc(fn ($item) => $item['score'] ?? 0)->values(),
+        };
     }
 
     private function didYouMean(int $appId, string $query): ?string
