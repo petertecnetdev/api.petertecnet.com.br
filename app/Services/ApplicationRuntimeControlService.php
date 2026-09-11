@@ -79,6 +79,17 @@ final class ApplicationRuntimeControlService
             && $this->allows($application, 'market_scanner_enabled');
     }
 
+    public function shouldRunScheduledMarketScan(Application|string|int|null $application): bool
+    {
+        if (! $this->allowsScheduledMarketProcessing($application)) {
+            return false;
+        }
+
+        $interval = max(1, (int) $this->settings($application)['scan_interval_minutes']);
+
+        return $interval === 1 || ((int) floor(now()->timestamp / 60) % $interval) === 0;
+    }
+
     public function cacheForget(Application|int $application): void
     {
         $id = $application instanceof Application ? (int) $application->id : (int) $application;
