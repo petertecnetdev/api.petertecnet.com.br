@@ -10,8 +10,15 @@ class UserInvitation extends Model
         'user_id',
         'application_id',
         'invited_by',
+        'channel',
+        'destination',
         'token_hash',
         'verification_code_hash',
+        'code_expires_at',
+        'verification_attempts',
+        'last_sent_at',
+        'delivery_status',
+        'provider_message_id',
         'status',
         'expires_at',
         'consumed_at',
@@ -25,6 +32,9 @@ class UserInvitation extends Model
     ];
 
     protected $casts = [
+        'code_expires_at' => 'datetime',
+        'last_sent_at' => 'datetime',
+        'verification_attempts' => 'integer',
         'expires_at' => 'datetime',
         'consumed_at' => 'datetime',
         'revoked_at' => 'datetime',
