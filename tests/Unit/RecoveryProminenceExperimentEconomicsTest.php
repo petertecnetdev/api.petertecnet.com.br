@@ -28,6 +28,9 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertNull($result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertNull($result['comparison']['relative_contribution_lift_percent']);
         self::assertNull($result['comparison']['observed_volume_projection']);
+        self::assertSame('collecting', $result['comparison']['rollout_readiness']['status']);
+        self::assertSame('collect_more_data', $result['comparison']['rollout_readiness']['recommended_action']);
+        self::assertFalse($result['comparison']['rollout_readiness']['eligible_for_rollout']);
     }
 
     public function test_it_calculates_incremental_margin_after_both_variants_reach_maturity(): void
@@ -64,6 +67,10 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
             'projected_incremental_platform_contribution' => 48.0,
             'is_projection_not_realized_revenue' => true,
         ], $result['comparison']['observed_volume_projection']);
+        self::assertSame('hold', $result['comparison']['rollout_readiness']['status']);
+        self::assertSame('keep_control', $result['comparison']['rollout_readiness']['recommended_action']);
+        self::assertFalse($result['comparison']['rollout_readiness']['guardrails']['conversion']);
+        self::assertTrue($result['comparison']['rollout_readiness']['guardrails']['contribution']);
     }
 
     public function test_paid_outcome_requires_exposure_but_not_a_click(): void
