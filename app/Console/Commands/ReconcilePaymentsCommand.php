@@ -11,6 +11,7 @@ use App\Services\EventAudienceService;
 use App\Support\ApplicationContext;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class ReconcilePaymentsCommand extends Command
@@ -25,6 +26,7 @@ class ReconcilePaymentsCommand extends Command
         ApplicationContext $context
     ): int
     {
+        $startedAt = microtime(true);
         $orderRef = $this->argument('order');
         $applicationSlug = trim((string) $this->option('application'));
         $payments = collect();
@@ -118,16 +120,23 @@ class ReconcilePaymentsCommand extends Command
 
         if ($payments->isEmpty()) {
             $this->info('Nenhum pagamento precisa de reconciliação.');
+            $this->logRunTelemetry($startedAt, $applicationSlug, 0, 0, 0, 0, 0, 0.0);
             return self::SUCCESS;
         }
 
         $failures = 0;
+        $recoveredPaidOrders = 0;
+        $recoveredFulfillments = 0;
+        $recoveredDeliveryRetries = 0;
+        $recoveredGmv = 0.0;
         foreach ($payments as $payment) {
             try {
                 $application = Application::query()->whereKey((int) $payment->app_id)->where('is_active', true)->firstOrFail();
                 $context->set($application);
 
                 $order = $payment->order;
+                $statusBefore = (string) ($order?->status ?? '');
+                $fulfillmentBefore = (string) data_get($order?->metadata, 'fulfillment_status', '');
                 $deliveryOnlyRetry = $order
                     && $order->status === 'paid'
                     && data_get($order->metadata, 'fulfillment_status') === 'completed'
@@ -136,8 +145,17 @@ class ReconcilePaymentsCommand extends Command
                 if ($deliveryOnlyRetry) {
                     $audience->confirmPaidOrder((int) $order->id);
                     $order = $order->fresh(['items', 'event', 'payments']);
+                    $recoveredDeliveryRetries++;
                 } else {
                     $order = $controller->reconcilePaymentId((int) $payment->id);
+                }
+
+                if ($statusBefore !== 'paid' && $order->status === 'paid') {
+                    $recoveredPaidOrders++;
+                    $recoveredGmv += (float) $order->total;
+                }
+                if ($fulfillmentBefore !== 'completed' && data_get($order->metadata, 'fulfillment_status') === 'completed') {
+                    $recoveredFulfillments++;
                 }
 
                 $this->info(sprintf(
@@ -157,6 +175,39 @@ class ReconcilePaymentsCommand extends Command
             }
         }
 
+        $this->logRunTelemetry(
+            $startedAt,
+            $applicationSlug,
+            $payments->count(),
+            $recoveredPaidOrders,
+            $recoveredFulfillments,
+            $recoveredDeliveryRetries,
+            $failures,
+            $recoveredGmv
+        );
+
         return $failures === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function logRunTelemetry(
+        float $startedAt,
+        string $applicationSlug,
+        int $selected,
+        int $recoveredPaidOrders,
+        int $recoveredFulfillments,
+        int $recoveredDeliveryRetries,
+        int $failures,
+        float $recoveredGmv
+    ): void {
+        Log::info('commerce.payment_reconciliation.completed', [
+            'application' => $applicationSlug !== '' ? $applicationSlug : 'all',
+            'selected' => $selected,
+            'recovered_paid_orders' => $recoveredPaidOrders,
+            'recovered_fulfillments' => $recoveredFulfillments,
+            'recovered_delivery_retries' => $recoveredDeliveryRetries,
+            'failures' => $failures,
+            'recovered_gmv' => round($recoveredGmv, 2),
+            'duration_ms' => max(0, (int) round((microtime(true) - $startedAt) * 1000)),
+        ]);
     }
 }
