@@ -4,6 +4,7 @@ use App\Domain\Commerce\Http\Controllers\CommerceCouponController;
 use App\Domain\Commerce\Http\Controllers\CommerceFulfillmentController;
 use App\Domain\Commerce\Http\Controllers\EventItemRedemptionController;
 use App\Domain\Commerce\Http\Controllers\EventPurchaseController;
+use App\Domain\Commerce\Http\Controllers\OrderPaymentRetryController;
 use App\Domain\Commerce\Http\Controllers\TicketAvailabilityController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,6 +33,9 @@ Route::prefix('v1/apps/{application}')
         Route::patch('/organizations/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'update'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
         Route::delete('/organizations/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'destroy'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
 
+        Route::post('/me/orders/{order}/payment', [OrderPaymentRetryController::class, 'store'])
+            ->whereNumber('order')
+            ->middleware('throttle:30,1');
         Route::get('/me/orders/{order}/fulfillment/credential', [CommerceFulfillmentController::class, 'credential'])
             ->whereNumber('order')
             ->middleware('throttle:60,1');
