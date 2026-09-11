@@ -175,6 +175,8 @@ final class RecoveryProminenceExperimentEconomics
             $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution, $paidConversionConfidence);
         }
 
+        $comparison['rollout_readiness'] = (new RecoveryRolloutReadiness())->evaluate($comparison);
+
         return [
             'experiment' => $experiment,
             'unit_of_analysis' => 'exposed_order',
