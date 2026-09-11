@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Services;
 
 use App\Models\Event;
+use App\Models\File;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Carbon;
 use RuntimeException;
@@ -47,7 +48,7 @@ final class EventSocialPreviewService
             'description' => $this->description($event),
             'canonical' => $canonical,
             'imageUrl' => $imageUrl,
-            'imageAlt' => 'Banner do evento '.trim((string) $event->title),
+            'imageAlt' => ($event->hasEnded() ? 'Momento do evento ' : 'Banner do evento ').trim((string) $event->title),
             'appName' => $appName,
         ];
     }
@@ -122,6 +123,11 @@ final class EventSocialPreviewService
 
     public function sourceImageUrl(Event $event): string
     {
+        $revive = $this->reviveImage($event);
+        if ($revive) {
+            return (string) ($revive->public_url ?: '');
+        }
+
         $image = trim((string) $event->image);
         if ($image === '') {
             return '';
@@ -137,6 +143,14 @@ final class EventSocialPreviewService
 
     private function sourceImagePath(Event $event): ?string
     {
+        $revive = $this->reviveImage($event);
+        if ($revive && $revive->storage !== 'external' && $revive->path) {
+            $path = storage_path('app/public/'.ltrim((string) $revive->path, '/'));
+            if (is_file($path)) {
+                return $path;
+            }
+        }
+
         $image = trim((string) $event->image);
         if ($image === '' || preg_match('#^https?://#i', $image)) {
             return null;
@@ -146,6 +160,25 @@ final class EventSocialPreviewService
         $path = storage_path('app/public/'.$relative);
 
         return is_file($path) ? $path : null;
+    }
+
+    private function reviveImage(Event $event): ?File
+    {
+        if (! $event->hasEnded()) {
+            return null;
+        }
+
+        return File::query()
+            ->where('app_id', $this->context->id())
+            ->where('entity_name', 'Event')
+            ->where('entity_id', $event->id)
+            ->where('group', 'event_revive')
+            ->where('status', 'active')
+            ->where('visibility', 'public')
+            ->orderByDesc('is_primary')
+            ->orderBy('position')
+            ->orderByDesc('created_at')
+            ->first();
     }
 
     private function description(Event $event): string
@@ -168,7 +201,9 @@ final class EventSocialPreviewService
             $parts[] = $place;
         }
 
-        $parts[] = 'Confira informações e ingressos na '.($this->context->application()->name ?: 'plataforma');
+        $parts[] = $event->hasEnded()
+            ? 'Reviva os momentos, avaliações e histórias deste evento na '.($this->context->application()->name ?: 'plataforma')
+            : 'Confira informações e ingressos na '.($this->context->application()->name ?: 'plataforma');
 
         return implode(' · ', $parts);
     }
@@ -176,6 +211,12 @@ final class EventSocialPreviewService
     private function version(Event $event): int
     {
         $timestamp = $event->updated_at?->getTimestamp();
+
+        if ($event->hasEnded()) {
+            $mediaTimestamp = $this->reviveImage($event)?->updated_at?->getTimestamp();
+            $timestamp = max((int) ($timestamp ?: 0), (int) ($mediaTimestamp ?: 0));
+        }
+
         return max(1, (int) ($timestamp ?: $event->getKey()));
     }
 

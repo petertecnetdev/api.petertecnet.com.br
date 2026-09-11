@@ -92,6 +92,7 @@ Route::prefix('v1/apps/{application}')
         Route::middleware('app.capability:events')->group(function () {
             Route::get('/events', [EventDiscoveryController::class, 'events']);
             Route::get('/events/facets', [EventDiscoveryController::class, 'facets']);
+            Route::get('/events/revive/highlights', [EventDiscoveryController::class, 'reviveHighlights']);
             Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
             Route::get('/events/public/{slug}/share-preview', [EventSocialPreviewController::class, 'show']);
             Route::get('/events/public/{slug}/share-image.jpg', [EventSocialPreviewController::class, 'image']);
@@ -103,6 +104,9 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware('app.capability:events,event_community')->group(function () {
             Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
+            Route::post('/events/{eventId}/revive/interaction', [EventCommunityController::class, 'trackReviveInteraction'])
+                ->whereNumber('eventId')
+                ->middleware('throttle:120,1');
         });
 
         Route::middleware('app.capability:events,commerce')->group(function () {
@@ -311,6 +315,16 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/community/{postId}/like', [EventCommunityController::class, 'like'])->whereNumber('postId')->middleware('throttle:120,1');
                 Route::delete('/community/{postId}/like', [EventCommunityController::class, 'unlike'])->whereNumber('postId');
                 Route::put('/events/{eventId}/rating', [EventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
+                Route::post('/events/{eventId}/ratings/{ratingUserId}/helpful', [EventCommunityController::class, 'markRatingHelpful'])->whereNumber('eventId')->whereNumber('ratingUserId')->middleware('throttle:60,1');
+                Route::delete('/events/{eventId}/ratings/{ratingUserId}/helpful', [EventCommunityController::class, 'unmarkRatingHelpful'])->whereNumber('eventId')->whereNumber('ratingUserId');
+                Route::put('/events/{eventId}/ratings/{ratingUserId}/response', [EventCommunityController::class, 'respondToRating'])->whereNumber('eventId')->whereNumber('ratingUserId')->middleware('throttle:30,1');
+                Route::post('/events/{eventId}/revive/media', [EventCommunityController::class, 'uploadMedia'])->whereNumber('eventId')->middleware('throttle:12,1');
+                Route::patch('/events/{eventId}/revive/media/{fileId}', [EventCommunityController::class, 'updateMedia'])->whereNumber('eventId')->whereNumber('fileId')->middleware('throttle:30,1');
+                Route::delete('/events/{eventId}/revive/media/{fileId}', [EventCommunityController::class, 'deleteMedia'])->whereNumber('eventId')->whereNumber('fileId')->middleware('throttle:30,1');
+                Route::put('/events/{eventId}/revive/media-order', [EventCommunityController::class, 'reorderMedia'])->whereNumber('eventId')->middleware('throttle:30,1');
+                Route::put('/events/{eventId}/revive/preferences', [EventCommunityController::class, 'saveRevivePreferences'])->whereNumber('eventId')->middleware('throttle:30,1');
+                Route::get('/events/{eventId}/revive/moderation', [EventCommunityController::class, 'moderationQueue'])->whereNumber('eventId');
+                Route::patch('/events/{eventId}/revive/moderation/{reportId}', [EventCommunityController::class, 'moderateContentReport'])->whereNumber('eventId')->whereNumber('reportId')->middleware('throttle:30,1');
                 Route::post('/events/{eventId}/report', [EventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
             });
 

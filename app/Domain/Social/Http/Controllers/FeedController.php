@@ -136,10 +136,7 @@ final class FeedController extends Controller
                             ->where('e.is_cancelled', false)
                             ->where(fn ($privacyQuery) => $privacyQuery
                                 ->where('e.is_private', false)
-                                ->orWhereNull('e.is_private'))
-                            ->where(fn ($dateQuery) => $dateQuery
-                                ->whereNull('e.end_date')
-                                ->orWhere('e.end_date', '>', $now));
+                                ->orWhereNull('e.is_private'));
                     });
             })
             ->select([

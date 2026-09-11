@@ -19,9 +19,13 @@ final class UserActivityProfileService
         $now = now();
         $relations = ['production:id,app_id,name,slug,logo', 'artists:id,app_id,slug,stage_name,photo'];
 
-        $ticketEventIds = EventPass::where('user_id', $user->id)
-            ->whereHas('event', fn ($q) => $q->where('app_id', $appId))
-            ->pluck('event_id')->unique()->values();
+        $invalidPassStatuses = ['cancelled', 'refunded', 'charged_back'];
+        $validPasses = EventPass::query()
+            ->where('user_id', $user->id)
+            ->whereNotIn('status', $invalidPassStatuses)
+            ->whereHas('event', fn ($q) => $q->where('app_id', $appId));
+
+        $ticketEventIds = (clone $validPasses)->pluck('event_id')->unique()->values();
         $interestedIds = DB::table('event_engagements')->where(['app_id' => $appId, 'user_id' => $user->id, 'is_interested' => true])->pluck('event_id');
         $favoriteIds = DB::table('event_engagements')->where(['app_id' => $appId, 'user_id' => $user->id, 'is_favorite' => true])->pluck('event_id');
         $base = fn () => Event::query()->where('app_id', $appId)->with($relations);
@@ -67,6 +71,36 @@ final class UserActivityProfileService
 
         $followingProductions = DB::table('follows')->where(['app_id' => $appId, 'user_id' => $user->id, 'target_type' => 'production'])->count();
 
+        $attendedEvents = (clone $validPasses)
+            ->whereHas('event', fn ($q) => $q->where('end_date', '<=', $now))
+            ->distinct('event_id')
+            ->count('event_id');
+        $checkedInEvents = (clone $validPasses)
+            ->whereNotNull('checked_in_at')
+            ->whereHas('event', fn ($q) => $q->where('end_date', '<=', $now))
+            ->distinct('event_id')
+            ->count('event_id');
+        $eventReviews = DB::table('event_ratings')
+            ->where(['app_id' => $appId, 'user_id' => $user->id])
+            ->count();
+        $eventMoments = Schema::hasTable('files')
+            ? DB::table('files')
+                ->where('app_id', $appId)
+                ->where('entity_name', 'Event')
+                ->where('group', 'event_revive')
+                ->where('created_by', $user->id)
+                ->where('status', 'active')
+                ->count()
+            : 0;
+
+        $reviveAchievements = array_values(array_filter([
+            $attendedEvents >= 1 ? ['key' => 'first_event', 'label' => 'Primeiro evento'] : null,
+            $attendedEvents >= 5 ? ['key' => 'events_5', 'label' => '5 eventos'] : null,
+            $attendedEvents >= 10 ? ['key' => 'events_10', 'label' => '10 eventos'] : null,
+            $attendedEvents >= 20 ? ['key' => 'events_20', 'label' => '20 eventos'] : null,
+            $checkedInEvents >= 5 ? ['key' => 'presence_5', 'label' => 'Presença confirmada em 5 eventos'] : null,
+        ]));
+
         return [
             'profile' => [
                 'id' => $user->id,
@@ -94,7 +128,12 @@ final class UserActivityProfileService
                 'following_participants' => $followingParticipantIds->count(),
                 'connections' => $connections,
                 'posts' => DB::table('event_posts')->where(['app_id' => $appId, 'user_id' => $user->id, 'status' => 'published'])->count(),
+                'attended_events' => $attendedEvents,
+                'checked_in_events' => $checkedInEvents,
+                'event_reviews' => $eventReviews,
+                'event_moments' => $eventMoments,
             ],
+            'revive_achievements' => $reviveAchievements,
             'interests' => $interests,
             'social_settings' => $socialSettings,
             'upcoming_with_ticket' => $ticketUpcoming,

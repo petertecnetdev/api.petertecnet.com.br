@@ -170,6 +170,8 @@ class Event extends Model
             'share' => $public,
             'save' => $public,
             'community' => $public,
+            'revive_view' => $public && $status === 'past',
+            'revive_interact' => $public && $status === 'past',
         ];
     }
 

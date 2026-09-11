@@ -141,6 +141,8 @@ final class EventCommerceController extends Controller
             'payer_identification_type' => 'required_if:payment_method,card|nullable|string|in:CPF',
             'payer_identification_number' => 'required_if:payment_method,card|nullable|string|max:30',
             'payer_email' => 'nullable|email|max:190',
+            'source_event_id' => 'nullable|integer|min:1|exists:events,id',
+            'conversion_source' => 'nullable|string|in:post_event,organic,share,recommendation',
         ]);
 
         abort_if(empty($data['tickets']) && empty($data['items']), 422, 'Selecione ao menos um ingresso ou item.');
@@ -164,6 +166,26 @@ final class EventCommerceController extends Controller
                 ? 'Este evento já foi encerrado. Não aceita novas compras.'
                 : 'Este evento não está disponível para venda.'
         );
+
+        if (! empty($data['source_event_id'])) {
+            $sourceEvent = Event::query()
+                ->where('app_id', $this->context->id())
+                ->whereKey((int) $data['source_event_id'])
+                ->first();
+
+            abort_unless(
+                $sourceEvent && $sourceEvent->hasEnded(),
+                422,
+                'A origem pós-evento informada não é válida.'
+            );
+            abort_if(
+                (int) $sourceEvent->id === (int) $eventForReadiness->id,
+                422,
+                'O evento de origem precisa ser diferente do evento da nova compra.'
+            );
+
+            $data['conversion_source'] = $data['conversion_source'] ?? 'post_event';
+        }
 
         $readiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
         abort_unless($readiness['available'], 422, $readiness['message']);
@@ -200,7 +222,11 @@ final class EventCommerceController extends Controller
                 'currency' => 'BRL',
                 'payment_method' => $data['payment_method'],
                 'expires_at' => $expiresAt,
-                'metadata' => ['application_slug' => $this->context->slug()],
+                'metadata' => array_filter([
+                    'application_slug' => $this->context->slug(),
+                    'source_event_id' => isset($data['source_event_id']) ? (int) $data['source_event_id'] : null,
+                    'conversion_source' => $data['conversion_source'] ?? null,
+                ], fn ($value) => $value !== null && $value !== ''),
             ]);
 
             $subtotal = 0.0;
@@ -365,6 +391,8 @@ final class EventCommerceController extends Controller
                     'order_public_id' => $order->public_id,
                     'organization_id' => $order->production_id,
                     'settlement_mode' => $settlementMode,
+                    'source_event_id' => data_get($order->metadata, 'source_event_id'),
+                    'conversion_source' => data_get($order->metadata, 'conversion_source'),
                 ],
             ];
 
