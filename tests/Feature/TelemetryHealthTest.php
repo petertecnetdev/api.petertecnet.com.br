@@ -33,6 +33,7 @@ class TelemetryHealthTest extends TestCase
             'url' => 'https://telemetry-health-app.example',
             'is_active' => true,
         ]);
+        $telemetryVersion = (string) config('telemetry.frontend_version');
         $token = auth('api')->login($admin);
         $authorization = ['Authorization' => 'Bearer '.$token];
 
@@ -45,7 +46,7 @@ class TelemetryHealthTest extends TestCase
                     'timestamp' => now()->subSeconds(5)->toIso8601String(),
                     'page' => '/events',
                     'label' => 'Sessão iniciada',
-                    'metadata' => ['telemetry_schema' => '3', 'telemetry_version' => '3.3.0'],
+                    'metadata' => ['telemetry_schema' => '3', 'telemetry_version' => $telemetryVersion],
                 ],
                 [
                     'id' => 'health-event-view',
@@ -77,20 +78,20 @@ class TelemetryHealthTest extends TestCase
             'X-Peter-App' => $app->slug,
             'Origin' => $app->url,
             'X-Telemetry-Schema' => '3',
-            'X-Peter-Telemetry' => '3.3.0',
+            'X-Peter-Telemetry' => $telemetryVersion,
         ]))->assertStatus(202)->assertJson(['accepted' => 3]);
 
         $health = $this->withHeaders($authorization)
             ->getJson('/api/admin/ecosystem/telemetry/health')
             ->assertOk()
             ->assertJsonPath('expected.schema', '3')
-            ->assertJsonPath('expected.version', '3.3.0');
+            ->assertJsonPath('expected.version', $telemetryVersion);
 
         $healthApp = collect($health->json('applications'))->firstWhere('slug', $app->slug);
         $this->assertNotNull($healthApp);
         $this->assertSame('healthy', $healthApp['status']);
         $this->assertSame('3', $healthApp['latest_schema']);
-        $this->assertSame('3.3.0', $healthApp['latest_version']);
+        $this->assertSame($telemetryVersion, $healthApp['latest_version']);
         $this->assertSame(3, $healthApp['events_24h']);
 
         $this->withHeaders($authorization)

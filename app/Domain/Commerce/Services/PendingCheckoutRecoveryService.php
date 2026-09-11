@@ -87,7 +87,7 @@ final class PendingCheckoutRecoveryService
             'payment_recovery_eligible' => true,
             'payment_expires_at' => $expiresAt?->toIso8601String(),
             'payment_recovery_seconds_remaining' => $expiresAt
-                ? max(0, now()->diffInSeconds($expiresAt, false))
+                ? max(0, (int) floor(now()->diffInSeconds($expiresAt, false)))
                 : 0,
         ];
     }
