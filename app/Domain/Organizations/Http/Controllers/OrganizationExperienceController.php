@@ -27,10 +27,11 @@ final class OrganizationExperienceController extends Controller
             ->where('is_cancelled', false)
             ->firstOrFail();
 
-        Interaction::registerView($organization, $this->optionalUser($request), ['surface' => 'organization_public']);
+        $viewer = $this->optionalUser($request);
+        Interaction::registerView($organization, $viewer, ['surface' => 'organization_public']);
 
         return response()->json([
-            'analytics' => $this->analytics($organization),
+            'analytics' => $this->analytics($organization, $viewer),
             'media' => $this->media($organization),
             'social_proof' => $this->socialProof($organization),
             'reviews' => $this->reviews($organization),
@@ -59,7 +60,7 @@ final class OrganizationExperienceController extends Controller
         return response()->json([
             'organization' => $organization,
             'events' => $events,
-            'analytics' => $this->analytics($organization),
+            'analytics' => $this->analytics($organization, $request->user()),
             'media' => $this->media($organization),
             'social_proof' => $this->socialProof($organization),
             'reviews' => $this->reviews($organization),
@@ -121,7 +122,7 @@ final class OrganizationExperienceController extends Controller
         ]);
     }
 
-    private function analytics(Production $organization): array
+    private function analytics(Production $organization, ?User $viewer = null): array
     {
         $base = Interaction::query()
             ->where('app_id', $this->context->id())
@@ -129,33 +130,41 @@ final class OrganizationExperienceController extends Controller
             ->where('interaction_type', 'view')
             ->whereIn('entity_type', ['Production', 'production', 'Establishment']);
 
-        $rows = (clone $base)
-            ->whereNotNull('user_id')
-            ->selectRaw('user_id, COUNT(*) as views_count, MAX(created_at) as last_viewed_at')
-            ->groupBy('user_id')
-            ->orderByDesc('last_viewed_at')
-            ->limit(100)
-            ->get();
+        $canSeeViewers = $viewer && (
+            (int) $organization->user_id === (int) $viewer->id
+            || (method_exists($viewer, 'hasProfile') && $viewer->hasProfile('Administrador'))
+        );
 
-        $users = User::query()
-            ->whereIn('id', $rows->pluck('user_id'))
-            ->get(['id', 'first_name', 'last_name', 'avatar'])
-            ->keyBy('id');
+        $viewers = collect();
+        if ($canSeeViewers) {
+            $rows = (clone $base)
+                ->whereNotNull('user_id')
+                ->selectRaw('user_id, COUNT(*) as views_count, MAX(created_at) as last_viewed_at')
+                ->groupBy('user_id')
+                ->orderByDesc('last_viewed_at')
+                ->limit(100)
+                ->get();
 
-        $viewers = $rows->map(function ($row) use ($users) {
-            $user = $users->get($row->user_id);
-            if (! $user) {
-                return null;
-            }
+            $users = User::query()
+                ->whereIn('id', $rows->pluck('user_id'))
+                ->get(['id', 'first_name', 'last_name', 'avatar'])
+                ->keyBy('id');
 
-            return [
-                'id' => (int) $user->id,
-                'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: 'Participante',
-                'avatar' => $user->avatar,
-                'views_count' => (int) $row->views_count,
-                'last_viewed_at' => $row->last_viewed_at,
-            ];
-        })->filter()->values();
+            $viewers = $rows->map(function ($row) use ($users) {
+                $user = $users->get($row->user_id);
+                if (! $user) {
+                    return null;
+                }
+
+                return [
+                    'id' => (int) $user->id,
+                    'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: 'Participante',
+                    'avatar' => $user->avatar,
+                    'views_count' => (int) $row->views_count,
+                    'last_viewed_at' => $row->last_viewed_at,
+                ];
+            })->filter()->values();
+        }
 
         return [
             'total_views' => (clone $base)->count(),
@@ -188,16 +197,6 @@ final class OrganizationExperienceController extends Controller
             ->filter()
             ->values();
 
-        $attendeePreview = User::query()
-            ->whereIn('id', $attendeeIds->take(12))
-            ->get(['id', 'first_name', 'last_name', 'avatar'])
-            ->map(fn (User $user) => [
-                'id' => (int) $user->id,
-                'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: 'Participante',
-                'avatar' => $user->avatar,
-            ])
-            ->values();
-
         $rating = DB::table('event_ratings as ratings')
             ->join('events', 'events.id', '=', 'ratings.event_id')
             ->where('ratings.app_id', $appId)
@@ -216,7 +215,7 @@ final class OrganizationExperienceController extends Controller
                 'target_id' => $organization->id,
             ])->count(),
             'attendees_count' => $attendeeIds->count(),
-            'attendees_preview' => $attendeePreview,
+            'attendees_preview' => [],
             'rating_average' => $rating?->average ? (float) $rating->average : 0,
             'ratings_count' => (int) ($rating?->total ?? 0),
             'verified_ratings_count' => (int) ($rating?->verified ?? 0),
@@ -229,7 +228,6 @@ final class OrganizationExperienceController extends Controller
 
         return DB::table('event_ratings as ratings')
             ->join('events', 'events.id', '=', 'ratings.event_id')
-            ->join('users', 'users.id', '=', 'ratings.user_id')
             ->where('ratings.app_id', $appId)
             ->where('events.app_id', $appId)
             ->where('events.production_id', $organization->id)
@@ -240,27 +238,23 @@ final class OrganizationExperienceController extends Controller
             ->orderByDesc('ratings.updated_at')
             ->limit(16)
             ->get([
-                'ratings.user_id',
                 'ratings.event_id',
                 'ratings.rating',
                 'ratings.verified_attendee',
                 'ratings.updated_at',
                 'events.title as event_title',
                 'events.slug as event_slug',
-                'users.first_name',
-                'users.last_name',
-                'users.avatar',
+
             ])
             ->map(fn ($row) => [
-                'user_id' => (int) $row->user_id,
                 'event_id' => (int) $row->event_id,
                 'event_title' => $row->event_title,
                 'event_slug' => $row->event_slug,
                 'rating' => (int) $row->rating,
                 'verified_attendee' => (bool) $row->verified_attendee,
                 'created_at' => $row->updated_at,
-                'name' => trim(($row->first_name ?? '').' '.($row->last_name ?? '')) ?: 'Participante',
-                'avatar' => $row->avatar,
+                'name' => $row->verified_attendee ? 'Participante verificado' : 'Participante',
+                'avatar' => null,
             ])
             ->all();
     }
