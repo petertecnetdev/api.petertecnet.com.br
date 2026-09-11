@@ -102,6 +102,9 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware('app.capability:events,event_community')->group(function () {
             Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
+            Route::post('/events/{eventId}/revive/interaction', [EventCommunityController::class, 'trackReviveInteraction'])
+                ->whereNumber('eventId')
+                ->middleware('throttle:120,1');
         });
 
         Route::middleware('app.capability:events,commerce')->group(function () {
