@@ -25,7 +25,10 @@ class UserInvitationController extends Controller
     public function storeProspect(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'email' => ['required', 'email', 'max:255'],
+            'channel' => ['nullable', 'string', 'in:email,whatsapp'],
+            'email' => ['nullable', 'email', 'max:255', 'required_without:phone'],
+            'phone' => ['nullable', 'string', 'max:32', 'required_without:email'],
+            'whatsapp_consent' => ['nullable', 'boolean'],
             'recipient_name' => ['nullable', 'string', 'max:120'],
             'application_id' => ['required', 'integer', 'exists:applications,id'],
             'persona' => ['required', 'string', 'max:80', 'regex:/^[a-zA-Z0-9_-]+$/'],
@@ -46,13 +49,13 @@ class UserInvitationController extends Controller
     {
         $data = $request->validate([
             'verification_code' => ['required', 'string', 'min:6', 'max:12'],
-            'password' => ['required', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
+            'password' => ['nullable', 'string', 'confirmed', Password::min(8)->mixedCase()->numbers()->symbols()],
         ]);
 
         return $this->respond($this->invitations->activate(
             $token,
             $data['verification_code'],
-            $data['password'],
+            $data['password'] ?? null,
         ));
     }
 
