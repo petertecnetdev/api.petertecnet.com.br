@@ -265,7 +265,30 @@ final class CheckoutJourneyFunnel
             'platform_contribution_at_risk' => $hasContributionEstimate
                 ? round(max(0.0, $fromPlatformContribution - $toPlatformContribution), 2)
                 : null,
+            'recommended_action' => $this->recommendedAction($from),
         ];
+    }
+
+    /** @return array{code: string, target_metric: string, guardrails: array<int, string>} */
+    private function recommendedAction(string $from): array
+    {
+        return match ($from) {
+            'checkout_opened' => [
+                'code' => 'reduce_payment_entry_friction',
+                'target_metric' => 'opened_to_attempted_percent',
+                'guardrails' => ['price_transparency', 'cart_integrity'],
+            ],
+            'payment_attempted' => [
+                'code' => 'improve_payment_approval',
+                'target_metric' => 'attempted_to_approved_percent',
+                'guardrails' => ['payment_idempotency', 'no_duplicate_charge'],
+            ],
+            default => [
+                'code' => 'protect_post_payment_fulfillment',
+                'target_metric' => 'approved_to_fulfilled_percent',
+                'guardrails' => ['ticket_exactly_once', 'qr_checkin_integrity'],
+            ],
+        };
     }
 
     private function normalizeMargin(?float $margin): ?float
