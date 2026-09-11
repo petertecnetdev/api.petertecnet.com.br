@@ -27,6 +27,7 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertNull($result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
         self::assertNull($result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertNull($result['comparison']['relative_contribution_lift_percent']);
+        self::assertNull($result['comparison']['observed_volume_projection']);
     }
 
     public function test_it_calculates_incremental_margin_after_both_variants_reach_maturity(): void
@@ -56,6 +57,13 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertSame(10.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
         self::assertSame(0.8, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertSame(100.0, $result['comparison']['relative_contribution_lift_percent']);
+        self::assertSame([
+            'basis' => 'observed_exposed_orders',
+            'observed_exposed_orders' => 60,
+            'projected_incremental_paid_orders' => 6.0,
+            'projected_incremental_platform_contribution' => 48.0,
+            'is_projection_not_realized_revenue' => true,
+        ], $result['comparison']['observed_volume_projection']);
     }
 
     public function test_paid_outcome_requires_exposure_but_not_a_click(): void

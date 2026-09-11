@@ -135,6 +135,7 @@ final class RecoveryProminenceExperimentEconomics
             'diagnostic_incremental_paid_orders_per_100_impressions' => null,
             'diagnostic_incremental_platform_contribution_per_impression' => null,
             'paid_conversion_difference_confidence_95' => null,
+            'observed_volume_projection' => null,
             'decision' => $this->decision(false, null, null, null),
         ];
 
@@ -165,6 +166,12 @@ final class RecoveryProminenceExperimentEconomics
             $comparison['diagnostic_incremental_paid_orders_per_100_impressions'] = round($treatmentPaidPerImpression - $controlPaidPerImpression, 2);
             $comparison['diagnostic_incremental_platform_contribution_per_impression'] = round($treatmentContributionPerImpression - $controlContributionPerImpression, 4);
             $comparison['paid_conversion_difference_confidence_95'] = $paidConversionConfidence;
+            $comparison['observed_volume_projection'] = $this->observedVolumeProjection(
+                (int) ($control['exposed_orders'] ?? 0),
+                (int) ($treatment['exposed_orders'] ?? 0),
+                $incrementalPaidRate,
+                $incrementalContribution,
+            );
             $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution, $paidConversionConfidence);
         }
 
@@ -173,6 +180,24 @@ final class RecoveryProminenceExperimentEconomics
             'unit_of_analysis' => 'exposed_order',
             'variants' => $rows->values()->all(),
             'comparison' => $comparison,
+        ];
+    }
+
+    /** @return array<string, mixed> */
+    private function observedVolumeProjection(
+        int $controlExposed,
+        int $treatmentExposed,
+        float $incrementalPaidRate,
+        float $incrementalContribution,
+    ): array {
+        $observedExposedOrders = max(0, $controlExposed) + max(0, $treatmentExposed);
+
+        return [
+            'basis' => 'observed_exposed_orders',
+            'observed_exposed_orders' => $observedExposedOrders,
+            'projected_incremental_paid_orders' => round(($incrementalPaidRate / 100) * $observedExposedOrders, 2),
+            'projected_incremental_platform_contribution' => round($incrementalContribution * $observedExposedOrders, 2),
+            'is_projection_not_realized_revenue' => true,
         ];
     }
 
