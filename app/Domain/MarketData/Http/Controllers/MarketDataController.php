@@ -8,6 +8,7 @@ use App\Domain\MarketData\Services\MarketDataService;
 use App\Domain\MarketData\Services\MarketPortfolioService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Http\Controllers\Controller;
+use App\Services\ApplicationRuntimeControlService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
@@ -21,6 +22,7 @@ final class MarketDataController extends Controller
         private readonly CoinMarketCapScannerService $scanner,
         private readonly MarketSignalService $signals,
         private readonly AirdropOpportunityService $airdrops,
+        private readonly ApplicationRuntimeControlService $runtime,
     ) {}
 
     public function overview(Request $request): JsonResponse
@@ -49,6 +51,15 @@ final class MarketDataController extends Controller
 
     public function realtimeConfig(Request $request): JsonResponse
     {
+        if (! $this->runtime->allows($request->route('application'), 'realtime_enabled')) {
+            return response()->json([
+                'enabled' => false,
+                'runtime_suspended' => true,
+                'mode' => $this->runtime->settings($request->route('application'))['mode'],
+                'message' => 'Realtime temporariamente suspenso pelo Admin Center.',
+            ]);
+        }
+
         $app = (array) config('reverb.apps.apps.0', []);
         $options = (array) ($app['options'] ?? []);
         $key = (string) ($app['key'] ?? '');
@@ -94,7 +105,7 @@ final class MarketDataController extends Controller
             'asset_ids.*' => ['string', 'max:80'],
         ]);
 
-        return $this->marketResponse($request, fn () => $this->portfolio->analyze((int) $request->user()->id, $data));
+        return $this->marketResponse($request, fn () => $this->portfolio->analyze((int) $request->user()->id, $data), 200, 'ai_enabled');
     }
 
     public function portfolio(Request $request): JsonResponse
@@ -280,8 +291,26 @@ final class MarketDataController extends Controller
         }
     }
 
-    private function marketResponse(Request $request, callable $callback, int $status = 200): JsonResponse
+    private function marketResponse(Request $request, callable $callback, int $status = 200, string $feature = 'market_scanner_enabled'): JsonResponse
     {
+        $application = $request->route('application');
+        if (! $this->runtime->allows($application, 'market_scanner_enabled')
+            || ($feature !== 'market_scanner_enabled' && ! $this->runtime->allows($application, $feature))) {
+            $settings = $this->runtime->settings($application);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'As análises automáticas desta aplicação estão temporariamente suspensas.',
+                'code' => 'APPLICATION_RUNTIME_SUSPENDED',
+                'runtime' => [
+                    'mode' => $settings['mode'],
+                    'processing_enabled' => $settings['processing_enabled'],
+                    'market_scanner_enabled' => $settings['market_scanner_enabled'],
+                ],
+                'request_id' => $request->attributes->get('request_id'),
+            ], 503);
+        }
+
         try {
             return response()->json([
                 'success' => true,
