@@ -74,6 +74,7 @@ final class SearchQueryParser
             'radius_km' => isset($input['radius_km']) && $input['radius_km'] !== '' ? (int) $input['radius_km'] : null,
             'sort' => $input['sort'] ?? null,
             'category' => $this->nullableTrim($input['category'] ?? null),
+            'genre' => $this->nullableTrim($input['genre'] ?? null),
             'artist_id' => isset($input['artist_id']) ? (int) $input['artist_id'] : null,
             'production_id' => isset($input['production_id']) ? (int) $input['production_id'] : null,
         ];
