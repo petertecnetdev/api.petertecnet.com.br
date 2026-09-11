@@ -58,12 +58,14 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertSame('exposed_order', $result['unit_of_analysis']);
         self::assertTrue($result['comparison']['sample_is_mature']);
         self::assertSame(10.0, $result['comparison']['incremental_paid_orders_per_100_exposed_orders']);
+        self::assertSame(10.0, $result['comparison']['incremental_gmv_per_exposed_order']);
         self::assertSame(0.8, $result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertSame(100.0, $result['comparison']['relative_contribution_lift_percent']);
         self::assertSame([
             'basis' => 'observed_exposed_orders',
             'observed_exposed_orders' => 60,
             'projected_incremental_paid_orders' => 6.0,
+            'projected_incremental_gmv' => 600.0,
             'projected_incremental_platform_contribution' => 48.0,
             'is_projection_not_realized_revenue' => true,
         ], $result['comparison']['observed_volume_projection']);
@@ -86,6 +88,7 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         $prominent = collect($result['variants'])->firstWhere('variant', 'prominent');
         self::assertSame(1, $prominent['exposed_orders']);
         self::assertSame(1, $prominent['paid_orders']);
+        self::assertSame(100.0, $prominent['paid_gmv']);
         self::assertSame(8.0, $prominent['platform_contribution']);
     }
 
@@ -117,11 +120,12 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertFalse($result['comparison']['sample_is_mature']);
     }
 
-    private function order(string $publicId, string $status, float $platformFee, float $processorFee): array
+    private function order(string $publicId, string $status, float $platformFee, float $processorFee, float $total = 100.0): array
     {
         return [
             'public_id' => $publicId,
             'status' => $status,
+            'total' => $total,
             'platform_fee' => $platformFee,
             'processor_fee' => $processorFee,
             'metadata' => ['settlement_mode' => 'platform_collection'],
