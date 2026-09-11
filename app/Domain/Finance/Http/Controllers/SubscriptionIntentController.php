@@ -2,6 +2,7 @@
 
 namespace App\Domain\Finance\Http\Controllers;
 
+use App\Domain\Finance\Actions\FindRecoverableSubscriptionIntent;
 use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
@@ -96,6 +97,28 @@ class SubscriptionIntentController extends Controller
         ], $status);
     }
 
+    public function recoverable(
+        Request $request,
+        string $application,
+        FindRecoverableSubscriptionIntent $findRecoverableSubscriptionIntent
+    ): JsonResponse {
+        $application = strtolower(trim($application));
+        $definition = config("subscriptions.applications.{$application}");
+
+        if (! is_array($definition) || ! ($definition['subscription_enabled'] ?? false)) {
+            return response()->json(['message' => 'Assinaturas não estão disponíveis para este aplicativo.'], 422);
+        }
+
+        $intent = $findRecoverableSubscriptionIntent->handle(
+            $request->user()->getKey(),
+            $application
+        );
+
+        return response()->json([
+            'data' => $intent ? $this->recoveryResource($intent) : null,
+        ]);
+    }
+
     public function show(Request $request, string $application, string $intent): JsonResponse
     {
         $record = SubscriptionIntent::query()
@@ -105,5 +128,26 @@ class SubscriptionIntentController extends Controller
             ->firstOrFail();
 
         return response()->json(['data' => $record]);
+    }
+
+    private function recoveryResource(SubscriptionIntent $intent): array
+    {
+        return [
+            'id' => $intent->public_id,
+            'application' => $intent->application,
+            'plan_code' => $intent->plan_code,
+            'plan_name' => $intent->plan_name,
+            'price_cents' => $intent->price_cents,
+            'currency' => $intent->currency,
+            'billing_interval' => $intent->billing_interval,
+            'billing_interval_count' => $intent->billing_interval_count,
+            'status' => $intent->status,
+            'source' => $intent->source,
+            'handoff_channel' => $intent->handoff_channel,
+            'metadata' => $intent->metadata,
+            'created_at' => $intent->created_at,
+            'checkout_started_at' => $intent->checkout_started_at,
+            'payment_pending_at' => $intent->payment_pending_at,
+        ];
     }
 }
