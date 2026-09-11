@@ -13,12 +13,12 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class ImpersonationService
 {
-    public function startById(User $actor, int $targetUserId, int $applicationId, string $reason, Request $request): array
+    public function startById(User $actor, int $targetUserId, int $applicationId, string $reason, Request $request, string $source = 'admincenter'): array
     {
         $target = User::query()->findOrFail($targetUserId);
         $application = Application::query()->findOrFail($applicationId);
 
-        $result = $this->start($actor, $target, $application, $reason, $request);
+        $result = $this->start($actor, $target, $application, $reason, $request, $source);
 
         return [
             'message' => 'Acesso temporário criado com segurança.',
@@ -28,7 +28,7 @@ class ImpersonationService
         ];
     }
 
-    public function start(User $actor, User $target, Application $application, string $reason, Request $request): array
+    public function start(User $actor, User $target, Application $application, string $reason, Request $request, string $source = 'admincenter'): array
     {
         if ($actor->is($target)) {
             throw new HttpException(422, 'Não é possível iniciar impersonação do próprio usuário.');
@@ -44,7 +44,7 @@ class ImpersonationService
         $ttlMinutes = max((int) config('impersonation.ttl_minutes', 30), 5);
         $handoffTtl = max((int) config('impersonation.handoff_ttl_seconds', 60), 15);
 
-        $session = DB::transaction(function () use ($actor, $target, $application, $reason, $request, $plainHandoff, $ttlMinutes, $handoffTtl) {
+        $session = DB::transaction(function () use ($actor, $target, $application, $reason, $request, $plainHandoff, $ttlMinutes, $handoffTtl, $source) {
             ImpersonationSession::query()
                 ->where('impersonator_user_id', $actor->id)
                 ->whereNull('ended_at')
@@ -66,7 +66,7 @@ class ImpersonationService
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
                 'metadata' => [
-                    'source' => 'admincenter',
+                    'source' => trim($source) ?: 'admincenter',
                     'application_slug' => $application->slug,
                 ],
             ]);
@@ -226,6 +226,21 @@ class ImpersonationService
     public function audit(int $sessionId, array $filters): array
     {
         $session = ImpersonationSession::query()->findOrFail($sessionId);
+
+        return $this->auditSession($session, $filters);
+    }
+
+    public function auditForApplication(int $sessionId, int $applicationId, array $filters): array
+    {
+        $session = ImpersonationSession::query()
+            ->where('application_id', $applicationId)
+            ->findOrFail($sessionId);
+
+        return $this->auditSession($session, $filters);
+    }
+
+    private function auditSession(ImpersonationSession $session, array $filters): array
+    {
         $page = ImpersonationAuditLog::query()
             ->where('impersonation_session_id', $session->id)
             ->latest('id')
@@ -241,6 +256,21 @@ class ImpersonationService
     public function forceEnd(int $sessionId, User $actor): array
     {
         $session = ImpersonationSession::query()->findOrFail($sessionId);
+
+        return $this->finishFromAdmin($session, $actor);
+    }
+
+    public function forceEndForApplication(int $sessionId, int $applicationId, User $actor): array
+    {
+        $session = ImpersonationSession::query()
+            ->where('application_id', $applicationId)
+            ->findOrFail($sessionId);
+
+        return $this->finishFromAdmin($session, $actor);
+    }
+
+    private function finishFromAdmin(ImpersonationSession $session, User $actor): array
+    {
         $session->finish($actor, 'ended_from_admincenter');
 
         return [
