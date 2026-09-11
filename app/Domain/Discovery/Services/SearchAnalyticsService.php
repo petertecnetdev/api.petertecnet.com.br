@@ -285,6 +285,42 @@ final class SearchAnalyticsService
             ->orderBy('weekday')
             ->get();
 
+        $avgSecondsToClick = 0;
+        if ($clicks && Schema::hasTable('search_queries')) {
+            $timings = DB::table('search_clicks as clicks')
+                ->join('search_queries as searches', 'searches.id', '=', 'clicks.search_query_id')
+                ->where('clicks.app_id', $appId)
+                ->where('clicks.created_at', '>=', $from)
+                ->limit(5000)
+                ->get(['searches.created_at as searched_at', 'clicks.created_at as clicked_at'])
+                ->map(function ($row) {
+                    try {
+                        return max(0, \Illuminate\Support\Carbon::parse($row->searched_at)->diffInSeconds(\Illuminate\Support\Carbon::parse($row->clicked_at)));
+                    } catch (\Throwable) {
+                        return null;
+                    }
+                })
+                ->filter(fn ($value) => $value !== null);
+            $avgSecondsToClick = $timings->isNotEmpty() ? round((float) $timings->average(), 1) : 0;
+        }
+
+        $categorySignals = (clone $base)
+            ->whereNotNull('filters')
+            ->limit(5000)
+            ->get(['filters'])
+            ->flatMap(function ($row) {
+                $filters = json_decode((string) $row->filters, true) ?: [];
+                return array_values(array_filter([
+                    ! empty($filters['category']) ? 'Categoria: '.$filters['category'] : null,
+                    ! empty($filters['genre']) ? 'Gênero: '.$filters['genre'] : null,
+                ]));
+            })
+            ->countBy()
+            ->sortDesc()
+            ->take(20)
+            ->map(fn ($count, $label) => ['label' => $label, 'searches' => $count])
+            ->values();
+
         $topTargets = $clicks
             ? (clone $clicks)
                 ->selectRaw('target_type, target_id, COUNT(*) as clicks, SUM(is_sponsored) as sponsored_clicks, SUM(conversion_type IS NOT NULL) as conversions')
@@ -301,6 +337,8 @@ final class SearchAnalyticsService
             'zero_result_rate' => $totalSearches > 0 ? round(($zeroSearches / $totalSearches) * 100, 2) : 0,
             'unique_users' => $uniqueUsers,
             'clicks' => $clickCount,
+            'avg_seconds_to_click' => $avgSecondsToClick,
+            'category_signals' => $categorySignals,
             'ctr' => $totalSearches > 0 ? round(($clickCount / $totalSearches) * 100, 2) : 0,
             'conversions' => $conversions,
             'conversion_rate' => $clickCount > 0 ? round(($conversions / $clickCount) * 100, 2) : 0,
@@ -383,6 +421,8 @@ final class SearchAnalyticsService
             'zero_result_rate' => 0,
             'unique_users' => 0,
             'clicks' => 0,
+            'avg_seconds_to_click' => 0,
+            'category_signals' => [],
             'ctr' => 0,
             'conversions' => 0,
             'conversion_rate' => 0,
