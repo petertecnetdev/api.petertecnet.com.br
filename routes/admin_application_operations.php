@@ -9,6 +9,10 @@ Route::prefix('admin/ecosystem')
     ->group(function () {
         Route::get('/applications/{application}/operations', [ApplicationOperationsController::class, 'show'])
             ->whereNumber('application');
+        Route::get('/applications/{application}/runtime', [ApplicationOperationsController::class, 'runtime'])
+            ->whereNumber('application');
+        Route::put('/applications/{application}/runtime', [ApplicationOperationsController::class, 'updateRuntime'])
+            ->whereNumber('application');
 
         Route::get('/creative/prompts/{key}', [AdminCreativePromptController::class, 'show'])
             ->where('key', '[a-z0-9_-]+');
