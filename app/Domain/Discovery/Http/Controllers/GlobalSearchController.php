@@ -28,7 +28,7 @@ final class GlobalSearchController extends Controller
         $parsed = $this->parser->parse($data);
         $type = $data['type'] ?? 'all';
         $limit = (int) ($data['per_type'] ?? ($type === 'all' ? 8 : 20));
-        $page = (int) ($data['page'] ?? 1);
+        $page = isset($data['cursor']) ? $this->decodeCursor((string) $data['cursor']) : (int) ($data['page'] ?? 1);
         $viewer = $request->user('api');
         $payload = $this->search->search($this->context->id(), $viewer, $parsed, $type, $limit, $page);
 
@@ -280,6 +280,18 @@ final class GlobalSearchController extends Controller
         return response()->json(['deleted' => $this->campaigns->delete($this->context->id(), $id)]);
     }
 
+    private function decodeCursor(string $cursor): int
+    {
+        try {
+            $padding = strlen($cursor) % 4;
+            if ($padding) $cursor .= str_repeat('=', 4 - $padding);
+            $decoded = json_decode((string) base64_decode(strtr($cursor, '-_', '+/'), true), true);
+            return max(1, min(100, (int) ($decoded['page'] ?? 1)));
+        } catch (\Throwable) {
+            return 1;
+        }
+    }
+
     private function searchRules(bool $requireQuery): array
     {
         return [
@@ -287,6 +299,7 @@ final class GlobalSearchController extends Controller
             'type' => 'nullable|in:all,event,production,artist,user,post,item,venue,promoter',
             'per_type' => 'nullable|integer|min:1|max:30',
             'page' => 'nullable|integer|min:1|max:100',
+            'cursor' => 'nullable|string|max:255',
             'city' => 'nullable|string|max:120',
             'uf' => 'nullable|string|size:2',
             'period' => 'nullable|in:today,tomorrow,weekend,next7,next30',
@@ -302,6 +315,7 @@ final class GlobalSearchController extends Controller
             'radius_km' => 'nullable|integer|min:1|max:500',
             'sort' => 'nullable|in:relevance,nearby,popular,newest,soonest',
             'category' => 'nullable|string|max:120',
+            'genre' => 'nullable|string|max:120',
             'artist_id' => 'nullable|integer|min:1',
             'production_id' => 'nullable|integer|min:1',
             'source' => 'nullable|string|max:40',
