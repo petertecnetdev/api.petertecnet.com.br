@@ -91,5 +91,18 @@ return [
         'webhook_secret' => env('MERCADOPAGO_WEBHOOK_SECRET'),
     ],
 
+    'whatsapp' => [
+        'enabled' => (bool) env('WHATSAPP_CLOUD_ENABLED', false),
+        'graph_version' => env('WHATSAPP_GRAPH_VERSION', 'v26.0'),
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'waba_id' => env('WHATSAPP_WABA_ID'),
+        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'language' => env('WHATSAPP_TEMPLATE_LANGUAGE', 'pt_BR'),
+        'invitation_template' => env('WHATSAPP_INVITATION_TEMPLATE', 'petertecnet_user_invitation'),
+        'authentication_template' => env('WHATSAPP_AUTH_TEMPLATE', 'petertecnet_authentication_code'),
+        'activation_template' => env('WHATSAPP_ACTIVATION_TEMPLATE', 'petertecnet_account_activated'),
+        'timeout' => (int) env('WHATSAPP_API_TIMEOUT', 15),
+    ],
+
     'geo_ip' => ['endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}')],
 ];
