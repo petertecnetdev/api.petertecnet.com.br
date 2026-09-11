@@ -23,7 +23,6 @@ class ProcessMessageEngagement implements ShouldQueue
         public int $messageId,
         public int $recipientUserId,
     ) {
-        $this->onQueue('notifications');
     }
 
     public function handle(ApplicationContext $context, MessageEngagementService $service): void
