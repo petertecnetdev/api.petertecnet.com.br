@@ -82,7 +82,7 @@ final class SearchAnalyticsService
         return $id;
     }
 
-    public function markConversion(int $appId, ?int $userId, string $type, int $targetId): bool
+    public function markConversion(int $appId, ?int $userId, string $type, string $targetType, int $targetId): bool
     {
         if (! Schema::hasTable('search_clicks')) {
             return false;
@@ -91,6 +91,7 @@ final class SearchAnalyticsService
         $click = DB::table('search_clicks')
             ->where('app_id', $appId)
             ->when($userId, fn ($query) => $query->where('user_id', $userId))
+            ->where('target_type', $targetType)
             ->where('target_id', $targetId)
             ->whereNull('conversion_type')
             ->where('created_at', '>=', now()->subHours(24))
