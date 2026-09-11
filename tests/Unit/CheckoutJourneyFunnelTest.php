@@ -61,6 +61,24 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(500.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
     }
 
+    public function test_it_prioritizes_observed_platform_contribution_instead_of_gmv_alone(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [
+            $this->interaction('frontend_checkout_opened', 'journey-card-big', 10, 500.00, 'card'),
+            $this->interaction('frontend_payment_attempted', 'journey-card-big', null, 500.00, 'card'),
+            $this->interaction('frontend_checkout_opened', 'journey-pix-one', 10, 60.00, 'pix'),
+            $this->interaction('frontend_checkout_opened', 'journey-pix-two', 10, 50.00, 'pix'),
+        ];
+        $summary = $funnel->summarize($interactions, [10], 5.0, ['card' => 1.0, 'pix' => 10.0]);
+        $this->assertSame('payment_attempted', $summary['dropoff']['largest_economic_step']['from']);
+        $this->assertSame(500.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
+        $this->assertSame('checkout_opened', $summary['dropoff']['largest_contribution_step']['from']);
+        $this->assertSame(11.0, $summary['dropoff']['largest_contribution_step']['platform_contribution_at_risk']);
+        $this->assertSame(10.0, $summary['platform_contribution_estimate']['payment_method_margin_percent']['pix']);
+        $this->assertSame(1.0, $summary['platform_contribution_estimate']['payment_method_margin_percent']['card']);
+    }
+
     public function test_it_excludes_journeys_outside_the_producer_event_scope(): void
     {
         $funnel = new CheckoutJourneyFunnel();

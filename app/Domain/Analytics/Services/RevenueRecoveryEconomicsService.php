@@ -118,9 +118,23 @@ final class RevenueRecoveryEconomicsService
             ->orderBy('id')
             ->cursor();
 
+        $observedPlatformContributionMargin = (float) ($metrics['gross_revenue'] ?? 0) > 0
+            && is_numeric($metrics['platform_contribution_margin'] ?? null)
+                ? (float) $metrics['platform_contribution_margin']
+                : null;
+        $platformContributionMarginByPaymentMethod = collect($metrics['payment_methods'] ?? [])
+            ->filter(fn (array $row): bool => (float) ($row['gross_revenue'] ?? 0) > 0
+                && is_numeric($row['platform_contribution_margin'] ?? null))
+            ->mapWithKeys(fn (array $row): array => [
+                (string) ($row['payment_method'] ?? 'unknown') => (float) $row['platform_contribution_margin'],
+            ])
+            ->all();
+
         $metrics['checkout_journey_funnel'] = $this->checkoutJourneyFunnel->summarize(
             $journeyInteractions,
             $eventIds,
+            $observedPlatformContributionMargin,
+            $platformContributionMarginByPaymentMethod,
         );
 
         return $metrics;
