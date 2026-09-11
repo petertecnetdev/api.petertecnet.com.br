@@ -5,6 +5,7 @@ namespace App\Domain\People\Http\Controllers;
 use App\Domain\People\Services\PublicUserProfileService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
+use Illuminate\Http\Request;
 
 final class PublicUserProfileController extends Controller
 {
@@ -13,8 +14,14 @@ final class PublicUserProfileController extends Controller
         private readonly PublicUserProfileService $service,
     ) {}
 
-    public function __invoke(int $userId)
+    public function __invoke(Request $request, int $userId)
     {
-        return response()->json($this->service->show($userId, $this->context->id()));
+        $viewerId = $request->user('api')?->id;
+
+        return response()->json($this->service->show(
+            $userId,
+            $this->context->id(),
+            $viewerId ? (int) $viewerId : null,
+        ));
     }
 }
