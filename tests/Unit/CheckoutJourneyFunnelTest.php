@@ -29,9 +29,36 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(50.0, $summary['conversion']['opened_to_approved_percent']);
         $this->assertSame(1, $summary['dropoff']['explicit_abandoned_journeys']);
         $this->assertSame('checkout_opened', $summary['dropoff']['largest_step']['from']);
+        $this->assertSame('checkout_opened', $summary['dropoff']['largest_economic_step']['from']);
+        $this->assertSame(80.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
         $this->assertSame(200.0, $summary['gmv']['opened']);
         $this->assertSame(120.0, $summary['gmv']['approved']);
         $this->assertSame(80.0, $summary['gmv']['explicit_abandoned_at_risk']);
+        $this->assertSame(200.0, $summary['gmv']['by_stage']['opened']);
+        $this->assertSame(120.0, $summary['gmv']['by_stage']['payment_attempted']);
+    }
+
+    public function test_it_prioritizes_the_step_with_the_largest_gmv_loss_not_only_the_most_journeys(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [
+            $this->interaction('frontend_checkout_opened', 'journey-big1', 10, 500.00),
+            $this->interaction('frontend_payment_attempted', 'journey-big1', null, 500.00, 'pix'),
+            $this->interaction('frontend_checkout_opened', 'journey-small1', 10, 20.00),
+            $this->interaction('frontend_payment_attempted', 'journey-small1', null, 20.00, 'pix'),
+            $this->interaction('frontend_payment_approved', 'journey-small1', null, 20.00, 'pix'),
+            $this->interaction('frontend_checkout_opened', 'journey-small2', 10, 20.00),
+            $this->interaction('frontend_checkout_opened', 'journey-small3', 10, 20.00),
+        ];
+
+        $summary = $funnel->summarize($interactions, [10]);
+
+        $this->assertSame('checkout_opened', $summary['dropoff']['largest_step']['from']);
+        $this->assertSame(2, $summary['dropoff']['largest_step']['dropoff_journeys']);
+        $this->assertSame(40.0, $summary['dropoff']['largest_step']['gmv_at_risk']);
+        $this->assertSame('payment_attempted', $summary['dropoff']['largest_economic_step']['from']);
+        $this->assertSame(1, $summary['dropoff']['largest_economic_step']['dropoff_journeys']);
+        $this->assertSame(500.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
     }
 
     public function test_it_excludes_journeys_outside_the_producer_event_scope(): void
@@ -63,6 +90,7 @@ class CheckoutJourneyFunnelTest extends TestCase
 
         $this->assertSame(0, $summary['journeys']);
         $this->assertNull($summary['conversion']['opened_to_approved_percent']);
+        $this->assertNull($summary['dropoff']['largest_economic_step']);
     }
 
     private function interaction(string $type, string $journeyId, ?int $eventId, float $amount, ?string $paymentMethod = null): array
