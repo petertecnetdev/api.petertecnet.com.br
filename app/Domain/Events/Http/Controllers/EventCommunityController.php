@@ -426,6 +426,46 @@ final class EventCommunityController extends Controller
         return response()->json(['message' => 'Momento removido.']);
     }
 
+    public function reorderMedia(Request $request, int $eventId)
+    {
+        $event = $this->publicEventById($eventId)->loadMissing('production');
+        abort_unless($event->hasEnded(), 422, 'O Reviva só pode ser organizado depois do evento.');
+        abort_unless($this->isManager($event, $request->user()), 403, 'Somente a produção pode reorganizar a galeria.');
+
+        $data = $request->validate([
+            'file_ids' => 'required|array|min:1|max:100',
+            'file_ids.*' => 'required|integer|distinct|min:1',
+        ]);
+
+        $ids = collect($data['file_ids'])->map(fn ($id) => (int) $id)->values();
+        $valid = File::query()
+            ->where('app_id', $this->context->id())
+            ->where('entity_name', 'Event')
+            ->where('entity_id', $event->id)
+            ->where('group', 'event_revive')
+            ->where('status', 'active')
+            ->whereIn('id', $ids)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id);
+
+        abort_unless($valid->count() === $ids->count() && $valid->sort()->values()->all() === $ids->sort()->values()->all(), 422, 'A ordem contém imagens inválidas.');
+
+        DB::transaction(function () use ($ids, $request) {
+            foreach ($ids as $position => $fileId) {
+                File::query()
+                    ->where('app_id', $this->context->id())
+                    ->where('id', $fileId)
+                    ->update([
+                        'position' => $position,
+                        'updated_by' => $request->user()->id,
+                        'updated_at' => now(),
+                    ]);
+            }
+        });
+
+        return response()->json(['message' => 'Ordem da galeria atualizada.']);
+    }
+
     public function saveRevivePreferences(Request $request, int $eventId)
     {
         $event = $this->publicEventById($eventId);
