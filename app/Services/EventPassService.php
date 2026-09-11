@@ -225,13 +225,51 @@ final class EventPassService
         $appId = $this->context->id();
         $pass = EventPass::query()
             ->whereHas('event', fn ($query) => $query->where('app_id', $appId))
-            ->with(['ticket', 'event.production', 'user:id,first_name,last_name,email,avatar'])
+            ->with([
+                'ticket',
+                'event.production',
+                'user:id,first_name,last_name,email,avatar',
+                'orderItem.order.payments' => fn ($query) => $query->latest('id'),
+            ])
             ->findOrFail($passId);
 
-        if ((int) $pass->user_id !== (int) $user->id) {
+        $isHolder = (int) $pass->user_id === (int) $user->id;
+        if (! $isHolder) {
             $this->manageableEvent((int) $pass->event_id, $user);
             $pass->makeHidden('token');
         }
+
+        $orderItem = $pass->orderItem;
+        $order = $orderItem?->order;
+        $pass->setAttribute('is_complimentary', (float) ($pass->ticket?->price ?? 0) <= 0);
+        $pass->setAttribute('purchase', $order ? [
+            'id' => (int) $order->id,
+            'public_id' => (string) $order->public_id,
+            'status' => (string) $order->status,
+            'payment_method' => $order->payment_method,
+            'total' => $order->total,
+            'subtotal' => $order->subtotal,
+            'discount_amount' => $order->discount_amount,
+            'platform_fee' => $order->platform_fee,
+            'processor_fee' => $order->processor_fee,
+            'paid_at' => optional($order->paid_at)->toIso8601String(),
+            'purchased_at' => optional($order->created_at)->toIso8601String(),
+            'line_unit_price' => $orderItem?->unit_price,
+            'line_subtotal' => $orderItem?->subtotal,
+            'latest_payment_status' => optional($order->payments->first())->status,
+        ] : null);
+        $pass->setAttribute('wallet_state', [
+            'event_status' => $pass->event?->temporal_status,
+            'event_cancelled' => (bool) ($pass->event?->is_cancelled),
+            'checked_in' => $pass->checked_in_at !== null || (string) $pass->status === 'checked_in',
+            'transferable' => $isHolder
+                && ! in_array((string) $pass->status, self::INVALID_PASS_STATUSES, true)
+                && $pass->checked_in_at === null
+                && (string) $pass->status !== 'checked_in'
+                && ! (bool) ($pass->event?->is_cancelled)
+                && ! (bool) ($pass->event?->has_ended),
+        ]);
+        $pass->unsetRelation('orderItem');
 
         return ['pass' => $pass];
     }
