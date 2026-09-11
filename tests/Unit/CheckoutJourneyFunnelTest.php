@@ -45,15 +45,20 @@ class CheckoutJourneyFunnelTest extends TestCase
             $this->interaction('frontend_checkout_opened', 'journey-big1', 10, 500.00),
             $this->interaction('frontend_payment_attempted', 'journey-big1', null, 500.00, 'pix'),
             $this->interaction('frontend_checkout_opened', 'journey-small1', 10, 20.00),
+            $this->interaction('frontend_payment_attempted', 'journey-small1', null, 20.00, 'pix'),
+            $this->interaction('frontend_payment_approved', 'journey-small1', null, 20.00, 'pix'),
             $this->interaction('frontend_checkout_opened', 'journey-small2', 10, 20.00),
             $this->interaction('frontend_checkout_opened', 'journey-small3', 10, 20.00),
         ];
 
         $summary = $funnel->summarize($interactions, [10]);
 
-        $this->assertSame(3, $summary['dropoff']['largest_step']['dropoff_journeys']);
-        $this->assertSame('checkout_opened', $summary['dropoff']['largest_economic_step']['from']);
-        $this->assertSame(60.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
+        $this->assertSame('checkout_opened', $summary['dropoff']['largest_step']['from']);
+        $this->assertSame(2, $summary['dropoff']['largest_step']['dropoff_journeys']);
+        $this->assertSame(40.0, $summary['dropoff']['largest_step']['gmv_at_risk']);
+        $this->assertSame('payment_attempted', $summary['dropoff']['largest_economic_step']['from']);
+        $this->assertSame(1, $summary['dropoff']['largest_economic_step']['dropoff_journeys']);
+        $this->assertSame(500.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
     }
 
     public function test_it_excludes_journeys_outside_the_producer_event_scope(): void
