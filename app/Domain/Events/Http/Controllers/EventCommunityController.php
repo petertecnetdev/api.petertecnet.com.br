@@ -904,6 +904,45 @@ final class EventCommunityController extends Controller
             ->orderBy('start_date')
             ->first(['id', 'title', 'slug', 'image', 'start_date', 'end_date', 'city', 'uf', 'venue']);
 
+        $related = Event::query()
+            ->where('app_id', $appId)
+            ->where('id', '!=', $event->id)
+            ->publiclyVisible()
+            ->where('start_date', '>', now())
+            ->where(function ($q) use ($event) {
+                $q->where('production_id', $event->production_id);
+
+                if (trim((string) $event->category) !== '') {
+                    $q->orWhere('category', $event->category);
+                }
+                if (trim((string) $event->city) !== '') {
+                    $q->orWhere('city', $event->city);
+                }
+            })
+            ->orderByRaw('CASE WHEN production_id = ? THEN 0 ELSE 1 END', [(int) $event->production_id])
+            ->orderBy('start_date')
+            ->limit(6)
+            ->get(['id', 'production_id', 'title', 'slug', 'image', 'start_date', 'end_date', 'city', 'uf', 'venue', 'category']);
+
+        $eventRating = DB::table('event_ratings')
+            ->where('app_id', $appId)
+            ->where('event_id', $event->id)
+            ->selectRaw('AVG(rating) average, COUNT(*) total')
+            ->first();
+        $publishedPosts = DB::table('event_posts')
+            ->where('app_id', $appId)
+            ->where('event_id', $event->id)
+            ->where('status', 'published')
+            ->count();
+        $eventBadges = array_values(array_filter([
+            ((float) ($eventRating?->average ?? 0) >= 4.5 && (int) ($eventRating?->total ?? 0) >= 5)
+                ? ['key' => 'highly_rated', 'label' => 'Muito bem avaliado'] : null,
+            ((int) $attendance['verified'] >= 100)
+                ? ['key' => 'popular_event', 'label' => 'Evento popular'] : null,
+            ($publishedPosts >= 20)
+                ? ['key' => 'active_community', 'label' => 'Comunidade ativa'] : null,
+        ]));
+
         $preferences = null;
         if ($user && Schema::hasTable('event_revive_preferences')) {
             $pref = DB::table('event_revive_preferences')->where([
@@ -977,6 +1016,8 @@ final class EventCommunityController extends Controller
             'gallery' => $gallery,
             'attendance' => $attendance,
             'next_event' => $nextEvent,
+            'related_events' => $related,
+            'event_badges' => $eventBadges,
             'achievements' => $achievements,
             'preferences' => $preferences,
             'metrics' => $metrics,
@@ -1011,6 +1052,16 @@ final class EventCommunityController extends Controller
             ->where('r.event_id', $event->id)
             ->select($columns);
 
+        $query->selectSub(
+            fn ($q) => $q->from('event_passes as ep')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('ep.user_id', 'r.user_id')
+                ->where('ep.event_id', $event->id)
+                ->whereNotIn('ep.status', self::INVALID_PASS_STATUSES)
+                ->whereNotNull('ep.checked_in_at'),
+            'presence_confirmed'
+        );
+
         if (Schema::hasTable('event_rating_helpful')) {
             $query->selectSub(
                 fn ($q) => $q->from('event_rating_helpful as h')
@@ -1035,6 +1086,7 @@ final class EventCommunityController extends Controller
 
         return $reviews->map(function ($review) use ($mineHelpful) {
             $review->helpful_count = (int) ($review->helpful_count ?? 0);
+            $review->presence_confirmed = (int) ($review->presence_confirmed ?? 0) > 0;
             $review->is_helpful = $mineHelpful->contains($review->user_id);
             return $review;
         });
