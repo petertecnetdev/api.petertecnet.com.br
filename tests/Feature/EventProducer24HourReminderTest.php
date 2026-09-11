@@ -21,12 +21,14 @@ class EventProducer24HourReminderTest extends TestCase
     {
         config()->set('platform.applications.cutinapp.capabilities', ['events']);
 
-        $application = Application::create([
-            'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
-            'url' => 'https://cutinapp.example.test',
-            'is_active' => true,
-        ]);
+        $application = Application::query()->updateOrCreate(
+            ['slug' => 'cutinapp'],
+            [
+                'name' => 'Cutinapp',
+                'url' => 'https://cutinapp.example.test',
+                'is_active' => true,
+            ]
+        );
 
         $owner = User::create([
             'first_name' => 'Produtor',
@@ -103,12 +105,14 @@ class EventProducer24HourReminderTest extends TestCase
     {
         config()->set('platform.applications.cutinapp.capabilities', ['events']);
 
-        $application = Application::create([
-            'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
-            'url' => 'https://cutinapp.example.test',
-            'is_active' => true,
-        ]);
+        $application = Application::query()->updateOrCreate(
+            ['slug' => 'cutinapp'],
+            [
+                'name' => 'Cutinapp',
+                'url' => 'https://cutinapp.example.test',
+                'is_active' => true,
+            ]
+        );
 
         $owner = User::create([
             'first_name' => 'Produtor',
