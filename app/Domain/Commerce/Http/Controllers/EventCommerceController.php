@@ -44,7 +44,7 @@ final class EventCommerceController extends Controller
         $tickets = Ticket::query()
             ->where('event_id', $event->id)
             ->where('app_id', $this->context->id())
-            ->where('price', '>', 0)
+            ->where('price', '>=', 0)
             ->orderBy('price')
             ->get()
             ->each(function (Ticket $ticket) use ($salesClosed, $userId) {
@@ -133,7 +133,7 @@ final class EventCommerceController extends Controller
             'items' => 'nullable|array|max:30',
             'items.*.id' => 'required_with:items|integer',
             'items.*.quantity' => 'required_with:items|integer|min:1|max:50',
-            'payment_method' => 'required|in:pix,card',
+            'payment_method' => 'required|in:pix,card,free',
             'card_token' => 'required_if:payment_method,card|nullable|string|max:300',
             'payment_method_id' => 'required_if:payment_method,card|nullable|string|max:80',
             'issuer_id' => 'nullable|string|max:80',
@@ -164,10 +164,6 @@ final class EventCommerceController extends Controller
                 ? 'Este evento já foi encerrado. Não aceita novas compras.'
                 : 'Este evento não está disponível para venda.'
         );
-
-        $readiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
-        abort_unless($readiness['available'], 422, $readiness['message']);
-        abort_unless(in_array($data['payment_method'], $readiness['methods'], true), 422, 'Esta forma de pagamento não está disponível para esta organização.');
 
         $platformRate = max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100));
         $expirationMinutes = (int) $this->context->option('commerce.order_expiration_minutes', 30);
@@ -213,7 +209,6 @@ final class EventCommerceController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                abort_if((float) $ticket->price <= 0, 422, 'Cortesias gratuitas não entram no checkout pago.');
                 abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, "O lote {$ticket->name} não está mais disponível.");
 
                 $qty = (int) $requested['quantity'];
@@ -331,6 +326,84 @@ final class EventCommerceController extends Controller
 
             return $order->fresh(['items','event','production','user']);
         });
+
+        if ((float) $order->total <= 0) {
+            $order = DB::transaction(function () use ($order) {
+                $lockedOrder = CommerceOrder::query()
+                    ->where('app_id', $this->context->id())
+                    ->with(['items','event','production','user'])
+                    ->lockForUpdate()
+                    ->findOrFail($order->id);
+
+                foreach ($lockedOrder->items->where('type', 'ticket') as $line) {
+                    $alreadyIssued = EventPass::query()
+                        ->where('commerce_order_item_id', $line->id)
+                        ->count();
+                    $toIssue = max(0, (int) $line->quantity - $alreadyIssued);
+
+                    for ($i = 0; $i < $toIssue; $i++) {
+                        EventPass::create([
+                            'event_id' => $lockedOrder->event_id,
+                            'ticket_id' => $line->ticket_id,
+                            'commerce_order_item_id' => $line->id,
+                            'user_id' => $lockedOrder->user_id,
+                            'holder_name' => trim(($lockedOrder->user->first_name ?? '').' '.($lockedOrder->user->last_name ?? '')) ?: null,
+                            'holder_email' => $lockedOrder->user->email ?? null,
+                            'token' => 'PASS-'.Str::upper(Str::replace('-', '', (string) Str::uuid())),
+                            'status' => 'issued',
+                        ]);
+                    }
+                }
+
+                foreach ($lockedOrder->items->where('type', 'ticket') as $line) {
+                    $issued = EventPass::query()->where('commerce_order_item_id', $line->id)->count();
+                    abort_if($issued < (int) $line->quantity, 500, 'Não foi possível concluir a emissão dos ingressos.');
+                }
+
+                $metadata = $lockedOrder->metadata ?? [];
+                $metadata['fulfillment_status'] = 'completed';
+                $metadata['fulfilled_at'] = now()->toIso8601String();
+                $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
+                $metadata['zero_total_order'] = true;
+
+                $lockedOrder->update([
+                    'status' => 'paid',
+                    'payment_method' => 'free',
+                    'paid_at' => now(),
+                    'cancelled_at' => null,
+                    'metadata' => $metadata,
+                ]);
+
+                DB::table('inventory_reservations')
+                    ->where('app_id', $this->context->id())
+                    ->where('order_id', $lockedOrder->id)
+                    ->whereNull('released_at')
+                    ->update(['released_at' => now(), 'updated_at' => now()]);
+
+                return $lockedOrder->fresh(['items','event','production','user']);
+            });
+
+            return response()->json([
+                'message' => 'Pedido gratuito confirmado. Seus ingressos já foram emitidos.',
+                'order' => $order,
+                'payment' => null,
+            ], 201);
+        }
+
+        if ($data['payment_method'] === 'free') {
+            $this->cancelOrder($order);
+            return response()->json(['message' => 'Este pedido possui valor a pagar. Escolha PIX ou cartão.'], 422);
+        }
+
+        $readiness = $this->accounts->readiness((int) $order->production_id);
+        if (! $readiness['available']) {
+            $this->cancelOrder($order);
+            return response()->json(['message' => $readiness['message']], 422);
+        }
+        if (! in_array($data['payment_method'], $readiness['methods'], true)) {
+            $this->cancelOrder($order);
+            return response()->json(['message' => 'Esta forma de pagamento não está disponível para esta organização.'], 422);
+        }
 
         $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);
         $usesMerchant = (bool) ($account && $account->access_token);
