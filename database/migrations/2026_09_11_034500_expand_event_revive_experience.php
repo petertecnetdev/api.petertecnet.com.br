@@ -2,46 +2,53 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('event_posts') && ! Schema::hasColumn('event_posts', 'file_id')) {
-            Schema::table('event_posts', function (Blueprint $table) {
+        $postsTable = $this->physicalTable('event_posts', 'cutinapp_event_posts');
+        $ratingsTable = $this->physicalTable('event_ratings', 'cutinapp_event_ratings');
+
+        if (Schema::hasTable($postsTable) && ! Schema::hasColumn($postsTable, 'file_id')) {
+            Schema::table($postsTable, function (Blueprint $table) {
                 $table->unsignedBigInteger('file_id')->nullable()->after('parent_id')->index();
             });
         }
 
-        if (Schema::hasTable('event_ratings')) {
-            Schema::table('event_ratings', function (Blueprint $table) {
-                if (! Schema::hasColumn('event_ratings', 'comment')) {
+        if (Schema::hasTable($ratingsTable)) {
+            Schema::table($ratingsTable, function (Blueprint $table) use ($ratingsTable) {
+                if (! Schema::hasColumn($ratingsTable, 'comment')) {
                     $table->text('comment')->nullable()->after('rating');
                 }
-                if (! Schema::hasColumn('event_ratings', 'organization_rating')) {
+                if (! Schema::hasColumn($ratingsTable, 'organization_rating')) {
                     $table->unsignedTinyInteger('organization_rating')->nullable()->after('comment');
                 }
-                if (! Schema::hasColumn('event_ratings', 'service_rating')) {
+                if (! Schema::hasColumn($ratingsTable, 'service_rating')) {
                     $table->unsignedTinyInteger('service_rating')->nullable()->after('organization_rating');
                 }
-                if (! Schema::hasColumn('event_ratings', 'music_rating')) {
+                if (! Schema::hasColumn($ratingsTable, 'music_rating')) {
                     $table->unsignedTinyInteger('music_rating')->nullable()->after('service_rating');
                 }
-                if (! Schema::hasColumn('event_ratings', 'value_rating')) {
+                if (! Schema::hasColumn($ratingsTable, 'value_rating')) {
                     $table->unsignedTinyInteger('value_rating')->nullable()->after('music_rating');
                 }
-                if (! Schema::hasColumn('event_ratings', 'producer_response')) {
+                if (! Schema::hasColumn($ratingsTable, 'producer_response')) {
                     $table->text('producer_response')->nullable()->after('verified_attendee');
                 }
-                if (! Schema::hasColumn('event_ratings', 'producer_responded_by')) {
+                if (! Schema::hasColumn($ratingsTable, 'producer_responded_by')) {
                     $table->unsignedBigInteger('producer_responded_by')->nullable()->after('producer_response');
                 }
-                if (! Schema::hasColumn('event_ratings', 'producer_responded_at')) {
+                if (! Schema::hasColumn($ratingsTable, 'producer_responded_at')) {
                     $table->timestamp('producer_responded_at')->nullable()->after('producer_responded_by');
                 }
             });
         }
+
+        $this->refreshCompatibilityView('event_posts', $postsTable);
+        $this->refreshCompatibilityView('event_ratings', $ratingsTable);
 
         if (! Schema::hasTable('event_rating_helpful')) {
             Schema::create('event_rating_helpful', function (Blueprint $table) {
@@ -84,7 +91,10 @@ return new class extends Migration
         Schema::dropIfExists('event_revive_preferences');
         Schema::dropIfExists('event_rating_helpful');
 
-        if (Schema::hasTable('event_ratings')) {
+        $postsTable = $this->physicalTable('event_posts', 'cutinapp_event_posts');
+        $ratingsTable = $this->physicalTable('event_ratings', 'cutinapp_event_ratings');
+
+        if (Schema::hasTable($ratingsTable)) {
             $columns = [
                 'comment',
                 'organization_rating',
@@ -97,16 +107,55 @@ return new class extends Migration
             ];
 
             foreach ($columns as $column) {
-                if (Schema::hasColumn('event_ratings', $column)) {
-                    Schema::table('event_ratings', fn (Blueprint $table) => $table->dropColumn($column));
+                if (Schema::hasColumn($ratingsTable, $column)) {
+                    Schema::table($ratingsTable, fn (Blueprint $table) => $table->dropColumn($column));
                 }
             }
         }
 
-        if (Schema::hasTable('event_posts') && Schema::hasColumn('event_posts', 'file_id')) {
-            Schema::table('event_posts', function (Blueprint $table) {
+        if (Schema::hasTable($postsTable) && Schema::hasColumn($postsTable, 'file_id')) {
+            Schema::table($postsTable, function (Blueprint $table) {
                 $table->dropColumn('file_id');
             });
         }
+
+        $this->refreshCompatibilityView('event_posts', $postsTable);
+        $this->refreshCompatibilityView('event_ratings', $ratingsTable);
+    }
+
+    private function physicalTable(string $generic, string $legacy): string
+    {
+        if (Schema::hasTable($legacy)) {
+            return $legacy;
+        }
+
+        return $generic;
+    }
+
+    private function refreshCompatibilityView(string $generic, string $physical): void
+    {
+        if (DB::getDriverName() === 'sqlite' || $generic === $physical || ! Schema::hasTable($physical)) {
+            return;
+        }
+
+        $database = DB::connection()->getDatabaseName();
+        if (! $database) {
+            return;
+        }
+
+        $type = DB::table('information_schema.tables')
+            ->where('table_schema', $database)
+            ->where('table_name', $generic)
+            ->value('table_type');
+
+        if (strtoupper((string) $type) !== 'VIEW') {
+            return;
+        }
+
+        DB::statement(sprintf(
+            'CREATE OR REPLACE ALGORITHM=MERGE VIEW \`%s\` AS SELECT * FROM \`%s\`',
+            str_replace('\`', '\`\`', $generic),
+            str_replace('\`', '\`\`', $physical),
+        ));
     }
 };
