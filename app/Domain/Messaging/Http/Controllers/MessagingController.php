@@ -2,15 +2,18 @@
 
 namespace App\Domain\Messaging\Http\Controllers;
 
+use App\Domain\Messaging\Services\MessageAttachmentDeliveryService;
 use App\Domain\Messaging\Services\MessagingService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 final class MessagingController extends Controller
 {
-    public function __construct(private readonly MessagingService $messaging) {}
+    public function __construct(
+        private readonly MessagingService $messaging,
+        private readonly MessageAttachmentDeliveryService $attachments,
+    ) {}
 
     public function index(Request $request)
     {
@@ -240,12 +243,7 @@ final class MessagingController extends Controller
 
     public function attachment(Request $request, int $attachmentId)
     {
-        $attachment = $this->messaging->attachment($attachmentId, (int) $request->user()->id);
-        return Storage::disk($attachment->storage_disk)->response(
-            $attachment->storage_path,
-            $attachment->original_name ?: basename($attachment->storage_path),
-            ['Content-Type' => $attachment->mime_type, 'Cache-Control' => 'private, max-age=300']
-        );
+        return $this->attachments->response($attachmentId, (int) $request->user()->id);
     }
 
     public function startCall(Request $request, int $conversationId)
