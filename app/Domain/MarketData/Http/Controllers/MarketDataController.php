@@ -105,7 +105,7 @@ final class MarketDataController extends Controller
             'asset_ids.*' => ['string', 'max:80'],
         ]);
 
-        return $this->marketResponse($request, fn () => $this->portfolio->analyze((int) $request->user()->id, $data));
+        return $this->marketResponse($request, fn () => $this->portfolio->analyze((int) $request->user()->id, $data), 200, 'ai_enabled');
     }
 
     public function portfolio(Request $request): JsonResponse
@@ -291,10 +291,11 @@ final class MarketDataController extends Controller
         }
     }
 
-    private function marketResponse(Request $request, callable $callback, int $status = 200): JsonResponse
+    private function marketResponse(Request $request, callable $callback, int $status = 200, string $feature = 'market_scanner_enabled'): JsonResponse
     {
         $application = $request->route('application');
-        if (! $this->runtime->allows($application, 'market_scanner_enabled')) {
+        if (! $this->runtime->allows($application, 'market_scanner_enabled')
+            || ($feature !== 'market_scanner_enabled' && ! $this->runtime->allows($application, $feature))) {
             $settings = $this->runtime->settings($application);
 
             return response()->json([
