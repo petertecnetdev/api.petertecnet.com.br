@@ -37,6 +37,11 @@ Route::prefix('v1')->group(function () {
             Route::post('/messaging/groups', [MessagingController::class, 'createGroup'])->middleware('throttle:30,1');
             Route::get('/messaging/settings', [MessagingController::class, 'settings'])->middleware('throttle:120,1');
             Route::put('/messaging/settings', [MessagingController::class, 'updateSettings'])->middleware('throttle:30,1');
+            Route::get('/messaging/push-key', [MessagingController::class, 'pushPublicKey'])->middleware('throttle:120,1');
+            Route::post('/messaging/push-subscriptions', [MessagingController::class, 'subscribePush'])->middleware('throttle:30,1');
+            Route::delete('/messaging/push-subscriptions', [MessagingController::class, 'unsubscribePush'])->middleware('throttle:30,1');
+            Route::post('/messaging/engagement/click', [MessagingController::class, 'engagementClick'])->middleware('throttle:60,1');
+            Route::get('/messaging/metrics', [MessagingController::class, 'metrics'])->middleware('throttle:60,1');
             Route::post('/messaging/presence/heartbeat', [MessagingController::class, 'heartbeat'])->middleware('throttle:120,1');
             Route::get('/messaging/presence/{userId}', [MessagingController::class, 'presence'])->whereNumber('userId')->middleware('throttle:180,1');
             Route::post('/messaging/users/{userId}/block', [MessagingController::class, 'block'])->whereNumber('userId')->middleware('throttle:30,1');
@@ -61,6 +66,7 @@ Route::prefix('v1')->group(function () {
             Route::put('/messaging/conversations/{conversationId}/messages/{messageId}/pin', [MessagingController::class, 'pinMessage'])->whereNumber('conversationId')->whereNumber('messageId')->middleware('throttle:60,1');
             Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:180,1');
             Route::post('/messaging/conversations/{conversationId}/typing', [MessagingController::class, 'typing'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::post('/messaging/conversations/{conversationId}/activity', [MessagingController::class, 'conversationActivity'])->whereNumber('conversationId')->middleware('throttle:240,1');
             Route::post('/messaging/conversations/{conversationId}/reports', [MessagingController::class, 'report'])->whereNumber('conversationId')->middleware('throttle:20,1');
             Route::post('/messaging/conversations/{conversationId}/calls', [MessagingController::class, 'startCall'])->whereNumber('conversationId')->middleware('throttle:30,1');
             Route::patch('/messaging/conversations/{conversationId}/calls/{callId}', [MessagingController::class, 'updateCall'])->whereNumber('conversationId')->whereNumber('callId')->middleware('throttle:60,1');
