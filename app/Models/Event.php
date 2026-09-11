@@ -98,12 +98,10 @@ class Event extends Model
                     : $event->title.' teve atualização em '.$what.'. Confira os detalhes.',
                 'data' => ['event_id' => $event->id, 'changed_fields' => $changed->all()],
             ];
-            $audience->notifyAttendees($event, $payload, request()->user()?->id);
-            $audience->notifyInterested($event, $payload, request()->user()?->id);
-            $audience->notifyProductionFollowers($event, [
+            $audience->notifyEngagedAudience($event, [
                 ...$payload,
                 'type' => 'production_event_updated',
-                'title' => $event->is_cancelled ? 'Atualização importante em uma produção que você segue' : 'Evento atualizado em uma produção que você segue',
+                'title' => $event->is_cancelled ? 'Atualização importante no evento' : 'Evento atualizado',
             ], request()->user()?->id);
         });
     }
