@@ -7,6 +7,7 @@ use App\Models\Application;
 use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
 use App\Models\EventPass;
+use App\Models\Interaction;
 use App\Models\Production;
 use App\Services\EventAudienceService;
 use App\Services\MerchantPaymentAccountService;
@@ -80,8 +81,24 @@ final class PaymentProviderController extends Controller
     {
         $payment=CommercePayment::query()->where('app_id',$this->context->id())->with('order')->findOrFail($paymentId);if(!$payment->order||!$payment->provider_payment_id)throw new RuntimeException('Pagamento local sem vínculo válido com o provedor.');
         $token=$this->paymentAccessToken($payment,$payment->order);$remote=$this->mercadoPago->getPayment($token,(string)$payment->provider_payment_id);$approvedOrderId=$this->syncPayment($payment,$remote);
-        if($approvedOrderId)$this->audience->confirmPaidOrder($approvedOrderId);
+        if($approvedOrderId){
+            $this->audience->confirmPaidOrder($approvedOrderId);
+            $this->recordPaidInteraction($approvedOrderId,(int)$payment->id);
+        }
         return $payment->order->fresh(['items','event','payments']);
+    }
+
+    private function recordPaidInteraction(int $orderId,int $paymentId):void
+    {
+        try{
+            $order=CommerceOrder::query()->where('app_id',$this->context->id())->find($orderId);$payment=CommercePayment::query()->where('app_id',$this->context->id())->find($paymentId);
+            if(!$order||!$payment||$order->status!=='paid'||$payment->status!=='paid')return;
+            $alreadyRecorded=Interaction::query()->where('app_id',$this->context->id())->where('entity_type','CommerceOrder')->where('entity_id',$order->id)->where('interaction_type','payment_paid')->exists();
+            if($alreadyRecorded)return;
+            Interaction::register('payment_paid',$order,$order->user,[
+                'source_channel'=>'payment_provider','order_public_id'=>$order->public_id,'payment_id'=>$payment->id,'provider'=>$payment->provider,'provider_payment_id'=>$payment->provider_payment_id,'production_id'=>$order->production_id,'payment_method'=>$order->payment_method,'currency'=>$order->currency,'amount'=>(float)$order->total,'platform_fee'=>(float)$order->platform_fee,'processor_fee'=>(float)$order->processor_fee,'producer_net'=>(float)$order->producer_net,'settlement_mode'=>(string)data_get($order->metadata,'settlement_mode','automatic_split'),
+            ],'Pagamento confirmado');
+        }catch(Throwable $e){report($e);}
     }
 
     private function syncPayment(CommercePayment $payment,array $remote):?int
