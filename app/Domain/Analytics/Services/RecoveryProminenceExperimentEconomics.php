@@ -91,6 +91,7 @@ final class RecoveryProminenceExperimentEconomics
             if (! isset($variants[$variant]['paid_orders'][$publicId])) {
                 $variants[$variant]['paid_orders'][$publicId] = true;
                 $variants[$variant]['platform_contribution'] += $this->platformContribution($order);
+                $variants[$variant]['paid_gmv'] += max(0.0, (float) data_get($order, 'total', 0));
             }
         }
 
@@ -100,6 +101,7 @@ final class RecoveryProminenceExperimentEconomics
             $clicks = (int) $stats['clicks'];
             $paidOrders = count($stats['paid_orders']);
             $contribution = (float) $stats['platform_contribution'];
+            $paidGmv = (float) $stats['paid_gmv'];
 
             return [
                 'variant' => $variant,
@@ -111,6 +113,8 @@ final class RecoveryProminenceExperimentEconomics
                 'cta_ctr_percent' => $impressions > 0 ? round(($clicks / $impressions) * 100, 2) : null,
                 'paid_orders_per_100_impressions' => $impressions > 0 ? round(($paidOrders / $impressions) * 100, 2) : null,
                 'paid_orders_per_100_exposed_orders' => $exposedOrders > 0 ? round(($paidOrders / $exposedOrders) * 100, 2) : null,
+                'paid_gmv' => round($paidGmv, 2),
+                'gmv_per_exposed_order' => $exposedOrders > 0 ? round($paidGmv / $exposedOrders, 4) : null,
                 'platform_contribution' => round($contribution, 2),
                 'platform_contribution_per_impression' => $impressions > 0 ? round($contribution / $impressions, 4) : null,
                 'platform_contribution_per_exposed_order' => $exposedOrders > 0 ? round($contribution / $exposedOrders, 4) : null,
@@ -130,6 +134,7 @@ final class RecoveryProminenceExperimentEconomics
             'treatment_variant' => 'prominent',
             'sample_is_mature' => $comparisonIsMature,
             'incremental_paid_orders_per_100_exposed_orders' => null,
+            'incremental_gmv_per_exposed_order' => null,
             'incremental_platform_contribution_per_exposed_order' => null,
             'relative_contribution_lift_percent' => null,
             'diagnostic_incremental_paid_orders_per_100_impressions' => null,
@@ -142,6 +147,8 @@ final class RecoveryProminenceExperimentEconomics
         if ($comparisonIsMature) {
             $controlPaidRate = (float) ($control['paid_orders_per_100_exposed_orders'] ?? 0);
             $treatmentPaidRate = (float) ($treatment['paid_orders_per_100_exposed_orders'] ?? 0);
+            $controlGmv = (float) ($control['gmv_per_exposed_order'] ?? 0);
+            $treatmentGmv = (float) ($treatment['gmv_per_exposed_order'] ?? 0);
             $controlContribution = (float) ($control['platform_contribution_per_exposed_order'] ?? 0);
             $treatmentContribution = (float) ($treatment['platform_contribution_per_exposed_order'] ?? 0);
             $controlContributionPerImpression = (float) ($control['platform_contribution_per_impression'] ?? 0);
@@ -150,6 +157,7 @@ final class RecoveryProminenceExperimentEconomics
             $treatmentPaidPerImpression = (float) ($treatment['paid_orders_per_100_impressions'] ?? 0);
 
             $incrementalPaidRate = round($treatmentPaidRate - $controlPaidRate, 2);
+            $incrementalGmv = round($treatmentGmv - $controlGmv, 4);
             $incrementalContribution = round($treatmentContribution - $controlContribution, 4);
             $paidConversionConfidence = $this->paidConversionDifferenceConfidence(
                 (int) ($control['paid_orders'] ?? 0),
@@ -159,6 +167,7 @@ final class RecoveryProminenceExperimentEconomics
             );
 
             $comparison['incremental_paid_orders_per_100_exposed_orders'] = $incrementalPaidRate;
+            $comparison['incremental_gmv_per_exposed_order'] = $incrementalGmv;
             $comparison['incremental_platform_contribution_per_exposed_order'] = $incrementalContribution;
             $comparison['relative_contribution_lift_percent'] = $controlContribution !== 0.0
                 ? round((($treatmentContribution - $controlContribution) / abs($controlContribution)) * 100, 2)
@@ -170,6 +179,7 @@ final class RecoveryProminenceExperimentEconomics
                 (int) ($control['exposed_orders'] ?? 0),
                 (int) ($treatment['exposed_orders'] ?? 0),
                 $incrementalPaidRate,
+                $incrementalGmv,
                 $incrementalContribution,
             );
             $comparison['decision'] = $this->decision(true, $incrementalPaidRate, $incrementalContribution, $paidConversionConfidence);
@@ -190,6 +200,7 @@ final class RecoveryProminenceExperimentEconomics
         int $controlExposed,
         int $treatmentExposed,
         float $incrementalPaidRate,
+        float $incrementalGmv,
         float $incrementalContribution,
     ): array {
         $observedExposedOrders = max(0, $controlExposed) + max(0, $treatmentExposed);
@@ -198,6 +209,7 @@ final class RecoveryProminenceExperimentEconomics
             'basis' => 'observed_exposed_orders',
             'observed_exposed_orders' => $observedExposedOrders,
             'projected_incremental_paid_orders' => round(($incrementalPaidRate / 100) * $observedExposedOrders, 2),
+            'projected_incremental_gmv' => round($incrementalGmv * $observedExposedOrders, 2),
             'projected_incremental_platform_contribution' => round($incrementalContribution * $observedExposedOrders, 2),
             'is_projection_not_realized_revenue' => true,
         ];
@@ -307,6 +319,7 @@ final class RecoveryProminenceExperimentEconomics
             'clicks' => 0,
             'clicked_orders' => [],
             'paid_orders' => [],
+            'paid_gmv' => 0.0,
             'platform_contribution' => 0.0,
         ];
     }
