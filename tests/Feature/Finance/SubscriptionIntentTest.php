@@ -153,18 +153,42 @@ class SubscriptionIntentTest extends TestCase
             'billing_interval_count' => 1,
         ];
 
-        foreach ([
-            ['user_id' => $otherUser->getKey(), 'application' => 'plat', 'status' => 'payment_pending', 'created_at' => now()],
-            ['user_id' => $user->getKey(), 'application' => 'rasoio', 'status' => 'payment_pending', 'created_at' => now()],
-            ['user_id' => $user->getKey(), 'application' => 'plat', 'status' => 'payment_failed', 'created_at' => now()],
-            ['user_id' => $user->getKey(), 'application' => 'plat', 'status' => 'payment_pending', 'created_at' => now()->subDays(8)],
-        ] as $candidate) {
-            SubscriptionIntent::query()->create($base + $candidate + [
-                'public_id' => (string) Str::uuid(),
-                'idempotency_key' => (string) Str::uuid(),
-                'updated_at' => $candidate['created_at'],
-            ]);
-        }
+        SubscriptionIntent::query()->create($base + [
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $otherUser->getKey(),
+            'application' => 'plat',
+            'status' => 'payment_pending',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        SubscriptionIntent::query()->create($base + [
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $user->getKey(),
+            'application' => 'rasoio',
+            'status' => 'payment_pending',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        SubscriptionIntent::query()->create($base + [
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $user->getKey(),
+            'application' => 'plat',
+            'status' => 'payment_failed',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+
+        $expired = SubscriptionIntent::query()->create($base + [
+            'public_id' => (string) Str::uuid(),
+            'user_id' => $user->getKey(),
+            'application' => 'plat',
+            'status' => 'payment_pending',
+            'idempotency_key' => (string) Str::uuid(),
+        ]);
+        $expired->timestamps = false;
+        $expired->forceFill([
+            'created_at' => now()->subDays(8),
+            'updated_at' => now()->subDays(8),
+        ])->save();
 
         $this->withHeaders($headers)
             ->getJson('/api/v1/apps/plat/subscription-intents/recoverable')
