@@ -137,6 +137,7 @@ final class GlobalSearchController extends Controller
     {
         $data = $request->validate([
             'conversion_type' => 'required|in:ticket_purchase,follow,direct_open,save,share',
+            'target_type' => 'required|string|max:40',
             'target_id' => 'required|integer|min:1',
         ]);
 
@@ -145,6 +146,7 @@ final class GlobalSearchController extends Controller
                 $this->context->id(),
                 $request->user('api')?->id ? (int) $request->user('api')->id : null,
                 $data['conversion_type'],
+                $data['target_type'],
                 (int) $data['target_id']
             ),
         ]);
