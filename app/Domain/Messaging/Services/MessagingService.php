@@ -31,7 +31,10 @@ final class MessagingService
             ->when(empty($filters['archived']), fn ($query) => $query->whereNull('cp.archived_at'))
             ->when(! empty($filters['archived']), fn ($query) => $query->whereNotNull('cp.archived_at'))
             ->when(! empty($filters['pinned']), fn ($query) => $query->whereNotNull('cp.pinned_at'))
-            ->when(! empty($filters['requests']), fn ($query) => $query->where('cp.request_state', 'pending'))
+            ->when(! empty($filters['requests']),
+                fn ($query) => $query->where('cp.request_state', 'pending'),
+                fn ($query) => $query->where('cp.request_state', 'accepted')
+            )
             ->orderByRaw('CASE WHEN cp.pinned_at IS NULL THEN 1 ELSE 0 END')
             ->orderByDesc('cp.pinned_at')
             ->orderByDesc(DB::raw('COALESCE(c.last_message_at, c.created_at)'))
@@ -93,12 +96,13 @@ final class MessagingService
 
         $targetSettings = $this->settings($targetId);
         abort_if(($targetSettings['allow_messages_from'] ?? 'everyone') === 'none', 403, 'Este usuário não está aceitando novas mensagens.');
+        $targetRequestState = ($targetSettings['allow_messages_from'] ?? 'everyone') === 'requests' ? 'pending' : 'accepted';
 
         [$one, $two] = $userId < $targetId ? [$userId, $targetId] : [$targetId, $userId];
         $directKey = hash('sha256', $one.':'.$two);
         $conversationId = null;
 
-        DB::transaction(function () use ($userId, $targetId, $directKey, &$conversationId) {
+        DB::transaction(function () use ($userId, $targetId, $directKey, $targetRequestState, &$conversationId) {
             $conversation = DB::table('conversations')
                 ->where('app_id', $this->context->id())
                 ->where('direct_key', $directKey)
@@ -120,7 +124,7 @@ final class MessagingService
                         'conversation_id' => $conversationId,
                         'user_id' => $participantId,
                         'role' => $participantId === $userId ? 'owner' : 'member',
-                        'request_state' => 'accepted',
+                        'request_state' => $participantId === $targetId ? $targetRequestState : 'accepted',
                         'joined_at' => now(),
                         'created_at' => now(),
                         'updated_at' => now(),
@@ -136,6 +140,45 @@ final class MessagingService
         });
 
         return $this->conversation((int) $conversationId, $userId);
+    }
+
+    public function acceptRequest(int $conversationId, int $userId): array
+    {
+        $this->ownedConversation($conversationId, $userId);
+        $participant = $this->participantRow($conversationId, $userId);
+        abort_unless($participant->request_state === 'pending', 422, 'Esta conversa não é uma solicitação pendente.');
+
+        DB::table('conversation_participants')
+            ->where('conversation_id', $conversationId)
+            ->where('user_id', $userId)
+            ->update([
+                'request_state' => 'accepted',
+                'archived_at' => null,
+                'updated_at' => now(),
+            ]);
+
+        $payload = $this->conversation($conversationId, $userId);
+        $this->broadcast($conversationId, 'messaging.conversation.updated', ['conversation' => $payload], $this->participantIds($conversationId));
+
+        return $payload;
+    }
+
+    public function rejectRequest(int $conversationId, int $userId): void
+    {
+        $this->ownedConversation($conversationId, $userId);
+        $participant = $this->participantRow($conversationId, $userId);
+        abort_unless($participant->request_state === 'pending', 422, 'Esta conversa não é uma solicitação pendente.');
+
+        DB::table('conversation_participants')
+            ->where('conversation_id', $conversationId)
+            ->where('user_id', $userId)
+            ->update([
+                'request_state' => 'rejected',
+                'archived_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $this->broadcast($conversationId, 'messaging.conversation.updated', ['request_rejected_by' => $userId], $this->participantIds($conversationId));
     }
 
     public function createGroup(int $userId, string $title, array $participantIds): array
@@ -318,8 +361,13 @@ final class MessagingService
         abort_if(! in_array($type, ['text', 'image', 'video', 'audio', 'file', 'share', 'location', 'system'], true), 422, 'Tipo de mensagem inválido.');
 
         if ($conversation->type === 'direct') {
-            $otherId = (int) (DB::table('conversation_participants')->where('conversation_id', $conversationId)->where('user_id', '<>', $userId)->value('user_id') ?: 0);
+            $otherParticipant = DB::table('conversation_participants')
+                ->where('conversation_id', $conversationId)
+                ->where('user_id', '<>', $userId)
+                ->first();
+            $otherId = (int) ($otherParticipant?->user_id ?: 0);
             abort_if($otherId > 0 && $this->blockedEitherWay($userId, $otherId), 403, 'Não é possível enviar mensagens para este usuário.');
+            abort_if(($otherParticipant?->request_state ?? 'accepted') === 'rejected', 403, 'Esta solicitação de mensagem não foi aceita.');
         }
 
         if ($clientUuid) {
