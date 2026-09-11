@@ -738,6 +738,12 @@ final class MessagingService
     {
         $recipientIds = $this->participantIds($conversationId)->filter(fn ($id) => $id !== $senderId)->values();
         $now = now();
+
+        DB::table('conversation_participants')
+            ->where('conversation_id', $conversationId)
+            ->where('user_id', '<>', $senderId)
+            ->update(['archived_at' => null, 'updated_at' => $now]);
+
         foreach ($recipientIds as $recipientId) {
             DB::table('message_receipts')->updateOrInsert(
                 ['message_id' => (int) $message['id'], 'user_id' => $recipientId],
