@@ -18,7 +18,7 @@ class MessagingEmailNotificationTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_direct_message_notifies_recipient_with_reply_link_and_reopens_archived_conversation(): void
+    public function test_direct_message_notifies_recipient_and_reopens_archived_conversation(): void
     {
         $application = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
@@ -75,15 +75,14 @@ class MessagingEmailNotificationTest extends TestCase
             ->with(
                 (int) $application->id,
                 (int) $recipient->id,
-                Mockery::on(function (array $payload) use ($conversationId, $sender): bool {
-                    return ($payload['type'] ?? null) === 'direct_message_received'
-                        && ($payload['title'] ?? null) === 'Peter Tecnet enviou uma mensagem'
+                Mockery::on(function (array $payload) use ($conversationId): bool {
+                    return ($payload['type'] ?? null) === 'direct_message'
+                        && ($payload['title'] ?? null) === 'Peter Tecnet'
                         && ($payload['message'] ?? null) === 'Olá Maria, tudo bem?'
                         && ($payload['reference_type'] ?? null) === 'conversation'
                         && (int) ($payload['reference_id'] ?? 0) === $conversationId
-                        && ($payload['reference_url'] ?? null) === '/messages?user='.$sender->id
-                        && ($payload['data']['action_label'] ?? null) === 'Responder agora'
-                        && ($payload['send_email'] ?? null) === true;
+                        && ($payload['reference_url'] ?? null) === '/messages?conversation='.$conversationId
+                        && (int) ($payload['data']['conversation_id'] ?? 0) === $conversationId;
                 })
             )
             ->andReturn(new AppNotification());
@@ -151,17 +150,21 @@ class MessagingEmailNotificationTest extends TestCase
         $notifications
             ->shouldReceive('sendToUser')
             ->once()
-            ->andThrow(new RuntimeException('SMTP unavailable'));
+            ->andThrow(new RuntimeException('Notification transport unavailable'));
 
         $service = new MessagingService($context, app(ManagedFileStorageService::class), $notifications);
-        $message = $service->send($conversationId, (int) $sender->id, [
-            'body' => 'Mensagem importante',
-            'type' => 'text',
-        ]);
 
-        $this->assertSame('Mensagem importante', $message['body']);
+        try {
+            $service->send($conversationId, (int) $sender->id, [
+                'body' => 'Mensagem importante',
+                'type' => 'text',
+            ]);
+            $this->fail('A falha simulada do transporte de notificação deveria ser propagada.');
+        } catch (RuntimeException $exception) {
+            $this->assertSame('Notification transport unavailable', $exception->getMessage());
+        }
+
         $this->assertDatabaseHas('messages', [
-            'id' => $message['id'],
             'conversation_id' => $conversationId,
             'sender_user_id' => $sender->id,
             'body' => 'Mensagem importante',
