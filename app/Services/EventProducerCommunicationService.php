@@ -318,17 +318,13 @@ class EventProducerCommunicationService
 
     private function applicationName(?Application $application, Event $event): string
     {
-        $identity = Str::lower(implode(' ', array_filter([
-            $application?->name,
-            $application?->slug,
-            $event->app_slug,
-        ])));
-
-        if (Str::contains($identity, 'cutin')) {
-            return 'Cutinapp';
+        $name = trim((string) $application?->name);
+        if ($name !== '') {
+            return $name;
         }
 
-        return trim((string) $application?->name) ?: 'Peter Tecnet';
+        $slug = trim((string) ($application?->slug ?: $event->app_slug));
+        return $slug !== '' ? Str::headline($slug) : 'Peter Tecnet';
     }
 
     private function applicationUrl(?Application $application, Event $event): string
@@ -339,13 +335,9 @@ class EventProducerCommunicationService
             return $baseUrl;
         }
 
-        $identity = Str::lower(implode(' ', array_filter([
-            $application?->slug,
-            $event->app_slug,
-        ])));
-
-        return Str::contains($identity, 'cutin')
-            ? 'https://cutinapp.petertecnet.com.br'
+        $fallback = rtrim(trim((string) config('app.frontend_url', 'https://petertecnet.com.br')), '/');
+        return filter_var($fallback, FILTER_VALIDATE_URL)
+            ? $fallback
             : 'https://petertecnet.com.br';
     }
 
