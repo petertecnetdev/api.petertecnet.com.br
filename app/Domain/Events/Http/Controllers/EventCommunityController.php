@@ -9,6 +9,7 @@ use App\Models\File;
 use App\Models\Interaction;
 use App\Models\User;
 use App\Services\AppNotificationService;
+use App\Services\MediaVariantService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -25,6 +26,7 @@ final class EventCommunityController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AppNotificationService $notifications,
+        private readonly MediaVariantService $mediaVariants,
     ) {}
 
     public function publicCommunity(Request $request, string $slug)
@@ -289,6 +291,7 @@ final class EventCommunityController extends Controller
                     $this->context->id(),
                     (int) $user->id
                 );
+                $file = $this->mediaVariants->generateImageVariants($file);
 
                 $meta = is_array($file->meta) ? $file->meta : [];
                 $file->forceFill([
@@ -1297,6 +1300,7 @@ final class EventCommunityController extends Controller
             'id' => $file->id,
             'url' => $file->public_url ?: ($file->path ? Storage::disk($file->storage ?: 'public')->url($file->path) : null),
             'caption' => $meta['caption'] ?? null,
+            'variants' => $file->variants ?: [],
             'source' => $meta['source'] ?? null,
             'verified_attendee' => (bool) ($meta['verified_attendee'] ?? false),
             'presence_confirmed' => (bool) ($meta['presence_confirmed'] ?? false),
