@@ -36,9 +36,17 @@ Route::prefix('v1')->group(function () {
             Route::post('/messaging/direct', [MessagingController::class, 'openDirect'])->middleware('throttle:60,1');
             Route::get('/messaging/conversations/{conversationId}', [MessagingController::class, 'showConversation'])->whereNumber('conversationId')->middleware('throttle:180,1');
             Route::get('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'messages'])->whereNumber('conversationId')->middleware('throttle:240,1');
-            Route::post('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'send'])->whereNumber('conversationId')->middleware('throttle:120,1');
-            Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:180,1');
+            Route::post('/messaging/conversations/{conversationId}/messages', [MessagingController::class, 'send'])->whereNumber('conversationId')->middleware('throttle:90,1');
+            Route::post('/messaging/conversations/{conversationId}/delivered', [MessagingController::class, 'markDelivered'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::post('/messaging/conversations/{conversationId}/read', [MessagingController::class, 'markRead'])->whereNumber('conversationId')->middleware('throttle:240,1');
+            Route::patch('/messaging/conversations/{conversationId}/state', [MessagingController::class, 'state'])->whereNumber('conversationId')->middleware('throttle:120,1');
             Route::delete('/messaging/conversations/{conversationId}', [MessagingController::class, 'archive'])->whereNumber('conversationId')->middleware('throttle:60,1');
+            Route::patch('/messaging/messages/{messageId}', [MessagingController::class, 'updateMessage'])->whereNumber('messageId')->middleware('throttle:90,1');
+            Route::delete('/messaging/messages/{messageId}', [MessagingController::class, 'deleteMessage'])->whereNumber('messageId')->middleware('throttle:60,1');
+            Route::post('/messaging/messages/{messageId}/reaction', [MessagingController::class, 'reaction'])->whereNumber('messageId')->middleware('throttle:180,1');
+            Route::post('/messaging/users/{targetUserId}/block', [MessagingController::class, 'block'])->whereNumber('targetUserId')->middleware('throttle:30,1');
+            Route::delete('/messaging/users/{targetUserId}/block', [MessagingController::class, 'unblock'])->whereNumber('targetUserId')->middleware('throttle:30,1');
+            Route::post('/messaging/users/{targetUserId}/report', [MessagingController::class, 'report'])->whereNumber('targetUserId')->middleware('throttle:10,1');
         });
 
     Route::prefix('discovery')->group(function () {
