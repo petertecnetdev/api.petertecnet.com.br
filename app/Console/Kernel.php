@@ -2,6 +2,7 @@
 
 namespace App\Console;
 
+use App\Services\ApplicationRuntimeControlService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 
@@ -26,6 +27,11 @@ class Kernel extends ConsoleKernel
             ->withoutOverlapping(30);
         $schedule->command('market:alerts:evaluate --limit=1000')
             ->everyMinute()
+            ->when(function (): bool {
+                $runtime = app(ApplicationRuntimeControlService::class);
+                return $runtime->allowsScheduledMarketProcessing('kryvion')
+                    && $runtime->allows('kryvion', 'notifications_enabled');
+            })
             ->withoutOverlapping(5);
     }
 
