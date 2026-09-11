@@ -262,7 +262,7 @@ final class EventAgendaService
             'event_id' => 'required|integer|min:1',
             'day_of_week' => 'required|integer|between:0,6',
             'generation_mode' => 'sometimes|in:immediate,delayed',
-            'generation_delay_days' => 'sometimes|integer|between:1,7',
+            'generation_delay_days' => 'sometimes|integer|between:1,6',
             'generation_weeks' => 'sometimes|integer|between:1,52',
             'is_active' => 'sometimes|boolean',
         ])->validate();
@@ -392,7 +392,7 @@ final class EventAgendaService
             'event_format' => $event->event_format ?: 'in_person',
             'online_url' => $event->online_url,
             'generation_mode' => $generationMode === 'delayed' ? 'delayed' : 'immediate',
-            'generation_delay_days' => max(1, min(7, $generationDelayDays)),
+            'generation_delay_days' => max(1, min(6, $generationDelayDays)),
             'generation_weeks' => max(1, min(52, $generationWeeks)),
             'is_active' => $isActive,
         ];
