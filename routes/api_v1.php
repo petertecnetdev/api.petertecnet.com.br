@@ -66,7 +66,7 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::get('/config', [ApplicationConfigController::class, 'show']);
         Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
-        Route::get('/search', [GlobalSearchController::class, 'index'])->middleware('throttle:240,1');
+        Route::get('/global-search', [GlobalSearchController::class, 'index'])->middleware('throttle:240,1');
 
         // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
