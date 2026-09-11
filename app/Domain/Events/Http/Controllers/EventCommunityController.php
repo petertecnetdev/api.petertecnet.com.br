@@ -29,14 +29,14 @@ final class EventCommunityController extends Controller
             ->select(['p.id','p.event_id','p.user_id','p.body','p.is_pinned','p.created_at','p.edited_at','u.first_name','u.last_name','u.avatar'])
             ->selectSub(fn($q)=>$q->from('event_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id','p.id')->where('l.app_id',$appId),'likes_count')
             ->selectSub(fn($q)=>$q->from('event_posts as r')->selectRaw('COUNT(*)')->whereColumn('r.parent_id','p.id')->where('r.status','published'),'comments_count')
-            ->orderByDesc('p.is_pinned')->orderByDesc('p.created_at')->paginate($perPage);
+            ->orderByDesc('p.is_pinned')->orderByDesc('p.created_at')->orderByDesc('p.id')->paginate($perPage);
 
         $ids=collect($posts->items())->pluck('id')->filter()->values();
         $replies=$ids->isEmpty()?collect():DB::table('event_posts as p')->join('users as u','u.id','=','p.user_id')
             ->where('p.app_id',$appId)->where('p.event_id',$event->id)->whereIn('p.parent_id',$ids)->where('p.status','published')
             ->select(['p.id','p.parent_id','p.user_id','p.body','p.created_at','p.edited_at','u.first_name','u.last_name','u.avatar'])
             ->selectSub(fn($q)=>$q->from('event_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id','p.id')->where('l.app_id',$appId),'likes_count')
-            ->orderBy('p.created_at')->get()->groupBy('parent_id');
+            ->orderBy('p.created_at')->orderBy('p.id')->get()->groupBy('parent_id');
         $liked=collect();
         if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
         $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$user){$post->is_liked=$user?$liked->contains($post->id):false;$post->replies=collect($replies->get($post->id,[]))->map(function($reply)use($liked,$user){$reply->is_liked=$user?$liked->contains($reply->id):false;return$reply;})->values();return$post;}));
