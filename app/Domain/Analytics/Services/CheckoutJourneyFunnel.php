@@ -2,6 +2,8 @@
 
 namespace App\Domain\Analytics\Services;
 
+use ArrayAccess;
+
 final class CheckoutJourneyFunnel
 {
     private const STAGES = [
@@ -36,19 +38,20 @@ final class CheckoutJourneyFunnel
         }
 
         $journeys = [];
+        $acceptedTypes = array_merge(array_values(self::STAGES), self::TERMINAL_FAILURES);
 
         foreach ($interactions as $interaction) {
-            $type = trim((string) data_get($interaction, 'interaction_type'));
-            if (! in_array($type, array_merge(array_values(self::STAGES), self::TERMINAL_FAILURES), true)) {
+            $type = trim((string) $this->value($interaction, ['interaction_type']));
+            if (! in_array($type, $acceptedTypes, true)) {
                 continue;
             }
 
-            $journeyId = trim((string) data_get($interaction, 'content.metadata.checkout_journey_id'));
+            $journeyId = trim((string) $this->value($interaction, ['content', 'metadata', 'checkout_journey_id']));
             if (! preg_match('/^[a-zA-Z0-9._:-]{8,120}$/', $journeyId)) {
                 continue;
             }
 
-            $rawEventId = data_get($interaction, 'content.metadata.event_id');
+            $rawEventId = $this->value($interaction, ['content', 'metadata', 'event_id']);
             $eventId = is_numeric($rawEventId) ? (int) $rawEventId : null;
             $knownEventId = $journeys[$journeyId]['event_id'] ?? null;
             $effectiveEventId = $eventId ?: $knownEventId;
@@ -60,12 +63,12 @@ final class CheckoutJourneyFunnel
             $journeys[$journeyId] ??= $this->newJourney($effectiveEventId);
             $journeys[$journeyId]['event_id'] = $effectiveEventId;
 
-            $amount = data_get($interaction, 'content.metadata.amount');
+            $amount = $this->value($interaction, ['content', 'metadata', 'amount']);
             if (is_numeric($amount) && (float) $amount >= 0) {
                 $journeys[$journeyId]['amount'] ??= round((float) $amount, 2);
             }
 
-            $paymentMethod = strtolower(trim((string) data_get($interaction, 'content.metadata.payment_method')));
+            $paymentMethod = strtolower(trim((string) $this->value($interaction, ['content', 'metadata', 'payment_method'])));
             if (preg_match('/^[a-z][a-z0-9_-]{1,39}$/', $paymentMethod)) {
                 $journeys[$journeyId]['payment_method'] = $paymentMethod;
             }
@@ -132,21 +135,25 @@ final class CheckoutJourneyFunnel
             $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved']),
             $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled']),
         ];
-        $largestDropoff = collect($steps)->sortByDesc('dropoff_journeys')->first();
 
-        $byPaymentMethod = collect($methods)
-            ->map(function (array $row, string $method): array {
-                return [
-                    'payment_method' => $method,
-                    ...$row,
-                    'attempt_to_approved_rate_percent' => $row['attempted'] > 0
-                        ? round(($row['approved'] / $row['attempted']) * 100, 2)
-                        : null,
-                ];
-            })
-            ->sortByDesc('attempted')
-            ->values()
-            ->all();
+        $largestDropoff = null;
+        foreach ($steps as $step) {
+            if ($largestDropoff === null || $step['dropoff_journeys'] > $largestDropoff['dropoff_journeys']) {
+                $largestDropoff = $step;
+            }
+        }
+
+        $byPaymentMethod = [];
+        foreach ($methods as $method => $row) {
+            $byPaymentMethod[] = [
+                'payment_method' => $method,
+                ...$row,
+                'attempt_to_approved_rate_percent' => $row['attempted'] > 0
+                    ? round(($row['approved'] / $row['attempted']) * 100, 2)
+                    : null,
+            ];
+        }
+        usort($byPaymentMethod, static fn (array $a, array $b): int => $b['attempted'] <=> $a['attempted']);
 
         return [
             'journeys' => count($journeys),
@@ -207,6 +214,37 @@ final class CheckoutJourneyFunnel
     private function rate(int $numerator, int $denominator): ?float
     {
         return $denominator > 0 ? round(($numerator / $denominator) * 100, 2) : null;
+    }
+
+    private function value(mixed $source, array $path): mixed
+    {
+        $value = $source;
+
+        foreach ($path as $segment) {
+            if (is_array($value) && array_key_exists($segment, $value)) {
+                $value = $value[$segment];
+                continue;
+            }
+
+            if ($value instanceof ArrayAccess && $value->offsetExists($segment)) {
+                $value = $value[$segment];
+                continue;
+            }
+
+            if (is_object($value) && method_exists($value, 'getAttribute')) {
+                $value = $value->getAttribute($segment);
+                continue;
+            }
+
+            if (is_object($value) && (isset($value->{$segment}) || property_exists($value, $segment))) {
+                $value = $value->{$segment};
+                continue;
+            }
+
+            return null;
+        }
+
+        return $value;
     }
 
     /** @return array<string, mixed> */
