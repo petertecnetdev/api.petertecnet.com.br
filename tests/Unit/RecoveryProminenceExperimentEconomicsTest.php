@@ -28,6 +28,7 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
         self::assertNull($result['comparison']['incremental_platform_contribution_per_exposed_order']);
         self::assertNull($result['comparison']['relative_contribution_lift_percent']);
         self::assertNull($result['comparison']['observed_volume_projection']);
+        self::assertNull($result['comparison']['treatment_observed_incremental_estimate']);
         self::assertSame('collecting', $result['comparison']['rollout_readiness']['status']);
         self::assertSame('collect_more_data', $result['comparison']['rollout_readiness']['recommended_action']);
         self::assertFalse($result['comparison']['rollout_readiness']['eligible_for_rollout']);
@@ -69,6 +70,15 @@ final class RecoveryProminenceExperimentEconomicsTest extends TestCase
             'projected_incremental_platform_contribution' => 48.0,
             'is_projection_not_realized_revenue' => true,
         ], $result['comparison']['observed_volume_projection']);
+        self::assertSame([
+            'basis' => 'treatment_exposed_orders',
+            'attribution_method' => 'randomized_variant_difference',
+            'treatment_exposed_orders' => 30,
+            'estimated_incremental_paid_orders' => 3.0,
+            'estimated_incremental_gmv' => 300.0,
+            'estimated_incremental_platform_contribution' => 24.0,
+            'is_causal_estimate_not_booked_revenue' => true,
+        ], $result['comparison']['treatment_observed_incremental_estimate']);
         self::assertSame('hold', $result['comparison']['rollout_readiness']['status']);
         self::assertSame('keep_control', $result['comparison']['rollout_readiness']['recommended_action']);
         self::assertFalse($result['comparison']['rollout_readiness']['guardrails']['conversion']);
