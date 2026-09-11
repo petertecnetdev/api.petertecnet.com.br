@@ -65,6 +65,12 @@ class Event extends Model
             $publishedNow = $event->wasChanged('is_published') && $event->is_published && ! $event->is_cancelled;
             if ($publishedNow) {
                 app(EventLineupNotificationService::class)->notifyPublishedEvent($event);
+                app(EventAudienceService::class)->notifyProductionFollowers($event, [
+                    'type' => 'production_event_published',
+                    'title' => 'Novo evento de uma produção que você segue',
+                    'message' => $event->title.' acabou de ser publicado. Confira data, local e ingressos.',
+                    'data' => ['event_id' => $event->id, 'production_id' => $event->production_id],
+                ], request()->user()?->id);
                 static::publishFeedActivity($event, 'Publicou o evento '.$event->title.'.');
             }
 
@@ -83,12 +89,20 @@ class Event extends Model
                     : 'Atualizou '.$what.' no evento '.$event->title.'.'
             );
 
-            app(EventAudienceService::class)->notifyAttendees($event, [
-                'type'=>'event_updated',
-                'title'=>$event->is_cancelled?'Atualização importante do evento':'Seu evento foi atualizado',
-                'message'=>$event->is_cancelled?$event->title.' teve uma atualização de status. Confira os detalhes.':$event->title.' teve atualização em '.$what.'. Confira os detalhes.',
-                'data'=>['event_id'=>$event->id,'changed_fields'=>$changed->all()],
-            ]);
+            $audience = app(EventAudienceService::class);
+            $payload = [
+                'type' => 'event_updated',
+                'title' => $event->is_cancelled ? 'Atualização importante do evento' : 'Evento atualizado',
+                'message' => $event->is_cancelled
+                    ? $event->title.' teve uma atualização de status. Confira os detalhes.'
+                    : $event->title.' teve atualização em '.$what.'. Confira os detalhes.',
+                'data' => ['event_id' => $event->id, 'changed_fields' => $changed->all()],
+            ];
+            $audience->notifyEngagedAudience($event, [
+                ...$payload,
+                'type' => 'production_event_updated',
+                'title' => $event->is_cancelled ? 'Atualização importante no evento' : 'Evento atualizado',
+            ], request()->user()?->id);
         });
     }
 

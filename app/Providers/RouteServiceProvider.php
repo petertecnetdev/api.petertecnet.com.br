@@ -141,6 +141,32 @@ class RouteServiceProvider extends ServiceProvider
                 ->by('market-read:ip-app:'.$request->ip().':'.$appKey);
         });
 
+        RateLimiter::for('search-read', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+            $ip = $request->ip();
+            $session = substr(hash('sha256', (string) $request->header('X-Search-Session', 'anonymous')), 0, 16);
+
+            $tooMany = static function (Request $request, array $headers) {
+                return response()->json([
+                    'message' => 'Muitas pesquisas em pouco tempo. Aguarde alguns segundos e tente novamente.',
+                    'retry_after' => (int) ($headers['Retry-After'] ?? 60),
+                ], 429, $headers);
+            };
+
+            if ($userId) {
+                return [
+                    Limit::perMinute(240)->by('search:user-app:'.$userId.':'.$appKey)->response($tooMany),
+                    Limit::perMinute(420)->by('search:user-global:'.$userId)->response($tooMany),
+                ];
+            }
+
+            return [
+                Limit::perMinute(90)->by('search:ip-app:'.$ip.':'.$appKey)->response($tooMany),
+                Limit::perMinute(45)->by('search:session:'.$ip.':'.$session)->response($tooMany),
+            ];
+        });
+
         RateLimiter::for('telemetry', function (Request $request) {
             $userId = $this->rateLimitUserId($request);
             $appKey = $this->rateLimitApplicationKey($request);

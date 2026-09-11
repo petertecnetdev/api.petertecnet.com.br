@@ -87,7 +87,7 @@ final class TicketInventoryService
      *
      * @param Collection<int, Ticket> $tickets
      * @param Collection<int, array>|null $states
-     * @return array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int}
+     * @return array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int,starting_price:float|null}
      */
     public function availability(Collection $tickets, ?Carbon $now = null, ?Collection $states = null): array
     {
@@ -99,6 +99,7 @@ final class TicketInventoryService
                 'configured_lots_count' => 0,
                 'sellable_lots_count' => 0,
                 'sellable_free_lots_count' => 0,
+                'starting_price' => null,
             ];
         }
 
@@ -112,6 +113,7 @@ final class TicketInventoryService
                 'configured_lots_count' => $tickets->count(),
                 'sellable_lots_count' => $sellable->count(),
                 'sellable_free_lots_count' => $sellableFree->count(),
+                'starting_price' => (float) $sellable->min('price'),
             ];
         }
 
@@ -135,6 +137,7 @@ final class TicketInventoryService
             'configured_lots_count' => $tickets->count(),
             'sellable_lots_count' => 0,
             'sellable_free_lots_count' => 0,
+            'starting_price' => null,
         ];
     }
 
@@ -143,7 +146,7 @@ final class TicketInventoryService
      * reservation aggregate queries, keeping discovery free from N+1 lookups.
      *
      * @param Collection<int, Ticket> $tickets
-     * @return Collection<int, array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int}>
+     * @return Collection<int, array{status:string,configured_lots_count:int,sellable_lots_count:int,sellable_free_lots_count:int,starting_price:float|null}>
      */
     public function availabilityByEvent(Collection $tickets, ?Carbon $now = null): Collection
     {

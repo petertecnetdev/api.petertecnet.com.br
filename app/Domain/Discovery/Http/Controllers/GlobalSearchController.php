@@ -2,302 +2,345 @@
 
 namespace App\Domain\Discovery\Http\Controllers;
 
+use App\Domain\Discovery\Services\GlobalSearchService;
+use App\Domain\Discovery\Services\SearchAnalyticsService;
+use App\Domain\Discovery\Services\SearchCampaignService;
+use App\Domain\Discovery\Services\SearchQueryParser;
 use App\Http\Controllers\Controller;
-use App\Models\Artist;
-use App\Models\Event;
 use App\Models\Production;
-use App\Models\User;
 use App\Support\ApplicationContext;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 final class GlobalSearchController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly SearchQueryParser $parser,
+        private readonly GlobalSearchService $search,
+        private readonly SearchAnalyticsService $analytics,
+        private readonly SearchCampaignService $campaigns,
+    ) {}
 
     public function index(Request $request)
     {
-        $data = $request->validate([
+        $data = $request->validate($this->searchRules(true));
+        $parsed = $this->parser->parse($data);
+        $type = $data['type'] ?? 'all';
+        $limit = (int) ($data['per_type'] ?? ($type === 'all' ? 8 : 20));
+        $page = (int) ($data['page'] ?? 1);
+        $viewer = $request->user('api');
+        $payload = $this->search->search($this->context->id(), $viewer, $parsed, $type, $limit, $page);
+
+        $searchId = $this->analytics->logSearch(
+            $this->context->id(),
+            $viewer?->id ? (int) $viewer->id : null,
+            $this->sessionKey($request),
+            $parsed,
+            $type,
+            (int) ($payload['counts']['total'] ?? 0),
+            (string) ($data['source'] ?? 'global')
+        );
+
+        $payload['search_id'] = $searchId;
+
+        return response()->json($payload)
+            ->header('Cache-Control', $viewer ? 'private, no-store' : 'public, max-age=15, stale-while-revalidate=30');
+    }
+
+    public function suggestions(Request $request)
+    {
+        $data = $request->validate(array_merge($this->searchRules(false), [
             'q' => 'required|string|min:1|max:120',
-            'type' => 'nullable|in:all,event,production,artist,user',
-            'per_type' => 'nullable|integer|min:1|max:20',
+            'limit' => 'nullable|integer|min:3|max:15',
+        ]));
+        $parsed = $this->parser->parse($data);
+
+        return response()->json($this->search->suggestions(
+            $this->context->id(),
+            $request->user('api'),
+            $parsed,
+            (int) ($data['limit'] ?? 10)
+        ))->header('Cache-Control', 'private, max-age=10, stale-while-revalidate=30');
+    }
+
+    public function discover(Request $request)
+    {
+        $data = $request->validate([
+            'city' => 'nullable|string|max:120',
+            'uf' => 'nullable|string|size:2',
+            'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
+            'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
         ]);
 
-        $term = trim($data['q']);
-        $type = $data['type'] ?? 'all';
-        $limit = (int) ($data['per_type'] ?? 8);
-        $appId = $this->context->id();
+        return response()->json($this->search->discover(
+            $this->context->id(),
+            $request->user('api'),
+            $data
+        ))->header('Cache-Control', 'private, max-age=30, stale-while-revalidate=120');
+    }
 
-        $groups = [
-            'events' => collect(),
-            'productions' => collect(),
-            'artists' => collect(),
-            'people' => collect(),
-        ];
-
-        if ($type === 'all' || $type === 'event') {
-            $groups['events'] = $this->events($appId, $term, $limit);
-        }
-
-        if ($type === 'all' || $type === 'production') {
-            $groups['productions'] = $this->productions($appId, $term, $limit);
-        }
-
-        if ($type === 'all' || $type === 'artist') {
-            $groups['artists'] = $this->artists($appId, $term, $limit);
-        }
-
-        if ($type === 'all' || $type === 'user') {
-            $groups['people'] = $this->people($appId, $term, $limit);
-        }
-
-        $results = collect()
-            ->merge($groups['people'])
-            ->merge($groups['events'])
-            ->merge($groups['productions'])
-            ->merge($groups['artists'])
-            ->values();
+    public function trending(Request $request)
+    {
+        $data = $request->validate([
+            'city' => 'nullable|string|max:120',
+            'days' => 'nullable|integer|min:1|max:90',
+            'limit' => 'nullable|integer|min:1|max:50',
+        ]);
 
         return response()->json([
-            'query' => $term,
-            'type' => $type,
-            'results' => $results,
-            'groups' => [
-                'people' => $groups['people']->values(),
-                'events' => $groups['events']->values(),
-                'productions' => $groups['productions']->values(),
-                'artists' => $groups['artists']->values(),
-            ],
-            'counts' => [
-                'people' => $groups['people']->count(),
-                'events' => $groups['events']->count(),
-                'productions' => $groups['productions']->count(),
-                'artists' => $groups['artists']->count(),
-                'total' => $results->count(),
-            ],
-        ])->header('Cache-Control', 'public, max-age=20, stale-while-revalidate=60');
+            'terms' => $this->search->popularTerms(
+                $this->context->id(),
+                (int) ($data['days'] ?? 7),
+                $data['city'] ?? null,
+                (int) ($data['limit'] ?? 20)
+            ),
+        ])->header('Cache-Control', 'public, max-age=60, stale-while-revalidate=180');
     }
 
-    private function events(int $appId, string $term, int $limit): Collection
+    public function click(Request $request)
     {
-        $like = '%'.$term.'%';
+        $data = $request->validate([
+            'search_id' => 'nullable|integer|min:1',
+            'target_type' => 'required|string|max:40',
+            'target_id' => 'required|integer|min:1',
+            'position' => 'nullable|integer|min:1|max:1000',
+            'sponsored' => 'nullable|boolean',
+            'item' => 'nullable|array',
+            'item.type' => 'nullable|string|max:40',
+            'item.id' => 'nullable|integer|min:1',
+            'item.title' => 'nullable|string|max:255',
+            'item.subtitle' => 'nullable|string|max:500',
+            'item.image' => 'nullable|string|max:2048',
+            'item.url' => 'nullable|string|max:2048',
+        ]);
 
-        return Event::query()
-            ->where('events.app_id', $appId)
-            ->publiclyVisible()
-            ->with('production:id,name,slug,logo')
-            ->where(function (Builder $query) use ($like) {
-                $query->where('events.title', 'like', $like)
-                    ->orWhere('events.venue', 'like', $like)
-                    ->orWhere('events.city', 'like', $like)
-                    ->orWhere('events.category', 'like', $like)
-                    ->orWhereHas('production', fn (Builder $production) => $production->where('name', 'like', $like))
-                    ->orWhereHas('artists', fn (Builder $artist) => $artist->where('stage_name', 'like', $like));
-            })
-            ->orderByRaw(
-                'CASE WHEN LOWER(events.title) = LOWER(?) THEN 0 WHEN LOWER(events.title) LIKE LOWER(?) THEN 1 ELSE 2 END',
-                [$term, $term.'%']
-            )
-            ->orderByRaw('CASE WHEN events.end_date >= ? THEN 0 ELSE 1 END', [now()])
-            ->orderBy('events.start_date')
-            ->limit($limit)
-            ->get([
-                'events.id',
-                'events.title',
-                'events.slug',
-                'events.image',
-                'events.start_date',
-                'events.end_date',
-                'events.city',
-                'events.uf',
-                'events.venue',
-                'events.category',
-                'events.production_id',
-            ])
-            ->map(fn (Event $event) => [
-                'type' => 'event',
-                'id' => (int) $event->id,
-                'title' => $event->title,
-                'subtitle' => collect([
-                    $event->production?->name,
-                    $event->venue,
-                    trim(implode(' - ', array_filter([$event->city, $event->uf]))),
-                ])->filter()->take(2)->implode(' · '),
-                'image' => $event->image,
-                'url' => '/event/'.$event->slug,
-                'meta' => [
-                    'start_date' => optional($event->start_date)->toIso8601String(),
-                    'end_date' => optional($event->end_date)->toIso8601String(),
-                    'category' => $event->category,
-                ],
-            ]);
-    }
+        $viewer = $request->user('api');
+        $clickId = $this->analytics->logClick(
+            $this->context->id(),
+            $viewer?->id ? (int) $viewer->id : null,
+            isset($data['search_id']) ? (int) $data['search_id'] : null,
+            $data['target_type'],
+            (int) $data['target_id'],
+            isset($data['position']) ? (int) $data['position'] : null,
+            (bool) ($data['sponsored'] ?? false)
+        );
 
-    private function productions(int $appId, string $term, int $limit): Collection
-    {
-        $like = '%'.$term.'%';
-
-        return Production::query()
-            ->where('app_id', $appId)
-            ->where('is_published', true)
-            ->where(fn (Builder $query) => $query->where('is_cancelled', false)->orWhereNull('is_cancelled'))
-            ->where(function (Builder $query) use ($like) {
-                $query->where('name', 'like', $like)
-                    ->orWhere('fantasy', 'like', $like)
-                    ->orWhere('description', 'like', $like)
-                    ->orWhere('city', 'like', $like);
-            })
-            ->orderByRaw(
-                'CASE WHEN LOWER(name) = LOWER(?) THEN 0 WHEN LOWER(name) LIKE LOWER(?) THEN 1 ELSE 2 END',
-                [$term, $term.'%']
-            )
-            ->orderByDesc('is_featured')
-            ->orderBy('name')
-            ->limit($limit)
-            ->get(['id', 'name', 'fantasy', 'slug', 'logo', 'city', 'uf'])
-            ->map(fn (Production $production) => [
-                'type' => 'production',
-                'id' => (int) $production->id,
-                'title' => $production->name,
-                'subtitle' => collect([
-                    $production->fantasy && $production->fantasy !== $production->name ? $production->fantasy : null,
-                    trim(implode(' - ', array_filter([$production->city, $production->uf]))),
-                ])->filter()->implode(' · '),
-                'image' => $production->logo,
-                'url' => '/production/'.$production->slug.'/public',
-                'meta' => [],
-            ]);
-    }
-
-    private function artists(int $appId, string $term, int $limit): Collection
-    {
-        $like = '%'.$term.'%';
-
-        return Artist::query()
-            ->where('app_id', $appId)
-            ->where('is_published', true)
-            ->where(function (Builder $query) use ($like) {
-                $query->where('stage_name', 'like', $like)
-                    ->orWhere('bio', 'like', $like)
-                    ->orWhere('city', 'like', $like);
-            })
-            ->orderByRaw(
-                'CASE WHEN LOWER(stage_name) = LOWER(?) THEN 0 WHEN LOWER(stage_name) LIKE LOWER(?) THEN 1 ELSE 2 END',
-                [$term, $term.'%']
-            )
-            ->orderBy('stage_name')
-            ->limit($limit)
-            ->get(['id', 'stage_name', 'slug', 'artist_type', 'photo', 'city', 'uf'])
-            ->map(fn (Artist $artist) => [
-                'type' => 'artist',
-                'id' => (int) $artist->id,
-                'title' => $artist->stage_name,
-                'subtitle' => collect([
-                    $this->artistTypeLabel($artist->artist_type),
-                    trim(implode(' - ', array_filter([$artist->city, $artist->uf]))),
-                ])->filter()->implode(' · '),
-                'image' => $artist->photo,
-                'url' => '/artist/'.$artist->slug,
-                'meta' => ['artist_type' => $artist->artist_type],
-            ]);
-    }
-
-    private function people(int $appId, string $term, int $limit): Collection
-    {
-        $personTerm = ltrim(trim($term), '@');
-        $personTerm = preg_replace('/\\s+/u', ' ', $personTerm) ?: $personTerm;
-
-        if ($personTerm === '') {
-            $personTerm = trim($term);
+        if ($viewer && ! empty($data['item'])) {
+            $this->analytics->rememberEntity($this->context->id(), (int) $viewer->id, $data['item']);
         }
 
-        $tokens = collect(preg_split('/\\s+/u', $personTerm, -1, PREG_SPLIT_NO_EMPTY))
-            ->map(fn (string $token) => trim($token))
-            ->filter()
-            ->values();
-
-        $fullNameSql = "TRIM(CONCAT(COALESCE(first_name, ''), ' ', COALESCE(last_name, '')))";
-
-        return User::query()
-            ->whereHas('applications', fn (Builder $application) => $application
-                ->where('applications.id', $appId)
-                ->where('application_user.status', 'active'))
-            // Active membership is the visibility boundary. Email verification can be
-            // deferred by the application and must not make an otherwise active user
-            // disappear from people search.
-            ->where(function (Builder $query) use ($tokens, $personTerm, $fullNameSql) {
-                if ($tokens->isEmpty()) {
-                    $like = '%'.$personTerm.'%';
-                    $query->where('user_name', 'like', $like)
-                        ->orWhere('first_name', 'like', $like)
-                        ->orWhere('last_name', 'like', $like)
-                        ->orWhereRaw($fullNameSql.' LIKE ?', [$like]);
-
-                    return;
-                }
-
-                foreach ($tokens as $token) {
-                    $tokenLike = '%'.$token.'%';
-
-                    $query->where(function (Builder $tokenQuery) use ($tokenLike, $fullNameSql) {
-                        $tokenQuery->where('user_name', 'like', $tokenLike)
-                            ->orWhere('first_name', 'like', $tokenLike)
-                            ->orWhere('last_name', 'like', $tokenLike)
-                            ->orWhereRaw($fullNameSql.' LIKE ?', [$tokenLike]);
-                    });
-                }
-            })
-            ->orderByRaw(
-                "CASE
-                    WHEN LOWER(COALESCE(user_name, '')) = LOWER(?) THEN 0
-                    WHEN LOWER({$fullNameSql}) = LOWER(?) THEN 1
-                    WHEN LOWER(COALESCE(user_name, '')) LIKE LOWER(?) THEN 2
-                    WHEN LOWER({$fullNameSql}) LIKE LOWER(?) THEN 3
-                    WHEN LOWER(COALESCE(first_name, '')) LIKE LOWER(?) THEN 4
-                    WHEN LOWER(COALESCE(last_name, '')) LIKE LOWER(?) THEN 5
-                    ELSE 6
-                END",
-                [
-                    $personTerm,
-                    $personTerm,
-                    $personTerm.'%',
-                    $personTerm.'%',
-                    $personTerm.'%',
-                    $personTerm.'%',
-                ]
-            )
-            ->orderBy('first_name')
-            ->orderBy('last_name')
-            ->limit($limit)
-            ->get(['id', 'user_name', 'first_name', 'last_name', 'avatar', 'city', 'uf'])
-            ->map(function (User $user) {
-                $name = trim(implode(' ', array_filter([$user->first_name, $user->last_name])));
-
-                return [
-                    'type' => 'user',
-                    'id' => (int) $user->id,
-                    'title' => $name !== '' ? $name : ($user->user_name ?: 'Usuário Cutinapp'),
-                    'subtitle' => collect([
-                        $user->user_name ? '@'.ltrim($user->user_name, '@') : null,
-                        trim(implode(' - ', array_filter([$user->city, $user->uf]))),
-                    ])->filter()->implode(' · '),
-                    'image' => $user->avatar,
-                    'url' => '/profile/'.$user->id,
-                    'meta' => ['user_name' => $user->user_name],
-                ];
-            });
+        return response()->json(['click_id' => $clickId], 201);
     }
 
-    private function artistTypeLabel(?string $type): string
+    public function convert(Request $request)
     {
-        return match ($type) {
-            'band' => 'Banda',
-            'duo' => 'Duo',
-            'group' => 'Grupo',
-            'collective' => 'Coletivo',
-            'orchestra' => 'Orquestra',
-            default => 'Artista',
-        };
+        $data = $request->validate([
+            'conversion_type' => 'required|in:ticket_purchase,follow,direct_open,save,share',
+            'target_type' => 'required|string|max:40',
+            'target_id' => 'required|integer|min:1',
+        ]);
+
+        return response()->json([
+            'attributed' => $this->analytics->markConversion(
+                $this->context->id(),
+                $request->user('api')?->id ? (int) $request->user('api')->id : null,
+                $data['conversion_type'],
+                $data['target_type'],
+                (int) $data['target_id']
+            ),
+        ]);
+    }
+
+    public function recent(Request $request)
+    {
+        $viewer = $request->user();
+        $data = $request->validate(['limit' => 'nullable|integer|min:1|max:50']);
+
+        return response()->json([
+            'recent' => $this->analytics->recent($this->context->id(), (int) $viewer->id, (int) ($data['limit'] ?? 20)),
+        ]);
+    }
+
+    public function clearRecent(Request $request)
+    {
+        $viewer = $request->user();
+        $data = $request->validate([
+            'type' => 'nullable|string|max:40',
+            'target_id' => 'nullable|integer|min:1',
+        ]);
+
+        return response()->json([
+            'deleted' => $this->analytics->clearRecent(
+                $this->context->id(),
+                (int) $viewer->id,
+                $data['type'] ?? null,
+                isset($data['target_id']) ? (int) $data['target_id'] : null
+            ),
+        ]);
+    }
+
+    public function saved(Request $request)
+    {
+        return response()->json([
+            'saved' => $this->analytics->savedQueries($this->context->id(), (int) $request->user()->id),
+        ]);
+    }
+
+    public function save(Request $request)
+    {
+        $data = $request->validate(array_merge($this->searchRules(false), [
+            'q' => 'required|string|min:1|max:120',
+            'label' => 'nullable|string|max:120',
+            'notifications_enabled' => 'nullable|boolean',
+        ]));
+        $parsed = $this->parser->parse($data);
+
+        return response()->json([
+            'saved' => $this->analytics->saveQuery(
+                $this->context->id(),
+                (int) $request->user()->id,
+                $parsed,
+                $data['label'] ?? null,
+                (bool) ($data['notifications_enabled'] ?? false)
+            ),
+        ], 201);
+    }
+
+    public function deleteSaved(Request $request, int $id)
+    {
+        return response()->json([
+            'deleted' => $this->analytics->deleteSavedQuery($this->context->id(), (int) $request->user()->id, $id),
+        ]);
+    }
+
+    public function producerInsights(Request $request)
+    {
+        $data = $request->validate([
+            'production_id' => 'required|integer|min:1',
+            'days' => 'nullable|integer|min:1|max:180',
+        ]);
+
+        $production = Production::query()
+            ->where('app_id', $this->context->id())
+            ->findOrFail((int) $data['production_id']);
+
+        $user = $request->user();
+        abort_unless($user->hasProfile('Administrador') || (int) $production->user_id === (int) $user->id, 403);
+
+        return response()->json($this->analytics->producerDemand(
+            $this->context->id(),
+            (int) $production->id,
+            (int) ($data['days'] ?? 30)
+        ));
+    }
+
+    public function adminAnalytics(Request $request)
+    {
+        $this->assertPeterAdmin($request);
+        $data = $request->validate(['days' => 'nullable|integer|min:1|max:365']);
+
+        return response()->json($this->analytics->adminOverview(
+            $this->context->id(),
+            (int) ($data['days'] ?? 30)
+        ));
+    }
+
+    public function campaigns(Request $request)
+    {
+        $this->assertPeterAdmin($request);
+
+        return response()->json(['campaigns' => $this->campaigns->list($this->context->id())]);
+    }
+
+    public function storeCampaign(Request $request)
+    {
+        $this->assertPeterAdmin($request);
+        $data = $request->validate($this->campaignRules(true));
+
+        return response()->json([
+            'campaign' => $this->campaigns->create($this->context->id(), (int) $request->user()->id, $data),
+        ], 201);
+    }
+
+    public function updateCampaign(Request $request, int $id)
+    {
+        $this->assertPeterAdmin($request);
+        $data = $request->validate($this->campaignRules(false));
+
+        return response()->json([
+            'campaign' => $this->campaigns->update($this->context->id(), $id, $data),
+        ]);
+    }
+
+    public function deleteCampaign(Request $request, int $id)
+    {
+        $this->assertPeterAdmin($request);
+
+        return response()->json(['deleted' => $this->campaigns->delete($this->context->id(), $id)]);
+    }
+
+    private function searchRules(bool $requireQuery): array
+    {
+        return [
+            'q' => ($requireQuery ? 'required' : 'nullable').'|string|min:1|max:120',
+            'type' => 'nullable|in:all,event,production,artist,user,post,item,venue,promoter',
+            'per_type' => 'nullable|integer|min:1|max:30',
+            'page' => 'nullable|integer|min:1|max:100',
+            'city' => 'nullable|string|max:120',
+            'uf' => 'nullable|string|size:2',
+            'period' => 'nullable|in:today,tomorrow,weekend,next7,next30',
+            'from' => 'nullable|date',
+            'to' => 'nullable|date|after_or_equal:from',
+            'free' => 'nullable|boolean',
+            'available' => 'nullable|boolean',
+            'format' => 'nullable|in:in_person,online,hybrid',
+            'max_price' => 'nullable|numeric|min:0|max:1000000',
+            'min_price' => 'nullable|numeric|min:0|max:1000000',
+            'lat' => 'nullable|numeric|between:-90,90|required_with:lng',
+            'lng' => 'nullable|numeric|between:-180,180|required_with:lat',
+            'radius_km' => 'nullable|integer|min:1|max:500',
+            'sort' => 'nullable|in:relevance,nearby,popular,newest,soonest',
+            'category' => 'nullable|string|max:120',
+            'artist_id' => 'nullable|integer|min:1',
+            'production_id' => 'nullable|integer|min:1',
+            'source' => 'nullable|string|max:40',
+        ];
+    }
+
+    private function campaignRules(bool $creating): array
+    {
+        $required = $creating ? 'required|' : 'sometimes|';
+
+        return [
+            'owner_user_id' => 'nullable|integer|min:1',
+            'production_id' => 'nullable|integer|min:1',
+            'target_type' => $required.'in:event,production,artist,user',
+            'target_id' => $required.'integer|min:1',
+            'label' => 'nullable|string|max:160',
+            'keywords' => $required.'array|max:50',
+            'keywords.*' => 'string|max:80',
+            'city' => 'nullable|string|max:120',
+            'uf' => 'nullable|string|size:2',
+            'priority' => 'nullable|integer|min:0|max:1000',
+            'bid_cents' => 'nullable|integer|min:0|max:100000000',
+            'budget_cents' => 'nullable|integer|min:0|max:1000000000',
+            'status' => 'nullable|in:draft,active,paused,ended',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after_or_equal:starts_at',
+        ];
+    }
+
+    private function sessionKey(Request $request): ?string
+    {
+        $value = trim((string) $request->header('X-Search-Session', ''));
+
+        return $value !== '' ? mb_substr($value, 0, 64) : null;
+    }
+
+    private function assertPeterAdmin(Request $request): void
+    {
+        $email = strtolower(trim((string) ($request->user()?->email ?? '')));
+        abort_unless($email === 'petertecnet@gmail.com', 403, 'Acesso administrativo não autorizado.');
     }
 }

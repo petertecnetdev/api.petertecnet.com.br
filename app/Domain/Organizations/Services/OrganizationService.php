@@ -202,6 +202,21 @@ final class OrganizationService
             ->limit(24)
             ->get();
 
+        if ($user && $upcoming->isNotEmpty()) {
+            $interestedEventIds = DB::table('event_engagements')
+                ->where('app_id', $appId)
+                ->where('user_id', $user->id)
+                ->where('is_interested', true)
+                ->whereIn('event_id', $upcoming->pluck('id'))
+                ->pluck('event_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $upcoming->each(
+                fn (Event $event) => $event->setAttribute('is_interested', in_array((int) $event->id, $interestedEventIds, true))
+            );
+        }
+
         $ticketEventIds = $upcoming->pluck('id')
             ->merge($weeklyAgenda->pluck('event.id'))
             ->map(fn ($id) => (int) $id)
@@ -222,10 +237,12 @@ final class OrganizationService
                     'configured_lots_count' => 0,
                     'sellable_lots_count' => 0,
                     'sellable_free_lots_count' => 0,
+                    'starting_price' => null,
                 ]);
                 $event->setAttribute('ticket_availability_status', $summary['status']);
                 $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
                 $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
+                $event->setAttribute('ticket_starting_price', $summary['starting_price']);
             };
 
             $upcoming->each($applyAvailability);

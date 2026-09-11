@@ -66,7 +66,10 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::get('/config', [ApplicationConfigController::class, 'show']);
         Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
-        Route::get('/global-search', [GlobalSearchController::class, 'index'])->middleware('throttle:240,1');
+        Route::get('/global-search', [GlobalSearchController::class, 'index'])->middleware('throttle:search-read');
+        Route::get('/global-search/suggestions', [GlobalSearchController::class, 'suggestions'])->middleware('throttle:search-read');
+        Route::get('/global-search/discover', [GlobalSearchController::class, 'discover'])->middleware('throttle:search-read');
+        Route::get('/global-search/trending', [GlobalSearchController::class, 'trending'])->middleware('throttle:search-read');
 
         // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
@@ -122,6 +125,19 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
+            Route::post('/global-search/click', [GlobalSearchController::class, 'click'])->middleware('throttle:240,1');
+            Route::post('/global-search/convert', [GlobalSearchController::class, 'convert'])->middleware('throttle:120,1');
+            Route::get('/global-search/recent', [GlobalSearchController::class, 'recent']);
+            Route::delete('/global-search/recent', [GlobalSearchController::class, 'clearRecent']);
+            Route::get('/global-search/saved', [GlobalSearchController::class, 'saved']);
+            Route::post('/global-search/saved', [GlobalSearchController::class, 'save'])->middleware('throttle:60,1');
+            Route::delete('/global-search/saved/{id}', [GlobalSearchController::class, 'deleteSaved'])->whereNumber('id');
+            Route::get('/global-search/producer-insights', [GlobalSearchController::class, 'producerInsights']);
+            Route::get('/global-search/admin/analytics', [GlobalSearchController::class, 'adminAnalytics']);
+            Route::get('/global-search/admin/campaigns', [GlobalSearchController::class, 'campaigns']);
+            Route::post('/global-search/admin/campaigns', [GlobalSearchController::class, 'storeCampaign'])->middleware('throttle:30,1');
+            Route::patch('/global-search/admin/campaigns/{id}', [GlobalSearchController::class, 'updateCampaign'])->whereNumber('id')->middleware('throttle:30,1');
+            Route::delete('/global-search/admin/campaigns/{id}', [GlobalSearchController::class, 'deleteCampaign'])->whereNumber('id');
             Route::get('/directory/companies', [ApplicationDirectoryController::class, 'companies']);
             Route::post('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'activateCompany'])->whereNumber('sourceId');
             Route::delete('/directory/companies/{sourceId}/activate', [ApplicationDirectoryController::class, 'deactivateCompany'])->whereNumber('sourceId');

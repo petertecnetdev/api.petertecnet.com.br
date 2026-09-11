@@ -4,6 +4,7 @@ namespace App\Domain\Events\Services;
 
 use App\Models\Event;
 use App\Models\Ticket;
+use App\Services\EventAudienceService;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\DB;
 
@@ -102,6 +103,14 @@ final class EventTicketService
 
             return compact('created', 'linked', 'skipped', 'adjustedLimitDates');
         }, 3);
+
+        $result['created']->each(function (Ticket $ticket): void {
+            try {
+                app(EventAudienceService::class)->notifyNewTicket($ticket);
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        });
 
         $tickets = collect()
             ->concat($result['created'])
