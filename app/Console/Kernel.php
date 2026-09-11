@@ -28,6 +28,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('search:demand-alerts --hours=24 --threshold=5')
             ->everySixHours()
             ->withoutOverlapping(30);
+        $schedule->command('search:notify-saved --limit=200')
+            ->hourly()
+            ->withoutOverlapping(30);
         $schedule->command('market:alerts:evaluate --limit=1000')
             ->everyMinute()
             ->when(function (): bool {
