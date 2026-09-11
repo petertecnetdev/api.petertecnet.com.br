@@ -75,8 +75,32 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(500.0, $summary['dropoff']['largest_economic_step']['gmv_at_risk']);
         $this->assertSame('checkout_opened', $summary['dropoff']['largest_contribution_step']['from']);
         $this->assertSame(11.0, $summary['dropoff']['largest_contribution_step']['platform_contribution_at_risk']);
+        $this->assertSame('reduce_payment_entry_friction', $summary['dropoff']['largest_contribution_step']['recommended_action']['code']);
+        $this->assertSame('opened_to_attempted_percent', $summary['dropoff']['largest_contribution_step']['recommended_action']['target_metric']);
+        $this->assertContains('cart_integrity', $summary['dropoff']['largest_contribution_step']['recommended_action']['guardrails']);
         $this->assertSame(10.0, $summary['platform_contribution_estimate']['payment_method_margin_percent']['pix']);
         $this->assertSame(1.0, $summary['platform_contribution_estimate']['payment_method_margin_percent']['card']);
+    }
+
+    public function test_it_recommends_safe_actions_for_payment_and_fulfillment_dropoffs(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $payment = $funnel->summarize([
+            $this->interaction('frontend_checkout_opened', 'journey-payment', 10, 100.00, 'pix'),
+            $this->interaction('frontend_payment_attempted', 'journey-payment', null, 100.00, 'pix'),
+        ], [10], 5.0, ['pix' => 5.0]);
+        $paymentStep = $payment['dropoff']['steps'][1];
+        $this->assertSame('improve_payment_approval', $paymentStep['recommended_action']['code']);
+        $this->assertContains('payment_idempotency', $paymentStep['recommended_action']['guardrails']);
+
+        $fulfillment = $funnel->summarize([
+            $this->interaction('frontend_checkout_opened', 'journey-fulfillment', 10, 100.00, 'pix'),
+            $this->interaction('frontend_payment_attempted', 'journey-fulfillment', null, 100.00, 'pix'),
+            $this->interaction('frontend_payment_approved', 'journey-fulfillment', null, 100.00, 'pix'),
+        ], [10], 5.0, ['pix' => 5.0]);
+        $fulfillmentStep = $fulfillment['dropoff']['steps'][2];
+        $this->assertSame('protect_post_payment_fulfillment', $fulfillmentStep['recommended_action']['code']);
+        $this->assertContains('qr_checkin_integrity', $fulfillmentStep['recommended_action']['guardrails']);
     }
 
     public function test_it_excludes_journeys_outside_the_producer_event_scope(): void
