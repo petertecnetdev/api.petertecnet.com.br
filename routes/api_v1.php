@@ -13,6 +13,7 @@ use App\Domain\Connections\Http\Controllers\ConnectionModerationController;
 use App\Domain\Connections\Http\Controllers\ConnectionPrivacyController;
 use App\Domain\Contracts\Http\Controllers\ProducerAgreementController;
 use App\Domain\CRM\Http\Controllers\SalesPipelineController;
+use App\Domain\Discovery\Http\Controllers\GlobalSearchController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
@@ -65,6 +66,7 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::get('/config', [ApplicationConfigController::class, 'show']);
         Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
+        Route::get('/search', [GlobalSearchController::class, 'index'])->middleware('throttle:240,1');
 
         // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
