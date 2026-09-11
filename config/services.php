@@ -106,5 +106,11 @@ return [
         'timeout' => (int) env('WHATSAPP_API_TIMEOUT', 15),
     ],
 
+    'webpush' => [
+        'subject' => env('WEB_PUSH_SUBJECT', 'mailto:petertecnet@gmail.com'),
+        'public_key' => env('WEB_PUSH_PUBLIC_KEY'),
+        'private_key' => env('WEB_PUSH_PRIVATE_KEY'),
+    ],
+
     'geo_ip' => ['endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}')],
 ];
