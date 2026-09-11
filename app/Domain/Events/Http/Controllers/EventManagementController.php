@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Event;
 use App\Models\EventItem;
+use App\Models\EventSchedule;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
@@ -36,6 +37,7 @@ final class EventManagementController extends Controller
         match($data['status']??null){'draft'=>$query->where('is_published',false)->where('is_cancelled',false),'published'=>$query->where('is_published',true)->where('is_cancelled',false),'cancelled'=>$query->where('is_cancelled',true),'upcoming'=>$query->where('is_cancelled',false)->where('end_date','>',now()),'past'=>$query->where('end_date','<=',now()),default=>null};
         $events=$query->orderByDesc('start_date')->paginate($data['per_page']??50)->appends($request->query());
         $this->attachSellableTicketCounts($events->getCollection());
+        $this->attachOperationalMetrics($events->getCollection());
         return response()->json(['events'=>$events]);
     }
 
@@ -197,6 +199,97 @@ final class EventManagementController extends Controller
     }
 
     public function destroy(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());abort_if($event->tickets()->whereHas('passes')->exists(),409,'Eventos com ingressos emitidos não podem ser excluídos. Cancele ou despublique o evento.');$event->delete();return response()->json(['message'=>'Evento excluído com sucesso.']);}
+
+    private function attachOperationalMetrics($events): void
+    {
+        if ($events->isEmpty()) return;
+
+        $appId = $this->context->id();
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $now = Carbon::now($timezone);
+        $today = $now->copy()->startOfDay();
+        $eventIds = $events->pluck('id')->map(fn ($id) => (int) $id)->values();
+
+        $orderMetrics = DB::table('commerce_orders')
+            ->where('app_id', $appId)
+            ->whereIn('event_id', $eventIds)
+            ->selectRaw(
+                "event_id,
+                SUM(CASE WHEN status = 'paid' THEN 1 ELSE 0 END) AS paid_orders_count,
+                SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at > ?) THEN 1 ELSE 0 END) AS pending_orders_count,
+                SUM(CASE WHEN status = 'paid' THEN total ELSE 0 END) AS gross_sales,
+                SUM(CASE WHEN status = 'paid' AND paid_at >= ? THEN total ELSE 0 END) AS gross_sales_today,
+                MAX(CASE WHEN status = 'paid' THEN paid_at ELSE NULL END) AS last_sale_at",
+                [$now, $today]
+            )
+            ->groupBy('event_id')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->event_id);
+
+        $ticketCapacity = Ticket::query()
+            ->where('app_id', $appId)
+            ->whereIn('event_id', $eventIds)
+            ->selectRaw('event_id, SUM(quantity) AS capacity')
+            ->groupBy('event_id')
+            ->pluck('capacity', 'event_id');
+
+        $passMetrics = DB::table('event_passes')
+            ->whereIn('event_id', $eventIds)
+            ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
+            ->selectRaw(
+                'event_id, COUNT(*) AS tickets_sold, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) AS checked_in_count'
+            )
+            ->groupBy('event_id')
+            ->get()
+            ->keyBy(fn ($row) => (int) $row->event_id);
+
+        $views = DB::table('interactions')
+            ->where('app_id', $appId)
+            ->whereIn('entity_id', $eventIds)
+            ->whereRaw('LOWER(entity_type) = ?', ['event'])
+            ->where('interaction_type', 'view')
+            ->selectRaw('entity_id, COUNT(*) AS total')
+            ->groupBy('entity_id')
+            ->pluck('total', 'entity_id');
+
+        $agendaDays = EventSchedule::query()
+            ->where('app_id', $appId)
+            ->whereIn('source_event_id', $eventIds)
+            ->where('is_active', true)
+            ->get(['source_event_id', 'day_of_week'])
+            ->groupBy(fn (EventSchedule $schedule) => (int) $schedule->source_event_id)
+            ->map(fn ($rows) => $rows->pluck('day_of_week')->map(fn ($day) => (int) $day)->unique()->sort()->values()->all());
+
+        foreach ($events as $event) {
+            $eventId = (int) $event->id;
+            $orders = $orderMetrics->get($eventId);
+            $passes = $passMetrics->get($eventId);
+            $capacity = max(0, (int) ($ticketCapacity->get($eventId) ?? 0));
+            $sold = max(0, (int) ($passes->tickets_sold ?? 0));
+            $checkedIn = max(0, (int) ($passes->checked_in_count ?? 0));
+            $viewsCount = max(0, (int) ($views->get($eventId) ?? 0));
+            $paidOrders = max(0, (int) ($orders->paid_orders_count ?? 0));
+            $remaining = max(0, $capacity - $sold);
+
+            $event->setAttribute('operational_metrics', [
+                'paid_orders_count' => $paidOrders,
+                'pending_orders_count' => max(0, (int) ($orders->pending_orders_count ?? 0)),
+                'gross_sales' => round((float) ($orders->gross_sales ?? 0), 2),
+                'gross_sales_today' => round((float) ($orders->gross_sales_today ?? 0), 2),
+                'last_sale_at' => $orders->last_sale_at ?? null,
+                'tickets_sold' => $sold,
+                'ticket_capacity' => $capacity,
+                'tickets_remaining' => $remaining,
+                'sell_through_rate' => $capacity > 0 ? round(($sold / $capacity) * 100, 2) : 0,
+                'checked_in_count' => $checkedIn,
+                'checkin_rate' => $sold > 0 ? round(($checkedIn / $sold) * 100, 2) : 0,
+                'views_count' => $viewsCount,
+                'conversion_rate' => $viewsCount > 0 ? round(($paidOrders / $viewsCount) * 100, 2) : 0,
+                'agenda_days' => $agendaDays->get($eventId, []),
+                'agenda_active' => $agendaDays->has($eventId),
+            ]);
+        }
+    }
 
     private function attachSellableTicketCounts($events): void
     {
