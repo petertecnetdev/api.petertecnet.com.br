@@ -45,6 +45,8 @@ Route::prefix('v1')->group(function () {
 
             Route::get('/messaging/conversations/{conversationId}', [MessagingController::class, 'showConversation'])->whereNumber('conversationId')->middleware('throttle:180,1');
             Route::patch('/messaging/conversations/{conversationId}', [MessagingController::class, 'updateConversation'])->whereNumber('conversationId')->middleware('throttle:60,1');
+            Route::post('/messaging/conversations/{conversationId}/accept-request', [MessagingController::class, 'acceptRequest'])->whereNumber('conversationId')->middleware('throttle:30,1');
+            Route::delete('/messaging/conversations/{conversationId}/request', [MessagingController::class, 'rejectRequest'])->whereNumber('conversationId')->middleware('throttle:30,1');
             Route::delete('/messaging/conversations/{conversationId}', [MessagingController::class, 'archive'])->whereNumber('conversationId')->middleware('throttle:60,1');
             Route::post('/messaging/conversations/{conversationId}/participants', [MessagingController::class, 'addParticipants'])->whereNumber('conversationId')->middleware('throttle:30,1');
             Route::delete('/messaging/conversations/{conversationId}/participants/{userId}', [MessagingController::class, 'removeParticipant'])->whereNumber('conversationId')->whereNumber('userId')->middleware('throttle:30,1');
