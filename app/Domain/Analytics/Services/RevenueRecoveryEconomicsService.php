@@ -3,6 +3,7 @@
 namespace App\Domain\Analytics\Services;
 
 use App\Models\CommerceOrder;
+use App\Models\Event;
 use App\Models\Interaction;
 
 final class RevenueRecoveryEconomicsService
@@ -13,6 +14,7 @@ final class RevenueRecoveryEconomicsService
         private readonly ObservedRecoveryChannelEconomics $observedEconomics,
         private readonly RecoverySurfaceEconomics $surfaceEconomics,
         private readonly RecoveryProminenceExperimentEconomics $prominenceExperimentEconomics,
+        private readonly CheckoutJourneyFunnel $checkoutJourneyFunnel,
     ) {
     }
 
@@ -92,6 +94,33 @@ final class RevenueRecoveryEconomicsService
             $experimentInteractions,
             $surfaceOrders,
             self::NAVBAR_PROMINENCE_EXPERIMENT,
+        );
+
+        $eventIds = Event::query()
+            ->where('app_id', $appId)
+            ->where('production_id', $organizationId)
+            ->pluck('id');
+
+        $journeyInteractions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('created_at', '>=', $since)
+            ->whereIn('interaction_type', [
+                'frontend_checkout_opened',
+                'frontend_checkout_mobile_payment_cta_clicked',
+                'frontend_payment_attempted',
+                'frontend_payment_approved',
+                'frontend_checkout_fulfilled',
+                'frontend_checkout_abandoned',
+                'frontend_payment_failed',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $metrics['checkout_journey_funnel'] = $this->checkoutJourneyFunnel->summarize(
+            $journeyInteractions,
+            $eventIds,
         );
 
         return $metrics;
