@@ -5,6 +5,7 @@ use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\Events\Services\EventAgendaMaintenanceService;
+use App\Domain\Finance\Services\AutomatedSubscriptionIntentRecoveryService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Jobs\DispatchNotificationCampaign;
 use App\Models\NotificationCampaign;
@@ -93,6 +94,15 @@ Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending PIX checkouts');
 
+Artisan::command('finance:recover-pending-subscriptions {--limit=}', function () {
+    $limit = $this->option('limit');
+    $result = app(AutomatedSubscriptionIntentRecoveryService::class)->run(
+        $limit !== null && $limit !== '' ? (int) $limit : null,
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Create one zero-cost in-app reminder for eligible pending subscription PIX checkouts');
+
 Schedule::command('discovery:rebuild-index')->everyThirtyMinutes()->withoutOverlapping();
 Schedule::command('discovery:sync-search-performance')->dailyAt('04:20')->withoutOverlapping();
 Schedule::command('discovery:monitor-public --limit=100')->hourly()->withoutOverlapping();
@@ -114,6 +124,10 @@ Schedule::command('events:replenish-weekly-agendas')
     ->withoutOverlapping(30)
     ->onOneServer();
 Schedule::command('commerce:recover-pending-checkouts')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('finance:recover-pending-subscriptions')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
