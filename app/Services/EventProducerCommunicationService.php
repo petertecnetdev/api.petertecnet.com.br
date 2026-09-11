@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Mail\EventProducerUpdatedMail;
+use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\Establishment;
 use App\Models\Event;
@@ -13,6 +14,149 @@ use Illuminate\Support\Str;
 
 class EventProducerCommunicationService
 {
+    public function notifyUpcoming(Event $event, int $hoursBefore = 24): bool
+    {
+        $hoursBefore = max(1, min($hoursBefore, 168));
+
+        $production = $event->production_id
+            ? Establishment::query()->find($event->production_id)
+            : null;
+
+        if (! $production || ! $production->user_id) {
+            Log::warning('Evento sem produtor proprietário para lembrete de proximidade.', [
+                'event_id' => $event->id,
+                'production_id' => $event->production_id,
+                'hours_before' => $hoursBefore,
+            ]);
+
+            return false;
+        }
+
+        $owner = User::query()->find($production->user_id);
+        if (! $owner) {
+            Log::warning('Produtor proprietário não encontrado para lembrete de evento.', [
+                'event_id' => $event->id,
+                'production_id' => $production->id,
+                'user_id' => $production->user_id,
+                'hours_before' => $hoursBefore,
+            ]);
+
+            return false;
+        }
+
+        $appId = (int) ($event->app_id ?: $production->app_id);
+        if ($appId <= 0) {
+            Log::warning('Evento sem aplicação definida para lembrete do produtor.', [
+                'event_id' => $event->id,
+                'production_id' => $production->id,
+                'hours_before' => $hoursBefore,
+            ]);
+
+            return false;
+        }
+
+        $action = 'reminder_'.$hoursBefore.'h';
+        $type = 'producer_event_'.$action;
+
+        $notification = AppNotification::query()
+            ->where('app_id', $appId)
+            ->where('user_id', $owner->id)
+            ->where('type', $type)
+            ->where('reference_type', 'event')
+            ->where('reference_id', $event->id)
+            ->first();
+
+        $notificationData = is_array($notification?->data) ? $notification->data : [];
+        if (! empty($notificationData['producer_email_sent_at'])) {
+            return false;
+        }
+
+        $application = Application::query()->find($appId);
+        $appName = $this->applicationName($application, $event);
+        $productionName = $production->fantasy ?: $production->name ?: 'sua produção';
+        $appUrl = $this->applicationUrl($application, $event);
+        $eventUrl = $this->eventPublicUrl($appUrl, $event);
+        $eventManagementUrl = $appUrl.'/event/edit/'.$event->id;
+        $createEventUrl = $appUrl.'/event/create';
+        $flyerUrl = $this->flyerUrl($event);
+        $shareUrl = $this->shareUrl($event, $eventUrl, $appName);
+        [$title, $message] = $this->copyFor($event, $action, [], $productionName, $appName);
+
+        if (! $notification) {
+            try {
+                $notification = app(AppNotificationService::class)->sendToUser($appId, (int) $owner->id, [
+                    'type' => $type,
+                    'title' => $title,
+                    'message' => $message,
+                    'reference_type' => 'event',
+                    'reference_id' => $event->id,
+                    'reference_url' => '/event/edit/'.$event->id,
+                    'send_email' => false,
+                    'data' => [
+                        'event_id' => (int) $event->id,
+                        'production_id' => (int) $production->id,
+                        'action' => $action,
+                        'reminder_hours' => $hoursBefore,
+                        'starts_at' => optional($event->start_date)->toIso8601String(),
+                        'app_url' => $appUrl,
+                        'event_url' => $eventUrl,
+                        'event_management_url' => $eventManagementUrl,
+                        'flyer_url' => $flyerUrl,
+                        'share_url' => $shareUrl,
+                    ],
+                ]);
+            } catch (\Throwable $e) {
+                Log::error('Falha ao criar lembrete de proximidade para o produtor.', [
+                    'event_id' => $event->id,
+                    'user_id' => $owner->id,
+                    'hours_before' => $hoursBefore,
+                    'message' => $e->getMessage(),
+                ]);
+
+                return false;
+            }
+        }
+
+        if (! trim((string) $owner->email)) {
+            return false;
+        }
+
+        try {
+            Mail::to($owner->email)->send(new EventProducerUpdatedMail(
+                $owner,
+                $event,
+                $production,
+                $action,
+                [],
+                $title,
+                $message,
+                $appUrl,
+                $eventUrl,
+                $eventManagementUrl,
+                $appName,
+                $flyerUrl,
+                $shareUrl,
+                $createEventUrl
+            ));
+
+            $data = is_array($notification->data) ? $notification->data : [];
+            $data['producer_email_sent_at'] = now()->toIso8601String();
+            $data['reminder_hours'] = $hoursBefore;
+            $notification->forceFill(['data' => $data])->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            Log::error('Falha ao enviar lembrete de proximidade do evento ao produtor.', [
+                'event_id' => $event->id,
+                'user_id' => $owner->id,
+                'hours_before' => $hoursBefore,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     public function notify(Event $event, string $action = 'updated', array $changedFields = []): void
     {
         $production = $event->production_id
@@ -136,6 +280,15 @@ class EventProducerCommunicationService
         $changed = $changedLabels === []
             ? null
             : implode(', ', array_slice($changedLabels, 0, 5));
+
+        if (preg_match('/^reminder_(\\d+)h$/', $action, $matches) === 1) {
+            $hours = max(1, (int) ($matches[1] ?? 24));
+
+            return [
+                'Seu evento acontece nas próximas '.$hours.' horas: '.$eventName,
+                'O evento "'.$eventName.'" está a menos de '.$hours.' horas de começar. Entre agora na '.$appName.' para acompanhar vendas e ingressos, revisar check-in, equipe, local e divulgação. No dia do evento, mantenha a plataforma aberta para acompanhar a operação e agir rápido.',
+            ];
+        }
 
         return match ($action) {
             'created' => [
