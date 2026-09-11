@@ -250,8 +250,16 @@ final class MessagingController extends Controller
 
     public function startCall(Request $request, int $conversationId)
     {
-        $data = $request->validate(['type' => ['required', Rule::in(['audio', 'video'])]]);
-        return response()->json(['data' => $this->messaging->startCall($conversationId, (int) $request->user()->id, $data['type'])], 201);
+        $data = $request->validate([
+            'type' => ['required', Rule::in(['audio', 'video'])],
+            'metadata' => ['nullable', 'array'],
+        ]);
+        return response()->json(['data' => $this->messaging->startCall(
+            $conversationId,
+            (int) $request->user()->id,
+            $data['type'],
+            $data['metadata'] ?? [],
+        )], 201);
     }
 
     public function updateCall(Request $request, int $conversationId, int $callId)
