@@ -247,6 +247,7 @@ final class SearchAnalyticsService
         $totalSearches = (clone $base)->count();
         $zeroSearches = (clone $base)->where('zero_result', true)->count();
         $uniqueUsers = (clone $base)->whereNotNull('user_id')->distinct()->count('user_id');
+        $uniqueSessions = (clone $base)->whereNotNull('session_key')->distinct()->count('session_key');
         $clickCount = $clicks ? (clone $clicks)->count() : 0;
         $conversions = $clicks ? (clone $clicks)->whereNotNull('conversion_type')->count() : 0;
 
@@ -336,6 +337,7 @@ final class SearchAnalyticsService
             'zero_result_searches' => $zeroSearches,
             'zero_result_rate' => $totalSearches > 0 ? round(($zeroSearches / $totalSearches) * 100, 2) : 0,
             'unique_users' => $uniqueUsers,
+            'unique_sessions' => $uniqueSessions,
             'clicks' => $clickCount,
             'avg_seconds_to_click' => $avgSecondsToClick,
             'category_signals' => $categorySignals,
@@ -420,6 +422,7 @@ final class SearchAnalyticsService
             'zero_result_searches' => 0,
             'zero_result_rate' => 0,
             'unique_users' => 0,
+            'unique_sessions' => 0,
             'clicks' => 0,
             'avg_seconds_to_click' => 0,
             'category_signals' => [],
