@@ -3,6 +3,7 @@
 namespace App\Domain\Messaging\Http\Controllers;
 
 use App\Domain\Messaging\Services\MessageAttachmentDeliveryService;
+use App\Domain\Messaging\Services\MessageEngagementService;
 use App\Domain\Messaging\Services\MessagingService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
@@ -13,6 +14,7 @@ final class MessagingController extends Controller
     public function __construct(
         private readonly MessagingService $messaging,
         private readonly MessageAttachmentDeliveryService $attachments,
+        private readonly MessageEngagementService $engagement,
     ) {}
 
     public function index(Request $request)
@@ -200,6 +202,55 @@ final class MessagingController extends Controller
         return response()->json(['data' => $this->messaging->presence((int) $request->user()->id, $userId)]);
     }
 
+    public function conversationActivity(Request $request, int $conversationId)
+    {
+        $data = $request->validate(['active' => ['required', 'boolean']]);
+        $this->engagement->markConversationActive($conversationId, (int) $request->user()->id, (bool) $data['active']);
+        return response()->json(['ok' => true]);
+    }
+
+    public function pushPublicKey(Request $request)
+    {
+        return response()->json(['public_key' => $this->engagement->pushPublicKey()]);
+    }
+
+    public function subscribePush(Request $request)
+    {
+        $data = $request->validate([
+            'endpoint' => ['required', 'url', 'max:4096'],
+            'keys' => ['required', 'array'],
+            'keys.p256dh' => ['required', 'string', 'max:1024'],
+            'keys.auth' => ['required', 'string', 'max:1024'],
+            'contentEncoding' => ['nullable', 'string', 'max:24'],
+        ]);
+
+        return response()->json(['data' => $this->engagement->subscribePush(
+            (int) $request->user()->id,
+            $data,
+            $request->userAgent(),
+        )], 201);
+    }
+
+    public function unsubscribePush(Request $request)
+    {
+        $data = $request->validate(['endpoint' => ['required', 'url', 'max:4096']]);
+        $this->engagement->unsubscribePush((int) $request->user()->id, $data['endpoint']);
+        return response()->json(['message' => 'Assinatura push removida.']);
+    }
+
+    public function engagementClick(Request $request)
+    {
+        $data = $request->validate(['token' => ['required', 'uuid']]);
+        $conversationId = $this->engagement->trackEmailClick((int) $request->user()->id, $data['token']);
+        return response()->json(['conversation_id' => $conversationId]);
+    }
+
+    public function metrics(Request $request)
+    {
+        abort_unless($request->user()->hasProfile('Administrador'), 403, 'Sem permissão para consultar métricas do Direct.');
+        return response()->json(['data' => $this->engagement->metrics(max(1, min((int) $request->query('days', 30), 365)))]);
+    }
+
     public function settings(Request $request)
     {
         return response()->json(['data' => $this->messaging->settings((int) $request->user()->id)]);
@@ -214,6 +265,14 @@ final class MessagingController extends Controller
             'allow_group_invites' => ['required', 'boolean'],
             'muted_words' => ['nullable', 'array', 'max:100'],
             'muted_words.*' => ['string', 'max:80'],
+            'email_new_messages' => ['required', 'boolean'],
+            'push_new_messages' => ['required', 'boolean'],
+            'unread_reminders' => ['required', 'boolean'],
+            'digest_messages' => ['required', 'boolean'],
+            'include_message_preview' => ['required', 'boolean'],
+            'email_cooldown_minutes' => ['required', 'integer', 'min:1', 'max:120'],
+            'first_reminder_minutes' => ['required', 'integer', 'min:15', 'max:1440'],
+            'second_reminder_minutes' => ['required', 'integer', 'min:60', 'max:4320'],
         ]);
         return response()->json(['data' => $this->messaging->updateSettings((int) $request->user()->id, $data)]);
     }
