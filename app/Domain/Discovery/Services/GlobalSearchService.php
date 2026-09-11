@@ -19,6 +19,7 @@ final class GlobalSearchService
     public function __construct(
         private readonly SearchRelevance $relevance,
         private readonly SearchCampaignService $campaigns,
+        private readonly ExternalSearchIndexGateway $externalIndex,
     ) {}
 
     public function search(
@@ -295,7 +296,10 @@ final class GlobalSearchService
 
         $this->applyEventFilters($builder, $filters, $now);
 
-        if ($query !== '') {
+        $externalEventIds = $query !== '' ? $this->externalIndex->candidateIds('event', $query, $filters, $candidateLimit) : null;
+        if ($externalEventIds?->isNotEmpty()) {
+            $builder->whereIn('events.id', $externalEventIds->all());
+        } elseif ($query !== '') {
             $terms = collect(array_merge([$query], $expanded->all()))->filter()->unique()->take(8);
             $builder->where(function (Builder $where) use ($terms) {
                 foreach ($terms as $term) {
@@ -403,7 +407,10 @@ final class GlobalSearchService
             $builder->where('genres', 'like', '%'.trim($filters['genre']).'%');
         }
 
-        if ($query !== '') {
+        $externalProductionIds = $query !== '' ? $this->externalIndex->candidateIds($venuesOnly ? 'venue' : 'production', $query, $filters, max(80, $limit * 6)) : null;
+        if ($externalProductionIds?->isNotEmpty()) {
+            $builder->whereIn('id', $externalProductionIds->all());
+        } elseif ($query !== '') {
             $terms = collect(array_merge([$query], $expanded->all()))->filter()->unique()->take(8);
             $builder->where(function (Builder $where) use ($terms) {
                 foreach ($terms as $term) {
@@ -518,7 +525,10 @@ final class GlobalSearchService
             $builder->where('uf', strtoupper($filters['uf']));
         }
 
-        if ($query !== '') {
+        $externalArtistIds = $query !== '' ? $this->externalIndex->candidateIds('artist', $query, $filters, max(80, $limit * 6)) : null;
+        if ($externalArtistIds?->isNotEmpty()) {
+            $builder->whereIn('id', $externalArtistIds->all());
+        } elseif ($query !== '') {
             $terms = collect(array_merge([$query], $expanded->all()))->filter()->unique()->take(8);
             $builder->where(function (Builder $where) use ($terms) {
                 foreach ($terms as $term) {
@@ -624,7 +634,10 @@ final class GlobalSearchService
             ->when($blocked, fn (Builder $q) => $q->whereNotIn('users.id', $blocked))
             ->when($promotersOnly, fn (Builder $q) => $q->where('is_promoter', true));
 
-        if ($personQuery !== '') {
+        $externalUserIds = $personQuery !== '' ? $this->externalIndex->candidateIds('user', $personQuery, (array) ($parsed['filters'] ?? []), max(80, $limit * 6)) : null;
+        if ($externalUserIds?->isNotEmpty()) {
+            $builder->whereIn('users.id', $externalUserIds->all());
+        } elseif ($personQuery !== '') {
             $like = '%'.$personQuery.'%';
             $builder->where(function (Builder $where) use ($like) {
                 $where->where('user_name', 'like', $like)
@@ -812,17 +825,22 @@ final class GlobalSearchService
             ->active()
             ->with('establishment:id,name,slug,logo,city,uf');
 
-        $builder->where(function (Builder $where) use ($terms) {
-            foreach ($terms as $term) {
-                $like = '%'.$term.'%';
-                $where->orWhere('items.name', 'like', $like)
+        $externalItemIds = $this->externalIndex->candidateIds('item', $query, (array) ($parsed['filters'] ?? []), max(80, $limit * 6));
+        if ($externalItemIds?->isNotEmpty()) {
+            $builder->whereIn('items.id', $externalItemIds->all());
+        } else {
+            $builder->where(function (Builder $where) use ($terms) {
+                foreach ($terms as $term) {
+                    $like = '%'.$term.'%';
+                    $where->orWhere('items.name', 'like', $like)
                     ->orWhere('items.description', 'like', $like)
                     ->orWhere('items.category', 'like', $like)
                     ->orWhere('items.subcategory', 'like', $like)
                     ->orWhere('items.brand', 'like', $like)
                     ->orWhere('items.tags', 'like', $like);
-            }
-        });
+                }
+            });
+        }
 
         $items = $builder->orderByDesc('is_featured')->latest('updated_at')->limit(max(80, $limit * 6))->get();
 
