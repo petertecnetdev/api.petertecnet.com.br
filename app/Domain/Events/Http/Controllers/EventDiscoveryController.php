@@ -285,6 +285,74 @@ final class EventDiscoveryController extends Controller
         return response()->json(['event' => $event, 'tickets' => $tickets, 'history' => $history]);
     }
 
+    public function reviveHighlights(Request $request)
+    {
+        $data = $request->validate([
+            'city' => 'nullable|string|max:120',
+            'uf' => 'nullable|string|size:2',
+            'category' => 'nullable|string|max:120',
+            'per_page' => 'nullable|integer|min:1|max:30',
+        ]);
+
+        $appId = $this->context->id();
+        $cacheKey = 'event-revive-highlights:v1:'.$appId.':'.hash('sha256', http_build_query($data));
+        if (($cached = Cache::get($cacheKey)) !== null) {
+            return response()->json($cached)->header('X-Peter-Cache', 'HIT');
+        }
+
+        $ratingSub = DB::table('event_ratings')
+            ->where('app_id', $appId)
+            ->selectRaw('event_id, AVG(rating) rating_average, COUNT(*) rating_total')
+            ->groupBy('event_id');
+
+        $passSub = DB::table('event_passes')
+            ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
+            ->selectRaw('event_id, COUNT(DISTINCT user_id) participants, SUM(CASE WHEN checked_in_at IS NOT NULL THEN 1 ELSE 0 END) checkins')
+            ->groupBy('event_id');
+
+        $postSub = DB::table('event_posts')
+            ->where('app_id', $appId)
+            ->where('status', 'published')
+            ->selectRaw('event_id, COUNT(*) community_posts')
+            ->groupBy('event_id');
+
+        $query = DB::table('events as e')
+            ->leftJoinSub($ratingSub, 'rr', fn ($join) => $join->on('rr.event_id', '=', 'e.id'))
+            ->leftJoinSub($passSub, 'pp', fn ($join) => $join->on('pp.event_id', '=', 'e.id'))
+            ->leftJoinSub($postSub, 'cp', fn ($join) => $join->on('cp.event_id', '=', 'e.id'))
+            ->where('e.app_id', $appId)
+            ->where('e.is_published', true)
+            ->where('e.is_cancelled', false)
+            ->where(fn ($q) => $q->where('e.is_private', false)->orWhereNull('e.is_private'))
+            ->whereNotNull('e.end_date')
+            ->where('e.end_date', '<=', now())
+            ->where('e.end_date', '>=', now()->subYear())
+            ->when(! empty($data['city']), fn ($q) => $q->whereRaw('LOWER(e.city) = LOWER(?)', [trim($data['city'])]))
+            ->when(! empty($data['uf']), fn ($q) => $q->where('e.uf', strtoupper($data['uf'])))
+            ->when(! empty($data['category']), fn ($q) => $q->where('e.category', $data['category']))
+            ->where(fn ($q) => $q
+                ->whereRaw('COALESCE(rr.rating_total, 0) > 0')
+                ->orWhereRaw('COALESCE(cp.community_posts, 0) > 0'))
+            ->select([
+                'e.id', 'e.production_id', 'e.title', 'e.slug', 'e.image', 'e.start_date', 'e.end_date',
+                'e.city', 'e.uf', 'e.venue', 'e.category',
+            ])
+            ->selectRaw('ROUND(COALESCE(rr.rating_average, 0), 1) rating_average')
+            ->selectRaw('COALESCE(rr.rating_total, 0) rating_total')
+            ->selectRaw('COALESCE(pp.participants, 0) participants')
+            ->selectRaw('COALESCE(pp.checkins, 0) checkins')
+            ->selectRaw('COALESCE(cp.community_posts, 0) community_posts')
+            ->selectRaw('(COALESCE(rr.rating_average, 0) * 18 + LEAST(COALESCE(rr.rating_total, 0), 100) * 0.7 + LEAST(COALESCE(cp.community_posts, 0), 150) * 0.35 + LEAST(COALESCE(pp.participants, 0), 500) * 0.08) revive_score')
+            ->orderByDesc('revive_score')
+            ->orderByDesc('e.end_date');
+
+        $events = $query->paginate($data['per_page'] ?? 12)->appends($request->query());
+        $payload = ['events' => $events->toArray(), 'ranking' => 'revive_score'];
+        Cache::put($cacheKey, $payload, now()->addMinute());
+
+        return response()->json($payload)->header('X-Peter-Cache', 'MISS');
+    }
+
     public function facets(Request $request)
     {
         $appId = $this->context->id();
