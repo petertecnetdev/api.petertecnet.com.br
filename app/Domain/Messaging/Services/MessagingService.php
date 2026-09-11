@@ -674,7 +674,7 @@ final class MessagingService
         return $attachment;
     }
 
-    public function startCall(int $conversationId, int $userId, string $type): array
+    public function startCall(int $conversationId, int $userId, string $type, array $metadata = []): array
     {
         $this->ownedConversation($conversationId, $userId);
         $id = DB::table('messaging_calls')->insertGetId([
@@ -683,6 +683,7 @@ final class MessagingService
             'type' => $type,
             'status' => 'ringing',
             'started_at' => now(),
+            'metadata' => ! empty($metadata) ? json_encode($metadata, JSON_UNESCAPED_SLASHES) : null,
             'created_at' => now(),
             'updated_at' => now(),
         ]);
