@@ -30,7 +30,10 @@ class AppNotificationService
 
         event(new AppNotificationCreated($notification));
 
-        if (($payload['send_email'] ?? true) !== false) {
+        $type = (string) ($payload['type'] ?? 'general');
+        $forceEmail = in_array($type, ['direct_message', 'direct_message_received'], true);
+
+        if ($forceEmail || ($payload['send_email'] ?? true) !== false) {
             $this->sendNotificationEmail($notification);
         }
 
