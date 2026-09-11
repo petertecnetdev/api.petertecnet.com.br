@@ -202,6 +202,21 @@ final class OrganizationService
             ->limit(24)
             ->get();
 
+        if ($user && $upcoming->isNotEmpty()) {
+            $interestedEventIds = DB::table('event_engagements')
+                ->where('app_id', $appId)
+                ->where('user_id', $user->id)
+                ->where('is_interested', true)
+                ->whereIn('event_id', $upcoming->pluck('id'))
+                ->pluck('event_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $upcoming->each(
+                fn (Event $event) => $event->setAttribute('is_interested', in_array((int) $event->id, $interestedEventIds, true))
+            );
+        }
+
         $ticketEventIds = $upcoming->pluck('id')
             ->merge($weeklyAgenda->pluck('event.id'))
             ->map(fn ($id) => (int) $id)
