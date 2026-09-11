@@ -5,6 +5,7 @@ use App\Domain\Events\Http\Controllers\ApplicationAdminAccessController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminEventController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminTicketController;
 use App\Domain\Platform\Http\Controllers\ApplicationAdminController;
+use App\Domain\Platform\Http\Controllers\ApplicationAdminImpersonationController;
 use App\Domain\Platform\Http\Controllers\ApplicationAdminProductionController;
 use App\Http\Middleware\EnsureApplicationAdmin;
 use Illuminate\Support\Facades\Route;
@@ -85,6 +86,16 @@ Route::prefix('v1/apps/{application}')
                 Route::delete('/profiles/{profileId}', [ApplicationAdminController::class, 'destroyProfile'])
                     ->whereNumber('profileId')
                     ->middleware('throttle:20,1');
+
+                Route::post('/users/{userId}/impersonate', [ApplicationAdminImpersonationController::class, 'start'])
+                    ->whereNumber('userId')
+                    ->middleware('throttle:20,1');
+                Route::get('/impersonations', [ApplicationAdminImpersonationController::class, 'history']);
+                Route::get('/impersonations/{sessionId}/audit', [ApplicationAdminImpersonationController::class, 'audit'])
+                    ->whereNumber('sessionId');
+                Route::post('/impersonations/{sessionId}/end', [ApplicationAdminImpersonationController::class, 'forceEnd'])
+                    ->whereNumber('sessionId')
+                    ->middleware('throttle:30,1');
 
                 Route::get('/assignments', [ApplicationAdminController::class, 'assignments']);
                 Route::post('/assignments', [ApplicationAdminController::class, 'assign'])->middleware('throttle:30,1');
