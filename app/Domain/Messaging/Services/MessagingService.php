@@ -19,6 +19,7 @@ final class MessagingService
         private readonly ApplicationContext $context,
         private readonly ManagedFileStorageService $files,
         private readonly AppNotificationService $notifications,
+        private readonly MessageEngagementService $engagement,
     ) {}
 
     public function conversations(int $userId, string $search = '', array $filters = []): array
@@ -471,6 +472,7 @@ final class MessagingService
         abort_unless($message && (int) $message->sender_user_id === $userId, 403, 'Você só pode cancelar o envio das suas mensagens.');
 
         DB::table('messages')->where('id', $messageId)->update(['deleted_at' => now(), 'updated_at' => now()]);
+        $this->engagement->cancelMessage($messageId);
         $this->broadcast($conversationId, 'messaging.message.deleted', ['message_id' => $messageId], $this->participantIds($conversationId));
     }
 
@@ -545,6 +547,7 @@ final class MessagingService
         $this->ownedConversation($conversationId, $userId);
         $now = now();
         DB::table('conversation_participants')->where('conversation_id', $conversationId)->where('user_id', $userId)->update(['last_read_at' => $now, 'last_delivered_at' => $now, 'updated_at' => $now]);
+        $this->engagement->markRead($conversationId, $userId);
 
         $messageIds = DB::table('messages')->where('conversation_id', $conversationId)->where('sender_user_id', '<>', $userId)->whereNull('deleted_at')->pluck('id');
         foreach ($messageIds as $messageId) {
@@ -603,6 +606,14 @@ final class MessagingService
             'send_read_receipts' => isset($row->send_read_receipts) ? (bool) $row->send_read_receipts : true,
             'allow_group_invites' => isset($row->allow_group_invites) ? (bool) $row->allow_group_invites : true,
             'muted_words' => $row?->muted_words ? json_decode($row->muted_words, true) : [],
+            'email_new_messages' => isset($row->email_new_messages) ? (bool) $row->email_new_messages : true,
+            'push_new_messages' => isset($row->push_new_messages) ? (bool) $row->push_new_messages : true,
+            'unread_reminders' => isset($row->unread_reminders) ? (bool) $row->unread_reminders : true,
+            'digest_messages' => isset($row->digest_messages) ? (bool) $row->digest_messages : true,
+            'include_message_preview' => isset($row->include_message_preview) ? (bool) $row->include_message_preview : true,
+            'email_cooldown_minutes' => max(1, min((int) ($row->email_cooldown_minutes ?? 10), 120)),
+            'first_reminder_minutes' => max(15, min((int) ($row->first_reminder_minutes ?? 120), 1440)),
+            'second_reminder_minutes' => max(60, min((int) ($row->second_reminder_minutes ?? 720), 4320)),
         ];
     }
 
@@ -614,6 +625,14 @@ final class MessagingService
             'send_read_receipts' => (bool) ($data['send_read_receipts'] ?? true),
             'allow_group_invites' => (bool) ($data['allow_group_invites'] ?? true),
             'muted_words' => json_encode(array_values($data['muted_words'] ?? []), JSON_UNESCAPED_UNICODE),
+            'email_new_messages' => (bool) ($data['email_new_messages'] ?? true),
+            'push_new_messages' => (bool) ($data['push_new_messages'] ?? true),
+            'unread_reminders' => (bool) ($data['unread_reminders'] ?? true),
+            'digest_messages' => (bool) ($data['digest_messages'] ?? true),
+            'include_message_preview' => (bool) ($data['include_message_preview'] ?? true),
+            'email_cooldown_minutes' => max(1, min((int) ($data['email_cooldown_minutes'] ?? 10), 120)),
+            'first_reminder_minutes' => max(15, min((int) ($data['first_reminder_minutes'] ?? 120), 1440)),
+            'second_reminder_minutes' => max(60, min((int) ($data['second_reminder_minutes'] ?? 720), 4320)),
             'updated_at' => now(),
         ];
         DB::table('messaging_user_settings')->updateOrInsert(
@@ -739,6 +758,8 @@ final class MessagingService
         $recipientIds = $this->participantIds($conversationId)->filter(fn ($id) => $id !== $senderId)->values();
         $now = now();
 
+        $this->engagement->markResponse($conversationId, $senderId);
+
         DB::table('conversation_participants')
             ->where('conversation_id', $conversationId)
             ->where('user_id', '<>', $senderId)
@@ -754,6 +775,7 @@ final class MessagingService
         $this->broadcast($conversationId, 'messaging.message.created', ['message' => $message], $this->participantIds($conversationId));
 
         foreach ($recipientIds as $recipientId) {
+            $this->engagement->queueMessage((int) $message['id'], (int) $recipientId);
             $participant = DB::table('conversation_participants')->where('conversation_id', $conversationId)->where('user_id', $recipientId)->first();
             if ($participant?->muted_until && Carbon::parse($participant->muted_until)->isFuture()) {
                 continue;
