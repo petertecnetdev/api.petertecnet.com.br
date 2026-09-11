@@ -350,17 +350,7 @@ class IdentityAuthenticationController extends Controller
 
     private function findUser(string $identifier): ?User
     {
-        $identifier = trim($identifier);
-        if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-            return User::query()->where('email', strtolower($identifier))->first();
-        }
-
-        $digits = preg_replace('/\D/', '', $identifier) ?? '';
-        if (strlen($digits) === 11) {
-            return User::query()->where('cpf', $digits)->orWhere('phone', $digits)->first();
-        }
-
-        return User::query()->where('user_name', $identifier)->first();
+        return User::findByLoginIdentifier($identifier);
     }
 
     private function uniqueUsername(string $name): string
