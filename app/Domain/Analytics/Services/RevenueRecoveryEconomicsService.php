@@ -15,6 +15,7 @@ final class RevenueRecoveryEconomicsService
         private readonly RecoverySurfaceEconomics $surfaceEconomics,
         private readonly RecoveryProminenceExperimentEconomics $prominenceExperimentEconomics,
         private readonly CheckoutJourneyFunnel $checkoutJourneyFunnel,
+        private readonly CheckoutJourneyPeriodComparison $checkoutJourneyPeriodComparison,
     ) {
     }
 
@@ -23,6 +24,7 @@ final class RevenueRecoveryEconomicsService
     {
         $days = min(max($days, 1), 365);
         $since = now()->subDays($days);
+        $previousSince = now()->subDays($days * 2);
 
         $orders = CommerceOrder::query()
             ->where('app_id', $appId)
@@ -130,12 +132,43 @@ final class RevenueRecoveryEconomicsService
             ])
             ->all();
 
-        $metrics['checkout_journey_funnel'] = $this->checkoutJourneyFunnel->summarize(
+        $currentJourneyFunnel = $this->checkoutJourneyFunnel->summarize(
             $journeyInteractions,
             $eventIds,
             $observedPlatformContributionMargin,
             $platformContributionMarginByPaymentMethod,
         );
+
+        $previousJourneyInteractions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('created_at', '>=', $previousSince)
+            ->where('created_at', '<', $since)
+            ->whereIn('interaction_type', [
+                'frontend_checkout_opened',
+                'frontend_checkout_mobile_payment_cta_clicked',
+                'frontend_payment_attempted',
+                'frontend_payment_approved',
+                'frontend_checkout_fulfilled',
+                'frontend_checkout_abandoned',
+                'frontend_payment_failed',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $previousJourneyFunnel = $this->checkoutJourneyFunnel->summarize(
+            $previousJourneyInteractions,
+            $eventIds,
+            $observedPlatformContributionMargin,
+            $platformContributionMarginByPaymentMethod,
+        );
+        $currentJourneyFunnel['period_comparison'] = $this->checkoutJourneyPeriodComparison->compare(
+            $currentJourneyFunnel,
+            $previousJourneyFunnel,
+            $days,
+        );
+        $metrics['checkout_journey_funnel'] = $currentJourneyFunnel;
 
         return $metrics;
     }
