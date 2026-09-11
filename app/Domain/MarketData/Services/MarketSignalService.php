@@ -7,10 +7,8 @@ use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\User;
 use App\Services\AppNotificationService;
-use App\Services\ApplicationRuntimeControlService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
-use RuntimeException;
 
 final class MarketSignalService
 {
@@ -21,15 +19,10 @@ final class MarketSignalService
     public function __construct(
         private readonly CoinMarketCapScannerService $scanner,
         private readonly AppNotificationService $notifications,
-        private readonly ApplicationRuntimeControlService $runtime,
     ) {}
 
     public function current(): array
     {
-        if (! $this->runtime->allows(self::APP_SLUG, 'market_scanner_enabled')) {
-            throw new RuntimeException('O processamento de mercado da Kryvion está suspenso pelo Admin Center.');
-        }
-
         $scan = $this->scanner->universe();
         $assets = collect($scan['opportunities'] ?? [])->filter(fn ($asset) => is_array($asset))->values();
 
@@ -81,11 +74,6 @@ final class MarketSignalService
 
     public function distribute(): array
     {
-        if (! $this->runtime->allowsScheduledMarketProcessing(self::APP_SLUG)
-            || ! $this->runtime->allows(self::APP_SLUG, 'notifications_enabled')) {
-            return ['sent' => 0, 'skipped' => 0, 'reason' => 'kryvion_runtime_suspended'];
-        }
-
         $application = Application::query()->where('slug', self::APP_SLUG)->where('is_active', true)->first();
         if (! $application) {
             return ['sent' => 0, 'skipped' => 0, 'reason' => 'kryvion_application_not_found'];
@@ -166,12 +154,6 @@ final class MarketSignalService
 
     public function distributeOpportunityReports(?Application $application = null, ?array $signals = null, bool $force = false): array
     {
-        if (! $this->runtime->allowsScheduledMarketProcessing(self::APP_SLUG)
-            || ! $this->runtime->allows(self::APP_SLUG, 'reports_enabled')
-            || ! $this->runtime->allows(self::APP_SLUG, 'emails_enabled')) {
-            return ['sent' => 0, 'skipped' => 0, 'failed' => 0, 'reason' => 'kryvion_runtime_suspended'];
-        }
-
         $application ??= Application::query()->where('slug', self::APP_SLUG)->where('is_active', true)->first();
         if (! $application) {
             return ['sent' => 0, 'skipped' => 0, 'failed' => 0, 'reason' => 'kryvion_application_not_found'];
