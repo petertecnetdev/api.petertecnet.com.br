@@ -39,6 +39,17 @@ final class MessagingController extends Controller
         return response()->json(['data' => $this->messaging->openDirect($userId, (int) $data['user_id'])]);
     }
 
+    public function acceptRequest(Request $request, int $conversationId)
+    {
+        return response()->json(['data' => $this->messaging->acceptRequest($conversationId, (int) $request->user()->id)]);
+    }
+
+    public function rejectRequest(Request $request, int $conversationId)
+    {
+        $this->messaging->rejectRequest($conversationId, (int) $request->user()->id);
+        return response()->json(['message' => 'Solicitação recusada.']);
+    }
+
     public function createGroup(Request $request)
     {
         $data = $request->validate([
@@ -194,7 +205,7 @@ final class MessagingController extends Controller
     public function updateSettings(Request $request)
     {
         $data = $request->validate([
-            'allow_messages_from' => ['required', Rule::in(['everyone', 'none'])],
+            'allow_messages_from' => ['required', Rule::in(['everyone', 'requests', 'none'])],
             'show_activity_status' => ['required', 'boolean'],
             'send_read_receipts' => ['required', 'boolean'],
             'allow_group_invites' => ['required', 'boolean'],
