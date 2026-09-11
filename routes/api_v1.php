@@ -66,10 +66,10 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::get('/config', [ApplicationConfigController::class, 'show']);
         Route::get('/directory', [ApplicationDirectoryController::class, 'index']);
-        Route::get('/global-search', [GlobalSearchController::class, 'index'])->middleware('throttle:240,1');
-        Route::get('/global-search/suggestions', [GlobalSearchController::class, 'suggestions'])->middleware('throttle:240,1');
-        Route::get('/global-search/discover', [GlobalSearchController::class, 'discover'])->middleware('throttle:120,1');
-        Route::get('/global-search/trending', [GlobalSearchController::class, 'trending'])->middleware('throttle:120,1');
+        Route::get('/global-search', [GlobalSearchController::class, 'index'])->middleware('throttle:search-read');
+        Route::get('/global-search/suggestions', [GlobalSearchController::class, 'suggestions'])->middleware('throttle:search-read');
+        Route::get('/global-search/discover', [GlobalSearchController::class, 'discover'])->middleware('throttle:search-read');
+        Route::get('/global-search/trending', [GlobalSearchController::class, 'trending'])->middleware('throttle:search-read');
 
         // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
