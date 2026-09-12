@@ -73,6 +73,7 @@ class SemanticTelemetryTest extends TestCase
         $failed = Interaction::query()->where('request_id', 'schema-3-error')->firstOrFail();
 
         $this->assertSame('frontend_screen_view', $screen->interaction_type);
+        $this->assertSame('production', $screen->environment);
         $this->assertSame('success', $action->outcome);
         $this->assertSame('RiskProfile', $action->entity_type);
         $this->assertSame(42, $action->entity_id);
