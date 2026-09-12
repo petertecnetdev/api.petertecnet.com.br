@@ -53,6 +53,7 @@ return [
         // zero-cost reminder without exposing user data or changing checkout state.
         'deep_link_paths_by_host' => [
             'cutinapp.petertecnet.com.br' => '/purchases/{public_id}?recovery_source=in_app',
+            'plat.petertecnet.com.br' => '/my-orders/{id}?recovery_source=in_app',
         ],
     ],
 ];
