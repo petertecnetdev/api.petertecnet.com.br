@@ -17,6 +17,7 @@ final class RevenueRecoveryEconomicsService
         private readonly RecoveryProminenceExperimentEconomics $prominenceExperimentEconomics,
         private readonly CheckoutJourneyFunnel $checkoutJourneyFunnel,
         private readonly CheckoutJourneyPeriodComparison $checkoutJourneyPeriodComparison,
+        private readonly CheckoutRecoveryJourneyEconomics $checkoutRecoveryJourneyEconomics,
     ) {
     }
 
@@ -105,6 +106,27 @@ final class RevenueRecoveryEconomicsService
             ->where('app_id', $appId)
             ->where('production_id', $organizationId)
             ->pluck('id');
+
+        $recoveryJourneyInteractions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
+            ->where('created_at', '>=', $since)
+            ->whereIn('interaction_type', [
+                'frontend_checkout_recovered',
+                'frontend_checkout_opened',
+                'frontend_payment_attempted',
+                'frontend_payment_approved',
+                'frontend_checkout_fulfilled',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $metrics['checkout_recovery_journey_economics'] = $this->checkoutRecoveryJourneyEconomics->summarize(
+            $recoveryJourneyInteractions,
+            $eventIds,
+        );
 
         $journeyInteractions = Interaction::query()
             ->where('app_id', $appId)
