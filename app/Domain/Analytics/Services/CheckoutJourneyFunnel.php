@@ -88,6 +88,7 @@ final class CheckoutJourneyFunnel
 
             if ($type === 'frontend_checkout_abandoned') {
                 $journeys[$journeyId]['abandoned'] = true;
+                $journeys[$journeyId]['abandonment'] = $this->abandonmentMetadata($interaction);
             } elseif ($type === 'frontend_payment_failed') {
                 $journeys[$journeyId]['payment_failed'] = true;
             }
@@ -106,6 +107,7 @@ final class CheckoutJourneyFunnel
         $abandonedGmv = 0.0;
         $abandoned = 0;
         $paymentFailed = 0;
+        $abandonmentDiagnostics = [];
 
         foreach ($journeys as $journey) {
             $amount = (float) ($journey['amount'] ?? 0.0);
@@ -135,6 +137,12 @@ final class CheckoutJourneyFunnel
             if ($journey['abandoned'] && ! $journey['stages']['payment_approved']) {
                 $abandoned++;
                 $abandonedGmv += $amount;
+                $this->accumulateAbandonmentDiagnostic(
+                    $abandonmentDiagnostics,
+                    $journey,
+                    $amount,
+                    $estimatedPlatformContribution,
+                );
             }
             if ($journey['payment_failed'] && ! $journey['stages']['payment_approved']) {
                 $paymentFailed++;
@@ -200,6 +208,7 @@ final class CheckoutJourneyFunnel
                 'largest_step' => $largestDropoff,
                 'largest_economic_step' => $largestEconomicDropoff,
                 'largest_contribution_step' => $largestContributionDropoff,
+                'abandonment_diagnostics' => $this->finalizeAbandonmentDiagnostics($abandonmentDiagnostics),
             ],
             'gmv' => [
                 'opened' => round($openedGmv, 2),
@@ -221,6 +230,104 @@ final class CheckoutJourneyFunnel
     }
 
     /** @return array<string, mixed> */
+    private function abandonmentMetadata(mixed $interaction): array
+    {
+        $reason = strtolower(trim((string) $this->value($interaction, ['content', 'metadata', 'reason'])));
+        if (! preg_match('/^[a-z0-9._:-]{1,80}$/', $reason)) {
+            $reason = 'unknown';
+        }
+
+        $elapsedMs = $this->value($interaction, ['content', 'metadata', 'elapsed_ms']);
+        $ticketQuantity = $this->value($interaction, ['content', 'metadata', 'ticket_quantity']);
+        $itemQuantity = $this->value($interaction, ['content', 'metadata', 'item_quantity']);
+
+        return [
+            'reason' => $reason,
+            'elapsed_ms' => is_numeric($elapsedMs) ? max(0, (int) $elapsedMs) : null,
+            'ticket_quantity' => is_numeric($ticketQuantity) ? max(0, (int) $ticketQuantity) : 0,
+            'item_quantity' => is_numeric($itemQuantity) ? max(0, (int) $itemQuantity) : 0,
+        ];
+    }
+
+    /** @param array<string, mixed> $diagnostics @param array<string, mixed> $journey */
+    private function accumulateAbandonmentDiagnostic(array &$diagnostics, array $journey, float $amount, ?float $estimatedContribution): void
+    {
+        $metadata = is_array($journey['abandonment'] ?? null) ? $journey['abandonment'] : [];
+        $reason = (string) ($metadata['reason'] ?? 'unknown');
+        $method = (string) ($journey['payment_method'] ?: 'unknown');
+        $elapsedBucket = $this->abandonmentElapsedBucket($metadata['elapsed_ms'] ?? null);
+        $cartType = $this->abandonmentCartType(
+            (int) ($metadata['ticket_quantity'] ?? 0),
+            (int) ($metadata['item_quantity'] ?? 0),
+        );
+
+        foreach ([
+            'by_reason' => $reason,
+            'by_payment_method' => $method,
+            'by_elapsed_time' => $elapsedBucket,
+            'by_cart_type' => $cartType,
+        ] as $dimension => $key) {
+            $diagnostics[$dimension][$key] ??= [
+                'key' => $key,
+                'journeys' => 0,
+                'gmv_at_risk' => 0.0,
+                'platform_contribution_at_risk' => $estimatedContribution !== null ? 0.0 : null,
+            ];
+            $diagnostics[$dimension][$key]['journeys']++;
+            $diagnostics[$dimension][$key]['gmv_at_risk'] += $amount;
+            if ($estimatedContribution !== null) {
+                $diagnostics[$dimension][$key]['platform_contribution_at_risk'] ??= 0.0;
+                $diagnostics[$dimension][$key]['platform_contribution_at_risk'] += $estimatedContribution;
+            }
+        }
+    }
+
+    private function abandonmentElapsedBucket(mixed $elapsedMs): string
+    {
+        if (! is_numeric($elapsedMs)) {
+            return 'unknown';
+        }
+        $seconds = max(0, ((int) $elapsedMs) / 1000);
+        return match (true) {
+            $seconds < 30 => 'under_30s',
+            $seconds < 60 => '30_to_59s',
+            $seconds < 180 => '1_to_2m',
+            $seconds < 300 => '3_to_4m',
+            default => '5m_plus',
+        };
+    }
+
+    private function abandonmentCartType(int $tickets, int $items): string
+    {
+        return match (true) {
+            $tickets > 0 && $items > 0 => 'tickets_plus_items',
+            $tickets > 0 => 'tickets_only',
+            $items > 0 => 'items_only',
+            default => 'unknown',
+        };
+    }
+
+    /** @param array<string, mixed> $diagnostics @return array<string, mixed> */
+    private function finalizeAbandonmentDiagnostics(array $diagnostics): array
+    {
+        $result = [];
+        foreach (['by_reason', 'by_payment_method', 'by_elapsed_time', 'by_cart_type'] as $dimension) {
+            $rows = array_values($diagnostics[$dimension] ?? []);
+            foreach ($rows as &$row) {
+                $row['gmv_at_risk'] = round((float) $row['gmv_at_risk'], 2);
+                if ($row['platform_contribution_at_risk'] !== null) {
+                    $row['platform_contribution_at_risk'] = round((float) $row['platform_contribution_at_risk'], 2);
+                }
+            }
+            unset($row);
+            usort($rows, static fn (array $a, array $b): int => [$b['gmv_at_risk'], $b['journeys']] <=> [$a['gmv_at_risk'], $a['journeys']]);
+            $result[$dimension] = $rows;
+        }
+
+        return $result;
+    }
+
+    /** @return array<string, mixed> */
     private function newJourney(int $eventId): array
     {
         return [
@@ -229,6 +336,7 @@ final class CheckoutJourneyFunnel
             'payment_method' => null,
             'abandoned' => false,
             'payment_failed' => false,
+            'abandonment' => [],
             'stages' => array_fill_keys(array_keys(self::STAGES), false),
         ];
     }
@@ -383,6 +491,7 @@ final class CheckoutJourneyFunnel
                 'largest_step' => null,
                 'largest_economic_step' => null,
                 'largest_contribution_step' => null,
+                'abandonment_diagnostics' => $this->finalizeAbandonmentDiagnostics([]),
             ],
             'gmv' => [
                 'opened' => 0.0,
