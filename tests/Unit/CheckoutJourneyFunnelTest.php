@@ -142,6 +142,34 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(0.0, $summary['gmv']['approved']);
     }
 
+    public function test_it_keeps_unattributed_abandonment_economics_without_polluting_journey_conversion(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [[
+            'interaction_type' => 'frontend_checkout_abandoned',
+            'content' => ['metadata' => [
+                'event_id' => 10,
+                'amount' => 250,
+                'payment_method' => 'pix',
+                'reason' => 'pagehide',
+                'elapsed_ms' => 1418,
+                'ticket_quantity' => 0,
+                'item_quantity' => 3,
+            ]],
+        ]];
+
+        $summary = $funnel->summarize($interactions, [10], 8.0, ['pix' => 10.0]);
+
+        $this->assertSame(0, $summary['journeys']);
+        $this->assertNull($summary['conversion']['opened_to_attempted_percent']);
+        $this->assertSame(1, $summary['dropoff']['unattributed_abandonment']['events']);
+        $this->assertSame(250.0, $summary['dropoff']['unattributed_abandonment']['gmv_at_risk']);
+        $this->assertSame(25.0, $summary['dropoff']['unattributed_abandonment']['platform_contribution_at_risk']);
+        $this->assertSame('pagehide', $summary['dropoff']['unattributed_abandonment']['diagnostics']['by_reason'][0]['key']);
+        $this->assertSame('items_only', $summary['dropoff']['unattributed_abandonment']['diagnostics']['by_cart_type'][0]['key']);
+        $this->assertSame(250.0, $summary['gmv']['unattributed_abandoned_at_risk']);
+    }
+
     public function test_it_ignores_missing_or_invalid_journey_identifiers(): void
     {
         $funnel = new CheckoutJourneyFunnel();
