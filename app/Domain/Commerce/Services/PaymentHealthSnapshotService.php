@@ -104,6 +104,11 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders' => (int) ($active['peak_pending_orders'] ?? 0),
                 'peak_critical_orders' => (int) ($active['peak_critical_orders'] ?? 0),
                 'peak_provider_pending_payments' => (int) ($active['peak_provider_pending_payments'] ?? 0),
+                'recovered_paid_orders' => (int) ($active['recovered_paid_orders'] ?? 0),
+                'recovered_fulfillments' => (int) ($active['recovered_fulfillments'] ?? 0),
+                'recovered_delivery_retries' => (int) ($active['recovered_delivery_retries'] ?? 0),
+                'recovered_gmv' => round((float) ($active['recovered_gmv'] ?? 0), 2),
+                'last_recovery_at' => $active['last_recovery_at'] ?? null,
             ]
             : null;
 
@@ -116,6 +121,10 @@ final class PaymentHealthSnapshotService
                 'average_duration_seconds' => null,
                 'max_duration_seconds' => null,
                 'peak_at_risk_volume' => 0.0,
+                'recovered_paid_orders' => 0,
+                'recovered_fulfillments' => 0,
+                'recovered_delivery_retries' => 0,
+                'recovered_gmv' => 0.0,
                 'recent' => [],
             ];
         }
@@ -128,6 +137,10 @@ final class PaymentHealthSnapshotService
             ->selectRaw('AVG(duration_seconds) as average_duration_seconds')
             ->selectRaw('MAX(duration_seconds) as max_duration_seconds')
             ->selectRaw('MAX(peak_at_risk_volume) as peak_at_risk_volume')
+            ->selectRaw('SUM(recovered_paid_orders) as recovered_paid_orders')
+            ->selectRaw('SUM(recovered_fulfillments) as recovered_fulfillments')
+            ->selectRaw('SUM(recovered_delivery_retries) as recovered_delivery_retries')
+            ->selectRaw('SUM(recovered_gmv) as recovered_gmv')
             ->first();
 
         $recent = DB::table('commerce_payment_health_incidents')
@@ -142,6 +155,11 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders',
                 'peak_critical_orders',
                 'peak_provider_pending_payments',
+                'recovered_paid_orders',
+                'recovered_fulfillments',
+                'recovered_delivery_retries',
+                'recovered_gmv',
+                'last_recovery_at',
                 'closing_at_risk_volume',
                 'signals',
             ])
@@ -153,6 +171,11 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders' => (int) $row->peak_pending_orders,
                 'peak_critical_orders' => (int) $row->peak_critical_orders,
                 'peak_provider_pending_payments' => (int) $row->peak_provider_pending_payments,
+                'recovered_paid_orders' => (int) $row->recovered_paid_orders,
+                'recovered_fulfillments' => (int) $row->recovered_fulfillments,
+                'recovered_delivery_retries' => (int) $row->recovered_delivery_retries,
+                'recovered_gmv' => round((float) $row->recovered_gmv, 2),
+                'last_recovery_at' => $row->last_recovery_at,
                 'closing_at_risk_volume' => $row->closing_at_risk_volume !== null ? round((float) $row->closing_at_risk_volume, 2) : null,
                 'signals' => is_string($row->signals) ? (json_decode($row->signals, true) ?: []) : ($row->signals ?? []),
             ])
@@ -171,6 +194,10 @@ final class PaymentHealthSnapshotService
                 ? (int) $summary->max_duration_seconds
                 : null,
             'peak_at_risk_volume' => round((float) ($summary->peak_at_risk_volume ?? 0), 2),
+            'recovered_paid_orders' => (int) ($summary->recovered_paid_orders ?? 0),
+            'recovered_fulfillments' => (int) ($summary->recovered_fulfillments ?? 0),
+            'recovered_delivery_retries' => (int) ($summary->recovered_delivery_retries ?? 0),
+            'recovered_gmv' => round((float) ($summary->recovered_gmv ?? 0), 2),
             'recent' => $recent,
         ];
     }
@@ -195,6 +222,11 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders' => (int) ($current['pending_orders'] ?? 0),
                 'peak_critical_orders' => (int) ($current['critical_orders'] ?? 0),
                 'peak_provider_pending_payments' => (int) ($current['provider_pending_payments'] ?? 0),
+                'recovered_paid_orders' => 0,
+                'recovered_fulfillments' => 0,
+                'recovered_delivery_retries' => 0,
+                'recovered_gmv' => 0.0,
+                'last_recovery_at' => null,
                 'signals' => $trend['signals'] ?? [],
             ];
         }
@@ -220,6 +252,11 @@ final class PaymentHealthSnapshotService
                     (int) ($current['provider_pending_payments'] ?? 0),
                     (int) ($incident['peak_provider_pending_payments'] ?? 0)
                 ),
+                'recovered_paid_orders' => (int) ($incident['recovered_paid_orders'] ?? 0),
+                'recovered_fulfillments' => (int) ($incident['recovered_fulfillments'] ?? 0),
+                'recovered_delivery_retries' => (int) ($incident['recovered_delivery_retries'] ?? 0),
+                'recovered_gmv' => round((float) ($incident['recovered_gmv'] ?? 0), 2),
+                'last_recovery_at' => $incident['last_recovery_at'] ?? null,
                 'signals' => array_values(array_unique(array_merge(
                     $incident['signals'] ?? [],
                     $trend['signals'] ?? []
@@ -277,6 +314,11 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders' => (int) ($incident['peak_pending_orders'] ?? 0),
                 'peak_critical_orders' => (int) ($incident['peak_critical_orders'] ?? 0),
                 'peak_provider_pending_payments' => (int) ($incident['peak_provider_pending_payments'] ?? 0),
+                'recovered_paid_orders' => (int) ($incident['recovered_paid_orders'] ?? 0),
+                'recovered_fulfillments' => (int) ($incident['recovered_fulfillments'] ?? 0),
+                'recovered_delivery_retries' => (int) ($incident['recovered_delivery_retries'] ?? 0),
+                'recovered_gmv' => round((float) ($incident['recovered_gmv'] ?? 0), 2),
+                'last_recovery_at' => ! empty($incident['last_recovery_at']) ? CarbonImmutable::parse($incident['last_recovery_at']) : null,
                 'closing_pending_orders' => (int) ($current['pending_orders'] ?? 0),
                 'closing_critical_orders' => (int) ($current['critical_orders'] ?? 0),
                 'closing_at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
@@ -295,6 +337,10 @@ final class PaymentHealthSnapshotService
             'peak_pending_orders' => (int) ($incident['peak_pending_orders'] ?? 0),
             'peak_critical_orders' => (int) ($incident['peak_critical_orders'] ?? 0),
             'peak_provider_pending_payments' => (int) ($incident['peak_provider_pending_payments'] ?? 0),
+            'recovered_paid_orders' => (int) ($incident['recovered_paid_orders'] ?? 0),
+            'recovered_fulfillments' => (int) ($incident['recovered_fulfillments'] ?? 0),
+            'recovered_delivery_retries' => (int) ($incident['recovered_delivery_retries'] ?? 0),
+            'recovered_gmv' => round((float) ($incident['recovered_gmv'] ?? 0), 2),
             'current_pending_orders' => (int) ($current['pending_orders'] ?? 0),
             'current_critical_orders' => (int) ($current['critical_orders'] ?? 0),
             'current_at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
