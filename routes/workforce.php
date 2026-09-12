@@ -21,6 +21,8 @@ Route::prefix('v1/apps/{application}')
     ])
     ->group(function () {
         Route::get('/team-members/candidates', [TeamMemberController::class, 'candidates']);
+        Route::post('/team-members/invitations', [TeamMemberController::class, 'invite'])
+            ->middleware('throttle:10,1');
         Route::get('/team-members', [TeamMemberController::class, 'index']);
         Route::delete('/team-members/{teamMember}', [TeamMemberController::class, 'destroy'])
             ->whereNumber('teamMember');
