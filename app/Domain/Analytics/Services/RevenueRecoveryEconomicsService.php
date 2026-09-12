@@ -113,12 +113,14 @@ final class RevenueRecoveryEconomicsService
                 'frontend_payment_approved',
                 'frontend_checkout_fulfilled',
                 'frontend_checkout_abandoned',
+                'frontend_checkout_abandoned_before_payment_attempt',
                 'frontend_payment_failed',
             ])
             ->select(['id', 'interaction_type', 'content', 'created_at'])
             ->orderBy('created_at')
             ->orderBy('id')
-            ->cursor();
+            ->cursor()
+            ->map(fn (Interaction $interaction): Interaction => $this->normalizeCheckoutJourneyInteraction($interaction));
 
         $observedPlatformContributionMargin = (float) ($metrics['gross_revenue'] ?? 0) > 0
             && is_numeric($metrics['platform_contribution_margin'] ?? null)
@@ -150,12 +152,14 @@ final class RevenueRecoveryEconomicsService
                 'frontend_payment_approved',
                 'frontend_checkout_fulfilled',
                 'frontend_checkout_abandoned',
+                'frontend_checkout_abandoned_before_payment_attempt',
                 'frontend_payment_failed',
             ])
             ->select(['id', 'interaction_type', 'content', 'created_at'])
             ->orderBy('created_at')
             ->orderBy('id')
-            ->cursor();
+            ->cursor()
+            ->map(fn (Interaction $interaction): Interaction => $this->normalizeCheckoutJourneyInteraction($interaction));
 
         $previousJourneyFunnel = $this->checkoutJourneyFunnel->summarize(
             $previousJourneyInteractions,
@@ -171,5 +175,14 @@ final class RevenueRecoveryEconomicsService
         $metrics['checkout_journey_funnel'] = $currentJourneyFunnel;
 
         return $metrics;
+    }
+
+    private function normalizeCheckoutJourneyInteraction(Interaction $interaction): Interaction
+    {
+        if ($interaction->interaction_type === 'frontend_checkout_abandoned_before_payment_attempt') {
+            $interaction->interaction_type = 'frontend_checkout_abandoned';
+        }
+
+        return $interaction;
     }
 }
