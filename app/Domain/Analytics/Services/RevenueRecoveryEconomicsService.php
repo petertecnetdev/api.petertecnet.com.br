@@ -9,6 +9,7 @@ use App\Models\Interaction;
 final class RevenueRecoveryEconomicsService
 {
     private const NAVBAR_PROMINENCE_EXPERIMENT = 'pix_recovery_navbar_prominence_v1';
+    private const FRONTEND_ANALYTICS_ENVIRONMENT = 'production';
 
     public function __construct(
         private readonly ObservedRecoveryChannelEconomics $observedEconomics,
@@ -63,6 +64,7 @@ final class RevenueRecoveryEconomicsService
 
         $interactions = Interaction::query()
             ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
             ->where('created_at', '>=', $since)
             ->whereIn('interaction_type', [
                 'frontend_checkout_recovery_notification_cta_viewed',
@@ -82,6 +84,7 @@ final class RevenueRecoveryEconomicsService
 
         $experimentInteractions = Interaction::query()
             ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
             ->where('created_at', '>=', $since)
             ->whereIn('interaction_type', [
                 'frontend_checkout_recovery_notification_cta_viewed',
@@ -105,6 +108,7 @@ final class RevenueRecoveryEconomicsService
 
         $journeyInteractions = Interaction::query()
             ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
             ->where('created_at', '>=', $since)
             ->whereIn('interaction_type', [
                 'frontend_checkout_opened',
@@ -143,6 +147,7 @@ final class RevenueRecoveryEconomicsService
 
         $previousJourneyInteractions = Interaction::query()
             ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
             ->where('created_at', '>=', $previousSince)
             ->where('created_at', '<', $since)
             ->whereIn('interaction_type', [
