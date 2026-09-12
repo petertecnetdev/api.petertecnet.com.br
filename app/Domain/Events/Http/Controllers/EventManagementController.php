@@ -30,15 +30,99 @@ final class EventManagementController extends Controller
 
     public function mine(Request $request)
     {
-        $user=$request->user();$data=$request->validate(['q'=>'nullable|string|max:120','city'=>'nullable|string|max:120','status'=>'nullable|in:draft,published,cancelled,upcoming,past','production_id'=>'nullable|integer|min:1','from'=>'nullable|date_format:Y-m-d','to'=>'nullable|date_format:Y-m-d|after_or_equal:from','per_page'=>'nullable|integer|min:1|max:100']);
-        $appId=$this->context->id();$query=Event::query()->where('app_id',$appId)->whereHas('production',fn($q)=>$q->where('app_id',$appId)->where('user_id',$user->id))->with(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name'])->withCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);
-        if($term=trim((string)($data['q']??'')))$query->where(fn($q)=>$q->where('title','like',"%{$term}%")->orWhere('city','like',"%{$term}%")->orWhere('venue','like',"%{$term}%"));
-        if(!empty($data['city']))$query->whereRaw('LOWER(city) = LOWER(?)',[$data['city']]);if(!empty($data['production_id']))$query->where('production_id',$data['production_id']);if(!empty($data['from']))$query->where('start_date','>=',Carbon::createFromFormat('Y-m-d',$data['from'],config('app.timezone'))->startOfDay());if(!empty($data['to']))$query->where('start_date','<=',Carbon::createFromFormat('Y-m-d',$data['to'],config('app.timezone'))->endOfDay());
-        match($data['status']??null){'draft'=>$query->where('is_published',false)->where('is_cancelled',false),'published'=>$query->where('is_published',true)->where('is_cancelled',false),'cancelled'=>$query->where('is_cancelled',true),'upcoming'=>$query->where('is_cancelled',false)->where('end_date','>',now()),'past'=>$query->where('end_date','<=',now()),default=>null};
-        $events=$query->orderByDesc('start_date')->paginate($data['per_page']??50)->appends($request->query());
-        $this->attachSellableTicketCounts($events->getCollection());
-        $this->attachOperationalMetrics($events->getCollection());
-        return response()->json(['events'=>$events]);
+        $user = $request->user();
+        $data = $request->validate([
+            'q' => 'nullable|string|max:120',
+            'city' => 'nullable|string|max:120',
+            'status' => 'nullable|in:draft,published,cancelled,upcoming,past',
+            'production_id' => 'nullable|integer|min:1',
+            'from' => 'nullable|date_format:Y-m-d',
+            'to' => 'nullable|date_format:Y-m-d|after_or_equal:from',
+            'per_page' => 'nullable|integer|min:1|max:100',
+            'mode' => 'nullable|in:manage,picker',
+        ]);
+
+        $appId = $this->context->id();
+        $isPicker = ($data['mode'] ?? null) === 'picker';
+
+        $query = Event::query()
+            ->where('app_id', $appId)
+            ->whereHas('production', fn ($q) => $q
+                ->where('app_id', $appId)
+                ->where('user_id', $user->id)
+            );
+
+        if ($isPicker) {
+            $query
+                ->select([
+                    'id',
+                    'app_id',
+                    'production_id',
+                    'title',
+                    'image',
+                    'start_date',
+                    'end_date',
+                    'venue',
+                    'city',
+                    'is_published',
+                    'is_cancelled',
+                ])
+                ->with('production:id,app_id,name,slug,user_id,app_slug');
+        } else {
+            $query
+                ->with([
+                    'production:id,app_id,name,slug,user_id,app_slug',
+                    'artists:id,app_id,slug,stage_name',
+                ])
+                ->withCount([
+                    'tickets' => fn ($q) => $q->where('app_id', $appId),
+                ]);
+        }
+
+        if ($term = trim((string) ($data['q'] ?? ''))) {
+            $query->where(function ($q) use ($term) {
+                $q->where('title', 'like', "%{$term}%")
+                    ->orWhere('city', 'like', "%{$term}%")
+                    ->orWhere('venue', 'like', "%{$term}%")
+                    ->orWhereHas('production', fn ($production) => $production
+                        ->where('name', 'like', "%{$term}%")
+                    );
+            });
+        }
+
+        if (!empty($data['city'])) {
+            $query->whereRaw('LOWER(city) = LOWER(?)', [$data['city']]);
+        }
+        if (!empty($data['production_id'])) {
+            $query->where('production_id', $data['production_id']);
+        }
+        if (!empty($data['from'])) {
+            $query->where('start_date', '>=', Carbon::createFromFormat('Y-m-d', $data['from'], config('app.timezone'))->startOfDay());
+        }
+        if (!empty($data['to'])) {
+            $query->where('start_date', '<=', Carbon::createFromFormat('Y-m-d', $data['to'], config('app.timezone'))->endOfDay());
+        }
+
+        match ($data['status'] ?? null) {
+            'draft' => $query->where('is_published', false)->where('is_cancelled', false),
+            'published' => $query->where('is_published', true)->where('is_cancelled', false),
+            'cancelled' => $query->where('is_cancelled', true),
+            'upcoming' => $query->where('is_cancelled', false)->where('end_date', '>', now()),
+            'past' => $query->where('end_date', '<=', now()),
+            default => null,
+        };
+
+        $events = $query
+            ->orderByDesc('start_date')
+            ->paginate($data['per_page'] ?? 50)
+            ->appends($request->query());
+
+        if (!$isPicker) {
+            $this->attachSellableTicketCounts($events->getCollection());
+            $this->attachOperationalMetrics($events->getCollection());
+        }
+
+        return response()->json(['events' => $events]);
     }
 
     public function show(Request $request,int $id)
