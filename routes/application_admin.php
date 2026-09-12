@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Commerce\Http\Controllers\ApplicationAdminCommerceController;
+use App\Domain\Commerce\Http\Controllers\ApplicationAdminPaymentHealthController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminAccessController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminEventController;
 use App\Domain\Events\Http\Controllers\ApplicationAdminTicketController;
@@ -75,6 +76,8 @@ Route::prefix('v1/apps/{application}')
                 ->whereNumber('order')
                 ->middleware([EnsureApplicationAdmin::class.':finance.refund', 'throttle:10,1']);
             Route::get('/finance', [ApplicationAdminCommerceController::class, 'finance'])
+                ->middleware(EnsureApplicationAdmin::class.':finance.view');
+            Route::get('/finance/payment-health', ApplicationAdminPaymentHealthController::class)
                 ->middleware(EnsureApplicationAdmin::class.':finance.view');
 
             Route::middleware(EnsureApplicationAdmin::class.':admin.access.manage')->group(function () {
