@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Domain\Commerce\Services\PaymentHealthRecoveryAttributionService;
 use App\Domain\Finance\Http\Controllers\PaymentProviderController;
 use App\Models\Application;
 use App\Models\CommerceOrder;
@@ -23,7 +24,8 @@ class ReconcilePaymentsCommand extends Command
         PaymentProviderController $controller,
         EventAudienceService $audience,
         DeliveryEffectService $deliveries,
-        ApplicationContext $context
+        ApplicationContext $context,
+        PaymentHealthRecoveryAttributionService $recoveryAttribution
     ): int
     {
         $startedAt = microtime(true);
@@ -164,16 +166,30 @@ class ReconcilePaymentsCommand extends Command
                     $order = $controller->reconcilePaymentId((int) $payment->id);
                 }
 
-                if ($statusBefore !== 'paid' && $order->status === 'paid') {
+                $paidRecovered = $statusBefore !== 'paid' && $order->status === 'paid';
+                $fulfillmentRecovered = $fulfillmentBefore !== 'completed'
+                    && data_get($order->metadata, 'fulfillment_status') === 'completed';
+                $recoveredOrderGmv = 0.0;
+
+                if ($paidRecovered) {
                     $recoveredPaidOrders++;
-                    $recoveredGmv += (float) $order->total;
+                    $recoveredOrderGmv = (float) $order->total;
+                    $recoveredGmv += $recoveredOrderGmv;
                     $byApplication[$appSlug]['recovered_paid_orders']++;
-                    $byApplication[$appSlug]['recovered_gmv'] += (float) $order->total;
+                    $byApplication[$appSlug]['recovered_gmv'] += $recoveredOrderGmv;
                 }
-                if ($fulfillmentBefore !== 'completed' && data_get($order->metadata, 'fulfillment_status') === 'completed') {
+                if ($fulfillmentRecovered) {
                     $recoveredFulfillments++;
                     $byApplication[$appSlug]['recovered_fulfillments']++;
                 }
+
+                $recoveryAttribution->record(
+                    (int) $payment->app_id,
+                    $paidRecovered ? 1 : 0,
+                    $fulfillmentRecovered ? 1 : 0,
+                    $deliveryOnlyRetry ? 1 : 0,
+                    $recoveredOrderGmv
+                );
 
                 $this->info(sprintf(
                     'OK app=%s pedido=%s status=%s fulfillment=%s pagamento=%s',
