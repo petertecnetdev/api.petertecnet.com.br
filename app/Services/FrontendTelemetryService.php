@@ -44,6 +44,7 @@ class FrontendTelemetryService
             ->whereIn('request_id', $eventIds)
             ->pluck('request_id')
             ->flip();
+        $telemetryEnvironment = $this->telemetryEnvironment($originHeader, $application->url ?? null);
 
         $accepted = 0;
 
@@ -65,7 +66,7 @@ class FrontendTelemetryService
                 'interaction_type' => 'frontend_'.$type,
                 'outcome' => $outcome,
                 'severity' => $this->severityFor($type, $outcome),
-                'environment' => app()->environment(),
+                'environment' => $telemetryEnvironment,
                 'request_id' => $event['id'],
                 'correlation_id' => $data['session_id'],
                 'session_key' => $sessionKey,
@@ -109,6 +110,29 @@ class FrontendTelemetryService
             'duplicates' => count($data['events']) - $accepted,
             'application' => ['id' => $application->id, 'slug' => $application->slug],
         ];
+    }
+
+    private function telemetryEnvironment(?string $originHeader, ?string $applicationUrl): string
+    {
+        $originHost = $this->host($originHeader);
+        $applicationHost = $this->host($applicationUrl);
+
+        if ($originHost !== null && $applicationHost !== null && $originHost === $applicationHost) {
+            return 'production';
+        }
+
+        return app()->environment();
+    }
+
+    private function host(?string $url): ?string
+    {
+        if (!$url) {
+            return null;
+        }
+
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? strtolower($host) : null;
     }
 
     private function outcomeFor(string $type, array $metadata): string
