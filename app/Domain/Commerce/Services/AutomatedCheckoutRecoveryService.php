@@ -112,7 +112,11 @@ final class AutomatedCheckoutRecoveryService
                     continue;
                 }
 
-                $referenceUrl = $this->recoveryReferenceUrl($applicationUrl, (string) ($order->public_id ?: $order->id));
+                $referenceUrl = $this->recoveryReferenceUrl(
+                    $applicationUrl,
+                    (int) $order->id,
+                    (string) ($order->public_id ?: $order->id),
+                );
 
                 $this->notifications->sendToUser((int) $order->app_id, (int) $order->user_id, [
                     'type' => 'checkout_recovery',
@@ -205,7 +209,7 @@ final class AutomatedCheckoutRecoveryService
         return $bucket < $controlPercent;
     }
 
-    private function recoveryReferenceUrl(string $applicationUrl, string $publicId): string
+    private function recoveryReferenceUrl(string $applicationUrl, int $orderId, string $publicId): string
     {
         $host = strtolower((string) parse_url($applicationUrl, PHP_URL_HOST));
         $paths = (array) config('checkout_recovery.automated_in_app.deep_link_paths_by_host', []);
@@ -217,7 +221,11 @@ final class AutomatedCheckoutRecoveryService
             return $applicationUrl;
         }
 
-        $path = str_replace('{public_id}', rawurlencode($publicId), $template);
+        $path = str_replace(
+            ['{id}', '{public_id}'],
+            [rawurlencode((string) $orderId), rawurlencode($publicId)],
+            $template,
+        );
 
         return str_contains($path, '{') || str_contains($path, '}')
             ? $applicationUrl
