@@ -42,9 +42,9 @@ class CheckoutJourneyFunnelTest extends TestCase
     {
         $funnel = new CheckoutJourneyFunnel();
         $interactions = [
-            $this->interaction('frontend_checkout_opened', 'journey-abandon-pix', 10, 90.00, 'pix'),
+            $this->interaction('frontend_checkout_opened', 'journey-abandon-pix', 10, 90.00, 'pix', 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) Mobile/15E148'),
             $this->abandonment('journey-abandon-pix', 90.00, 'pix', 'page_hidden', 45000, 2, 1),
-            $this->interaction('frontend_checkout_opened', 'journey-abandon-card', 10, 40.00, 'card'),
+            $this->interaction('frontend_checkout_opened', 'journey-abandon-card', 10, 40.00, 'card', 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/140.0 Safari/537.36'),
             $this->abandonment('journey-abandon-card', 40.00, 'card', 'navigation', 210000, 1, 0),
         ];
 
@@ -58,6 +58,9 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame('30_to_59s', $diagnostics['by_elapsed_time'][0]['key']);
         $this->assertSame('tickets_plus_items', $diagnostics['by_cart_type'][0]['key']);
         $this->assertSame('tickets_only', $diagnostics['by_cart_type'][1]['key']);
+        $this->assertSame('mobile', $diagnostics['by_device'][0]['key']);
+        $this->assertSame(90.0, $diagnostics['by_device'][0]['gmv_at_risk']);
+        $this->assertSame('desktop', $diagnostics['by_device'][1]['key']);
     }
 
     public function test_it_prioritizes_the_step_with_the_largest_gmv_loss_not_only_the_most_journeys(): void
@@ -147,15 +150,18 @@ class CheckoutJourneyFunnelTest extends TestCase
         $funnel = new CheckoutJourneyFunnel();
         $interactions = [[
             'interaction_type' => 'frontend_checkout_abandoned',
-            'content' => ['metadata' => [
-                'event_id' => 10,
-                'amount' => 250,
-                'payment_method' => 'pix',
-                'reason' => 'pagehide',
-                'elapsed_ms' => 1418,
-                'ticket_quantity' => 0,
-                'item_quantity' => 3,
-            ]],
+            'content' => [
+                'user_agent' => 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 Mobile Safari/537.36',
+                'metadata' => [
+                    'event_id' => 10,
+                    'amount' => 250,
+                    'payment_method' => 'pix',
+                    'reason' => 'pagehide',
+                    'elapsed_ms' => 1418,
+                    'ticket_quantity' => 0,
+                    'item_quantity' => 3,
+                ],
+            ],
         ]];
 
         $summary = $funnel->summarize($interactions, [10], 8.0, ['pix' => 10.0]);
@@ -167,6 +173,7 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(25.0, $summary['dropoff']['unattributed_abandonment']['platform_contribution_at_risk']);
         $this->assertSame('pagehide', $summary['dropoff']['unattributed_abandonment']['diagnostics']['by_reason'][0]['key']);
         $this->assertSame('items_only', $summary['dropoff']['unattributed_abandonment']['diagnostics']['by_cart_type'][0]['key']);
+        $this->assertSame('mobile', $summary['dropoff']['unattributed_abandonment']['diagnostics']['by_device'][0]['key']);
         $this->assertSame(250.0, $summary['gmv']['unattributed_abandoned_at_risk']);
     }
 
@@ -201,7 +208,7 @@ class CheckoutJourneyFunnelTest extends TestCase
         ];
     }
 
-    private function interaction(string $type, string $journeyId, ?int $eventId, float $amount, ?string $paymentMethod = null): array
+    private function interaction(string $type, string $journeyId, ?int $eventId, float $amount, ?string $paymentMethod = null, ?string $userAgent = null): array
     {
         $metadata = [
             'checkout_journey_id' => $journeyId,
@@ -214,6 +221,10 @@ class CheckoutJourneyFunnelTest extends TestCase
             $metadata['payment_method'] = $paymentMethod;
         }
 
-        return ['interaction_type' => $type, 'content' => ['metadata' => $metadata]];
+        $content = ['metadata' => $metadata];
+        if ($userAgent !== null) {
+            $content['user_agent'] = $userAgent;
+        }
+        return ['interaction_type' => $type, 'content' => $content];
     }
 }

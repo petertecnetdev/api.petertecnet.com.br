@@ -85,6 +85,7 @@ final class CheckoutJourneyFunnel
                         $unattributedAbandonment['diagnostics'],
                         [
                             'payment_method' => $paymentMethod,
+                            'device_class' => $this->deviceClass($interaction),
                             'abandonment' => $this->abandonmentMetadata($interaction),
                         ],
                         $amount,
@@ -103,6 +104,9 @@ final class CheckoutJourneyFunnel
 
             $journeys[$journeyId] ??= $this->newJourney($effectiveEventId);
             $journeys[$journeyId]['event_id'] = $effectiveEventId;
+            if (($journeys[$journeyId]['device_class'] ?? 'unknown') === 'unknown') {
+                $journeys[$journeyId]['device_class'] = $this->deviceClass($interaction);
+            }
 
             $amount = $this->value($interaction, ['content', 'metadata', 'amount']);
             if (is_numeric($amount) && (float) $amount >= 0) {
@@ -300,12 +304,14 @@ final class CheckoutJourneyFunnel
             (int) ($metadata['ticket_quantity'] ?? 0),
             (int) ($metadata['item_quantity'] ?? 0),
         );
+        $deviceClass = (string) ($journey['device_class'] ?? 'unknown');
 
         foreach ([
             'by_reason' => $reason,
             'by_payment_method' => $method,
             'by_elapsed_time' => $elapsedBucket,
             'by_cart_type' => $cartType,
+            'by_device' => $deviceClass,
         ] as $dimension => $key) {
             $diagnostics[$dimension][$key] ??= [
                 'key' => $key,
@@ -347,11 +353,26 @@ final class CheckoutJourneyFunnel
         };
     }
 
+    private function deviceClass(mixed $interaction): string
+    {
+        $userAgent = strtolower(trim((string) $this->value($interaction, ['content', 'user_agent'])));
+        if ($userAgent === '') {
+            return 'unknown';
+        }
+        if (preg_match('/ipad|tablet|kindle|silk|playbook|sm-t|tab\b/', $userAgent)) {
+            return 'tablet';
+        }
+        if (preg_match('/mobi|iphone|ipod|android|windows phone|opera mini|opera mobi/', $userAgent)) {
+            return 'mobile';
+        }
+        return 'desktop';
+    }
+
     /** @param array<string, mixed> $diagnostics @return array<string, mixed> */
     private function finalizeAbandonmentDiagnostics(array $diagnostics): array
     {
         $result = [];
-        foreach (['by_reason', 'by_payment_method', 'by_elapsed_time', 'by_cart_type'] as $dimension) {
+        foreach (['by_reason', 'by_payment_method', 'by_elapsed_time', 'by_cart_type', 'by_device'] as $dimension) {
             $rows = array_values($diagnostics[$dimension] ?? []);
             foreach ($rows as &$row) {
                 $row['gmv_at_risk'] = round((float) $row['gmv_at_risk'], 2);
@@ -388,6 +409,7 @@ final class CheckoutJourneyFunnel
             'event_id' => $eventId,
             'amount' => null,
             'payment_method' => null,
+            'device_class' => 'unknown',
             'abandoned' => false,
             'payment_failed' => false,
             'abandonment' => [],
