@@ -19,8 +19,10 @@ final class ApplicationAdminPaymentHealthController extends Controller
 
     public function __invoke(): JsonResponse
     {
-        $current = $this->health->forApplication($this->context->id());
-        $current['trend'] = $this->snapshots->trendForApplication($this->context->id(), $current);
+        $appId = $this->context->id();
+        $current = $this->health->forApplication($appId);
+        $current['trend'] = $this->snapshots->trendForApplication($appId, $current);
+        $current['incidents'] = $this->snapshots->incidentHistoryForApplication($appId);
 
         return response()->json([
             'success' => true,
