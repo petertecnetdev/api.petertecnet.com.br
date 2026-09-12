@@ -5,13 +5,18 @@ namespace App\Domain\Workforce\Services;
 use App\Domain\Finance\Exceptions\SubscriptionUpgradeRequired;
 use App\Domain\Finance\Services\EntitlementAccessService;
 use App\Domain\Notifications\Services\NotificationDispatcher;
+use App\Mail\InviteUserMail;
 use App\Mail\NewEmployerCollaborator;
 use App\Mail\OwnerNotifiedNewCollaborator;
+use App\Models\Application;
 use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\User;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 final class TeamMemberService
@@ -112,6 +117,7 @@ final class TeamMemberService
         string $role,
         array $permissions = [],
         ?int $legacyApplicationId = null,
+        bool $notifyMember = true,
     ): array {
         if ($legacyApplicationId !== null && $legacyApplicationId !== $applicationId) {
             throw ValidationException::withMessages([
@@ -163,7 +169,7 @@ final class TeamMemberService
             );
         }
 
-        if ($employer->user?->email) {
+        if ($notifyMember && $employer->user?->email) {
             $this->notifications->queueMailable(
                 $employer->user->email,
                 new NewEmployerCollaborator($establishment, $employer),
@@ -175,6 +181,113 @@ final class TeamMemberService
             'employer' => $employer,
             'is_owner' => $isOwner,
         ];
+    }
+
+    public function invite(
+        int $applicationId,
+        User $actor,
+        int $establishmentId,
+        string $firstName,
+        string $email,
+        string $role,
+        array $permissions = [],
+    ): array {
+        $email = strtolower(trim($email));
+        $firstName = trim($firstName);
+
+        $existingUser = User::query()->where('email', $email)->first();
+        if ($existingUser) {
+            $result = $this->add(
+                $applicationId,
+                $actor,
+                (int) $existingUser->id,
+                $establishmentId,
+                $role,
+                $permissions,
+            );
+
+            return [
+                ...$result,
+                'invited' => false,
+                'user' => $existingUser,
+            ];
+        }
+
+        // Validate ownership and paid staff entitlement before creating an account,
+        // so a rejected invitation never leaves an orphan pending user behind.
+        $this->manageableEstablishment($applicationId, $actor, $establishmentId);
+        $decision = $this->entitlements->check($applicationId, (int) $actor->id, 'staff.management');
+        if (! $decision['allowed']) {
+            throw new SubscriptionUpgradeRequired(
+                'staff.management',
+                $decision['plan_code'],
+                'Seu plano atual não inclui colaboradores adicionais. Faça upgrade para adicionar sua equipe.',
+            );
+        }
+
+        $application = Application::query()->findOrFail($applicationId);
+        $rawCode = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+
+        $result = DB::transaction(function () use (
+            $applicationId,
+            $actor,
+            $establishmentId,
+            $firstName,
+            $email,
+            $role,
+            $permissions,
+            $rawCode,
+        ) {
+            $user = User::create([
+                'first_name' => $firstName,
+                'email' => $email,
+                'password' => Hash::make(Str::random(40)),
+                'user_name' => $this->uniqueUsername($firstName),
+                'verification_code' => Hash::make($rawCode),
+                'verification_code_expires_at' => now()->addDay(),
+            ]);
+
+            $user->applications()->attach($applicationId, [
+                'status' => 'pending',
+                'role' => 'client',
+                'metadata' => json_encode([
+                    'invited_by' => $actor->id,
+                    'invited_at' => now()->toIso8601String(),
+                    'source' => 'workforce',
+                    'establishment_id' => $establishmentId,
+                ], JSON_UNESCAPED_UNICODE),
+                'joined_at' => null,
+            ]);
+
+            $teamMember = $this->add(
+                $applicationId,
+                $actor,
+                (int) $user->id,
+                $establishmentId,
+                $role,
+                $permissions,
+                null,
+                false,
+            );
+
+            return [
+                ...$teamMember,
+                'invited' => true,
+                'user' => $user,
+            ];
+        });
+
+        $this->notifications->queueMailable(
+            $email,
+            new InviteUserMail(
+                $result['user'],
+                $rawCode,
+                $application->name,
+                $application->url,
+            ),
+        );
+
+        return $result;
     }
 
     public function remove(int $applicationId, User $actor, int $teamMemberId): void
@@ -204,5 +317,20 @@ final class TeamMemberService
         }
 
         return $establishment;
+    }
+
+    private function uniqueUsername(string $firstName): string
+    {
+        $base = Str::slug($firstName, '.');
+        $base = trim($base, '.') ?: 'usuario';
+        $candidate = $base;
+        $suffix = 1;
+
+        while (User::query()->where('user_name', $candidate)->exists()) {
+            $suffix++;
+            $candidate = $base.'.'.$suffix;
+        }
+
+        return $candidate;
     }
 }
