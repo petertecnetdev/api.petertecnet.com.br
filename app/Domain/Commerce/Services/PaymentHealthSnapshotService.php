@@ -2,6 +2,7 @@
 
 namespace App\Domain\Commerce\Services;
 
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -36,7 +37,7 @@ final class PaymentHealthSnapshotService
         }
 
         $trend = $this->trendForApplication($appId, $current);
-        $this->emitAnomalyTransitionAlert($appId, $current, $trend);
+        $this->trackAnomalyIncident($appId, $current, $trend);
         $current['trend'] = $trend;
 
         return $current;
@@ -90,36 +91,111 @@ final class PaymentHealthSnapshotService
         ];
     }
 
-    private function emitAnomalyTransitionAlert(int $appId, array $current, array $trend): void
+    private function trackAnomalyIncident(int $appId, array $current, array $trend): void
     {
         if (! in_array($trend['status'] ?? null, ['normal', 'anomaly'], true)) {
             return;
         }
 
-        $cacheKey = "commerce:payment-health:trend-status:{$appId}";
-        $previousStatus = Cache::get($cacheKey);
+        $cacheKey = "commerce:payment-health:incident:{$appId}";
+        $legacyCacheKey = "commerce:payment-health:trend-status:{$appId}";
+        $incident = Cache::get($cacheKey);
+        $legacyStatus = Cache::get($legacyCacheKey);
         $currentStatus = (string) $trend['status'];
 
-        Cache::put($cacheKey, $currentStatus, now()->addDay());
+        if (! is_array($incident) && $legacyStatus === 'anomaly') {
+            $incident = [
+                'status' => 'anomaly',
+                'started_at' => null,
+                'peak_at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
+                'peak_pending_orders' => (int) ($current['pending_orders'] ?? 0),
+                'peak_critical_orders' => (int) ($current['critical_orders'] ?? 0),
+                'peak_provider_pending_payments' => (int) ($current['provider_pending_payments'] ?? 0),
+            ];
+        }
 
-        if ($currentStatus !== 'anomaly' || $previousStatus === 'anomaly') {
+        if ($currentStatus === 'anomaly') {
+            $isNewIncident = ! is_array($incident) || ($incident['status'] ?? null) !== 'anomaly';
+            $incident = [
+                'status' => 'anomaly',
+                'started_at' => $isNewIncident ? now()->toIso8601String() : ($incident['started_at'] ?? null),
+                'peak_at_risk_volume' => max(
+                    round((float) ($current['at_risk_volume'] ?? 0), 2),
+                    (float) ($incident['peak_at_risk_volume'] ?? 0)
+                ),
+                'peak_pending_orders' => max(
+                    (int) ($current['pending_orders'] ?? 0),
+                    (int) ($incident['peak_pending_orders'] ?? 0)
+                ),
+                'peak_critical_orders' => max(
+                    (int) ($current['critical_orders'] ?? 0),
+                    (int) ($incident['peak_critical_orders'] ?? 0)
+                ),
+                'peak_provider_pending_payments' => max(
+                    (int) ($current['provider_pending_payments'] ?? 0),
+                    (int) ($incident['peak_provider_pending_payments'] ?? 0)
+                ),
+            ];
+
+            Cache::put($cacheKey, $incident, now()->addDays(7));
+            Cache::put($legacyCacheKey, 'anomaly', now()->addDays(7));
+
+            if (! $isNewIncident) {
+                return;
+            }
+
+            Log::warning('commerce.payment_health.anomaly_detected', [
+                'app_id' => $appId,
+                'incident_started_at' => $incident['started_at'],
+                'risk_level' => $current['risk_level'] ?? 'unknown',
+                'pending_orders' => (int) ($current['pending_orders'] ?? 0),
+                'critical_orders' => (int) ($current['critical_orders'] ?? 0),
+                'provider_pending_payments' => (int) ($current['provider_pending_payments'] ?? 0),
+                'at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
+                'oldest_pending_age_minutes' => $current['oldest_pending_age_minutes'] ?? null,
+                'baseline_samples' => (int) ($trend['samples'] ?? 0),
+                'baseline_critical_rate' => $trend['baseline_critical_rate'] ?? null,
+                'baseline_at_risk_volume' => $trend['baseline_at_risk_volume'] ?? null,
+                'critical_rate_multiplier' => $trend['critical_rate_multiplier'] ?? null,
+                'at_risk_volume_multiplier' => $trend['at_risk_volume_multiplier'] ?? null,
+                'signals' => $trend['signals'] ?? [],
+            ]);
+
             return;
         }
 
-        Log::warning('commerce.payment_health.anomaly_detected', [
+        Cache::put($legacyCacheKey, 'normal', now()->addDays(7));
+
+        if (! is_array($incident) || ($incident['status'] ?? null) !== 'anomaly') {
+            Cache::put($cacheKey, ['status' => 'normal'], now()->addDays(7));
+
+            return;
+        }
+
+        $durationSeconds = null;
+        if (! empty($incident['started_at'])) {
+            $durationSeconds = CarbonImmutable::parse($incident['started_at'])->diffInSeconds(now());
+        }
+
+        Log::info('commerce.payment_health.anomaly_recovered', [
             'app_id' => $appId,
-            'risk_level' => $current['risk_level'] ?? 'unknown',
-            'pending_orders' => (int) ($current['pending_orders'] ?? 0),
-            'critical_orders' => (int) ($current['critical_orders'] ?? 0),
-            'at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
-            'oldest_pending_age_minutes' => $current['oldest_pending_age_minutes'] ?? null,
+            'incident_started_at' => $incident['started_at'] ?? null,
+            'incident_recovered_at' => now()->toIso8601String(),
+            'duration_seconds' => $durationSeconds,
+            'peak_at_risk_volume' => round((float) ($incident['peak_at_risk_volume'] ?? 0), 2),
+            'peak_pending_orders' => (int) ($incident['peak_pending_orders'] ?? 0),
+            'peak_critical_orders' => (int) ($incident['peak_critical_orders'] ?? 0),
+            'peak_provider_pending_payments' => (int) ($incident['peak_provider_pending_payments'] ?? 0),
+            'current_pending_orders' => (int) ($current['pending_orders'] ?? 0),
+            'current_critical_orders' => (int) ($current['critical_orders'] ?? 0),
+            'current_at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
             'baseline_samples' => (int) ($trend['samples'] ?? 0),
-            'baseline_critical_rate' => $trend['baseline_critical_rate'] ?? null,
-            'baseline_at_risk_volume' => $trend['baseline_at_risk_volume'] ?? null,
-            'critical_rate_multiplier' => $trend['critical_rate_multiplier'] ?? null,
-            'at_risk_volume_multiplier' => $trend['at_risk_volume_multiplier'] ?? null,
-            'signals' => $trend['signals'] ?? [],
         ]);
+
+        Cache::put($cacheKey, [
+            'status' => 'normal',
+            'recovered_at' => now()->toIso8601String(),
+        ], now()->addDays(7));
     }
 
     private function emptyTrend(string $status, int $samples = 0): array
