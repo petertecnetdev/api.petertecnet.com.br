@@ -27,7 +27,7 @@ final class PaymentHealthSnapshotService
                 'at_risk_volume' => $current['at_risk_volume'],
                 'risk_level' => $current['risk_level'],
                 'oldest_pending_age_minutes' => $current['oldest_pending_age_minutes'],
-                'measured_at' => $current['measured_at'],
+                'measured_at' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
