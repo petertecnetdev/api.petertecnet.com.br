@@ -2,7 +2,9 @@
 
 namespace App\Domain\Commerce\Services;
 
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 final class PaymentHealthSnapshotService
@@ -32,6 +34,10 @@ final class PaymentHealthSnapshotService
                 'updated_at' => now(),
             ]);
         }
+
+        $trend = $this->trendForApplication($appId, $current);
+        $this->emitAnomalyTransitionAlert($appId, $current, $trend);
+        $current['trend'] = $trend;
 
         return $current;
     }
@@ -82,6 +88,38 @@ final class PaymentHealthSnapshotService
                 $volumeAnomaly ? 'at_risk_volume_above_baseline' : null,
             ])),
         ];
+    }
+
+    private function emitAnomalyTransitionAlert(int $appId, array $current, array $trend): void
+    {
+        if (! in_array($trend['status'] ?? null, ['normal', 'anomaly'], true)) {
+            return;
+        }
+
+        $cacheKey = "commerce:payment-health:trend-status:{$appId}";
+        $previousStatus = Cache::get($cacheKey);
+        $currentStatus = (string) $trend['status'];
+
+        Cache::put($cacheKey, $currentStatus, now()->addDay());
+
+        if ($currentStatus !== 'anomaly' || $previousStatus === 'anomaly') {
+            return;
+        }
+
+        Log::warning('commerce.payment_health.anomaly_detected', [
+            'app_id' => $appId,
+            'risk_level' => $current['risk_level'] ?? 'unknown',
+            'pending_orders' => (int) ($current['pending_orders'] ?? 0),
+            'critical_orders' => (int) ($current['critical_orders'] ?? 0),
+            'at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
+            'oldest_pending_age_minutes' => $current['oldest_pending_age_minutes'] ?? null,
+            'baseline_samples' => (int) ($trend['samples'] ?? 0),
+            'baseline_critical_rate' => $trend['baseline_critical_rate'] ?? null,
+            'baseline_at_risk_volume' => $trend['baseline_at_risk_volume'] ?? null,
+            'critical_rate_multiplier' => $trend['critical_rate_multiplier'] ?? null,
+            'at_risk_volume_multiplier' => $trend['at_risk_volume_multiplier'] ?? null,
+            'signals' => $trend['signals'] ?? [],
+        ]);
     }
 
     private function emptyTrend(string $status, int $samples = 0): array
