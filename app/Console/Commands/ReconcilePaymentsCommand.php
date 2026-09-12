@@ -120,7 +120,7 @@ class ReconcilePaymentsCommand extends Command
 
         if ($payments->isEmpty()) {
             $this->info('Nenhum pagamento precisa de reconciliação.');
-            $this->logRunTelemetry($startedAt, $applicationSlug, 0, 0, 0, 0, 0, 0.0);
+            $this->logRunTelemetry($startedAt, $applicationSlug, 0, 0, 0, 0, 0, 0.0, []);
             return self::SUCCESS;
         }
 
@@ -129,10 +129,23 @@ class ReconcilePaymentsCommand extends Command
         $recoveredFulfillments = 0;
         $recoveredDeliveryRetries = 0;
         $recoveredGmv = 0.0;
+        $byApplication = [];
         foreach ($payments as $payment) {
+            $application = null;
             try {
                 $application = Application::query()->whereKey((int) $payment->app_id)->where('is_active', true)->firstOrFail();
                 $context->set($application);
+                $appSlug = (string) $application->slug;
+                $byApplication[$appSlug] ??= [
+                    'application' => $appSlug,
+                    'selected' => 0,
+                    'recovered_paid_orders' => 0,
+                    'recovered_fulfillments' => 0,
+                    'recovered_delivery_retries' => 0,
+                    'failures' => 0,
+                    'recovered_gmv' => 0.0,
+                ];
+                $byApplication[$appSlug]['selected']++;
 
                 $order = $payment->order;
                 $statusBefore = (string) ($order?->status ?? '');
@@ -146,6 +159,7 @@ class ReconcilePaymentsCommand extends Command
                     $audience->confirmPaidOrder((int) $order->id);
                     $order = $order->fresh(['items', 'event', 'payments']);
                     $recoveredDeliveryRetries++;
+                    $byApplication[$appSlug]['recovered_delivery_retries']++;
                 } else {
                     $order = $controller->reconcilePaymentId((int) $payment->id);
                 }
@@ -153,9 +167,12 @@ class ReconcilePaymentsCommand extends Command
                 if ($statusBefore !== 'paid' && $order->status === 'paid') {
                     $recoveredPaidOrders++;
                     $recoveredGmv += (float) $order->total;
+                    $byApplication[$appSlug]['recovered_paid_orders']++;
+                    $byApplication[$appSlug]['recovered_gmv'] += (float) $order->total;
                 }
                 if ($fulfillmentBefore !== 'completed' && data_get($order->metadata, 'fulfillment_status') === 'completed') {
                     $recoveredFulfillments++;
+                    $byApplication[$appSlug]['recovered_fulfillments']++;
                 }
 
                 $this->info(sprintf(
@@ -168,6 +185,9 @@ class ReconcilePaymentsCommand extends Command
                 ));
             } catch (Throwable $e) {
                 $failures++;
+                if ($application) {
+                    $byApplication[(string) $application->slug]['failures']++;
+                }
                 report($e);
                 $this->error(sprintf('ERRO pagamento=%s: %s', $payment->provider_payment_id, $e->getMessage()));
             } finally {
@@ -183,7 +203,8 @@ class ReconcilePaymentsCommand extends Command
             $recoveredFulfillments,
             $recoveredDeliveryRetries,
             $failures,
-            $recoveredGmv
+            $recoveredGmv,
+            $byApplication
         );
 
         return $failures === 0 ? self::SUCCESS : self::FAILURE;
@@ -197,8 +218,16 @@ class ReconcilePaymentsCommand extends Command
         int $recoveredFulfillments,
         int $recoveredDeliveryRetries,
         int $failures,
-        float $recoveredGmv
+        float $recoveredGmv,
+        array $byApplication
     ): void {
+        $applicationBreakdown = array_values(array_map(function (array $stats): array {
+            $stats['recovered_gmv'] = round((float) $stats['recovered_gmv'], 2);
+            return $stats;
+        }, $byApplication));
+
+        usort($applicationBreakdown, fn (array $a, array $b) => $a['application'] <=> $b['application']);
+
         $context = [
             'application' => $applicationSlug !== '' ? $applicationSlug : 'all',
             'selected' => $selected,
@@ -207,6 +236,7 @@ class ReconcilePaymentsCommand extends Command
             'recovered_delivery_retries' => $recoveredDeliveryRetries,
             'failures' => $failures,
             'recovered_gmv' => round($recoveredGmv, 2),
+            'by_application' => $applicationBreakdown,
             'duration_ms' => max(0, (int) round((microtime(true) - $startedAt) * 1000)),
         ];
 
