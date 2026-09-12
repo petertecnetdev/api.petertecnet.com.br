@@ -38,6 +38,28 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(120.0, $summary['gmv']['by_stage']['payment_attempted']);
     }
 
+    public function test_it_breaks_explicit_abandonment_down_by_reason_time_method_and_cart_type(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [
+            $this->interaction('frontend_checkout_opened', 'journey-abandon-pix', 10, 90.00, 'pix'),
+            $this->abandonment('journey-abandon-pix', 90.00, 'pix', 'page_hidden', 45000, 2, 1),
+            $this->interaction('frontend_checkout_opened', 'journey-abandon-card', 10, 40.00, 'card'),
+            $this->abandonment('journey-abandon-card', 40.00, 'card', 'navigation', 210000, 1, 0),
+        ];
+
+        $summary = $funnel->summarize($interactions, [10], 10.0, ['pix' => 8.0, 'card' => 5.0]);
+        $diagnostics = $summary['dropoff']['abandonment_diagnostics'];
+
+        $this->assertSame('page_hidden', $diagnostics['by_reason'][0]['key']);
+        $this->assertSame(90.0, $diagnostics['by_reason'][0]['gmv_at_risk']);
+        $this->assertSame(7.2, $diagnostics['by_reason'][0]['platform_contribution_at_risk']);
+        $this->assertSame('pix', $diagnostics['by_payment_method'][0]['key']);
+        $this->assertSame('30_to_59s', $diagnostics['by_elapsed_time'][0]['key']);
+        $this->assertSame('tickets_plus_items', $diagnostics['by_cart_type'][0]['key']);
+        $this->assertSame('tickets_only', $diagnostics['by_cart_type'][1]['key']);
+    }
+
     public function test_it_prioritizes_the_step_with_the_largest_gmv_loss_not_only_the_most_journeys(): void
     {
         $funnel = new CheckoutJourneyFunnel();
@@ -133,6 +155,22 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(0, $summary['journeys']);
         $this->assertNull($summary['conversion']['opened_to_approved_percent']);
         $this->assertNull($summary['dropoff']['largest_economic_step']);
+    }
+
+    private function abandonment(string $journeyId, float $amount, string $paymentMethod, string $reason, int $elapsedMs, int $ticketQuantity, int $itemQuantity): array
+    {
+        return [
+            'interaction_type' => 'frontend_checkout_abandoned',
+            'content' => ['metadata' => [
+                'checkout_journey_id' => $journeyId,
+                'amount' => $amount,
+                'payment_method' => $paymentMethod,
+                'reason' => $reason,
+                'elapsed_ms' => $elapsedMs,
+                'ticket_quantity' => $ticketQuantity,
+                'item_quantity' => $itemQuantity,
+            ]],
+        ];
     }
 
     private function interaction(string $type, string $journeyId, ?int $eventId, float $amount, ?string $paymentMethod = null): array
