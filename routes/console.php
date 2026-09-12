@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Commerce\Services\AutomatedCheckoutRecoveryService;
+use App\Domain\Commerce\Services\PaymentHealthSnapshotService;
 use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
@@ -97,6 +98,20 @@ Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending PIX checkouts');
 
+Artisan::command('commerce:capture-payment-health', function () {
+    $captured = 0;
+
+    Application::query()
+        ->where('is_active', true)
+        ->orderBy('id')
+        ->each(function (Application $application) use (&$captured) {
+            app(PaymentHealthSnapshotService::class)->captureForApplication((int) $application->id);
+            $captured++;
+        });
+
+    $this->info("{$captured} payment health snapshot(s) captured.");
+})->purpose('Capture generic payment health snapshots for anomaly detection');
+
 Artisan::command('finance:recover-pending-subscriptions {--limit=}', function () {
     $limit = $this->option('limit');
     $result = app(AutomatedSubscriptionIntentRecoveryService::class)->run(
@@ -146,6 +161,10 @@ Schedule::command('commerce:recover-pending-checkouts')
     ->withoutOverlapping(10)
     ->onOneServer();
 Schedule::command('platform:reconcile-payments')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('commerce:capture-payment-health')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
