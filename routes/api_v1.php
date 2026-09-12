@@ -72,7 +72,6 @@ Route::prefix('v1/apps/{application}')
         Route::get('/global-search/trending', [GlobalSearchController::class, 'trending'])->middleware('throttle:search-read');
         Route::post('/global-search/click', [GlobalSearchController::class, 'click'])->middleware('throttle:120,1');
 
-        // Shared infrastructure available to every application context.
         Route::get('/locations/states', [LocationController::class, 'states']);
         Route::get('/locations/cities', [LocationController::class, 'cities'])->middleware('throttle:120,1');
         Route::get('/locations/cep/{cep}', [LocationController::class, 'cep'])->where('cep', '[0-9-]{8,9}')->middleware('throttle:60,1');
@@ -191,6 +190,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/connections/profile', [ConnectionController::class, 'profile'])->middleware('throttle:120,1');
                 Route::put('/connections/profile', [ConnectionController::class, 'updateProfile'])->middleware('throttle:30,1');
                 Route::post('/connections/profile/photos', [ConnectionController::class, 'uploadPhoto'])->middleware('throttle:12,1');
+                Route::patch('/connections/profile/photos/reorder', [ConnectionController::class, 'reorderPhotos'])->middleware('throttle:30,1');
                 Route::delete('/connections/profile/photos/{photoId}', [ConnectionController::class, 'deletePhoto'])->whereNumber('photoId')->middleware('throttle:30,1');
                 Route::get('/connections/discover', [ConnectionController::class, 'discover'])->middleware('throttle:120,1');
                 Route::post('/connections/decisions', [ConnectionController::class, 'swipe'])->middleware('throttle:120,1');
