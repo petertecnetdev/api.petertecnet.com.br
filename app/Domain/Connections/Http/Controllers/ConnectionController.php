@@ -134,6 +134,54 @@ final class ConnectionController extends Controller
         ], 201);
     }
 
+    public function reorderPhotos(Request $request)
+    {
+        $userId = (int) $request->user()->id;
+        $this->assertActive($userId);
+        $data = $request->validate([
+            'photo_ids' => ['required', 'array', 'min:1', 'max:'.self::PHOTO_LIMIT],
+            'photo_ids.*' => ['required', 'integer', 'distinct'],
+        ]);
+
+        $profile = $this->table('connection_profiles')->where('user_id', $userId)->first();
+        if (! $profile) {
+            return response()->json(['message' => 'Perfil não encontrado.'], 404);
+        }
+
+        $requestedIds = array_map('intval', array_values($data['photo_ids']));
+        $ownedIds = $this->table('connection_profile_photos')
+            ->where('profile_id', $profile->id)
+            ->orderBy('position')
+            ->orderBy('id')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $requested = $requestedIds;
+        $owned = $ownedIds;
+        sort($requested);
+        sort($owned);
+        if ($requested !== $owned) {
+            return response()->json(['message' => 'A ordem deve conter exatamente as fotos do seu perfil.'], 422);
+        }
+
+        DB::transaction(function () use ($profile, $requestedIds) {
+            $now = now();
+            foreach ($requestedIds as $position => $photoId) {
+                $this->table('connection_profile_photos')
+                    ->where('profile_id', $profile->id)
+                    ->where('id', $photoId)
+                    ->update([
+                        'position' => $position,
+                        'is_primary' => $position === 0,
+                        'updated_at' => $now,
+                    ]);
+            }
+        });
+
+        return response()->json(['data' => $this->profilePayload($profile, true)]);
+    }
+
     public function deletePhoto(Request $request, int $photoId)
     {
         $profile = $this->table('connection_profiles')->where('user_id', $request->user()->id)->first();
