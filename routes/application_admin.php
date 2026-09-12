@@ -93,7 +93,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/users/{userId}/impersonate', [ApplicationAdminImpersonationController::class, 'start'])
                     ->whereNumber('userId')
                     ->middleware('throttle:20,1');
-                Route::get('/impersonations', [ApplicationAdminController::class, 'history']);
+                Route::get('/impersonations', [ApplicationAdminImpersonationController::class, 'history']);
                 Route::get('/impersonations/{sessionId}/audit', [ApplicationAdminImpersonationController::class, 'audit'])
                     ->whereNumber('sessionId');
                 Route::post('/impersonations/{sessionId}/end', [ApplicationAdminImpersonationController::class, 'forceEnd'])
