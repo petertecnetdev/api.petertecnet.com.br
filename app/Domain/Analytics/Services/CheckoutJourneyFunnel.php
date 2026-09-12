@@ -44,6 +44,12 @@ final class CheckoutJourneyFunnel
         }
 
         $journeys = [];
+        $unattributedAbandonment = [
+            'events' => 0,
+            'gmv_at_risk' => 0.0,
+            'platform_contribution_at_risk' => $platformContributionMarginPercent !== null ? 0.0 : null,
+            'diagnostics' => [],
+        ];
         $acceptedTypes = array_merge(array_values(self::STAGES), self::TERMINAL_FAILURES);
 
         foreach ($interactions as $interaction) {
@@ -52,13 +58,42 @@ final class CheckoutJourneyFunnel
                 continue;
             }
 
+            $rawEventId = $this->value($interaction, ['content', 'metadata', 'event_id']);
+            $eventId = is_numeric($rawEventId) ? (int) $rawEventId : null;
             $journeyId = trim((string) $this->value($interaction, ['content', 'metadata', 'checkout_journey_id']));
             if (! preg_match('/^[a-zA-Z0-9._:-]{8,120}$/', $journeyId)) {
+                if ($type === 'frontend_checkout_abandoned' && $eventId && isset($allowedEventIds[$eventId])) {
+                    $amount = $this->value($interaction, ['content', 'metadata', 'amount']);
+                    $amount = is_numeric($amount) && (float) $amount >= 0 ? round((float) $amount, 2) : 0.0;
+                    $paymentMethod = strtolower(trim((string) $this->value($interaction, ['content', 'metadata', 'payment_method'])));
+                    if (! preg_match('/^[a-z][a-z0-9_-]{1,39}$/', $paymentMethod)) {
+                        $paymentMethod = 'unknown';
+                    }
+                    $estimatedContribution = $this->estimatePlatformContribution(
+                        $amount,
+                        $paymentMethod,
+                        $platformContributionMarginPercent,
+                        $platformContributionMarginByPaymentMethod,
+                    );
+                    $unattributedAbandonment['events']++;
+                    $unattributedAbandonment['gmv_at_risk'] += $amount;
+                    if ($estimatedContribution !== null) {
+                        $unattributedAbandonment['platform_contribution_at_risk'] ??= 0.0;
+                        $unattributedAbandonment['platform_contribution_at_risk'] += $estimatedContribution;
+                    }
+                    $this->accumulateAbandonmentDiagnostic(
+                        $unattributedAbandonment['diagnostics'],
+                        [
+                            'payment_method' => $paymentMethod,
+                            'abandonment' => $this->abandonmentMetadata($interaction),
+                        ],
+                        $amount,
+                        $estimatedContribution,
+                    );
+                }
                 continue;
             }
 
-            $rawEventId = $this->value($interaction, ['content', 'metadata', 'event_id']);
-            $eventId = is_numeric($rawEventId) ? (int) $rawEventId : null;
             $knownEventId = $journeys[$journeyId]['event_id'] ?? null;
             $effectiveEventId = $eventId ?: $knownEventId;
 
@@ -95,7 +130,10 @@ final class CheckoutJourneyFunnel
         }
 
         if ($journeys === []) {
-            return $this->emptySummary();
+            $summary = $this->emptySummary();
+            $summary['dropoff']['unattributed_abandonment'] = $this->finalizeUnattributedAbandonment($unattributedAbandonment);
+            $summary['gmv']['unattributed_abandoned_at_risk'] = round((float) $unattributedAbandonment['gmv_at_risk'], 2);
+            return $summary;
         }
 
         $stageCounts = array_fill_keys(array_keys(self::STAGES), 0);
@@ -209,11 +247,13 @@ final class CheckoutJourneyFunnel
                 'largest_economic_step' => $largestEconomicDropoff,
                 'largest_contribution_step' => $largestContributionDropoff,
                 'abandonment_diagnostics' => $this->finalizeAbandonmentDiagnostics($abandonmentDiagnostics),
+                'unattributed_abandonment' => $this->finalizeUnattributedAbandonment($unattributedAbandonment),
             ],
             'gmv' => [
                 'opened' => round($openedGmv, 2),
                 'approved' => round($approvedGmv, 2),
                 'explicit_abandoned_at_risk' => round($abandonedGmv, 2),
+                'unattributed_abandoned_at_risk' => round((float) $unattributedAbandonment['gmv_at_risk'], 2),
                 'by_stage' => array_map(static fn (float $value): float => round($value, 2), $stageGmv),
             ],
             'platform_contribution_estimate' => [
@@ -325,6 +365,20 @@ final class CheckoutJourneyFunnel
         }
 
         return $result;
+    }
+
+    /** @param array<string, mixed> $unattributed @return array<string, mixed> */
+    private function finalizeUnattributedAbandonment(array $unattributed): array
+    {
+        return [
+            'events' => (int) ($unattributed['events'] ?? 0),
+            'gmv_at_risk' => round((float) ($unattributed['gmv_at_risk'] ?? 0), 2),
+            'platform_contribution_at_risk' => ($unattributed['platform_contribution_at_risk'] ?? null) === null
+                ? null
+                : round((float) $unattributed['platform_contribution_at_risk'], 2),
+            'reason' => 'missing_or_invalid_checkout_journey_id',
+            'diagnostics' => $this->finalizeAbandonmentDiagnostics((array) ($unattributed['diagnostics'] ?? [])),
+        ];
     }
 
     /** @return array<string, mixed> */
@@ -492,11 +546,13 @@ final class CheckoutJourneyFunnel
                 'largest_economic_step' => null,
                 'largest_contribution_step' => null,
                 'abandonment_diagnostics' => $this->finalizeAbandonmentDiagnostics([]),
+                'unattributed_abandonment' => $this->finalizeUnattributedAbandonment([]),
             ],
             'gmv' => [
                 'opened' => 0.0,
                 'approved' => 0.0,
                 'explicit_abandoned_at_risk' => 0.0,
+                'unattributed_abandoned_at_risk' => 0.0,
                 'by_stage' => array_fill_keys(array_keys(self::STAGES), 0.0),
             ],
             'platform_contribution_estimate' => [
