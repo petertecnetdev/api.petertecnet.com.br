@@ -91,6 +91,90 @@ final class PaymentHealthSnapshotService
         ];
     }
 
+    public function incidentHistoryForApplication(int $appId): array
+    {
+        $active = Cache::get("commerce:payment-health:incident:{$appId}");
+        $activeIncident = is_array($active) && ($active['status'] ?? null) === 'anomaly'
+            ? [
+                'started_at' => $active['started_at'] ?? null,
+                'duration_seconds' => ! empty($active['started_at'])
+                    ? CarbonImmutable::parse($active['started_at'])->diffInSeconds(now())
+                    : null,
+                'peak_at_risk_volume' => round((float) ($active['peak_at_risk_volume'] ?? 0), 2),
+                'peak_pending_orders' => (int) ($active['peak_pending_orders'] ?? 0),
+                'peak_critical_orders' => (int) ($active['peak_critical_orders'] ?? 0),
+                'peak_provider_pending_payments' => (int) ($active['peak_provider_pending_payments'] ?? 0),
+            ]
+            : null;
+
+        if (! Schema::hasTable('commerce_payment_health_incidents')) {
+            return [
+                'status' => 'history_unavailable',
+                'window_days' => 30,
+                'active' => $activeIncident,
+                'incidents' => 0,
+                'average_duration_seconds' => null,
+                'max_duration_seconds' => null,
+                'peak_at_risk_volume' => 0.0,
+                'recent' => [],
+            ];
+        }
+
+        $windowStart = now()->subDays(30);
+        $summary = DB::table('commerce_payment_health_incidents')
+            ->where('app_id', $appId)
+            ->where('started_at', '>=', $windowStart)
+            ->selectRaw('COUNT(*) as incidents')
+            ->selectRaw('AVG(duration_seconds) as average_duration_seconds')
+            ->selectRaw('MAX(duration_seconds) as max_duration_seconds')
+            ->selectRaw('MAX(peak_at_risk_volume) as peak_at_risk_volume')
+            ->first();
+
+        $recent = DB::table('commerce_payment_health_incidents')
+            ->where('app_id', $appId)
+            ->orderByDesc('started_at')
+            ->limit(5)
+            ->get([
+                'started_at',
+                'recovered_at',
+                'duration_seconds',
+                'peak_at_risk_volume',
+                'peak_pending_orders',
+                'peak_critical_orders',
+                'peak_provider_pending_payments',
+                'closing_at_risk_volume',
+                'signals',
+            ])
+            ->map(fn ($row) => [
+                'started_at' => $row->started_at,
+                'recovered_at' => $row->recovered_at,
+                'duration_seconds' => $row->duration_seconds !== null ? (int) $row->duration_seconds : null,
+                'peak_at_risk_volume' => round((float) $row->peak_at_risk_volume, 2),
+                'peak_pending_orders' => (int) $row->peak_pending_orders,
+                'peak_critical_orders' => (int) $row->peak_critical_orders,
+                'peak_provider_pending_payments' => (int) $row->peak_provider_pending_payments,
+                'closing_at_risk_volume' => $row->closing_at_risk_volume !== null ? round((float) $row->closing_at_risk_volume, 2) : null,
+                'signals' => is_string($row->signals) ? (json_decode($row->signals, true) ?: []) : ($row->signals ?? []),
+            ])
+            ->values()
+            ->all();
+
+        return [
+            'status' => 'available',
+            'window_days' => 30,
+            'active' => $activeIncident,
+            'incidents' => (int) ($summary->incidents ?? 0),
+            'average_duration_seconds' => $summary?->average_duration_seconds !== null
+                ? (int) round((float) $summary->average_duration_seconds)
+                : null,
+            'max_duration_seconds' => $summary?->max_duration_seconds !== null
+                ? (int) $summary->max_duration_seconds
+                : null,
+            'peak_at_risk_volume' => round((float) ($summary->peak_at_risk_volume ?? 0), 2),
+            'recent' => $recent,
+        ];
+    }
+
     private function trackAnomalyIncident(int $appId, array $current, array $trend): void
     {
         if (! in_array($trend['status'] ?? null, ['normal', 'anomaly'], true)) {
@@ -111,6 +195,7 @@ final class PaymentHealthSnapshotService
                 'peak_pending_orders' => (int) ($current['pending_orders'] ?? 0),
                 'peak_critical_orders' => (int) ($current['critical_orders'] ?? 0),
                 'peak_provider_pending_payments' => (int) ($current['provider_pending_payments'] ?? 0),
+                'signals' => $trend['signals'] ?? [],
             ];
         }
 
@@ -135,6 +220,10 @@ final class PaymentHealthSnapshotService
                     (int) ($current['provider_pending_payments'] ?? 0),
                     (int) ($incident['peak_provider_pending_payments'] ?? 0)
                 ),
+                'signals' => array_values(array_unique(array_merge(
+                    $incident['signals'] ?? [],
+                    $trend['signals'] ?? []
+                ))),
             ];
 
             Cache::put($cacheKey, $incident, now()->addDays(7));
@@ -172,15 +261,35 @@ final class PaymentHealthSnapshotService
             return;
         }
 
+        $recoveredAt = now();
         $durationSeconds = null;
         if (! empty($incident['started_at'])) {
-            $durationSeconds = CarbonImmutable::parse($incident['started_at'])->diffInSeconds(now());
+            $durationSeconds = CarbonImmutable::parse($incident['started_at'])->diffInSeconds($recoveredAt);
+        }
+
+        if (Schema::hasTable('commerce_payment_health_incidents') && ! empty($incident['started_at'])) {
+            DB::table('commerce_payment_health_incidents')->insert([
+                'app_id' => $appId,
+                'started_at' => CarbonImmutable::parse($incident['started_at']),
+                'recovered_at' => $recoveredAt,
+                'duration_seconds' => $durationSeconds,
+                'peak_at_risk_volume' => round((float) ($incident['peak_at_risk_volume'] ?? 0), 2),
+                'peak_pending_orders' => (int) ($incident['peak_pending_orders'] ?? 0),
+                'peak_critical_orders' => (int) ($incident['peak_critical_orders'] ?? 0),
+                'peak_provider_pending_payments' => (int) ($incident['peak_provider_pending_payments'] ?? 0),
+                'closing_pending_orders' => (int) ($current['pending_orders'] ?? 0),
+                'closing_critical_orders' => (int) ($current['critical_orders'] ?? 0),
+                'closing_at_risk_volume' => round((float) ($current['at_risk_volume'] ?? 0), 2),
+                'signals' => json_encode($incident['signals'] ?? [], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => $recoveredAt,
+                'updated_at' => $recoveredAt,
+            ]);
         }
 
         Log::info('commerce.payment_health.anomaly_recovered', [
             'app_id' => $appId,
             'incident_started_at' => $incident['started_at'] ?? null,
-            'incident_recovered_at' => now()->toIso8601String(),
+            'incident_recovered_at' => $recoveredAt->toIso8601String(),
             'duration_seconds' => $durationSeconds,
             'peak_at_risk_volume' => round((float) ($incident['peak_at_risk_volume'] ?? 0), 2),
             'peak_pending_orders' => (int) ($incident['peak_pending_orders'] ?? 0),
@@ -194,7 +303,7 @@ final class PaymentHealthSnapshotService
 
         Cache::put($cacheKey, [
             'status' => 'normal',
-            'recovered_at' => now()->toIso8601String(),
+            'recovered_at' => $recoveredAt->toIso8601String(),
         ], now()->addDays(7));
     }
 
