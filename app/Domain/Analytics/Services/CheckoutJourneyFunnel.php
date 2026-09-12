@@ -326,6 +326,24 @@ final class CheckoutJourneyFunnel
                 $diagnostics[$dimension][$key]['platform_contribution_at_risk'] += $estimatedContribution;
             }
         }
+
+        $segmentKey = implode('|', [$deviceClass, $method, $reason, $elapsedBucket, $cartType]);
+        $diagnostics['top_segments'][$segmentKey] ??= [
+            'device' => $deviceClass,
+            'payment_method' => $method,
+            'reason' => $reason,
+            'elapsed_time' => $elapsedBucket,
+            'cart_type' => $cartType,
+            'journeys' => 0,
+            'gmv_at_risk' => 0.0,
+            'platform_contribution_at_risk' => $estimatedContribution !== null ? 0.0 : null,
+        ];
+        $diagnostics['top_segments'][$segmentKey]['journeys']++;
+        $diagnostics['top_segments'][$segmentKey]['gmv_at_risk'] += $amount;
+        if ($estimatedContribution !== null) {
+            $diagnostics['top_segments'][$segmentKey]['platform_contribution_at_risk'] ??= 0.0;
+            $diagnostics['top_segments'][$segmentKey]['platform_contribution_at_risk'] += $estimatedContribution;
+        }
     }
 
     private function abandonmentElapsedBucket(mixed $elapsedMs): string
@@ -384,6 +402,17 @@ final class CheckoutJourneyFunnel
             usort($rows, static fn (array $a, array $b): int => [$b['gmv_at_risk'], $b['journeys']] <=> [$a['gmv_at_risk'], $a['journeys']]);
             $result[$dimension] = $rows;
         }
+
+        $segments = array_values($diagnostics['top_segments'] ?? []);
+        foreach ($segments as &$segment) {
+            $segment['gmv_at_risk'] = round((float) $segment['gmv_at_risk'], 2);
+            if ($segment['platform_contribution_at_risk'] !== null) {
+                $segment['platform_contribution_at_risk'] = round((float) $segment['platform_contribution_at_risk'], 2);
+            }
+        }
+        unset($segment);
+        usort($segments, static fn (array $a, array $b): int => [$b['gmv_at_risk'], $b['journeys']] <=> [$a['gmv_at_risk'], $a['journeys']]);
+        $result['top_segments'] = array_slice($segments, 0, 10);
 
         return $result;
     }
