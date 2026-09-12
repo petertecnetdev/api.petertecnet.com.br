@@ -93,6 +93,45 @@ class TeamMemberController extends Controller
         ], 201);
     }
 
+    public function invite(Request $request)
+    {
+        $data = $request->validate([
+            'first_name' => ['required', 'string', 'max:100', 'regex:/^[a-zA-ZÀ-ÿ\\s]+$/'],
+            'email' => 'required|email|max:255',
+            'establishment_id' => 'required|integer|exists:establishments,id',
+            'role' => 'required|string|max:255',
+            'permissions' => 'nullable|array',
+            'permissions.*' => 'string|max:100',
+        ]);
+
+        $result = $this->teamMembers->invite(
+            $this->context->id(),
+            $request->user(),
+            (int) $data['establishment_id'],
+            (string) $data['first_name'],
+            (string) $data['email'],
+            (string) $data['role'],
+            $data['permissions'] ?? [],
+        );
+
+        if (! $result['created']) {
+            return response()->json([
+                'error' => 'Usuário já vinculado ao estabelecimento.',
+                'employer' => $result['employer'],
+                'user' => $result['user'],
+            ], 409);
+        }
+
+        return response()->json([
+            'message' => $result['invited']
+                ? 'Profissional vinculado e convite enviado com sucesso.'
+                : 'Profissional existente vinculado com sucesso.',
+            'employer' => $result['employer'],
+            'user' => $result['user'],
+            'invited' => $result['invited'],
+        ], 201);
+    }
+
     public function destroy(Request $request, int $teamMember)
     {
         $this->teamMembers->remove(
