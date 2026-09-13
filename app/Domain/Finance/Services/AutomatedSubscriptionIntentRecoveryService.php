@@ -19,9 +19,9 @@ final class AutomatedSubscriptionIntentRecoveryService
      * Send one transactional reminder for abandoned subscription PIX checkouts.
      *
      * The AppNotification tuple acts as the idempotency guard, so the job never
-     * creates a second reminder for the same intent. The e-mail CTA only targets
-     * the application itself; the authenticated frontend recovers the current
-     * user's own intent through the app-scoped recoverable-intent endpoint.
+     * creates a second reminder for the same intent. The e-mail CTA targets the
+     * shared subscription plans route, where authenticated frontends recover the
+     * current user's own intent through the app-scoped recoverable-intent endpoint.
      *
      * @return array{eligible:int,dispatched:int,skipped:int,failed:int}
      */
@@ -80,7 +80,12 @@ final class AutomatedSubscriptionIntentRecoveryService
             $eligible++;
 
             try {
-                $referenceUrl = rtrim((string) $application->url, '/').'/';
+                $query = http_build_query([
+                    'source' => 'payment_recovery',
+                    'resume' => '1',
+                    'plan' => (string) $intent->plan_code,
+                ]);
+                $referenceUrl = rtrim((string) $application->url, '/').'/planos?'.$query;
 
                 $this->notifications->sendToUser((int) $application->id, (int) $intent->user_id, [
                     'type' => 'subscription_checkout_recovery',
