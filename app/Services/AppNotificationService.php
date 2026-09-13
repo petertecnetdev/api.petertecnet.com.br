@@ -14,6 +14,11 @@ use Illuminate\Support\Str;
 
 class AppNotificationService
 {
+    private const ECOSYSTEM_TRANSACTIONAL_EMAIL_TYPES = [
+        'checkout_recovery',
+        'subscription_checkout_recovery',
+    ];
+
     public function sendToUser(int $appId, int $userId, array $payload): AppNotification
     {
         $notification = AppNotification::create([
@@ -58,7 +63,7 @@ class AppNotificationService
 
             $application = Application::query()->find((int) $notification->app_id);
 
-            if (! $application || ! $this->shouldEmailApplication($application)) {
+            if (! $application || ! $this->shouldEmailNotification($application, $notification)) {
                 return;
             }
 
@@ -93,8 +98,12 @@ class AppNotificationService
         }
     }
 
-    private function shouldEmailApplication(Application $application): bool
+    private function shouldEmailNotification(Application $application, AppNotification $notification): bool
     {
+        if (in_array((string) $notification->type, self::ECOSYSTEM_TRANSACTIONAL_EMAIL_TYPES, true)) {
+            return true;
+        }
+
         $identity = Str::lower(implode(' ', array_filter([
             $application->name,
             $application->slug,
