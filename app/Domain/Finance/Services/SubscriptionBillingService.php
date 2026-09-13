@@ -16,6 +16,7 @@ final class SubscriptionBillingService
         private readonly MercadoPagoService $mercadoPago,
         private readonly ApplicationContext $context,
         private readonly SubscriptionEntitlementService $entitlements,
+        private readonly SubscriptionPeriodCalculator $periods,
     ) {}
 
     public function createPixCheckout(SubscriptionIntent $intent, string $idempotencyKey): array
@@ -194,19 +195,27 @@ final class SubscriptionBillingService
                     'status' => 'paid', 'paid_at' => $payment->paid_at ?: $now, 'failed_at' => null, 'updated_at' => $now,
                 ]);
 
-                $periodEnd = match ($intent->billing_interval) {
-                    'year' => $now->copy()->addYears(max(1, (int) $intent->billing_interval_count)),
-                    'week' => $now->copy()->addWeeks(max(1, (int) $intent->billing_interval_count)),
-                    'day' => $now->copy()->addDays(max(1, (int) $intent->billing_interval_count)),
-                    default => $now->copy()->addMonthsNoOverflow(max(1, (int) $intent->billing_interval_count)),
-                };
+                $subscription = DB::table('ecosystem_subscriptions')
+                    ->where('app_id', $payment->app_id)
+                    ->where('user_id', $payment->user_id)
+                    ->lockForUpdate()
+                    ->first();
 
-                $subscription = DB::table('ecosystem_subscriptions')->where('app_id', $payment->app_id)->where('user_id', $payment->user_id)->lockForUpdate()->first();
+                $period = $this->periods->renewalPeriod(
+                    $now,
+                    $subscription?->current_period_start,
+                    $subscription?->current_period_end,
+                    (string) $intent->billing_interval,
+                    (int) $intent->billing_interval_count,
+                );
+                $periodStart = $period['start'];
+                $periodEnd = $period['end'];
+
                 $values = [
                     'subscription_intent_id' => $intent->getKey(), 'plan_code' => $intent->plan_code, 'status' => 'active',
                     'currency' => $intent->currency, 'price_cents' => $intent->price_cents,
                     'billing_interval' => $intent->billing_interval, 'billing_interval_count' => $intent->billing_interval_count,
-                    'current_period_start' => $now, 'current_period_end' => $periodEnd, 'cancelled_at' => null, 'updated_at' => $now,
+                    'current_period_start' => $periodStart, 'current_period_end' => $periodEnd, 'cancelled_at' => null, 'updated_at' => $now,
                 ];
                 if ($subscription) {
                     DB::table('ecosystem_subscriptions')->where('id', $subscription->id)->update($values);
@@ -223,7 +232,7 @@ final class SubscriptionBillingService
                     $subscriptionId,
                     (string) $intent->application,
                     (string) $intent->plan_code,
-                    $now,
+                    $periodStart,
                     $periodEnd,
                 );
 
