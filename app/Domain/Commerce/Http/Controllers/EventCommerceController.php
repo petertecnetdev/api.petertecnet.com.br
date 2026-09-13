@@ -324,6 +324,22 @@ final class EventCommerceController extends Controller
                 'producer_net' => max(0, $subtotal - $platformFee),
             ]);
 
+            if ($subtotal > 0) {
+                abort_if(
+                    $data['payment_method'] === 'free',
+                    422,
+                    'Este pedido possui valor a pagar. Escolha PIX ou cartão.'
+                );
+
+                $readiness = $this->accounts->readiness((int) $event->production_id);
+                abort_if(! $readiness['available'], 422, $readiness['message']);
+                abort_if(
+                    ! in_array($data['payment_method'], $readiness['methods'], true),
+                    422,
+                    'Esta forma de pagamento não está disponível para esta organização.'
+                );
+            }
+
             return $order->fresh(['items','event','production','user']);
         });
 
