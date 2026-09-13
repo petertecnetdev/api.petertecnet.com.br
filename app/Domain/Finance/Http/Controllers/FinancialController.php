@@ -62,7 +62,16 @@ class FinancialController extends Controller
     public function startLiveness(Request $request, int $organizationId)
     {
         $this->ownedOrganization($request, $organizationId);
-        try{return response()->json($this->identity->startLiveness($request->user()));}catch(RuntimeException $e){report($e);return response()->json(['message'=>$e->getMessage()],503);}
+        try {
+            return response()->json($this->identity->startLiveness($request->user()));
+        } catch (RuntimeException $e) {
+            report($e);
+
+            return response()->json([
+                'code' => 'liveness_unavailable',
+                'message' => 'A verificação facial está temporariamente indisponível. Tente novamente em instantes.',
+            ], 503);
+        }
     }
 
     public function completeLiveness(Request $request, int $organizationId)
