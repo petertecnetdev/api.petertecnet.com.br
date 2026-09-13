@@ -11,6 +11,7 @@ use App\Models\EventSchedule;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\MerchantPaymentAccountService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -26,6 +27,7 @@ final class EventManagementController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly TicketInventoryService $ticketInventory,
+        private readonly MerchantPaymentAccountService $paymentAccounts,
     ) {}
 
     public function mine(Request $request)
@@ -119,6 +121,7 @@ final class EventManagementController extends Controller
 
         if (!$isPicker) {
             $this->attachSellableTicketCounts($events->getCollection());
+            $this->attachPaymentReadiness($events->getCollection());
             $this->attachOperationalMetrics($events->getCollection());
         }
 
@@ -409,17 +412,56 @@ final class EventManagementController extends Controller
         $tickets=Ticket::query()
             ->where('app_id',$this->context->id())
             ->whereIn('event_id',$events->pluck('id'))
-            ->get(['id','app_id','event_id','quantity','limit_date']);
+            ->get(['id','app_id','event_id','price','quantity','limit_date']);
         $states=$this->ticketInventory->states($tickets,$now);
         $counts=[];
+        $paidCounts=[];
         foreach($tickets as$ticket){
             if(($states->get((int)$ticket->id)['available']??false)===true){
-                $counts[(int)$ticket->event_id]=($counts[(int)$ticket->event_id]??0)+1;
+                $eventId=(int)$ticket->event_id;
+                $counts[$eventId]=($counts[$eventId]??0)+1;
+                if((float)$ticket->price>0){
+                    $paidCounts[$eventId]=($paidCounts[$eventId]??0)+1;
+                }
             }
         }
         foreach($events as$event){
-            $count=$event->hasEnded($now)?0:(int)($counts[(int)$event->id]??0);
-            $event->setAttribute('available_tickets_count',$count);
+            $ended=$event->hasEnded($now);
+            $eventId=(int)$event->id;
+            $event->setAttribute('available_tickets_count',$ended?0:(int)($counts[$eventId]??0));
+            $event->setAttribute('available_paid_tickets_count',$ended?0:(int)($paidCounts[$eventId]??0));
+        }
+    }
+
+    private function attachPaymentReadiness($events): void
+    {
+        if ($events->isEmpty()) return;
+
+        $byProduction=[];
+        foreach($events->pluck('production_id')->filter()->map(fn($id)=>(int)$id)->unique() as $productionId){
+            $readiness=$this->paymentAccounts->readiness($productionId);
+            $byProduction[$productionId]=[
+                'available'=>(bool)($readiness['available']??false),
+                'settlement_mode'=>(string)($readiness['settlement_mode']??'unavailable'),
+                'methods'=>array_values($readiness['methods']??[]),
+                'message'=>(string)($readiness['message']??''),
+            ];
+        }
+
+        foreach($events as$event){
+            $productionId=(int)$event->production_id;
+            $requiresPayment=(int)($event->available_paid_tickets_count??0)>0;
+            $readiness=$byProduction[$productionId]??[
+                'available'=>false,
+                'settlement_mode'=>'unavailable',
+                'methods'=>[],
+                'message'=>'Os recebimentos ainda não estão disponíveis para esta organização.',
+            ];
+            $event->setAttribute('payment_readiness',[
+                ...$readiness,
+                'required'=>$requiresPayment,
+                'sales_ready'=>!$requiresPayment||$readiness['available'],
+            ]);
         }
     }
 
