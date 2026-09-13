@@ -18,6 +18,7 @@ class AppNotificationService
         'checkout_recovery',
         'subscription_checkout_recovery',
         'subscription_renewal_recovery',
+        'subscription_renewal_reminder',
     ];
 
     public function sendToUser(int $appId, int $userId, array $payload): AppNotification
