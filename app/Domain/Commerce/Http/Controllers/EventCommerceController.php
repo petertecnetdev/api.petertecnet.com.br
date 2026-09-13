@@ -435,7 +435,11 @@ final class EventCommerceController extends Controller
             $sellerToken = $usesMerchant ? $this->accounts->freshAccessToken($account)[1] : $platformToken;
             $settlementMode = $usesMerchant ? 'automatic_split' : 'platform_collection';
             $order->update(['metadata' => array_merge($order->metadata ?? [], ['settlement_mode' => $settlementMode])]);
-            $idempotencyKey = (string) Str::uuid();
+            $idempotencyKey = 'commerce-order-'.$order->public_id;
+            $order->update(['metadata' => array_merge($order->metadata ?? [], [
+                'provider_payment_idempotency_key' => $idempotencyKey,
+                'payment_initialization_retryable' => false,
+            ])]);
             $payer = ['email' => $data['payer_email'] ?? $user->email];
 
             if ($data['payment_method'] === 'card') {
@@ -496,8 +500,22 @@ final class EventCommerceController extends Controller
             $order->update(['processor_fee' => $providerFee]);
         } catch (Throwable $e) {
             report($e);
-            $this->cancelOrder($order);
-            return response()->json(['message' => 'Não foi possível iniciar o pagamento. Tente novamente.'], 502);
+
+            if ($data['payment_method'] !== 'pix') {
+                $this->cancelOrder($order);
+                return response()->json(['message' => 'Não foi possível iniciar o pagamento. Tente novamente.'], 502);
+            }
+
+            $order->update(['metadata' => array_merge($order->metadata ?? [], [
+                'payment_initialization_retryable' => true,
+                'payment_initialization_failed_at' => now()->toIso8601String(),
+            ])]);
+
+            return response()->json([
+                'message' => 'O provedor de pagamento não respondeu. Seu pedido foi preservado; tente novamente sem refazer o carrinho.',
+                'retryable' => true,
+                'order_public_id' => $order->public_id,
+            ], 502);
         }
 
         return response()->json([

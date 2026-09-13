@@ -4,6 +4,7 @@ use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
+use App\Domain\Commerce\Http\Controllers\CommerceOrderPaymentRetryController;
 use App\Domain\Commerce\Http\Controllers\OrderHistoryController;
 use App\Domain\Commerce\Http\Controllers\OrderingController;
 use App\Domain\Commerce\Http\Controllers\OrderingSettingsController;
@@ -270,6 +271,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/commerce/checkout', [EventCommerceController::class, 'checkout'])->middleware('throttle:30,1');
                 Route::get('/commerce/orders/mine', [EventCommerceController::class, 'mine']);
                 Route::get('/commerce/orders/{publicId}', [EventCommerceController::class, 'show']);
+                Route::post('/commerce/orders/{publicId}/payment/retry', [CommerceOrderPaymentRetryController::class, 'store'])->middleware('throttle:12,1');
                 Route::post('/commerce/orders/{publicId}/sync-payment', [PaymentProviderController::class, 'sync'])->middleware('throttle:30,1');
                 Route::get('/organizations/{organizationId}/payment-provider/connect', [PaymentProviderController::class, 'connect'])->whereNumber('organizationId');
                 Route::post('/events/{eventId}/items', [EventCommerceController::class, 'upsertEventItem'])->whereNumber('eventId');
