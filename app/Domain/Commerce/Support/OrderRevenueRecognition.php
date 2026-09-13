@@ -12,6 +12,10 @@ final class OrderRevenueRecognition
             return true;
         }
 
+        if (in_array($order->payment_status, ['failed', 'refunded'], true)) {
+            return false;
+        }
+
         return $order->status === 'completed'
             && in_array($order->payment_method, ['cash', 'card_on_delivery'], true);
     }
