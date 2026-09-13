@@ -21,9 +21,22 @@ class EventPassesMail extends Mailable
         $eventTitle = $event?->title ?? 'seu evento';
         $applicationName = $application?->name ?? config('app.name', 'Peter Tecnet');
         $frontendUrl = rtrim((string) ($application?->url ?: config('app.frontend_url', config('app.url'))), '/');
+        $eventPassesPath = trim((string) data_get($application?->runtime_settings ?? [], 'routes.event_passes', '/passes'));
+
+        if ($eventPassesPath === ''
+            || ! str_starts_with($eventPassesPath, '/')
+            || str_starts_with($eventPassesPath, '//')) {
+            $eventPassesPath = '/passes';
+        }
+
+        $passesUrl = $frontendUrl.'/'.ltrim($eventPassesPath, '/');
 
         return $this->subject('Seus ingressos para '.$eventTitle.' | '.$applicationName)
             ->view('emails.event-passes')
-            ->with(['frontendUrl' => $frontendUrl, 'applicationName' => $applicationName]);
+            ->with([
+                'frontendUrl' => $frontendUrl,
+                'passesUrl' => $passesUrl,
+                'applicationName' => $applicationName,
+            ]);
     }
 }
