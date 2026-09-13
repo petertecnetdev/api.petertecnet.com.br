@@ -6,10 +6,12 @@ use App\Models\Application;
 use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\Item;
+use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class OrderApplicationIsolationTest extends TestCase
@@ -72,6 +74,60 @@ class OrderApplicationIsolationTest extends TestCase
             ]);
 
         $response->assertStatus(422);
+        $this->assertDatabaseCount('orders', 0);
+    }
+
+    public function test_order_domain_rejects_attendant_from_another_establishment(): void
+    {
+        $admin = $this->adminUser();
+        $rasoio = $this->application('Rasoio', 'rasoio');
+
+        $targetEstablishment = $this->establishment($admin, $rasoio, 'Target Shop', 'target-shop');
+        $foreignEstablishment = $this->establishment($admin, $rasoio, 'Foreign Shop', 'foreign-shop');
+
+        $employerUser = User::create([
+            'first_name' => 'Atendente',
+            'email' => 'foreign-attendant@example.test',
+            'user_name' => 'foreign-attendant-test',
+            'password' => Hash::make('Test1234!'),
+        ]);
+
+        $foreignEmployer = Employer::create([
+            'user_id' => $employerUser->id,
+            'establishment_id' => $foreignEstablishment->id,
+            'created_by' => $admin->id,
+        ]);
+
+        try {
+            Order::create([
+                'app_id' => $rasoio->id,
+                'entity_name' => 'establishment',
+                'entity_id' => $targetEstablishment->id,
+                'order_number' => 'ctx-guard-test',
+                'order_datetime' => now()->addDay()->format('Y-m-d H:i:s'),
+                'created_by' => $admin->id,
+                'client_id' => $admin->id,
+                'attendant_id' => $foreignEmployer->id,
+                'customer_name' => 'Cliente Teste',
+                'origin' => 'app',
+                'fulfillment' => 'local',
+                'payment_status' => 'pending',
+                'payment_method' => 'dinheiro',
+                'type' => 'appointment',
+                'status' => 'pending',
+                'appointment_status' => 'pending',
+                'total_price' => 0,
+                'total_duration' => 30,
+            ]);
+
+            $this->fail('A criação deveria rejeitar um atendente de outro estabelecimento.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'O colaborador informado não pertence ao estabelecimento deste pedido.',
+                $exception->errors()['attendant_id'][0] ?? null
+            );
+        }
+
         $this->assertDatabaseCount('orders', 0);
     }
 
