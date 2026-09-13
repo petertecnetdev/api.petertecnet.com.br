@@ -2,6 +2,7 @@
 
 namespace App\Domain\Commerce\Http\Controllers;
 
+use App\Domain\Commerce\Support\OrderRevenueRecognition;
 use App\Http\Controllers\Controller;
 use App\Models\EcosystemPayment;
 use App\Models\Employer;
@@ -352,27 +353,41 @@ class OrderingController extends Controller
             ->whereIn('entity_id', $establishments->pluck('id'))
             ->whereBetween('created_at', [$start, $end])
             ->where('status', '!=', 'cancelled')
-            ->get(['id', 'entity_id', 'total_price']);
+            ->get(['id', 'entity_id', 'total_price', 'status', 'payment_status', 'payment_method']);
 
         $grouped = $orders->groupBy('entity_id');
         $rows = $establishments->map(function ($establishment) use ($grouped) {
             $set = $grouped->get($establishment->id, collect());
-            $revenue = (float) $set->sum('total_price');
+            $recognized = $set->filter(fn (Order $order) => OrderRevenueRecognition::isRecognized($order));
+            $revenue = (float) $recognized->sum('total_price');
+            $grossSales = (float) $set->sum('total_price');
+            $recognizedCount = $recognized->count();
+
             return [
                 'establishment' => $establishment,
                 'orders' => $set->count(),
+                'recognized_orders' => $recognizedCount,
                 'revenue' => round($revenue, 2),
-                'average_ticket' => $set->count() ? round($revenue / $set->count(), 2) : 0,
+                'gross_sales' => round($grossSales, 2),
+                'unconfirmed_value' => round(max(0, $grossSales - $revenue), 2),
+                'average_ticket' => $recognizedCount ? round($revenue / $recognizedCount, 2) : 0,
             ];
         })->values();
 
-        $revenue = (float) $orders->sum('total_price');
+        $recognizedOrders = $orders->filter(fn (Order $order) => OrderRevenueRecognition::isRecognized($order));
+        $revenue = (float) $recognizedOrders->sum('total_price');
+        $grossSales = (float) $orders->sum('total_price');
         $count = $orders->count();
+        $recognizedCount = $recognizedOrders->count();
+
         return response()->json(['success' => true, 'data' => [
             'totals' => [
                 'orders' => $count,
+                'recognized_orders' => $recognizedCount,
                 'revenue' => round($revenue, 2),
-                'average_ticket' => $count ? round($revenue / $count, 2) : 0,
+                'gross_sales' => round($grossSales, 2),
+                'unconfirmed_value' => round(max(0, $grossSales - $revenue), 2),
+                'average_ticket' => $recognizedCount ? round($revenue / $recognizedCount, 2) : 0,
                 'establishments' => $establishments->count(),
             ],
             'establishments' => $rows,
