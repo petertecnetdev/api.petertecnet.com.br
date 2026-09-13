@@ -68,6 +68,54 @@ class CheckoutRecoveryJourneyEconomicsTest extends TestCase
         $this->assertSame('local_resume', $summary['by_recovery_source'][0]['recovery_source']);
     }
 
+    public function test_it_compares_recovered_and_standard_cohorts_without_claiming_causal_lift(): void
+    {
+        $service = new CheckoutRecoveryJourneyEconomics();
+        $interactions = [
+            $this->interaction('frontend_checkout_opened', 'journey-recovered', 10, 100.00, 'pix', [
+                'attribution_source' => 'checkout_recovery',
+            ]),
+            $this->interaction('frontend_payment_attempted', 'journey-recovered', null, 100.00, 'pix', [
+                'attribution_source' => 'checkout_recovery',
+            ]),
+            $this->interaction('frontend_payment_approved', 'journey-recovered', null, 100.00, 'pix', [
+                'attribution_source' => 'checkout_recovery',
+            ]),
+            $this->interaction('frontend_checkout_fulfilled', 'journey-recovered', null, 100.00, 'pix', [
+                'attribution_source' => 'checkout_recovery',
+            ]),
+            $this->interaction('frontend_checkout_opened', 'journey-standard-a', 10, 200.00, 'card'),
+            $this->interaction('frontend_payment_attempted', 'journey-standard-a', null, 200.00, 'card'),
+            $this->interaction('frontend_payment_approved', 'journey-standard-a', null, 200.00, 'card'),
+            $this->interaction('frontend_checkout_fulfilled', 'journey-standard-a', null, 200.00, 'card'),
+            $this->interaction('frontend_checkout_opened', 'journey-standard-b', 10, 300.00, 'card'),
+            $this->interaction('frontend_payment_attempted', 'journey-standard-b', null, 300.00, 'card'),
+        ];
+
+        $summary = $service->summarize($interactions, [10]);
+        $standard = $summary['comparison']['standard'];
+
+        $this->assertSame(2, $standard['journeys']);
+        $this->assertSame(2, $standard['opened']);
+        $this->assertSame(2, $standard['attempted']);
+        $this->assertSame(1, $standard['approved']);
+        $this->assertSame(1, $standard['fulfilled']);
+        $this->assertSame(100.0, $standard['conversion']['opened_to_attempted_percent']);
+        $this->assertSame(50.0, $standard['conversion']['attempted_to_approved_percent']);
+        $this->assertSame(100.0, $standard['conversion']['approved_to_fulfilled_percent']);
+        $this->assertSame(500.0, $standard['gmv']['opened']);
+        $this->assertSame(200.0, $standard['gmv']['approved']);
+        $this->assertSame(200.0, $standard['gmv']['fulfilled']);
+        $this->assertSame(0.0, $summary['comparison']['delta_percentage_points']['opened_to_attempted']);
+        $this->assertSame(50.0, $summary['comparison']['delta_percentage_points']['attempted_to_approved']);
+        $this->assertSame(0.0, $summary['comparison']['delta_percentage_points']['approved_to_fulfilled']);
+        $this->assertSame(33.33, $summary['comparison']['recovered_fulfilled_gmv_share_percent']);
+        $this->assertSame(
+            'descriptive_cohort_comparison_not_causal_incremental_lift',
+            $summary['comparison']['interpretation'],
+        );
+    }
+
     public function test_it_ignores_invalid_journey_ids(): void
     {
         $service = new CheckoutRecoveryJourneyEconomics();
