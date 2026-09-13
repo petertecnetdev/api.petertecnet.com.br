@@ -16,6 +16,7 @@ class AppNotificationService
 {
     private const ECOSYSTEM_TRANSACTIONAL_EMAIL_TYPES = [
         'checkout_recovery',
+        'subscription_checkout_recovery',
     ];
 
     public function sendToUser(int $appId, int $userId, array $payload): AppNotification
