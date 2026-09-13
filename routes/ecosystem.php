@@ -10,6 +10,7 @@ use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
 use App\Http\Controllers\Admin\EstablishmentEventController;
 use App\Http\Controllers\Admin\FinancialController;
+use App\Http\Controllers\Admin\ImportantEventController;
 use App\Http\Controllers\Admin\InteractionMaintenanceController;
 use App\Http\Controllers\Admin\MarketingController;
 use App\Http\Controllers\Admin\OnboardingController;
@@ -40,6 +41,14 @@ Route::prefix('auth/impersonation')->middleware(['api', 'auth:api'])->group(func
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
+    Route::prefix('important-events')->group(function () {
+        Route::get('/', [ImportantEventController::class, 'index']);
+        Route::get('/unread-count', [ImportantEventController::class, 'unreadCount']);
+        Route::get('/{importantEvent}', [ImportantEventController::class, 'show'])->whereNumber('importantEvent');
+        Route::patch('/{importantEvent}/read', [ImportantEventController::class, 'markRead'])->whereNumber('importantEvent');
+        Route::patch('/read-all', [ImportantEventController::class, 'markAllRead']);
+    });
+
     Route::get('/activity', [EcosystemController::class, 'activity']);
     Route::delete('/activity', [InteractionMaintenanceController::class, 'destroySelected'])->middleware('throttle:20,1');
     Route::delete('/activity/all', [InteractionMaintenanceController::class, 'destroyAll'])->middleware('throttle:3,10');
