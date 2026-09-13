@@ -125,7 +125,7 @@ final class AutomatedCheckoutRecoveryService
                     (int) $order->app_id,
                     (int) $order->user_id,
                     (int) $order->id,
-                    'in_app',
+                    'in_app_email',
                     0.0,
                     $recoveryContext,
                 );
