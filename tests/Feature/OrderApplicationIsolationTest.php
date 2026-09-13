@@ -75,6 +75,66 @@ class OrderApplicationIsolationTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
+    public function test_direct_order_rejects_attendant_from_another_establishment(): void
+    {
+        $admin = $this->adminUser();
+        $rasoio = $this->application('Rasoio', 'rasoio');
+
+        $targetEstablishment = $this->establishment($admin, $rasoio, 'Target Shop', 'target-shop');
+        $foreignEstablishment = $this->establishment($admin, $rasoio, 'Foreign Shop', 'foreign-shop');
+
+        $employerUser = User::create([
+            'first_name' => 'Atendente',
+            'email' => 'foreign-attendant@example.test',
+            'user_name' => 'foreign-attendant-test',
+            'password' => Hash::make('Test1234!'),
+        ]);
+
+        $foreignEmployer = Employer::create([
+            'user_id' => $employerUser->id,
+            'establishment_id' => $foreignEstablishment->id,
+            'created_by' => $admin->id,
+        ]);
+
+        $item = Item::create([
+            'app_id' => $rasoio->id,
+            'entity_name' => 'establishment',
+            'entity_id' => $targetEstablishment->id,
+            'name' => 'Serviço Rasoio',
+            'type' => 'service',
+            'price' => 25,
+            'status' => true,
+            'user_id' => $admin->id,
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $token = auth('api')->login($admin);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/api/order', [
+                'mode' => 'direct',
+                'app_id' => $rasoio->id,
+                'entity_name' => 'establishment',
+                'entity_id' => $targetEstablishment->id,
+                'attendant_id' => $foreignEmployer->id,
+                'client_id' => $admin->id,
+                'customer_name' => 'Cliente Balcão',
+                'items' => [[
+                    'item_id' => $item->id,
+                    'quantity' => 1,
+                ]],
+                'origin' => 'balcao',
+                'fulfillment' => 'dine-in',
+                'payment_status' => 'pending',
+                'payment_method' => 'dinheiro',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('errors.attendant_id.0', 'O colaborador informado não pertence ao estabelecimento deste pedido.');
+        $this->assertDatabaseCount('orders', 0);
+    }
+
     private function adminUser(): User
     {
         $profile = Profile::create([
