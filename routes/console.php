@@ -8,6 +8,7 @@ use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\Events\Services\EventAgendaMaintenanceService;
 use App\Domain\Finance\Services\AutomatedSubscriptionIntentRecoveryService;
 use App\Domain\Finance\Services\AutomatedSubscriptionRenewalRecoveryService;
+use App\Domain\Finance\Services\AutomatedSubscriptionRenewalReminderService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Domain\Messaging\Services\MessageEngagementService;
 use App\Jobs\DispatchNotificationCampaign;
@@ -122,6 +123,15 @@ Artisan::command('finance:recover-pending-subscriptions {--limit=}', function ()
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending subscription PIX checkouts');
 
+Artisan::command('finance:remind-renewing-subscriptions {--limit=}', function () {
+    $limit = $this->option('limit');
+    $result = app(AutomatedSubscriptionRenewalReminderService::class)->run(
+        $limit !== null && $limit !== '' ? (int) $limit : null,
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Remind paying subscribers before their current billing period expires');
+
 Artisan::command('finance:recover-expired-subscriptions {--limit=}', function () {
     $limit = $this->option('limit');
     $result = app(AutomatedSubscriptionRenewalRecoveryService::class)->run(
@@ -180,6 +190,10 @@ Schedule::command('commerce:capture-payment-health')
     ->onOneServer();
 Schedule::command('finance:recover-pending-subscriptions')
     ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('finance:remind-renewing-subscriptions')
+    ->hourly()
     ->withoutOverlapping(10)
     ->onOneServer();
 Schedule::command('finance:recover-expired-subscriptions')
