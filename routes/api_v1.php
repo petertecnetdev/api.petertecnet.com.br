@@ -89,6 +89,7 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware('app.capability:commerce')->group(function () {
             Route::get('/establishments/{slug}/ordering', [OrderingController::class, 'ordering']);
+            Route::post('/guest-orders', [OrderingController::class, 'checkout'])->middleware('throttle:6,1');
             Route::post('/ordering/payments/mercadopago/webhook', [OrderingController::class, 'paymentWebhook'])->middleware('throttle:120,1');
         });
 
@@ -189,7 +190,7 @@ Route::prefix('v1/apps/{application}')
             Route::middleware('app.capability:connections')->group(function () {
                 Route::get('/connections/profile', [ConnectionController::class, 'profile'])->middleware('throttle:120,1');
                 Route::put('/connections/profile', [ConnectionController::class, 'updateProfile'])->middleware('throttle:30,1');
-                Route::post('/connections/profile/photos', [ConnectionController::class, 'uploadPhoto'])->middleware('throttle:12,1');
+                Route::post('/connections/profile/photos', [ConnectionController::class, 'uploadPhoto'])->middleware('throttle:6,1');
                 Route::patch('/connections/profile/photos/reorder', [ConnectionController::class, 'reorderPhotos'])->middleware('throttle:30,1');
                 Route::delete('/connections/profile/photos/{photoId}', [ConnectionController::class, 'deletePhoto'])->whereNumber('photoId')->middleware('throttle:30,1');
                 Route::get('/connections/discover', [ConnectionController::class, 'discover'])->middleware('throttle:120,1');

@@ -85,6 +85,7 @@ class OrderingController extends Controller
         ]);
 
         $user = $request->user();
+        abort_if(! $user && $data['payment_method'] === 'pix', 422, 'Entre na sua conta para pagar com Pix. Dinheiro e cartão no local podem ser usados sem cadastro.');
 
         [$order, $establishment] = DB::transaction(function () use ($data, $user) {
             $establishment = Establishment::query()
@@ -177,12 +178,12 @@ class OrderingController extends Controller
                 'entity_id' => $establishment->id,
                 'order_number' => Order::nextOrderNumber($this->context->id()),
                 'order_datetime' => now('America/Sao_Paulo'),
-                'created_by' => $user->id,
+                'created_by' => $user?->id,
                 'attendant_id' => null,
-                'client_id' => $user->id,
+                'client_id' => $user?->id,
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'],
-                'customer_email' => $user->email,
+                'customer_email' => $user?->email,
                 'access_code' => Order::generateAccessCode(),
                 'origin' => 'Online',
                 'fulfillment' => $data['fulfillment'],
