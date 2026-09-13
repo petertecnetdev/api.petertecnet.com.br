@@ -118,6 +118,22 @@ final class AutomatedCheckoutRecoveryService
                     (string) ($order->public_id ?: $order->id),
                 );
 
+                // Claim the recovery attempt immediately before notification delivery.
+                // recover() rechecks order/payment eligibility under a row lock and
+                // returns null if another worker already claimed the same checkout.
+                $recovered = $this->recovery->recover(
+                    (int) $order->app_id,
+                    (int) $order->user_id,
+                    (int) $order->id,
+                    'in_app',
+                    0.0,
+                    $recoveryContext,
+                );
+
+                if (! $recovered) {
+                    continue;
+                }
+
                 $this->notifications->sendToUser((int) $order->app_id, (int) $order->user_id, [
                     'type' => 'checkout_recovery',
                     'title' => 'Seu pagamento PIX ainda está pendente',
@@ -139,18 +155,7 @@ final class AutomatedCheckoutRecoveryService
                     'send_email' => true,
                 ]);
 
-                $recovered = $this->recovery->recover(
-                    (int) $order->app_id,
-                    (int) $order->user_id,
-                    (int) $order->id,
-                    'in_app',
-                    0.0,
-                    $recoveryContext,
-                );
-
-                if ($recovered) {
-                    $dispatched++;
-                }
+                $dispatched++;
             } catch (Throwable $e) {
                 $failed++;
                 Log::warning('Falha ao disparar recuperação de checkout.', [

@@ -5,6 +5,7 @@ namespace App\Domain\Commerce\Services;
 use App\Models\CommerceOrder;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 
 final class PendingCheckoutRecoveryService
 {
@@ -23,15 +24,17 @@ final class PendingCheckoutRecoveryService
         ?float $attemptCost = 0.0,
         array $recoveryContext = [],
     ): ?CommerceOrder {
-        $order = $this->recoverableQuery($appId, $userId)
-            ->whereKey($orderId)
-            ->first();
+        return DB::transaction(function () use ($appId, $userId, $orderId, $channel, $attemptCost, $recoveryContext) {
+            $order = $this->recoverableQuery($appId, $userId)
+                ->whereKey($orderId)
+                ->whereNull('recovery_started_at')
+                ->lockForUpdate()
+                ->first();
 
-        if (! $order) {
-            return null;
-        }
+            if (! $order) {
+                return null;
+            }
 
-        if ($order->recovery_started_at === null) {
             $normalizedChannel = $this->normalizeChannel($channel);
             $normalizedCost = $attemptCost !== null ? max($attemptCost, 0.0) : null;
             $metadata = is_array($order->metadata) ? $order->metadata : [];
@@ -51,24 +54,25 @@ final class PendingCheckoutRecoveryService
                 }
             }
 
+            $startedAt = now();
             $metadata['recovery'] = array_merge(
                 is_array($metadata['recovery'] ?? null) ? $metadata['recovery'] : [],
                 $context,
                 [
                     'channel' => $normalizedChannel,
                     'attempt_cost' => $normalizedCost,
-                    'started_at' => now()->toIso8601String(),
+                    'started_at' => $startedAt->toIso8601String(),
                 ],
             );
 
             $order->forceFill([
-                'recovery_started_at' => now(),
+                'recovery_started_at' => $startedAt,
                 'metadata' => $metadata,
             ])->saveQuietly();
             $order->refresh();
-        }
 
-        return $order;
+            return $order;
+        }, 3);
     }
 
     public function recoveryState(?CommerceOrder $order): array
