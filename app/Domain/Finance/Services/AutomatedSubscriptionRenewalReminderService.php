@@ -12,17 +12,21 @@ use Throwable;
 
 final class AutomatedSubscriptionRenewalReminderService
 {
-    private const REMINDER_LEAD_HOURS = 72;
+    private const INITIAL_REMINDER_LEAD_HOURS = 72;
+
+    private const FINAL_REMINDER_LEAD_HOURS = 24;
 
     public function __construct(private readonly AppNotificationService $notifications)
     {
     }
 
     /**
-     * Remind paying subscribers shortly before their current period ends.
+     * Remind paying subscribers before their current period ends.
      *
-     * One reminder is sent per billing period. The subscription is revalidated under
-     * a row lock immediately before delivery so cancellation or concurrent renewal wins.
+     * A subscriber can receive one reminder around 72h and one final reminder inside
+     * the last 24h. Each stage is idempotent per billing period. The subscription is
+     * revalidated under a row lock immediately before delivery so cancellation or a
+     * concurrent renewal always wins.
      *
      * @return array{eligible:int,dispatched:int,skipped:int,failed:int}
      */
@@ -30,7 +34,7 @@ final class AutomatedSubscriptionRenewalReminderService
     {
         $limit = min(max($limit ?? 100, 1), 500);
         $now = now();
-        $remindBefore = $now->copy()->addHours(self::REMINDER_LEAD_HOURS);
+        $remindBefore = $now->copy()->addHours(self::INITIAL_REMINDER_LEAD_HOURS);
 
         $subscriptions = DB::table('ecosystem_subscriptions')
             ->where('status', 'active')
@@ -71,9 +75,14 @@ final class AutomatedSubscriptionRenewalReminderService
                     }
 
                     $periodEnd = CarbonImmutable::parse((string) $fresh->current_period_end);
+                    $stage = $this->reminderStage($periodEnd, $now);
+                    $leadHours = $stage === 'final'
+                        ? self::FINAL_REMINDER_LEAD_HOURS
+                        : self::INITIAL_REMINDER_LEAD_HOURS;
                     $referenceId = hash('sha256', implode('|', [
                         (string) $fresh->public_id,
                         $periodEnd->utc()->format('Y-m-d H:i:s'),
+                        $stage,
                     ]));
 
                     $alreadySent = AppNotification::query()
@@ -97,8 +106,12 @@ final class AutomatedSubscriptionRenewalReminderService
 
                     $this->notifications->sendToUser((int) $application->id, (int) $fresh->user_id, [
                         'type' => 'subscription_renewal_reminder',
-                        'title' => 'Seu plano vence em breve',
-                        'message' => 'Renove agora sem perder nenhum dia já pago e mantenha seu acesso ativo sem interrupção.',
+                        'title' => $stage === 'final'
+                            ? 'Seu plano vence nas próximas 24 horas'
+                            : 'Seu plano vence em breve',
+                        'message' => $stage === 'final'
+                            ? 'Renove agora para evitar interrupção no acesso. Seus dias já pagos serão preservados.'
+                            : 'Renove agora sem perder nenhum dia já pago e mantenha seu acesso ativo sem interrupção.',
                         'reference_type' => 'subscription_renewal_period',
                         'reference_id' => $referenceId,
                         'reference_url' => $referenceUrl,
@@ -106,7 +119,8 @@ final class AutomatedSubscriptionRenewalReminderService
                             'subscription_public_id' => $fresh->public_id,
                             'plan_code' => $fresh->plan_code,
                             'period_ends_at' => $periodEnd->toIso8601String(),
-                            'reminder_lead_hours' => self::REMINDER_LEAD_HOURS,
+                            'reminder_stage' => $stage,
+                            'reminder_lead_hours' => $leadHours,
                             'recovery_channel' => 'in_app_email',
                             'recovery_action' => 'renew_subscription_early',
                             'recovery_cta_label' => 'Renovar agora',
@@ -149,5 +163,12 @@ final class AutomatedSubscriptionRenewalReminderService
         $periodEnd = CarbonImmutable::parse((string) $subscription->current_period_end);
 
         return $periodEnd->gt($now) && $periodEnd->lte($remindBefore);
+    }
+
+    private function reminderStage(CarbonImmutable $periodEnd, mixed $now): string
+    {
+        return $periodEnd->lte(CarbonImmutable::instance($now)->addHours(self::FINAL_REMINDER_LEAD_HOURS))
+            ? 'final'
+            : 'initial';
     }
 }
