@@ -12,6 +12,8 @@ use Throwable;
 
 final class AutomatedSubscriptionRenewalRecoveryService
 {
+    private const RECOVERY_GRACE_MINUTES = 60;
+
     public function __construct(private readonly AppNotificationService $notifications)
     {
     }
@@ -19,8 +21,10 @@ final class AutomatedSubscriptionRenewalRecoveryService
     /**
      * Recover paid subscriptions whose current billing period expired without renewal.
      *
-     * Each billing period gets at most one reminder. The subscription row is revalidated
-     * under a lock immediately before delivery so a concurrent successful renewal wins.
+     * Each billing period gets at most one reminder. A grace window prevents a renewal
+     * message from racing an in-flight payment/webhook at the exact period boundary.
+     * The subscription row is revalidated under a lock immediately before delivery so
+     * a concurrent successful renewal always wins.
      *
      * @return array{eligible:int,dispatched:int,skipped:int,failed:int}
      */
@@ -29,13 +33,14 @@ final class AutomatedSubscriptionRenewalRecoveryService
         $limit = min(max($limit ?? 100, 1), 500);
         $now = now();
         $oldestRecoverable = $now->copy()->subDays(30);
+        $recoverableBefore = $now->copy()->subMinutes(self::RECOVERY_GRACE_MINUTES);
 
         $subscriptions = DB::table('ecosystem_subscriptions')
             ->where('status', 'active')
             ->whereNull('cancelled_at')
             ->where('price_cents', '>', 0)
             ->whereNotNull('current_period_end')
-            ->where('current_period_end', '<=', $now)
+            ->where('current_period_end', '<=', $recoverableBefore)
             ->where('current_period_end', '>=', $oldestRecoverable)
             ->orderBy('current_period_end')
             ->limit($limit * 3)
@@ -58,13 +63,13 @@ final class AutomatedSubscriptionRenewalRecoveryService
             }
 
             try {
-                $sent = DB::transaction(function () use ($subscription, $application, $oldestRecoverable): bool {
+                $sent = DB::transaction(function () use ($subscription, $application, $oldestRecoverable, $recoverableBefore): bool {
                     $fresh = DB::table('ecosystem_subscriptions')
                         ->where('id', (int) $subscription->id)
                         ->lockForUpdate()
                         ->first();
 
-                    if (! $fresh || ! $this->isRecoverable($fresh, $oldestRecoverable)) {
+                    if (! $fresh || ! $this->isRecoverable($fresh, $oldestRecoverable, $recoverableBefore)) {
                         return false;
                     }
 
@@ -136,7 +141,7 @@ final class AutomatedSubscriptionRenewalRecoveryService
         return compact('eligible', 'dispatched', 'skipped', 'failed');
     }
 
-    private function isRecoverable(object $subscription, mixed $oldestRecoverable): bool
+    private function isRecoverable(object $subscription, mixed $oldestRecoverable, mixed $recoverableBefore): bool
     {
         if ((string) $subscription->status !== 'active'
             || $subscription->cancelled_at
@@ -147,6 +152,6 @@ final class AutomatedSubscriptionRenewalRecoveryService
 
         $periodEnd = CarbonImmutable::parse((string) $subscription->current_period_end);
 
-        return $periodEnd->lte(now()) && $periodEnd->gte($oldestRecoverable);
+        return $periodEnd->lte($recoverableBefore) && $periodEnd->gte($oldestRecoverable);
     }
 }
