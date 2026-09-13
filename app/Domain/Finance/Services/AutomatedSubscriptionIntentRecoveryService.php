@@ -16,11 +16,12 @@ final class AutomatedSubscriptionIntentRecoveryService
     }
 
     /**
-     * Send one zero-cost in-app reminder for abandoned subscription PIX checkouts.
+     * Send one transactional reminder for abandoned subscription PIX checkouts.
      *
      * The AppNotification tuple acts as the idempotency guard, so the job never
-     * creates a second reminder for the same intent. E-mail is deliberately
-     * disabled here to keep recovery free and avoid unsolicited external contact.
+     * creates a second reminder for the same intent. The e-mail CTA only targets
+     * the application itself; the authenticated frontend recovers the current
+     * user's own intent through the app-scoped recoverable-intent endpoint.
      *
      * @return array{eligible:int,dispatched:int,skipped:int,failed:int}
      */
@@ -92,11 +93,11 @@ final class AutomatedSubscriptionIntentRecoveryService
                         'subscription_intent_public_id' => $intent->public_id,
                         'plan_code' => $intent->plan_code,
                         'plan_name' => $intent->plan_name,
-                        'recovery_channel' => 'in_app',
+                        'recovery_channel' => 'in_app_email',
                         'recovery_action' => 'resume_subscription_pix',
                         'recovery_cta_label' => 'Continuar pagamento',
                     ],
-                    'send_email' => false,
+                    'send_email' => true,
                 ]);
 
                 $dispatched++;
