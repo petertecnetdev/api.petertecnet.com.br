@@ -79,11 +79,11 @@ final class AutomatedSubscriptionRenewalReminderService
                     $leadHours = $stage === 'final'
                         ? self::FINAL_REMINDER_LEAD_HOURS
                         : self::INITIAL_REMINDER_LEAD_HOURS;
-                    $referenceId = hash('sha256', implode('|', [
+                    $referenceId = $this->reminderReferenceId(
                         (string) $fresh->public_id,
-                        $periodEnd->utc()->format('Y-m-d H:i:s'),
+                        $periodEnd,
                         $stage,
-                    ]));
+                    );
 
                     $alreadySent = AppNotification::query()
                         ->where('app_id', (int) $application->id)
@@ -170,5 +170,21 @@ final class AutomatedSubscriptionRenewalReminderService
         return $periodEnd->lte(CarbonImmutable::instance($now)->addHours(self::FINAL_REMINDER_LEAD_HOURS))
             ? 'final'
             : 'initial';
+    }
+
+    private function reminderReferenceId(string $subscriptionPublicId, CarbonImmutable $periodEnd, string $stage): string
+    {
+        $parts = [
+            $subscriptionPublicId,
+            $periodEnd->utc()->format('Y-m-d H:i:s'),
+        ];
+
+        // Preserve the original 72h reference exactly, so subscriptions already
+        // reminded before this rollout are not contacted twice in the same period.
+        if ($stage === 'final') {
+            $parts[] = 'final';
+        }
+
+        return hash('sha256', implode('|', $parts));
     }
 }
