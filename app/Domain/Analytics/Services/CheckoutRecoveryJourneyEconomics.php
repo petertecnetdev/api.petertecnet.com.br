@@ -6,6 +6,8 @@ use ArrayAccess;
 
 final class CheckoutRecoveryJourneyEconomics
 {
+    private const MIN_COMPARABLE_OPENED_JOURNEYS = 20;
+
     private const STAGES = [
         'opened' => 'frontend_checkout_opened',
         'attempted' => 'frontend_payment_attempted',
@@ -144,22 +146,26 @@ final class CheckoutRecoveryJourneyEconomics
         $summary['by_payment_method'] = $this->finalizeDimensions($methods);
 
         $standard = $this->finalizeCohort($standard);
+        $deltas = [
+            'opened_to_attempted' => $this->delta(
+                $summary['conversion']['opened_to_attempted_percent'],
+                $standard['conversion']['opened_to_attempted_percent'],
+            ),
+            'attempted_to_approved' => $this->delta(
+                $summary['conversion']['attempted_to_approved_percent'],
+                $standard['conversion']['attempted_to_approved_percent'],
+            ),
+            'approved_to_fulfilled' => $this->delta(
+                $summary['conversion']['approved_to_fulfilled_percent'],
+                $standard['conversion']['approved_to_fulfilled_percent'],
+            ),
+        ];
+        $sample = $this->comparisonSample((int) $summary['opened'], (int) $standard['opened']);
         $summary['comparison'] = [
             'standard' => $standard,
-            'delta_percentage_points' => [
-                'opened_to_attempted' => $this->delta(
-                    $summary['conversion']['opened_to_attempted_percent'],
-                    $standard['conversion']['opened_to_attempted_percent'],
-                ),
-                'attempted_to_approved' => $this->delta(
-                    $summary['conversion']['attempted_to_approved_percent'],
-                    $standard['conversion']['attempted_to_approved_percent'],
-                ),
-                'approved_to_fulfilled' => $this->delta(
-                    $summary['conversion']['approved_to_fulfilled_percent'],
-                    $standard['conversion']['approved_to_fulfilled_percent'],
-                ),
-            ],
+            'delta_percentage_points' => $deltas,
+            'sample' => $sample,
+            'weakest_recovered_step' => $sample['is_comparable'] ? $this->weakestRecoveredStep($deltas) : null,
             'recovered_fulfilled_gmv_share_percent' => $this->rateFloat(
                 (float) $summary['gmv']['fulfilled'],
                 (float) $summary['gmv']['fulfilled'] + (float) $standard['gmv']['fulfilled'],
@@ -198,6 +204,8 @@ final class CheckoutRecoveryJourneyEconomics
                     'attempted_to_approved' => null,
                     'approved_to_fulfilled' => null,
                 ],
+                'sample' => $this->comparisonSample(0, 0),
+                'weakest_recovered_step' => null,
                 'recovered_fulfilled_gmv_share_percent' => null,
                 'interpretation' => 'descriptive_cohort_comparison_not_causal_incremental_lift',
             ],
@@ -298,6 +306,46 @@ final class CheckoutRecoveryJourneyEconomics
         usort($rows, static fn (array $a, array $b): int => [$b['gmv_approved'], $b['approved'], $b['journeys']] <=> [$a['gmv_approved'], $a['approved'], $a['journeys']]);
 
         return $rows;
+    }
+
+    /** @return array<string, int|bool> */
+    private function comparisonSample(int $recoveredOpened, int $standardOpened): array
+    {
+        return [
+            'minimum_opened_journeys_per_cohort' => self::MIN_COMPARABLE_OPENED_JOURNEYS,
+            'recovered_opened' => $recoveredOpened,
+            'standard_opened' => $standardOpened,
+            'recovered_remaining_to_comparable' => max(0, self::MIN_COMPARABLE_OPENED_JOURNEYS - $recoveredOpened),
+            'standard_remaining_to_comparable' => max(0, self::MIN_COMPARABLE_OPENED_JOURNEYS - $standardOpened),
+            'is_comparable' => $recoveredOpened >= self::MIN_COMPARABLE_OPENED_JOURNEYS
+                && $standardOpened >= self::MIN_COMPARABLE_OPENED_JOURNEYS,
+        ];
+    }
+
+    /** @param array<string, float|null> $deltas @return array<string, mixed>|null */
+    private function weakestRecoveredStep(array $deltas): ?array
+    {
+        $labels = [
+            'opened_to_attempted' => ['from' => 'checkout_opened', 'to' => 'payment_attempted'],
+            'attempted_to_approved' => ['from' => 'payment_attempted', 'to' => 'payment_approved'],
+            'approved_to_fulfilled' => ['from' => 'payment_approved', 'to' => 'checkout_fulfilled'],
+        ];
+
+        $available = array_filter($deltas, static fn (?float $value): bool => $value !== null);
+        if ($available === []) {
+            return null;
+        }
+
+        asort($available, SORT_NUMERIC);
+        $step = (string) array_key_first($available);
+
+        return [
+            'step' => $step,
+            'from' => $labels[$step]['from'],
+            'to' => $labels[$step]['to'],
+            'delta_percentage_points' => round((float) $available[$step], 2),
+            'status' => (float) $available[$step] < 0 ? 'underperforming' : 'not_underperforming',
+        ];
     }
 
     private function rate(int $numerator, int $denominator): ?float
