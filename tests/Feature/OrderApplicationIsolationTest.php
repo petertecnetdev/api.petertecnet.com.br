@@ -6,10 +6,12 @@ use App\Models\Application;
 use App\Models\Employer;
 use App\Models\Establishment;
 use App\Models\Item;
+use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
 class OrderApplicationIsolationTest extends TestCase
@@ -75,7 +77,7 @@ class OrderApplicationIsolationTest extends TestCase
         $this->assertDatabaseCount('orders', 0);
     }
 
-    public function test_direct_order_rejects_attendant_from_another_establishment(): void
+    public function test_order_domain_rejects_attendant_from_another_establishment(): void
     {
         $admin = $this->adminUser();
         $rasoio = $this->application('Rasoio', 'rasoio');
@@ -96,42 +98,36 @@ class OrderApplicationIsolationTest extends TestCase
             'created_by' => $admin->id,
         ]);
 
-        $item = Item::create([
-            'app_id' => $rasoio->id,
-            'entity_name' => 'establishment',
-            'entity_id' => $targetEstablishment->id,
-            'name' => 'Serviço Rasoio',
-            'type' => 'service',
-            'price' => 25,
-            'status' => true,
-            'user_id' => $admin->id,
-            'created_by' => $admin->id,
-            'updated_by' => $admin->id,
-        ]);
-
-        $token = auth('api')->login($admin);
-
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/api/order', [
-                'mode' => 'direct',
+        try {
+            Order::create([
                 'app_id' => $rasoio->id,
                 'entity_name' => 'establishment',
                 'entity_id' => $targetEstablishment->id,
-                'attendant_id' => $foreignEmployer->id,
+                'order_number' => 'ctx-guard-test',
+                'order_datetime' => now()->addDay()->format('Y-m-d H:i:s'),
+                'created_by' => $admin->id,
                 'client_id' => $admin->id,
-                'customer_name' => 'Cliente Balcão',
-                'items' => [[
-                    'item_id' => $item->id,
-                    'quantity' => 1,
-                ]],
-                'origin' => 'balcao',
-                'fulfillment' => 'dine-in',
+                'attendant_id' => $foreignEmployer->id,
+                'customer_name' => 'Cliente Teste',
+                'origin' => 'app',
+                'fulfillment' => 'local',
                 'payment_status' => 'pending',
                 'payment_method' => 'dinheiro',
+                'type' => 'appointment',
+                'status' => 'pending',
+                'appointment_status' => 'pending',
+                'total_price' => 0,
+                'total_duration' => 30,
             ]);
 
-        $response->assertStatus(422)
-            ->assertJsonPath('errors.attendant_id.0', 'O colaborador informado não pertence ao estabelecimento deste pedido.');
+            $this->fail('A criação deveria rejeitar um atendente de outro estabelecimento.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'O colaborador informado não pertence ao estabelecimento deste pedido.',
+                $exception->errors()['attendant_id'][0] ?? null
+            );
+        }
+
         $this->assertDatabaseCount('orders', 0);
     }
 
