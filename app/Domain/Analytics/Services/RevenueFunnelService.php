@@ -85,7 +85,7 @@ final class RevenueFunnelService
             ->selectRaw("SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN 1 ELSE 0 END) recovered_orders")
             ->selectRaw("COALESCE(SUM(CASE WHEN recovery_started_at IS NOT NULL AND status = 'paid' THEN platform_fee ELSE 0 END), 0) recovered_platform_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN status = 'pending' AND (expires_at IS NULL OR expires_at >= ?) THEN total ELSE 0 END), 0) gross_at_risk", [now()])
-            ->groupByRaw($normalizedPaymentMethodSql)
+            ->groupBy('payment_method')
             ->get()
             ->map(function ($row) use ($profitabilityByPaymentMethod): array {
                 $createdForMethod = (int) $row->orders_created;
