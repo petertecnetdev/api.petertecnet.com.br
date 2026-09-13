@@ -35,6 +35,7 @@ class OrderRevenueRecognitionTest extends TestCase
             'completed cash' => ['pending', 'cash', 'completed', true],
             'cash still preparing' => ['pending', 'cash', 'preparing', false],
             'completed card on delivery' => ['pending', 'card_on_delivery', 'completed', true],
+            'refunded card on delivery' => ['refunded', 'card_on_delivery', 'completed', false],
         ];
     }
 }
