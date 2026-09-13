@@ -86,8 +86,10 @@ final class AutomatedSubscriptionRenewalRecoveryService
                         return false;
                     }
 
+                    // Reuse the already-hardened payment recovery handoff so compatible apps
+                    // can open a fresh checkout for the same plan directly from the e-mail CTA.
                     $query = http_build_query([
-                        'source' => 'renewal_recovery',
+                        'source' => 'payment_recovery',
                         'resume' => '1',
                         'plan' => (string) $fresh->plan_code,
                     ]);
