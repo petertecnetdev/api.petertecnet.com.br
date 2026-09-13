@@ -6,6 +6,7 @@ use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Models\AppNotification;
 use App\Models\Application;
 use App\Services\AppNotificationService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -18,10 +19,9 @@ final class AutomatedSubscriptionIntentRecoveryService
     /**
      * Send one transactional reminder for abandoned subscription PIX checkouts.
      *
-     * The AppNotification tuple acts as the idempotency guard, so the job never
-     * creates a second reminder for the same intent. The e-mail CTA targets the
-     * shared subscription plans route, where authenticated frontends recover the
-     * current user's own intent through the app-scoped recoverable-intent endpoint.
+     * Each intent is revalidated and claimed under a database row lock immediately
+     * before delivery. This prevents concurrent workers from sending duplicate
+     * reminders and avoids contacting a customer who paid after the initial scan.
      *
      * @return array{eligible:int,dispatched:int,skipped:int,failed:int}
      */
@@ -63,49 +63,64 @@ final class AutomatedSubscriptionIntentRecoveryService
                 continue;
             }
 
-            $referenceId = (string) ($intent->public_id ?: $intent->id);
-            $alreadySent = AppNotification::query()
-                ->where('app_id', $application->id)
-                ->where('user_id', $intent->user_id)
-                ->where('type', 'subscription_checkout_recovery')
-                ->where('reference_type', 'subscription_intent')
-                ->where('reference_id', $referenceId)
-                ->exists();
-
-            if ($alreadySent) {
-                $skipped++;
-                continue;
-            }
-
-            $eligible++;
-
             try {
-                $query = http_build_query([
-                    'source' => 'payment_recovery',
-                    'resume' => '1',
-                    'plan' => (string) $intent->plan_code,
-                ]);
-                $referenceUrl = rtrim((string) $application->url, '/').'/planos?'.$query;
+                $sent = DB::transaction(function () use ($intent, $application, $delayMinutes): bool {
+                    $freshIntent = SubscriptionIntent::query()
+                        ->whereKey($intent->getKey())
+                        ->lockForUpdate()
+                        ->first();
 
-                $this->notifications->sendToUser((int) $application->id, (int) $intent->user_id, [
-                    'type' => 'subscription_checkout_recovery',
-                    'title' => 'Seu plano ainda está aguardando o PIX',
-                    'message' => 'Você pode retomar o pagamento sem começar tudo de novo. Toque para continuar de onde parou.',
-                    'reference_type' => 'subscription_intent',
-                    'reference_id' => $referenceId,
-                    'reference_url' => $referenceUrl,
-                    'data' => [
-                        'subscription_intent_public_id' => $intent->public_id,
-                        'plan_code' => $intent->plan_code,
-                        'plan_name' => $intent->plan_name,
-                        'recovery_channel' => 'in_app_email',
-                        'recovery_action' => 'resume_subscription_pix',
-                        'recovery_cta_label' => 'Continuar pagamento',
-                    ],
-                    'send_email' => true,
-                ]);
+                    if (! $freshIntent || ! $this->isRecoverable($freshIntent, $delayMinutes)) {
+                        return false;
+                    }
 
-                $dispatched++;
+                    $referenceId = (string) ($freshIntent->public_id ?: $freshIntent->id);
+                    $alreadySent = AppNotification::query()
+                        ->where('app_id', $application->id)
+                        ->where('user_id', $freshIntent->user_id)
+                        ->where('type', 'subscription_checkout_recovery')
+                        ->where('reference_type', 'subscription_intent')
+                        ->where('reference_id', $referenceId)
+                        ->exists();
+
+                    if ($alreadySent) {
+                        return false;
+                    }
+
+                    $query = http_build_query([
+                        'source' => 'payment_recovery',
+                        'resume' => '1',
+                        'plan' => (string) $freshIntent->plan_code,
+                    ]);
+                    $referenceUrl = rtrim((string) $application->url, '/').'/planos?'.$query;
+
+                    $this->notifications->sendToUser((int) $application->id, (int) $freshIntent->user_id, [
+                        'type' => 'subscription_checkout_recovery',
+                        'title' => 'Seu plano ainda está aguardando o PIX',
+                        'message' => 'Você pode retomar o pagamento sem começar tudo de novo. Toque para continuar de onde parou.',
+                        'reference_type' => 'subscription_intent',
+                        'reference_id' => $referenceId,
+                        'reference_url' => $referenceUrl,
+                        'data' => [
+                            'subscription_intent_public_id' => $freshIntent->public_id,
+                            'plan_code' => $freshIntent->plan_code,
+                            'plan_name' => $freshIntent->plan_name,
+                            'recovery_channel' => 'in_app_email',
+                            'recovery_action' => 'resume_subscription_pix',
+                            'recovery_cta_label' => 'Continuar pagamento',
+                        ],
+                        'send_email' => true,
+                    ]);
+
+                    return true;
+                }, 3);
+
+                if ($sent) {
+                    $eligible++;
+                    $dispatched++;
+                } else {
+                    $skipped++;
+                }
             } catch (Throwable $e) {
                 $failed++;
                 Log::warning('Falha ao disparar recuperação de assinatura pendente.', [
@@ -118,6 +133,21 @@ final class AutomatedSubscriptionIntentRecoveryService
         }
 
         return compact('eligible', 'dispatched', 'skipped', 'failed');
+    }
+
+    private function isRecoverable(SubscriptionIntent $intent, int $delayMinutes): bool
+    {
+        if (! in_array((string) $intent->status, ['created', 'payment_pending'], true)
+            || ! $intent->user_id
+            || $intent->paid_at
+            || $intent->activated_at
+            || $intent->abandoned_at) {
+            return false;
+        }
+
+        $pendingSince = $intent->payment_pending_at ?: $intent->created_at;
+
+        return $pendingSince && $pendingSince->lte(now()->subMinutes($delayMinutes));
     }
 
     private function resolveApplication(string $identity): ?Application
