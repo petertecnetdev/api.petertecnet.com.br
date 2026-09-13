@@ -30,7 +30,14 @@ final class RevenueFunnelService
         $created = (clone $orders)->count();
         $paid = (clone $orders)->where('status', 'paid')->count();
         $pending = (clone $orders)->where('status', 'pending')->count();
-        $cancelled = (clone $orders)->where('status', 'cancelled')->count();
+        $technicalPaymentFailures = (clone $orders)
+            ->where('status', 'cancelled')
+            ->whereDoesntHave('payments')
+            ->count();
+        $cancelled = (clone $orders)
+            ->where('status', 'cancelled')
+            ->whereHas('payments')
+            ->count();
         $expired = (clone $orders)->where('status', 'pending')->where('expires_at', '<', now())->count();
         $paidOrders = (clone $orders)->where('status', 'paid');
         $gross = (float) (clone $paidOrders)->sum('total');
@@ -63,7 +70,10 @@ final class RevenueFunnelService
         $atRiskGross = (float) (clone $atRiskOrders)->sum('total');
         $atRiskPlatformRevenue = (float) (clone $atRiskOrders)->sum('platform_fee');
         $lostOrders = (clone $orders)->where(function ($query): void {
-            $query->where('status', 'cancelled')
+            $query->where(function ($cancelledQuery): void {
+                    $cancelledQuery->where('status', 'cancelled')
+                        ->whereHas('payments');
+                })
                 ->orWhere(function ($expiredQuery): void {
                     $expiredQuery->where('status', 'pending')->where('expires_at', '<', now());
                 });
@@ -206,6 +216,7 @@ final class RevenueFunnelService
             'orders_paid' => $paid,
             'orders_pending' => $pending,
             'orders_cancelled' => $cancelled,
+            'orders_technical_payment_failures' => $technicalPaymentFailures,
             'orders_expired_unpaid' => $expired,
             'checkout_conversion_rate' => $created > 0 ? round(($paid / $created) * 100, 2) : 0.0,
             'abandonment_rate' => $created > 0 ? round((($cancelled + $expired) / $created) * 100, 2) : 0.0,
