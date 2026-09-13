@@ -27,6 +27,40 @@ class MercadoPagoServiceTest extends TestCase
         Http::assertSent(fn ($request) => $request->hasHeader('X-Idempotency-Key', 'commerce-payment-stable-key'));
     }
 
+    public function test_retry_delay_respects_numeric_retry_after_with_a_safe_cap(): void
+    {
+        $service = app(MercadoPagoService::class);
+        $response = Http::response([], 429, ['Retry-After' => '9']);
+        $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
+        $method->setAccessible(true);
+
+        $this->assertSame(5000, $method->invoke($service, 1, $response));
+    }
+
+    public function test_retry_delay_understands_http_date_retry_after(): void
+    {
+        $service = app(MercadoPagoService::class);
+        $response = Http::response([], 429, [
+            'Retry-After' => gmdate('D, d M Y H:i:s \G\M\T', time() + 3),
+        ]);
+        $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
+        $method->setAccessible(true);
+        $delay = $method->invoke($service, 1, $response);
+
+        $this->assertGreaterThanOrEqual(1000, $delay);
+        $this->assertLessThanOrEqual(5000, $delay);
+    }
+
+    public function test_retry_delay_falls_back_when_retry_after_is_zero_or_invalid(): void
+    {
+        $service = app(MercadoPagoService::class);
+        $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
+        $method->setAccessible(true);
+
+        $this->assertSame(250, $method->invoke($service, 1, Http::response([], 429, ['Retry-After' => '0'])));
+        $this->assertSame(750, $method->invoke($service, 2, Http::response([], 503, ['Retry-After' => 'not-a-date'])));
+    }
+
     public function test_it_does_not_retry_non_transient_payment_rejection(): void
     {
         Http::fake([
