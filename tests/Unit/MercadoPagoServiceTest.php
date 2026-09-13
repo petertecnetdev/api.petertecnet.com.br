@@ -3,10 +3,51 @@
 namespace Tests\Unit;
 
 use App\Services\MercadoPagoService;
+use Illuminate\Support\Facades\Http;
+use RuntimeException;
 use Tests\TestCase;
 
 class MercadoPagoServiceTest extends TestCase
 {
+    public function test_it_retries_transient_payment_creation_with_the_same_idempotency_key(): void
+    {
+        Http::fakeSequence()
+            ->push(['message' => 'temporarily unavailable'], 503)
+            ->push(['id' => 987654321, 'status' => 'pending'], 201);
+
+        $service = app(MercadoPagoService::class);
+        $result = $service->createPayment('seller-token', [
+            'transaction_amount' => 42.50,
+            'payment_method_id' => 'pix',
+        ], 'commerce-payment-stable-key');
+
+        $this->assertSame(987654321, $result['id']);
+        $this->assertSame('pending', $result['status']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->hasHeader('X-Idempotency-Key', 'commerce-payment-stable-key'));
+    }
+
+    public function test_it_does_not_retry_non_transient_payment_rejection(): void
+    {
+        Http::fake([
+            'api.mercadopago.com/v1/payments' => Http::response(['message' => 'invalid payment data'], 400),
+        ]);
+
+        $service = app(MercadoPagoService::class);
+
+        try {
+            $service->createPayment('seller-token', [
+                'transaction_amount' => 42.50,
+                'payment_method_id' => 'pix',
+            ], 'commerce-payment-rejected-key');
+            $this->fail('Expected provider rejection.');
+        } catch (RuntimeException $exception) {
+            $this->assertStringContainsString('Mercado Pago recusou', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+    }
+
     public function test_it_validates_a_valid_webhook_signature(): void
     {
         config(['services.mercadopago.webhook_secret' => 'test-webhook-secret']);
