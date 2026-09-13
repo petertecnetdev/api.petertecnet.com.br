@@ -21,6 +21,8 @@ class FinancialPayoutService
     public function overview(Production $production, User $user): array
     {
         $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->first();
+        $identityOverview = $this->identity->overview($user);
+        $identityReady = (bool) ($identityOverview['ready_for_pix'] ?? false);
         $destination = DB::table('financial_payout_destinations')
             ->where('source_type', 'production')
             ->where('source_id', $production->id)
@@ -53,7 +55,7 @@ class FinancialPayoutService
             ]);
 
         return [
-            'identity' => $this->identity->overview($user),
+            'identity' => $identityOverview,
             'destination' => $destination ? [
                 'id' => $destination->id,
                 'provider' => $destination->provider,
@@ -70,15 +72,15 @@ class FinancialPayoutService
             'balance' => $this->balance($production),
             'payouts' => $history,
             'payout_provider' => 'asaas',
-            'ready_for_sales' => (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && in_array($destination->status, ['active', 'cooling'], true)),
-            'ready_for_payout' => (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active'),
+            'ready_for_sales' => (bool) ($identityReady && $destination && in_array($destination->status, ['active', 'cooling'], true)),
+            'ready_for_payout' => (bool) ($identityReady && $destination && $destination->status === 'active'),
         ];
     }
 
     public function savePixDestination(Production $production, User $user, string $type, string $key): array
     {
         $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->first();
-        if (!$beneficiary || $beneficiary->status !== 'verified') {
+        if (!$beneficiary || !(bool) ($this->identity->overview($user)['ready_for_pix'] ?? false)) {
             throw ValidationException::withMessages(['identity' => 'Conclua a verificação de identidade antes de cadastrar a chave Pix.']);
         }
 
@@ -160,7 +162,7 @@ class FinancialPayoutService
             Production::query()->whereKey($production->id)->lockForUpdate()->firstOrFail();
 
             $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->lockForUpdate()->first();
-            if (!$beneficiary || $beneficiary->status !== 'verified') {
+            if (!$beneficiary || !(bool) ($this->identity->overview($user)['ready_for_pix'] ?? false)) {
                 throw ValidationException::withMessages(['identity' => 'Sua identidade financeira ainda não está verificada.']);
             }
 
@@ -191,7 +193,10 @@ class FinancialPayoutService
             $stepUpAmount = max(0, (float) config('services.finance.step_up_amount', 5000));
             $reverifyHours = max(1, (int) config('services.identity.reverify_hours', 24));
             $verifiedAt = $beneficiary->verified_at ? \Illuminate\Support\Carbon::parse($beneficiary->verified_at) : null;
-            if ($stepUpAmount > 0 && $amount >= $stepUpAmount && (!$verifiedAt || $verifiedAt->lt(now()->subHours($reverifyHours)))) {
+            if ((bool) config('services.identity.liveness_required', false)
+                && $stepUpAmount > 0
+                && $amount >= $stepUpAmount
+                && (!$verifiedAt || $verifiedAt->lt(now()->subHours($reverifyHours)))) {
                 throw ValidationException::withMessages([
                     'identity' => 'Por segurança, este valor exige uma nova prova de vida antes do recebimento.',
                 ]);

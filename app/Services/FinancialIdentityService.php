@@ -20,6 +20,12 @@ class FinancialIdentityService
         $verification = $beneficiary
             ? DB::table('identity_verifications')->where('beneficiary_id', $beneficiary->id)->latest('id')->first()
             : null;
+        $livenessRequired = (bool) config('services.identity.liveness_required', false);
+        $documentUploaded = (bool) ($verification && !empty($verification->document_front_path));
+        $readyForPix = (bool) ($beneficiary && (
+            $beneficiary->status === 'verified'
+            || (!$livenessRequired && $documentUploaded)
+        ));
 
         $profileName = trim(implode(' ', array_filter([$user->first_name, $user->last_name])));
         $profileCpf = preg_replace('/\D+/', '', (string) $user->cpf);
@@ -56,7 +62,8 @@ class FinancialIdentityService
                 'rejection_reason' => $verification->rejection_reason,
                 'verified_at' => $verification->verified_at,
             ] : null,
-            'ready_for_pix' => (bool) ($beneficiary && $beneficiary->status === 'verified'),
+            'ready_for_pix' => $readyForPix,
+            'liveness_required' => $livenessRequired,
             'next_action' => $this->nextAction($beneficiary, $verification),
         ];
     }
@@ -268,6 +275,7 @@ class FinancialIdentityService
     {
         if (!$beneficiary) return 'identity_profile';
         if (!$verification || !$verification->document_front_path) return 'document';
+        if (!(bool) config('services.identity.liveness_required', false)) return 'pix';
         if ($beneficiary->status !== 'verified') return 'liveness';
         return 'pix';
     }

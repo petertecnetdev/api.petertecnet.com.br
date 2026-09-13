@@ -68,6 +68,7 @@ return [
         'aws_access_key_id' => env('AWS_ACCESS_KEY_ID'),
         'aws_secret_access_key' => env('AWS_SECRET_ACCESS_KEY'),
         'liveness_role_arn' => env('AWS_REKOGNITION_LIVENESS_ROLE_ARN'),
+        'liveness_required' => filter_var(env('IDENTITY_LIVENESS_REQUIRED', false), FILTER_VALIDATE_BOOL),
         'liveness_threshold' => (float) env('IDENTITY_LIVENESS_THRESHOLD', 90),
         'face_similarity_threshold' => (float) env('IDENTITY_FACE_SIMILARITY_THRESHOLD', 92),
         'reverify_hours' => (int) env('IDENTITY_REVERIFY_HOURS', 24),
