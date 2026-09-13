@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\Application;
 use App\Models\User;
+use App\Services\ApplicationMailBrandingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -42,8 +43,18 @@ class MessageEngagementMail extends Mailable
             $subject = $sender.' enviou uma mensagem';
         }
 
-        return $this
-            ->subject($subject.' • '.($this->application->name ?: 'Cutinapp'))
-            ->view('emails.message-engagement');
+        $mailBrand = app(ApplicationMailBrandingService::class)->forApplication($this->application);
+
+        $mail = $this
+            ->subject($subject.' • '.$mailBrand['name'])
+            ->view('emails.message-engagement')
+            ->with(['mailBrand' => $mailBrand]);
+
+        $fromAddress = trim((string) config('mail.from.address'));
+        if ($fromAddress !== '') {
+            $mail->from($fromAddress, $mailBrand['sender_name']);
+        }
+
+        return $mail;
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Mail;
 
 use App\Models\CommerceOrder;
+use App\Services\ApplicationMailBrandingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -19,7 +20,12 @@ class EventPassesMail extends Mailable
         $event = $this->order->event;
         $application = $event?->application;
         $eventTitle = $event?->title ?? 'seu evento';
-        $applicationName = $application?->name ?? config('app.name', 'Peter Tecnet');
+        $mailBrand = app(ApplicationMailBrandingService::class)->forApplication(
+            $application,
+            $application?->name,
+            $application?->url
+        );
+        $applicationName = $mailBrand['name'];
         $frontendUrl = rtrim((string) ($application?->url ?: config('app.frontend_url', config('app.url'))), '/');
         $eventPassesPath = trim((string) data_get($application?->runtime_settings ?? [], 'routes.event_passes', '/passes'));
 
@@ -31,12 +37,20 @@ class EventPassesMail extends Mailable
 
         $passesUrl = $frontendUrl.'/'.ltrim($eventPassesPath, '/');
 
-        return $this->subject('Seus ingressos para '.$eventTitle.' | '.$applicationName)
+        $mail = $this->subject('Seus ingressos para '.$eventTitle.' | '.$applicationName)
             ->view('emails.event-passes')
             ->with([
                 'frontendUrl' => $frontendUrl,
                 'passesUrl' => $passesUrl,
                 'applicationName' => $applicationName,
+                'mailBrand' => $mailBrand,
             ]);
+
+        $fromAddress = trim((string) config('mail.from.address'));
+        if ($fromAddress !== '') {
+            $mail->from($fromAddress, $mailBrand['sender_name']);
+        }
+
+        return $mail;
     }
 }

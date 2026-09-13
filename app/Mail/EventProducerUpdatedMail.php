@@ -2,9 +2,11 @@
 
 namespace App\Mail;
 
+use App\Models\Application;
 use App\Models\Establishment;
 use App\Models\Event;
 use App\Models\User;
+use App\Services\ApplicationMailBrandingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -27,6 +29,7 @@ class EventProducerUpdatedMail extends Mailable
     public ?string $flyerUrl;
     public string $shareUrl;
     public string $createEventUrl;
+    public array $mailBrand = [];
 
     public function __construct(
         User $owner,
@@ -62,8 +65,17 @@ class EventProducerUpdatedMail extends Mailable
 
     public function build()
     {
-        return $this
-            ->subject($this->notificationTitle)
+        $application = $this->event->application
+            ?: ($this->event->app_id ? Application::query()->find($this->event->app_id) : null);
+
+        $this->mailBrand = app(ApplicationMailBrandingService::class)->forApplication(
+            $application,
+            $this->appName,
+            $this->appUrl
+        );
+
+        $mail = $this
+            ->subject($this->notificationTitle.' • '.$this->mailBrand['name'])
             ->view('emails.event-producer-updated')
             ->with([
                 'owner' => $this->owner,
@@ -76,10 +88,18 @@ class EventProducerUpdatedMail extends Mailable
                 'appUrl' => $this->appUrl,
                 'eventUrl' => $this->eventUrl,
                 'eventManagementUrl' => $this->eventManagementUrl,
-                'appName' => $this->appName,
+                'appName' => $this->mailBrand['name'],
                 'flyerUrl' => $this->flyerUrl,
                 'shareUrl' => $this->shareUrl,
                 'createEventUrl' => $this->createEventUrl,
+                'mailBrand' => $this->mailBrand,
             ]);
+
+        $fromAddress = trim((string) config('mail.from.address'));
+        if ($fromAddress !== '') {
+            $mail->from($fromAddress, $this->mailBrand['sender_name']);
+        }
+
+        return $mail;
     }
 }

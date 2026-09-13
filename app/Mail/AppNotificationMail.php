@@ -5,6 +5,7 @@ namespace App\Mail;
 use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\User;
+use App\Services\ApplicationMailBrandingService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
@@ -23,11 +24,19 @@ class AppNotificationMail extends Mailable
 
     public function build()
     {
-        $appName = trim((string) $this->application->name) ?: 'Cutinapp';
+        $mailBrand = app(ApplicationMailBrandingService::class)->forApplication($this->application);
         $subject = trim((string) $this->notification->title) ?: 'Nova notificação';
 
-        return $this
-            ->subject($subject.' • '.$appName)
-            ->view('emails.app-notification');
+        $mail = $this
+            ->subject($subject.' • '.$mailBrand['name'])
+            ->view('emails.app-notification')
+            ->with(['mailBrand' => $mailBrand]);
+
+        $fromAddress = trim((string) config('mail.from.address'));
+        if ($fromAddress !== '') {
+            $mail->from($fromAddress, $mailBrand['sender_name']);
+        }
+
+        return $mail;
     }
 }

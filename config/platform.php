@@ -24,6 +24,18 @@ return [
             'events' => [
                 'requires_producer_agreement' => true,
             ],
+            'email_brand' => [
+                'logo_path' => '/images/logo.png',
+                'primary_color' => '#b847fa',
+                'secondary_color' => '#2b62f4',
+                'accent_color' => '#06affa',
+                'header_background_color' => '#050513',
+                'page_background_color' => '#f6f3fb',
+                'surface_color' => '#ffffff',
+                'text_color' => '#18162a',
+                'muted_color' => '#6f6a80',
+                'border_color' => '#e8e1f1',
+            ],
         ],
         'rasoio' => [
             'capabilities' => ['catalog','scheduling','workforce','notifications','payments'],

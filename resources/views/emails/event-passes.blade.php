@@ -1,44 +1,51 @@
-<!doctype html>
-<html lang="pt-BR">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Seus ingressos</title>
-</head>
-<body style="margin:0;background:#f4f6f8;font-family:Arial,sans-serif;color:#172033;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:24px 12px;">
-<tr><td align="center">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:620px;background:#ffffff;border-radius:16px;overflow:hidden;">
-<tr><td style="padding:28px 28px 14px;">
-    <p style="margin:0 0 8px;font-size:13px;color:#667085;">{{ $applicationName }}</p>
-    <h1 style="margin:0;font-size:24px;line-height:1.25;">Seus ingressos estão prontos</h1>
-</td></tr>
-<tr><td style="padding:0 28px 18px;">
-    <p style="margin:0 0 8px;line-height:1.6;">Compra confirmada para <strong>{{ $order->event?->title ?? 'seu evento' }}</strong>.</p>
-    <p style="margin:0;line-height:1.6;color:#475467;">{{ $passes->count() }} {{ $passes->count() === 1 ? 'ingresso foi emitido' : 'ingressos foram emitidos' }} para esta compra.</p>
-</td></tr>
+@extends('emails.layouts.application')
+
+@php
+    $text = $mailBrand['text_color'];
+    $muted = $mailBrand['muted_color'];
+    $border = $mailBrand['border_color'];
+    $primary = $mailBrand['primary_color'];
+    $buttonText = $mailBrand['button_text_color'];
+@endphp
+
+@section('title', 'Seus ingressos')
+@section('preheader', 'Seus ingressos para '.($order->event?->title ?? 'o evento').' já estão disponíveis.')
+
+@section('content')
+<div style="font-size:12px;text-transform:uppercase;letter-spacing:.11em;color:{{ $mailBrand['secondary_color'] }};font-weight:800;">Compra confirmada</div>
+<h1 style="margin:9px 0 16px;font-size:28px;line-height:1.2;color:{{ $text }};">Seus ingressos estão prontos</h1>
+
+<p style="margin:0 0 8px;font-size:15px;line-height:1.7;color:{{ $text }};">
+    Compra confirmada para <strong>{{ $order->event?->title ?? 'seu evento' }}</strong>.
+</p>
+<p style="margin:0 0 22px;font-size:14px;line-height:1.65;color:{{ $muted }};">
+    {{ $passes->count() }} {{ $passes->count() === 1 ? 'ingresso foi emitido' : 'ingressos foram emitidos' }} para esta compra.
+</p>
+
 @if($passes->isNotEmpty())
-<tr><td style="padding:0 28px 20px;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
-    @foreach($passes as $pass)
-        <tr>
-            <td style="padding:12px 0;border-top:1px solid #eaecf0;">
-                <strong>{{ $pass->holder_name ?: 'Participante' }}</strong>
-                @if($pass->holder_email)
-                    <div style="margin-top:4px;font-size:13px;color:#667085;">{{ $pass->holder_email }}</div>
-                @endif
-            </td>
-        </tr>
-    @endforeach
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 22px;border:1px solid {{ $border }};border-radius:14px;overflow:hidden;">
+        @foreach($passes as $pass)
+            <tr>
+                <td style="padding:13px 16px;{{ !$loop->last ? 'border-bottom:1px solid '.$border.';' : '' }}">
+                    <div style="font-size:14px;font-weight:800;color:{{ $text }};">{{ $pass->holder_name ?: 'Participante' }}</div>
+                    @if($pass->holder_email)
+                        <div style="margin-top:4px;font-size:12px;color:{{ $muted }};">{{ $pass->holder_email }}</div>
+                    @endif
+                </td>
+            </tr>
+        @endforeach
     </table>
-</td></tr>
 @endif
-<tr><td style="padding:0 28px 28px;">
-    <a href="{{ $passesUrl }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:700;padding:13px 20px;border-radius:10px;">Ver meus ingressos</a>
-    <p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#667085;">Apresente o ingresso disponível no aplicativo no acesso ao evento. Não compartilhe seu QR Code com terceiros.</p>
-</td></tr>
+
+<table role="presentation" cellspacing="0" cellpadding="0" border="0">
+    <tr>
+        <td style="border-radius:12px;background:{{ $primary }};">
+            <a href="{{ $passesUrl }}" style="display:inline-block;padding:14px 22px;color:{{ $buttonText }};text-decoration:none;font-weight:800;font-size:15px;">Ver meus ingressos</a>
+        </td>
+    </tr>
 </table>
-</td></tr>
-</table>
-</body>
-</html>
+
+<p style="margin:20px 0 0;font-size:12px;line-height:1.6;color:{{ $muted }};">
+    Apresente o ingresso disponível na {{ $applicationName }} no acesso ao evento. Não compartilhe seu QR Code com terceiros.
+</p>
+@endsection
