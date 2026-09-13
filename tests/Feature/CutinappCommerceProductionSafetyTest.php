@@ -263,7 +263,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->app->instance(MercadoPagoService::class, $second);
 
         $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/commerce/orders/' . $publicId . '/payment/retry', ['payment_method' => 'pix'])
+            ->postJson('/api/v1/apps/cutinapp/commerce/orders/' . $publicId . '/payment/retry', ['payment_method' => 'pix'])
             ->assertOk()
             ->assertJsonPath('payment.status', 'pending')
             ->assertJsonPath('payment.provider_payment_id', '987654321')

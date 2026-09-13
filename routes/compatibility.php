@@ -4,7 +4,6 @@ use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
 use App\Domain\Commerce\Http\Controllers\CommerceCouponController;
-use App\Domain\Commerce\Http\Controllers\CommerceOrderPaymentRetryController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
 use App\Domain\Commerce\Http\Controllers\OrderHistoryController;
 use App\Domain\Connections\Http\Controllers\ConnectionController;
@@ -91,7 +90,6 @@ $authenticatedCompatibility('cutinapp', static function (): void {
     Route::post('/checkout', [EventCommerceController::class, 'checkout'])->middleware('throttle:30,1');
     Route::get('/orders/mine', [EventCommerceController::class, 'mine']);
     Route::get('/orders/{publicId}', [EventCommerceController::class, 'show']);
-    Route::post('/orders/{publicId}/payment/retry', [CommerceOrderPaymentRetryController::class, 'store'])->middleware('throttle:12,1');
     Route::post('/orders/{publicId}/sync-payment', [PaymentProviderController::class, 'sync'])->middleware('throttle:30,1');
 
     Route::get('/productions/{organizationId}/mercadopago/connect', [PaymentProviderController::class, 'connect'])->whereNumber('organizationId');
