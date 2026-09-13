@@ -92,12 +92,18 @@ final class CheckoutRecoveryJourneyEconomics
         }
 
         $summary = $this->emptySummary();
+        $standard = $this->emptyCohortSummary();
         $sources = [];
         $methods = [];
 
         foreach ($journeys as $journey) {
             $eventId = $journey['event_id'];
-            if (! $journey['recovered'] || ! $eventId || ! isset($allowedEventIds[$eventId])) {
+            if (! $eventId || ! isset($allowedEventIds[$eventId])) {
+                continue;
+            }
+
+            if (! $journey['recovered']) {
+                $this->accumulateCohort($standard, $journey);
                 continue;
             }
 
@@ -137,6 +143,30 @@ final class CheckoutRecoveryJourneyEconomics
         $summary['by_recovery_source'] = $this->finalizeDimensions($sources);
         $summary['by_payment_method'] = $this->finalizeDimensions($methods);
 
+        $standard = $this->finalizeCohort($standard);
+        $summary['comparison'] = [
+            'standard' => $standard,
+            'delta_percentage_points' => [
+                'opened_to_attempted' => $this->delta(
+                    $summary['conversion']['opened_to_attempted_percent'],
+                    $standard['conversion']['opened_to_attempted_percent'],
+                ),
+                'attempted_to_approved' => $this->delta(
+                    $summary['conversion']['attempted_to_approved_percent'],
+                    $standard['conversion']['attempted_to_approved_percent'],
+                ),
+                'approved_to_fulfilled' => $this->delta(
+                    $summary['conversion']['approved_to_fulfilled_percent'],
+                    $standard['conversion']['approved_to_fulfilled_percent'],
+                ),
+            ],
+            'recovered_fulfilled_gmv_share_percent' => $this->rateFloat(
+                (float) $summary['gmv']['fulfilled'],
+                (float) $summary['gmv']['fulfilled'] + (float) $standard['gmv']['fulfilled'],
+            ),
+            'interpretation' => 'descriptive_cohort_comparison_not_causal_incremental_lift',
+        ];
+
         return $summary;
     }
 
@@ -161,7 +191,73 @@ final class CheckoutRecoveryJourneyEconomics
             ],
             'by_recovery_source' => [],
             'by_payment_method' => [],
+            'comparison' => [
+                'standard' => $this->emptyCohortSummary(),
+                'delta_percentage_points' => [
+                    'opened_to_attempted' => null,
+                    'attempted_to_approved' => null,
+                    'approved_to_fulfilled' => null,
+                ],
+                'recovered_fulfilled_gmv_share_percent' => null,
+                'interpretation' => 'descriptive_cohort_comparison_not_causal_incremental_lift',
+            ],
         ];
+    }
+
+    /** @return array<string, mixed> */
+    private function emptyCohortSummary(): array
+    {
+        return [
+            'journeys' => 0,
+            'opened' => 0,
+            'attempted' => 0,
+            'approved' => 0,
+            'fulfilled' => 0,
+            'conversion' => [
+                'opened_to_attempted_percent' => null,
+                'attempted_to_approved_percent' => null,
+                'approved_to_fulfilled_percent' => null,
+            ],
+            'gmv' => [
+                'opened' => 0.0,
+                'approved' => 0.0,
+                'fulfilled' => 0.0,
+            ],
+        ];
+    }
+
+    /** @param array<string, mixed> $cohort @param array<string, mixed> $journey */
+    private function accumulateCohort(array &$cohort, array $journey): void
+    {
+        $cohort['journeys']++;
+        $amount = (float) $journey['amount'];
+        foreach (array_keys(self::STAGES) as $stage) {
+            if ($journey['stages'][$stage]) {
+                $cohort[$stage]++;
+            }
+        }
+        if ($journey['stages']['opened']) {
+            $cohort['gmv']['opened'] += $amount;
+        }
+        if ($journey['stages']['approved']) {
+            $cohort['gmv']['approved'] += $amount;
+        }
+        if ($journey['stages']['fulfilled']) {
+            $cohort['gmv']['fulfilled'] += $amount;
+        }
+    }
+
+    /** @param array<string, mixed> $cohort @return array<string, mixed> */
+    private function finalizeCohort(array $cohort): array
+    {
+        $cohort['conversion'] = [
+            'opened_to_attempted_percent' => $this->rate((int) $cohort['attempted'], (int) $cohort['opened']),
+            'attempted_to_approved_percent' => $this->rate((int) $cohort['approved'], (int) $cohort['attempted']),
+            'approved_to_fulfilled_percent' => $this->rate((int) $cohort['fulfilled'], (int) $cohort['approved']),
+        ];
+        $cohort['gmv'] = array_map(static fn (float $value): float => round($value, 2), $cohort['gmv']);
+
+        return $cohort;
     }
 
     /** @return array<string, mixed> */
@@ -207,6 +303,16 @@ final class CheckoutRecoveryJourneyEconomics
     private function rate(int $numerator, int $denominator): ?float
     {
         return $denominator > 0 ? round(($numerator / $denominator) * 100, 2) : null;
+    }
+
+    private function rateFloat(float $numerator, float $denominator): ?float
+    {
+        return $denominator > 0 ? round(($numerator / $denominator) * 100, 2) : null;
+    }
+
+    private function delta(?float $recovered, ?float $standard): ?float
+    {
+        return $recovered !== null && $standard !== null ? round($recovered - $standard, 2) : null;
     }
 
     private function value(mixed $source, array $path): mixed
