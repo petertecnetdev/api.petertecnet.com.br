@@ -34,7 +34,7 @@
 </td></tr>
 @endif
 <tr><td style="padding:0 28px 28px;">
-    <a href="{{ $frontendUrl }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:700;padding:13px 20px;border-radius:10px;">Abrir {{ $applicationName }}</a>
+    <a href="{{ $passesUrl }}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:700;padding:13px 20px;border-radius:10px;">Ver meus ingressos</a>
     <p style="margin:18px 0 0;font-size:13px;line-height:1.5;color:#667085;">Apresente o ingresso disponível no aplicativo no acesso ao evento. Não compartilhe seu QR Code com terceiros.</p>
 </td></tr>
 </table>
