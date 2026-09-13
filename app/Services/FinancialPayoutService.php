@@ -73,7 +73,7 @@ class FinancialPayoutService
             'payouts' => $history,
             'payout_provider' => 'asaas',
             'ready_for_sales' => (bool) ($identityReady && $destination && in_array($destination->status, ['active', 'cooling'], true)),
-            'ready_for_payout' => (bool) ($identityReady && $destination && $destination->status === 'active'),
+            'ready_for_payout' => (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active'),
         ];
     }
 
@@ -162,8 +162,8 @@ class FinancialPayoutService
             Production::query()->whereKey($production->id)->lockForUpdate()->firstOrFail();
 
             $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->lockForUpdate()->first();
-            if (!$beneficiary || !(bool) ($this->identity->overview($user)['ready_for_pix'] ?? false)) {
-                throw ValidationException::withMessages(['identity' => 'Sua identidade financeira ainda não está verificada.']);
+            if (!$beneficiary || $beneficiary->status !== 'verified') {
+                throw ValidationException::withMessages(['identity' => 'Sua identidade financeira ainda não está verificada para liberar repasses.']);
             }
 
             $destination = DB::table('financial_payout_destinations')
