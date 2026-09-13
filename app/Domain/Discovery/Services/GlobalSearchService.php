@@ -615,6 +615,7 @@ final class GlobalSearchService
         int $page,
         bool $promotersOnly
     ): Collection {
+        $filters = (array) ($parsed['filters'] ?? []);
         $personQuery = ltrim(trim($query), '@');
         $offset = ($page - 1) * $limit;
         $blocked = $viewerSignals['blocked'] ?? [];
