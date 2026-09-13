@@ -201,6 +201,82 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('message', 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.');
     }
 
+    public function test_pix_provider_failure_preserves_order_and_retry_resumes_same_payment_intent(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
+
+        [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('pix-resume');
+        $this->verifyFinancialRecipient($producer, $productionId);
+
+        $idempotencyKeys = [];
+        $first = Mockery::mock(MercadoPagoService::class);
+        $first->shouldReceive('createPayment')
+            ->once()
+            ->withArgs(function (string $token, array $payload, string $idempotencyKey) use (&$idempotencyKeys): bool {
+                $idempotencyKeys[] = $idempotencyKey;
+                $this->assertSame('platform-access-token', $token);
+                $this->assertSame('pix', $payload['payment_method_id']);
+                return true;
+            })
+            ->andThrow(new \RuntimeException('provider temporarily unavailable'));
+        $this->app->instance(MercadoPagoService::class, $first);
+
+        $buyer = $this->user('Comprador Retomada', 'buyer-resume@cutinapp.test');
+        $headers = $this->headersFor($buyer);
+        $failed = $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(502)
+            ->assertJsonPath('retryable', true);
+
+        $publicId = (string) $failed->json('order_public_id');
+        $order = DB::table('commerce_orders')->where('public_id', $publicId)->first();
+        $this->assertNotNull($order);
+        $this->assertSame('pending', $order->status);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'released_at' => null]);
+        $this->assertDatabaseMissing('commerce_payments', ['order_id' => $order->id]);
+
+        $second = Mockery::mock(MercadoPagoService::class);
+        $second->shouldReceive('createPayment')
+            ->once()
+            ->withArgs(function (string $token, array $payload, string $idempotencyKey) use (&$idempotencyKeys): bool {
+                $idempotencyKeys[] = $idempotencyKey;
+                $this->assertSame('platform-access-token', $token);
+                $this->assertSame('pix', $payload['payment_method_id']);
+                return true;
+            })
+            ->andReturn([
+                'id' => 987654321,
+                'status' => 'pending',
+                'fee_details' => [],
+                'point_of_interaction' => ['transaction_data' => [
+                    'transaction_id' => 'pix-resumed-transaction',
+                    'qr_code' => '000201-resumed-pix',
+                    'qr_code_base64' => 'dGVzdA==',
+                ]],
+            ]);
+        $this->app->instance(MercadoPagoService::class, $second);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/commerce/orders/' . $publicId . '/payment/retry', ['payment_method' => 'pix'])
+            ->assertOk()
+            ->assertJsonPath('payment.status', 'pending')
+            ->assertJsonPath('payment.provider_payment_id', '987654321')
+            ->assertJsonPath('payment.qr_code', '000201-resumed-pix');
+
+        $this->assertCount(2, $idempotencyKeys);
+        $this->assertSame($idempotencyKeys[0], $idempotencyKeys[1]);
+        $this->assertSame('commerce-order-' . $publicId, $idempotencyKeys[0]);
+        $this->assertDatabaseCount('commerce_payments', 1);
+        $this->assertDatabaseHas('commerce_orders', ['id' => $order->id, 'status' => 'pending']);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'released_at' => null]);
+    }
+
     private function verifyFinancialRecipient(User $producer, int $productionId): void
     {
         $cpf = '52998224725';
