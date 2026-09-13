@@ -42,6 +42,42 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/unpublish")->assertOk()->assertJsonPath('event.is_published',false);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
     }
 
+    public function test_paid_event_requires_payment_readiness_before_publication(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
+
+        $user = $this->user('Produtor Pago', 'paid-publish-owner@cutinapp.test');
+        $headers = $this->headersFor($user);
+        $productionId = $this->withHeaders($headers)->postJson('/api/cutinapp/productions', [
+            'name' => 'Produção Pagamento Pendente',
+        ])->assertCreated()->json('production.id');
+        $event = $this->withHeaders($headers)->postJson('/api/cutinapp/events', [
+            'production_id' => $productionId,
+            'title' => 'Evento Pago Sem Recebimento',
+            'description' => 'Evento usado para validar readiness financeira antes da publicação.',
+            'address' => 'Rua Pagamento, 10',
+            'city' => 'Goiânia',
+            'uf' => 'GO',
+            'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
+            'end_date' => now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s'),
+        ])->assertCreated()->json('event');
+        $this->withHeaders($headers)->postJson('/api/cutinapp/tickets', [
+            'event_id' => $event['id'],
+            'name' => 'Ingresso Pago',
+            'quantity' => 20,
+            'price' => 25.00,
+            'ticket_type' => 'full',
+        ])->assertCreated();
+
+        $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.');
+
+        $this->assertDatabaseHas('events', ['id' => $event['id'], 'is_published' => false]);
+    }
+
     public function test_owner_can_delete_multiple_selected_events_atomically(): void
     {
         $user=$this->user('Produtor Exclusao','bulk-delete-owner@cutinapp.test');

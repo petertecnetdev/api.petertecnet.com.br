@@ -278,9 +278,16 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertCreated()
             ->json('ticket');
 
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
+        $this->verifyFinancialRecipient($producer, $productionId);
+
         $this->withHeaders($headers)
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
+
+        DB::table('financial_payout_destinations')->where('source_type', 'production')->where('source_id', $productionId)->delete();
+        DB::table('financial_beneficiaries')->where('user_id', $producer->id)->delete();
 
         return [$producer, $event, $ticket, $productionId];
     }
