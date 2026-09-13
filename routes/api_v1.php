@@ -90,6 +90,7 @@ Route::prefix('v1/apps/{application}')
         Route::middleware('app.capability:commerce')->group(function () {
             Route::get('/establishments/{slug}/ordering', [OrderingController::class, 'ordering']);
             Route::post('/guest-orders', [OrderingController::class, 'checkout'])->middleware('throttle:6,1');
+            Route::post('/guest-orders/track', \App\Domain\Commerce\Http\Controllers\GuestOrderTrackingController::class)->middleware('throttle:6,1');
             Route::post('/ordering/payments/mercadopago/webhook', [OrderingController::class, 'paymentWebhook'])->middleware('throttle:120,1');
         });
 
