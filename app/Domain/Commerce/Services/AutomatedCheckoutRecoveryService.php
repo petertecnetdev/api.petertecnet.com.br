@@ -16,12 +16,12 @@ final class AutomatedCheckoutRecoveryService
     }
 
     /**
-     * Dispatch one zero-marginal-cost in-app reminder per recoverable PIX checkout.
+     * Dispatch one transactional reminder per recoverable PIX checkout.
      *
      * The existing recovery_started_at field is the idempotency guard: once an order
      * is attributed to a recovery attempt or control cohort it will not be selected
-     * again by this job. E-mail is explicitly disabled here so this automation cannot
-     * create provider spend or message users outside the application.
+     * again by this job. AppNotificationService restricts ecosystem e-mail delivery
+     * to explicit transactional recovery types, avoiding broad notification e-mails.
      *
      * @return array{eligible:int,dispatched:int,control:int,failed:int}
      */
@@ -128,14 +128,15 @@ final class AutomatedCheckoutRecoveryService
                     'data' => [
                         'order_public_id' => $order->public_id,
                         'payment_expires_at' => $order->expires_at?->toIso8601String(),
-                        'recovery_channel' => 'in_app',
+                        'recovery_channel' => 'in_app_email',
                         'recovery_deep_link' => $referenceUrl !== $applicationUrl,
                         'recovery_experiment' => $recoveryContext['experiment_name'] ?? null,
                         'recovery_timing_minutes' => $recoveryContext['timing_minutes'] ?? null,
                         'recovery_action' => 'resume_pix',
                         'recovery_cta_label' => 'Retomar pagamento PIX',
+                        'action_label' => 'Retomar pagamento PIX',
                     ],
-                    'send_email' => false,
+                    'send_email' => true,
                 ]);
 
                 $recovered = $this->recovery->recover(
@@ -152,7 +153,7 @@ final class AutomatedCheckoutRecoveryService
                 }
             } catch (Throwable $e) {
                 $failed++;
-                Log::warning('Falha ao disparar recuperação in-app de checkout.', [
+                Log::warning('Falha ao disparar recuperação de checkout.', [
                     'order_id' => $order->id,
                     'app_id' => $order->app_id,
                     'user_id' => $order->user_id,
@@ -216,7 +217,7 @@ final class AutomatedCheckoutRecoveryService
         $template = trim((string) ($paths[$host] ?? ''));
 
         // Only relative application paths are accepted. This prevents configuration
-        // from turning a trusted in-app notification into an external redirect.
+        // from turning a trusted recovery notification into an external redirect.
         if ($template === '' || ! str_starts_with($template, '/') || str_starts_with($template, '//')) {
             return $applicationUrl;
         }
