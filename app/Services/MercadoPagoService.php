@@ -11,6 +11,7 @@ class MercadoPagoService
 {
     private const PAYMENT_MAX_ATTEMPTS = 3;
     private const PAYMENT_RETRY_DELAYS_MS = [250, 750];
+    private const PAYMENT_MAX_RETRY_DELAY_MS = 5000;
 
     private string $baseUrl = 'https://api.mercadopago.com';
 
@@ -114,12 +115,30 @@ class MercadoPagoService
 
     private function sleepBeforePaymentRetry(int $attempt, ?Response $response): void
     {
-        $retryAfter = $response ? (int) $response->header('Retry-After', 0) : 0;
-        $delayMs = $retryAfter > 0
-            ? min($retryAfter * 1000, 2000)
-            : (self::PAYMENT_RETRY_DELAYS_MS[$attempt - 1] ?? 750);
+        usleep($this->paymentRetryDelayMs($attempt, $response) * 1000);
+    }
 
-        usleep($delayMs * 1000);
+    private function paymentRetryDelayMs(int $attempt, ?Response $response): int
+    {
+        $retryAfter = trim((string) ($response?->header('Retry-After') ?? ''));
+        $retryAfterMs = 0;
+
+        if ($retryAfter !== '') {
+            if (ctype_digit($retryAfter)) {
+                $retryAfterMs = (int) $retryAfter * 1000;
+            } else {
+                $retryAt = strtotime($retryAfter);
+                if ($retryAt !== false) {
+                    $retryAfterMs = max(0, ($retryAt - time()) * 1000);
+                }
+            }
+        }
+
+        if ($retryAfterMs > 0) {
+            return min($retryAfterMs, self::PAYMENT_MAX_RETRY_DELAY_MS);
+        }
+
+        return self::PAYMENT_RETRY_DELAYS_MS[$attempt - 1] ?? 750;
     }
 
     private function postPayment(string $accessToken,array $payload,string $idempotencyKey){return Http::acceptJson()->withToken($accessToken)->withHeaders(['X-Idempotency-Key'=>$idempotencyKey])->connectTimeout(5)->timeout(20)->post($this->baseUrl.'/v1/payments',$payload);}
