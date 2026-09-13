@@ -7,6 +7,7 @@ use App\Domain\Discovery\Services\DiscoverySearchIndexService;
 use App\Domain\Discovery\Services\SearchPerformanceSyncService;
 use App\Domain\Events\Services\EventAgendaMaintenanceService;
 use App\Domain\Finance\Services\AutomatedSubscriptionIntentRecoveryService;
+use App\Domain\Finance\Services\AutomatedSubscriptionRenewalRecoveryService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Domain\Messaging\Services\MessageEngagementService;
 use App\Jobs\DispatchNotificationCampaign;
@@ -121,6 +122,15 @@ Artisan::command('finance:recover-pending-subscriptions {--limit=}', function ()
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending subscription PIX checkouts');
 
+Artisan::command('finance:recover-expired-subscriptions {--limit=}', function () {
+    $limit = $this->option('limit');
+    $result = app(AutomatedSubscriptionRenewalRecoveryService::class)->run(
+        $limit !== null && $limit !== '' ? (int) $limit : null,
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Recover paid subscriptions whose billing period expired without renewal');
+
 Artisan::command('messaging:dispatch-engagement', function () {
     $dispatched = 0;
     $context = app(ApplicationContext::class);
@@ -170,6 +180,10 @@ Schedule::command('commerce:capture-payment-health')
     ->onOneServer();
 Schedule::command('finance:recover-pending-subscriptions')
     ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('finance:recover-expired-subscriptions')
+    ->everyThirtyMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
 Schedule::command('messaging:dispatch-engagement')
