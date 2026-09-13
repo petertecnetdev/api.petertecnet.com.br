@@ -2,11 +2,16 @@
 
 namespace App\Services;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class MercadoPagoService
 {
+    private const PAYMENT_MAX_ATTEMPTS = 3;
+    private const PAYMENT_RETRY_DELAYS_MS = [250, 750];
+
     private string $baseUrl = 'https://api.mercadopago.com';
 
     public function authorizationUrl(string $state): string
@@ -35,12 +40,12 @@ class MercadoPagoService
 
     public function createPayment(string $sellerAccessToken, array $payload, string $idempotencyKey): array
     {
-        $response = $this->postPayment($sellerAccessToken, $payload, $idempotencyKey);
+        $response = $this->postPaymentWithTransientRetry($sellerAccessToken, $payload, $idempotencyKey);
         if ($response->successful()) return $response->json();
 
         if (array_key_exists('application_fee',$payload) && $this->isApplicationFeeNotAllowed($response->json()) && $this->sellerIsPlatformAccount($sellerAccessToken)) {
             unset($payload['application_fee']); data_set($payload,'metadata.settlement_mode','same_account');
-            $retry = $this->postPayment($sellerAccessToken,$payload,$idempotencyKey.'-same-account');
+            $retry = $this->postPaymentWithTransientRetry($sellerAccessToken,$payload,$idempotencyKey.'-same-account');
             if ($retry->successful()) { $result=$retry->json(); $result['_same_account']=true; return $result; }
             throw new RuntimeException('Mercado Pago recusou a criação do pagamento sem split para a conta própria da plataforma: '.$retry->body());
         }
@@ -75,7 +80,49 @@ class MercadoPagoService
         $manifest='id:'.strtolower($dataId).';request-id:'.$xRequestId.';ts:'.$parts['ts'].';';return hash_equals(hash_hmac('sha256',$manifest,$secret),$parts['v1']);
     }
 
-    private function postPayment(string $accessToken,array $payload,string $idempotencyKey){return Http::acceptJson()->withToken($accessToken)->withHeaders(['X-Idempotency-Key'=>$idempotencyKey])->timeout(20)->post($this->baseUrl.'/v1/payments',$payload);}
+    private function postPaymentWithTransientRetry(string $accessToken, array $payload, string $idempotencyKey): Response
+    {
+        $lastResponse = null;
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= self::PAYMENT_MAX_ATTEMPTS; $attempt++) {
+            try {
+                $lastResponse = $this->postPayment($accessToken, $payload, $idempotencyKey);
+                $lastException = null;
+
+                if (! $this->isTransientPaymentResponse($lastResponse) || $attempt === self::PAYMENT_MAX_ATTEMPTS) {
+                    return $lastResponse;
+                }
+            } catch (ConnectionException $exception) {
+                $lastException = $exception;
+                if ($attempt === self::PAYMENT_MAX_ATTEMPTS) throw $exception;
+            }
+
+            $this->sleepBeforePaymentRetry($attempt, $lastResponse);
+        }
+
+        if ($lastException) throw $lastException;
+        if ($lastResponse) return $lastResponse;
+
+        throw new RuntimeException('Não foi possível iniciar a comunicação com o Mercado Pago.');
+    }
+
+    private function isTransientPaymentResponse(Response $response): bool
+    {
+        return $response->status() === 429 || $response->serverError();
+    }
+
+    private function sleepBeforePaymentRetry(int $attempt, ?Response $response): void
+    {
+        $retryAfter = $response ? (int) $response->header('Retry-After', 0) : 0;
+        $delayMs = $retryAfter > 0
+            ? min($retryAfter * 1000, 2000)
+            : (self::PAYMENT_RETRY_DELAYS_MS[$attempt - 1] ?? 750);
+
+        usleep($delayMs * 1000);
+    }
+
+    private function postPayment(string $accessToken,array $payload,string $idempotencyKey){return Http::acceptJson()->withToken($accessToken)->withHeaders(['X-Idempotency-Key'=>$idempotencyKey])->connectTimeout(5)->timeout(20)->post($this->baseUrl.'/v1/payments',$payload);}
     private function isApplicationFeeNotAllowed(array $body):bool{foreach(($body['cause']??[])as$cause)if((int)($cause['code']??0)===2059)return true;return str_contains(strtolower((string)($body['message']??'')),'cannot use application_fee');}
     private function sellerIsPlatformAccount(string $sellerAccessToken):bool{$platform=trim((string)config('services.mercadopago.access_token'));if($platform==='')return false;$seller=$this->currentUser($sellerAccessToken);$platformUser=$this->currentUser($platform);$sellerId=(string)($seller['id']??'');$platformId=(string)($platformUser['id']??'');return$sellerId!==''&&$platformId!==''&&hash_equals($platformId,$sellerId);}
     private function currentUser(string $accessToken):array{$response=Http::acceptJson()->withToken($accessToken)->timeout(20)->get($this->baseUrl.'/users/me');return$response->successful()?$response->json():[];}
