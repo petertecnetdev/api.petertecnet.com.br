@@ -27,7 +27,7 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
      * A short cache throttle prevents repeated provider lookups for a stubborn
      * order while still allowing automatic recovery without human intervention.
      *
-     * @return array{applications:int,eligible:int,attempted:int,recovered_orders:int,recovered_passes:int,failed:int,throttled:int}
+     * @return array{applications:int,eligible:int,attempted:int,completed_orders:int,recovered_orders:int,recovered_passes:int,failed:int,throttled:int}
      */
     public function run(int $limit = 25, int $slaMinutes = 10, int $retryAfterMinutes = 30): array
     {
@@ -39,6 +39,7 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
             'applications' => 0,
             'eligible' => 0,
             'attempted' => 0,
+            'completed_orders' => 0,
             'recovered_orders' => 0,
             'recovered_passes' => 0,
             'failed' => 0,
@@ -63,8 +64,9 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                 $result['applications']++;
                 $this->context->set($application);
 
-                $remaining = max(1, $limit - $result['attempted']);
-                $snapshot = $this->health->forApplication((int) $application->id, min(100, $remaining), $slaMinutes);
+                // Inspect a wider bounded window than the attempt limit so a
+                // throttled old order cannot starve newer recoverable orders.
+                $snapshot = $this->health->forApplication((int) $application->id, 100, $slaMinutes);
 
                 foreach ((array) ($snapshot['orders'] ?? []) as $candidate) {
                     if ($result['attempted'] >= $limit) {
@@ -94,8 +96,12 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                             ->findOrFail($orderId);
                         $recovery = $this->recovery->recover($order);
                         $recoveredPasses = max(0, (int) ($recovery['recovered_passes'] ?? 0));
+                        $missingPasses = max(0, (int) ($recovery['missing_passes'] ?? 0));
 
-                        if ((int) ($recovery['missing_passes'] ?? 0) === 0) {
+                        if ($missingPasses === 0) {
+                            $result['completed_orders']++;
+                        }
+                        if ($missingPasses === 0 && $recoveredPasses > 0) {
                             $result['recovered_orders']++;
                         }
                         $result['recovered_passes'] += $recoveredPasses;
