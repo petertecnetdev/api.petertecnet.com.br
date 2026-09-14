@@ -9,6 +9,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 use Throwable;
 
 final class EnsureIdempotentRequest
@@ -33,10 +34,6 @@ final class EnsureIdempotentRequest
         }
 
         $actorKey = $this->actorKey($request);
-        if ($actorKey === null) {
-            return $next($request);
-        }
-
         $applicationKey = $this->applicationKey($request);
         $routeSignature = strtoupper($request->method()).' '.$this->routeSignature($request);
         $fingerprint = hash('sha256', json_encode([
@@ -71,24 +68,16 @@ final class EnsureIdempotentRequest
         try {
             $response = $next($request);
         } catch (Throwable $exception) {
-            DB::table('idempotent_requests')
-                ->where('application_key', $applicationKey)
-                ->where('actor_key', $actorKey)
-                ->where('idempotency_key', $key)
-                ->whereNull('completed_at')
-                ->delete();
+            if ($this->shouldReleaseAfterException($request, $exception)) {
+                $this->release($applicationKey, $actorKey, $key);
+            }
 
             throw $exception;
         }
 
         $contentType = (string) $response->headers->get('Content-Type', '');
         if (! str_contains(strtolower($contentType), 'json')) {
-            DB::table('idempotent_requests')
-                ->where('application_key', $applicationKey)
-                ->where('actor_key', $actorKey)
-                ->where('idempotency_key', $key)
-                ->whereNull('completed_at')
-                ->delete();
+            $this->release($applicationKey, $actorKey, $key);
 
             return $response;
         }
@@ -133,7 +122,7 @@ final class EnsureIdempotentRequest
         if ($record->completed_at === null) {
             return response()->json([
                 'message' => 'Esta operação já está em processamento. Tente novamente em instantes.',
-            ], 409, [
+            ], 425, [
                 'Idempotency-Status' => 'processing',
                 'Retry-After' => '2',
             ]);
@@ -150,7 +139,7 @@ final class EnsureIdempotentRequest
         return $response;
     }
 
-    private function actorKey(Request $request): ?string
+    private function actorKey(Request $request): string
     {
         try {
             $user = Auth::guard('api')->user();
@@ -166,7 +155,10 @@ final class EnsureIdempotentRequest
             return 'token:'.hash('sha256', $token);
         }
 
-        return null;
+        // Public commerce checkouts already send a high-entropy key per checkout
+        // intent. Scoping anonymous requests by application + idempotency key makes
+        // retries replay-safe without persisting IP addresses or other PII.
+        return 'guest';
     }
 
     private function applicationKey(Request $request): string
@@ -188,6 +180,38 @@ final class EnsureIdempotentRequest
         return $route && method_exists($route, 'uri')
             ? (string) $route->uri()
             : '/'.ltrim($request->path(), '/');
+    }
+
+    private function shouldReleaseAfterException(Request $request, Throwable $exception): bool
+    {
+        $status = $exception instanceof HttpExceptionInterface
+            ? $exception->getStatusCode()
+            : 500;
+
+        if ($status < 500 || $status === 503) {
+            return true;
+        }
+
+        $route = $request->route();
+        $action = $route && method_exists($route, 'getActionName')
+            ? (string) $route->getActionName()
+            : '';
+
+        // Ordering checkout commits the order and stock before external payment
+        // initialization. An unexpected 5xx after that boundary is ambiguous, so
+        // keep the claim and block a retry from creating a second order. Known 503
+        // payment initialization failures are compensated by the controller first.
+        return ! str_ends_with($action, 'OrderingController@checkout');
+    }
+
+    private function release(string $applicationKey, string $actorKey, string $key): void
+    {
+        DB::table('idempotent_requests')
+            ->where('application_key', $applicationKey)
+            ->where('actor_key', $actorKey)
+            ->where('idempotency_key', $key)
+            ->whereNull('completed_at')
+            ->delete();
     }
 
     private function normalize(mixed $value, ?string $field = null): mixed
