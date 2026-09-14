@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\Commerce\Services\AutomatedCheckoutRecoveryService;
+use App\Domain\Commerce\Services\AutomatedPaidTicketFulfillmentRecoveryService;
 use App\Domain\Commerce\Services\PaymentHealthSnapshotService;
 use App\Domain\Discovery\Services\DiscoveryLearningService;
 use App\Domain\Discovery\Services\DiscoverySearchIndexService;
@@ -100,6 +101,20 @@ Artisan::command('commerce:recover-pending-checkouts {--limit=}', function () {
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Create one zero-cost in-app reminder for eligible pending PIX checkouts');
 
+Artisan::command('commerce:recover-paid-ticket-fulfillment {--limit=25} {--sla-minutes=10} {--retry-after-minutes=30}', function () {
+    $result = app(AutomatedPaidTicketFulfillmentRecoveryService::class)->run(
+        (int) $this->option('limit'),
+        (int) $this->option('sla-minutes'),
+        (int) $this->option('retry-after-minutes'),
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+
+    if (($result['failed'] ?? 0) > 0) {
+        $this->warn("{$result['failed']} fulfillment recovery attempt(s) still require attention.");
+    }
+})->purpose('Revalidate paid orders beyond SLA and idempotently issue only missing event passes');
+
 Artisan::command('commerce:capture-payment-health', function () {
     $captured = 0;
 
@@ -181,6 +196,10 @@ Schedule::command('commerce:recover-pending-checkouts')
     ->withoutOverlapping(10)
     ->onOneServer();
 Schedule::command('platform:reconcile-payments')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('commerce:recover-paid-ticket-fulfillment')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();
