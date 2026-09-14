@@ -27,7 +27,7 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
      * A short cache throttle prevents repeated provider lookups for a stubborn
      * order while still allowing automatic recovery without human intervention.
      *
-     * @return array{applications:int,eligible:int,attempted:int,completed_orders:int,recovered_orders:int,recovered_passes:int,failed:int,throttled:int}
+     * @return array{applications:int,eligible:int,attempted:int,completed_orders:int,recovered_orders:int,recovered_passes:int,protected_gmv:float,protected_platform_revenue:float,failed:int,throttled:int}
      */
     public function run(int $limit = 25, int $slaMinutes = 10, int $retryAfterMinutes = 30): array
     {
@@ -42,6 +42,8 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
             'completed_orders' => 0,
             'recovered_orders' => 0,
             'recovered_passes' => 0,
+            'protected_gmv' => 0.0,
+            'protected_platform_revenue' => 0.0,
             'failed' => 0,
             'throttled' => 0,
         ];
@@ -94,7 +96,7 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                         $order = CommerceOrder::query()
                             ->where('app_id', $application->id)
                             ->findOrFail($orderId);
-                        $recovery = $this->recovery->recover($order);
+                        $recovery = $this->recovery->recover($order, 'automatic');
                         $recoveredPasses = max(0, (int) ($recovery['recovered_passes'] ?? 0));
                         $missingPasses = max(0, (int) ($recovery['missing_passes'] ?? 0));
 
@@ -103,6 +105,8 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                         }
                         if ($missingPasses === 0 && $recoveredPasses > 0) {
                             $result['recovered_orders']++;
+                            $result['protected_gmv'] += max(0, (float) ($recovery['protected_gmv'] ?? 0));
+                            $result['protected_platform_revenue'] += max(0, (float) ($recovery['protected_platform_revenue'] ?? 0));
                         }
                         $result['recovered_passes'] += $recoveredPasses;
                     } catch (Throwable $e) {
@@ -121,6 +125,9 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
         } finally {
             $this->context->clear();
         }
+
+        $result['protected_gmv'] = round($result['protected_gmv'], 2);
+        $result['protected_platform_revenue'] = round($result['protected_platform_revenue'], 2);
 
         return $result;
     }
