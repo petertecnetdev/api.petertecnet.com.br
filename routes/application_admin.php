@@ -75,6 +75,9 @@ Route::prefix('v1/apps/{application}')
             Route::post('/commerce-orders/{order}/refund', [ApplicationAdminCommerceController::class, 'refundCommerceOrder'])
                 ->whereNumber('order')
                 ->middleware([EnsureApplicationAdmin::class.':finance.refund', 'throttle:10,1']);
+            Route::post('/commerce-orders/{order}/reprocess-ticket-fulfillment', [ApplicationAdminCommerceController::class, 'reprocessTicketFulfillment'])
+                ->whereNumber('order')
+                ->middleware([EnsureApplicationAdmin::class.':finance.refund', 'throttle:10,1']);
             Route::get('/finance', [ApplicationAdminCommerceController::class, 'finance'])
                 ->middleware(EnsureApplicationAdmin::class.':finance.view');
             Route::get('/finance/payment-health', ApplicationAdminPaymentHealthController::class)
