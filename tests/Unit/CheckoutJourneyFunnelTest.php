@@ -7,6 +7,35 @@ use PHPUnit\Framework\TestCase;
 
 class CheckoutJourneyFunnelTest extends TestCase
 {
+    public function test_it_extends_the_same_journey_from_event_view_to_purchase_and_breaks_down_intent_surface(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [
+            $this->interaction('frontend_event_detail_viewed', 'journey-summary', 10, null),
+            $this->interactionWithSurface('frontend_event_ticket_intent_clicked', 'journey-summary', 10, 'summary'),
+            $this->interaction('frontend_checkout_opened', 'journey-summary', 10, 120.00),
+            $this->interaction('frontend_payment_attempted', 'journey-summary', null, 120.00, 'pix'),
+            $this->interaction('frontend_payment_approved', 'journey-summary', null, 120.00, 'pix'),
+            $this->interaction('frontend_event_detail_viewed', 'journey-mobile', 10, null),
+            $this->interactionWithSurface('frontend_event_ticket_intent_clicked', 'journey-mobile', 10, 'mobile_fixed'),
+            $this->interaction('frontend_event_detail_viewed', 'journey-view-only', 10, null),
+        ];
+
+        $summary = $funnel->summarize($interactions, [10]);
+
+        $this->assertSame(3, $summary['stages']['event_viewed']);
+        $this->assertSame(2, $summary['stages']['ticket_intent']);
+        $this->assertSame(1, $summary['stages']['opened']);
+        $this->assertSame(66.67, $summary['conversion']['viewed_to_intent_percent']);
+        $this->assertSame(50.0, $summary['conversion']['intent_to_opened_percent']);
+        $this->assertSame(33.33, $summary['conversion']['viewed_to_approved_percent']);
+        $this->assertSame('event_detail_viewed', $summary['dropoff']['steps'][0]['from']);
+        $this->assertSame('ticket_intent_clicked', $summary['dropoff']['steps'][0]['to']);
+        $this->assertSame('summary', $summary['by_intent_surface'][0]['surface']);
+        $this->assertSame(100.0, $summary['by_intent_surface'][0]['intent_to_checkout_percent']);
+        $this->assertTrue($summary['measurement']['precheckout_gmv_is_lower_bound']);
+    }
+
     public function test_it_correlates_checkout_stages_and_reports_dropoff_and_gmv(): void
     {
         $funnel = new CheckoutJourneyFunnel();
@@ -114,7 +143,7 @@ class CheckoutJourneyFunnelTest extends TestCase
             $this->interaction('frontend_checkout_opened', 'journey-payment', 10, 100.00, 'pix'),
             $this->interaction('frontend_payment_attempted', 'journey-payment', null, 100.00, 'pix'),
         ], [10], 5.0, ['pix' => 5.0]);
-        $paymentStep = $payment['dropoff']['steps'][1];
+        $paymentStep = $payment['dropoff']['steps'][3];
         $this->assertSame('improve_payment_approval', $paymentStep['recommended_action']['code']);
         $this->assertContains('payment_idempotency', $paymentStep['recommended_action']['guardrails']);
 
@@ -123,7 +152,7 @@ class CheckoutJourneyFunnelTest extends TestCase
             $this->interaction('frontend_payment_attempted', 'journey-fulfillment', null, 100.00, 'pix'),
             $this->interaction('frontend_payment_approved', 'journey-fulfillment', null, 100.00, 'pix'),
         ], [10], 5.0, ['pix' => 5.0]);
-        $fulfillmentStep = $fulfillment['dropoff']['steps'][2];
+        $fulfillmentStep = $fulfillment['dropoff']['steps'][4];
         $this->assertSame('protect_post_payment_fulfillment', $fulfillmentStep['recommended_action']['code']);
         $this->assertContains('qr_checkin_integrity', $fulfillmentStep['recommended_action']['guardrails']);
     }
@@ -208,12 +237,26 @@ class CheckoutJourneyFunnelTest extends TestCase
         ];
     }
 
-    private function interaction(string $type, string $journeyId, ?int $eventId, float $amount, ?string $paymentMethod = null, ?string $userAgent = null): array
+    private function interactionWithSurface(string $type, string $journeyId, int $eventId, string $surface): array
+    {
+        return [
+            'interaction_type' => $type,
+            'content' => ['metadata' => [
+                'checkout_journey_id' => $journeyId,
+                'event_id' => $eventId,
+                'surface' => $surface,
+            ]],
+        ];
+    }
+
+    private function interaction(string $type, string $journeyId, ?int $eventId, ?float $amount, ?string $paymentMethod = null, ?string $userAgent = null): array
     {
         $metadata = [
             'checkout_journey_id' => $journeyId,
-            'amount' => $amount,
         ];
+        if ($amount !== null) {
+            $metadata['amount'] = $amount;
+        }
         if ($eventId !== null) {
             $metadata['event_id'] = $eventId;
         }
