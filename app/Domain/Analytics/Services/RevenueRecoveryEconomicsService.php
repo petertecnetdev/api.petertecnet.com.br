@@ -18,6 +18,7 @@ final class RevenueRecoveryEconomicsService
         private readonly CheckoutJourneyFunnel $checkoutJourneyFunnel,
         private readonly CheckoutJourneyPeriodComparison $checkoutJourneyPeriodComparison,
         private readonly CheckoutRecoveryJourneyEconomics $checkoutRecoveryJourneyEconomics,
+        private readonly PixInitializationRecoveryEconomics $pixInitializationRecoveryEconomics,
     ) {
     }
 
@@ -100,6 +101,40 @@ final class RevenueRecoveryEconomicsService
             $experimentInteractions,
             $surfaceOrders,
             self::NAVBAR_PROMINENCE_EXPERIMENT,
+        );
+
+        $pixInitializationOrders = CommerceOrder::query()
+            ->where('app_id', $appId)
+            ->where('production_id', $organizationId)
+            ->where('payment_method', 'pix')
+            ->where('created_at', '>=', $since)
+            ->select([
+                'public_id',
+                'status',
+                'total',
+                'platform_fee',
+                'processor_fee',
+                'metadata',
+            ])
+            ->get();
+
+        $pixInitializationInteractions = Interaction::query()
+            ->where('app_id', $appId)
+            ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
+            ->where('created_at', '>=', $since)
+            ->whereIn('interaction_type', [
+                'frontend_pix_initialization_recovery_started',
+                'frontend_pix_initialization_resumed',
+                'frontend_pix_initialization_resume_failed',
+            ])
+            ->select(['id', 'interaction_type', 'content', 'created_at'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->cursor();
+
+        $metrics['pix_initialization_recovery_economics'] = $this->pixInitializationRecoveryEconomics->summarize(
+            $pixInitializationInteractions,
+            $pixInitializationOrders,
         );
 
         $eventIds = Event::query()
