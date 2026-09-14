@@ -2,6 +2,7 @@
 
 namespace App\Domain\Commerce\Http\Controllers;
 
+use App\Domain\Commerce\Services\PaidTicketFulfillmentRecoveryService;
 use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Http\Controllers\Controller;
 use App\Models\CommerceOrder;
@@ -26,6 +27,7 @@ final class ApplicationAdminCommerceController extends Controller
         private readonly ApplicationAdminService $admin,
         private readonly MercadoPagoService $mercadoPago,
         private readonly MerchantPaymentAccountService $accounts,
+        private readonly PaidTicketFulfillmentRecoveryService $ticketFulfillmentRecovery,
     ) {
     }
 
@@ -164,6 +166,35 @@ final class ApplicationAdminCommerceController extends Controller
             'success' => true,
             'scope' => 'global_application',
             'data' => $fresh,
+        ]);
+    }
+
+    public function reprocessTicketFulfillment(Request $request, int $order): JsonResponse
+    {
+        $model = CommerceOrder::query()
+            ->where('app_id', $this->context->id())
+            ->with(['items', 'payments', 'user:id,first_name,last_name,email'])
+            ->findOrFail($order);
+
+        $result = $this->ticketFulfillmentRecovery->recover($model);
+
+        $this->admin->auditAction($this->context->id(), $request->user(), $model->user, 'admin_ticket_fulfillment_reprocessed', [
+            'order_id' => $model->id,
+            'public_id' => $model->public_id,
+            'expected_passes' => $result['expected_passes'],
+            'emitted_before' => $result['emitted_before'],
+            'emitted_after' => $result['emitted_passes'],
+            'recovered_passes' => $result['recovered_passes'],
+            'provider_verified' => $result['provider_verified'],
+        ], $this->auditContext($request));
+
+        return response()->json([
+            'success' => true,
+            'scope' => 'global_application',
+            'message' => $result['recovered_passes'] > 0
+                ? 'Pagamento reconfirmado no provedor e entrega reconciliada com segurança.'
+                : 'A entrega já estava completa; nenhum ingresso foi reemitido.',
+            'data' => $result,
         ]);
     }
 
