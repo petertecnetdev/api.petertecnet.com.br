@@ -68,9 +68,19 @@ final class SubscriptionEntitlementService
 
     public function activeForSubscription(int $subscriptionId): array
     {
+        $now = now();
+
         return DB::table('ecosystem_entitlements')
             ->where('subscription_id', $subscriptionId)
             ->where('status', 'active')
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('starts_at')
+                    ->orWhere('starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now): void {
+                $query->whereNull('expires_at')
+                    ->orWhere('expires_at', '>', $now);
+            })
             ->orderBy('key')
             ->get()
             ->map(function (object $entitlement): array {
