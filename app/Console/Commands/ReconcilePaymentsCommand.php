@@ -107,11 +107,6 @@ class ReconcilePaymentsCommand extends Command
                 $candidates = $candidates->concat($deliveryCandidates)->unique('id')->values();
             }
 
-            // Metadata is useful for fast-path decisions, but the issued passes are
-            // the source of truth for ticket fulfillment. A crash/manual repair or
-            // legacy row can leave fulfillment_status=completed while one or more
-            // EventPass records are missing. Select those orders explicitly so an
-            // older paid sale is not hidden forever behind the recent-payment limit.
             $underfulfilledOrderIds = DB::table('commerce_order_items as coi')
                 ->join('commerce_orders as co', function ($join) {
                     $join->on('co.id', '=', 'coi.order_id')
@@ -157,7 +152,7 @@ class ReconcilePaymentsCommand extends Command
 
         if ($payments->isEmpty()) {
             $this->info('Nenhum pagamento precisa de reconciliação.');
-            $this->logRunTelemetry($startedAt, $applicationSlug, 0, 0, 0, 0, 0, 0.0, []);
+            $this->logRunTelemetry($startedAt, $applicationSlug, 0, 0, 0, 0, 0, 0, 0.0, []);
             return self::SUCCESS;
         }
 
@@ -165,6 +160,7 @@ class ReconcilePaymentsCommand extends Command
         $recoveredPaidOrders = 0;
         $recoveredFulfillments = 0;
         $recoveredDeliveryRetries = 0;
+        $unresolvedTicketFulfillments = 0;
         $recoveredGmv = 0.0;
         $byApplication = [];
         foreach ($payments as $payment) {
@@ -179,6 +175,7 @@ class ReconcilePaymentsCommand extends Command
                     'recovered_paid_orders' => 0,
                     'recovered_fulfillments' => 0,
                     'recovered_delivery_retries' => 0,
+                    'unresolved_ticket_fulfillments' => 0,
                     'failures' => 0,
                     'recovered_gmv' => 0.0,
                 ];
@@ -221,6 +218,23 @@ class ReconcilePaymentsCommand extends Command
                     $byApplication[$appSlug]['recovered_fulfillments']++;
                 }
 
+                $passesIncompleteAfter = $order->status === 'paid'
+                    && $this->hasIncompleteTicketFulfillment($order);
+                if ($passesIncompleteAfter) {
+                    $unresolvedTicketFulfillments++;
+                    $byApplication[$appSlug]['unresolved_ticket_fulfillments']++;
+                    Log::error('commerce.payment_reconciliation.ticket_fulfillment_unresolved', [
+                        'app_id' => (int) $payment->app_id,
+                        'application' => $appSlug,
+                        'order_id' => (int) $order->id,
+                        'order_public_id' => (string) $order->public_id,
+                        'payment_id' => (int) $payment->id,
+                        'provider_payment_id' => (string) $payment->provider_payment_id,
+                        'order_total' => round((float) $order->total, 2),
+                        'alert_reason' => 'paid_order_missing_event_passes_after_reconciliation',
+                    ]);
+                }
+
                 $recoveryAttribution->record(
                     (int) $payment->app_id,
                     $paidRecovered ? 1 : 0,
@@ -256,12 +270,13 @@ class ReconcilePaymentsCommand extends Command
             $recoveredPaidOrders,
             $recoveredFulfillments,
             $recoveredDeliveryRetries,
+            $unresolvedTicketFulfillments,
             $failures,
             $recoveredGmv,
             $byApplication
         );
 
-        return $failures === 0 ? self::SUCCESS : self::FAILURE;
+        return $failures === 0 && $unresolvedTicketFulfillments === 0 ? self::SUCCESS : self::FAILURE;
     }
 
     private function hasIncompleteTicketFulfillment(CommerceOrder $order): bool
@@ -293,6 +308,7 @@ class ReconcilePaymentsCommand extends Command
         int $recoveredPaidOrders,
         int $recoveredFulfillments,
         int $recoveredDeliveryRetries,
+        int $unresolvedTicketFulfillments,
         int $failures,
         float $recoveredGmv,
         array $byApplication
@@ -310,6 +326,7 @@ class ReconcilePaymentsCommand extends Command
             'recovered_paid_orders' => $recoveredPaidOrders,
             'recovered_fulfillments' => $recoveredFulfillments,
             'recovered_delivery_retries' => $recoveredDeliveryRetries,
+            'unresolved_ticket_fulfillments' => $unresolvedTicketFulfillments,
             'failures' => $failures,
             'recovered_gmv' => round($recoveredGmv, 2),
             'by_application' => $applicationBreakdown,
@@ -317,6 +334,12 @@ class ReconcilePaymentsCommand extends Command
         ];
 
         Log::info('commerce.payment_reconciliation.completed', $context);
+
+        if ($unresolvedTicketFulfillments > 0) {
+            Log::error('commerce.payment_reconciliation.ticket_fulfillment_alert', $context + [
+                'alert_reason' => 'paid_orders_remain_without_complete_event_passes',
+            ]);
+        }
 
         if ($failures > 0) {
             Log::error('commerce.payment_reconciliation.failed', $context + [
