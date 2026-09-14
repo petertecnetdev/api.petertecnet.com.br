@@ -22,13 +22,14 @@ final class PaidTicketFulfillmentRecoveryService
     ) {
     }
 
-    public function recover(CommerceOrder $order): array
+    public function recover(CommerceOrder $order, string $source = 'manual'): array
     {
         abort_unless((int) $order->app_id === $this->context->id(), 404);
         if ($order->status !== 'paid') {
             throw ValidationException::withMessages(['order' => 'Somente pedidos confirmados como pagos podem ter a entrega reprocessada.']);
         }
 
+        $source = in_array($source, ['manual', 'automatic'], true) ? $source : 'manual';
         $order->loadMissing(['items', 'payments', 'user']);
         $ticketItems = $order->items->where('type', 'ticket');
         $expected = (int) $ticketItems->sum(fn ($item) => (int) $item->quantity);
@@ -36,7 +37,7 @@ final class PaidTicketFulfillmentRecoveryService
         $issuedBefore = EventPass::query()->whereIn('commerce_order_item_id', $itemIds)->count();
 
         if ($expected <= 0 || $issuedBefore >= $expected) {
-            return $this->result($order, $expected, $issuedBefore, $issuedBefore, false);
+            return $this->result($order, $expected, $issuedBefore, $issuedBefore, false, $source);
         }
 
         $payment = $order->payments
@@ -50,7 +51,7 @@ final class PaidTicketFulfillmentRecoveryService
 
         $remote = $this->verifiedRemotePayment($order, $payment);
 
-        $issuedAfter = DB::transaction(function () use ($order, $payment, $remote) {
+        $issuedAfter = DB::transaction(function () use ($order, $payment, $remote, $source) {
             $locked = CommerceOrder::query()
                 ->where('app_id', $this->context->id())
                 ->with(['items', 'user'])
@@ -86,18 +87,21 @@ final class PaidTicketFulfillmentRecoveryService
                 throw new RuntimeException('A entrega continuou incompleta após o reprocessamento idempotente.');
             }
 
+            $recoveredAt = now()->toIso8601String();
             $metadata = (array) $locked->metadata;
             $metadata['fulfillment_status'] = 'completed';
-            $metadata['fulfilled_at'] = now()->toIso8601String();
-            $metadata['fulfillment_last_attempt_at'] = now()->toIso8601String();
-            $metadata['fulfillment_recovered_manually_at'] = now()->toIso8601String();
+            $metadata['fulfilled_at'] = $recoveredAt;
+            $metadata['fulfillment_last_attempt_at'] = $recoveredAt;
+            $metadata['fulfillment_recovered_at'] = $recoveredAt;
+            $metadata['fulfillment_recovery_source'] = $source;
+            $metadata[$source === 'automatic' ? 'fulfillment_recovered_automatically_at' : 'fulfillment_recovered_manually_at'] = $recoveredAt;
             unset($metadata['fulfillment_error'], $metadata['fulfillment_failed_at']);
             $locked->forceFill(['metadata' => $metadata])->save();
 
             return $issued;
         });
 
-        return $this->result($order, $expected, $issuedBefore, $issuedAfter, true);
+        return $this->result($order, $expected, $issuedBefore, $issuedAfter, true, $source);
     }
 
     private function verifiedRemotePayment(CommerceOrder $order, CommercePayment $payment): array
@@ -141,7 +145,7 @@ final class PaidTicketFulfillmentRecoveryService
         }
     }
 
-    private function result(CommerceOrder $order, int $expected, int $before, int $after, bool $providerVerified): array
+    private function result(CommerceOrder $order, int $expected, int $before, int $after, bool $providerVerified, string $source): array
     {
         return [
             'order_public_id' => (string) $order->public_id,
@@ -151,6 +155,9 @@ final class PaidTicketFulfillmentRecoveryService
             'missing_passes' => max(0, $expected - $after),
             'recovered_passes' => max(0, $after - $before),
             'provider_verified' => $providerVerified,
+            'recovery_source' => $source,
+            'protected_gmv' => round((float) $order->total, 2),
+            'protected_platform_revenue' => round((float) $order->platform_fee, 2),
         ];
     }
 }
