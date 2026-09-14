@@ -103,21 +103,6 @@ final class RevenueRecoveryEconomicsService
             self::NAVBAR_PROMINENCE_EXPERIMENT,
         );
 
-        $pixInitializationOrders = CommerceOrder::query()
-            ->where('app_id', $appId)
-            ->where('production_id', $organizationId)
-            ->where('payment_method', 'pix')
-            ->where('created_at', '>=', $since)
-            ->select([
-                'public_id',
-                'status',
-                'total',
-                'platform_fee',
-                'processor_fee',
-                'metadata',
-            ])
-            ->get();
-
         $pixInitializationInteractions = Interaction::query()
             ->where('app_id', $appId)
             ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
@@ -130,7 +115,34 @@ final class RevenueRecoveryEconomicsService
             ->select(['id', 'interaction_type', 'content', 'created_at'])
             ->orderBy('created_at')
             ->orderBy('id')
-            ->cursor();
+            ->get();
+
+        $pixInitializationOrderPublicIds = $pixInitializationInteractions
+            ->map(fn (Interaction $interaction): string => trim((string) data_get($interaction, 'content.metadata.order_public_id')))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $pixInitializationOrders = collect();
+        foreach ($pixInitializationOrderPublicIds->chunk(500) as $publicIdChunk) {
+            $pixInitializationOrders = $pixInitializationOrders->concat(
+                CommerceOrder::query()
+                    ->where('app_id', $appId)
+                    ->where('production_id', $organizationId)
+                    ->where('payment_method', 'pix')
+                    ->where('created_at', '>=', $since)
+                    ->whereIn('public_id', $publicIdChunk->all())
+                    ->select([
+                        'public_id',
+                        'status',
+                        'total',
+                        'platform_fee',
+                        'processor_fee',
+                        'metadata',
+                    ])
+                    ->get(),
+            );
+        }
 
         $metrics['pix_initialization_recovery_economics'] = $this->pixInitializationRecoveryEconomics->summarize(
             $pixInitializationInteractions,
