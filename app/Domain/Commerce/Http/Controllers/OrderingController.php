@@ -63,6 +63,7 @@ class OrderingController extends Controller
             'payment_method' => ['required', Rule::in(['pix', 'cash', 'card_on_delivery'])],
             'customer_name' => ['required', 'string', 'max:160'],
             'customer_phone' => ['required', 'string', 'max:30'],
+            'customer_email' => ['nullable', 'email:rfc', 'max:254'],
             'delivery_address' => ['nullable', 'string', 'max:1000'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'acquisition_attribution' => ['nullable', 'array:utm_source,utm_medium,utm_campaign,utm_content,utm_term,acquisition_source,acquisition_landing,acquisition_captured_at'],
@@ -85,9 +86,10 @@ class OrderingController extends Controller
         ]);
 
         $user = $request->user();
-        abort_if(! $user && $data['payment_method'] === 'pix', 422, 'Entre na sua conta para pagar com Pix. Dinheiro e cartão no local podem ser usados sem cadastro.');
+        $payerEmail = $user?->email ?: strtolower(trim((string) ($data['customer_email'] ?? '')));
+        abort_if($data['payment_method'] === 'pix' && $payerEmail === '', 422, 'Informe seu e-mail para pagar com Pix.');
 
-        [$order, $establishment] = DB::transaction(function () use ($data, $user) {
+        [$order, $establishment] = DB::transaction(function () use ($data, $user, $payerEmail) {
             $establishment = Establishment::query()
                 ->whereKey($data['establishment_id'])
                 ->forApplication($this->context->id())
@@ -183,7 +185,7 @@ class OrderingController extends Controller
                 'client_id' => $user?->id,
                 'customer_name' => $data['customer_name'],
                 'customer_phone' => $data['customer_phone'],
-                'customer_email' => $user?->email,
+                'customer_email' => $payerEmail ?: null,
                 'access_code' => Order::generateAccessCode(),
                 'origin' => 'Online',
                 'fulfillment' => $data['fulfillment'],
@@ -238,7 +240,7 @@ class OrderingController extends Controller
         }, 3);
 
         $payment = $data['payment_method'] === 'pix'
-            ? $this->createPixPayment($order, $establishment, $user, $data['acquisition_attribution'] ?? [])
+            ? $this->createPixPayment($order, $establishment, $user, $payerEmail, $data['acquisition_attribution'] ?? [])
             : null;
 
         return response()->json([
@@ -510,7 +512,7 @@ class OrderingController extends Controller
         }
     }
 
-    private function createPixPayment(Order $order, Establishment $establishment, $user, array $acquisitionAttribution = []): array
+    private function createPixPayment(Order $order, Establishment $establishment, $user, string $payerEmail, array $acquisitionAttribution = []): array
     {
         $token = trim((string) config('services.mercadopago.access_token'));
         if ($token === '') {
@@ -542,7 +544,7 @@ class OrderingController extends Controller
             'source_type' => 'order',
             'source_reference' => $reference,
             'source_id' => $order->id,
-            'user_id' => $user->id,
+            'user_id' => $user?->id,
             'establishment_id' => $establishment->id,
             'currency' => 'BRL',
             'method' => 'pix',
@@ -565,9 +567,9 @@ class OrderingController extends Controller
                 'external_reference' => $reference,
                 'notification_url' => rtrim((string) config('app.url'), '/') . '/api/v1/apps/' . $this->context->slug() . '/payments/mercadopago/webhook',
                 'payer' => [
-                    'email' => $user->email,
-                    'first_name' => $user->first_name ?: $order->customer_name,
-                    'last_name' => $user->last_name ?: '',
+                    'email' => $payerEmail,
+                    'first_name' => $user?->first_name ?: $order->customer_name,
+                    'last_name' => $user?->last_name ?: '',
                 ],
             ], $this->context->slug() . '-order-' . $order->id);
 
