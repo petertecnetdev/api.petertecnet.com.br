@@ -51,7 +51,7 @@ final class PaidTicketFulfillmentRecoveryService
 
         $remote = $this->verifiedRemotePayment($order, $payment);
 
-        $issuedAfter = DB::transaction(function () use ($order, $payment, $remote, $source) {
+        $recoveryOutcome = DB::transaction(function () use ($order, $payment, $remote, $source) {
             $locked = CommerceOrder::query()
                 ->where('app_id', $this->context->id())
                 ->with(['items', 'user'])
@@ -63,6 +63,9 @@ final class PaidTicketFulfillmentRecoveryService
             }
 
             $this->assertRemoteMatchesOrder($locked, $payment, $remote);
+            $lockedItemIds = $locked->items->where('type', 'ticket')->pluck('id');
+            $issuedAtLockStart = EventPass::query()->whereIn('commerce_order_item_id', $lockedItemIds)->count();
+
             foreach ($locked->items->where('type', 'ticket') as $line) {
                 $already = EventPass::query()->where('commerce_order_item_id', $line->id)->count();
                 $toIssue = max(0, (int) $line->quantity - $already);
@@ -93,15 +96,25 @@ final class PaidTicketFulfillmentRecoveryService
             $metadata['fulfilled_at'] = $recoveredAt;
             $metadata['fulfillment_last_attempt_at'] = $recoveredAt;
             $metadata['fulfillment_recovered_at'] = $recoveredAt;
+            $recoveredPasses = max(0, $issued - $issuedAtLockStart);
             $metadata['fulfillment_recovery_source'] = $source;
+            $metadata['fulfillment_recovered_passes'] = $recoveredPasses;
             $metadata[$source === 'automatic' ? 'fulfillment_recovered_automatically_at' : 'fulfillment_recovered_manually_at'] = $recoveredAt;
             unset($metadata['fulfillment_error'], $metadata['fulfillment_failed_at']);
             $locked->forceFill(['metadata' => $metadata])->save();
 
-            return $issued;
+            return ['issued' => $issued, 'recovered_passes' => $recoveredPasses];
         });
 
-        return $this->result($order, $expected, $issuedBefore, $issuedAfter, true, $source);
+        return $this->result(
+            $order,
+            $expected,
+            $issuedBefore,
+            (int) $recoveryOutcome['issued'],
+            true,
+            $source,
+            (int) $recoveryOutcome['recovered_passes'],
+        );
     }
 
     private function verifiedRemotePayment(CommerceOrder $order, CommercePayment $payment): array
@@ -145,7 +158,7 @@ final class PaidTicketFulfillmentRecoveryService
         }
     }
 
-    private function result(CommerceOrder $order, int $expected, int $before, int $after, bool $providerVerified, string $source): array
+    private function result(CommerceOrder $order, int $expected, int $before, int $after, bool $providerVerified, string $source, ?int $recoveredPasses = null): array
     {
         return [
             'order_public_id' => (string) $order->public_id,
@@ -153,7 +166,7 @@ final class PaidTicketFulfillmentRecoveryService
             'emitted_before' => $before,
             'emitted_passes' => $after,
             'missing_passes' => max(0, $expected - $after),
-            'recovered_passes' => max(0, $after - $before),
+            'recovered_passes' => $recoveredPasses ?? max(0, $after - $before),
             'provider_verified' => $providerVerified,
             'recovery_source' => $source,
             'protected_gmv' => round((float) $order->total, 2),

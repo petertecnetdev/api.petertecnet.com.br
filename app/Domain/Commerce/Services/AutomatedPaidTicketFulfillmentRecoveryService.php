@@ -6,6 +6,7 @@ use App\Models\Application;
 use App\Models\CommerceOrder;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -96,7 +97,8 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                         $order = CommerceOrder::query()
                             ->where('app_id', $application->id)
                             ->findOrFail($orderId);
-                        $recovery = $this->recovery->recover($order, 'automatic');
+                        $this->recordAutomaticAttempt($orderId, 'started');
+                        $recovery = $this->recovery->recover($order->fresh(), 'automatic');
                         $recoveredPasses = max(0, (int) ($recovery['recovered_passes'] ?? 0));
                         $missingPasses = max(0, (int) ($recovery['missing_passes'] ?? 0));
 
@@ -109,8 +111,10 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
                             $result['protected_platform_revenue'] += max(0, (float) ($recovery['protected_platform_revenue'] ?? 0));
                         }
                         $result['recovered_passes'] += $recoveredPasses;
+                        $this->recordAutomaticAttempt($orderId, 'completed', $recoveredPasses);
                     } catch (Throwable $e) {
                         $result['failed']++;
+                        $this->recordAutomaticAttempt($orderId, 'failed');
                         Log::error('Falha na recuperação automática de fulfillment de ingresso pago.', [
                             'app_id' => (int) $application->id,
                             'order_id' => $orderId,
@@ -130,5 +134,58 @@ final class AutomatedPaidTicketFulfillmentRecoveryService
         $result['protected_platform_revenue'] = round($result['protected_platform_revenue'], 2);
 
         return $result;
+    }
+
+    private function recordAutomaticAttempt(int $orderId, string $outcome, int $recoveredPasses = 0): void
+    {
+        try {
+            DB::transaction(function () use ($orderId, $outcome, $recoveredPasses): void {
+                $order = CommerceOrder::query()
+                    ->where('app_id', $this->context->id())
+                    ->lockForUpdate()
+                    ->find($orderId);
+
+                if (! $order) {
+                    return;
+                }
+
+                $metadata = (array) $order->metadata;
+                $clock = now();
+                $now = $clock->toIso8601String();
+                $day = $clock->toDateString();
+                $daily = (array) ($metadata['fulfillment_auto_recovery_daily'] ?? []);
+                $dailyRow = (array) ($daily[$day] ?? []);
+
+                if ($outcome === 'started') {
+                    $metadata['fulfillment_auto_recovery_attempts'] = max(0, (int) ($metadata['fulfillment_auto_recovery_attempts'] ?? 0)) + 1;
+                    $metadata['fulfillment_auto_recovery_last_attempt_at'] = $now;
+                    $dailyRow['attempts'] = max(0, (int) ($dailyRow['attempts'] ?? 0)) + 1;
+                } elseif ($outcome === 'failed') {
+                    $metadata['fulfillment_auto_recovery_failures'] = max(0, (int) ($metadata['fulfillment_auto_recovery_failures'] ?? 0)) + 1;
+                    $metadata['fulfillment_auto_recovery_last_failed_at'] = $now;
+                    $dailyRow['failures'] = max(0, (int) ($dailyRow['failures'] ?? 0)) + 1;
+                } elseif ($outcome === 'completed') {
+                    $metadata['fulfillment_auto_recovery_completed_attempts'] = max(0, (int) ($metadata['fulfillment_auto_recovery_completed_attempts'] ?? 0)) + 1;
+                    $metadata['fulfillment_auto_recovery_last_completed_at'] = $now;
+                    $dailyRow['completed_attempts'] = max(0, (int) ($dailyRow['completed_attempts'] ?? 0)) + 1;
+                    if ($recoveredPasses > 0) {
+                        $metadata['fulfillment_auto_recovery_recovered_passes'] = max(0, (int) ($metadata['fulfillment_auto_recovery_recovered_passes'] ?? 0)) + $recoveredPasses;
+                        $dailyRow['recovered_passes'] = max(0, (int) ($dailyRow['recovered_passes'] ?? 0)) + $recoveredPasses;
+                    }
+                }
+
+                $daily[$day] = $dailyRow;
+                ksort($daily);
+                $metadata['fulfillment_auto_recovery_daily'] = array_slice($daily, -32, null, true);
+                $order->forceFill(['metadata' => $metadata])->save();
+            });
+        } catch (Throwable $e) {
+            Log::warning('Falha ao persistir métricas da recuperação automática de fulfillment.', [
+                'app_id' => $this->context->id(),
+                'order_id' => $orderId,
+                'outcome' => $outcome,
+                'message' => $e->getMessage(),
+            ]);
+        }
     }
 }
