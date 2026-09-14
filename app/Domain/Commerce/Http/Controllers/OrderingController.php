@@ -525,13 +525,8 @@ class OrderingController extends Controller
                 ];
             }
 
-            $order->forceFill(['payment_status' => 'failed'])->save();
-            return [
-                'provider' => 'unavailable',
-                'status' => 'failed',
-                'amount' => (float) $order->total_price,
-                'message' => 'Pix temporariamente indisponível. O pedido foi preservado; escolha outra forma de pagamento.',
-            ];
+            $this->cancelFailedPixOrder($order);
+            abort(503, 'Pix temporariamente indisponível. Seu carrinho foi preservado para uma nova tentativa.');
         }
 
         $publicId = (string) Str::uuid();
@@ -595,7 +590,6 @@ class OrderingController extends Controller
                 'failed_at' => now(),
                 'metadata' => array_merge($payment->metadata ?? [], ['error' => $exception->getMessage()]),
             ])->save();
-            $order->forceFill(['payment_status' => 'failed'])->save();
 
             if (! empty($establishment->pix_key)) {
                 return [
@@ -607,13 +601,8 @@ class OrderingController extends Controller
                 ];
             }
 
-            return [
-                'provider' => 'mercadopago',
-                'status' => 'failed',
-                'amount' => (float) $order->total_price,
-                'retryable' => true,
-                'message' => 'O provedor de Pix não respondeu, mas seu pedido foi criado e preservado.',
-            ];
+            $this->cancelFailedPixOrder($order);
+            abort(503, 'O provedor de Pix não respondeu. Seu carrinho foi preservado e o estoque liberado para uma nova tentativa.');
         }
     }
 
@@ -640,6 +629,28 @@ class OrderingController extends Controller
         $isEmployee = Employer::query()->where('establishment_id', $establishment->id)->where('user_id', $userId)->exists();
         abort_unless($isOwner || $isEmployee, 403, 'Você não possui acesso a esta operação.');
         return $establishment;
+    }
+
+    private function cancelFailedPixOrder(Order $order): void
+    {
+        DB::transaction(function () use ($order) {
+            $locked = Order::query()
+                ->whereKey($order->id)
+                ->where('app_id', $this->context->id())
+                ->where('entity_name', 'establishment')
+                ->with('items')
+                ->lockForUpdate()
+                ->first();
+
+            if (! $locked || $locked->status === 'cancelled' || $locked->isPaid()) return;
+
+            $this->restoreStock($locked);
+            $locked->forceFill([
+                'status' => 'cancelled',
+                'payment_status' => 'failed',
+                'status_updated_at' => now(),
+            ])->save();
+        }, 3);
     }
 
     private function restoreStock(Order $order): void
