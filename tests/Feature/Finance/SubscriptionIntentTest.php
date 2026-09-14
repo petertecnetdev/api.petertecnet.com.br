@@ -5,6 +5,8 @@ namespace Tests\Feature\Finance;
 use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Tests\TestCase;
 
@@ -194,5 +196,69 @@ class SubscriptionIntentTest extends TestCase
             ->getJson('/api/v1/apps/plat/subscription-intents/recoverable')
             ->assertSuccessful()
             ->assertExactJson(['data' => null]);
+    }
+
+    public function test_rejected_subscription_pix_can_be_retried_without_duplicate_payment_record(): void
+    {
+        config(['services.mercadopago.access_token' => 'test-platform-token']);
+
+        Http::fakeSequence('https://api.mercadopago.com/v1/payments')
+            ->push([
+                'id' => 'pix-rejected-1',
+                'status' => 'rejected',
+                'status_detail' => 'cc_rejected_other_reason',
+                'point_of_interaction' => ['transaction_data' => ['qr_code' => 'old-pix']],
+            ], 201)
+            ->push([
+                'id' => 'pix-pending-2',
+                'status' => 'pending',
+                'status_detail' => 'pending_waiting_transfer',
+                'point_of_interaction' => ['transaction_data' => ['qr_code' => 'new-pix']],
+            ], 201);
+
+        $user = $this->user();
+        $headers = $this->headers($user, (string) Str::uuid());
+        $intentResponse = $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/payflow/subscription-intents', ['plan_code' => 'pro'])
+            ->assertCreated();
+        $intentId = (string) $intentResponse->json('data.id');
+
+        $first = $this->withHeaders([
+            'Authorization' => $headers['Authorization'],
+            'Idempotency-Key' => (string) Str::uuid(),
+        ])->postJson('/api/v1/apps/payflow/subscription-intents/'.$intentId.'/checkout', ['method' => 'pix']);
+
+        $first->assertCreated()
+            ->assertJsonPath('payment.status', 'rejected')
+            ->assertJsonPath('payment.pix.qr_code', 'old-pix');
+        $localPaymentId = (string) $first->json('payment.id');
+
+        $second = $this->withHeaders([
+            'Authorization' => $headers['Authorization'],
+            'Idempotency-Key' => (string) Str::uuid(),
+        ])->postJson('/api/v1/apps/payflow/subscription-intents/'.$intentId.'/checkout', ['method' => 'pix']);
+
+        $second->assertCreated()
+            ->assertJsonPath('payment.id', $localPaymentId)
+            ->assertJsonPath('payment.status', 'pending')
+            ->assertJsonPath('payment.pix.qr_code', 'new-pix');
+
+        $this->assertSame(1, DB::table('ecosystem_payments')
+            ->where('source_type', 'subscription_intent')
+            ->where('source_reference', $intentId)
+            ->count());
+
+        $payment = DB::table('ecosystem_payments')
+            ->where('source_type', 'subscription_intent')
+            ->where('source_reference', $intentId)
+            ->first();
+        $metadata = json_decode((string) $payment->metadata, true);
+
+        $this->assertSame('pix-pending-2', $payment->provider_payment_id);
+        $this->assertSame('pending', $payment->status);
+        $this->assertNull($payment->failed_at);
+        $this->assertSame('pix-rejected-1', data_get($metadata, 'previous_attempts.0.provider_payment_id'));
+        $this->assertSame('rejected', data_get($metadata, 'previous_attempts.0.status'));
+        Http::assertSentCount(2);
     }
 }
