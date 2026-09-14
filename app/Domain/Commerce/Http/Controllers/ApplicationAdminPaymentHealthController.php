@@ -5,6 +5,7 @@ namespace App\Domain\Commerce\Http\Controllers;
 use App\Domain\Commerce\Services\PaymentHealthDiagnosisService;
 use App\Domain\Commerce\Services\PaymentHealthSnapshotService;
 use App\Domain\Commerce\Services\PaidTicketFulfillmentHealthService;
+use App\Domain\Commerce\Services\PaidTicketFulfillmentRecoveryMetricsService;
 use App\Domain\Commerce\Services\PaymentPendingHealthService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
@@ -18,6 +19,7 @@ final class ApplicationAdminPaymentHealthController extends Controller
         private readonly PaymentHealthSnapshotService $snapshots,
         private readonly PaymentHealthDiagnosisService $diagnosis,
         private readonly PaidTicketFulfillmentHealthService $ticketFulfillment,
+        private readonly PaidTicketFulfillmentRecoveryMetricsService $ticketFulfillmentRecoveryMetrics,
     ) {
     }
 
@@ -28,6 +30,7 @@ final class ApplicationAdminPaymentHealthController extends Controller
         $current['trend'] = $this->snapshots->trendForApplication($appId, $current);
         $current['diagnosis'] = $this->diagnosis->diagnoseCurrent($current);
         $current['ticket_fulfillment'] = $this->ticketFulfillment->forApplication($appId);
+        $current['ticket_fulfillment']['recovery'] = $this->ticketFulfillmentRecoveryMetrics->forApplication($appId);
         $current['incidents'] = $this->diagnosis->diagnoseIncidents(
             $this->snapshots->incidentHistoryForApplication($appId)
         );
