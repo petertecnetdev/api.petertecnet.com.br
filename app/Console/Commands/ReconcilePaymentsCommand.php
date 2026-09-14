@@ -107,12 +107,47 @@ class ReconcilePaymentsCommand extends Command
                 $candidates = $candidates->concat($deliveryCandidates)->unique('id')->values();
             }
 
+            // Metadata is useful for fast-path decisions, but the issued passes are
+            // the source of truth for ticket fulfillment. A crash/manual repair or
+            // legacy row can leave fulfillment_status=completed while one or more
+            // EventPass records are missing. Select those orders explicitly so an
+            // older paid sale is not hidden forever behind the recent-payment limit.
+            $underfulfilledOrderIds = DB::table('commerce_order_items as coi')
+                ->join('commerce_orders as co', function ($join) {
+                    $join->on('co.id', '=', 'coi.order_id')
+                        ->on('co.app_id', '=', 'coi.app_id');
+                })
+                ->leftJoin('event_passes as ep', 'ep.commerce_order_item_id', '=', 'coi.id')
+                ->when($appId, fn ($query) => $query->where('co.app_id', $appId))
+                ->where('co.status', 'paid')
+                ->where('coi.type', 'ticket')
+                ->groupBy('co.id', 'coi.id', 'coi.quantity')
+                ->havingRaw('COUNT(ep.id) < coi.quantity')
+                ->orderByRaw('MIN(co.updated_at) ASC')
+                ->limit($limit)
+                ->pluck('co.id')
+                ->unique()
+                ->values();
+
+            if ($underfulfilledOrderIds->isNotEmpty()) {
+                $fulfillmentCandidates = CommercePayment::query()
+                    ->when($appId, fn ($query) => $query->where('app_id', $appId))
+                    ->where('provider', 'mercadopago')
+                    ->whereNotNull('provider_payment_id')
+                    ->whereIn('order_id', $underfulfilledOrderIds)
+                    ->with('order')
+                    ->latest('id')
+                    ->get();
+                $candidates = $candidates->concat($fulfillmentCandidates)->unique('id')->values();
+            }
+
             $payments = $candidates
                 ->filter(function (CommercePayment $payment) use ($pendingDeliveryKeys) {
                     $order = $payment->order;
                     if (! $order) return false;
                     if ($order->status === 'pending') return true;
                     if ($order->status !== 'paid') return false;
+                    if ($this->hasIncompleteTicketFulfillment($order)) return true;
                     if (data_get($order->metadata, 'fulfillment_status') !== 'completed') return true;
                     return $pendingDeliveryKeys->has(((int) $payment->app_id).':'.((int) $order->id));
                 })
@@ -152,9 +187,11 @@ class ReconcilePaymentsCommand extends Command
                 $order = $payment->order;
                 $statusBefore = (string) ($order?->status ?? '');
                 $fulfillmentBefore = (string) data_get($order?->metadata, 'fulfillment_status', '');
+                $passesIncompleteBefore = $order ? $this->hasIncompleteTicketFulfillment($order) : false;
                 $deliveryOnlyRetry = $order
                     && $order->status === 'paid'
                     && data_get($order->metadata, 'fulfillment_status') === 'completed'
+                    && ! $passesIncompleteBefore
                     && $deliveries->hasPendingForAggregate((int) $payment->app_id, 'commerce_order', (int) $order->id);
 
                 if ($deliveryOnlyRetry) {
@@ -167,8 +204,9 @@ class ReconcilePaymentsCommand extends Command
                 }
 
                 $paidRecovered = $statusBefore !== 'paid' && $order->status === 'paid';
-                $fulfillmentRecovered = $fulfillmentBefore !== 'completed'
-                    && data_get($order->metadata, 'fulfillment_status') === 'completed';
+                $fulfillmentRecovered = ($fulfillmentBefore !== 'completed' || $passesIncompleteBefore)
+                    && data_get($order->metadata, 'fulfillment_status') === 'completed'
+                    && ! $this->hasIncompleteTicketFulfillment($order);
                 $recoveredOrderGmv = 0.0;
 
                 if ($paidRecovered) {
@@ -224,6 +262,28 @@ class ReconcilePaymentsCommand extends Command
         );
 
         return $failures === 0 ? self::SUCCESS : self::FAILURE;
+    }
+
+    private function hasIncompleteTicketFulfillment(CommerceOrder $order): bool
+    {
+        $ticketLines = $order->items()->where('type', 'ticket')->get(['id', 'quantity']);
+        if ($ticketLines->isEmpty()) {
+            return false;
+        }
+
+        $issuedCounts = DB::table('event_passes')
+            ->whereIn('commerce_order_item_id', $ticketLines->pluck('id'))
+            ->select('commerce_order_item_id', DB::raw('COUNT(*) as aggregate'))
+            ->groupBy('commerce_order_item_id')
+            ->pluck('aggregate', 'commerce_order_item_id');
+
+        foreach ($ticketLines as $line) {
+            if ((int) ($issuedCounts[$line->id] ?? 0) < (int) $line->quantity) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function logRunTelemetry(
