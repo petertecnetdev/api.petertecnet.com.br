@@ -7,6 +7,8 @@ use ArrayAccess;
 final class CheckoutJourneyFunnel
 {
     private const STAGES = [
+        'event_viewed' => 'frontend_event_detail_viewed',
+        'ticket_intent' => 'frontend_event_ticket_intent_clicked',
         'opened' => 'frontend_checkout_opened',
         'mobile_payment_cta' => 'frontend_checkout_mobile_payment_cta_clicked',
         'payment_attempted' => 'frontend_payment_attempted',
@@ -118,6 +120,11 @@ final class CheckoutJourneyFunnel
                 $journeys[$journeyId]['payment_method'] = $paymentMethod;
             }
 
+            if ($type === 'frontend_event_ticket_intent_clicked') {
+                $surface = strtolower(trim((string) $this->value($interaction, ['content', 'metadata', 'surface'])));
+                $journeys[$journeyId]['intent_surface'] = preg_match('/^[a-z0-9._:-]{1,80}$/', $surface) ? $surface : 'unknown';
+            }
+
             foreach (self::STAGES as $stage => $stageType) {
                 if ($type === $stageType) {
                     $journeys[$journeyId]['stages'][$stage] = true;
@@ -144,6 +151,7 @@ final class CheckoutJourneyFunnel
         $stageGmv = array_fill_keys(array_keys(self::STAGES), 0.0);
         $stagePlatformContribution = array_fill_keys(array_keys(self::STAGES), 0.0);
         $methods = [];
+        $intentSurfaces = [];
         $openedGmv = 0.0;
         $approvedGmv = 0.0;
         $abandonedGmv = 0.0;
@@ -163,9 +171,11 @@ final class CheckoutJourneyFunnel
             foreach (array_keys(self::STAGES) as $stage) {
                 if ($journey['stages'][$stage]) {
                     $stageCounts[$stage]++;
-                    $stageGmv[$stage] += $amount;
-                    if ($estimatedPlatformContribution !== null) {
-                        $stagePlatformContribution[$stage] += $estimatedPlatformContribution;
+                    if (! in_array($stage, ['event_viewed', 'ticket_intent'], true)) {
+                        $stageGmv[$stage] += $amount;
+                        if ($estimatedPlatformContribution !== null) {
+                            $stagePlatformContribution[$stage] += $estimatedPlatformContribution;
+                        }
                     }
                 }
             }
@@ -190,6 +200,19 @@ final class CheckoutJourneyFunnel
                 $paymentFailed++;
             }
 
+            if ($journey['stages']['ticket_intent']) {
+                $surface = $journey['intent_surface'] ?: 'unknown';
+                $intentSurfaces[$surface] ??= [
+                    'surface' => $surface,
+                    'intent_journeys' => 0,
+                    'checkout_opened' => 0,
+                    'payment_approved' => 0,
+                ];
+                $intentSurfaces[$surface]['intent_journeys']++;
+                $intentSurfaces[$surface]['checkout_opened'] += (int) $journey['stages']['opened'];
+                $intentSurfaces[$surface]['payment_approved'] += (int) $journey['stages']['payment_approved'];
+            }
+
             $method = $journey['payment_method'] ?: 'unknown';
             $methods[$method] ??= ['journeys' => 0, 'attempted' => 0, 'approved' => 0, 'fulfilled' => 0];
             $methods[$method]['journeys']++;
@@ -198,9 +221,13 @@ final class CheckoutJourneyFunnel
             $methods[$method]['fulfilled'] += (int) $journey['stages']['fulfilled'];
         }
 
+        $viewed = $stageCounts['event_viewed'];
+        $intent = $stageCounts['ticket_intent'];
         $opened = $stageCounts['opened'];
         $hasContributionEstimate = $platformContributionMarginPercent !== null;
         $steps = [
+            $this->step('event_viewed', $viewed, $intent, 0.0, 0.0, 0.0, 0.0, false),
+            $this->step('ticket_intent', $intent, $opened, 0.0, 0.0, 0.0, 0.0, false),
             $this->step('checkout_opened', $opened, $stageCounts['payment_attempted'], $stageGmv['opened'], $stageGmv['payment_attempted'], $stagePlatformContribution['opened'], $stagePlatformContribution['payment_attempted'], $hasContributionEstimate),
             $this->step('payment_attempted', $stageCounts['payment_attempted'], $stageCounts['payment_approved'], $stageGmv['payment_attempted'], $stageGmv['payment_approved'], $stagePlatformContribution['payment_attempted'], $stagePlatformContribution['payment_approved'], $hasContributionEstimate),
             $this->step('payment_approved', $stageCounts['payment_approved'], $stageCounts['fulfilled'], $stageGmv['payment_approved'], $stageGmv['fulfilled'], $stagePlatformContribution['payment_approved'], $stagePlatformContribution['fulfilled'], $hasContributionEstimate),
@@ -234,10 +261,22 @@ final class CheckoutJourneyFunnel
         }
         usort($byPaymentMethod, static fn (array $a, array $b): int => $b['attempted'] <=> $a['attempted']);
 
+        $byIntentSurface = array_values($intentSurfaces);
+        foreach ($byIntentSurface as &$row) {
+            $row['intent_to_opened_percent'] = $this->rate($row['checkout_opened'], $row['intent_journeys']);
+            $row['intent_to_approved_percent'] = $this->rate($row['payment_approved'], $row['intent_journeys']);
+        }
+        unset($row);
+        usort($byIntentSurface, static fn (array $a, array $b): int => $b['intent_journeys'] <=> $a['intent_journeys']);
+
         return [
             'journeys' => count($journeys),
             'stages' => $stageCounts,
             'conversion' => [
+                'viewed_to_intent_percent' => $this->rate($intent, $viewed),
+                'intent_to_opened_percent' => $this->rate($opened, $intent),
+                'viewed_to_opened_percent' => $this->rate($opened, $viewed),
+                'viewed_to_approved_percent' => $this->rate($stageCounts['payment_approved'], $viewed),
                 'opened_to_attempted_percent' => $this->rate($stageCounts['payment_attempted'], $opened),
                 'opened_to_approved_percent' => $this->rate($stageCounts['payment_approved'], $opened),
                 'attempted_to_approved_percent' => $this->rate($stageCounts['payment_approved'], $stageCounts['payment_attempted']),
@@ -270,6 +309,7 @@ final class CheckoutJourneyFunnel
                     : array_fill_keys(array_keys(self::STAGES), null),
             ],
             'by_payment_method' => $byPaymentMethod,
+            'by_intent_surface' => $byIntentSurface,
         ];
     }
 
@@ -438,6 +478,7 @@ final class CheckoutJourneyFunnel
             'event_id' => $eventId,
             'amount' => null,
             'payment_method' => null,
+            'intent_surface' => null,
             'device_class' => 'unknown',
             'abandoned' => false,
             'payment_failed' => false,
@@ -462,6 +503,8 @@ final class CheckoutJourneyFunnel
         return [
             'from' => $from,
             'to' => match ($from) {
+                'event_viewed' => 'ticket_intent',
+                'ticket_intent' => 'checkout_opened',
                 'checkout_opened' => 'payment_attempted',
                 'payment_attempted' => 'payment_approved',
                 default => 'checkout_fulfilled',
@@ -486,6 +529,16 @@ final class CheckoutJourneyFunnel
     private function recommendedAction(string $from): array
     {
         return match ($from) {
+            'event_viewed' => [
+                'code' => 'improve_event_ticket_intent',
+                'target_metric' => 'viewed_to_intent_percent',
+                'guardrails' => ['no_dark_patterns', 'price_transparency'],
+            ],
+            'ticket_intent' => [
+                'code' => 'reduce_intent_to_checkout_friction',
+                'target_metric' => 'intent_to_opened_percent',
+                'guardrails' => ['cart_integrity', 'price_transparency'],
+            ],
             'checkout_opened' => [
                 'code' => 'reduce_payment_entry_friction',
                 'target_metric' => 'opened_to_attempted_percent',
@@ -584,6 +637,10 @@ final class CheckoutJourneyFunnel
             'journeys' => 0,
             'stages' => array_fill_keys(array_keys(self::STAGES), 0),
             'conversion' => [
+                'viewed_to_intent_percent' => null,
+                'intent_to_opened_percent' => null,
+                'viewed_to_opened_percent' => null,
+                'viewed_to_approved_percent' => null,
                 'opened_to_attempted_percent' => null,
                 'opened_to_approved_percent' => null,
                 'attempted_to_approved_percent' => null,
@@ -614,6 +671,7 @@ final class CheckoutJourneyFunnel
                 'by_stage' => array_fill_keys(array_keys(self::STAGES), null),
             ],
             'by_payment_method' => [],
+            'by_intent_surface' => [],
         ];
     }
 }
