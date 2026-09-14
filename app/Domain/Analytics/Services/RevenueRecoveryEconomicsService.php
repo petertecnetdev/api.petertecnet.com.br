@@ -180,6 +180,8 @@ final class RevenueRecoveryEconomicsService
             ->where('environment', self::FRONTEND_ANALYTICS_ENVIRONMENT)
             ->where('created_at', '>=', $since)
             ->whereIn('interaction_type', [
+                'frontend_event_detail_viewed',
+                'frontend_event_ticket_intent_clicked',
                 'frontend_checkout_opened',
                 'frontend_checkout_mobile_payment_cta_clicked',
                 'frontend_payment_attempted',
@@ -220,6 +222,8 @@ final class RevenueRecoveryEconomicsService
             ->where('created_at', '>=', $previousSince)
             ->where('created_at', '<', $since)
             ->whereIn('interaction_type', [
+                'frontend_event_detail_viewed',
+                'frontend_event_ticket_intent_clicked',
                 'frontend_checkout_opened',
                 'frontend_checkout_mobile_payment_cta_clicked',
                 'frontend_payment_attempted',
