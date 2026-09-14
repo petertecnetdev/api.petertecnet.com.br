@@ -69,7 +69,7 @@ class IdempotencyService
     public function complete(int $id, JsonResponse $response): void
     {
         DB::table('idempotent_requests')
-            ->whereKey($id)
+            ->where('id', $id)
             ->whereNull('completed_at')
             ->update([
                 'response_status' => $response->getStatusCode(),
@@ -83,7 +83,7 @@ class IdempotencyService
     public function release(int $id): void
     {
         DB::table('idempotent_requests')
-            ->whereKey($id)
+            ->where('id', $id)
             ->whereNull('completed_at')
             ->delete();
     }
