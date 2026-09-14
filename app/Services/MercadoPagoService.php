@@ -110,7 +110,7 @@ class MercadoPagoService
 
     private function isTransientPaymentResponse(Response $response): bool
     {
-        return $response->status() === 429 || $response->serverError();
+        return in_array($response->status(), [408, 425, 429], true) || $response->serverError();
     }
 
     private function sleepBeforePaymentRetry(int $attempt, ?Response $response): void

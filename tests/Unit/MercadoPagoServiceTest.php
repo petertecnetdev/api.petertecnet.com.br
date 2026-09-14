@@ -27,6 +27,40 @@ class MercadoPagoServiceTest extends TestCase
         Http::assertSent(fn ($request) => $request->hasHeader('X-Idempotency-Key', 'commerce-payment-stable-key'));
     }
 
+    public function test_it_retries_request_timeout_payment_creation_with_the_same_idempotency_key(): void
+    {
+        Http::fakeSequence()
+            ->push(['message' => 'request timeout'], 408)
+            ->push(['id' => 987654322, 'status' => 'pending'], 201);
+
+        $service = app(MercadoPagoService::class);
+        $result = $service->createPayment('seller-token', [
+            'transaction_amount' => 31.90,
+            'payment_method_id' => 'pix',
+        ], 'commerce-payment-timeout-key');
+
+        $this->assertSame(987654322, $result['id']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->hasHeader('X-Idempotency-Key', 'commerce-payment-timeout-key'));
+    }
+
+    public function test_it_retries_too_early_payment_creation_with_the_same_idempotency_key(): void
+    {
+        Http::fakeSequence()
+            ->push(['message' => 'too early'], 425)
+            ->push(['id' => 987654323, 'status' => 'pending'], 201);
+
+        $service = app(MercadoPagoService::class);
+        $result = $service->createPayment('seller-token', [
+            'transaction_amount' => 28.00,
+            'payment_method_id' => 'pix',
+        ], 'commerce-payment-too-early-key');
+
+        $this->assertSame(987654323, $result['id']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn ($request) => $request->hasHeader('X-Idempotency-Key', 'commerce-payment-too-early-key'));
+    }
+
     public function test_retry_delay_respects_numeric_retry_after_with_a_safe_cap(): void
     {
         $service = app(MercadoPagoService::class);
