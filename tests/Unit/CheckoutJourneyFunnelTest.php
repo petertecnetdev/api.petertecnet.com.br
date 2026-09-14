@@ -114,7 +114,7 @@ class CheckoutJourneyFunnelTest extends TestCase
             $this->interaction('frontend_checkout_opened', 'journey-payment', 10, 100.00, 'pix'),
             $this->interaction('frontend_payment_attempted', 'journey-payment', null, 100.00, 'pix'),
         ], [10], 5.0, ['pix' => 5.0]);
-        $paymentStep = $payment['dropoff']['steps'][1];
+        $paymentStep = $payment['dropoff']['steps'][3];
         $this->assertSame('improve_payment_approval', $paymentStep['recommended_action']['code']);
         $this->assertContains('payment_idempotency', $paymentStep['recommended_action']['guardrails']);
 
@@ -123,7 +123,7 @@ class CheckoutJourneyFunnelTest extends TestCase
             $this->interaction('frontend_payment_attempted', 'journey-fulfillment', null, 100.00, 'pix'),
             $this->interaction('frontend_payment_approved', 'journey-fulfillment', null, 100.00, 'pix'),
         ], [10], 5.0, ['pix' => 5.0]);
-        $fulfillmentStep = $fulfillment['dropoff']['steps'][2];
+        $fulfillmentStep = $fulfillment['dropoff']['steps'][4];
         $this->assertSame('protect_post_payment_fulfillment', $fulfillmentStep['recommended_action']['code']);
         $this->assertContains('qr_checkin_integrity', $fulfillmentStep['recommended_action']['guardrails']);
     }
@@ -190,6 +190,34 @@ class CheckoutJourneyFunnelTest extends TestCase
         $this->assertSame(0, $summary['journeys']);
         $this->assertNull($summary['conversion']['opened_to_approved_percent']);
         $this->assertNull($summary['dropoff']['largest_economic_step']);
+    }
+
+    public function test_it_extends_the_funnel_from_event_view_to_purchase_intent_without_inventing_precheckout_gmv(): void
+    {
+        $funnel = new CheckoutJourneyFunnel();
+        $interactions = [
+            ['interaction_type' => 'frontend_event_detail_viewed', 'content' => ['metadata' => ['checkout_journey_id' => 'journey-precheckout-a', 'event_id' => 10]]],
+            ['interaction_type' => 'frontend_event_ticket_intent_clicked', 'content' => ['metadata' => ['checkout_journey_id' => 'journey-precheckout-a', 'event_id' => 10, 'surface' => 'mobile_sticky']]],
+            $this->interaction('frontend_checkout_opened', 'journey-precheckout-a', 10, 120.00, 'pix'),
+            $this->interaction('frontend_payment_attempted', 'journey-precheckout-a', null, 120.00, 'pix'),
+            $this->interaction('frontend_payment_approved', 'journey-precheckout-a', null, 120.00, 'pix'),
+            ['interaction_type' => 'frontend_event_detail_viewed', 'content' => ['metadata' => ['checkout_journey_id' => 'journey-precheckout-b', 'event_id' => 10]]],
+        ];
+
+        $summary = $funnel->summarize($interactions, [10]);
+
+        $this->assertSame(2, $summary['stages']['event_viewed']);
+        $this->assertSame(1, $summary['stages']['ticket_intent']);
+        $this->assertSame(50.0, $summary['conversion']['viewed_to_intent_percent']);
+        $this->assertSame(100.0, $summary['conversion']['intent_to_opened_percent']);
+        $this->assertSame(50.0, $summary['conversion']['viewed_to_approved_percent']);
+        $this->assertSame(0.0, $summary['gmv']['by_stage']['event_viewed']);
+        $this->assertSame(0.0, $summary['gmv']['by_stage']['ticket_intent']);
+        $this->assertSame(120.0, $summary['gmv']['by_stage']['opened']);
+        $this->assertSame('event_viewed', $summary['dropoff']['largest_step']['from']);
+        $this->assertSame('improve_event_ticket_intent', $summary['dropoff']['steps'][0]['recommended_action']['code']);
+        $this->assertSame('mobile_sticky', $summary['by_intent_surface'][0]['surface']);
+        $this->assertSame(100.0, $summary['by_intent_surface'][0]['intent_to_approved_percent']);
     }
 
     private function abandonment(string $journeyId, float $amount, string $paymentMethod, string $reason, int $elapsedMs, int $ticketQuantity, int $itemQuantity): array
