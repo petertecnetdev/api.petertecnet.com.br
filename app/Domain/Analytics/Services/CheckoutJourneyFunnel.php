@@ -12,6 +12,9 @@ final class CheckoutJourneyFunnel
         'opened' => 'frontend_checkout_opened',
         'mobile_payment_cta' => 'frontend_checkout_mobile_payment_cta_clicked',
         'payment_attempted' => 'frontend_payment_attempted',
+        'pix_ready' => 'frontend_pix_payment_ready',
+        'pix_copied' => 'frontend_pix_code_copied',
+        'pix_post_copy_check' => 'frontend_pix_post_copy_status_check_clicked',
         'payment_approved' => 'frontend_payment_approved',
         'fulfilled' => 'frontend_checkout_fulfilled',
     ];
@@ -160,6 +163,18 @@ final class CheckoutJourneyFunnel
         $abandoned = 0;
         $paymentFailed = 0;
         $abandonmentDiagnostics = [];
+        $pix = [
+            'journeys' => 0,
+            'payment_attempted' => 0,
+            'ready' => 0,
+            'copied' => 0,
+            'post_copy_check' => 0,
+            'approved' => 0,
+            'fulfilled' => 0,
+            'gmv_ready' => 0.0,
+            'gmv_copied' => 0.0,
+            'gmv_approved' => 0.0,
+        ];
 
         foreach ($journeys as $journey) {
             $amount = (float) ($journey['amount'] ?? 0.0);
@@ -206,6 +221,26 @@ final class CheckoutJourneyFunnel
             $methods[$method]['attempted'] += (int) $journey['stages']['payment_attempted'];
             $methods[$method]['approved'] += (int) $journey['stages']['payment_approved'];
             $methods[$method]['fulfilled'] += (int) $journey['stages']['fulfilled'];
+
+            if ($method === 'pix') {
+                $pix['journeys']++;
+                $pix['payment_attempted'] += (int) $journey['stages']['payment_attempted'];
+                $pix['ready'] += (int) $journey['stages']['pix_ready'];
+                $pix['copied'] += (int) $journey['stages']['pix_copied'];
+                $pix['post_copy_check'] += (int) $journey['stages']['pix_post_copy_check'];
+                $pix['approved'] += (int) $journey['stages']['payment_approved'];
+                $pix['fulfilled'] += (int) $journey['stages']['fulfilled'];
+
+                if ($journey['stages']['pix_ready']) {
+                    $pix['gmv_ready'] += $amount;
+                }
+                if ($journey['stages']['pix_copied']) {
+                    $pix['gmv_copied'] += $amount;
+                }
+                if ($journey['stages']['payment_approved']) {
+                    $pix['gmv_approved'] += $amount;
+                }
+            }
 
             if ($journey['stages']['ticket_intent']) {
                 $surface = $journey['intent_surface'] ?: 'unknown';
@@ -269,6 +304,46 @@ final class CheckoutJourneyFunnel
         unset($row);
         usort($byIntentSurface, static fn (array $a, array $b): int => $b['journeys'] <=> $a['journeys']);
 
+        $pixSteps = [
+            [
+                'from' => 'pix_payment_ready',
+                'to' => 'pix_code_copied',
+                'from_journeys' => $pix['ready'],
+                'to_journeys' => $pix['copied'],
+                'dropoff_journeys' => max(0, $pix['ready'] - $pix['copied']),
+                'dropoff_percent' => $pix['ready'] > 0
+                    ? round((max(0, $pix['ready'] - $pix['copied']) / $pix['ready']) * 100, 2)
+                    : null,
+                'gmv_at_risk' => round(max(0.0, $pix['gmv_ready'] - $pix['gmv_copied']), 2),
+                'recommended_action' => [
+                    'code' => 'improve_pix_copy_completion',
+                    'target_metric' => 'ready_to_copied_percent',
+                    'guardrails' => ['payment_idempotency', 'no_duplicate_charge', 'no_dark_patterns'],
+                ],
+            ],
+            [
+                'from' => 'pix_code_copied',
+                'to' => 'payment_approved',
+                'from_journeys' => $pix['copied'],
+                'to_journeys' => $pix['approved'],
+                'dropoff_journeys' => max(0, $pix['copied'] - $pix['approved']),
+                'dropoff_percent' => $pix['copied'] > 0 ? round((max(0, $pix['copied'] - $pix['approved']) / $pix['copied']) * 100, 2) : null,
+                'gmv_at_risk' => round(max(0.0, $pix['gmv_copied'] - $pix['gmv_approved']), 2),
+                'recommended_action' => [
+                    'code' => 'improve_pix_post_bank_confirmation',
+                    'target_metric' => 'copied_to_approved_percent',
+                    'guardrails' => ['payment_idempotency', 'no_duplicate_charge', 'provider_status_source_of_truth'],
+                ],
+            ],
+        ];
+
+        $largestPixEconomicDropoff = null;
+        foreach ($pixSteps as $pixStep) {
+            if ($largestPixEconomicDropoff === null || $pixStep['gmv_at_risk'] > $largestPixEconomicDropoff['gmv_at_risk']) {
+                $largestPixEconomicDropoff = $pixStep;
+            }
+        }
+
         return [
             'journeys' => count($journeys),
             'stages' => $stageCounts,
@@ -310,6 +385,19 @@ final class CheckoutJourneyFunnel
             ],
             'by_payment_method' => $byPaymentMethod,
             'by_intent_surface' => $byIntentSurface,
+            'pix' => [
+                ...$pix,
+                'ready_to_copied_percent' => $this->rate($pix['copied'], $pix['ready']),
+                'copied_to_post_copy_check_percent' => $this->rate($pix['post_copy_check'], $pix['copied']),
+                'copied_to_approved_percent' => $this->rate($pix['approved'], $pix['copied']),
+                'ready_to_approved_percent' => $this->rate($pix['approved'], $pix['ready']),
+                'gmv_ready' => round($pix['gmv_ready'], 2),
+                'gmv_copied' => round($pix['gmv_copied'], 2),
+                'gmv_approved' => round($pix['gmv_approved'], 2),
+                'steps' => $pixSteps,
+                'largest_economic_step' => $largestPixEconomicDropoff,
+                'measurement_note' => 'The post-copy status check is optional engagement telemetry; approval can be recognized automatically when the buyer returns from the bank.',
+            ],
             'measurement' => [
                 'precheckout_gmv_basis' => 'observed_downstream_amount_only',
                 'precheckout_gmv_is_lower_bound' => true,
@@ -677,6 +765,25 @@ final class CheckoutJourneyFunnel
             ],
             'by_payment_method' => [],
             'by_intent_surface' => [],
+            'pix' => [
+                'journeys' => 0,
+                'payment_attempted' => 0,
+                'ready' => 0,
+                'copied' => 0,
+                'post_copy_check' => 0,
+                'approved' => 0,
+                'fulfilled' => 0,
+                'gmv_ready' => 0.0,
+                'gmv_copied' => 0.0,
+                'gmv_approved' => 0.0,
+                'ready_to_copied_percent' => null,
+                'copied_to_post_copy_check_percent' => null,
+                'copied_to_approved_percent' => null,
+                'ready_to_approved_percent' => null,
+                'steps' => [],
+                'largest_economic_step' => null,
+                'measurement_note' => 'The post-copy status check is optional engagement telemetry; approval can be recognized automatically when the buyer returns from the bank.',
+            ],
             'measurement' => [
                 'precheckout_gmv_basis' => 'observed_downstream_amount_only',
                 'precheckout_gmv_is_lower_bound' => true,
