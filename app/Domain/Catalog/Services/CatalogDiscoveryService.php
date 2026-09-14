@@ -24,6 +24,7 @@ final class CatalogDiscoveryService
         $targetUf = strtoupper(trim((string) ($data['target_uf'] ?? '')));
         $queryText = trim((string) ($data['q'] ?? ''));
         $limit = (int) ($data['limit'] ?? 48);
+        $offset = (int) ($data['offset'] ?? 0);
 
         $base = $this->publicEstablishmentsQuery()->whereNull('source_establishment_id');
         $locations = (clone $base)
@@ -63,8 +64,16 @@ final class CatalogDiscoveryService
             );
         }
 
-        $establishments = $query
-            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get()
+        $page = $query
+            ->orderByDesc('is_featured')
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->offset($offset)
+            ->limit($limit + 1)
+            ->get();
+        $hasMore = $page->count() > $limit;
+
+        $establishments = $page->take($limit)
             ->map(function (Establishment $establishment) use ($appId) {
                 $applicationIds = $establishment->applications->pluck('id')->map(fn ($id) => (int) $id);
                 $establishment->setAttribute('catalog_active', (int) $establishment->app_id === $appId || $applicationIds->contains($appId));
@@ -92,6 +101,13 @@ final class CatalogDiscoveryService
                 'target_city' => $targetCity ?: null,
                 'target_uf' => $targetUf ?: null,
                 'query' => $queryText ?: null,
+            ],
+            'pagination' => [
+                'limit' => $limit,
+                'offset' => $offset,
+                'returned' => $establishments->count(),
+                'has_more' => $hasMore,
+                'next_offset' => $hasMore ? $offset + $limit : null,
             ],
             'locations' => $locations,
             'establishments' => $establishments,
