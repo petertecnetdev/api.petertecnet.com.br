@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
+use App\Models\Interaction;
 use App\Models\Item;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class MetricsController extends Controller
 {
@@ -36,6 +38,27 @@ class MetricsController extends Controller
         $metrics['restricted_access_last_at'] = (clone $restrictedAttempts)
             ->max('created_at');
 
+        $interactionTypes = $this->requestedInteractionTypes($request);
+        if ($interactionTypes->isNotEmpty()) {
+            $days = max(1, min(90, (int) $request->query('interaction_days', 30)));
+            $counts = Interaction::query()
+                ->where('app_id', $this->context->id())
+                ->where('entity_id', $model->id)
+                ->whereIn('entity_type', ['Establishment', 'establishment'])
+                ->whereIn('interaction_type', $interactionTypes->all())
+                ->where('created_at', '>=', now()->subDays($days))
+                ->selectRaw('interaction_type, COUNT(*) as aggregate')
+                ->groupBy('interaction_type')
+                ->pluck('aggregate', 'interaction_type');
+
+            $metrics['interaction_funnel'] = [
+                'days' => $days,
+                'counts' => $interactionTypes
+                    ->mapWithKeys(fn (string $type) => [$type => (int) ($counts[$type] ?? 0)])
+                    ->all(),
+            ];
+        }
+
         return response()->json([
             'success' => true,
             'data' => $metrics,
@@ -61,5 +84,24 @@ class MetricsController extends Controller
             'success' => true,
             'data' => $model->getMetricsAttribute(),
         ]);
+    }
+
+    private function requestedInteractionTypes(Request $request): Collection
+    {
+        $types = $request->query('interaction_types', []);
+        if (is_string($types)) {
+            $types = explode(',', $types);
+        }
+
+        if (! is_array($types)) {
+            return collect();
+        }
+
+        return collect($types)
+            ->map(fn ($type) => trim((string) $type))
+            ->filter(fn (string $type) => $type !== '' && mb_strlen($type) <= 120)
+            ->unique()
+            ->take(10)
+            ->values();
     }
 }
