@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
+use App\Models\Interaction;
 use App\Models\Item;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Builder;
@@ -40,8 +41,10 @@ class MetricsController extends Controller
         $interactionTypes = $this->requestedInteractionTypes($request);
         if ($interactionTypes->isNotEmpty()) {
             $days = max(1, min(90, (int) $request->query('interaction_days', 30)));
-            $counts = $model->interactions()
+            $counts = Interaction::query()
                 ->where('app_id', $this->context->id())
+                ->where('entity_id', $model->id)
+                ->whereIn('entity_type', ['Establishment', 'establishment'])
                 ->whereIn('interaction_type', $interactionTypes->all())
                 ->where('created_at', '>=', now()->subDays($days))
                 ->selectRaw('interaction_type, COUNT(*) as aggregate')
