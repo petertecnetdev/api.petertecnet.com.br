@@ -19,6 +19,7 @@ final class CatalogDiscoveryController extends Controller
             'target_uf' => 'nullable|string|size:2',
             'q' => 'nullable|string|max:120',
             'limit' => 'nullable|integer|min:1|max:100',
+            'offset' => 'nullable|integer|min:0|max:1000000',
         ]);
 
         return response()->json($this->discovery->index($data));
