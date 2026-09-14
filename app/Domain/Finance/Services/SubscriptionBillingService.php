@@ -35,7 +35,11 @@ final class SubscriptionBillingService
             ->where('source_reference', $intent->public_id)
             ->first();
 
-        if ($existing && $existing->provider_payment_id) {
+        $retryingFailedPayment = $existing
+            && $existing->provider_payment_id
+            && in_array((string) $existing->status, ['rejected', 'cancelled'], true);
+
+        if ($existing && $existing->provider_payment_id && ! $retryingFailedPayment) {
             return $this->checkoutResponse($intent, $existing);
         }
 
@@ -67,34 +71,62 @@ final class SubscriptionBillingService
 
         $transactionData = (array) data_get($remote, 'point_of_interaction.transaction_data', []);
         $now = now();
-        $paymentId = DB::table('ecosystem_payments')->insertGetId([
-            'public_id' => (string) Str::uuid(),
-            'app_id' => $application->getKey(),
-            'app_slug' => $intent->application,
-            'provider' => 'mercadopago',
-            'provider_payment_id' => $providerId,
-            'source_type' => 'subscription_intent',
-            'source_reference' => $intent->public_id,
-            'source_id' => $intent->getKey(),
-            'user_id' => $intent->user_id,
-            'currency' => $intent->currency,
-            'method' => 'pix',
-            'status' => (string) ($remote['status'] ?? 'pending'),
-            'gross_amount' => $amount,
-            'platform_fee' => 0,
-            'provider_fee' => 0,
-            'seller_net' => $amount,
-            'metadata' => json_encode([
-                'idempotency_key_hash' => hash('sha256', $idempotencyKey),
-                'status_detail' => $remote['status_detail'] ?? null,
-                'qr_code' => $transactionData['qr_code'] ?? null,
-                'qr_code_base64' => $transactionData['qr_code_base64'] ?? null,
-                'ticket_url' => $transactionData['ticket_url'] ?? null,
-                'date_of_expiration' => $remote['date_of_expiration'] ?? null,
-            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-            'created_at' => $now,
-            'updated_at' => $now,
-        ]);
+        $metadata = [
+            'idempotency_key_hash' => hash('sha256', $idempotencyKey),
+            'status_detail' => $remote['status_detail'] ?? null,
+            'qr_code' => $transactionData['qr_code'] ?? null,
+            'qr_code_base64' => $transactionData['qr_code_base64'] ?? null,
+            'ticket_url' => $transactionData['ticket_url'] ?? null,
+            'date_of_expiration' => $remote['date_of_expiration'] ?? null,
+        ];
+
+        if ($retryingFailedPayment) {
+            $previousMetadata = json_decode((string) ($existing->metadata ?? '{}'), true) ?: [];
+            $previousAttempts = is_array($previousMetadata['previous_attempts'] ?? null)
+                ? $previousMetadata['previous_attempts']
+                : [];
+            $previousAttempts[] = [
+                'provider_payment_id' => (string) $existing->provider_payment_id,
+                'status' => (string) $existing->status,
+                'status_detail' => $previousMetadata['status_detail'] ?? null,
+                'failed_at' => $existing->failed_at,
+            ];
+            $metadata['previous_attempts'] = array_slice($previousAttempts, -10);
+
+            DB::table('ecosystem_payments')->where('id', $existing->id)->update([
+                'provider_payment_id' => $providerId,
+                'method' => 'pix',
+                'status' => (string) ($remote['status'] ?? 'pending'),
+                'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'paid_at' => null,
+                'refunded_at' => null,
+                'failed_at' => null,
+                'updated_at' => $now,
+            ]);
+            $paymentId = (int) $existing->id;
+        } else {
+            $paymentId = DB::table('ecosystem_payments')->insertGetId([
+                'public_id' => (string) Str::uuid(),
+                'app_id' => $application->getKey(),
+                'app_slug' => $intent->application,
+                'provider' => 'mercadopago',
+                'provider_payment_id' => $providerId,
+                'source_type' => 'subscription_intent',
+                'source_reference' => $intent->public_id,
+                'source_id' => $intent->getKey(),
+                'user_id' => $intent->user_id,
+                'currency' => $intent->currency,
+                'method' => 'pix',
+                'status' => (string) ($remote['status'] ?? 'pending'),
+                'gross_amount' => $amount,
+                'platform_fee' => 0,
+                'provider_fee' => 0,
+                'seller_net' => $amount,
+                'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+        }
 
         $intent->forceFill([
             'status' => 'payment_pending',
