@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Services\MercadoPagoService;
+use GuzzleHttp\Psr7\Response as Psr7Response;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 use Tests\TestCase;
@@ -64,7 +66,7 @@ class MercadoPagoServiceTest extends TestCase
     public function test_retry_delay_respects_numeric_retry_after_with_a_safe_cap(): void
     {
         $service = app(MercadoPagoService::class);
-        $response = Http::response([], 429, ['Retry-After' => '9']);
+        $response = $this->clientResponse(429, ['Retry-After' => '9']);
         $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
         $method->setAccessible(true);
 
@@ -74,7 +76,7 @@ class MercadoPagoServiceTest extends TestCase
     public function test_retry_delay_understands_http_date_retry_after(): void
     {
         $service = app(MercadoPagoService::class);
-        $response = Http::response([], 429, [
+        $response = $this->clientResponse(429, [
             'Retry-After' => gmdate('D, d M Y H:i:s \G\M\T', time() + 3),
         ]);
         $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
@@ -91,8 +93,8 @@ class MercadoPagoServiceTest extends TestCase
         $method = new \ReflectionMethod($service, 'paymentRetryDelayMs');
         $method->setAccessible(true);
 
-        $this->assertSame(250, $method->invoke($service, 1, Http::response([], 429, ['Retry-After' => '0'])));
-        $this->assertSame(750, $method->invoke($service, 2, Http::response([], 503, ['Retry-After' => 'not-a-date'])));
+        $this->assertSame(250, $method->invoke($service, 1, $this->clientResponse(429, ['Retry-After' => '0'])));
+        $this->assertSame(750, $method->invoke($service, 2, $this->clientResponse(503, ['Retry-After' => 'not-a-date'])));
     }
 
     public function test_it_does_not_retry_non_transient_payment_rejection(): void
@@ -159,5 +161,10 @@ class MercadoPagoServiceTest extends TestCase
             'request-abc',
             '123456789'
         ));
+    }
+
+    private function clientResponse(int $status, array $headers = []): Response
+    {
+        return new Response(new Psr7Response($status, $headers));
     }
 }
