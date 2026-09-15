@@ -22,7 +22,6 @@ class FinancialPayoutService
     {
         $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->first();
         $identityOverview = $this->identity->overview($user);
-        $identityReady = (bool) ($identityOverview['ready_for_pix'] ?? false);
         $destination = DB::table('financial_payout_destinations')
             ->where('source_type', 'production')
             ->where('source_id', $production->id)
@@ -54,6 +53,11 @@ class FinancialPayoutService
                 'failed_at' => $row->failed_at,
             ]);
 
+        $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
+        $appSlug = trim((string) ($production->app_slug ?: 'cutinapp'));
+        $platformSalesReady = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
+            && trim((string) config('services.mercadopago.access_token')) !== '';
+
         return [
             'identity' => $identityOverview,
             'destination' => $destination ? [
@@ -72,8 +76,9 @@ class FinancialPayoutService
             'balance' => $this->balance($production),
             'payouts' => $history,
             'payout_provider' => 'asaas',
-            'ready_for_sales' => (bool) ($identityReady && $destination && in_array($destination->status, ['active', 'cooling'], true)),
-            'ready_for_payout' => (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active'),
+            'ready_for_sales' => $platformSalesReady,
+            'ready_for_payout' => $payoutReady,
+            'payout_setup_required' => $platformSalesReady && ! $payoutReady,
         ];
     }
 
