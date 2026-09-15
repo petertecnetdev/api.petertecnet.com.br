@@ -35,13 +35,18 @@ final class CommerceOrderPaymentRetryService
             if (! $order->expires_at || now()->greaterThanOrEqualTo($order->expires_at)) throw new HttpException(410, 'Este pedido expirou. Refaça a compra.');
             if ((float) $order->total <= 0 || $order->payment_method !== 'pix') throw new HttpException(422, 'Somente pedidos PIX pendentes podem ser retomados.');
 
-            $existing = $order->payments->first(fn ($payment) => ! in_array($payment->status, ['rejected','cancelled','refunded','charged_back'], true));
-            if ($existing) return [$order, $existing];
+            $terminalStatuses = ['failed','rejected','cancelled','canceled','refunded','charged_back'];
+            $existing = $order->payments->first(fn ($payment) => ! in_array($payment->status, $terminalStatuses, true));
+            if ($existing) return [$order, $existing, null];
 
-            return [$order, null];
+            $retryAttempt = $order->payments->filter(
+                fn ($payment) => in_array($payment->status, $terminalStatuses, true)
+            )->count() + 1;
+
+            return [$order, null, $retryAttempt];
         }, 3);
 
-        [$order, $existing] = $order;
+        [$order, $existing, $retryAttempt] = $order;
         if ($existing) return [200, ['message' => 'Pagamento já iniciado.', 'order' => $order, 'payment' => $existing]];
 
         $readiness = $this->accounts->readiness((int) $order->production_id);
@@ -57,7 +62,7 @@ final class CommerceOrderPaymentRetryService
 
         $sellerToken = $usesMerchant ? $this->accounts->freshAccessToken($account)[1] : $platformToken;
         $settlementMode = $usesMerchant ? 'automatic_split' : 'platform_collection';
-        $idempotencyKey = (string) data_get($order->metadata, 'provider_payment_idempotency_key', 'commerce-order-'.$order->public_id);
+        $idempotencyKey = 'commerce-order-'.$order->public_id.'-retry-'.$retryAttempt;
         $payload = [
             'transaction_amount' => (float) $order->total,
             'description' => mb_substr(($this->context->application()->name ?: 'Peter Tecnet').' - '.($order->event->title ?? 'Pedido'), 0, 255),
@@ -99,7 +104,11 @@ final class CommerceOrderPaymentRetryService
         );
         $order->update([
             'processor_fee' => $providerFee,
-            'metadata' => array_merge($order->metadata ?? [], ['payment_initialization_retryable' => false, 'payment_resumed_at' => now()->toIso8601String()]),
+            'metadata' => array_merge($order->metadata ?? [], [
+                'payment_initialization_retryable' => false,
+                'payment_resumed_at' => now()->toIso8601String(),
+                'payment_retry_attempt' => $retryAttempt,
+            ]),
         ]);
 
         return [200, ['message' => 'Pagamento PIX retomado no mesmo pedido.', 'order' => $order->fresh(['items','event','production']), 'payment' => $payment]];
