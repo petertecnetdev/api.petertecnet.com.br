@@ -54,7 +54,7 @@ class FinancialPayoutService
             ]);
 
         $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
-        $appSlug = trim((string) ($production->app_slug ?: 'cutinapp'));
+        $appSlug = trim((string) $production->app_slug);
         $platformCollectionReady = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
             && trim((string) config('services.mercadopago.access_token')) !== '';
         $merchantCollectionReady = DB::table('merchant_payment_accounts')
