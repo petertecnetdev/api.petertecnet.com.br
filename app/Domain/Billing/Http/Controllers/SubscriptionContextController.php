@@ -16,7 +16,7 @@ final class SubscriptionContextController extends Controller
     {
         $plans = Plan::query()
             ->forApplication($this->context->id())
-            ->where('is_active', true)
+            ->active()
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get()
@@ -50,8 +50,8 @@ final class SubscriptionContextController extends Controller
             'description' => $plan->description,
             'price' => $plan->price,
             'currency' => $plan->currency,
-            'interval' => $plan->interval,
-            'interval_count' => $plan->interval_count,
+            'billing_interval' => $plan->billing_interval,
+            'billing_interval_count' => $plan->billing_interval_count,
             'entitlements' => $plan->entitlements ?? [],
         ];
     }
