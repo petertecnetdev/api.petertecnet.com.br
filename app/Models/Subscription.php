@@ -61,4 +61,26 @@ class Subscription extends Model
                     ->orWhere('current_period_ends_at', '>', now());
             });
     }
+
+    public function entitlement(string $key, mixed $default = null): mixed
+    {
+        $entitlements = $this->plan?->entitlements;
+
+        if (! is_array($entitlements)) {
+            return $default;
+        }
+
+        return data_get($entitlements, $key, $default);
+    }
+
+    public function hasEntitlement(string $key): bool
+    {
+        $value = $this->entitlement($key, false);
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        return $value !== null && $value !== false;
+    }
 }
