@@ -5,6 +5,7 @@ namespace App\Domain\Finance\Http\Controllers;
 use App\Domain\Finance\Actions\FindRecoverableSubscriptionIntent;
 use App\Domain\Finance\Models\SubscriptionIntent;
 use App\Http\Controllers\Controller;
+use App\Models\Plan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -14,12 +15,6 @@ class SubscriptionIntentController extends Controller
     public function store(Request $request, string $application): JsonResponse
     {
         $application = strtolower(trim($application));
-        $definition = config("subscriptions.applications.{$application}");
-
-        if (! is_array($definition) || ! ($definition['subscription_enabled'] ?? false)) {
-            return response()->json(['message' => 'Assinaturas não estão disponíveis para este aplicativo.'], 422);
-        }
-
         $validated = $request->validate([
             'plan_code' => ['required', 'string', 'max:80'],
             'source' => ['nullable', 'string', 'max:120'],
@@ -27,12 +22,9 @@ class SubscriptionIntentController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
 
-        $plan = collect($definition['plans'] ?? [])->first(
-            fn (array $candidate) => (string) ($candidate['code'] ?? '') === $validated['plan_code']
-        );
-
-        if (! is_array($plan)) {
-            return response()->json(['message' => 'Plano de assinatura inválido.'], 422);
+        $plan = $this->resolvePlan($application, $validated['plan_code']);
+        if (! $plan) {
+            return response()->json(['message' => 'Plano de assinatura inválido ou indisponível.'], 422);
         }
 
         $idempotencyKey = trim((string) $request->header('Idempotency-Key', ''));
@@ -49,9 +41,7 @@ class SubscriptionIntentController extends Controller
 
         $existing = SubscriptionIntent::query()->where($identity)->first();
         if ($existing && $existing->plan_code !== $validated['plan_code']) {
-            return response()->json([
-                'message' => 'Este Idempotency-Key já foi utilizado para outro plano.',
-            ], 409);
+            return response()->json(['message' => 'Este Idempotency-Key já foi utilizado para outro plano.'], 409);
         }
 
         $intent = $existing ?: SubscriptionIntent::firstOrCreate(
@@ -61,9 +51,9 @@ class SubscriptionIntentController extends Controller
                 'plan_code' => (string) $plan['code'],
                 'plan_name' => (string) ($plan['name'] ?? $plan['code']),
                 'price_cents' => max(0, (int) ($plan['price_cents'] ?? 0)),
-                'currency' => (string) config('subscriptions.currency', 'BRL'),
-                'billing_interval' => (string) config('subscriptions.billing_interval', 'month'),
-                'billing_interval_count' => (int) config('subscriptions.billing_interval_count', 1),
+                'currency' => (string) ($plan['currency'] ?? config('subscriptions.currency', 'BRL')),
+                'billing_interval' => (string) ($plan['billing_interval'] ?? config('subscriptions.billing_interval', 'month')),
+                'billing_interval_count' => (int) ($plan['billing_interval_count'] ?? config('subscriptions.billing_interval_count', 1)),
                 'status' => 'created',
                 'source' => $validated['source'] ?? null,
                 'handoff_channel' => $validated['handoff_channel'] ?? null,
@@ -72,51 +62,18 @@ class SubscriptionIntentController extends Controller
         );
 
         if (! $existing && ! $intent->wasRecentlyCreated && $intent->plan_code !== $validated['plan_code']) {
-            return response()->json([
-                'message' => 'Este Idempotency-Key já foi utilizado para outro plano.',
-            ], 409);
+            return response()->json(['message' => 'Este Idempotency-Key já foi utilizado para outro plano.'], 409);
         }
 
-        $status = $existing || ! $intent->wasRecentlyCreated ? 200 : 201;
-
-        return response()->json([
-            'data' => [
-                'id' => $intent->public_id,
-                'application' => $intent->application,
-                'plan_code' => $intent->plan_code,
-                'plan_name' => $intent->plan_name,
-                'price_cents' => $intent->price_cents,
-                'currency' => $intent->currency,
-                'billing_interval' => $intent->billing_interval,
-                'billing_interval_count' => $intent->billing_interval_count,
-                'status' => $intent->status,
-                'source' => $intent->source,
-                'handoff_channel' => $intent->handoff_channel,
-                'created_at' => $intent->created_at,
-            ],
-        ], $status);
+        return response()->json(['data' => $this->resource($intent)], $existing || ! $intent->wasRecentlyCreated ? 200 : 201);
     }
 
-    public function recoverable(
-        Request $request,
-        string $application,
-        FindRecoverableSubscriptionIntent $findRecoverableSubscriptionIntent
-    ): JsonResponse {
+    public function recoverable(Request $request, string $application, FindRecoverableSubscriptionIntent $findRecoverableSubscriptionIntent): JsonResponse
+    {
         $application = strtolower(trim($application));
-        $definition = config("subscriptions.applications.{$application}");
+        $intent = $findRecoverableSubscriptionIntent->handle($request->user()->getKey(), $application);
 
-        if (! is_array($definition) || ! ($definition['subscription_enabled'] ?? false)) {
-            return response()->json(['message' => 'Assinaturas não estão disponíveis para este aplicativo.'], 422);
-        }
-
-        $intent = $findRecoverableSubscriptionIntent->handle(
-            $request->user()->getKey(),
-            $application
-        );
-
-        return response()->json([
-            'data' => $intent ? $this->recoveryResource($intent) : null,
-        ]);
+        return response()->json(['data' => $intent ? $this->recoveryResource($intent) : null]);
     }
 
     public function show(Request $request, string $application, string $intent): JsonResponse
@@ -130,7 +87,36 @@ class SubscriptionIntentController extends Controller
         return response()->json(['data' => $record]);
     }
 
-    private function recoveryResource(SubscriptionIntent $intent): array
+    private function resolvePlan(string $application, string $planCode): ?array
+    {
+        $definition = config("subscriptions.applications.{$application}");
+        if (is_array($definition) && ($definition['subscription_enabled'] ?? false)) {
+            $configured = collect($definition['plans'] ?? [])->first(
+                fn (array $candidate) => (string) ($candidate['code'] ?? '') === $planCode
+            );
+            if (is_array($configured)) return $configured;
+        }
+
+        $plan = Plan::query()
+            ->whereHas('application', fn ($query) => $query->where('slug', $application)->where('is_active', true))
+            ->active()
+            ->where('code', $planCode)
+            ->first();
+
+        if (! $plan) return null;
+
+        return [
+            'code' => $plan->code,
+            'name' => $plan->name,
+            'price_cents' => (int) round(((float) $plan->price) * 100),
+            'currency' => $plan->currency,
+            'billing_interval' => $plan->billing_interval,
+            'billing_interval_count' => $plan->billing_interval_count,
+            'entitlements' => $plan->entitlements,
+        ];
+    }
+
+    private function resource(SubscriptionIntent $intent): array
     {
         return [
             'id' => $intent->public_id,
@@ -144,8 +130,15 @@ class SubscriptionIntentController extends Controller
             'status' => $intent->status,
             'source' => $intent->source,
             'handoff_channel' => $intent->handoff_channel,
-            'metadata' => $intent->metadata,
             'created_at' => $intent->created_at,
+        ];
+    }
+
+    private function recoveryResource(SubscriptionIntent $intent): array
+    {
+        return [
+            ...$this->resource($intent),
+            'metadata' => $intent->metadata,
             'checkout_started_at' => $intent->checkout_started_at,
             'payment_pending_at' => $intent->payment_pending_at,
         ];
