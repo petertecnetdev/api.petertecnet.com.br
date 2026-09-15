@@ -22,6 +22,7 @@ class MercadoPagoService
             'response_type' => 'code',
             'platform_id' => 'mp',
             'redirect_uri' => $this->redirectUri(),
+            'scope' => 'offline_access',
             'state' => $state,
         ]);
     }
