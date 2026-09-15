@@ -57,10 +57,11 @@ final class MerchantPaymentAccountService
         $platformConfigured = (bool) $this->context->option('commerce.allow_platform_collection', false) && $platformToken !== '';
         $recipientReady = $this->hasVerifiedPayoutRecipient((int) $organization->id, (int) $organization->user_id);
 
-        // Platform collection is preferred once the financial recipient has
-        // completed KYC/Pix verification. This prevents a stale OAuth account
-        // from silently reactivating an obsolete seller-split settlement path.
-        if ($platformConfigured && $recipientReady) {
+        // A capacidade de vender é independente da configuração de repasse.
+        // Enquanto a plataforma estiver habilitada, o checkout coleta normalmente
+        // pela conta da Peter Tecnet. Se o produtor ainda não concluiu KYC/Pix,
+        // o crédito permanece no ledger até que um destino de repasse seja ativado.
+        if ($platformConfigured) {
             $this->account($organizationId, 'mercadopago', true);
             $methods = ['pix'];
             if ($platformPublicKey !== '') $methods[] = 'card';
@@ -71,7 +72,10 @@ final class MerchantPaymentAccountService
                 settlementMode: 'platform_collection',
                 publicKey: $platformPublicKey,
                 methods: $methods,
-                message: 'Pagamentos habilitados com recebimento e repasse pela plataforma.',
+                message: $recipientReady
+                    ? 'Pagamentos habilitados com recebimento e repasse pela plataforma.'
+                    : 'Pagamentos habilitados. Os valores do produtor ficarão acumulados na plataforma até a conclusão do cadastro de recebimento.',
+                payoutReady: $recipientReady,
             );
         }
 
@@ -96,17 +100,7 @@ final class MerchantPaymentAccountService
                 message: $merchantPublicKey !== ''
                     ? 'Pagamentos habilitados com split automático.'
                     : 'PIX habilitado. Reconecte o provedor para atualizar a chave necessária ao cartão.',
-            );
-        }
-
-        if (! $recipientReady) {
-            return $this->readinessPayload(
-                available: false,
-                merchantConnected: false,
-                settlementMode: 'sales_disabled',
-                publicKey: '',
-                methods: [],
-                message: 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.',
+                payoutReady: true,
             );
         }
 
@@ -116,7 +110,8 @@ final class MerchantPaymentAccountService
             settlementMode: 'sales_disabled',
             publicKey: '',
             methods: [],
-            message: 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.',
+            message: 'A plataforma de pagamentos ainda não está habilitada para novas vendas.',
+            payoutReady: $recipientReady,
         );
     }
 
@@ -180,6 +175,7 @@ final class MerchantPaymentAccountService
         string $publicKey,
         array $methods,
         string $message,
+        bool $payoutReady = false,
     ): array {
         return [
             'available' => $available,
@@ -189,6 +185,8 @@ final class MerchantPaymentAccountService
             'public_key' => $publicKey,
             'methods' => $methods,
             'message' => $message,
+            'payout_ready' => $payoutReady,
+            'payout_setup_required' => $available && ! $payoutReady && $settlementMode === 'platform_collection',
         ];
     }
 
@@ -202,8 +200,10 @@ final class MerchantPaymentAccountService
             return false;
         }
 
-        $organization = Production::query()->where('app_id', $this->context->id())->find($organizationId);
-        return (bool) ($organization && $this->hasVerifiedPayoutRecipient((int) $organization->id, (int) $organization->user_id));
+        return Production::query()
+            ->where('app_id', $this->context->id())
+            ->whereKey($organizationId)
+            ->exists();
     }
 
     private function hasVerifiedPayoutRecipient(int $organizationId, int $ownerUserId): bool

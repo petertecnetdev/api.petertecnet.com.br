@@ -16,6 +16,8 @@ class FinancialIdentityInvalidationTest extends TestCase
 
     public function test_changing_verified_identity_invalidates_existing_pix_destination(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
         $producer = User::create([
             'first_name' => 'Produtor',
             'last_name' => 'Original',
@@ -103,7 +105,8 @@ class FinancialIdentityInvalidationTest extends TestCase
         $this->withHeaders($headers)
             ->getJson("/api/finance/productions/{$productionId}")
             ->assertOk()
-            ->assertJsonPath('ready_for_sales', false)
-            ->assertJsonPath('ready_for_payout', false);
+            ->assertJsonPath('ready_for_sales', true)
+            ->assertJsonPath('ready_for_payout', false)
+            ->assertJsonPath('payout_setup_required', true);
     }
 }

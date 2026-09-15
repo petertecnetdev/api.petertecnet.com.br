@@ -114,6 +114,8 @@ final class EventCommerceController extends Controller
                 'settlement_mode' => $readiness['settlement_mode'],
                 'public_key' => $readiness['public_key'],
                 'methods' => $paymentAvailable ? $readiness['methods'] : [],
+                'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
+                'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
                 'message' => $salesClosed ? 'As vendas deste evento foram encerradas.' : $readiness['message'],
             ],
         ]);
@@ -614,6 +616,8 @@ final class EventCommerceController extends Controller
             'settlement' => $readiness['settlement_mode'],
             'sales_enabled' => $readiness['available'],
             'sales_message' => $readiness['message'],
+            'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
+            'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
             'provider' => 'mercadopago',
         ]);
     }
