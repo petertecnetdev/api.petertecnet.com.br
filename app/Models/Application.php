@@ -82,6 +82,16 @@ class Application extends Model
         return $this->hasMany(Item::class, 'app_id');
     }
 
+    public function plans()
+    {
+        return $this->hasMany(Plan::class, 'app_id');
+    }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(Subscription::class, 'app_id');
+    }
+
     public function users()
     {
         return $this->belongsToMany(User::class, 'application_user')
