@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Billing\Http\Controllers\SubscriptionContextController;
 use App\Http\Controllers\AccountController;
 use App\Http\Controllers\AccountDocumentController;
 use App\Http\Controllers\AccountProfileController;
@@ -48,3 +49,14 @@ Route::prefix('account')->middleware(['api', 'auth:api'])->group(function () {
     Route::post('/email/request-change', [AccountController::class, 'requestEmailChange'])->middleware('throttle:5,1')->name('account.email.requestChange');
     Route::post('/email/confirm-change', [AccountController::class, 'confirmEmailChange'])->middleware('throttle:10,1')->name('account.email.confirmChange');
 });
+
+Route::prefix('v1/apps/{application}')
+    ->middleware(['api', 'app.context', 'auth:api', 'token.version'])
+    ->group(function () {
+        Route::get('/billing/plans', [SubscriptionContextController::class, 'plans'])
+            ->middleware('throttle:120,1')
+            ->name('billing.plans');
+        Route::get('/billing/subscription', [SubscriptionContextController::class, 'current'])
+            ->middleware('throttle:120,1')
+            ->name('billing.subscription.current');
+    });
