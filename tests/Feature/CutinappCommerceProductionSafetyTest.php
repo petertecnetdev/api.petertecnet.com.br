@@ -33,32 +33,61 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('tickets.0.available', true);
     }
 
-    public function test_paid_sales_are_disabled_until_producer_has_verified_pix_recipient(): void
+    public function test_paid_sales_use_platform_collection_before_producer_completes_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
-        config()->set('services.mercadopago.access_token', 'platform-access-token');
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
+        config()->set('services.mercadopago.public_key', '');
 
-        [, $event, $ticket] = $this->paidEventFixture('sales-disabled');
+        [, $event, $ticket] = $this->paidEventFixture('sales-before-payout');
 
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
             ->assertOk()
-            ->assertJsonPath('payment_config.available', false)
+            ->assertJsonPath('payment_config.available', true)
             ->assertJsonPath('payment_config.producer_connected', false)
-            ->assertJsonPath('payment_config.settlement_mode', 'sales_disabled')
-            ->assertJsonPath('payment_config.methods', []);
+            ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
+            ->assertJsonPath('payment_config.methods', ['pix'])
+            ->assertJsonPath('payment_config.payout_ready', false)
+            ->assertJsonPath('payment_config.payout_setup_required', true);
 
-        $buyer = $this->user('Comprador', 'buyer-disabled@cutinapp.test');
+        $mercadoPago = Mockery::mock(MercadoPagoService::class);
+        $mercadoPago->shouldReceive('createPayment')
+            ->once()
+            ->withArgs(function (string $token, array $payload): bool {
+                $this->assertSame('test-payment-token', $token);
+                $this->assertSame('pix', $payload['payment_method_id']);
+                $this->assertSame('platform_collection', $payload['metadata']['settlement_mode']);
+                $this->assertArrayNotHasKey('application_fee', $payload);
+                return true;
+            })
+            ->andReturn([
+                'id' => 24681012,
+                'status' => 'pending',
+                'fee_details' => [],
+                'point_of_interaction' => [
+                    'transaction_data' => [
+                        'transaction_id' => 'pix-before-payout-setup',
+                        'qr_code' => '000201-before-payout',
+                        'qr_code_base64' => 'dGVzdA==',
+                    ],
+                ],
+            ]);
+        $this->app->instance(MercadoPagoService::class, $mercadoPago);
+
+        $buyer = $this->user('Comprador', 'buyer-before-payout@cutinapp.test');
         $this->withHeaders($this->headersFor($buyer))
             ->postJson('/api/cutinapp/checkout', [
                 'event_id' => $event['id'],
                 'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
                 'payment_method' => 'pix',
             ])
-            ->assertStatus(422)
-            ->assertJsonPath('message', 'Esta organização ainda não ativou os recebimentos. O responsável precisa verificar a identidade e cadastrar uma chave Pix.');
+            ->assertCreated()
+            ->assertJsonPath('order.status', 'pending')
+            ->assertJsonPath('payment.status', 'pending');
 
-        $this->assertDatabaseCount('commerce_orders', 0);
-        $this->assertDatabaseCount('inventory_reservations', 0);
+        $this->assertDatabaseCount('commerce_orders', 1);
+        $this->assertDatabaseCount('inventory_reservations', 1);
+        $this->assertDatabaseMissing('financial_payout_destinations', ['source_id' => $event['production_id']]);
     }
 
     public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
@@ -198,7 +227,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 'payment_method' => 'pix',
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Os recebimentos desta organização estão verificados, mas a plataforma de pagamentos ainda não está habilitada.');
+            ->assertJsonPath('message', 'A plataforma de pagamentos ainda não está habilitada para novas vendas.');
     }
 
     public function test_pix_provider_failure_preserves_order_and_retry_resumes_same_payment_intent(): void
@@ -354,16 +383,9 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertCreated()
             ->json('ticket');
 
-        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
-        config()->set('services.mercadopago.access_token', 'platform-access-token');
-        $this->verifyFinancialRecipient($producer, $productionId);
-
         $this->withHeaders($headers)
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
-
-        DB::table('financial_payout_destinations')->where('source_type', 'production')->where('source_id', $productionId)->delete();
-        DB::table('financial_beneficiaries')->where('user_id', $producer->id)->delete();
 
         return [$producer, $event, $ticket, $productionId];
     }
