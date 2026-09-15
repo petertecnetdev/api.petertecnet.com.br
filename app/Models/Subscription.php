@@ -55,10 +55,21 @@ class Subscription extends Model
 
     public function scopeActive($query)
     {
+        $now = now();
+
         return $query->where('status', 'active')
-            ->where(function ($query) {
+            ->whereNull('ended_at')
+            ->where(function ($query) use ($now) {
+                $query->whereNull('starts_at')
+                    ->orWhere('starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now) {
+                $query->whereNull('current_period_starts_at')
+                    ->orWhere('current_period_starts_at', '<=', $now);
+            })
+            ->where(function ($query) use ($now) {
                 $query->whereNull('current_period_ends_at')
-                    ->orWhere('current_period_ends_at', '>', now());
+                    ->orWhere('current_period_ends_at', '>', $now);
             });
     }
 
