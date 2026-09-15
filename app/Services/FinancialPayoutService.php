@@ -55,8 +55,16 @@ class FinancialPayoutService
 
         $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
         $appSlug = trim((string) ($production->app_slug ?: 'cutinapp'));
-        $platformSalesReady = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
+        $platformCollectionReady = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
             && trim((string) config('services.mercadopago.access_token')) !== '';
+        $merchantCollectionReady = DB::table('merchant_payment_accounts')
+            ->where('app_id', $production->app_id)
+            ->where('production_id', $production->id)
+            ->where('provider', 'mercadopago')
+            ->where('status', 'connected')
+            ->whereNotNull('access_token')
+            ->exists();
+        $salesReady = $platformCollectionReady || $merchantCollectionReady;
 
         return [
             'identity' => $identityOverview,
@@ -76,9 +84,9 @@ class FinancialPayoutService
             'balance' => $this->balance($production),
             'payouts' => $history,
             'payout_provider' => 'asaas',
-            'ready_for_sales' => $platformSalesReady,
+            'ready_for_sales' => $salesReady,
             'ready_for_payout' => $payoutReady,
-            'payout_setup_required' => $platformSalesReady && ! $payoutReady,
+            'payout_setup_required' => $platformCollectionReady && ! $payoutReady,
         ];
     }
 
