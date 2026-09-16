@@ -11,28 +11,20 @@ use Tests\TestCase;
 
 final class ManagedFileStorageServiceTest extends TestCase
 {
-    public function test_it_isolates_media_by_application_and_normalizes_context(): void
+    public function test_it_isolates_media_by_application_and_canonicalizes_legacy_context(): void
     {
         Storage::fake('local');
         $service = app(ManagedFileStorageService::class);
 
-        $first = $service->storeForApplication(
-            UploadedFile::fake()->image('avatar.jpg'),
-            10,
-            'Profile Avatars'
-        );
+        $first = $service->storeForApplication(UploadedFile::fake()->image('avatar.jpg'), 10, 'Profile Avatars');
+        $second = $service->storeForApplication(UploadedFile::fake()->image('avatar.jpg'), 20, 'avatar');
 
-        $second = $service->storeForApplication(
-            UploadedFile::fake()->image('avatar.jpg'),
-            20,
-            'Profile Avatars'
-        );
-
-        $this->assertStringStartsWith('applications/10/profile-avatars/', $first['storage_path']);
-        $this->assertStringStartsWith('applications/20/profile-avatars/', $second['storage_path']);
+        $this->assertStringStartsWith('applications/10/profile/avatar/', $first['storage_path']);
+        $this->assertStringStartsWith('applications/20/profile/avatar/', $second['storage_path']);
         $this->assertSame(10, $first['application_id']);
         $this->assertSame(20, $second['application_id']);
-        $this->assertSame('profile-avatars', $first['context']);
+        $this->assertSame(MediaContext::PROFILE_AVATAR, $first['context']);
+        $this->assertSame(MediaContext::PROFILE_AVATAR, $second['context']);
         $this->assertNotSame($first['storage_path'], $second['storage_path']);
         Storage::disk('local')->assertExists($first['storage_path']);
         Storage::disk('local')->assertExists($second['storage_path']);
@@ -42,12 +34,7 @@ final class ManagedFileStorageServiceTest extends TestCase
     {
         Storage::fake('local');
         $service = app(ManagedFileStorageService::class);
-
-        $stored = $service->storeForApplication(
-            UploadedFile::fake()->image('banner.jpg'),
-            10,
-            MediaContext::EVENT_BANNER
-        );
+        $stored = $service->storeForApplication(UploadedFile::fake()->image('banner.jpg'), 10, MediaContext::EVENT_BANNER);
 
         $this->assertSame('event/banner', $stored['context']);
         $this->assertStringStartsWith('applications/10/event/banner/', $stored['storage_path']);
@@ -63,17 +50,23 @@ final class ManagedFileStorageServiceTest extends TestCase
         $this->assertContains(MediaContext::MESSAGE_ATTACHMENT, $context->known());
     }
 
+    public function test_legacy_aliases_resolve_to_shared_semantic_contexts(): void
+    {
+        $context = app(MediaContext::class);
+
+        $this->assertSame(MediaContext::PROFILE_AVATAR, $context->canonical('avatars'));
+        $this->assertSame(MediaContext::ESTABLISHMENT_LOGO, $context->canonical('Establishment Logo'));
+        $this->assertSame(MediaContext::ITEM_IMAGE, $context->canonical('item-images'));
+        $this->assertSame(MediaContext::SUPPORT_ATTACHMENT, $context->canonical('support attachments'));
+        $this->assertTrue($context->isKnown('profile-avatars'));
+        $this->assertFalse($context->isKnown('application-specific-invention'));
+    }
+
     public function test_it_rejects_invalid_application_context(): void
     {
         Storage::fake('local');
         $service = app(ManagedFileStorageService::class);
-
         $this->expectException(InvalidArgumentException::class);
-
-        $service->storeForApplication(
-            UploadedFile::fake()->create('file.txt', 1, 'text/plain'),
-            0,
-            MediaContext::DOCUMENT
-        );
+        $service->storeForApplication(UploadedFile::fake()->create('file.txt', 1, 'text/plain'), 0, MediaContext::DOCUMENT);
     }
 }
