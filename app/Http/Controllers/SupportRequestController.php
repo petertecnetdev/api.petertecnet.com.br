@@ -30,6 +30,12 @@ class SupportRequestController extends Controller
         'variant',
     ];
 
+    private const FINANCIAL_METADATA_KEYS = [
+        'order_id',
+        'payment_id',
+        'checkout_id',
+    ];
+
     public function store(Request $request, ApplicationContextService $context): JsonResponse
     {
         $data = $request->validate([
@@ -48,8 +54,8 @@ class SupportRequestController extends Controller
 
         try { $user = Auth::guard('api')->user(); } catch (\Throwable) { $user = null; }
         $correlationId = $data['correlation_id'] ?? (string) Str::uuid();
-        $priority = $this->priorityFor($data['category'], $data['priority'] ?? null);
         $metadata = Arr::only($data['metadata'] ?? [], self::SAFE_METADATA_KEYS);
+        $priority = $this->priorityFor($data['category'], $data['priority'] ?? null, $metadata);
 
         $support = SupportRequest::create([
             'application_id' => $application->id,
@@ -72,12 +78,27 @@ class SupportRequestController extends Controller
         return response()->json(['data' => $support, 'correlation_id' => $correlationId], 201);
     }
 
-    private function priorityFor(string $category, ?string $requestedPriority): string
+    private function priorityFor(string $category, ?string $requestedPriority, array $metadata = []): string
     {
-        if (in_array($category, ['payment', 'payout'], true)) {
-            return $requestedPriority === 'critical' ? 'critical' : 'high';
+        if ($requestedPriority === 'critical') {
+            return 'critical';
+        }
+
+        if (in_array($category, ['payment', 'payout'], true) || $this->hasFinancialContext($metadata)) {
+            return 'high';
         }
 
         return $requestedPriority ?? 'normal';
+    }
+
+    private function hasFinancialContext(array $metadata): bool
+    {
+        foreach (self::FINANCIAL_METADATA_KEYS as $key) {
+            if (isset($metadata[$key]) && $metadata[$key] !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 }
