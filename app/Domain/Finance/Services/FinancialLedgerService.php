@@ -30,6 +30,8 @@ class FinancialLedgerService
                 ->first();
 
             if ($existing) {
+                $this->assertSameOperation($existing, $entries, $attributes);
+
                 return $existing;
             }
 
@@ -80,6 +82,65 @@ class FinancialLedgerService
 
             return DB::table('financial_transactions')->where('id', $transactionId)->first();
         }, 3);
+    }
+
+    /**
+     * Idempotency means replaying the same operation, never accepting a different
+     * financial operation under an already-consumed key.
+     *
+     * @param array<int, array{financial_account_id:int,direction:string,amount_cents:int,role:string}> $entries
+     * @param array<string, mixed> $attributes
+     */
+    private function assertSameOperation(object $existing, array $entries, array $attributes): void
+    {
+        $expected = [
+            'type' => $attributes['type'] ?? 'payment',
+            'status' => $attributes['status'] ?? 'posted',
+            'currency' => $attributes['currency'] ?? 'BRL',
+            'provider' => $attributes['provider'] ?? null,
+            'provider_reference' => $attributes['provider_reference'] ?? null,
+            'source_type' => $attributes['source_type'] ?? null,
+            'source_id' => isset($attributes['source_id']) ? (int) $attributes['source_id'] : null,
+        ];
+
+        foreach ($expected as $field => $value) {
+            $actual = $existing->{$field} ?? null;
+            if ($field === 'source_id' && $actual !== null) {
+                $actual = (int) $actual;
+            }
+
+            if ($actual !== $value) {
+                throw new InvalidArgumentException('Idempotency key is already associated with a different financial operation.');
+            }
+        }
+
+        $storedEntries = DB::table('financial_ledger_entries')
+            ->where('financial_transaction_id', $existing->id)
+            ->get(['financial_account_id', 'direction', 'amount_cents', 'role'])
+            ->map(fn ($entry) => [
+                'financial_account_id' => (int) $entry->financial_account_id,
+                'direction' => (string) $entry->direction,
+                'amount_cents' => (int) $entry->amount_cents,
+                'role' => (string) $entry->role,
+            ])
+            ->sortBy(fn (array $entry) => implode('|', [$entry['financial_account_id'], $entry['direction'], $entry['amount_cents'], $entry['role']]))
+            ->values()
+            ->all();
+
+        $requestedEntries = collect($entries)
+            ->map(fn (array $entry) => [
+                'financial_account_id' => (int) $entry['financial_account_id'],
+                'direction' => (string) $entry['direction'],
+                'amount_cents' => (int) $entry['amount_cents'],
+                'role' => (string) $entry['role'],
+            ])
+            ->sortBy(fn (array $entry) => implode('|', [$entry['financial_account_id'], $entry['direction'], $entry['amount_cents'], $entry['role']]))
+            ->values()
+            ->all();
+
+        if ($storedEntries !== $requestedEntries) {
+            throw new InvalidArgumentException('Idempotency key is already associated with different ledger entries.');
+        }
     }
 
     /** @param array<int, array{financial_account_id:int,direction:string,amount_cents:int,role:string}> $entries */
