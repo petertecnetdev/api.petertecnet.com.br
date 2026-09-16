@@ -3,6 +3,7 @@
 namespace Tests\Unit\Domain\Media;
 
 use App\Domain\Media\Services\ManagedFileStorageService;
+use App\Domain\Media\Services\MediaContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use InvalidArgumentException;
@@ -37,6 +38,31 @@ final class ManagedFileStorageServiceTest extends TestCase
         Storage::disk('local')->assertExists($second['storage_path']);
     }
 
+    public function test_it_supports_shared_hierarchical_media_contexts(): void
+    {
+        Storage::fake('local');
+        $service = app(ManagedFileStorageService::class);
+
+        $stored = $service->storeForApplication(
+            UploadedFile::fake()->image('banner.jpg'),
+            10,
+            MediaContext::EVENT_BANNER
+        );
+
+        $this->assertSame('event/banner', $stored['context']);
+        $this->assertStringStartsWith('applications/10/event/banner/', $stored['storage_path']);
+        Storage::disk('local')->assertExists($stored['storage_path']);
+    }
+
+    public function test_media_context_normalization_cannot_escape_application_namespace(): void
+    {
+        $context = app(MediaContext::class);
+
+        $this->assertSame('event/banner', $context->normalize('/Event/../Banner/'));
+        $this->assertContains(MediaContext::SUPPORT_ATTACHMENT, $context->known());
+        $this->assertContains(MediaContext::MESSAGE_ATTACHMENT, $context->known());
+    }
+
     public function test_it_rejects_invalid_application_context(): void
     {
         Storage::fake('local');
@@ -47,7 +73,7 @@ final class ManagedFileStorageServiceTest extends TestCase
         $service->storeForApplication(
             UploadedFile::fake()->create('file.txt', 1, 'text/plain'),
             0,
-            'documents'
+            MediaContext::DOCUMENT
         );
     }
 }
