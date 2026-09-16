@@ -30,10 +30,34 @@ class PayoutObligationServiceTest extends TestCase
         $this->assertSame('payout_destination_missing', $first->hold_reason);
         $this->assertSame(1, DB::table('payout_obligations')->where('application_id', $appId)->count());
 
-        $released = $service->releaseHeld($appId, $first->id);
+        $released = $service->releaseHeld($appId, $first->id, true);
         $this->assertSame('eligible', $released->status);
         $this->assertNull($released->hold_reason);
         $this->assertNotNull($released->eligible_at);
+    }
+
+    public function test_does_not_release_held_obligation_without_payout_destination(): void
+    {
+        [$appId, $cash, $receivable] = $this->fixture('payout-release-guard');
+        $transaction = app(FinancialLedgerService::class)->post($appId, 'payment:mp:release-guard', [
+            ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 12500, 'role' => 'gross'],
+            ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 12500, 'role' => 'receivable'],
+        ]);
+
+        $service = app(PayoutObligationService::class);
+        $obligation = $service->create($appId, $transaction->id, $receivable, 'establishment', 15, 12500, false);
+
+        try {
+            $service->releaseHeld($appId, $obligation->id);
+            $this->fail('Held payout obligation was released without a payout destination.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertSame('Payout destination must be available before releasing a held obligation.', $exception->getMessage());
+        }
+
+        $persisted = DB::table('payout_obligations')->where('id', $obligation->id)->first();
+        $this->assertSame('held', $persisted->status);
+        $this->assertSame('payout_destination_missing', $persisted->hold_reason);
+        $this->assertNull($persisted->eligible_at);
     }
 
     public function test_rejects_conflicting_retry_without_changing_amount_owed(): void
