@@ -5,6 +5,7 @@ namespace App\Domain\Media\Services;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use RuntimeException;
 
 final class ManagedFileStorageService
@@ -38,6 +39,39 @@ final class ManagedFileStorageService
             'sha256' => $this->fingerprint($file),
             'storage_disk' => $disk,
             'storage_path' => $storedPath,
+        ];
+    }
+
+    /**
+     * Store media in an application-isolated namespace so every product can
+     * reuse the same storage contract without creating app-specific services.
+     */
+    public function storeForApplication(
+        UploadedFile $file,
+        int $applicationId,
+        string $context,
+        string $disk = 'local'
+    ): array {
+        if ($applicationId <= 0) {
+            throw new InvalidArgumentException('applicationId must be a positive integer.');
+        }
+
+        $safeContext = Str::of($context)
+            ->lower()
+            ->replaceMatches('/[^a-z0-9\/_-]+/', '-')
+            ->trim('/-')
+            ->toString();
+
+        if ($safeContext === '') {
+            throw new InvalidArgumentException('Media context cannot be empty.');
+        }
+
+        $directory = sprintf('applications/%d/%s', $applicationId, $safeContext);
+        $stored = $this->store($file, $directory, $disk);
+
+        return $stored + [
+            'application_id' => $applicationId,
+            'context' => $safeContext,
         ];
     }
 
