@@ -32,6 +32,33 @@ class FinancialLedgerServiceTest extends TestCase
         $this->assertSame(2, DB::table('financial_ledger_entries')->where('financial_transaction_id', $first->id)->count());
     }
 
+    public function test_rejects_same_idempotency_key_for_different_financial_operation(): void
+    {
+        $appId = $this->application('ledger-idempotency-conflict');
+        $cash = $this->account($appId, 'platform', 1);
+        $receivable = $this->account($appId, 'beneficiary', 10);
+        $service = app(FinancialLedgerService::class);
+
+        $service->post($appId, 'payment:mp:conflict', [
+            ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 12500, 'role' => 'gross'],
+            ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 12500, 'role' => 'receivable'],
+        ], ['provider' => 'mercado_pago', 'provider_reference' => 'payment-1']);
+
+        try {
+            $service->post($appId, 'payment:mp:conflict', [
+                ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 13000, 'role' => 'gross'],
+                ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 13000, 'role' => 'receivable'],
+            ], ['provider' => 'mercado_pago', 'provider_reference' => 'payment-2']);
+            $this->fail('Expected conflicting idempotency reuse to be rejected.');
+        } catch (InvalidArgumentException) {
+            $transaction = DB::table('financial_transactions')->where('application_id', $appId)->first();
+            $this->assertNotNull($transaction);
+            $this->assertSame('payment-1', $transaction->provider_reference);
+            $this->assertSame(1, DB::table('financial_transactions')->where('application_id', $appId)->count());
+            $this->assertSame(25000, (int) DB::table('financial_ledger_entries')->where('financial_transaction_id', $transaction->id)->sum('amount_cents'));
+        }
+    }
+
     public function test_rejects_unbalanced_transaction_without_partial_write(): void
     {
         $appId = $this->application('ledger-b');
