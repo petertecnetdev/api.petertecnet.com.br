@@ -84,9 +84,9 @@ class PayoutObligationService
         }, 3);
     }
 
-    public function releaseHeld(int $applicationId, int $obligationId): object
+    public function releaseHeld(int $applicationId, int $obligationId, bool $hasPayoutDestination = false): object
     {
-        return DB::transaction(function () use ($applicationId, $obligationId) {
+        return DB::transaction(function () use ($applicationId, $obligationId, $hasPayoutDestination) {
             $obligation = DB::table('payout_obligations')
                 ->where('id', $obligationId)
                 ->where('application_id', $applicationId)
@@ -98,6 +98,10 @@ class PayoutObligationService
             }
 
             if ($obligation->status === 'held' && $obligation->hold_reason === 'payout_destination_missing') {
+                if (! $hasPayoutDestination) {
+                    throw new InvalidArgumentException('Payout destination must be available before releasing a held obligation.');
+                }
+
                 DB::table('payout_obligations')->where('id', $obligationId)->update([
                     'status' => 'eligible',
                     'hold_reason' => null,
