@@ -21,6 +21,19 @@ class SupportRequestIntakePolicyTest extends TestCase
         $this->assertSame('normal', $method->invoke($controller, 'bug', null));
     }
 
+    public function test_reports_with_financial_context_are_prioritized_even_when_category_is_generic(): void
+    {
+        $controller = new SupportRequestController();
+        $method = new ReflectionMethod($controller, 'priorityFor');
+        $method->setAccessible(true);
+
+        $this->assertSame('high', $method->invoke($controller, 'bug', 'low', ['payment_id' => 'pay_123']));
+        $this->assertSame('high', $method->invoke($controller, 'usability', 'normal', ['checkout_id' => 'checkout_123']));
+        $this->assertSame('high', $method->invoke($controller, 'general', null, ['order_id' => 123]));
+        $this->assertSame('critical', $method->invoke($controller, 'bug', 'critical', ['payment_id' => 'pay_123']));
+        $this->assertSame('low', $method->invoke($controller, 'bug', 'low', ['screen' => 'profile']));
+    }
+
     public function test_support_metadata_policy_only_declares_non_sensitive_operational_context(): void
     {
         $reflection = new ReflectionClass(SupportRequestController::class);
