@@ -79,6 +79,12 @@ class PlanCatalogService
             'currency' => (string) ($plan['currency'] ?? config('subscriptions.currency', 'BRL')),
             'billing_interval' => (string) ($plan['billing_interval'] ?? config('subscriptions.billing_interval', 'month')),
             'billing_interval_count' => max(1, (int) ($plan['billing_interval_count'] ?? config('subscriptions.billing_interval_count', 1))),
+            'recommended' => (bool) ($plan['recommended'] ?? false),
+            'features' => array_values(array_filter(
+                is_array($plan['features'] ?? null) ? $plan['features'] : [],
+                fn ($feature) => is_string($feature) && trim($feature) !== ''
+            )),
+            'trial_days' => max(0, (int) ($plan['trial_days'] ?? 0)),
             'entitlements' => $plan['entitlements'] ?? [],
             'metadata' => $plan['metadata'] ?? [],
         ];
@@ -86,6 +92,8 @@ class PlanCatalogService
 
     private function normalizeModelPlan(Plan $plan): array
     {
+        $metadata = is_array($plan->metadata) ? $plan->metadata : [];
+
         return [
             'code' => $plan->code,
             'name' => $plan->name,
@@ -94,8 +102,14 @@ class PlanCatalogService
             'currency' => $plan->currency,
             'billing_interval' => $plan->billing_interval,
             'billing_interval_count' => max(1, (int) $plan->billing_interval_count),
+            'recommended' => (bool) ($metadata['recommended'] ?? false),
+            'features' => array_values(array_filter(
+                is_array($metadata['features'] ?? null) ? $metadata['features'] : [],
+                fn ($feature) => is_string($feature) && trim($feature) !== ''
+            )),
+            'trial_days' => max(0, (int) ($metadata['trial_days'] ?? 0)),
             'entitlements' => $plan->entitlements ?? [],
-            'metadata' => $plan->metadata ?? [],
+            'metadata' => $metadata,
         ];
     }
 }
