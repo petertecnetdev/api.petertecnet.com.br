@@ -4,15 +4,15 @@ namespace App\Domain\Finance\Http\Controllers;
 
 use App\Domain\Finance\Actions\FindRecoverableSubscriptionIntent;
 use App\Domain\Finance\Models\SubscriptionIntent;
+use App\Domain\Finance\Services\PlanCatalogService;
 use App\Http\Controllers\Controller;
-use App\Models\Plan;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
 class SubscriptionIntentController extends Controller
 {
-    public function store(Request $request, string $application): JsonResponse
+    public function store(Request $request, string $application, PlanCatalogService $planCatalog): JsonResponse
     {
         $application = strtolower(trim($application));
         $validated = $request->validate([
@@ -22,7 +22,7 @@ class SubscriptionIntentController extends Controller
             'metadata' => ['nullable', 'array'],
         ]);
 
-        $plan = $this->resolvePlan($application, $validated['plan_code']);
+        $plan = $planCatalog->find($application, $validated['plan_code']);
         if (! $plan) {
             return response()->json(['message' => 'Plano de assinatura inválido ou indisponível.'], 422);
         }
@@ -85,35 +85,6 @@ class SubscriptionIntentController extends Controller
             ->firstOrFail();
 
         return response()->json(['data' => $record]);
-    }
-
-    private function resolvePlan(string $application, string $planCode): ?array
-    {
-        $definition = config("subscriptions.applications.{$application}");
-        if (is_array($definition) && ($definition['subscription_enabled'] ?? false)) {
-            $configured = collect($definition['plans'] ?? [])->first(
-                fn (array $candidate) => (string) ($candidate['code'] ?? '') === $planCode
-            );
-            if (is_array($configured)) return $configured;
-        }
-
-        $plan = Plan::query()
-            ->whereHas('application', fn ($query) => $query->where('slug', $application)->where('is_active', true))
-            ->active()
-            ->where('code', $planCode)
-            ->first();
-
-        if (! $plan) return null;
-
-        return [
-            'code' => $plan->code,
-            'name' => $plan->name,
-            'price_cents' => (int) round(((float) $plan->price) * 100),
-            'currency' => $plan->currency,
-            'billing_interval' => $plan->billing_interval,
-            'billing_interval_count' => $plan->billing_interval_count,
-            'entitlements' => $plan->entitlements,
-        ];
     }
 
     private function resource(SubscriptionIntent $intent): array
