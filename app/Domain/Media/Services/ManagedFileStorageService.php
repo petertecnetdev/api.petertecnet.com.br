@@ -10,6 +10,10 @@ use RuntimeException;
 
 final class ManagedFileStorageService
 {
+    public function __construct(private readonly MediaContext $mediaContext)
+    {
+    }
+
     public function fingerprint(UploadedFile $file): string
     {
         $realPath = $file->getRealPath();
@@ -56,16 +60,7 @@ final class ManagedFileStorageService
             throw new InvalidArgumentException('applicationId must be a positive integer.');
         }
 
-        $safeContext = Str::of($context)
-            ->lower()
-            ->replaceMatches('/[^a-z0-9\/_-]+/', '-')
-            ->trim('/-')
-            ->toString();
-
-        if ($safeContext === '') {
-            throw new InvalidArgumentException('Media context cannot be empty.');
-        }
-
+        $safeContext = $this->mediaContext->normalize($context);
         $directory = sprintf('applications/%d/%s', $applicationId, $safeContext);
         $stored = $this->store($file, $directory, $disk);
 
