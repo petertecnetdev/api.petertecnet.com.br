@@ -2,6 +2,7 @@
 
 namespace App\Domain\Discovery\Http\Controllers;
 
+use App\Domain\Media\Services\ImageFormatCapabilities;
 use App\Http\Controllers\Controller;
 use App\Models\File;
 use Illuminate\Http\Request;
@@ -12,15 +13,13 @@ use Symfony\Component\HttpFoundation\Response;
 
 class OptimizedMediaController extends Controller
 {
+    public function __construct(private readonly ImageFormatCapabilities $formats) {}
+
     public function capabilities(): Response
     {
         return response()->json([
             'success' => true,
-            'data' => [
-                'avif' => $this->supportsAvif(),
-                'webp' => $this->supportsWebp(),
-                'widths' => [320, 480, 640, 960, 1280, 1600],
-            ],
+            'data' => $this->formats->all(),
         ])->setPublic()->setMaxAge(86400);
     }
 
@@ -49,7 +48,11 @@ class OptimizedMediaController extends Controller
 
         $width = (int) ($data['width'] ?? min(1280, max(320, (int) ($file->width ?: 1280))));
         $quality = (int) ($data['quality'] ?? 78);
-        $format = $this->resolveFormat($request, $data['format'] ?? 'auto', $sourceMime);
+        $format = $this->formats->resolve(
+            (string) ($data['format'] ?? 'auto'),
+            (string) $request->header('Accept'),
+            $sourceMime,
+        );
         $extension = $format === 'jpeg' ? 'jpg' : $format;
         $cachePath = "optimized/{$file->uuid}/{$width}-q{$quality}.{$extension}";
         $cacheDisk = Storage::disk('public');
@@ -64,7 +67,7 @@ class OptimizedMediaController extends Controller
                 $encoded = $image->encode($format, $quality);
                 $cacheDisk->put($cachePath, (string) $encoded);
             } catch (\Throwable $exception) {
-                if ($format === 'avif' && $this->supportsWebp()) {
+                if ($format === 'avif' && $this->formats->supportsWebp()) {
                     $format = 'webp';
                     $extension = 'webp';
                     $cachePath = "optimized/{$file->uuid}/{$width}-q{$quality}.webp";
@@ -83,47 +86,11 @@ class OptimizedMediaController extends Controller
         }
 
         $response = response()->file($cacheDisk->path($cachePath), [
-            'Content-Type' => $this->mime($format),
+            'Content-Type' => $this->formats->mime($format),
             'Cache-Control' => 'public, max-age=2592000, immutable',
             'Vary' => 'Accept',
         ]);
         $response->setEtag(sha1($file->uuid . '|' . $width . '|' . $quality . '|' . $format . '|' . $file->updated_at));
         return $response;
-    }
-
-    private function resolveFormat(Request $request, string $requested, string $sourceMime): string
-    {
-        if ($requested !== 'auto') {
-            if ($requested === 'avif' && ! $this->supportsAvif()) return $this->supportsWebp() ? 'webp' : 'jpeg';
-            if ($requested === 'webp' && ! $this->supportsWebp()) return 'jpeg';
-            return $requested;
-        }
-
-        $accept = strtolower((string) $request->header('Accept'));
-        if (str_contains($accept, 'image/avif') && $this->supportsAvif()) return 'avif';
-        if (str_contains($accept, 'image/webp') && $this->supportsWebp()) return 'webp';
-        return str_contains($sourceMime, 'png') ? 'png' : 'jpeg';
-    }
-
-    private function supportsWebp(): bool
-    {
-        if (function_exists('imagewebp')) return true;
-        return class_exists(\Imagick::class) && in_array('WEBP', \Imagick::queryFormats('WEBP'), true);
-    }
-
-    private function supportsAvif(): bool
-    {
-        if (function_exists('imageavif')) return true;
-        return class_exists(\Imagick::class) && in_array('AVIF', \Imagick::queryFormats('AVIF'), true);
-    }
-
-    private function mime(string $format): string
-    {
-        return match ($format) {
-            'avif' => 'image/avif',
-            'webp' => 'image/webp',
-            'png' => 'image/png',
-            default => 'image/jpeg',
-        };
     }
 }
