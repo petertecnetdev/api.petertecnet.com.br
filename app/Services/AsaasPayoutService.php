@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Domain\Finance\Contracts\PayoutWebhookInterpreter;
+use App\Domain\Finance\Exceptions\PayoutProviderException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 use Illuminate\Support\Facades\Log;
@@ -57,6 +58,27 @@ class AsaasPayoutService implements PayoutProvider, PayoutWebhookInterpreter
             return round((float) $payload['balance'], 2);
         } catch (RequestException $e) {
             $this->throwProviderException('Não foi possível consultar o saldo operacional para repasses.', $e);
+        }
+    }
+
+    public function getTransfer(string $transferId): array
+    {
+        $this->assertConfigured();
+        $transferId = trim($transferId);
+        if ($transferId === '') throw new RuntimeException('Identificador da transferência não informado.');
+
+        try {
+            $response = $this->client->get('transfers/' . rawurlencode($transferId), [
+                'headers' => ['access_token' => $this->apiKey],
+            ]);
+            $payload = json_decode($response->getBody()->getContents(), true);
+            if (! is_array($payload) || empty($payload['id'])) {
+                throw new RuntimeException('O provedor não retornou uma transferência válida.');
+            }
+
+            return $payload;
+        } catch (RequestException $e) {
+            $this->throwProviderException('Não foi possível consultar a transferência Pix.', $e);
         }
     }
 
@@ -170,6 +192,16 @@ class AsaasPayoutService implements PayoutProvider, PayoutWebhookInterpreter
             'provider_message' => $providerMessage,
         ]);
 
-        throw new RuntimeException($providerMessage !== '' ? $providerMessage : $fallback, 0, $e);
+        $outcomeUnknown = ! $e->hasResponse()
+            || $status === null
+            || $status >= 500
+            || in_array($status, [408, 425], true);
+
+        throw new PayoutProviderException(
+            $providerMessage !== '' ? $providerMessage : $fallback,
+            $outcomeUnknown,
+            $status,
+            $e
+        );
     }
 }

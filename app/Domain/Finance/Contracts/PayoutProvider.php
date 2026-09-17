@@ -10,6 +10,8 @@ interface PayoutProvider
 
     public function availableBalance(): float;
 
+    public function getTransfer(string $transferId): array;
+
     public function lookupPixKey(string $type, string $key): array;
 
     public function transferPix(

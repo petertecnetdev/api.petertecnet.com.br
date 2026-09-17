@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Services\FinancialPayoutService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -11,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class FinancialController extends Controller
 {
+    public function __construct(private FinancialPayoutService $payouts) {}
+
     private const OPEN_PAYMENT_STATUSES = ['pending', 'in_process', 'authorized'];
     private const CONFIRMED_PAYMENT_STATUSES = ['approved', 'paid'];
     private const FAILED_PAYMENT_STATUSES = ['failed', 'rejected', 'cancelled', 'expired'];
@@ -261,9 +264,22 @@ class FinancialController extends Controller
 
         $orderColumn = Schema::hasColumn($table, 'created_at') ? 'created_at' : 'id';
         $all = (clone $query)->orderByDesc($orderColumn)->limit(500)->get();
+
+        if ($table === 'financial_payouts') {
+            $all = $all->map(function ($row) {
+                $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+                if (! is_array($metadata)) $metadata = [];
+                $row->failure_reason = $metadata['provider_fail_reason'] ?? $metadata['provider_error'] ?? null;
+                $row->receipt_url = $metadata['transaction_receipt_url'] ?? null;
+                unset($row->metadata);
+
+                return $row;
+            });
+        }
+
         $amountField = Schema::hasColumn($table, 'amount') ? 'amount' : (Schema::hasColumn($table, 'net_amount') ? 'net_amount' : null);
 
-        $pending = $all->whereIn('status', ['pending', 'requested', 'processing']);
+        $pending = $all->whereIn('status', ['pending', 'requested', 'processing', 'provider_unknown']);
         $paid = $all->whereIn('status', ['paid', 'completed']);
         $failed = $all->whereIn('status', ['failed', 'rejected', 'cancelled']);
 
@@ -335,11 +351,69 @@ class FinancialController extends Controller
 
     public function reconcileNow(Request $request)
     {
+        $stats = [
+            'webhooks_replayed' => 0,
+            'checked' => 0,
+            'reconciled' => 0,
+            'terminal' => 0,
+            'provider_reference_missing' => 0,
+            'errors' => 0,
+        ];
+
+        if (Schema::hasTable('financial_webhook_events')) {
+            DB::table('financial_webhook_events')
+                ->where('provider', 'asaas')
+                ->whereNull('processed_at')
+                ->orderBy('id')
+                ->limit(100)
+                ->get()
+                ->each(function ($event) use (&$stats): void {
+                    $payload = $event->payload ? json_decode($event->payload, true) : null;
+                    if (! is_array($payload)) return;
+
+                    try {
+                        $this->payouts->processWebhook($payload);
+                        $stats['webhooks_replayed']++;
+                    } catch (\Throwable $exception) {
+                        report($exception);
+                        $stats['errors']++;
+                    }
+                });
+        }
+
+        if (Schema::hasTable('financial_payouts')) {
+            DB::table('financial_payouts')
+                ->where('provider', 'asaas')
+                ->whereIn('status', ['pending', 'processing', 'provider_unknown'])
+                ->orderBy('id')
+                ->limit(100)
+                ->pluck('id')
+                ->each(function ($payoutId) use (&$stats): void {
+                    $stats['checked']++;
+
+                    try {
+                        $result = $this->payouts->reconcilePayout((int) $payoutId);
+                        $status = (string) ($result['status'] ?? 'unknown');
+                        if (array_key_exists($status, $stats)) {
+                            $stats[$status]++;
+                        } elseif ($status === 'reconciled') {
+                            $stats['reconciled']++;
+                        }
+                    } catch (\Throwable $exception) {
+                        report($exception);
+                        $stats['errors']++;
+                    }
+                });
+        }
+
         return response()->json([
-            'message' => 'A conciliação automática com o provedor ainda não está habilitada neste build da API.',
-            'status' => 'not_configured',
-            'stats' => ['checked' => 0, 'matched' => 0, 'mismatched' => 0, 'errors' => 0],
-        ], 409);
+            'message' => $stats['errors'] > 0
+                ? 'Conciliação concluída com ocorrências que exigem acompanhamento.'
+                : 'Conciliação de repasses concluída.',
+            'status' => $stats['errors'] > 0 ? 'attention' : 'completed',
+            'stats' => $stats,
+            'generated_at' => now()->toIso8601String(),
+        ]);
     }
 
     public function closing(Request $request)

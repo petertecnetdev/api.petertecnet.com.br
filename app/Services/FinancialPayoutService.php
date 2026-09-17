@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\Exceptions\PayoutProviderException;
 use App\Models\Production;
 use App\Models\User;
 use Illuminate\Support\Facades\Crypt;
@@ -17,6 +18,31 @@ class FinancialPayoutService
         private FinancialIdentityService $identity,
         private AsaasPayoutService $asaas,
     ) {}
+
+    public function ownedProduction(int $applicationId, int $organizationId, User $user): Production
+    {
+        $production = Production::query()
+            ->where('app_id', $applicationId)
+            ->findOrFail($organizationId);
+
+        $admin = method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        abort_unless($admin || (int) $production->user_id === (int) $user->id, 403);
+
+        return $production;
+    }
+
+    public function rejectManualCancellation(Production $production, int $payoutId): never
+    {
+        $payout = DB::table('financial_payouts')
+            ->where('source_type', 'production')
+            ->where('source_id', $production->id)
+            ->where('id', $payoutId)
+            ->first();
+
+        abort_unless($payout, 404, 'Repasse não encontrado.');
+
+        abort(422, 'Este repasse Pix não pode ser cancelado manualmente após a solicitação. Aguarde a confirmação ou a conciliação do provedor.');
+    }
 
     public function overview(Production $production, User $user): array
     {
@@ -41,17 +67,27 @@ class FinancialPayoutService
             ->latest('id')
             ->limit(50)
             ->get()
-            ->map(fn ($row) => [
-                'id' => $row->id,
-                'reference' => $row->reference,
-                'provider' => $row->provider,
-                'status' => $row->status,
-                'amount' => (float) $row->amount,
-                'risk_status' => $row->risk_status,
-                'requested_at' => $row->requested_at,
-                'paid_at' => $row->paid_at,
-                'failed_at' => $row->failed_at,
-            ]);
+            ->map(function ($row) {
+                $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+                if (! is_array($metadata)) $metadata = [];
+
+                return [
+                    'id' => $row->id,
+                    'reference' => $row->reference,
+                    'provider' => $row->provider,
+                    'provider_transfer_id' => $row->provider_transfer_id,
+                    'status' => $row->status,
+                    'amount' => (float) $row->amount,
+                    'risk_status' => $row->risk_status,
+                    'requested_at' => $row->requested_at,
+                    'processing_at' => $row->processing_at,
+                    'paid_at' => $row->paid_at,
+                    'failed_at' => $row->failed_at,
+                    'cancelled_at' => $row->cancelled_at,
+                    'failure_reason' => $metadata['provider_fail_reason'] ?? $metadata['provider_error'] ?? null,
+                    'receipt_url' => $metadata['transaction_receipt_url'] ?? null,
+                ];
+            });
 
         $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
         $appSlug = trim((string) $production->app_slug);
@@ -265,16 +301,46 @@ class FinancialPayoutService
                 ]),
                 'updated_at' => now(),
             ]);
-        } catch (Throwable $e) {
+        } catch (PayoutProviderException $e) {
             report($e);
-            // A chamada pode ter falhado depois de o PSP aceitar a transferência.
-            // Não liberamos o saldo automaticamente: reconciliação/manual ou webhook
-            // deve resolver este estado sem risco de um Pix duplicado.
-            DB::table('financial_payouts')->where('id', $payout->id)->update([
-                'status' => 'provider_unknown',
-                'failed_at' => now(),
+
+            $status = $e->outcomeUnknown ? 'provider_unknown' : 'failed';
+            $updates = [
+                'status' => $status,
                 'metadata' => $this->mergeMetadata($payout->metadata, [
                     'provider_error' => Str::limit($e->getMessage(), 300),
+                    'provider_http_status' => $e->providerStatus,
+                    'provider_outcome_unknown' => $e->outcomeUnknown,
+                ]),
+                'updated_at' => now(),
+            ];
+            if (! $e->outcomeUnknown) $updates['failed_at'] = now();
+
+            DB::table('financial_payouts')->where('id', $payout->id)->update($updates);
+
+            if ($e->outcomeUnknown) {
+                throw new RuntimeException(
+                    'Não foi possível confirmar o envio do Pix. O valor continua reservado para evitar pagamento duplicado.',
+                    0,
+                    $e
+                );
+            }
+
+            throw new RuntimeException(
+                'O provedor recusou o repasse Pix. O saldo foi liberado novamente. ' . $e->getMessage(),
+                0,
+                $e
+            );
+        } catch (Throwable $e) {
+            report($e);
+            // Uma falha inesperada depois do início da chamada é tratada como
+            // resultado desconhecido. O valor permanece reservado até webhook ou
+            // conciliação confirmar o estado real e impedir um Pix duplicado.
+            DB::table('financial_payouts')->where('id', $payout->id)->update([
+                'status' => 'provider_unknown',
+                'metadata' => $this->mergeMetadata($payout->metadata, [
+                    'provider_error' => Str::limit($e->getMessage(), 300),
+                    'provider_outcome_unknown' => true,
                 ]),
                 'updated_at' => now(),
             ]);
@@ -341,22 +407,57 @@ class FinancialPayoutService
         $eventId = trim((string) ($payload['id'] ?? ''));
         $eventType = strtoupper(trim((string) ($payload['event'] ?? '')));
         $transferId = trim((string) data_get($payload, 'transfer.id', ''));
-        if ($eventId === '' || $transferId === '') return;
+        $externalReference = trim((string) data_get($payload, 'transfer.externalReference', ''));
 
-        $inserted = DB::table('financial_webhook_events')->insertOrIgnore([
+        if ($eventId === '' || ($transferId === '' && $externalReference === '')) return;
+
+        $safePayload = [
+            'id' => $eventId,
+            'event' => $eventType,
+            'transfer' => [
+                'id' => $transferId,
+                'status' => data_get($payload, 'transfer.status'),
+                'operationType' => data_get($payload, 'transfer.operationType'),
+                'value' => data_get($payload, 'transfer.value'),
+                'externalReference' => $externalReference,
+                'failReason' => data_get($payload, 'transfer.failReason'),
+                'transactionReceiptUrl' => data_get($payload, 'transfer.transactionReceiptUrl'),
+                'effectiveDate' => data_get($payload, 'transfer.effectiveDate'),
+            ],
+        ];
+
+        DB::table('financial_webhook_events')->insertOrIgnore([
             'provider' => 'asaas',
             'event_id' => $eventId,
             'event_type' => $eventType,
-            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'payload' => json_encode($safePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        if (!$inserted) return;
 
-        DB::transaction(function () use ($payload, $eventId, $eventType, $transferId) {
-            $payout = DB::table('financial_payouts')->where('provider_transfer_id', $transferId)->lockForUpdate()->first();
-            if (!$payout) {
-                DB::table('financial_webhook_events')->where('provider', 'asaas')->where('event_id', $eventId)->update(['processed_at' => now(), 'updated_at' => now()]);
+        // Duplicate deliveries are intentionally replayable while processed_at is
+        // null. This closes the race where Asaas can notify us before the transfer
+        // id has been persisted locally after POST /transfers returns.
+        $receipt = DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')
+            ->where('event_id', $eventId)
+            ->first();
+        if (! $receipt || $receipt->processed_at) return;
+
+        DB::transaction(function () use ($payload, $eventId, $eventType, $transferId, $externalReference) {
+            $query = DB::table('financial_payouts')->where('provider', 'asaas');
+
+            $payout = null;
+            if ($transferId !== '') {
+                $payout = (clone $query)->where('provider_transfer_id', $transferId)->lockForUpdate()->first();
+            }
+            if (! $payout && $externalReference !== '') {
+                $payout = (clone $query)->where('reference', $externalReference)->lockForUpdate()->first();
+            }
+
+            if (! $payout) {
+                // Keep the receipt pending. A redelivery or admin reconciliation
+                // can process it after the local payout row becomes linkable.
                 return;
             }
 
@@ -367,22 +468,96 @@ class FinancialPayoutService
                 default => 'processing',
             };
 
+            // Never let an out-of-order intermediate event downgrade a terminal
+            // payout or overwrite its final metadata. TRANSFER_DONE may promote
+            // failed/cancelled if Asaas later reports completion as the final state.
+            $staleForTerminal = ($payout->status === 'paid' && $status !== 'paid')
+                || (in_array($payout->status, ['failed', 'cancelled'], true) && $status === 'processing');
+
+            if ($staleForTerminal) {
+                DB::table('financial_webhook_events')
+                    ->where('provider', 'asaas')
+                    ->where('event_id', $eventId)
+                    ->update(['processed_at' => now(), 'updated_at' => now()]);
+                return;
+            }
+
             $updates = [
                 'status' => $status,
                 'metadata' => $this->mergeMetadata($payout->metadata, [
                     'last_provider_event' => $eventType,
                     'provider_status' => data_get($payload, 'transfer.status'),
                     'provider_fail_reason' => data_get($payload, 'transfer.failReason'),
+                    'transaction_receipt_url' => data_get($payload, 'transfer.transactionReceiptUrl'),
+                    'effective_date' => data_get($payload, 'transfer.effectiveDate'),
                 ]),
                 'updated_at' => now(),
             ];
-            if ($status === 'paid') $updates['paid_at'] = now();
-            if ($status === 'failed') $updates['failed_at'] = now();
-            if ($status === 'cancelled') $updates['cancelled_at'] = now();
+
+            if ($transferId !== '' && empty($payout->provider_transfer_id)) {
+                $updates['provider_transfer_id'] = $transferId;
+            }
+            if ($status === 'processing' && ! $payout->processing_at) $updates['processing_at'] = now();
+            if ($status === 'paid' && ! $payout->paid_at) $updates['paid_at'] = now();
+            if ($status === 'failed' && ! $payout->failed_at) $updates['failed_at'] = now();
+            if ($status === 'cancelled' && ! $payout->cancelled_at) $updates['cancelled_at'] = now();
 
             DB::table('financial_payouts')->where('id', $payout->id)->update($updates);
-            DB::table('financial_webhook_events')->where('provider', 'asaas')->where('event_id', $eventId)->update(['processed_at' => now(), 'updated_at' => now()]);
+            DB::table('financial_webhook_events')
+                ->where('provider', 'asaas')
+                ->where('event_id', $eventId)
+                ->update(['processed_at' => now(), 'updated_at' => now()]);
         });
+    }
+
+    public function reconcilePayout(int $payoutId): array
+    {
+        $payout = DB::table('financial_payouts')
+            ->where('provider', 'asaas')
+            ->where('id', $payoutId)
+            ->first();
+
+        if (! $payout) {
+            return ['status' => 'not_found', 'payout_id' => $payoutId];
+        }
+
+        if (in_array($payout->status, ['paid', 'failed', 'cancelled'], true)) {
+            return ['status' => 'terminal', 'payout_id' => $payoutId, 'payout_status' => $payout->status];
+        }
+
+        $transferId = trim((string) $payout->provider_transfer_id);
+        if ($transferId === '') {
+            return ['status' => 'provider_reference_missing', 'payout_id' => $payoutId];
+        }
+
+        $remote = $this->asaas->getTransfer($transferId);
+        $providerStatus = strtoupper(trim((string) ($remote['status'] ?? 'PENDING')));
+        $eventType = match ($providerStatus) {
+            'DONE' => 'TRANSFER_DONE',
+            'FAILED' => 'TRANSFER_FAILED',
+            'CANCELLED' => 'TRANSFER_CANCELLED',
+            'BLOCKED' => 'TRANSFER_BLOCKED',
+            'BANK_PROCESSING', 'IN_BANK_PROCESSING' => 'TRANSFER_IN_BANK_PROCESSING',
+            default => 'TRANSFER_PENDING',
+        };
+
+        $this->processWebhook([
+            'id' => 'reconcile-' . hash('sha256', $transferId . ':' . $providerStatus),
+            'event' => $eventType,
+            'transfer' => array_merge($remote, [
+                'id' => $transferId,
+                'externalReference' => $remote['externalReference'] ?? $payout->reference,
+            ]),
+        ]);
+
+        $fresh = DB::table('financial_payouts')->where('id', $payoutId)->first();
+
+        return [
+            'status' => 'reconciled',
+            'payout_id' => $payoutId,
+            'payout_status' => $fresh?->status,
+            'provider_status' => $providerStatus,
+        ];
     }
 
     private function maskedDocumentMatches(string $masked, string $document): bool
