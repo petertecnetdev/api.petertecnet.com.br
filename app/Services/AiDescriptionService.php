@@ -39,8 +39,6 @@ class AiDescriptionService
 
     public function generateDescription(array $data, int|string|null $userId = null): array
     {
-        $this->assertConfigured();
-
         $entityType = $this->normalizeEntityType((string) ($data['entity_type'] ?? 'generic'));
         $title = trim((string) ($data['title'] ?? ''));
         $currentDescription = trim((string) ($data['current_description'] ?? ''));
@@ -48,6 +46,16 @@ class AiDescriptionService
         $tone = trim((string) ($data['tone'] ?? 'profissional, natural, convidativo e objetivo'));
         $context = $this->normalizeContext($data['context'] ?? []);
         $mode = $currentDescription !== '' ? 'improve' : 'generate';
+
+        if (! $this->isConfigured()) {
+            return $this->generateLocalFallback(
+                $entityType,
+                $title,
+                $currentDescription,
+                $context,
+                $mode,
+            );
+        }
 
         $input = $this->buildInput(
             entityType: $entityType,
@@ -83,12 +91,12 @@ class AiDescriptionService
 
             $decoded = json_decode($response->getBody()->getContents(), true);
             if (!is_array($decoded)) {
-                throw new RuntimeException('O provedor de IA retornou uma resposta inválida.');
+                return $this->generateLocalFallback($entityType, $title, $currentDescription, $context, $mode);
             }
 
             $description = $this->extractOutputText($decoded);
             if ($description === '') {
-                throw new RuntimeException('A IA não retornou uma descrição utilizável.');
+                return $this->generateLocalFallback($entityType, $title, $currentDescription, $context, $mode);
             }
 
             return [
@@ -102,19 +110,146 @@ class AiDescriptionService
                 ],
             ];
         } catch (GuzzleException $exception) {
-            Log::warning('Falha ao gerar descrição com IA.', [
-                'provider' => 'openai',
-                'model' => $this->model,
-                'entity_type' => $entityType,
-                'message' => $exception->getMessage(),
-            ]);
+            try {
+                Log::warning('Falha ao gerar descrição com IA; usando fallback local.', [
+                    'provider' => 'openai',
+                    'model' => $this->model,
+                    'entity_type' => $entityType,
+                    'message' => $exception->getMessage(),
+                ]);
+            } catch (\Throwable) {
+                // Falha de log não pode transformar indisponibilidade da IA em erro 500.
+            }
 
-            throw new RuntimeException(
-                'Não foi possível gerar a descrição com IA agora. Tente novamente em instantes.',
-                0,
-                $exception,
-            );
+            return $this->generateLocalFallback($entityType, $title, $currentDescription, $context, $mode);
         }
+    }
+
+    private function generateLocalFallback(
+        string $entityType,
+        string $title,
+        string $currentDescription,
+        array $context,
+        string $mode,
+    ): array {
+        $cleanCurrent = $this->cleanText($currentDescription);
+        $name = $this->cleanText($title);
+        $venue = $this->contextValue($context, ['venue', 'local', 'establishment', 'estabelecimento']);
+        if ($name !== '' && mb_strtolower($venue) === mb_strtolower($name)) {
+            $venue = '';
+        }
+        $city = $this->contextValue($context, ['city', 'cidade']);
+        $uf = strtoupper($this->contextValue($context, ['uf', 'state', 'estado']));
+        $start = $this->contextValue($context, ['start_date', 'inicio', 'início', 'date', 'data']);
+        $category = $this->contextValue($context, ['category', 'categoria', 'type', 'tipo']);
+
+        $location = trim(implode(' - ', array_filter([$city, $uf])));
+        $where = $venue !== '' && $location !== ''
+            ? $venue . ', em ' . $location
+            : ($venue !== '' ? $venue : $location);
+
+        $sentences = [];
+
+        if ($cleanCurrent !== '') {
+            $sentences[] = $cleanCurrent;
+        }
+
+        if ($entityType === 'event') {
+            if ($cleanCurrent === '' && $name !== '') {
+                $intro = $name;
+                if ($where !== '') {
+                    $intro .= ' acontece em ' . $where;
+                }
+                if ($start !== '') {
+                    $intro .= ($where !== '' ? ', com início em ' : ' acontece em ') . $start;
+                }
+                $sentences[] = rtrim($intro, '. ') . '.';
+            }
+
+            $sentences[] = $cleanCurrent === ''
+                ? 'Confira as informações disponíveis, programe sua participação e acompanhe as atualizações do evento.'
+                : 'Confira os detalhes disponíveis e organize sua participação com antecedência.';
+        } elseif (in_array($entityType, ['production', 'producao', 'produção'], true)) {
+            if ($cleanCurrent === '' && $name !== '') {
+                $intro = 'Conheça ' . $name;
+                if ($where !== '') {
+                    $intro .= ', com atuação em ' . $where;
+                }
+                $sentences[] = rtrim($intro, '. ') . '.';
+            }
+            $sentences[] = 'Acompanhe os conteúdos, eventos e informações disponibilizados por esta produção.';
+        } elseif (in_array($entityType, ['product', 'item', 'service', 'produto', 'servico', 'serviço'], true)) {
+            if ($cleanCurrent === '' && $name !== '') {
+                $intro = $name;
+                if ($category !== '') {
+                    $intro .= ' é uma opção da categoria ' . $category;
+                } else {
+                    $intro .= ' está disponível para consulta e compra';
+                }
+                $sentences[] = rtrim($intro, '. ') . '.';
+            }
+            $sentences[] = 'Consulte as informações apresentadas antes de concluir o pedido.';
+        } elseif ($cleanCurrent === '' && $name !== '') {
+            $sentences[] = $name . '.';
+        }
+
+        $description = $this->normalizeParagraphs(implode(' ', array_filter($sentences)));
+        if ($description === '') {
+            $description = 'Confira as informações disponíveis e acompanhe as atualizações desta publicação.';
+        }
+
+        return [
+            'description' => mb_substr($description, 0, 5000),
+            'mode' => $mode,
+            'model' => 'petertecnet-local-composer-v1',
+            'usage' => [
+                'input_tokens' => 0,
+                'output_tokens' => 0,
+                'total_tokens' => 0,
+            ],
+        ];
+    }
+
+    private function contextValue(array $context, array $keys): string
+    {
+        $normalized = [];
+        foreach ($context as $key => $value) {
+            $normalized[mb_strtolower(trim((string) $key))] = $this->cleanText((string) $value);
+        }
+
+        foreach ($keys as $key) {
+            $value = $normalized[mb_strtolower($key)] ?? '';
+            if ($value !== '') {
+                return $value;
+            }
+        }
+
+        return '';
+    }
+
+    private function cleanText(string $value): string
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+
+        $value = preg_replace('/\*\*(.*?)\*\*/su', '$1', $value) ?? $value;
+        $value = preg_replace('/__(.*?)__/su', '$1', $value) ?? $value;
+        $value = preg_replace('/(?<!\*)\*(?!\*)(.*?)\*(?!\*)/su', '$1', $value) ?? $value;
+        $value = preg_replace('/^\s*[-•]\s+/mu', '', $value) ?? $value;
+        $value = preg_replace('/[\t ]+/u', ' ', $value) ?? $value;
+        $value = preg_replace('/\s*\n\s*/u', ' ', $value) ?? $value;
+
+        return trim($value);
+    }
+
+    private function normalizeParagraphs(string $value): string
+    {
+        $value = preg_replace('/\s+/u', ' ', trim($value)) ?? trim($value);
+        $value = preg_replace('/\s+([,.!?;:])/u', '$1', $value) ?? $value;
+
+        return trim($value);
     }
 
     private function instructions(): string
