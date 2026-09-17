@@ -32,6 +32,7 @@ final class PayoutController extends Controller
 
         return response()->json([
             ...$overview,
+            // Backward-compatible aliases for older clients.
             'provider' => $this->provider->name(),
             'current_settlement_mode' => 'platform_collection',
             'manual_payout_requests_enabled' => true,
@@ -52,17 +53,8 @@ final class PayoutController extends Controller
         $organization = $this->ownedOrganization($request, $organizationId);
         $data = $request->validate([
             'amount' => 'required|numeric|min:0.01|max:999999999.99',
-            'idempotency_key' => 'nullable|string|min:16|max:128',
         ]);
         $amount = round((float) $data['amount'], 2);
-        $idempotencyKey = trim((string) ($request->header('Idempotency-Key') ?: ($data['idempotency_key'] ?? '')));
-
-        if ($idempotencyKey === '' || strlen($idempotencyKey) < 16 || strlen($idempotencyKey) > 128) {
-            return response()->json([
-                'message' => 'Informe uma Idempotency-Key estável (16 a 128 caracteres) para solicitar o repasse.',
-                'errors' => ['idempotency_key' => ['A chave de idempotência é obrigatória para repasses Pix.']],
-            ], 422);
-        }
 
         $overview = $this->payouts->overview($organization, $request->user());
         $eligible = (bool) ($overview['ready_for_payout'] ?? false)
@@ -70,26 +62,34 @@ final class PayoutController extends Controller
 
         if ($eligible) {
             if (! $this->provider->isConfigured()) {
-                return response()->json(['message' => 'O serviço de repasses Pix ainda não está configurado para operação.'], 503);
+                return response()->json([
+                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
+                ], 503);
             }
 
             try {
                 if ($this->provider->availableBalance() + 0.00001 < $amount) {
-                    return response()->json(['message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.'], 503);
+                    return response()->json([
+                        'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
+                    ], 503);
                 }
             } catch (RuntimeException $exception) {
                 report($exception);
-                return response()->json(['message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.'], 503);
+
+                return response()->json([
+                    'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
+                ], 503);
             }
         }
 
         try {
             return response()->json(
-                $this->payouts->requestPayout($organization, $request->user(), $amount, $idempotencyKey),
+                $this->payouts->requestPayout($organization, $request->user(), $amount),
                 201
             );
         } catch (RuntimeException $exception) {
             report($exception);
+
             return response()->json(['message' => $exception->getMessage()], 502);
         }
     }
@@ -102,6 +102,10 @@ final class PayoutController extends Controller
 
     private function ownedOrganization(Request $request, int $organizationId)
     {
-        return $this->payouts->ownedProduction($this->context->id(), $organizationId, $request->user());
+        return $this->payouts->ownedProduction(
+            $this->context->id(),
+            $organizationId,
+            $request->user()
+        );
     }
 }
