@@ -40,9 +40,10 @@ class AsaasWithdrawalAuthorizationService
             $payout = DB::table('financial_payouts')
                 ->where('provider', 'asaas')
                 ->where('reference', $externalReference)
+                ->whereNull('provider_transfer_id')
                 ->first();
 
-            if ($payout && empty($payout->provider_transfer_id)) {
+            if ($payout) {
                 DB::table('financial_payouts')->where('id', $payout->id)->update([
                     'provider_transfer_id' => $transferId,
                     'updated_at' => now(),
