@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\Creative\Http\Controllers\CatalogImageController;
 use App\Domain\Creative\Http\Controllers\CreativeGenerationController;
 use Illuminate\Support\Facades\Route;
 
@@ -10,5 +11,8 @@ Route::prefix('v1/apps/{application}')
             ->middleware('throttle:30,1');
 
         Route::post('/creative/images', [CreativeGenerationController::class, 'image'])
+            ->middleware('throttle:6,1');
+
+        Route::post('/creative/catalog/image', [CatalogImageController::class, 'image'])
             ->middleware('throttle:6,1');
     });
