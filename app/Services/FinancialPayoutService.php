@@ -386,11 +386,26 @@ class FinancialPayoutService
 
         if ($eventId === '' || ($transferId === '' && $externalReference === '')) return;
 
+        $safePayload = [
+            'id' => $eventId,
+            'event' => $eventType,
+            'transfer' => [
+                'id' => $transferId,
+                'status' => data_get($payload, 'transfer.status'),
+                'operationType' => data_get($payload, 'transfer.operationType'),
+                'value' => data_get($payload, 'transfer.value'),
+                'externalReference' => $externalReference,
+                'failReason' => data_get($payload, 'transfer.failReason'),
+                'transactionReceiptUrl' => data_get($payload, 'transfer.transactionReceiptUrl'),
+                'effectiveDate' => data_get($payload, 'transfer.effectiveDate'),
+            ],
+        ];
+
         DB::table('financial_webhook_events')->insertOrIgnore([
             'provider' => 'asaas',
             'event_id' => $eventId,
             'event_type' => $eventType,
-            'payload' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'payload' => json_encode($safePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
