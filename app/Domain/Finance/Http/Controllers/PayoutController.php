@@ -4,11 +4,9 @@ namespace App\Domain\Finance\Http\Controllers;
 
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Http\Controllers\Controller;
-use App\Models\Production;
 use App\Services\FinancialPayoutService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 /**
@@ -98,33 +96,16 @@ final class PayoutController extends Controller
 
     public function cancel(Request $request, int $organizationId, int $payoutId)
     {
-        $this->ownedOrganization($request, $organizationId);
-
-        $payout = DB::table('financial_payouts')
-            ->where('source_type', 'production')
-            ->where('source_id', $organizationId)
-            ->where('id', $payoutId)
-            ->first();
-
-        abort_unless($payout, 404, 'Repasse não encontrado.');
-
-        // PIX is submitted immediately after the local reservation. Cancelling a
-        // bank transfer locally after submission could release balance and cause a
-        // duplicate payment. Provider cancellation/failure is therefore reconciled
-        // only from authenticated provider events.
-        abort(422, 'Este repasse Pix não pode ser cancelado manualmente após a solicitação. Aguarde a confirmação ou a conciliação do provedor.');
+        $organization = $this->ownedOrganization($request, $organizationId);
+        $this->payouts->rejectManualCancellation($organization, $payoutId);
     }
 
-    private function ownedOrganization(Request $request, int $organizationId): Production
+    private function ownedOrganization(Request $request, int $organizationId)
     {
-        $organization = Production::query()
-            ->where('app_id', $this->context->id())
-            ->findOrFail($organizationId);
-
-        $user = $request->user();
-        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
-        abort_unless($user && ($admin || (int) $organization->user_id === (int) $user->id), 403);
-
-        return $organization;
+        return $this->payouts->ownedProduction(
+            $this->context->id(),
+            $organizationId,
+            $request->user()
+        );
     }
 }
