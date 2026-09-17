@@ -429,12 +429,17 @@ class FinancialPayoutService
             };
 
             // Never let an out-of-order intermediate event downgrade a terminal
-            // payout. TRANSFER_DONE may promote failed/cancelled if it is the final
-            // provider state received later.
-            if ($payout->status === 'paid' && $status !== 'paid') {
-                $status = 'paid';
-            } elseif (in_array($payout->status, ['failed', 'cancelled'], true) && $status === 'processing') {
-                $status = $payout->status;
+            // payout or overwrite its final metadata. TRANSFER_DONE may promote
+            // failed/cancelled if Asaas later reports completion as the final state.
+            $staleForTerminal = ($payout->status === 'paid' && $status !== 'paid')
+                || (in_array($payout->status, ['failed', 'cancelled'], true) && $status === 'processing');
+
+            if ($staleForTerminal) {
+                DB::table('financial_webhook_events')
+                    ->where('provider', 'asaas')
+                    ->where('event_id', $eventId)
+                    ->update(['processed_at' => now(), 'updated_at' => now()]);
+                return;
             }
 
             $updates = [
