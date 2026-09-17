@@ -19,6 +19,31 @@ class FinancialPayoutService
         private AsaasPayoutService $asaas,
     ) {}
 
+    public function ownedProduction(int $applicationId, int $organizationId, User $user): Production
+    {
+        $production = Production::query()
+            ->where('app_id', $applicationId)
+            ->findOrFail($organizationId);
+
+        $admin = method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        abort_unless($admin || (int) $production->user_id === (int) $user->id, 403);
+
+        return $production;
+    }
+
+    public function rejectManualCancellation(Production $production, int $payoutId): never
+    {
+        $payout = DB::table('financial_payouts')
+            ->where('source_type', 'production')
+            ->where('source_id', $production->id)
+            ->where('id', $payoutId)
+            ->first();
+
+        abort_unless($payout, 404, 'Repasse não encontrado.');
+
+        abort(422, 'Este repasse Pix não pode ser cancelado manualmente após a solicitação. Aguarde a confirmação ou a conciliação do provedor.');
+    }
+
     public function overview(Production $production, User $user): array
     {
         $beneficiary = DB::table('financial_beneficiaries')->where('user_id', $user->id)->first();
