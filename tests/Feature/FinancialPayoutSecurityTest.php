@@ -274,6 +274,8 @@ class FinancialPayoutSecurityTest extends TestCase
                 'status' => 'DONE',
                 'externalReference' => $reference,
                 'transactionReceiptUrl' => 'https://receipts.example.test/transfer-race-1',
+                'pixAddressKey' => '52998224725',
+                'bankAccount' => ['account' => '123456', 'agency' => '0001'],
             ],
         ];
 
@@ -286,6 +288,12 @@ class FinancialPayoutSecurityTest extends TestCase
             'provider_transfer_id' => 'transfer-race-1',
             'status' => 'paid',
         ]);
+
+        $storedWebhook = (string) DB::table('financial_webhook_events')
+            ->where('event_id', 'evt-race-done')
+            ->value('payload');
+        $this->assertStringNotContainsString('52998224725', $storedWebhook);
+        $this->assertStringNotContainsString('123456', $storedWebhook);
 
         $overview = $this->withHeaders($this->headersFor($producer))
             ->getJson("/api/v1/apps/cutinapp/organizations/{$productionId}/finance")
