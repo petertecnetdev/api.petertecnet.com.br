@@ -10,6 +10,7 @@ return [
         'quality_model' => env('CLOUDFLARE_AI_IMAGE_QUALITY_MODEL'),
         'event_preview_model' => env('CLOUDFLARE_AI_EVENT_PREVIEW_MODEL', '@cf/black-forest-labs/flux-2-klein-4b'),
         'event_quality_model' => env('CLOUDFLARE_AI_EVENT_IMAGE_MODEL', '@cf/black-forest-labs/flux-2-dev'),
+        'text_model' => env('CLOUDFLARE_AI_TEXT_MODEL', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'),
         'timeout' => (int) env('CLOUDFLARE_AI_TIMEOUT', 45),
         'steps' => min(8, max(1, (int) env('CLOUDFLARE_AI_IMAGE_STEPS', 4))),
         'quality_steps' => min(40, max(1, (int) env('CLOUDFLARE_AI_IMAGE_QUALITY_STEPS', 12))),

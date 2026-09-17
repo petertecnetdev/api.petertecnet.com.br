@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Event;
+use App\Models\Production;
 use App\Services\AiDescriptionService;
+use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -11,8 +14,10 @@ use RuntimeException;
 
 class AiContentController extends Controller
 {
-    public function __construct(private readonly AiDescriptionService $descriptions)
-    {
+    public function __construct(
+        private readonly AiDescriptionService $descriptions,
+        private readonly ApplicationContext $applicationContext,
+    ) {
     }
 
     public function description(Request $request): JsonResponse
@@ -40,7 +45,7 @@ class AiContentController extends Controller
             ]);
         }
 
-        $data['context'] = $context;
+        $data['context'] = $this->enrichContext($data['entity_type'], $context, $request);
 
         try {
             $result = $this->descriptions->generateDescription(
@@ -77,4 +82,112 @@ class AiContentController extends Controller
             ], 503);
         }
     }
+
+    private function enrichContext(string $entityType, array $context, Request $request): array
+    {
+        if ($entityType !== 'event') {
+            return $context;
+        }
+
+        $user = $request->user('api') ?? $request->user();
+        if (! $user) {
+            return $context;
+        }
+
+        $eventId = (int) ($context['entityId'] ?? $context['eventId'] ?? $context['event_id'] ?? 0);
+        $event = null;
+        $production = null;
+
+        if ($eventId > 0) {
+            $event = Event::query()
+                ->where('app_id', $this->applicationContext->id())
+                ->with('production:id,app_id,user_id,name')
+                ->find($eventId);
+            $production = $event?->production;
+        }
+
+        if (! $production) {
+            $productionId = (int) ($context['production_id'] ?? $context['productionId'] ?? 0);
+            if ($productionId > 0) {
+                $production = Production::query()
+                    ->where('app_id', $this->applicationContext->id())
+                    ->find($productionId);
+            }
+        }
+
+        if (! $production) {
+            return $context;
+        }
+
+        $isOwner = (int) $production->user_id === (int) $user->getAuthIdentifier();
+        $isAdmin = method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        $isPlatformAdmin = strtolower(trim((string) $user->email)) === 'petertecnet@gmail.com';
+
+        if (! $isOwner && ! $isAdmin && ! $isPlatformAdmin) {
+            return $context;
+        }
+
+        if (! isset($context['production_name']) && $production->name) {
+            $context['production_name'] = mb_substr((string) $production->name, 0, 500);
+        }
+
+        if ($event) {
+            $context['event_start'] ??= $event->start_date?->format('Y-m-d H:i:s');
+            $context['event_end'] ??= $event->end_date?->format('Y-m-d H:i:s');
+            $context['venue'] ??= $event->venue ?: null;
+            $context['city'] ??= $event->city ?: null;
+            $context['uf'] ??= $event->uf ?: null;
+
+            $ticketOptions = $event->tickets()
+                ->where('quantity', '>', 0)
+                ->orderBy('price')
+                ->limit(4)
+                ->get(['name', 'price'])
+                ->map(function ($ticket) {
+                    $price = (float) $ticket->price;
+                    $priceLabel = $price <= 0
+                        ? 'gratuito'
+                        : 'R$ ' . number_format($price, 2, ',', '.');
+                    return trim((string) $ticket->name) . ' — ' . $priceLabel;
+                })
+                ->filter()
+                ->implode('; ');
+
+            if ($ticketOptions !== '') {
+                $context['ticket_options'] = mb_substr($ticketOptions, 0, 500);
+            }
+        }
+
+        $referencesQuery = Event::query()
+            ->where('app_id', $this->applicationContext->id())
+            ->where('production_id', $production->id)
+            ->whereNotNull('description')
+            ->where('description', '!=', '');
+
+        if ($event) {
+            $referencesQuery->whereKeyNot($event->id);
+        }
+
+        $references = $referencesQuery
+            ->orderByDesc('updated_at')
+            ->limit(6)
+            ->get(['id', 'title', 'description', 'start_date']);
+
+        foreach ($references as $index => $reference) {
+            $referenceText = trim((string) $reference->description);
+            if ($referenceText === '') {
+                continue;
+            }
+
+            $context['historical_style_' . ($index + 1)] = mb_substr(
+                'Título anterior: ' . trim((string) $reference->title) . "\n" .
+                'Descrição anterior: ' . $referenceText,
+                0,
+                500,
+            );
+        }
+
+        return array_slice($context, 0, 30, true);
+    }
+
 }
