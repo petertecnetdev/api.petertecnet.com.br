@@ -32,6 +32,25 @@ class AsaasWithdrawalAuthorizationService
             ->where('provider_transfer_id', $transferId)
             ->first();
 
+        // Asaas can request withdrawal authorization while the original
+        // POST /transfers response is still being persisted. In that narrow race,
+        // use the external reference generated before the provider call and bind
+        // the transfer id locally before authorizing it.
+        if (! $payout && $externalReference !== '') {
+            $payout = DB::table('financial_payouts')
+                ->where('provider', 'asaas')
+                ->where('reference', $externalReference)
+                ->first();
+
+            if ($payout && empty($payout->provider_transfer_id)) {
+                DB::table('financial_payouts')->where('id', $payout->id)->update([
+                    'provider_transfer_id' => $transferId,
+                    'updated_at' => now(),
+                ]);
+                $payout->provider_transfer_id = $transferId;
+            }
+        }
+
         if (!$payout) {
             Log::warning('Asaas solicitou autorização para saque desconhecido.', [
                 'provider_transfer_id' => $transferId,
