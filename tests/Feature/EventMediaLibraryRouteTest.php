@@ -13,5 +13,6 @@ final class EventMediaLibraryRouteTest extends TestCase
         $this->assertTrue($routes->contains(fn ($route) => $route->uri() === 'api/v1/apps/{application}/event-media'));
         $this->assertTrue($routes->contains(fn ($route) => $route->uri() === 'api/v1/apps/{application}/event-media/{eventId}'));
         $this->assertTrue($routes->contains(fn ($route) => $route->uri() === 'api/v1/apps/{application}/event-media/{eventId}/download'));
+        $this->assertTrue($routes->contains(fn ($route) => $route->uri() === 'api/v1/apps/{application}/event-media/{eventId}/soundtrack/{itemId}/download'));
     }
 }
