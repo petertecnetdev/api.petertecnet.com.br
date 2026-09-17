@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Finance\Exceptions\PayoutProviderException;
 use App\Models\Production;
 use App\Models\User;
 use Illuminate\Support\Facades\Crypt;
@@ -275,16 +276,46 @@ class FinancialPayoutService
                 ]),
                 'updated_at' => now(),
             ]);
-        } catch (Throwable $e) {
+        } catch (PayoutProviderException $e) {
             report($e);
-            // A chamada pode ter falhado depois de o PSP aceitar a transferência.
-            // Não liberamos o saldo automaticamente: reconciliação/manual ou webhook
-            // deve resolver este estado sem risco de um Pix duplicado.
-            DB::table('financial_payouts')->where('id', $payout->id)->update([
-                'status' => 'provider_unknown',
-                'failed_at' => now(),
+
+            $status = $e->outcomeUnknown ? 'provider_unknown' : 'failed';
+            $updates = [
+                'status' => $status,
                 'metadata' => $this->mergeMetadata($payout->metadata, [
                     'provider_error' => Str::limit($e->getMessage(), 300),
+                    'provider_http_status' => $e->providerStatus,
+                    'provider_outcome_unknown' => $e->outcomeUnknown,
+                ]),
+                'updated_at' => now(),
+            ];
+            if (! $e->outcomeUnknown) $updates['failed_at'] = now();
+
+            DB::table('financial_payouts')->where('id', $payout->id)->update($updates);
+
+            if ($e->outcomeUnknown) {
+                throw new RuntimeException(
+                    'Não foi possível confirmar o envio do Pix. O valor continua reservado para evitar pagamento duplicado.',
+                    0,
+                    $e
+                );
+            }
+
+            throw new RuntimeException(
+                'O provedor recusou o repasse Pix. O saldo foi liberado novamente. ' . $e->getMessage(),
+                0,
+                $e
+            );
+        } catch (Throwable $e) {
+            report($e);
+            // Uma falha inesperada depois do início da chamada é tratada como
+            // resultado desconhecido. O valor permanece reservado até webhook ou
+            // conciliação confirmar o estado real e impedir um Pix duplicado.
+            DB::table('financial_payouts')->where('id', $payout->id)->update([
+                'status' => 'provider_unknown',
+                'metadata' => $this->mergeMetadata($payout->metadata, [
+                    'provider_error' => Str::limit($e->getMessage(), 300),
+                    'provider_outcome_unknown' => true,
                 ]),
                 'updated_at' => now(),
             ]);
