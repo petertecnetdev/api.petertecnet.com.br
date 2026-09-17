@@ -1,5 +1,6 @@
 <?php
 
+use App\Domain\People\Http\Controllers\ArtistInvitationController;
 use App\Domain\People\Http\Controllers\ArtistWorkflowController;
 use App\Domain\People\Http\Controllers\EventArtistManagementController;
 use Illuminate\Support\Facades\Route;
@@ -18,10 +19,10 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/events/{eventId}/artist-candidates', [ArtistWorkflowController::class, 'candidates'])
                     ->whereNumber('eventId')
                     ->middleware('throttle:120,1');
-                Route::post('/events/{eventId}/artists/resolve', [ArtistWorkflowController::class, 'resolveAndInvite'])
+                Route::post('/events/{eventId}/artists/resolve', [ArtistInvitationController::class, 'resolve'])
                     ->whereNumber('eventId')
                     ->middleware('throttle:60,1');
-                Route::post('/artist-invitations/claim-pending', [ArtistWorkflowController::class, 'claimPending'])
+                Route::post('/artist-invitations/claim-pending', [ArtistInvitationController::class, 'claimPending'])
                     ->middleware('throttle:30,1');
                 Route::put('/events/{eventId}/artists/{artistId}/response', [ArtistWorkflowController::class, 'respond'])
                     ->whereNumber('eventId')
