@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\People\Http\Controllers\ArtistWorkflowController;
+use App\Domain\People\Http\Controllers\EventArtistManagementController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('cutinapp')
@@ -18,6 +19,8 @@ Route::prefix('cutinapp')
         Route::post('/events/{eventId}/artists/resolve', [ArtistWorkflowController::class, 'resolveAndInvite'])->whereNumber('eventId')->middleware('throttle:60,1');
         Route::put('/events/{eventId}/artists/{artistId}/response', [ArtistWorkflowController::class, 'respond'])->whereNumber('eventId')->whereNumber('artistId');
         Route::post('/events/{eventId}/artists/{artistId}/check-in', [ArtistWorkflowController::class, 'checkIn'])->whereNumber('eventId')->whereNumber('artistId');
+        Route::patch('/events/{eventId}/artists/{artistId}/participation', [EventArtistManagementController::class, 'update'])->whereNumber('eventId')->whereNumber('artistId');
+        Route::put('/events/{eventId}/artists/reorder', [EventArtistManagementController::class, 'reorder'])->whereNumber('eventId');
 
         Route::post('/artists/{artistId}/favorite', [ArtistWorkflowController::class, 'favorite'])->whereNumber('artistId');
         Route::delete('/artists/{artistId}/favorite', [ArtistWorkflowController::class, 'favorite'])->whereNumber('artistId');
