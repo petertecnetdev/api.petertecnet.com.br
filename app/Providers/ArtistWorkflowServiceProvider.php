@@ -9,8 +9,8 @@ final class ArtistWorkflowServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
-        Route::middleware('api')
-            ->prefix('api')
+        Route::prefix('api/v1/apps/{application}')
+            ->middleware(['api', 'app.context'])
             ->group(base_path('routes/artist_workflow.php'));
     }
 }
