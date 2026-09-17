@@ -2,7 +2,7 @@
 
 namespace App\Domain\Creative\Http\Controllers;
 
-use App\Domain\Creative\Services\CloudflareImageGenerator;
+use App\Domain\Creative\Services\CatalogImageService;
 use App\Http\Controllers\Controller;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
@@ -12,7 +12,7 @@ final class CatalogImageController extends Controller
 {
     public function __construct(
         private readonly ApplicationContext $context,
-        private readonly CloudflareImageGenerator $generator,
+        private readonly CatalogImageService $catalogImages,
     ) {}
 
     public function image(Request $request)
@@ -28,16 +28,10 @@ final class CatalogImageController extends Controller
         ]);
 
         try {
-            $result = $this->generator->generate(
-                $this->buildPrompt($data),
+            $result = $this->catalogImages->generate(
+                $data,
                 (int) $request->user()->id,
                 $this->context->id(),
-                [
-                    'model' => config('creative.cloudflare.catalog_image_model'),
-                    'steps' => config('creative.cloudflare.catalog_image_steps', 4),
-                    'width' => 1024,
-                    'height' => 1024,
-                ],
             );
         } catch (RuntimeException $exception) {
             report($exception);
@@ -60,24 +54,5 @@ final class CatalogImageController extends Controller
                 'plan' => 'guarded',
             ],
         ]);
-    }
-
-    private function buildPrompt(array $data): string
-    {
-        return mb_substr(implode('. ', array_filter([
-            'Create a premium square catalog image for a real commercial item or service',
-            'Subject: '.$data['subject'],
-            ! empty($data['item_type']) ? 'Item type: '.$data['item_type'] : null,
-            ! empty($data['description']) ? 'Known description, use only these factual details: '.trim((string) $data['description']) : null,
-            ! empty($data['category']) ? 'Category: '.$data['category'] : null,
-            ! empty($data['subcategory']) ? 'Subcategory: '.$data['subcategory'] : null,
-            ! empty($data['brand']) ? 'Brand context: '.$data['brand'] : null,
-            ! empty($data['catalog_name']) ? 'Merchant or catalog context: '.$data['catalog_name'] : null,
-            'Use a single clear focal subject, polished commercial photography, realistic materials and lighting, clean contemporary background, natural depth and believable proportions',
-            'When the subject is food or drink, make it appetizing and realistic without inventing ingredients that were not supplied',
-            'When the subject is a service, communicate the service visually without making a person the dominant subject unless essential',
-            'Do not invent specific ingredients, accessories, packaging claims, certifications, promotions or branded elements that were not supplied',
-            'IMPORTANT: image only. Do not render words, letters, prices, labels, logos, watermarks, UI, borders or readable text',
-        ])), 0, 2048);
     }
 }
