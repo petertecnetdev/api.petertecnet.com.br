@@ -21,7 +21,7 @@ final class ArtistSlugCompatibilityTest extends TestCase
         $method = substr($source, $methodStart, $methodEnd - $methodStart);
 
         $this->assertStringContainsString(
-            "Str::slug($stageName) ?: 'artista'",
+            'Str::slug($stageName) ?: \'artista\'',
             $method,
             'The historical empty-slug fallback is a compatibility contract and must remain artista.',
         );
@@ -31,7 +31,7 @@ final class ArtistSlugCompatibilityTest extends TestCase
             'Soft-deleted artists must keep reserving their slug so restore cannot collide.',
         );
         $this->assertStringContainsString(
-            "->where('app_id', $this->context->id())",
+            '->where(\'app_id\', $this->context->id())',
             $method,
             'Slug uniqueness must remain scoped to the active application.',
         );
