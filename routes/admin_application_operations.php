@@ -4,6 +4,9 @@ use App\Domain\Creative\Http\Controllers\AdminCreativePromptController;
 use App\Http\Controllers\Admin\ApplicationOperationsController;
 use Illuminate\Support\Facades\Route;
 
+require base_path('routes/application_admin.php');
+require base_path('routes/communications.php');
+
 Route::prefix('admin/ecosystem')
     ->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])
     ->group(function () {
