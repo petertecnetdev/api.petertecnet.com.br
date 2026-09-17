@@ -41,17 +41,27 @@ class FinancialPayoutService
             ->latest('id')
             ->limit(50)
             ->get()
-            ->map(fn ($row) => [
-                'id' => $row->id,
-                'reference' => $row->reference,
-                'provider' => $row->provider,
-                'status' => $row->status,
-                'amount' => (float) $row->amount,
-                'risk_status' => $row->risk_status,
-                'requested_at' => $row->requested_at,
-                'paid_at' => $row->paid_at,
-                'failed_at' => $row->failed_at,
-            ]);
+            ->map(function ($row) {
+                $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+                if (! is_array($metadata)) $metadata = [];
+
+                return [
+                    'id' => $row->id,
+                    'reference' => $row->reference,
+                    'provider' => $row->provider,
+                    'provider_transfer_id' => $row->provider_transfer_id,
+                    'status' => $row->status,
+                    'amount' => (float) $row->amount,
+                    'risk_status' => $row->risk_status,
+                    'requested_at' => $row->requested_at,
+                    'processing_at' => $row->processing_at,
+                    'paid_at' => $row->paid_at,
+                    'failed_at' => $row->failed_at,
+                    'cancelled_at' => $row->cancelled_at,
+                    'failure_reason' => $metadata['provider_fail_reason'] ?? $metadata['provider_error'] ?? null,
+                    'receipt_url' => $metadata['transaction_receipt_url'] ?? null,
+                ];
+            });
 
         $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
         $appSlug = trim((string) $production->app_slug);
@@ -341,9 +351,11 @@ class FinancialPayoutService
         $eventId = trim((string) ($payload['id'] ?? ''));
         $eventType = strtoupper(trim((string) ($payload['event'] ?? '')));
         $transferId = trim((string) data_get($payload, 'transfer.id', ''));
-        if ($eventId === '' || $transferId === '') return;
+        $externalReference = trim((string) data_get($payload, 'transfer.externalReference', ''));
 
-        $inserted = DB::table('financial_webhook_events')->insertOrIgnore([
+        if ($eventId === '' || ($transferId === '' && $externalReference === '')) return;
+
+        DB::table('financial_webhook_events')->insertOrIgnore([
             'provider' => 'asaas',
             'event_id' => $eventId,
             'event_type' => $eventType,
@@ -351,12 +363,30 @@ class FinancialPayoutService
             'created_at' => now(),
             'updated_at' => now(),
         ]);
-        if (!$inserted) return;
 
-        DB::transaction(function () use ($payload, $eventId, $eventType, $transferId) {
-            $payout = DB::table('financial_payouts')->where('provider_transfer_id', $transferId)->lockForUpdate()->first();
-            if (!$payout) {
-                DB::table('financial_webhook_events')->where('provider', 'asaas')->where('event_id', $eventId)->update(['processed_at' => now(), 'updated_at' => now()]);
+        // Duplicate deliveries are intentionally replayable while processed_at is
+        // null. This closes the race where Asaas can notify us before the transfer
+        // id has been persisted locally after POST /transfers returns.
+        $receipt = DB::table('financial_webhook_events')
+            ->where('provider', 'asaas')
+            ->where('event_id', $eventId)
+            ->first();
+        if (! $receipt || $receipt->processed_at) return;
+
+        DB::transaction(function () use ($payload, $eventId, $eventType, $transferId, $externalReference) {
+            $query = DB::table('financial_payouts')->where('provider', 'asaas');
+
+            $payout = null;
+            if ($transferId !== '') {
+                $payout = (clone $query)->where('provider_transfer_id', $transferId)->lockForUpdate()->first();
+            }
+            if (! $payout && $externalReference !== '') {
+                $payout = (clone $query)->where('reference', $externalReference)->lockForUpdate()->first();
+            }
+
+            if (! $payout) {
+                // Keep the receipt pending. A redelivery or admin reconciliation
+                // can process it after the local payout row becomes linkable.
                 return;
             }
 
@@ -367,21 +397,40 @@ class FinancialPayoutService
                 default => 'processing',
             };
 
+            // Never let an out-of-order intermediate event downgrade a terminal
+            // payout. TRANSFER_DONE may promote failed/cancelled if it is the final
+            // provider state received later.
+            if ($payout->status === 'paid' && $status !== 'paid') {
+                $status = 'paid';
+            } elseif (in_array($payout->status, ['failed', 'cancelled'], true) && $status === 'processing') {
+                $status = $payout->status;
+            }
+
             $updates = [
                 'status' => $status,
                 'metadata' => $this->mergeMetadata($payout->metadata, [
                     'last_provider_event' => $eventType,
                     'provider_status' => data_get($payload, 'transfer.status'),
                     'provider_fail_reason' => data_get($payload, 'transfer.failReason'),
+                    'transaction_receipt_url' => data_get($payload, 'transfer.transactionReceiptUrl'),
+                    'effective_date' => data_get($payload, 'transfer.effectiveDate'),
                 ]),
                 'updated_at' => now(),
             ];
-            if ($status === 'paid') $updates['paid_at'] = now();
-            if ($status === 'failed') $updates['failed_at'] = now();
-            if ($status === 'cancelled') $updates['cancelled_at'] = now();
+
+            if ($transferId !== '' && empty($payout->provider_transfer_id)) {
+                $updates['provider_transfer_id'] = $transferId;
+            }
+            if ($status === 'processing' && ! $payout->processing_at) $updates['processing_at'] = now();
+            if ($status === 'paid' && ! $payout->paid_at) $updates['paid_at'] = now();
+            if ($status === 'failed' && ! $payout->failed_at) $updates['failed_at'] = now();
+            if ($status === 'cancelled' && ! $payout->cancelled_at) $updates['cancelled_at'] = now();
 
             DB::table('financial_payouts')->where('id', $payout->id)->update($updates);
-            DB::table('financial_webhook_events')->where('provider', 'asaas')->where('event_id', $eventId)->update(['processed_at' => now(), 'updated_at' => now()]);
+            DB::table('financial_webhook_events')
+                ->where('provider', 'asaas')
+                ->where('event_id', $eventId)
+                ->update(['processed_at' => now(), 'updated_at' => now()]);
         });
     }
 
