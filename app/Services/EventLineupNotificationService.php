@@ -12,7 +12,9 @@ class EventLineupNotificationService
     {
         if(!$event->is_published || $event->is_cancelled || $event->is_private) return;
         $event->loadMissing('artists');
-        foreach($event->artists->where('app_id',(int)$event->app_id)->where('is_published',true) as $artist){
+        foreach($event->artists->where('app_id',(int)$event->app_id)->where('is_published',true)->where('is_active',true) as $artist){
+            $status=$artist->pivot?->status;
+            if($status!==null && $status!=='confirmed') continue;
             $followers=DB::table('follows')->where('app_id',$event->app_id)->where('target_type','artist')->where('target_id',$artist->id)->pluck('user_id');
             foreach($followers as $userId){
                 $exists=AppNotification::query()->where('app_id',$event->app_id)->where('user_id',$userId)->where('type','artist_lineup')
