@@ -60,6 +60,27 @@ class AsaasPayoutService implements PayoutProvider, PayoutWebhookInterpreter
         }
     }
 
+    public function getTransfer(string $transferId): array
+    {
+        $this->assertConfigured();
+        $transferId = trim($transferId);
+        if ($transferId === '') throw new RuntimeException('Identificador da transferência não informado.');
+
+        try {
+            $response = $this->client->get('transfers/' . rawurlencode($transferId), [
+                'headers' => ['access_token' => $this->apiKey],
+            ]);
+            $payload = json_decode($response->getBody()->getContents(), true);
+            if (! is_array($payload) || empty($payload['id'])) {
+                throw new RuntimeException('O provedor não retornou uma transferência válida.');
+            }
+
+            return $payload;
+        } catch (RequestException $e) {
+            $this->throwProviderException('Não foi possível consultar a transferência Pix.', $e);
+        }
+    }
+
     public function lookupPixKey(string $type, string $key): array
     {
         $this->assertConfigured();
