@@ -19,6 +19,11 @@ class Artist extends Model
         'hospitality_rider', 'settings', 'metadata',
     ];
 
+    protected $hidden = [
+        'professional_email', 'professional_phone', 'press_kit', 'technical_rider',
+        'hospitality_rider', 'settings', 'metadata', 'created_by_user_id',
+    ];
+
     protected $casts = [
         'genres' => 'array',
         'is_active' => 'boolean',
