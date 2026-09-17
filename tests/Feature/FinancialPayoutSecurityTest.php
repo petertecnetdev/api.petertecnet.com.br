@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Finance\Exceptions\PayoutProviderException;
 use App\Models\Application;
 use App\Models\User;
 use App\Services\AsaasPayoutService;
@@ -199,6 +200,41 @@ class FinancialPayoutSecurityTest extends TestCase
             ->assertJsonPath('errors.pix_key.0', 'A chave Pix informada não pertence ao CPF verificado deste produtor.');
 
         $this->assertDatabaseCount('financial_payout_destinations', 0);
+    }
+
+    public function test_definitive_provider_rejection_releases_reserved_balance(): void
+    {
+        config()->set('services.finance.payout_hold_hours', 0);
+        config()->set('services.finance.payout_reserve_percent', 0);
+        config()->set('services.finance.step_up_amount', 0);
+
+        [$producer, $productionId] = $this->productionFixture('provider-rejection');
+        $this->verifiedRecipient($producer, $productionId);
+        $this->credit($productionId, 100.00);
+
+        $asaas = Mockery::mock(AsaasPayoutService::class);
+        $asaas->shouldReceive('isConfigured')->once()->andReturn(true);
+        $asaas->shouldReceive('availableBalance')->once()->andReturn(1000.00);
+        $asaas->shouldReceive('transferPix')->once()->andThrow(
+            new PayoutProviderException('Chave Pix recusada pelo provedor.', false, 400)
+        );
+        $this->app->instance(AsaasPayoutService::class, $asaas);
+
+        $this->withHeaders($this->headersFor($producer))
+            ->postJson("/api/finance/productions/{$productionId}/payouts", ['amount' => 80])
+            ->assertStatus(502)
+            ->assertJsonPath('message', 'O provedor recusou o repasse Pix. O saldo foi liberado novamente. Chave Pix recusada pelo provedor.');
+
+        $this->assertDatabaseHas('financial_payouts', [
+            'source_id' => $productionId,
+            'provider' => 'asaas',
+            'status' => 'failed',
+        ]);
+
+        $this->withHeaders($this->headersFor($producer))
+            ->getJson("/api/v1/apps/cutinapp/organizations/{$productionId}/finance")
+            ->assertOk()
+            ->assertJsonPath('balance.available', 100);
     }
 
     public function test_done_webhook_links_by_external_reference_and_late_pending_event_does_not_downgrade_paid_payout(): void
