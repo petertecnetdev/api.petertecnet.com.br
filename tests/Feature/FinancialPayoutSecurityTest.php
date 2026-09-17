@@ -201,6 +201,168 @@ class FinancialPayoutSecurityTest extends TestCase
         $this->assertDatabaseCount('financial_payout_destinations', 0);
     }
 
+    public function test_done_webhook_links_by_external_reference_and_late_pending_event_does_not_downgrade_paid_payout(): void
+    {
+        config()->set('services.asaas.webhook_token', 'webhook-secret-test-with-more-than-32-characters');
+
+        [$producer, $productionId] = $this->productionFixture('webhook-race');
+        $this->verifiedRecipient($producer, $productionId);
+
+        $beneficiaryId = (int) DB::table('financial_beneficiaries')->where('user_id', $producer->id)->value('id');
+        $destinationId = (int) DB::table('financial_payout_destinations')->where('source_id', $productionId)->value('id');
+        $reference = '11111111-1111-4111-8111-111111111111';
+
+        DB::table('financial_payouts')->insert([
+            'app_slug' => 'cutinapp',
+            'source_type' => 'production',
+            'source_id' => $productionId,
+            'beneficiary_id' => $beneficiaryId,
+            'payout_destination_id' => $destinationId,
+            'requested_by_user_id' => $producer->id,
+            'reference' => $reference,
+            'provider' => 'asaas',
+            'status' => 'pending',
+            'amount' => 75.00,
+            'idempotency_key' => '22222222-2222-4222-8222-222222222222',
+            'risk_status' => 'approved',
+            'requested_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $done = [
+            'id' => 'evt-race-done',
+            'event' => 'TRANSFER_DONE',
+            'transfer' => [
+                'id' => 'transfer-race-1',
+                'status' => 'DONE',
+                'externalReference' => $reference,
+                'transactionReceiptUrl' => 'https://receipts.example.test/transfer-race-1',
+            ],
+        ];
+
+        $this->withHeader('asaas-access-token', 'webhook-secret-test-with-more-than-32-characters')
+            ->postJson('/api/finance/webhooks/asaas', $done)
+            ->assertOk();
+
+        $this->assertDatabaseHas('financial_payouts', [
+            'reference' => $reference,
+            'provider_transfer_id' => 'transfer-race-1',
+            'status' => 'paid',
+        ]);
+
+        $overview = $this->withHeaders($this->headersFor($producer))
+            ->getJson("/api/v1/apps/cutinapp/organizations/{$productionId}/finance")
+            ->assertOk();
+
+        $this->assertSame('https://receipts.example.test/transfer-race-1', $overview->json('payouts.0.receipt_url'));
+
+        $pending = [
+            'id' => 'evt-race-late-pending',
+            'event' => 'TRANSFER_PENDING',
+            'transfer' => [
+                'id' => 'transfer-race-1',
+                'status' => 'PENDING',
+                'externalReference' => $reference,
+            ],
+        ];
+
+        $this->withHeader('asaas-access-token', 'webhook-secret-test-with-more-than-32-characters')
+            ->postJson('/api/finance/webhooks/asaas', $pending)
+            ->assertOk();
+
+        $this->assertDatabaseHas('financial_payouts', [
+            'reference' => $reference,
+            'status' => 'paid',
+        ]);
+    }
+
+    public function test_withdrawal_authorization_links_transfer_by_external_reference_during_creation_race(): void
+    {
+        config()->set('services.asaas.withdrawal_auth_token', 'withdrawal-secret-test-with-more-than-32-characters');
+
+        [$producer, $productionId] = $this->productionFixture('withdrawal-race');
+        $this->verifiedRecipient($producer, $productionId);
+
+        $beneficiaryId = (int) DB::table('financial_beneficiaries')->where('user_id', $producer->id)->value('id');
+        $destinationId = (int) DB::table('financial_payout_destinations')->where('source_id', $productionId)->value('id');
+        $reference = '33333333-3333-4333-8333-333333333333';
+
+        DB::table('financial_payouts')->insert([
+            'app_slug' => 'cutinapp',
+            'source_type' => 'production',
+            'source_id' => $productionId,
+            'beneficiary_id' => $beneficiaryId,
+            'payout_destination_id' => $destinationId,
+            'requested_by_user_id' => $producer->id,
+            'reference' => $reference,
+            'provider' => 'asaas',
+            'status' => 'pending',
+            'amount' => 90.00,
+            'idempotency_key' => '44444444-4444-4444-8444-444444444444',
+            'risk_status' => 'approved',
+            'requested_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $payload = [
+            'type' => 'TRANSFER',
+            'transfer' => [
+                'id' => 'transfer-withdrawal-race-1',
+                'status' => 'PENDING',
+                'operationType' => 'PIX',
+                'value' => 90.00,
+                'externalReference' => $reference,
+            ],
+        ];
+
+        $this->withHeader('asaas-access-token', 'withdrawal-secret-test-with-more-than-32-characters')
+            ->postJson('/api/finance/webhooks/asaas/withdrawal-validation', $payload)
+            ->assertOk()
+            ->assertJsonPath('status', 'APPROVED');
+
+        $this->assertDatabaseHas('financial_payouts', [
+            'reference' => $reference,
+            'provider_transfer_id' => 'transfer-withdrawal-race-1',
+        ]);
+    }
+
+    public function test_canonical_payout_route_uses_asaas_financial_payout_storage(): void
+    {
+        config()->set('services.finance.payout_hold_hours', 0);
+        config()->set('services.finance.payout_reserve_percent', 0);
+        config()->set('services.finance.step_up_amount', 0);
+
+        [$producer, $productionId] = $this->productionFixture('canonical');
+        $this->verifiedRecipient($producer, $productionId);
+        $this->credit($productionId, 100.00);
+
+        $asaas = Mockery::mock(AsaasPayoutService::class);
+        $asaas->shouldReceive('name')->andReturn('asaas');
+        $asaas->shouldReceive('isConfigured')->once()->andReturn(true);
+        $asaas->shouldReceive('availableBalance')->once()->andReturn(1000.00);
+        $asaas->shouldReceive('transferPix')->once()->andReturn([
+            'id' => 'transfer-canonical-1',
+            'status' => 'PENDING',
+        ]);
+        $this->app->instance(AsaasPayoutService::class, $asaas);
+
+        $this->withHeaders($this->headersFor($producer))
+            ->postJson("/api/v1/apps/cutinapp/organizations/{$productionId}/payouts", ['amount' => 25])
+            ->assertCreated()
+            ->assertJsonPath('payout.provider', 'asaas')
+            ->assertJsonPath('payout.status', 'processing');
+
+        $this->assertDatabaseHas('financial_payouts', [
+            'source_id' => $productionId,
+            'provider' => 'asaas',
+            'provider_transfer_id' => 'transfer-canonical-1',
+            'status' => 'processing',
+        ]);
+        $this->assertSame(0, DB::table('payout_requests')->where('production_id', $productionId)->count());
+    }
+
     private function productionFixture(string $suffix): array
     {
         $producer = $this->user('Produtor Financeiro', "producer-finance-{$suffix}@cutinapp.test");
