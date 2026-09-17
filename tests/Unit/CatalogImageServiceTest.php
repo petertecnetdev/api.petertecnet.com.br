@@ -3,8 +3,8 @@
 namespace Tests\Unit;
 
 use App\Domain\Creative\Services\CatalogImageService;
+use PHPUnit\Framework\TestCase;
 use ReflectionClass;
-use Tests\TestCase;
 
 final class CatalogImageServiceTest extends TestCase
 {
@@ -30,8 +30,9 @@ final class CatalogImageServiceTest extends TestCase
 
     public function test_http_boundary_cannot_take_application_id_from_payload(): void
     {
-        $controller = file_get_contents(base_path('app/Domain/Creative/Http/Controllers/CatalogImageController.php'));
+        $controller = file_get_contents(dirname(__DIR__, 2).'/app/Domain/Creative/Http/Controllers/CatalogImageController.php');
 
+        self::assertIsString($controller);
         self::assertStringContainsString('$this->context->id()', $controller);
         self::assertStringNotContainsString("'application_id'", $controller);
         self::assertStringNotContainsString('$request->application_id', $controller);
