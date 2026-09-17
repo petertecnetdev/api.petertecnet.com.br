@@ -366,11 +366,11 @@ final class ArtistClaimController extends Controller
 
     private function uniqueArtistSlug(string $stageName, ?int $ignoreId = null): string
     {
-        $base = Str::slug($stageName) ?: 'artist';
+        $base = Str::slug($stageName) ?: 'artista';
         $slug = $base;
         $suffix = 2;
 
-        while (Artist::query()
+        while (Artist::withTrashed()
             ->where('app_id', $this->context->id())
             ->where('slug', $slug)
             ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
