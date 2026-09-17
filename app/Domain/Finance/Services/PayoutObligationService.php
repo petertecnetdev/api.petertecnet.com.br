@@ -98,15 +98,10 @@ class PayoutObligationService
             }
 
             if ($obligation->status === 'held' && $obligation->hold_reason === 'payout_destination_missing') {
-                DB::table('payout_obligations')->where('id', $obligationId)->update([
-                    'status' => 'eligible',
-                    'hold_reason' => null,
-                    'eligible_at' => now(),
-                    'updated_at' => now(),
-                ]);
+                throw new InvalidArgumentException('Payout destination must be verified by Finance before releasing this obligation.');
             }
 
-            return DB::table('payout_obligations')->where('id', $obligationId)->first();
+            return $obligation;
         }, 3);
     }
 }
