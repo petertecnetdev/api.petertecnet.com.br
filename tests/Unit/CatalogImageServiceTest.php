@@ -3,14 +3,14 @@
 namespace Tests\Unit;
 
 use App\Domain\Creative\Services\CatalogImageService;
-use App\Domain\Creative\Services\CloudflareImageGenerator;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 
 final class CatalogImageServiceTest extends TestCase
 {
     public function test_prompt_uses_only_supplied_catalog_facts_and_keeps_text_out_of_image(): void
     {
-        $service = new CatalogImageService($this->createMock(CloudflareImageGenerator::class));
+        $service = (new ReflectionClass(CatalogImageService::class))->newInstanceWithoutConstructor();
 
         $prompt = $service->buildPrompt([
             'subject' => 'Cappuccino',
@@ -35,6 +35,6 @@ final class CatalogImageServiceTest extends TestCase
         self::assertStringContainsString('$this->context->id()', $controller);
         self::assertStringNotContainsString("'application_id'", $controller);
         self::assertStringNotContainsString('$request->application_id', $controller);
-        self::assertStringNotContainsString("$request->input('application_id')", $controller);
+        self::assertStringNotContainsString('$request->input(\'application_id\')', $controller);
     }
 }
