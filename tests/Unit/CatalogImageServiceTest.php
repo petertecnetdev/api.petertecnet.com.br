@@ -3,8 +3,8 @@
 namespace Tests\Unit;
 
 use App\Domain\Creative\Services\CatalogImageService;
-use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use Tests\TestCase;
 
 final class CatalogImageServiceTest extends TestCase
 {
