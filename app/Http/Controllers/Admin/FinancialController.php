@@ -264,6 +264,19 @@ class FinancialController extends Controller
 
         $orderColumn = Schema::hasColumn($table, 'created_at') ? 'created_at' : 'id';
         $all = (clone $query)->orderByDesc($orderColumn)->limit(500)->get();
+
+        if ($table === 'financial_payouts') {
+            $all = $all->map(function ($row) {
+                $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+                if (! is_array($metadata)) $metadata = [];
+                $row->failure_reason = $metadata['provider_fail_reason'] ?? $metadata['provider_error'] ?? null;
+                $row->receipt_url = $metadata['transaction_receipt_url'] ?? null;
+                unset($row->metadata);
+
+                return $row;
+            });
+        }
+
         $amountField = Schema::hasColumn($table, 'amount') ? 'amount' : (Schema::hasColumn($table, 'net_amount') ? 'net_amount' : null);
 
         $pending = $all->whereIn('status', ['pending', 'requested', 'processing', 'provider_unknown']);
