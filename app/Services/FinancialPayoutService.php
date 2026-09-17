@@ -434,6 +434,56 @@ class FinancialPayoutService
         });
     }
 
+    public function reconcilePayout(int $payoutId): array
+    {
+        $payout = DB::table('financial_payouts')
+            ->where('provider', 'asaas')
+            ->where('id', $payoutId)
+            ->first();
+
+        if (! $payout) {
+            return ['status' => 'not_found', 'payout_id' => $payoutId];
+        }
+
+        if (in_array($payout->status, ['paid', 'failed', 'cancelled'], true)) {
+            return ['status' => 'terminal', 'payout_id' => $payoutId, 'payout_status' => $payout->status];
+        }
+
+        $transferId = trim((string) $payout->provider_transfer_id);
+        if ($transferId === '') {
+            return ['status' => 'provider_reference_missing', 'payout_id' => $payoutId];
+        }
+
+        $remote = $this->asaas->getTransfer($transferId);
+        $providerStatus = strtoupper(trim((string) ($remote['status'] ?? 'PENDING')));
+        $eventType = match ($providerStatus) {
+            'DONE' => 'TRANSFER_DONE',
+            'FAILED' => 'TRANSFER_FAILED',
+            'CANCELLED' => 'TRANSFER_CANCELLED',
+            'BLOCKED' => 'TRANSFER_BLOCKED',
+            'BANK_PROCESSING', 'IN_BANK_PROCESSING' => 'TRANSFER_IN_BANK_PROCESSING',
+            default => 'TRANSFER_PENDING',
+        };
+
+        $this->processWebhook([
+            'id' => 'reconcile-' . hash('sha256', $transferId . ':' . $providerStatus),
+            'event' => $eventType,
+            'transfer' => array_merge($remote, [
+                'id' => $transferId,
+                'externalReference' => $remote['externalReference'] ?? $payout->reference,
+            ]),
+        ]);
+
+        $fresh = DB::table('financial_payouts')->where('id', $payoutId)->first();
+
+        return [
+            'status' => 'reconciled',
+            'payout_id' => $payoutId,
+            'payout_status' => $fresh?->status,
+            'provider_status' => $providerStatus,
+        ];
+    }
+
     private function maskedDocumentMatches(string $masked, string $document): bool
     {
         $pattern = preg_replace('/[^0-9*]/', '', $masked);
