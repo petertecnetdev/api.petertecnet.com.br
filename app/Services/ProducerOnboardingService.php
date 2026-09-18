@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Mail\ProducerSalesReadyMail;
 use App\Models\AcquisitionReferral;
+use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
 use App\Support\ApplicationContext;
@@ -18,6 +19,59 @@ final class ProducerOnboardingService
         private readonly ProducerAgreementService $agreements,
         private readonly MerchantPaymentAccountService $paymentAccounts,
     ) {}
+
+    public function statusForEventId(int $eventId): array
+    {
+        $event = Event::query()
+            ->where('app_id', $this->context->id())
+            ->with('production')
+            ->findOrFail($eventId);
+
+        abort_unless($event->production, 422, 'A organização do evento é inválida.');
+
+        return $this->status($event->production);
+    }
+
+    public function statusForEventSlug(string $slug): array
+    {
+        $event = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('slug', $slug)
+            ->with('production')
+            ->firstOrFail();
+
+        abort_unless($event->production, 422, 'A organização do evento é inválida.');
+
+        return $this->status($event->production);
+    }
+
+    public function assertCanSellForEvent(int $eventId): array
+    {
+        $status = $this->statusForEventId($eventId);
+
+        if (! $status['assisted_onboarding'] || $status['can_sell_tickets']) {
+            return $status;
+        }
+
+        $nextKey = data_get($status, 'next_step.key');
+
+        match ($nextKey) {
+            'account', 'production' => abort(428, 'O produtor precisa ativar o acesso antes de iniciar as vendas.'),
+            'agreement' => abort(428, 'Assine o contrato vigente da plataforma antes de iniciar as vendas.'),
+            'payout' => abort(428, 'Conclua a verificação financeira e cadastre sua chave Pix antes de iniciar as vendas.'),
+            'payments' => abort(503, 'A infraestrutura de pagamentos está temporariamente indisponível para novas vendas.'),
+            default => abort(428, 'Conclua o onboarding comercial da produção antes de iniciar as vendas.'),
+        };
+    }
+
+    public function notifyIfSalesReadyForOrganizationId(int $organizationId): bool
+    {
+        $production = Production::query()
+            ->where('app_id', $this->context->id())
+            ->findOrFail($organizationId);
+
+        return $this->notifyIfSalesReady($production);
+    }
 
     public function statusForUser(int $organizationId, ?User $user, bool $isAdministrator = false): array
     {
