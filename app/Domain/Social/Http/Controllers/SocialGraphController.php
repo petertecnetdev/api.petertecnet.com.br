@@ -66,9 +66,60 @@ final class SocialGraphController extends Controller
 
     public function attachArtist(Request $request,int $eventId)
     {
-        $event=$this->ownedEvent($eventId,$request->user());$data=$request->validate(['artist_id'=>'required|integer|exists:artists,id','participation_type'=>'required|string|max:80','description'=>'nullable|string|max:2000','sort_order'=>'nullable|integer|min:0|max:1000','scheduled_at'=>'nullable|date','stage'=>'nullable|string|max:160','is_headliner'=>'nullable|boolean']);$artist=Artist::where('app_id',$this->context->id())->findOrFail($data['artist_id']);
+        $event=$this->ownedEvent($eventId,$request->user());
+        $data=$request->validate([
+            'artist_id'=>'required|integer|exists:artists,id',
+            'participation_type'=>'required|string|max:80',
+            'description'=>'nullable|string|max:2000',
+            'sort_order'=>'nullable|integer|min:0|max:1000',
+            'scheduled_at'=>'nullable|date',
+            'stage'=>'nullable|string|max:160',
+            'is_headliner'=>'nullable|boolean',
+            'fee_cents'=>'nullable|integer|min:0|max:9999999999',
+            'private_notes'=>'nullable|string|max:5000',
+        ]);
+        $artist=Artist::where('app_id',$this->context->id())->findOrFail($data['artist_id']);
         abort_unless($this->canManageArtist($artist,$request->user()),403,'Para adicionar outro usuário como artista, localize a conta dele pelo novo fluxo de artistas.');
-        $event->artists()->syncWithoutDetaching([$artist->id=>['app_id'=>$this->context->id(),'participation_type'=>$data['participation_type'],'description'=>$data['description']??null,'sort_order'=>$data['sort_order']??0,'scheduled_at'=>$data['scheduled_at']??null,'stage'=>$data['stage']??null,'is_headliner'=>(bool)($data['is_headliner']??false),'status'=>'confirmed','invited_by_user_id'=>$request->user()->id,'invited_at'=>now(),'responded_at'=>now()]]);app(EventLineupNotificationService::class)->notifyPublishedEvent($event->fresh('artists'));return response()->json(['message'=>'Artista vinculado ao evento.','artists'=>$event->artists()->orderBy('event_artist.sort_order')->get()]);
+
+        if($artist->user_id){
+            $recipient=User::query()->findOrFail($artist->user_id);
+            unset($data['artist_id']);
+            $result=$this->artistInvitations->inviteRegistered(
+                $this->context->id(),
+                $event,
+                $request->user(),
+                $recipient,
+                $data
+            );
+            return response()->json([
+                ...$result,
+                'artists'=>$event->fresh()->artists()->orderBy('event_artist.sort_order')->get(),
+            ],201);
+        }
+
+        $event->artists()->syncWithoutDetaching([$artist->id=>[
+            'app_id'=>$this->context->id(),
+            'participation_type'=>$data['participation_type'],
+            'description'=>$data['description']??null,
+            'sort_order'=>$data['sort_order']??0,
+            'scheduled_at'=>$data['scheduled_at']??null,
+            'stage'=>$data['stage']??null,
+            'is_headliner'=>(bool)($data['is_headliner']??false),
+            'fee_cents'=>$data['fee_cents']??null,
+            'private_notes'=>$data['private_notes']??null,
+            'status'=>'confirmed',
+            'invited_by_user_id'=>$request->user()->id,
+            'invited_at'=>now(),
+            'responded_at'=>now(),
+            'response_user_id'=>$request->user()->id,
+        ]]);
+        app(EventLineupNotificationService::class)->notifyPublishedEvent($event->fresh('artists'));
+
+        return response()->json([
+            'message'=>'Formação sem usuário proprietário confirmada pelo gestor autorizado.',
+            'participation_status'=>'confirmed',
+            'artists'=>$event->artists()->orderBy('event_artist.sort_order')->get(),
+        ]);
     }
 
     public function detachArtist(Request $request,int $eventId,int $artistId)
