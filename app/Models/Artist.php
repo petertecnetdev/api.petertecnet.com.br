@@ -22,7 +22,7 @@ class Artist extends Model
 
     protected $hidden = [
         'professional_email', 'professional_phone', 'press_kit', 'technical_rider',
-        'hospitality_rider', 'settings', 'metadata', 'created_by_user_id',
+        'hospitality_rider', 'settings', 'metadata', 'created_by_user_id', 'origin_id',
     ];
 
     protected $casts = [
