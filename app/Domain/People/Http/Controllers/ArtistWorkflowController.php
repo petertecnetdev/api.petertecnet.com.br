@@ -3,6 +3,7 @@
 namespace App\Domain\People\Http\Controllers;
 
 use App\Domain\People\Services\ArtistIdentityService;
+use App\Domain\People\Services\ArtistInvitationWorkflowService;
 use App\Http\Controllers\Controller;
 use App\Models\AppNotification;
 use App\Models\Artist;
@@ -16,7 +17,11 @@ use Illuminate\Support\Str;
 
 final class ArtistWorkflowController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context, private readonly ArtistIdentityService $identity) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ArtistIdentityService $identity,
+        private readonly ArtistInvitationWorkflowService $invitations,
+    ) {}
 
     public function candidates(Request $request, int $eventId)
     {
@@ -39,33 +44,51 @@ final class ArtistWorkflowController extends Controller
 
     public function resolveAndInvite(Request $request, int $eventId)
     {
-        $actor=$request->user(); $event=$this->ownedEvent($eventId,$actor);
-        $data=$request->validate(['identifier'=>'required|string|min:2|max:190','participation_type'=>'required|string|max:80','description'=>'nullable|string|max:2000','sort_order'=>'nullable|integer|min:0|max:1000','scheduled_at'=>'nullable|date','stage'=>'nullable|string|max:160','is_headliner'=>'nullable|boolean','fee_cents'=>'nullable|integer|min:0|max:9999999999','private_notes'=>'nullable|string|max:5000']);
-        $user=$this->identity->resolveUser($data['identifier']);
-        if(!$user) return $this->createExternalInvitation($event,$actor,$data);
+        $data = $request->validate([
+            'identifier' => 'required|string|min:2|max:190',
+            'participation_type' => 'required|string|max:80',
+            'description' => 'nullable|string|max:2000',
+            'sort_order' => 'nullable|integer|min:0|max:1000',
+            'scheduled_at' => 'nullable|date',
+            'stage' => 'nullable|string|max:160',
+            'is_headliner' => 'nullable|boolean',
+            'fee_cents' => 'nullable|integer|min:0|max:9999999999',
+            'private_notes' => 'nullable|string|max:5000',
+        ]);
 
-        [$artist,$status,$conflicts,$created]=DB::transaction(function()use($event,$actor,$user,$data){
-            $artist=$this->identity->getOrCreate($this->context->id(),$user,$actor,$event);
-            $existing=DB::table('event_artist')->where('event_id',$event->id)->where('artist_id',$artist->id)->first();
-            $status=$existing?->status==='confirmed'?'confirmed':'pending'; $token=$existing?->invite_token?:Str::random(48);
-            $pivot=['app_id'=>$this->context->id(),'participation_type'=>$data['participation_type'],'description'=>$data['description']??null,'sort_order'=>$data['sort_order']??0,'scheduled_at'=>$data['scheduled_at']??null,'stage'=>$data['stage']??null,'is_headliner'=>(bool)($data['is_headliner']??false),'status'=>$status,'invited_by_user_id'=>$actor->id,'invited_at'=>$existing?->invited_at?:now(),'fee_cents'=>$data['fee_cents']??null,'payment_status'=>$existing?->payment_status?:'not_applicable','invite_token'=>$token,'private_notes'=>$data['private_notes']??null,'updated_at'=>now()];
-            if($existing) DB::table('event_artist')->where('event_id',$event->id)->where('artist_id',$artist->id)->update($pivot); else DB::table('event_artist')->insert([...$pivot,'event_id'=>$event->id,'artist_id'=>$artist->id,'created_at'=>now()]);
-            DB::table('artist_invitations')->updateOrInsert(['app_id'=>$this->context->id(),'event_id'=>$event->id,'invited_user_id'=>$user->id],['artist_id'=>$artist->id,'invited_by_user_id'=>$actor->id,'status'=>$status==='confirmed'?'accepted':'pending','token'=>$token,'expires_at'=>now()->addDays(30),'payload'=>json_encode(['participation_type'=>$data['participation_type'],'scheduled_at'=>$data['scheduled_at']??null,'stage'=>$data['stage']??null]),'updated_at'=>now(),'created_at'=>now()]);
-            $this->audit($artist->id,$event->id,$actor->id,$existing?'participation_updated':'artist_invited',$existing?(array)$existing:null,$pivot);
-            return [$artist,$status,$this->conflicts($artist->id,$event->id,$data['scheduled_at']??null),!$existing];
-        },3);
+        $identifier = $data['identifier'];
+        unset($data['identifier']);
 
-        if($status!=='confirmed'){$producerLabel=$event->production?->name?:'Uma produção';AppNotification::query()->create(['app_id'=>$this->context->id(),'user_id'=>$user->id,'type'=>'artist_event_invitation','title'=>'Convite artístico recebido','message'=>$producerLabel.' convidou você para '.$event->title.'. Se este for seu primeiro vínculo artístico, sua identidade na Cutinapp continua sendo sua e a produção aparece apenas como referência de origem.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/artist/onboarding','data'=>['event_id'=>$event->id,'artist_id'=>$artist->id,'status'=>'pending','production_reference'=>$producerLabel]]);}
-        return response()->json(['message'=>$status==='confirmed'?'Participação atualizada.':'Usuário localizado, perfil artístico vinculado e convite enviado.','artist'=>$artist->fresh(),'participation_status'=>$status,'schedule_conflicts'=>$conflicts],$created?201:200);
+        $result = $this->invitations->inviteByIdentifier(
+            $this->context->id(),
+            $eventId,
+            $request->user(),
+            $identifier,
+            $data
+        );
+
+        return response()->json($result, ($result['external_invitation'] ?? false) ? 202 : 201);
     }
 
     public function respond(Request $request,int $eventId,int $artistId)
     {
-        $artist=Artist::query()->where('app_id',$this->context->id())->findOrFail($artistId); $this->assertArtistManager($artist,$request->user());
-        $decision=$request->validate(['decision'=>'required|in:accept,reject'])['decision']; $pivot=DB::table('event_artist')->where('event_id',$eventId)->where('artist_id',$artist->id)->first(); abort_unless($pivot,404,'Participação não encontrada.'); $status=$decision==='accept'?'confirmed':'declined';
-        DB::transaction(function()use($request,$artist,$eventId,$pivot,$status){DB::table('event_artist')->where('event_id',$eventId)->where('artist_id',$artist->id)->update(['status'=>$status,'responded_at'=>now(),'updated_at'=>now()]);DB::table('artist_invitations')->where('app_id',$this->context->id())->where('event_id',$eventId)->where('artist_id',$artist->id)->update(['status'=>$status==='confirmed'?'accepted':'declined','responded_at'=>now(),'updated_at'=>now()]);$this->audit($artist->id,$eventId,$request->user()->id,'invitation_'.$status,(array)$pivot,['status'=>$status]);});
-        $event=Event::query()->where('app_id',$this->context->id())->with('production')->findOrFail($eventId); if($producerUserId=$event->production?->user_id) AppNotification::query()->create(['app_id'=>$this->context->id(),'user_id'=>$producerUserId,'type'=>'artist_event_response','title'=>$status==='confirmed'?'Artista confirmou presença':'Artista recusou o convite','message'=>$artist->stage_name.' respondeu ao convite de '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->id.'/lineup','data'=>['artist_id'=>$artist->id,'status'=>$status]]); if($status==='confirmed') app(EventLineupNotificationService::class)->notifyPublishedEvent($event->fresh('artists'));
-        return response()->json(['message'=>$status==='confirmed'?'Participação confirmada.':'Convite recusado.','status'=>$status]);
+        $data = $request->validate([
+            'decision' => 'required|in:accept,reject',
+            'decline_reason' => 'nullable|string|max:500',
+        ]);
+
+        return response()->json(
+            $this->invitations->respondByEventArtist(
+                $this->context->id(),
+                $eventId,
+                $artistId,
+                $request->user(),
+                $data['decision'],
+                $data['decline_reason'] ?? null,
+                $request->ip(),
+                $request->userAgent()
+            )
+        );
     }
 
     public function checkIn(Request $request,int $eventId,int $artistId)
