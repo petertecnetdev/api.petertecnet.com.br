@@ -942,6 +942,49 @@ final class ArtistInvitationWorkflowService
         }
     }
 
+    public function recordEmailDeliveryEvent(int $appId, string $token, string $status, string $signature): array
+    {
+        $status = mb_strtolower(trim($status));
+        abort_unless(in_array($status, ['delivered', 'bounced', 'failed'], true), 422, 'Status de entrega inválido.');
+
+        $secret = trim((string) config('services.artist_invitation_email.webhook_secret'));
+        abort_if($secret === '', 503, 'Webhook de entrega de e-mail não configurado.');
+
+        $expected = hash_hmac('sha256', $token.'|'.$status, $secret);
+        abort_unless(hash_equals($expected, trim($signature)), 403, 'Assinatura de webhook inválida.');
+
+        $invitation = DB::table('artist_invitations')
+            ->where('app_id', $appId)
+            ->where('token', $token)
+            ->firstOrFail();
+
+        $updates = [
+            'email_status' => $status,
+            'updated_at' => now(),
+        ];
+
+        if ($status === 'delivered') {
+            $updates['email_delivered_at'] = now();
+            $updates['email_failed_at'] = null;
+            $updates['last_email_error'] = null;
+        } else {
+            $updates['email_failed_at'] = now();
+        }
+
+        DB::table('artist_invitations')->where('id', $invitation->id)->update($updates);
+        $this->track(
+            $appId,
+            (int) $invitation->id,
+            (int) $invitation->event_id,
+            $invitation->artist_id,
+            $invitation->invited_user_id,
+            'email_'.$status,
+            'provider_webhook'
+        );
+
+        return ['updated' => true, 'email_status' => $status];
+    }
+
     public function calendarForUser(int $appId, string $token, User $user): string
     {
         $payload = $this->showForUser($appId, $token, $user);
