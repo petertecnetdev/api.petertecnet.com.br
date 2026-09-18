@@ -30,6 +30,26 @@ class AgentChatController extends Controller
         }
     }
 
+    public function syncFeed(AgentChatGithubService $chat): JsonResponse
+    {
+        try {
+            return response()->json([
+                'entries' => $chat->syncFeed(),
+                'generated_at' => now()->toIso8601String(),
+            ]);
+        } catch (Throwable $exception) {
+            Log::warning('Agent Chat sync feed failed.', [
+                'exception' => $exception::class,
+                'message' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Não foi possível carregar a fila de sincronização do Agent Chat.',
+                'entries' => [],
+            ], 500);
+        }
+    }
+
     public function store(Request $request, AgentChatGithubService $chat): JsonResponse
     {
         $validated = $request->validate([
