@@ -13,7 +13,6 @@ use App\Models\Production;
 use App\Models\Ticket;
 use App\Services\MerchantPaymentAccountService;
 use App\Services\MercadoPagoService;
-use App\Services\ProducerOnboardingService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,7 +25,6 @@ final class EventCommerceController extends Controller
         private readonly ApplicationContext $context,
         private readonly MercadoPagoService $mercadoPago,
         private readonly MerchantPaymentAccountService $accounts,
-        private readonly ProducerOnboardingService $producerOnboarding,
     ) {}
 
     public function catalog(Request $request, string $slug)
@@ -101,8 +99,7 @@ final class EventCommerceController extends Controller
         });
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
-        $onboarding = $this->producerOnboarding->status($event->production()->firstOrFail());
-        $paymentAvailable = ! $salesClosed && $readiness['available'] && $onboarding['can_sell_tickets'];
+        $paymentAvailable = ! $salesClosed && $readiness['available'];
 
         return response()->json([
             'event' => $event->only(['id','title','slug','start_date','end_date','temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions']),
@@ -119,12 +116,7 @@ final class EventCommerceController extends Controller
                 'methods' => $paymentAvailable ? $readiness['methods'] : [],
                 'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
                 'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
-                'onboarding_status' => $onboarding['status'],
-                'can_sell_tickets' => $onboarding['can_sell_tickets'],
-                'next_onboarding_step' => $onboarding['next_step'],
-                'message' => $salesClosed
-                    ? 'As vendas deste evento foram encerradas.'
-                    : ($onboarding['can_sell_tickets'] ? $readiness['message'] : data_get($onboarding, 'next_step.detail', 'Conclua a configuração comercial da produção.')),
+                'message' => $salesClosed ? 'As vendas deste evento foram encerradas.' : $readiness['message'],
             ],
         ]);
     }
@@ -175,8 +167,6 @@ final class EventCommerceController extends Controller
                 : 'Este evento não está disponível para venda.'
         );
 
-        $this->producerOnboarding->assertCanSell($eventForReadiness->production()->firstOrFail());
-
         $platformRate = max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100));
         $expirationMinutes = (int) $this->context->option('commerce.order_expiration_minutes', 30);
 
@@ -189,7 +179,6 @@ final class EventCommerceController extends Controller
                 ->firstOrFail();
 
             abort_unless($event->production && (int) $event->production->app_id === $this->context->id(), 422, 'A organização do evento é inválida.');
-            $this->producerOnboarding->assertCanSell($event->production);
             abort_if(
                 $event->salesClosed(),
                 422,
