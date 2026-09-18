@@ -5,8 +5,10 @@ namespace App\Domain\Finance\Http\Controllers;
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Http\Controllers\Controller;
 use App\Services\FinancialPayoutService;
+use App\Services\PayoutIdempotencyService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use RuntimeException;
 
 /**
@@ -23,6 +25,7 @@ final class PayoutController extends Controller
         private readonly ApplicationContext $context,
         private readonly FinancialPayoutService $payouts,
         private readonly PayoutProvider $provider,
+        private readonly PayoutIdempotencyService $idempotency,
     ) {}
 
     public function summary(Request $request, int $organizationId)
@@ -55,6 +58,46 @@ final class PayoutController extends Controller
             'amount' => 'required|numeric|min:0.01|max:999999999.99',
         ]);
         $amount = round((float) $data['amount'], 2);
+        $idempotencyKey = trim((string) $request->header('Idempotency-Key', ''));
+
+        if ($idempotencyKey === '' || strlen($idempotencyKey) < 8 || strlen($idempotencyKey) > 128) {
+            return response()->json([
+                'message' => 'Envie um Idempotency-Key estável (8 a 128 caracteres) para esta intenção de repasse.',
+                'code' => 'payout_idempotency_key_required',
+            ], 428);
+        }
+
+        // Resolve the financial intent before any provider preflight. Replays and
+        // in-flight retries must not depend on current provider liquidity/config.
+        $claim = $this->idempotency->claim($organization, $request->user(), $idempotencyKey, $amount);
+
+        if ($claim['state'] === 'conflict') {
+            return response()->json([
+                'message' => 'Este Idempotency-Key já foi usado com dados diferentes.',
+                'code' => 'payout_idempotency_conflict',
+            ], 409);
+        }
+
+        if ($claim['state'] === 'processing') {
+            return response()->json([
+                'message' => 'Esta solicitação de repasse já está em processamento ou aguardando conciliação.',
+                'code' => 'payout_idempotency_in_progress',
+            ], 409);
+        }
+
+        if ($claim['state'] === 'replay' && $claim['payout_id']) {
+            $replay = $this->idempotency->replay($organization, $claim['payout_id']);
+            if ($replay) {
+                $replay['balance'] = $this->payouts->balance($organization);
+
+                return response()->json($replay, 200);
+            }
+
+            return response()->json([
+                'message' => 'A solicitação idempotente existe, mas o repasse associado precisa de conciliação.',
+                'code' => 'payout_idempotency_reconciliation_required',
+            ], 409);
+        }
 
         $overview = $this->payouts->overview($organization, $request->user());
         $eligible = (bool) ($overview['ready_for_payout'] ?? false)
@@ -62,6 +105,9 @@ final class PayoutController extends Controller
 
         if ($eligible) {
             if (! $this->provider->isConfigured()) {
+                // No provider side effect has started, so this intent may be retried.
+                $this->idempotency->release($organization, $idempotencyKey);
+
                 return response()->json([
                     'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
                 ], 503);
@@ -69,12 +115,17 @@ final class PayoutController extends Controller
 
             try {
                 if ($this->provider->availableBalance() + 0.00001 < $amount) {
+                    // Liquidity preflight is side-effect free; do not strand the intent.
+                    $this->idempotency->release($organization, $idempotencyKey);
+
                     return response()->json([
                         'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
                     ], 503);
                 }
             } catch (RuntimeException $exception) {
                 report($exception);
+                // Provider availability lookup failed before transfer creation.
+                $this->idempotency->release($organization, $idempotencyKey);
 
                 return response()->json([
                     'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
@@ -83,11 +134,21 @@ final class PayoutController extends Controller
         }
 
         try {
-            return response()->json(
-                $this->payouts->requestPayout($organization, $request->user(), $amount),
-                201
-            );
+            $result = $this->payouts->requestPayout($organization, $request->user(), $amount);
+            $payoutId = (int) data_get($result, 'payout.id', 0);
+            if ($payoutId > 0) {
+                $this->idempotency->complete($organization, $idempotencyKey, $payoutId);
+            }
+
+            return response()->json($result, 201);
+        } catch (ValidationException $exception) {
+            // Validation failures happen before a provider side effect and may be retried
+            // with the same intent after the user fixes the underlying prerequisite.
+            $this->idempotency->release($organization, $idempotencyKey);
+            throw $exception;
         } catch (RuntimeException $exception) {
+            // Keep the claim locked on ambiguous provider outcomes. A retry with the
+            // same key must never create a second Pix while reconciliation is pending.
             report($exception);
 
             return response()->json(['message' => $exception->getMessage()], 502);
