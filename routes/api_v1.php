@@ -25,6 +25,7 @@ use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PaymentProviderController;
 use App\Domain\Locations\Http\Controllers\LocationController;
 use App\Domain\Organizations\Http\Controllers\OrganizationController;
+use App\Domain\Organizations\Http\Controllers\ProducerOnboardingController;
 use App\Domain\People\Http\Controllers\ArtistClaimController;
 use App\Domain\People\Http\Controllers\ArtistMemberController;
 use App\Domain\People\Http\Controllers\UserActivityProfileController;
@@ -232,6 +233,7 @@ Route::prefix('v1/apps/{application}')
             Route::middleware('app.capability:organizations')->group(function () {
                 Route::get('/organizations/mine', [OrganizationController::class, 'mine']);
                 Route::get('/organizations/{id}', [OrganizationController::class, 'show'])->whereNumber('id');
+                Route::get('/organizations/{organizationId}/onboarding', [ProducerOnboardingController::class, 'show'])->whereNumber('organizationId');
                 Route::post('/organizations', [OrganizationController::class, 'store']);
                 Route::match(['put', 'patch'], '/organizations/{id}', [OrganizationController::class, 'update'])->whereNumber('id');
                 Route::delete('/organizations/{id}', [OrganizationController::class, 'destroy'])->whereNumber('id');
@@ -247,7 +249,7 @@ Route::prefix('v1/apps/{application}')
             Route::middleware('app.capability:events')->group(function () {
                 Route::get('/events/mine', [EventManagementController::class, 'mine']);
                 Route::get('/events/{id}/manage', [EventManagementController::class, 'show'])->whereNumber('id');
-                Route::post('/events', [EventManagementController::class, 'store'])->middleware('producer.agreement');
+                Route::post('/events', [EventManagementController::class, 'store']);
                 Route::match(['put', 'patch'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id');
                 Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
                 Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
