@@ -32,6 +32,11 @@ class AcquisitionAgentFlowTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/apps/cutinapp/acquisition/onboardings', [
+                'authorization' => [
+                    'confirmed' => true,
+                    'channel' => 'whatsapp',
+                    'note' => 'Autorização registrada no atendimento comercial.',
+                ],
                 'user' => [
                     'first_name' => 'Produtor',
                     'last_name' => 'Teste',
