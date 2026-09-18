@@ -22,6 +22,7 @@ use App\Observers\CognitiveInteractionObserver;
 use App\Observers\EstablishmentOwnershipNotificationObserver;
 use App\Observers\EventFeedActivityObserver;
 use App\Observers\EventProducerNotificationObserver;
+use App\Observers\EventSalesReadinessObserver;
 use App\Observers\InteractionAuditObserver;
 use App\Observers\OrderContextIntegrityObserver;
 use App\Observers\OrderPricingObserver;
@@ -83,6 +84,7 @@ class AppServiceProvider extends ServiceProvider
         EventModel::observe(EventProducerNotificationObserver::class);
         EventModel::observe(ArtistInvitationEventObserver::class);
         EventModel::observe(EventFeedActivityObserver::class);
+        EventModel::observe(EventSalesReadinessObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
         Interaction::observe(CognitiveInteractionObserver::class);
