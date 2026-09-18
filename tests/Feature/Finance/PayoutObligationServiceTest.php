@@ -30,10 +30,17 @@ class PayoutObligationServiceTest extends TestCase
         $this->assertSame('payout_destination_missing', $first->hold_reason);
         $this->assertSame(1, DB::table('payout_obligations')->where('application_id', $appId)->count());
 
-        $released = $service->releaseHeld($appId, $first->id);
-        $this->assertSame('eligible', $released->status);
-        $this->assertNull($released->hold_reason);
-        $this->assertNotNull($released->eligible_at);
+        try {
+            $service->releaseHeld($appId, $first->id);
+            $this->fail('Held payout obligation was released without Finance-owned destination verification.');
+        } catch (InvalidArgumentException $exception) {
+            $this->assertSame('Payout destination must be verified by Finance before releasing this obligation.', $exception->getMessage());
+        }
+
+        $persisted = DB::table('payout_obligations')->where('id', $first->id)->first();
+        $this->assertSame('held', $persisted->status);
+        $this->assertSame('payout_destination_missing', $persisted->hold_reason);
+        $this->assertNull($persisted->eligible_at);
     }
 
     public function test_rejects_conflicting_retry_without_changing_amount_owed(): void
