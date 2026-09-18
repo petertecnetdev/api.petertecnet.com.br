@@ -148,16 +148,17 @@ final class ArtistInvitationController extends Controller
                 ]);
 
                 if ($status !== 'confirmed') {
+                    $producerLabel = $event->production?->name ?: 'A produção responsável';
                     AppNotification::query()->create([
                         'app_id' => $this->context->id(),
                         'user_id' => $user->id,
                         'type' => 'artist_event_invitation',
-                        'title' => 'Convite para participar de evento',
-                        'message' => 'Seu convite para '.$event->title.' foi vinculado à sua conta.',
+                        'title' => 'Seu convite artístico foi recuperado',
+                        'message' => $producerLabel.' apresentou você para '.$event->title.'. Sua identidade artística pertence à sua conta; a produção fica apenas como referência de origem.',
                         'reference_type' => 'event',
                         'reference_id' => $event->id,
-                        'reference_url' => '/artist/events',
-                        'data' => ['event_id' => $event->id, 'artist_id' => $artist->id, 'status' => 'pending'],
+                        'reference_url' => '/artist/onboarding',
+                        'data' => ['event_id' => $event->id, 'artist_id' => $artist->id, 'status' => 'pending', 'production_reference' => $producerLabel],
                     ]);
                 }
 
