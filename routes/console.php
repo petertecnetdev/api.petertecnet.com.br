@@ -12,6 +12,7 @@ use App\Domain\Finance\Services\AutomatedSubscriptionRenewalRecoveryService;
 use App\Domain\Finance\Services\AutomatedSubscriptionRenewalReminderService;
 use App\Domain\MarketData\Services\MarketSignalService;
 use App\Domain\Messaging\Services\MessageEngagementService;
+use App\Domain\People\Services\ArtistInvitationWorkflowService;
 use App\Jobs\DispatchNotificationCampaign;
 use App\Models\Application;
 use App\Models\NotificationCampaign;
@@ -156,6 +157,14 @@ Artisan::command('finance:recover-expired-subscriptions {--limit=}', function ()
     $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
 })->purpose('Recover paid subscriptions whose billing period expired without renewal');
 
+Artisan::command('artists:remind-pending-invitations {--limit=100}', function () {
+    $result = app(ArtistInvitationWorkflowService::class)->dispatchDueReminders(
+        (int) $this->option('limit')
+    );
+
+    $this->line(json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+})->purpose('Remind pending artist invitations without duplicating accepted or declined responses');
+
 Artisan::command('messaging:dispatch-engagement', function () {
     $dispatched = 0;
     $context = app(ApplicationContext::class);
@@ -222,4 +231,9 @@ Schedule::command('finance:recover-expired-subscriptions')
 Schedule::command('messaging:dispatch-engagement')
     ->everyMinute()
     ->withoutOverlapping(5)
+    ->onOneServer();
+
+Schedule::command('artists:remind-pending-invitations --limit=150')
+    ->hourly()
+    ->withoutOverlapping(20)
     ->onOneServer();
