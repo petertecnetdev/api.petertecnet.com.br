@@ -328,11 +328,11 @@ class AgentChatGithubService
         $timestamp = now('America/Sao_Paulo')->format('Y-m-d H:i') . ' BRT';
 
         return sprintf(
-            "**Mensagem-ID:** %s\n### %s — %s — %s\n**Para:** %s\n**Assunto:** %s\n**Tarefa:** %s\n**Contexto:** %s\n**Prioridade:** %s\n\n%s\n\n**Repo:** %s\n**Branch:** %s\n**Commit/PR:** n/a\n**Status:** %s\n---\n",
-            $messageId,
+            "### %s — %s — %s\n**Mensagem-ID:** %s\n**Para:** %s\n**Assunto:** %s\n**Tarefa:** %s\n**Contexto:** %s\n**Prioridade:** %s\n\n%s\n\n**Repo:** %s\n**Branch:** %s\n**Commit/PR:** n/a\n**Status:** %s\n---\n",
             $timestamp,
             $this->singleLine($author),
             $type,
+            $messageId,
             $to,
             $subject,
             $taskId ?: 'n/a',
@@ -347,20 +347,20 @@ class AgentChatGithubService
 
     private function parseMessages(string $content): array
     {
-        $normalized = preg_replace('/(?=^\\*\\*Mensagem-ID:\\*\\*)/m', '', $content) ?: $content;
-        $blocks = preg_split('/(?=^(?:\\*\\*Mensagem-ID:\\*\\*[^\\r\\n]*\\R)?### )/m', $normalized) ?: [];
+        // Backward compatibility: v2 briefly emitted Mensagem-ID before the ### header.
+        $content = preg_replace(
+            '/^\\*\\*Mensagem-ID:\\*\\*\\s*([^\\r\\n]+)\\R(### [^\\r\\n]+\\R)/m',
+            '$2**Mensagem-ID:** $1' . "\n",
+            $content
+        ) ?: $content;
+
+        $blocks = preg_split('/(?=^### )/m', $content) ?: [];
         $messages = [];
 
         foreach ($blocks as $block) {
             $block = trim($block);
-            if ($block === '' || ! str_contains($block, '### ')) {
+            if ($block === '' || ! str_starts_with($block, '### ')) {
                 continue;
-            }
-
-            $messageId = null;
-            if (preg_match('/^\\*\\*Mensagem-ID:\\*\\*\\s*([^\\r\\n]+)\\R/', $block, $idMatch)) {
-                $messageId = trim($idMatch[1]);
-                $block = preg_replace('/^\\*\\*Mensagem-ID:\\*\\*[^\\r\\n]+\\R/', '', $block, 1) ?: $block;
             }
 
             if (! preg_match('/^### (?<timestamp>[^\\r\\n]+?)\\s+—\\s+(?<author>.+?)\\s+—\\s+(?<type>[A-Z_]+)\\R/', $block, $header)) {
@@ -401,6 +401,8 @@ class AgentChatGithubService
             while ($body !== [] && trim((string) end($body)) === '') {
                 array_pop($body);
             }
+
+            $messageId = trim((string) ($meta['Mensagem-ID'] ?? '')) ?: null;
 
             $messages[] = [
                 'id' => $messageId ?: substr(hash('sha256', trim($block)), 0, 20),
