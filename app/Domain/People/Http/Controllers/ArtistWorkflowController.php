@@ -55,7 +55,7 @@ final class ArtistWorkflowController extends Controller
             return [$artist,$status,$this->conflicts($artist->id,$event->id,$data['scheduled_at']??null),!$existing];
         },3);
 
-        if($status!=='confirmed') AppNotification::query()->create(['app_id'=>$this->context->id(),'user_id'=>$user->id,'type'=>'artist_event_invitation','title'=>'Convite para participar de evento','message'=>'Você foi convidado para participar de '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/artist/events','data'=>['event_id'=>$event->id,'artist_id'=>$artist->id,'status'=>'pending']]);
+        if($status!=='confirmed'){$producerLabel=$event->production?->name?:'Uma produção';AppNotification::query()->create(['app_id'=>$this->context->id(),'user_id'=>$user->id,'type'=>'artist_event_invitation','title'=>'Convite artístico recebido','message'=>$producerLabel.' convidou você para '.$event->title.'. Se este for seu primeiro vínculo artístico, sua identidade na Cutinapp continua sendo sua e a produção aparece apenas como referência de origem.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/artist/onboarding','data'=>['event_id'=>$event->id,'artist_id'=>$artist->id,'status'=>'pending','production_reference'=>$producerLabel]]);}
         return response()->json(['message'=>$status==='confirmed'?'Participação atualizada.':'Usuário localizado, perfil artístico vinculado e convite enviado.','artist'=>$artist->fresh(),'participation_status'=>$status,'schedule_conflicts'=>$conflicts],$created?201:200);
     }
 
