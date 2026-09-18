@@ -63,8 +63,6 @@ final class ArtistInvitationWorkflowService
         User $user,
         array $participation
     ): array {
-        abort_unless($user->email_verified_at, 422, 'O usuário precisa confirmar o e-mail antes de responder ao convite.');
-
         $result = DB::transaction(function () use ($appId, $event, $actor, $user, $participation) {
             $artist = $this->identity->getOrCreate($appId, $user, $actor, $event, 'producer_event');
             $existingPivot = DB::table('event_artist')
