@@ -215,7 +215,7 @@ class EventController extends Controller
             'production_id' => "$required|integer|exists:productions,id",
             'title' => "$required|string|max:255",
             'description' => "$required|string|max:50000",
-            'image' => ($creating ? 'nullable' : 'sometimes|nullable') . '|image|mimes:jpeg,png,jpg,webp|max:5120',
+            'image' => ($creating ? 'nullable' : 'sometimes|nullable') . '|image|mimes:jpeg,png,jpg,webp|max:5120|dimensions:ratio=2/3',
             'address' => "$required|string|max:500",
             'start_date' => "$required|date",
             'end_date' => "$required|date|after_or_equal:start_date",
@@ -262,6 +262,11 @@ class EventController extends Controller
             'approval_message' => 'sometimes|nullable|string|max:5000',
             'segments' => 'sometimes|nullable|array',
             'establishment_name' => 'sometimes|nullable|string|max:255',
+        ], [
+            'image.max' => 'A imagem do evento deve ter no máximo 5 MB.',
+            'image.dimensions' => 'A imagem do evento deve estar no formato vertical 2:3. Use 1024 × 1536 px.',
+            'image.image' => 'Envie uma imagem válida para o evento.',
+            'image.mimes' => 'A imagem do evento deve ser JPG, PNG ou WebP.',
         ]);
     }
 
@@ -336,7 +341,11 @@ class EventController extends Controller
             mkdir(dirname($absolute), 0755, true);
         }
 
-        Image::make($uploaded->getRealPath())->orientate()->fit(850, 450)->encode('webp', 85)->save($absolute);
+        Image::make($uploaded->getRealPath())
+            ->orientate()
+            ->fit(1024, 1536)
+            ->encode('webp', 88)
+            ->save($absolute);
         return $path;
     }
 
