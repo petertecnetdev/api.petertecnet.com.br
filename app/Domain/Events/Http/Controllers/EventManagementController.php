@@ -12,7 +12,6 @@ use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\MerchantPaymentAccountService;
-use App\Services\ProducerOnboardingService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -29,7 +28,6 @@ final class EventManagementController extends Controller
         private readonly ApplicationContext $context,
         private readonly TicketInventoryService $ticketInventory,
         private readonly MerchantPaymentAccountService $paymentAccounts,
-        private readonly ProducerOnboardingService $producerOnboarding,
     ) {}
 
     public function mine(Request $request)
@@ -157,7 +155,7 @@ final class EventManagementController extends Controller
 
     public function publish(Request $request,int $id)
     {
-        $event=$this->ownedEvent($id,$request->user());$this->producerOnboarding->assertCanSell($event->production()->firstOrFail());$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);abort_if($event->is_cancelled,422,'Um evento cancelado não pode ser publicado.');abort_if(!$event->end_date||Carbon::parse($event->end_date,$timezone)->lte($now),422,'Um evento já encerrado não pode ser publicado.');abort_if(!$event->start_date||Carbon::parse($event->start_date,$timezone)->lte($now),422,'O evento precisa ser publicado antes do horário de início.');
+        $event=$this->ownedEvent($id,$request->user());$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);abort_if($event->is_cancelled,422,'Um evento cancelado não pode ser publicado.');abort_if(!$event->end_date||Carbon::parse($event->end_date,$timezone)->lte($now),422,'Um evento já encerrado não pode ser publicado.');abort_if(!$event->start_date||Carbon::parse($event->start_date,$timezone)->lte($now),422,'O evento precisa ser publicado antes do horário de início.');
         $sellableTickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$event->id)->where('quantity','>',0)->where(fn($q)=>$q->whereNull('limit_date')->orWhere('limit_date','>',$now));$hasAvailableTicket=(clone $sellableTickets)->exists();abort_unless($hasAvailableTicket,422,'Crie ao menos um ingresso disponível antes de publicar o evento.');$wasPublished=(bool)$event->is_published;$event->forceFill(['is_published'=>true])->save();if(!$wasPublished&&!$event->is_private)$this->notifyProductionFollowers($event);
         return response()->json(['message'=>$event->is_private?'Evento privado ativado.':'Evento publicado.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
