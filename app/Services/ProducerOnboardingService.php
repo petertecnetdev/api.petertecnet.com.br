@@ -19,6 +19,22 @@ final class ProducerOnboardingService
         private readonly MerchantPaymentAccountService $paymentAccounts,
     ) {}
 
+    public function statusForUser(int $organizationId, ?User $user, bool $isAdministrator = false): array
+    {
+        abort_unless($user, 401);
+
+        $production = Production::query()
+            ->where('app_id', $this->context->id())
+            ->findOrFail($organizationId);
+
+        abort_unless(
+            $isAdministrator || (int) $production->user_id === (int) $user->id,
+            403
+        );
+
+        return $this->status($production);
+    }
+
     public function status(Production $production): array
     {
         abort_unless((int) $production->app_id === $this->context->id(), 404, 'Organização não encontrada neste contexto.');
