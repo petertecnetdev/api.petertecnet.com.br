@@ -91,8 +91,15 @@ class FinancialPayoutService
 
         $payoutReady = (bool) ($beneficiary && $beneficiary->status === 'verified' && $destination && $destination->status === 'active');
         $appSlug = trim((string) $production->app_slug);
-        $platformCollectionReady = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
+        $platformCollectionEnabled = (bool) config("platform.applications.{$appSlug}.commerce.allow_platform_collection", false)
+            || (bool) config('services.finance.allow_platform_collection', false);
+        $primaryProvider = mb_strtolower(trim((string) config('services.finance.payment_primary_provider', 'asaas')));
+        $asaasCollectionReady = $platformCollectionEnabled
+            && $primaryProvider === 'asaas'
+            && trim((string) config('services.asaas.api_key')) !== '';
+        $mercadoPagoCollectionReady = $platformCollectionEnabled
             && trim((string) config('services.mercadopago.access_token')) !== '';
+        $platformCollectionReady = $asaasCollectionReady || $mercadoPagoCollectionReady;
         $merchantCollectionReady = DB::table('merchant_payment_accounts')
             ->where('app_id', $production->app_id)
             ->where('production_id', $production->id)
