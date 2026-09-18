@@ -21,9 +21,9 @@ final class CreativeDirectorServiceTest extends TestCase
 
         $this->assertSame('electronic', $direction['style_key']);
         $this->assertSame('impactful', $direction['intensity_key']);
-        $this->assertSame('16:9', $direction['ratio']);
-        $this->assertSame(1600, $direction['width']);
-        $this->assertSame(900, $direction['height']);
+        $this->assertSame('2:3', $direction['ratio']);
+        $this->assertSame(1024, $direction['width']);
+        $this->assertSame(1536, $direction['height']);
     }
 
     public function test_event_prompt_stays_inside_provider_limit_and_protects_canonical_text(): void
@@ -47,7 +47,7 @@ final class CreativeDirectorServiceTest extends TestCase
 
         $this->assertLessThanOrEqual(2048, mb_strlen($prompt));
         $this->assertStringContainsString('senior advertising art director', $prompt);
-        $this->assertStringContainsString('wide 16:9 event-page hero composition', $prompt);
+        $this->assertStringContainsString('portrait 2:3 event-poster composition', $prompt);
         $this->assertStringContainsString('Do NOT render any readable words', $prompt);
         $this->assertStringContainsString('fake sponsors', $prompt);
     }
