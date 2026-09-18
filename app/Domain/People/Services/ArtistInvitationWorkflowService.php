@@ -4,6 +4,7 @@ namespace App\Domain\People\Services;
 
 use App\Domain\Messaging\Services\WebPushService;
 use App\Mail\ArtistEventInvitationMail;
+use App\Mail\ArtistEventStatusMail;
 use App\Models\Application;
 use App\Models\Artist;
 use App\Models\Event;
@@ -640,6 +641,52 @@ final class ArtistInvitationWorkflowService
         ];
     }
 
+    public function updateExternalRecipient(
+        int $appId,
+        int $eventId,
+        int $invitationId,
+        User $actor,
+        string $email
+    ): array {
+        $event = $this->ownedEvent($appId, $eventId, $actor);
+        $email = mb_strtolower(trim($email));
+        abort_unless(filter_var($email, FILTER_VALIDATE_EMAIL), 422, 'Informe um e-mail válido.');
+
+        $invitation = DB::table('artist_invitations')
+            ->where('app_id', $appId)
+            ->where('event_id', $event->id)
+            ->where('id', $invitationId)
+            ->first();
+
+        abort_unless($invitation, 404, 'Convite não encontrado.');
+        abort_unless($invitation->status === 'pending_external', 422, 'O e-mail só pode ser alterado enquanto o cadastro ainda está pendente.');
+
+        DB::table('artist_invitations')->where('id', $invitation->id)->update([
+            'identifier_type' => 'email',
+            'identifier_hash' => hash('sha256', $email),
+            'identifier_hint' => $this->maskEmail($email),
+            'recipient_email_encrypted' => Crypt::encryptString($email),
+            'email_status' => 'not_sent',
+            'email_failed_at' => null,
+            'last_email_error' => null,
+            'resend_available_at' => null,
+            'updated_at' => now(),
+        ]);
+
+        $fresh = DB::table('artist_invitations')->where('id', $invitation->id)->first();
+        $sent = $this->deliverExternalInvitation($appId, $fresh, $event, $actor, $email);
+
+        $this->track($appId, (int) $invitation->id, $event->id, null, null, 'recipient_email_updated', 'producer');
+
+        return [
+            'message' => $sent
+                ? 'E-mail corrigido e convite reenviado.'
+                : 'E-mail corrigido, mas o envio falhou. Você pode tentar reenviar em alguns minutos.',
+            'sent' => $sent,
+            'identifier_hint' => $this->maskEmail($email),
+        ];
+    }
+
     public function cancel(int $appId, int $eventId, int $invitationId, User $actor, ?string $reason = null): array
     {
         $event = $this->ownedEvent($appId, $eventId, $actor);
@@ -691,6 +738,16 @@ final class ArtistInvitationWorkflowService
                 'url' => '/artist/invitations/'.$invitation->token,
                 'tag' => 'artist-invitation-'.$invitation->id,
             ]);
+        }
+
+        if (! $invitation->invited_user_id) {
+            $this->sendExternalStatusEmail(
+                $invitation,
+                $event,
+                'Convite artístico cancelado',
+                'Seu convite foi cancelado',
+                'A produção cancelou o convite para este evento.'
+            );
         }
 
         $this->track($appId, (int) $invitation->id, $event->id, $invitation->artist_id, $invitation->invited_user_id, 'invite_cancelled', 'producer');
@@ -826,6 +883,15 @@ final class ArtistInvitationWorkflowService
                         'url' => '/artist/invitations/'.$invitation->token,
                         'tag' => 'artist-invitation-'.$invitation->id,
                     ]);
+                }
+                if (! $invitation->invited_user_id) {
+                    $this->sendExternalStatusEmail(
+                        $invitation,
+                        $event,
+                        'Evento cancelado',
+                        'O evento do seu convite foi cancelado',
+                        $event->title.' foi cancelado pela organização.'
+                    );
                 }
                 $this->track($appId, (int) $invitation->id, $event->id, $invitation->artist_id, $invitation->invited_user_id, 'event_cancelled', 'event_update');
             }
@@ -1166,6 +1232,50 @@ final class ArtistInvitationWorkflowService
                 'event_id' => $invitation->event_id,
                 'invitation_id' => $invitation->id,
                 'recipient_hash' => hash('sha256', mb_strtolower(trim($email))),
+                'message' => $exception->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
+    private function sendExternalStatusEmail(
+        object $invitation,
+        Event $event,
+        string $subject,
+        string $heading,
+        string $message
+    ): bool {
+        $email = $this->decryptRecipientEmail($invitation);
+        if (! $email) return false;
+
+        try {
+            Mail::to($email)->send(new ArtistEventStatusMail(
+                $subject,
+                $heading,
+                $message,
+                $event->title,
+                optional($event->start_date)?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
+                $event->production?->name,
+            ));
+
+            $this->track(
+                (int) $invitation->app_id,
+                (int) $invitation->id,
+                (int) $event->id,
+                $invitation->artist_id,
+                $invitation->invited_user_id,
+                'status_email_sent',
+                'email',
+                ['status' => $invitation->status]
+            );
+
+            return true;
+        } catch (\Throwable $exception) {
+            Log::warning('Falha ao enviar atualização de convite artístico externo.', [
+                'app_id' => $invitation->app_id,
+                'event_id' => $event->id,
+                'invitation_id' => $invitation->id,
                 'message' => $exception->getMessage(),
             ]);
 
