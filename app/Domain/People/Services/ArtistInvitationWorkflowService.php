@@ -73,31 +73,65 @@ final class ArtistInvitationWorkflowService
                 ->lockForUpdate()
                 ->first();
 
+            $candidateInvitationStatuses = self::ACTIVE_STATUSES;
+            if (($existingPivot?->status ?? null) === 'confirmed') {
+                $candidateInvitationStatuses[] = 'accepted';
+            }
+
             $existingInvitation = DB::table('artist_invitations')
                 ->where('app_id', $appId)
                 ->where('event_id', $event->id)
                 ->where('artist_id', $artist->id)
-                ->whereIn('status', self::ACTIVE_STATUSES)
+                ->whereIn('status', $candidateInvitationStatuses)
                 ->lockForUpdate()
                 ->latest('id')
                 ->first();
 
-            $token = $existingInvitation?->token ?: $existingPivot?->invite_token ?: Str::random(48);
-            $status = $existingPivot?->status === 'confirmed' ? 'confirmed' : 'pending';
-            $expiresAt = $this->expiresAt($event);
             $payload = $this->participationPayload($participation);
+            $materialChanges = [];
+            if ($existingPivot) {
+                foreach (self::MATERIAL_FIELDS as $field) {
+                    if (
+                        array_key_exists($field, $payload)
+                        && $this->normalizeComparable($payload[$field]) !== $this->normalizeComparable($existingPivot->{$field} ?? null)
+                    ) {
+                        $materialChanges[$field] = [
+                            'from' => $existingPivot->{$field} ?? null,
+                            'to' => $payload[$field],
+                        ];
+                    }
+                }
+            }
+
+            $wasConfirmed = ($existingPivot?->status ?? null) === 'confirmed';
+            $needsReaccept = $wasConfirmed && $materialChanges !== [];
+            $participationStatus = $needsReaccept
+                ? 'pending_change'
+                : ($wasConfirmed ? 'confirmed' : (($existingPivot?->status ?? null) === 'pending_change' ? 'pending_change' : 'pending'));
+            $invitationStatus = $participationStatus === 'confirmed'
+                ? 'accepted'
+                : ($participationStatus === 'pending_change' ? 'pending_change' : 'pending');
+
+            if ($materialChanges !== []) {
+                $payload['_changed_fields'] = $materialChanges;
+            }
+
+            $token = $existingInvitation?->token ?: $existingPivot?->invite_token ?: Str::random(48);
+            $expiresAt = $this->expiresAt($event);
+            $preserveResponse = $participationStatus === 'confirmed';
 
             $pivot = [
                 'app_id' => $appId,
-                ...$payload,
-                'status' => $status === 'confirmed' ? 'pending_change' : 'pending',
+                ...collect($payload)->except('_changed_fields')->all(),
+                'status' => $participationStatus,
                 'invited_by_user_id' => $actor->id,
                 'invited_at' => $existingPivot?->invited_at ?: now(),
-                'responded_at' => null,
-                'response_user_id' => null,
+                'responded_at' => $preserveResponse ? $existingPivot?->responded_at : null,
+                'response_user_id' => $preserveResponse ? $existingPivot?->response_user_id : null,
                 'decline_reason' => null,
                 'cancelled_at' => null,
                 'invite_token' => $token,
+                'last_material_change_at' => $needsReaccept ? now() : $existingPivot?->last_material_change_at,
                 'updated_at' => now(),
             ];
 
@@ -125,22 +159,27 @@ final class ArtistInvitationWorkflowService
                 'identifier_hash' => hash('sha256', mb_strtolower(trim((string) $user->email))),
                 'identifier_hint' => $this->maskEmail($user->email),
                 'recipient_email_encrypted' => Crypt::encryptString(mb_strtolower(trim((string) $user->email))),
-                'status' => $status === 'confirmed' ? 'pending_change' : 'pending',
+                'status' => $invitationStatus,
                 'token' => $token,
                 'expires_at' => $expiresAt,
                 'payload' => json_encode($payload),
                 'source' => 'registered_user',
-                'responded_at' => null,
-                'responded_by_user_id' => null,
+                'responded_at' => $preserveResponse ? $existingInvitation?->responded_at : null,
+                'responded_by_user_id' => $preserveResponse ? $existingInvitation?->responded_by_user_id : null,
                 'decline_reason' => null,
                 'cancelled_at' => null,
                 'cancelled_by_user_id' => null,
+                'last_material_change_at' => $needsReaccept ? now() : $existingInvitation?->last_material_change_at,
                 'updated_at' => now(),
             ];
 
             if ($existingInvitation) {
+                if ($needsReaccept) {
+                    $invitationData['important_change_count'] = DB::raw('important_change_count + 1');
+                }
                 DB::table('artist_invitations')->where('id', $existingInvitation->id)->update($invitationData);
                 $invitationId = (int) $existingInvitation->id;
+                $createdInvitation = false;
             } else {
                 $invitationId = (int) DB::table('artist_invitations')->insertGetId([
                     'app_id' => $appId,
@@ -149,34 +188,76 @@ final class ArtistInvitationWorkflowService
                     'email_status' => 'not_sent',
                     'send_attempts' => 0,
                     'reminder_count' => 0,
-                    'important_change_count' => $status === 'confirmed' ? 1 : 0,
+                    'important_change_count' => $needsReaccept ? 1 : 0,
                     'created_at' => now(),
                 ]);
+                $createdInvitation = true;
             }
 
-            $this->audit($appId, $artist->id, $event->id, $actor->id, 'artist_invited', $existingPivot ? (array) $existingPivot : null, $pivot);
-            $this->track($appId, $invitationId, $event->id, $artist->id, $user->id, 'invite_created', 'registered_user');
+            $shouldDeliver = ! $existingPivot || $createdInvitation || $materialChanges !== [];
+            $this->audit(
+                $appId,
+                $artist->id,
+                $event->id,
+                $actor->id,
+                $existingPivot ? ($needsReaccept ? 'participation_material_change' : 'participation_updated') : 'artist_invited',
+                $existingPivot ? (array) $existingPivot : null,
+                $pivot
+            );
+            $this->track(
+                $appId,
+                $invitationId,
+                $event->id,
+                $artist->id,
+                $user->id,
+                $createdInvitation ? 'invite_created' : ($needsReaccept ? 'invite_reconfirmation_requested' : 'invite_updated'),
+                'registered_user',
+                $materialChanges !== [] ? ['fields' => array_keys($materialChanges)] : null
+            );
 
-            return compact('artist', 'invitationId', 'token');
+            return [
+                'artist' => $artist,
+                'invitationId' => $invitationId,
+                'participationStatus' => $participationStatus,
+                'shouldDeliver' => $shouldDeliver,
+                'changedFields' => array_keys($materialChanges),
+            ];
         }, 3);
 
-        $this->deliverInvitation(
-            $appId,
-            $result['invitationId'],
-            $event,
-            $actor,
-            $user,
-            $result['artist'],
-            false
-        );
+        $sent = false;
+        if ($result['shouldDeliver'] && $result['participationStatus'] !== 'confirmed') {
+            $sent = $this->deliverInvitation(
+                $appId,
+                $result['invitationId'],
+                $event,
+                $actor,
+                $user,
+                $result['artist'],
+                false,
+                $result['changedFields']
+            );
+        }
+
+        if ($result['participationStatus'] === 'confirmed') {
+            $message = 'Participação atualizada. Como os dados essenciais não mudaram, o aceite anterior continua válido.';
+        } elseif ($result['participationStatus'] === 'pending_change') {
+            $message = $sent
+                ? 'Alteração importante salva. O artista recebeu um novo pedido de confirmação.'
+                : 'Alteração importante salva e aguarda nova confirmação do artista.';
+        } else {
+            $message = $sent
+                ? 'Usuário localizado. O convite foi enviado e a participação ficará aguardando aceite.'
+                : 'Participação atualizada e continua aguardando aceite do artista.';
+        }
 
         return [
-            'message' => 'Usuário localizado. O convite foi enviado e a participação ficará aguardando aceite.',
+            'message' => $message,
             'artist' => $result['artist']->fresh(),
             'invitation_id' => $result['invitationId'],
-            'participation_status' => 'pending',
-            'invitation_sent' => true,
+            'participation_status' => $result['participationStatus'],
+            'invitation_sent' => $sent,
             'external_invitation' => false,
+            'material_changes' => $result['changedFields'],
         ];
     }
 
