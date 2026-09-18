@@ -41,8 +41,8 @@ final class OrganizationOnboardingController extends Controller
             'organization.instagram_url' => 'nullable|string|max:2048',
             'event.title' => 'nullable|string|min:2|max:255',
             'event.description' => 'nullable|string|max:50000',
-            'event.start_date' => 'nullable|date',
-            'event.end_date' => 'nullable|date|after:event.start_date',
+            'event.start_date' => 'nullable|required_with:event.title|date|after:now',
+            'event.end_date' => 'nullable|required_with:event.title|date|after:event.start_date',
             'event.venue' => 'nullable|string|max:255',
             'event.city' => 'nullable|string|max:120',
             'event.uf' => 'nullable|string|size:2',
@@ -173,6 +173,53 @@ final class OrganizationOnboardingController extends Controller
                 ->map(fn (Production $organization) => $this->statusPayload($organization, $request->user()))
                 ->values(),
         ]);
+    }
+
+    public function index(Request $request)
+    {
+        abort_unless($this->isAdmin($request->user()), 403, 'Somente um administrador pode acompanhar os onboardings assistidos.');
+
+        $data = $request->validate([
+            'q' => 'nullable|string|max:120',
+            'status' => 'nullable|in:awaiting_owner,awaiting_agreement,awaiting_payout,ready_to_sell',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+
+        $onboardingIds = DB::table('organization_onboardings')
+            ->where('app_id', $this->context->id())
+            ->pluck('establishment_id');
+
+        $query = Production::query()
+            ->where('app_id', $this->context->id())
+            ->whereIn('id', $onboardingIds)
+            ->with('user:id,first_name,last_name,email')
+            ->orderByDesc('id');
+
+        if ($term = trim((string) ($data['q'] ?? ''))) {
+            $query->where(function ($builder) use ($term) {
+                $builder->where('name', 'like', "%{$term}%")
+                    ->orWhere('city', 'like', "%{$term}%")
+                    ->orWhereHas('user', fn ($user) => $user
+                        ->where('email', 'like', "%{$term}%")
+                        ->orWhere('first_name', 'like', "%{$term}%")
+                    );
+            });
+        }
+
+        $paginator = $query->paginate($data['per_page'] ?? 30)->appends($request->query());
+        $rows = $paginator->getCollection()
+            ->map(fn (Production $organization) => $this->statusPayload(
+                $organization,
+                $organization->user ?: User::query()->findOrFail($organization->user_id)
+            ));
+
+        if (! empty($data['status'])) {
+            $rows = $rows->where('status', $data['status'])->values();
+        }
+
+        $paginator->setCollection($rows);
+
+        return response()->json(['onboardings' => $paginator]);
     }
 
     public function resendHandoff(Request $request, int $organizationId)
