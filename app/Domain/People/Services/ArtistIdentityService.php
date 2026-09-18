@@ -50,10 +50,21 @@ final class ArtistIdentityService
 
             if ($existing) {
                 if ($sourceEvent) {
-                    $this->references->recordEventRelationship($existing, $sourceEvent, $actor, false);
+                    $legacyProducerOrigin = ! $existing->origin_type
+                        && $existing->created_by_user_id
+                        && (int) $existing->created_by_user_id !== (int) $user->id;
+
+                    $this->references->recordEventRelationship(
+                        $existing,
+                        $sourceEvent,
+                        $actor,
+                        $legacyProducerOrigin
+                    );
+                } elseif (! $existing->origin_type) {
+                    $this->references->markSelfOrigin($existing);
                 }
 
-                return $existing;
+                return $existing->fresh();
             }
 
             $name = trim(($user->first_name ?? '').' '.($user->last_name ?? ''))
