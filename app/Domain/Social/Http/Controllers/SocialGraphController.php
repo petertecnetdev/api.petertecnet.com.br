@@ -2,6 +2,7 @@
 
 namespace App\Domain\Social\Http\Controllers;
 
+use App\Domain\People\Services\ArtistInvitationWorkflowService;
 use App\Http\Controllers\Controller;
 use App\Models\Artist;
 use App\Models\Event;
@@ -16,7 +17,10 @@ use Illuminate\Support\Str;
 
 final class SocialGraphController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ArtistInvitationWorkflowService $artistInvitations,
+    ) {}
 
     public function artists(Request $request)
     {
@@ -67,7 +71,35 @@ final class SocialGraphController extends Controller
         $event->artists()->syncWithoutDetaching([$artist->id=>['app_id'=>$this->context->id(),'participation_type'=>$data['participation_type'],'description'=>$data['description']??null,'sort_order'=>$data['sort_order']??0,'scheduled_at'=>$data['scheduled_at']??null,'stage'=>$data['stage']??null,'is_headliner'=>(bool)($data['is_headliner']??false),'status'=>'confirmed','invited_by_user_id'=>$request->user()->id,'invited_at'=>now(),'responded_at'=>now()]]);app(EventLineupNotificationService::class)->notifyPublishedEvent($event->fresh('artists'));return response()->json(['message'=>'Artista vinculado ao evento.','artists'=>$event->artists()->orderBy('event_artist.sort_order')->get()]);
     }
 
-    public function detachArtist(Request $request,int $eventId,int $artistId){$event=$this->ownedEvent($eventId,$request->user());$event->artists()->detach($artistId);return response()->json(['message'=>'Artista removido do line-up.']);}
+    public function detachArtist(Request $request,int $eventId,int $artistId)
+    {
+        $event=$this->ownedEvent($eventId,$request->user());
+        $invitation=DB::table('artist_invitations')
+            ->where('app_id',$this->context->id())
+            ->where('event_id',$event->id)
+            ->where('artist_id',$artistId)
+            ->latest('id')
+            ->first();
+
+        if($invitation){
+            $result=$this->artistInvitations->cancel(
+                $this->context->id(),
+                $event->id,
+                (int)$invitation->id,
+                $request->user(),
+                'Removido do line-up pela produção.'
+            );
+            return response()->json($result);
+        }
+
+        DB::table('event_artist')
+            ->where('app_id',$this->context->id())
+            ->where('event_id',$event->id)
+            ->where('artist_id',$artistId)
+            ->update(['status'=>'cancelled_by_producer','cancelled_at'=>now(),'updated_at'=>now()]);
+
+        return response()->json(['message'=>'Participação cancelada e preservada no histórico.','status'=>'cancelled_by_producer']);
+    }
 
     public function follow(Request $request)
     {
