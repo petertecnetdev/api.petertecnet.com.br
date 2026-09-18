@@ -496,18 +496,42 @@ class AgentControlRepositoryService
 
     private function jsonFile(string $path, bool $cache = true): ?array
     {
+        if (! $cache) {
+            $encodedPath = implode('/', array_map('rawurlencode', explode('/', trim($path, '/'))));
+            $response = Http::acceptJson()
+                ->timeout($this->timeout)
+                ->withHeaders([
+                    'Accept' => 'application/vnd.github+json',
+                    'X-GitHub-Api-Version' => '2022-11-28',
+                    'User-Agent' => 'Peter-Tecnet-Agent-Control',
+                ])
+                ->get("https://api.github.com/repos/{$this->repository}/contents/{$encodedPath}", ['ref' => $this->branch]);
+
+            if (! $response->successful()) {
+                return null;
+            }
+
+            $payload = $response->json();
+            $encoded = preg_replace('/\\s+/', '', (string) ($payload['content'] ?? ''));
+            $content = base64_decode($encoded, true);
+            if ($content === false) {
+                return null;
+            }
+
+            $decoded = json_decode($content, true);
+            return is_array($decoded) ? $decoded : null;
+        }
+
         $loader = function () use ($path) {
-            $response = Http::timeout($this->timeout)->get($this->rawUrl($path));
+            $response = Http::timeout($this->timeout)
+                ->withHeaders(['Cache-Control' => 'no-cache'])
+                ->get($this->rawUrl($path));
             if (! $response->successful()) {
                 return null;
             }
             $decoded = json_decode((string) $response->body(), true);
             return is_array($decoded) ? $decoded : null;
         };
-
-        if (! $cache) {
-            return $loader();
-        }
 
         return Cache::remember(
             'agent-control:file:' . sha1($this->repository . ':' . $this->branch . ':' . $path),
