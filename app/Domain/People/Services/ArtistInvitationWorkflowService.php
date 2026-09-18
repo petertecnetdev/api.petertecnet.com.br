@@ -1305,6 +1305,8 @@ final class ArtistInvitationWorkflowService
         bool $isReminder,
         array $changedFields
     ): bool {
+        $application = Application::query()->find($appId);
+
         try {
             Mail::to($email)->send(new ArtistEventInvitationMail(
                 $event->title,
@@ -1326,8 +1328,9 @@ final class ArtistInvitationWorkflowService
                     'fee_cents' => $payload['fee_cents'] ?? null,
                     'event_contact_email' => $event->contact_email ?: $event->organizer_email,
                     'event_contact_phone' => $event->contact_phone ?: $event->organizer_phone,
-                    'tracking_pixel_url' => rtrim((string) config('app.url'), '/').'/api/v1/apps/'.rawurlencode((string) (Application::query()->find($appId)?->slug ?: $appId)).'/artist-invitations/'.$invitation->token.'/open.gif',
-                ]
+                    'tracking_pixel_url' => rtrim((string) config('app.url'), '/').'/api/v1/apps/'.rawurlencode((string) ($application?->slug ?: $appId)).'/artist-invitations/'.$invitation->token.'/open.gif',
+                ],
+                $application
             ));
 
             DB::table('artist_invitations')->where('id', $invitation->id)->update([
@@ -1377,6 +1380,8 @@ final class ArtistInvitationWorkflowService
         $email = $this->decryptRecipientEmail($invitation);
         if (! $email) return false;
 
+        $application = Application::query()->find((int) $invitation->app_id);
+
         try {
             Mail::to($email)->send(new ArtistEventStatusMail(
                 $subject,
@@ -1385,6 +1390,7 @@ final class ArtistInvitationWorkflowService
                 $event->title,
                 optional($event->start_date)?->timezone(config('app.timezone'))->format('d/m/Y H:i'),
                 $event->production?->name,
+                $application,
             ));
 
             $this->track(
