@@ -124,7 +124,14 @@ final class AcquisitionOnboardingService
                 'status' => 'pending',
                 'expires_at' => now()->addDays(2),
                 'last_sent_at' => now(),
-                'metadata' => ['created_by_agent' => true],
+                'metadata' => [
+                    'created_by_agent' => true,
+                    'onboarding_mode' => 'assisted',
+                    'authorized_at' => now()->toIso8601String(),
+                    'authorized_by_agent_id' => $agent->id,
+                    'authorization_channel' => data_get($data, 'authorization.channel'),
+                    'authorization_note' => trim((string) data_get($data, 'authorization.note', '')) ?: null,
+                ],
             ]);
 
             $events = collect();
@@ -300,9 +307,13 @@ final class AcquisitionOnboardingService
 
         $base = rtrim((string) $this->context->application()->url, '/');
 
+        $productionId = (int) ($referral->production_id ?? 0);
         return [
-            'message' => 'E-mail confirmado e acesso ativado. Você já pode entrar na aplicação.',
+            'message' => 'E-mail confirmado e acesso ativado. Agora conclua o contrato e os recebimentos para liberar as vendas.',
             'login_url' => ($base !== '' ? $base : 'https://petertecnet.com.br').'/login',
+            'onboarding_url' => $productionId > 0
+                ? ($base !== '' ? $base : 'https://petertecnet.com.br').'/producer/onboarding?productionId='.$productionId
+                : ($base !== '' ? $base : 'https://petertecnet.com.br').'/dashboard',
         ];
     }
 

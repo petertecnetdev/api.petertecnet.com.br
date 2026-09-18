@@ -15,6 +15,9 @@ class AcquisitionReferralMail extends Mailable
     use Queueable, SerializesModels;
 
     public string $activationUrl;
+    public string $onboardingUrl;
+    public string $contractUrl;
+    public string $financeUrl;
 
     public function __construct(
         public User $user,
@@ -30,6 +33,9 @@ class AcquisitionReferralMail extends Mailable
             'ref' => $token,
             'email' => $user->email,
         ]);
+        $this->onboardingUrl = $base.'/producer/onboarding?productionId='.$production->id;
+        $this->contractUrl = $base.'/producer/contracts?productionId='.$production->id;
+        $this->financeUrl = $base.'/producer/finance?production='.$production->id.'&focus=activation';
     }
 
     public function build()

@@ -68,7 +68,7 @@ $publicCompatibility('cutinapp', static function (): void {
     Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
     Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists']);
     Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
-    Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
+    Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog'])->middleware('producer.commerce-ready');
     Route::get('/payments/mercadopago/oauth/callback', [PaymentProviderController::class, 'callback'])->middleware('throttle:60,1');
     Route::post('/payments/mercadopago/webhook', [PaymentProviderController::class, 'webhook'])->middleware('throttle:240,1');
     Route::get('/artists', [SocialGraphController::class, 'artists']);
@@ -87,7 +87,7 @@ $authenticatedCompatibility('cutinapp', static function (): void {
     Route::patch('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'update'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
     Route::delete('/productions/{organizationId}/coupons/{couponId}', [CommerceCouponController::class, 'destroy'])->whereNumber('organizationId')->whereNumber('couponId')->middleware('throttle:30,1');
 
-    Route::post('/checkout', [EventCommerceController::class, 'checkout'])->middleware('throttle:30,1');
+    Route::post('/checkout', [EventCommerceController::class, 'checkout'])->middleware(['producer.sales-ready:checkout', 'throttle:30,1']);
     Route::get('/orders/mine', [EventCommerceController::class, 'mine']);
     Route::get('/orders/{publicId}', [EventCommerceController::class, 'show']);
     Route::post('/orders/{publicId}/sync-payment', [PaymentProviderController::class, 'sync'])->middleware('throttle:30,1');
@@ -116,7 +116,7 @@ $authenticatedCompatibility('cutinapp', static function (): void {
     Route::get('/events/show/{id}', [EventManagementController::class, 'show'])->whereNumber('id');
     Route::post('/events', [EventManagementController::class, 'store'])->middleware('producer.agreement');
     Route::match(['post', 'put'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id');
-    Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
+    Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id')->middleware('producer.sales-ready:route');
     Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
 
     Route::post('/events/{eventId}/community', [EventCommunityController::class, 'createPost'])->whereNumber('eventId')->middleware('throttle:30,1');

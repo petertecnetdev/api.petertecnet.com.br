@@ -50,6 +50,9 @@ final class AcquisitionController extends Controller
         $data = $request->validate([
             'user.first_name' => ['required','string','min:2','max:100'],
             'user.last_name' => ['nullable','string','max:100'],
+            'authorization.confirmed' => ['required', 'accepted'],
+            'authorization.channel' => ['required', Rule::in(['whatsapp', 'email', 'phone', 'in_person', 'other'])],
+            'authorization.note' => ['nullable', 'string', 'max:1000'],
             'user.email' => ['required','email','max:255'],
             'production.name' => ['required','string','min:2','max:255'],
             'production.fantasy' => ['nullable','string','max:255'],
