@@ -1086,7 +1086,7 @@ final class ArtistInvitationWorkflowService
                     'fee_cents' => $payload['fee_cents'] ?? null,
                     'event_contact_email' => $event->contact_email ?: $event->organizer_email,
                     'event_contact_phone' => $event->contact_phone ?: $event->organizer_phone,
-                    'tracking_pixel_url' => $this->baseUrl(Application::query()->find($appId)).'/api/v1/apps/'.rawurlencode((string) (Application::query()->find($appId)?->slug ?: $appId)).'/artist-invitations/'.$invitation->token.'/open.gif',
+                    'tracking_pixel_url' => rtrim((string) config('app.url'), '/').'/api/v1/apps/'.rawurlencode((string) (Application::query()->find($appId)?->slug ?: $appId)).'/artist-invitations/'.$invitation->token.'/open.gif',
                 ]
             ));
 
