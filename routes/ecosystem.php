@@ -5,6 +5,7 @@ use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
+use App\Http\Controllers\Admin\AgentChatController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
@@ -41,6 +42,8 @@ Route::prefix('auth/impersonation')->middleware(['api', 'auth:api'])->group(func
 
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
+    Route::get('/agents/chat', [AgentChatController::class, 'index']);
+    Route::post('/agents/chat', [AgentChatController::class, 'store'])->middleware('throttle:30,1');
     Route::prefix('important-events')->group(function () {
         Route::get('/', [ImportantEventController::class, 'index']);
         Route::get('/unread-count', [ImportantEventController::class, 'unreadCount']);
