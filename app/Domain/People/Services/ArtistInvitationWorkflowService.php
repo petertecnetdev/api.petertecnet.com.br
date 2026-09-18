@@ -902,18 +902,19 @@ final class ArtistInvitationWorkflowService
         $relevant = array_values(array_intersect($changedFields, ['start_date','end_date','venue','address','address_number','neighborhood','city','uf','formatted_address']));
         if ($relevant === []) return;
 
-        $accepted = DB::table('artist_invitations')
+        $invitations = DB::table('artist_invitations')
             ->where('app_id', $appId)
             ->where('event_id', $event->id)
-            ->where('status', 'accepted')
+            ->whereIn('status', ['accepted', 'pending', 'pending_external', 'pending_change'])
             ->get();
 
-        foreach ($accepted as $invitation) {
-            $requiresReaccept = in_array('start_date', $relevant, true);
+        foreach ($invitations as $invitation) {
+            $requiresReaccept = $invitation->status === 'accepted' && in_array('start_date', $relevant, true);
             if ($requiresReaccept) {
                 DB::table('artist_invitations')->where('id', $invitation->id)->update([
                     'status' => 'pending_change',
                     'responded_at' => null,
+                    'responded_by_user_id' => null,
                     'important_change_count' => DB::raw('important_change_count + 1'),
                     'last_material_change_at' => now(),
                     'updated_at' => now(),
@@ -922,23 +923,64 @@ final class ArtistInvitationWorkflowService
                     DB::table('event_artist')->where('app_id', $appId)->where('event_id', $event->id)->where('artist_id', $invitation->artist_id)->update([
                         'status' => 'pending_change',
                         'responded_at' => null,
+                        'response_user_id' => null,
                         'last_material_change_at' => now(),
                         'updated_at' => now(),
                     ]);
                 }
+                $invitation = DB::table('artist_invitations')->where('id', $invitation->id)->first();
             }
 
             if ($invitation->invited_user_id) {
-                $this->notifications->sendToUser($appId, (int) $invitation->invited_user_id, [
-                    'type' => $requiresReaccept ? 'artist_event_reconfirmation' : 'artist_event_updated',
-                    'title' => $requiresReaccept ? 'Evento alterado: confirme novamente' : 'Evento atualizado',
-                    'message' => $event->title.' teve alterações em '.implode(', ', $relevant).'.',
-                    'reference_type' => 'artist_invitation',
-                    'reference_id' => $invitation->id,
-                    'reference_url' => '/artist/invitations/'.$invitation->token,
-                    'data' => ['event_id' => $event->id, 'changed_fields' => $relevant, 'requires_reacceptance' => $requiresReaccept],
-                ]);
+                $recipient = User::query()->find($invitation->invited_user_id);
+                $actor = User::query()->find($invitation->invited_by_user_id);
+                $artist = $invitation->artist_id ? Artist::query()->find($invitation->artist_id) : null;
+
+                if ($requiresReaccept && $recipient && $actor) {
+                    $this->deliverInvitation(
+                        $appId,
+                        (int) $invitation->id,
+                        $event,
+                        $actor,
+                        $recipient,
+                        $artist,
+                        false,
+                        $relevant
+                    );
+                } else {
+                    $this->notifications->sendToUser($appId, (int) $invitation->invited_user_id, [
+                        'type' => 'artist_event_updated',
+                        'title' => 'Evento atualizado',
+                        'message' => $event->title.' teve alterações em '.implode(', ', $relevant).'.',
+                        'reference_type' => 'artist_invitation',
+                        'reference_id' => $invitation->id,
+                        'reference_url' => '/artist/invitations/'.$invitation->token,
+                        'data' => ['event_id' => $event->id, 'changed_fields' => $relevant, 'requires_reacceptance' => false],
+                    ]);
+                    $this->push->sendToUser($appId, (int) $invitation->invited_user_id, [
+                        'title' => 'Evento atualizado',
+                        'body' => $event->title.' teve alterações importantes.',
+                        'url' => '/artist/invitations/'.$invitation->token,
+                        'tag' => 'artist-event-update-'.$invitation->id,
+                    ]);
+                }
+            } else {
+                $actor = User::query()->find($invitation->invited_by_user_id);
+                $email = $this->decryptRecipientEmail($invitation);
+                if ($invitation->status === 'pending_external' && $actor && $email) {
+                    $this->deliverExternalInvitation($appId, $invitation, $event, $actor, $email);
+                } else {
+                    $this->sendExternalStatusEmail(
+                        $invitation,
+                        $event,
+                        'Evento do seu convite foi atualizado',
+                        'O evento recebeu uma atualização',
+                        $event->title.' teve alterações em '.implode(', ', $relevant).'.'
+                    );
+                }
             }
+
+            $this->track($appId, (int) $invitation->id, $event->id, $invitation->artist_id, $invitation->invited_user_id, $requiresReaccept ? 'invite_reconfirmation_requested' : 'invited_event_updated', 'event_update', ['fields' => $relevant]);
         }
     }
 
