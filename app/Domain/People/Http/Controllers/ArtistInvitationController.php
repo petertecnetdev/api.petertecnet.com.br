@@ -113,6 +113,23 @@ final class ArtistInvitationController extends Controller
         );
     }
 
+    public function updateRecipientEmail(Request $request, int $eventId, int $invitationId): JsonResponse
+    {
+        $data = $request->validate([
+            'email' => 'required|email|max:255',
+        ]);
+
+        return response()->json(
+            $this->workflow->updateExternalRecipient(
+                $this->context->id(),
+                $eventId,
+                $invitationId,
+                $request->user(),
+                $data['email']
+            )
+        );
+    }
+
     public function cancel(Request $request, int $eventId, int $invitationId): JsonResponse
     {
         $data = $request->validate([
