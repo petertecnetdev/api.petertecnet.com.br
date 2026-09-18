@@ -99,7 +99,7 @@ final class ArtistInvitationController extends Controller
                 }
 
                 $actor = User::query()->find($invitation->invited_by_user_id) ?: $user;
-                $artist = $this->identity->getOrCreate($this->context->id(), $user, $actor);
+                $artist = $this->identity->getOrCreate($this->context->id(), $user, $actor, $event);
                 $payload = json_decode((string) ($invitation->payload ?? '{}'), true) ?: [];
                 $existing = DB::table('event_artist')
                     ->where('event_id', $event->id)
