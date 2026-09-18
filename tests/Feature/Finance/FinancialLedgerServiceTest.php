@@ -59,6 +59,29 @@ class FinancialLedgerServiceTest extends TestCase
         }
     }
 
+    public function test_rejects_same_idempotency_key_for_different_audit_metadata(): void
+    {
+        $appId = $this->application('ledger-metadata-conflict');
+        $cash = $this->account($appId, 'platform', 1);
+        $receivable = $this->account($appId, 'beneficiary', 10);
+        $entries = [
+            ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 1000, 'role' => 'gross'],
+            ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 1000, 'role' => 'receivable'],
+        ];
+        $service = app(FinancialLedgerService::class);
+
+        $service->post($appId, 'refund:order:1', $entries, [
+            'type' => 'refund',
+            'metadata' => ['order_id' => 1, 'reason' => 'customer_request'],
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $service->post($appId, 'refund:order:1', $entries, [
+            'type' => 'refund',
+            'metadata' => ['reason' => 'customer_request', 'order_id' => 2],
+        ]);
+    }
+
     public function test_rejects_unbalanced_transaction_without_partial_write(): void
     {
         $appId = $this->application('ledger-b');
