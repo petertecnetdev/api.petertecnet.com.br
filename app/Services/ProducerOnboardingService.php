@@ -23,6 +23,13 @@ final class ProducerOnboardingService
     {
         abort_unless((int) $production->app_id === $this->context->id(), 404, 'Organização não encontrada neste contexto.');
 
+        $referral = AcquisitionReferral::query()
+            ->where('application_id', $this->context->id())
+            ->where('production_id', $production->id)
+            ->latest()
+            ->first();
+        $assistedOnboarding = data_get((array) ($referral?->metadata ?? []), 'onboarding_mode') === 'assisted';
+
         $owner = User::query()->find($production->user_id);
         $membership = $owner
             ? DB::table('application_user')
@@ -38,7 +45,8 @@ final class ProducerOnboardingService
             ->orderBy('created_at')
             ->first(['id', 'production_id', 'title', 'slug', 'start_date', 'end_date', 'is_published']);
 
-        $agreementRequired = (bool) $this->context->option('events.requires_producer_agreement', false);
+        $agreementRequired = $assistedOnboarding
+            && (bool) $this->context->option('events.requires_producer_agreement', false);
         $agreementSigned = ! $agreementRequired || DB::table('contract_acceptances')
             ->where('app_id', $this->context->id())
             ->where('production_id', $production->id)
@@ -47,14 +55,12 @@ final class ProducerOnboardingService
 
         $payment = $this->paymentAccounts->readiness((int) $production->id);
         $paymentCollectionReady = (bool) ($payment['available'] ?? false);
-        $payoutRequired = (bool) $this->context->option('commerce.require_payout_setup_before_sales', false);
+        $payoutRequired = $assistedOnboarding
+            && (bool) $this->context->option('commerce.require_payout_setup_before_sales', false);
         $payoutReady = ! $payoutRequired || (bool) ($payment['payout_ready'] ?? false);
 
-        $canSell = $accountActive
-            && $productionReady
-            && $agreementSigned
-            && $paymentCollectionReady
-            && $payoutReady;
+        $assistedSetupReady = ! $assistedOnboarding || ($accountActive && $productionReady && $agreementSigned && $payoutReady);
+        $canSell = $assistedSetupReady && $paymentCollectionReady;
 
         $steps = [
             $this->step('account', 'Acesso do produtor', $accountActive, 'Confirme o e-mail e ative o acesso à aplicação.'),
@@ -71,7 +77,10 @@ final class ProducerOnboardingService
         return [
             'organization' => $production->only(['id', 'name', 'slug', 'is_published']),
             'owner' => $owner?->only(['id', 'first_name', 'last_name', 'email']),
-            'status' => $this->statusName($accountActive, $agreementSigned, $payoutReady, $paymentCollectionReady),
+            'status' => $assistedOnboarding
+                ? $this->statusName($accountActive, $agreementSigned, $payoutReady, $paymentCollectionReady)
+                : ($paymentCollectionReady ? 'ready_to_sell' : 'awaiting_payments'),
+            'assisted_onboarding' => $assistedOnboarding,
             'can_sell_tickets' => $canSell,
             'completion' => [
                 'completed' => $completed,
