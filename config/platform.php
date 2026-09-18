@@ -20,6 +20,7 @@ return [
                 'acquisition_min_platform_margin_percent' => (float) env('CUTINAPP_ACQUISITION_MIN_PLATFORM_MARGIN_PERCENT', 1),
                 'order_expiration_minutes' => max(30, min((int) env('CUTINAPP_ORDER_EXPIRATION_MINUTES', 30), 60)),
                 'allow_platform_collection' => filter_var(env('CUTINAPP_ALLOW_PLATFORM_COLLECTION', false), FILTER_VALIDATE_BOOL),
+                'require_payout_setup_before_sales' => filter_var(env('CUTINAPP_REQUIRE_PAYOUT_SETUP_BEFORE_SALES', true), FILTER_VALIDATE_BOOL),
             ],
             'events' => [
                 'requires_producer_agreement' => true,
