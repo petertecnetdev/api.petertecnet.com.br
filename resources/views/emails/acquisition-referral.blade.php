@@ -36,7 +36,19 @@
         <a href="{{ $activationUrl }}" style="display:inline-block;background:#4b9cff;color:#06111f;text-decoration:none;font-weight:800;padding:14px 24px;border-radius:10px;">{{ $requiresPassword ? 'Confirmar e criar minha senha' : 'Confirmar meu acesso' }}</a>
     </div>
 
+    <div style="margin:24px 0;padding:18px;border-radius:14px;background:#0a1627;border:1px solid #21334e;">
+        <div style="font-weight:700;margin-bottom:10px;color:#fff;">O que já deixamos pronto</div>
+        <div style="padding:6px 0;color:#bfd0e8;">✓ Sua conta foi preparada</div>
+        <div style="padding:6px 0;color:#bfd0e8;">✓ A produção {{ $production->name }} foi cadastrada</div>
+        @if($events->isNotEmpty())<div style="padding:6px 0;color:#bfd0e8;">✓ Seu primeiro evento e os ingressos foram preparados</div>@endif
+        <div style="font-weight:700;margin:16px 0 8px;color:#fff;">Depois de ativar o acesso</div>
+        <div style="padding:6px 0;color:#bfd0e8;">1. Revise e assine o contrato da plataforma</div>
+        <div style="padding:6px 0;color:#bfd0e8;">2. Conclua a verificação financeira e cadastre sua chave Pix</div>
+        <div style="padding:6px 0;color:#bfd0e8;">3. Revise o evento e publique quando estiver pronto</div>
+    </div>
+
     <p style="font-size:13px;line-height:1.6;color:#91a7c4;">Ao concluir a ativação, seu e-mail será confirmado. {{ $requiresPassword ? 'Você também definirá sua senha de acesso.' : 'Sua senha atual continuará válida, a menos que você escolha alterá-la.' }}</p>
+    <p style="font-size:13px;line-height:1.6;color:#91a7c4;">As vendas só serão liberadas depois que contrato, recebimentos e checkout estiverem regulares. Depois dessa configuração inicial, você poderá criar e administrar seus próximos eventos diretamente na Cutinapp.</p>
 </td></tr>
 </table>
 </td></tr>
