@@ -204,8 +204,9 @@ final class ArtistClaimController extends Controller
             'review_notes' => 'nullable|string|max:2000',
         ]);
 
+        $appId = $this->context->id();
         $claim = ArtistClaim::query()
-            ->where('app_id', $this->context->id())
+            ->where('app_id', $appId)
             ->where('event_id', $event->id)
             ->with(['artist', 'user'])
             ->findOrFail($claimId);
@@ -214,8 +215,8 @@ final class ArtistClaimController extends Controller
             throw ValidationException::withMessages(['claim' => ['Esta solicitação já foi analisada.']]);
         }
 
-        DB::transaction(function () use ($claim, $reviewer, $data) {
-            $artist = Artist::query()->lockForUpdate()->findOrFail($claim->artist_id);
+        DB::transaction(function () use ($claim, $reviewer, $data, $appId) {
+            $artist = Artist::query()->where('app_id', $appId)->lockForUpdate()->findOrFail($claim->artist_id);
 
             if ($data['decision'] === 'approve') {
                 if ($artist->claimed_at && (int) $artist->user_id !== (int) $claim->user_id) {
@@ -238,6 +239,7 @@ final class ArtistClaimController extends Controller
                 ]);
 
                 ArtistClaim::query()
+                    ->where('app_id', $appId)
                     ->where('artist_id', $artist->id)
                     ->where('id', '!=', $claim->id)
                     ->where('status', 'pending')
@@ -369,18 +371,18 @@ final class ArtistClaimController extends Controller
         ]);
     }
 
-    private function uniqueArtistSlug(string $name, ?int $ignore = null): string
+    private function uniqueArtistSlug(string $stageName, ?int $ignoreId = null): string
     {
-        $base = Str::slug($name) ?: 'artista';
+        $base = Str::slug($stageName) ?: 'artista';
         $slug = $base;
-        $i = 2;
+        $suffix = 2;
 
         while (Artist::withTrashed()
-            ->when($ignore, fn ($q) => $q->whereKeyNot($ignore))
             ->where('app_id', $this->context->id())
             ->where('slug', $slug)
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
             ->exists()) {
-            $slug = $base.'-'.$i++;
+            $slug = $base.'-'.$suffix++;
         }
 
         return $slug;
