@@ -23,6 +23,7 @@ use App\Http\Controllers\Admin\UserCommunicationController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
+Route::get('/ecosystem/agent-chat/sync-feed', [AgentChatController::class, 'syncFeed'])->middleware(['api', 'throttle:30,1']);
 Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
 Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{40,128}')
