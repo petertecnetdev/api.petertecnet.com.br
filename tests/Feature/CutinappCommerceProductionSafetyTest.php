@@ -91,6 +91,27 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->assertDatabaseMissing('financial_payout_destinations', ['source_id' => $event['production_id']]);
     }
 
+    public function test_asaas_platform_collection_does_not_block_checkout_when_payout_destination_is_not_ready(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'asaas');
+        config()->set('services.asaas.api_key', 'test-asaas-key');
+
+        [, $event, ] = $this->paidEventFixture('asaas-sales-before-payout');
+
+        $catalog = $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk();
+
+        $catalog
+            ->assertJsonPath('payment_config.available', true)
+            ->assertJsonPath('payment_config.provider', 'asaas')
+            ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
+            ->assertJsonPath('payment_config.payout_ready', false)
+            ->assertJsonPath('payment_config.payout_setup_required', true)
+            ->assertJsonPath('payment_config.sales_readiness.ready', true)
+            ->assertJsonPath('payment_config.sales_readiness.payout', false);
+    }
+
     public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
