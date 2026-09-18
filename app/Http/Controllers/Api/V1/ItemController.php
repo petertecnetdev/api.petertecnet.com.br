@@ -109,38 +109,13 @@ class ItemController extends Controller
     {
         $owned = $this->ownedEstablishment($request, $establishment);
 
-        $query = Item::query()
+        $items = Item::query()
             ->with('files')
             ->where('entity_name', 'establishment')
             ->where('entity_id', $owned->id)
-            ->latest('id');
+            ->latest('id')
+            ->get();
 
-        if ($request->boolean('active_only')) {
-            $query->where('status', true);
-        }
-
-        if ($request->filled('q')) {
-            $term = '%' . trim((string) $request->query('q')) . '%';
-            $query->where(function ($itemQuery) use ($term) {
-                $itemQuery->where('name', 'like', $term)
-                    ->orWhere('description', 'like', $term)
-                    ->orWhere('category', 'like', $term);
-            });
-        }
-
-        if ($request->boolean('paginate')) {
-            $pageSize = min(
-                max((int) $request->query('per_page', config('platform.default_page_size', 20)), 1),
-                config('platform.max_page_size', 100)
-            );
-
-            $items = $query->paginate($pageSize);
-            $items->getCollection()->each(fn (Item $item) => $item->setAppends(['image_url']));
-
-            return response()->json(['success' => true, 'data' => $items]);
-        }
-
-        $items = $query->get();
         $items->each(fn (Item $item) => $item->setAppends(['image_url']));
 
         return response()->json(['success' => true, 'data' => $items]);
