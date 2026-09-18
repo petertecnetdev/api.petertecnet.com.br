@@ -12,7 +12,7 @@
 <tr><td style="padding:32px">
 <p style="margin:0 0 10px;color:#8fb5ff;font-size:13px;text-transform:uppercase;letter-spacing:1.2px">{{ $application->name }}</p>
 <h1 style="margin:0 0 18px;font-size:28px;line-height:1.2">Olá, {{ $owner->first_name }}. Sua produção está pronta.</h1>
-<p style="margin:0 0 22px;color:#c8d2e6;line-height:1.65">Nossa equipe realizou a configuração inicial de <strong style="color:#fff">{{ $organization->name }}</strong> para facilitar sua entrada. A partir de agora, a conta e a operação ficam sob seu controle.</p>
+<p style="margin:0 0 14px;color:#c8d2e6;line-height:1.65">Nossa equipe realizou a configuração inicial de <strong style="color:#fff">{{ $organization->name }}</strong> para facilitar sua entrada. A partir de agora, a conta e a operação ficam sob seu controle.</p>\n<p style="margin:0 0 22px;color:#c8d2e6;line-height:1.65">Acesse a Cutinapp com o Google usando <strong style="color:#fff">{{ $owner->email }}</strong>. Nenhuma senha criada pela equipe é compartilhada ou necessária.</p>
 
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#0b1220;border-radius:14px;margin:0 0 22px">
 <tr><td style="padding:20px">
