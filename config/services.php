@@ -61,6 +61,8 @@ return [
         'webhook_token' => env('ASAAS_WEBHOOK_TOKEN'),
         'withdrawal_auth_token' => env('ASAAS_WITHDRAWAL_AUTH_TOKEN'),
         'timeout' => (int) env('ASAAS_API_TIMEOUT', 20),
+        'boleto_due_days' => (int) env('ASAAS_BOLETO_DUE_DAYS', 1),
+        'boleto_days_after_due_date' => (int) env('ASAAS_BOLETO_DAYS_AFTER_DUE_DATE', 1),
     ],
 
     'identity' => [
@@ -75,12 +77,14 @@ return [
     ],
 
     'finance' => [
+        'payment_primary_provider' => env('PAYMENT_PRIMARY_PROVIDER', 'asaas'),
+        'payment_fallback_provider' => env('PAYMENT_FALLBACK_PROVIDER', 'mercadopago'),
         'payout_provider' => env('FINANCE_PAYOUT_PROVIDER', 'asaas'),
         'payout_hold_hours' => (int) env('FINANCE_PAYOUT_HOLD_HOURS', 24),
         'payout_reserve_percent' => (float) env('FINANCE_PAYOUT_RESERVE_PERCENT', 10),
         'payout_destination_cooling_hours' => (int) env('FINANCE_PIX_CHANGE_COOLING_HOURS', 24),
         'step_up_amount' => (float) env('FINANCE_STEP_UP_AMOUNT', 5000),
-        'allow_platform_collection' => (bool) env('FINANCE_ALLOW_PLATFORM_COLLECTION', false),
+        'allow_platform_collection' => filter_var(env('FINANCE_ALLOW_PLATFORM_COLLECTION', false), FILTER_VALIDATE_BOOL),
     ],
 
     'mercadopago' => [

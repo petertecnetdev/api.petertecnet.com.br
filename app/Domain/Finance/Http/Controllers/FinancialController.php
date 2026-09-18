@@ -5,6 +5,7 @@ namespace App\Domain\Finance\Http\Controllers;
 use App\Domain\Finance\Contracts\PayoutProvider;
 use App\Http\Controllers\Controller;
 use App\Models\Production;
+use App\Services\AsaasCommerceWebhookService;
 use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
@@ -21,6 +22,7 @@ class FinancialController extends Controller
         private FinancialPayoutService $payouts,
         private PayoutProvider $payoutProvider,
         private AsaasWithdrawalAuthorizationService $withdrawalAuthorization,
+        private AsaasCommerceWebhookService $commerceWebhooks,
         private ApplicationContext $context,
     ) {}
 
@@ -95,7 +97,24 @@ class FinancialController extends Controller
 
     public function providerWebhook(Request $request)
     {
-        $this->assertProviderToken($request,'webhook_token');try{$this->payouts->processWebhook($request->all());}catch(Throwable $e){report($e);return response()->json(['ok'=>false],500);}return response()->json(['ok'=>true]);
+        $this->assertProviderToken($request, 'webhook_token');
+
+        $payload = $request->all();
+        $eventType = strtoupper(trim((string) ($payload['event'] ?? '')));
+
+        try {
+            if (str_starts_with($eventType, 'TRANSFER_')) {
+                $this->payouts->processWebhook($payload);
+            } else {
+                $this->commerceWebhooks->process($payload);
+            }
+        } catch (Throwable $e) {
+            report($e);
+
+            return response()->json(['ok' => false, 'retry' => true], 500);
+        }
+
+        return response()->json(['ok' => true]);
     }
 
     public function withdrawalValidation(Request $request)

@@ -36,6 +36,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
     public function test_paid_sales_use_platform_collection_before_producer_completes_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'mercadopago');
         config()->set('services.mercadopago.access_token', 'test-payment-token');
         config()->set('services.mercadopago.public_key', '');
 

@@ -9,6 +9,8 @@ use App\Models\CommercePayment;
 use App\Models\EventPass;
 use App\Models\Interaction;
 use App\Models\Production;
+use App\Services\AsaasCommerceWebhookService;
+use App\Services\AsaasPaymentService;
 use App\Services\EventAudienceService;
 use App\Services\MerchantPaymentAccountService;
 use App\Services\MercadoPagoService;
@@ -26,6 +28,8 @@ final class PaymentProviderController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly MercadoPagoService $mercadoPago,
+        private readonly AsaasPaymentService $asaas,
+        private readonly AsaasCommerceWebhookService $asaasWebhooks,
         private readonly MerchantPaymentAccountService $accounts,
         private readonly EventAudienceService $audience,
     ) {}
@@ -72,9 +76,59 @@ final class PaymentProviderController extends Controller
 
     public function sync(Request $request, string $publicId)
     {
-        $order=CommerceOrder::query()->where('app_id',$this->context->id())->where('public_id',$publicId)->with('payments')->firstOrFail();abort_unless((int)$order->user_id===(int)$request->user()->id||$this->isOrganizationOwner($request,(int)$order->production_id),403);
-        $payment=$order->payments()->where('app_id',$this->context->id())->where('provider','mercadopago')->latest('id')->first();if(!$payment||!$payment->provider_payment_id)return response()->json(['order'=>$order->fresh(['items','event','payments']),'reconciliation'=>'no_payment']);
-        try{$this->reconcilePaymentId((int)$payment->id);return response()->json(['order'=>$order->fresh(['items','event','payments']),'reconciliation'=>'ok']);}catch(Throwable $e){report($e);$fresh=$order->fresh(['items','event','payments']);return response()->json(['order'=>$fresh,'reconciliation'=>'retrying','message'=>$fresh->status==='paid'?'Pagamento confirmado. Estamos finalizando a entrega.':'Ainda não foi possível confirmar o pagamento. Tentaremos novamente.'],202);}
+        $order = CommerceOrder::query()
+            ->where('app_id', $this->context->id())
+            ->where('public_id', $publicId)
+            ->with('payments')
+            ->firstOrFail();
+
+        abort_unless(
+            (int) $order->user_id === (int) $request->user()->id
+                || $this->isOrganizationOwner($request, (int) $order->production_id),
+            403
+        );
+
+        $payment = $order->payments()
+            ->where('app_id', $this->context->id())
+            ->latest('id')
+            ->first();
+
+        if (! $payment || ! $payment->provider_payment_id) {
+            return response()->json([
+                'order' => $order->fresh(['items', 'event', 'payments']),
+                'reconciliation' => 'no_payment',
+            ]);
+        }
+
+        try {
+            if ($payment->provider === 'asaas') {
+                $remote = $this->asaas->getPayment((string) $payment->provider_payment_id);
+                $this->asaasWebhooks->reconcile($payment, $remote);
+            } elseif ($payment->provider === 'mercadopago') {
+                $this->reconcilePaymentId((int) $payment->id);
+            } else {
+                return response()->json([
+                    'order' => $order->fresh(['items', 'event', 'payments']),
+                    'reconciliation' => 'provider_not_supported',
+                ], 202);
+            }
+
+            return response()->json([
+                'order' => $order->fresh(['items', 'event', 'payments']),
+                'reconciliation' => 'ok',
+            ]);
+        } catch (Throwable $e) {
+            report($e);
+            $fresh = $order->fresh(['items', 'event', 'payments']);
+
+            return response()->json([
+                'order' => $fresh,
+                'reconciliation' => 'retrying',
+                'message' => $fresh->status === 'paid'
+                    ? 'Pagamento confirmado. Estamos finalizando a entrega.'
+                    : 'Ainda não foi possível confirmar o pagamento. Tentaremos novamente.',
+            ], 202);
+        }
     }
 
     public function reconcilePaymentId(int $paymentId): CommerceOrder

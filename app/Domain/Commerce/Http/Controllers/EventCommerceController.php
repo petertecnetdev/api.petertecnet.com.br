@@ -11,6 +11,8 @@ use App\Models\EventItem;
 use App\Models\EventPass;
 use App\Models\Production;
 use App\Models\Ticket;
+use App\Services\AsaasPaymentService;
+use App\Services\CommercePaymentSettlementService;
 use App\Services\MerchantPaymentAccountService;
 use App\Services\MercadoPagoService;
 use App\Services\OrganizationSalesReadinessService;
@@ -25,6 +27,8 @@ final class EventCommerceController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly MercadoPagoService $mercadoPago,
+        private readonly AsaasPaymentService $asaas,
+        private readonly CommercePaymentSettlementService $settlement,
         private readonly MerchantPaymentAccountService $accounts,
         private readonly OrganizationSalesReadinessService $salesReadiness,
     ) {}
@@ -110,12 +114,15 @@ final class EventCommerceController extends Controller
             'tickets' => $tickets,
             'items' => $items,
             'payment_config' => [
-                'provider' => 'mercadopago',
+                'provider' => $readiness['provider'] ?? null,
+                'fallback_provider' => $readiness['fallback_provider'] ?? null,
                 'connected' => $readiness['available'],
                 'available' => $paymentAvailable,
                 'merchant_connected' => $readiness['merchant_connected'],
                 'settlement_mode' => $readiness['settlement_mode'],
                 'public_key' => $readiness['public_key'],
+                'card_mode' => $readiness['card_mode'] ?? 'embedded',
+                'requires_payer_document' => (bool) ($readiness['requires_payer_document'] ?? false),
                 'methods' => $paymentAvailable ? $readiness['methods'] : [],
                 'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
                 'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
@@ -141,23 +148,19 @@ final class EventCommerceController extends Controller
             'items' => 'nullable|array|max:30',
             'items.*.id' => 'required_with:items|integer',
             'items.*.quantity' => 'required_with:items|integer|min:1|max:50',
-            'payment_method' => 'required|in:pix,card,free',
-            'card_token' => 'required_if:payment_method,card|nullable|string|max:300',
-            'payment_method_id' => 'required_if:payment_method,card|nullable|string|max:80',
+            'payment_method' => 'required|in:pix,card,boleto,free',
+            'card_token' => 'nullable|string|max:300',
+            'payment_method_id' => 'nullable|string|max:80',
             'issuer_id' => 'nullable|string|max:80',
-            'installments' => 'required_if:payment_method,card|nullable|integer|min:1|max:24',
-            'payer_identification_type' => 'required_if:payment_method,card|nullable|string|in:CPF',
-            'payer_identification_number' => 'required_if:payment_method,card|nullable|string|max:30',
+            'installments' => 'nullable|integer|min:1|max:24',
+            'payer_identification_type' => 'nullable|string|in:CPF',
+            'payer_identification_number' => 'nullable|string|max:30',
+            'payer_cpf_cnpj' => 'nullable|string|max:30',
+            'payer_name' => 'nullable|string|max:160',
             'payer_email' => 'nullable|email|max:190',
         ]);
 
         abort_if(empty($data['tickets']) && empty($data['items']), 422, 'Selecione ao menos um ingresso ou item.');
-
-        if ($data['payment_method'] === 'card') {
-            $document = preg_replace('/\D+/', '', (string) ($data['payer_identification_number'] ?? ''));
-            abort_if(strlen($document) !== 11, 422, 'Informe um CPF válido para o titular do cartão.');
-            $data['payer_identification_number'] = $document;
-        }
 
         $eventForReadiness = Event::query()
             ->where('id', $data['event_id'])
@@ -173,9 +176,39 @@ final class EventCommerceController extends Controller
                 : 'Este evento não está disponível para venda.'
         );
 
+        $initialReadiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
+
         if ($data['payment_method'] !== 'free') {
             $salesReadiness = $this->salesReadiness->status((int) $eventForReadiness->production_id);
             abort_unless($salesReadiness['ready'], 428, $salesReadiness['message']);
+
+            abort_if(! $initialReadiness['available'], 422, $initialReadiness['message']);
+            abort_if(
+                ! in_array($data['payment_method'], $initialReadiness['methods'], true),
+                422,
+                'Esta forma de pagamento não está disponível para esta organização.'
+            );
+
+            if (($initialReadiness['provider'] ?? null) === 'asaas') {
+                $document = preg_replace('/\D+/', '', (string) ($data['payer_cpf_cnpj'] ?? $user->cpf ?? ''));
+                abort_if(
+                    ! in_array(strlen($document), [11, 14], true),
+                    422,
+                    'Informe o CPF ou CNPJ do pagador para continuar no Asaas.'
+                );
+
+                $data['payer_cpf_cnpj'] = $document;
+                $data['payer_name'] = trim((string) ($data['payer_name'] ?? ''))
+                    ?: trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))
+                    ?: (string) ($user->name ?? '')
+                    ?: (string) ($user->email ?? 'Pagador');
+            } elseif ($data['payment_method'] === 'card') {
+                $document = preg_replace('/\D+/', '', (string) ($data['payer_identification_number'] ?? ''));
+                abort_if(strlen($document) !== 11, 422, 'Informe um CPF válido para o titular do cartão.');
+                abort_if(empty($data['card_token']) || empty($data['payment_method_id']), 422, 'Dados do cartão incompletos.');
+                $data['payer_identification_number'] = $document;
+                $data['installments'] = max(1, (int) ($data['installments'] ?? 1));
+            }
         }
 
         $platformRate = max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100));
@@ -198,7 +231,9 @@ final class EventCommerceController extends Controller
                     : 'Este evento não está disponível para venda.'
             );
 
-            $expiresAt = now()->addMinutes($expirationMinutes);
+            $expiresAt = $data['payment_method'] === 'boleto'
+                ? now('America/Sao_Paulo')->addDays(max(1, (int) config('services.asaas.boleto_due_days', 1)))->endOfDay()
+                : now()->addMinutes($expirationMinutes);
             $order = CommerceOrder::create([
                 'app_id' => $this->context->id(),
                 'public_id' => (string) Str::uuid(),
@@ -341,7 +376,7 @@ final class EventCommerceController extends Controller
                 abort_if(
                     $data['payment_method'] === 'free',
                     422,
-                    'Este pedido possui valor a pagar. Escolha PIX ou cartão.'
+                    'Este pedido possui valor a pagar. Escolha PIX, cartão ou boleto.'
                 );
 
                 $readiness = $this->accounts->readiness((int) $event->production_id);
@@ -421,7 +456,7 @@ final class EventCommerceController extends Controller
 
         if ($data['payment_method'] === 'free') {
             $this->cancelOrder($order);
-            return response()->json(['message' => 'Este pedido possui valor a pagar. Escolha PIX ou cartão.'], 422);
+            return response()->json(['message' => 'Este pedido possui valor a pagar. Escolha PIX, cartão ou boleto.'], 422);
         }
 
         $readiness = $this->accounts->readiness((int) $order->production_id);
@@ -434,9 +469,14 @@ final class EventCommerceController extends Controller
             return response()->json(['message' => 'Esta forma de pagamento não está disponível para esta organização.'], 422);
         }
 
+        if (($readiness['provider'] ?? null) === 'asaas') {
+            return $this->startAsaasPayment($order, $data, $user, $readiness);
+        }
+
         $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);
         $usesMerchant = (bool) ($account && $account->access_token);
-        $allowPlatform = (bool) $this->context->option('commerce.allow_platform_collection', false);
+        $allowPlatform = (bool) config('services.finance.allow_platform_collection', false)
+            || (bool) $this->context->option('commerce.allow_platform_collection', false);
         $platformToken = trim((string) config('services.mercadopago.access_token'));
 
         if (! $usesMerchant && (! $allowPlatform || $platformToken === '')) {
@@ -540,6 +580,157 @@ final class EventCommerceController extends Controller
         ], 201);
     }
 
+
+    private function startAsaasPayment(CommerceOrder $order, array $data, $user, array $readiness)
+    {
+        $idempotencyKey = 'commerce-order-' . $order->public_id;
+        $order->update([
+            'metadata' => array_merge($order->metadata ?? [], [
+                'settlement_mode' => 'platform_collection',
+                'payment_provider' => 'asaas',
+                'provider_payment_idempotency_key' => $idempotencyKey,
+                'payment_initialization_retryable' => false,
+            ]),
+        ]);
+
+        try {
+            $customer = $this->asaas->findOrCreateCustomer(
+                (int) $user->id,
+                (string) $data['payer_name'],
+                (string) $data['payer_cpf_cnpj'],
+                $data['payer_email'] ?? $user->email ?? null,
+                $user->phone ?? null,
+            );
+
+            $customerId = trim((string) ($customer['id'] ?? ''));
+            if ($customerId === '') {
+                throw new \RuntimeException('O Asaas não retornou o identificador do pagador.');
+            }
+
+            $dueDate = $data['payment_method'] === 'boleto'
+                ? now('America/Sao_Paulo')->addDays(max(1, (int) config('services.asaas.boleto_due_days', 3)))->toDateString()
+                : now('America/Sao_Paulo')->toDateString();
+
+            $applicationUrl = rtrim((string) ($this->context->application()->url ?: config('app.url')), '/');
+            $successUrl = $applicationUrl
+                . '/checkout/' . rawurlencode((string) ($order->event->slug ?? ''))
+                . '?payment_return=asaas&order=' . rawurlencode((string) $order->public_id);
+
+            $description = ($this->context->application()->name ?: 'Peter Tecnet')
+                . ' - ' . ($order->event->title ?? 'Pedido');
+
+            $remote = $this->asaas->createOrRecoverPayment(
+                $customerId,
+                $data['payment_method'],
+                (float) $order->total,
+                $dueDate,
+                (string) $order->public_id,
+                $description,
+                $successUrl,
+            );
+
+            $providerId = trim((string) ($remote['id'] ?? ''));
+            if ($providerId === '') {
+                throw new \RuntimeException('O Asaas não retornou o identificador da cobrança.');
+            }
+
+            $remoteValue = is_numeric($remote['value'] ?? null) ? (float) $remote['value'] : (float) $order->total;
+            $remoteNet = is_numeric($remote['netValue'] ?? null) ? (float) $remote['netValue'] : null;
+            $providerFee = $remoteNet !== null ? max(0, round($remoteValue - $remoteNet, 2)) : 0.0;
+            $pix = is_array($remote['_pix'] ?? null) ? $remote['_pix'] : [];
+            $boleto = is_array($remote['_boleto'] ?? null) ? $remote['_boleto'] : [];
+            $localStatus = $this->asaas->normalizeLocalStatus($remote);
+
+            $payment = CommercePayment::query()->updateOrCreate(
+                [
+                    'app_id' => $this->context->id(),
+                    'order_id' => $order->id,
+                    'provider' => 'asaas',
+                    'idempotency_key' => $idempotencyKey,
+                ],
+                [
+                    'method' => $data['payment_method'],
+                    'status' => $localStatus === 'failed'
+                        ? strtolower((string) ($remote['status'] ?? 'failed'))
+                        : $localStatus,
+                    'provider_payment_id' => $providerId,
+                    'provider_txid' => null,
+                    'amount' => $order->total,
+                    'provider_fee' => $providerFee,
+                    'qr_code' => $pix['payload'] ?? null,
+                    'qr_code_image' => ! empty($pix['encodedImage'])
+                        ? 'data:image/png;base64,' . $pix['encodedImage']
+                        : null,
+                    'ticket_url' => $remote['bankSlipUrl'] ?? $remote['invoiceUrl'] ?? null,
+                    'provider_payload' => array_merge($remote, [
+                        '_boleto' => $boleto,
+                        '_petertecnet' => [
+                            'provider' => 'asaas',
+                            'fallback_provider' => $readiness['fallback_provider'] ?? null,
+                            'billing_method' => $data['payment_method'],
+                        ],
+                    ]),
+                    'paid_at' => $localStatus === 'paid' ? now() : null,
+                    'failed_at' => $localStatus === 'failed' ? now() : null,
+                ]
+            );
+
+            $order->update(['processor_fee' => $providerFee]);
+
+            if ($localStatus === 'paid') {
+                $order = $this->settlement->confirm($payment, $remote, $providerFee);
+            }
+
+            $message = match ($data['payment_method']) {
+                'pix' => 'PIX Asaas gerado. Pague antes do vencimento.',
+                'boleto' => 'Boleto Asaas gerado. O ingresso será liberado após a confirmação do pagamento.',
+                'card' => 'Cobrança no cartão preparada no ambiente seguro do Asaas.',
+                default => 'Pagamento iniciado no Asaas.',
+            };
+
+            return response()->json([
+                'message' => $message,
+                'provider' => 'asaas',
+                'fallback_provider' => $readiness['fallback_provider'] ?? null,
+                'order' => $order->fresh(['items', 'event', 'production']),
+                'payment' => $payment->fresh(),
+                'payment_redirect_url' => $data['payment_method'] === 'card'
+                    ? ($remote['invoiceUrl'] ?? null)
+                    : null,
+                'boleto' => $data['payment_method'] === 'boleto'
+                    ? [
+                        'invoice_url' => $remote['invoiceUrl'] ?? null,
+                        'bank_slip_url' => $remote['bankSlipUrl'] ?? null,
+                        'identification_field' => $boleto['identificationField'] ?? null,
+                        'bar_code' => $boleto['barCode'] ?? null,
+                        'due_date' => $remote['dueDate'] ?? $dueDate,
+                    ]
+                    : null,
+            ], 201);
+        } catch (Throwable $e) {
+            report($e);
+
+            $order->update([
+                'metadata' => array_merge($order->metadata ?? [], [
+                    'payment_initialization_retryable' => true,
+                    'payment_initialization_failed_at' => now()->toIso8601String(),
+                    'payment_provider' => 'asaas',
+                    'payment_fallback_provider' => $readiness['fallback_provider'] ?? null,
+                ]),
+            ]);
+
+            return response()->json([
+                'message' => $e instanceof \RuntimeException
+                    ? $e->getMessage()
+                    : 'O Asaas não respondeu. Seu pedido foi preservado para uma nova tentativa.',
+                'retryable' => true,
+                'fallback_available' => ! empty($readiness['fallback_provider']),
+                'fallback_provider' => $readiness['fallback_provider'] ?? null,
+                'order_public_id' => $order->public_id,
+            ], 502);
+        }
+    }
+
     public function mine(Request $request)
     {
         return response()->json([
@@ -597,12 +788,31 @@ final class EventCommerceController extends Controller
     public function paymentAccount(Request $request, int $organizationId)
     {
         $this->ownedOrganization($request, $organizationId);
+        $readiness = $this->accounts->readiness($organizationId);
+
+        if (($readiness['provider'] ?? null) === 'asaas') {
+            return response()->json(['account' => [
+                'provider' => 'asaas',
+                'status' => $readiness['available'] ? 'connected' : 'unavailable',
+                'platform_managed' => true,
+                'provider_recipient_id' => null,
+                'connected_at' => null,
+                'verified_at' => null,
+                'token_expires_at' => null,
+                'methods' => $readiness['methods'] ?? [],
+                'fallback_provider' => $readiness['fallback_provider'] ?? null,
+            ]]);
+        }
+
         $account = $this->accounts->account($organizationId);
-        if (! $account) return response()->json(['account' => null]);
+        if (! $account) {
+            return response()->json(['account' => null]);
+        }
 
         return response()->json(['account' => [
             'provider' => $account->provider,
             'status' => $account->status,
+            'platform_managed' => false,
             'provider_recipient_id' => $account->provider_recipient_id,
             'connected_at' => $account->connected_at,
             'verified_at' => $account->verified_at,
@@ -629,7 +839,7 @@ final class EventCommerceController extends Controller
             'sales_message' => $readiness['message'],
             'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
             'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
-            'provider' => 'mercadopago',
+            'provider' => $readiness['provider'] ?? null,
         ]);
     }
 
