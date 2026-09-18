@@ -1,6 +1,7 @@
 <?php
 
 use App\Domain\People\Http\Controllers\ArtistInvitationController;
+use App\Domain\People\Http\Controllers\ArtistOnboardingController;
 use App\Domain\People\Http\Controllers\ArtistWorkflowController;
 use App\Domain\People\Http\Controllers\EventArtistManagementController;
 use Illuminate\Support\Facades\Route;
@@ -38,6 +39,13 @@ Route::prefix('v1/apps/{application}')
             });
 
             Route::middleware('app.capability:social')->group(function (): void {
+                Route::get('/artist-onboarding', [ArtistOnboardingController::class, 'status']);
+                Route::post('/artist-onboarding/activate', [ArtistOnboardingController::class, 'activate'])->middleware('throttle:20,1');
+                Route::get('/artist-onboarding/claim-candidates', [ArtistOnboardingController::class, 'claimCandidates'])->middleware('throttle:60,1');
+                Route::post('/artist-onboarding/claims/{artistId}', [ArtistOnboardingController::class, 'claimExisting'])->whereNumber('artistId')->middleware('throttle:10,1');
+                Route::get('/artist-onboarding/admin/claims', [ArtistOnboardingController::class, 'claimQueue']);
+                Route::put('/artist-onboarding/admin/claims/{claimId}', [ArtistOnboardingController::class, 'reviewClaim'])->whereNumber('claimId');
+                Route::patch('/artists/{artistId}/reference-visibility', [ArtistOnboardingController::class, 'referenceVisibility'])->whereNumber('artistId');
                 Route::post('/artists/{artistId}/favorite', [ArtistWorkflowController::class, 'favorite'])->whereNumber('artistId');
                 Route::delete('/artists/{artistId}/favorite', [ArtistWorkflowController::class, 'favorite'])->whereNumber('artistId');
                 Route::get('/artist-dashboard', [ArtistWorkflowController::class, 'dashboard']);
