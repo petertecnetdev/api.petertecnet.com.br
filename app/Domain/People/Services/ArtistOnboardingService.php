@@ -91,7 +91,7 @@ final class ArtistOnboardingService
         $this->track($appId, $artist->id, $user->id, 'artist_self_activated', 'self_onboarding');
 
         return [
-            'message' => 'Seu perfil artístico está ativo na Cutinapp.',
+            'message' => 'Seu perfil artístico está ativo na plataforma.',
             'artist' => $artist->fresh(),
             'next_steps' => $this->nextSteps($artist->fresh()),
         ];
