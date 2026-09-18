@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class AgentChatGithubService
@@ -26,15 +27,31 @@ class AgentChatGithubService
 
     public function snapshot(bool $fresh = false): array
     {
-        $cacheKey = 'agent-chat:github:' . sha1($this->repository . ':' . $this->branch . ':' . $this->path);
-
         $file = $fresh
             ? $this->fetchRemote()
-            : Cache::remember($cacheKey, now()->addSeconds(5), fn () => $this->fetchRemote());
+            : Cache::remember($this->cacheKey(), now()->addSeconds(5), fn () => $this->fetchRemote());
+
+        $messages = $this->parseMessages($file['content']);
+        $pending = $this->pendingRecords($file['content']);
+
+        foreach ($pending as $record) {
+            $parsed = $this->parseMessages((string) ($record['entry'] ?? ''));
+            $message = $parsed[0] ?? null;
+
+            if (! $message) {
+                continue;
+            }
+
+            $message['id'] = 'pending-' . ($record['id'] ?? $message['id']);
+            $message['sync_status'] = 'pending';
+            $messages[] = $message;
+        }
 
         return [
-            'messages' => $this->parseMessages($file['content']),
+            'messages' => $messages,
             'write_enabled' => $this->writeEnabled(),
+            'direct_write_enabled' => $this->directWriteEnabled(),
+            'delivery_mode' => $this->directWriteEnabled() ? 'direct' : 'github_actions_sync',
             'repository' => $this->repository,
             'branch' => $this->branch,
             'path' => $this->path,
@@ -50,10 +67,6 @@ class AgentChatGithubService
 
     public function append(array $data, ?object $user = null): array
     {
-        if (! $this->writeEnabled()) {
-            throw new RuntimeException('A credencial de escrita do Agent Chat não está configurada.');
-        }
-
         $message = trim((string) ($data['message'] ?? ''));
         if ($message === '') {
             throw new RuntimeException('A mensagem não pode ficar vazia.');
@@ -64,10 +77,57 @@ class AgentChatGithubService
         $subject = $this->singleLine((string) ($data['subject'] ?? 'Mensagem do Admin Center')) ?: 'Mensagem do Admin Center';
         $type = strtoupper($this->singleLine((string) ($data['type'] ?? 'REQUEST')) ?: 'REQUEST');
         $allowedTypes = ['INFO', 'QUESTION', 'REQUEST', 'REVIEW', 'DONE', 'BLOCKED', 'START'];
+
         if (! in_array($type, $allowedTypes, true)) {
             $type = 'REQUEST';
         }
 
+        if (! $this->directWriteEnabled()) {
+            return $this->queueForGithubActions(
+                author: $author,
+                to: $to,
+                subject: $subject,
+                message: $message,
+                type: $type,
+            );
+        }
+
+        return $this->appendDirect(
+            author: $author,
+            to: $to,
+            subject: $subject,
+            message: $message,
+            type: $type,
+        );
+    }
+
+    public function syncFeed(): array
+    {
+        return array_map(static fn (array $record) => [
+            'id' => (string) ($record['id'] ?? ''),
+            'entry' => (string) ($record['entry'] ?? ''),
+            'created_at' => (string) ($record['created_at'] ?? ''),
+        ], $this->readOutbox());
+    }
+
+    public function writeEnabled(): bool
+    {
+        if ($this->directWriteEnabled()) {
+            return true;
+        }
+
+        $directory = dirname($this->outboxPath());
+
+        return is_dir($directory) && is_writable($directory);
+    }
+
+    public function directWriteEnabled(): bool
+    {
+        return $this->token !== '';
+    }
+
+    private function appendDirect(string $author, string $to, string $subject, string $message, string $type): array
+    {
         $entry = $this->formatEntry(
             author: $author,
             to: $to,
@@ -75,8 +135,6 @@ class AgentChatGithubService
             message: $message,
             type: $type,
         );
-
-        $lastError = null;
 
         for ($attempt = 1; $attempt <= 4; $attempt++) {
             $file = $this->fetchRemote();
@@ -94,16 +152,21 @@ class AgentChatGithubService
 
                 $payload = $response->json();
                 $parsed = $this->parseMessages($content);
+                $last = end($parsed) ?: null;
+
+                if (is_array($last)) {
+                    $last['sync_status'] = 'synced';
+                }
 
                 return [
-                    'message' => end($parsed) ?: null,
+                    'message' => $last,
                     'commit_sha' => data_get($payload, 'commit.sha'),
                     'write_enabled' => true,
+                    'direct_write_enabled' => true,
+                    'delivery_mode' => 'direct',
                     'synced_at' => now()->toIso8601String(),
                 ];
             }
-
-            $lastError = $response->status();
 
             if (! in_array($response->status(), [409, 422], true)) {
                 $response->throw();
@@ -115,9 +178,54 @@ class AgentChatGithubService
         throw new RuntimeException('O Agent Chat foi alterado por outro agente durante o envio. Tente novamente.');
     }
 
-    public function writeEnabled(): bool
+    private function queueForGithubActions(string $author, string $to, string $subject, string $message, string $type): array
     {
-        return $this->token !== '';
+        $id = (string) Str::uuid();
+        $entry = rtrim($this->formatEntry(
+            author: $author,
+            to: $to,
+            subject: $subject,
+            message: $message,
+            type: $type,
+        )) . "\n" . $this->marker($id) . "\n";
+
+        $record = [
+            'id' => $id,
+            'entry' => $entry,
+            'created_at' => now()->toIso8601String(),
+        ];
+
+        $this->mutateOutbox(function (array $records) use ($record) {
+            $records[] = $record;
+
+            return $records;
+        });
+
+        $parsed = $this->parseMessages($entry);
+        $structured = $parsed[0] ?? [
+            'id' => 'pending-' . $id,
+            'timestamp' => now('America/Sao_Paulo')->format('Y-m-d H:i') . ' BRT',
+            'author' => $author,
+            'type' => $type,
+            'to' => $to,
+            'subject' => $subject,
+            'message' => $message,
+            'repo' => $this->repository,
+            'branch' => $this->branch,
+            'commit' => 'n/a',
+            'status' => $type,
+        ];
+        $structured['id'] = 'pending-' . $id;
+        $structured['sync_status'] = 'pending';
+
+        return [
+            'message' => $structured,
+            'commit_sha' => null,
+            'write_enabled' => true,
+            'direct_write_enabled' => false,
+            'delivery_mode' => 'github_actions_sync',
+            'synced_at' => now()->toIso8601String(),
+        ];
     }
 
     private function fetchRemote(): array
@@ -141,7 +249,7 @@ class AgentChatGithubService
 
     private function client(bool $requireToken = false): PendingRequest
     {
-        if ($requireToken && $this->token === '') {
+        if ($requireToken && ! $this->directWriteEnabled()) {
             throw new RuntimeException('A credencial de escrita do Agent Chat não está configurada.');
         }
 
@@ -154,7 +262,7 @@ class AgentChatGithubService
                 'User-Agent' => 'Peter-Tecnet-Agent-Chat',
             ]);
 
-        if ($this->token !== '') {
+        if ($this->directWriteEnabled()) {
             $request = $request->withToken($this->token);
         }
 
@@ -246,10 +354,101 @@ class AgentChatGithubService
                 'branch' => trim($match['branch']),
                 'commit' => trim($match['commit']),
                 'status' => trim($match['status']),
+                'sync_status' => 'synced',
             ];
         }
 
         return $messages;
+    }
+
+    private function pendingRecords(string $githubContent): array
+    {
+        return $this->mutateOutbox(function (array $records) use ($githubContent) {
+            return array_values(array_filter($records, function (array $record) use ($githubContent) {
+                $id = (string) ($record['id'] ?? '');
+
+                return $id !== '' && ! str_contains($githubContent, $this->marker($id));
+            }));
+        });
+    }
+
+    private function readOutbox(): array
+    {
+        $path = $this->outboxPath();
+
+        if (! is_file($path)) {
+            return [];
+        }
+
+        $handle = @fopen($path, 'rb');
+        if (! $handle) {
+            throw new RuntimeException('Não foi possível ler a fila local do Agent Chat.');
+        }
+
+        try {
+            if (! flock($handle, LOCK_SH)) {
+                throw new RuntimeException('Não foi possível bloquear a fila local do Agent Chat para leitura.');
+            }
+
+            $raw = stream_get_contents($handle);
+            $records = json_decode($raw ?: '[]', true);
+
+            return is_array($records) ? array_values($records) : [];
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    private function mutateOutbox(callable $callback): array
+    {
+        $path = $this->outboxPath();
+        $directory = dirname($path);
+
+        if (! is_dir($directory) && ! @mkdir($directory, 0775, true) && ! is_dir($directory)) {
+            throw new RuntimeException('Não foi possível criar o diretório da fila local do Agent Chat.');
+        }
+
+        $handle = @fopen($path, 'c+');
+        if (! $handle) {
+            throw new RuntimeException('Não foi possível abrir a fila local do Agent Chat.');
+        }
+
+        try {
+            if (! flock($handle, LOCK_EX)) {
+                throw new RuntimeException('Não foi possível bloquear a fila local do Agent Chat.');
+            }
+
+            rewind($handle);
+            $raw = stream_get_contents($handle);
+            $records = json_decode($raw ?: '[]', true);
+            $records = is_array($records) ? array_values($records) : [];
+
+            $next = $callback($records);
+            if (! is_array($next)) {
+                throw new RuntimeException('A atualização da fila local do Agent Chat retornou dados inválidos.');
+            }
+
+            rewind($handle);
+            ftruncate($handle, 0);
+            fwrite($handle, json_encode(array_values($next), JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            fflush($handle);
+
+            return array_values($next);
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
+        }
+    }
+
+    private function outboxPath(): string
+    {
+        return storage_path('app/agent-chat-outbox.json');
+    }
+
+    private function marker(string $id): string
+    {
+        return sprintf('<!-- agent-chat-id:%s -->', $id);
     }
 
     private function singleLine(string $value): string
