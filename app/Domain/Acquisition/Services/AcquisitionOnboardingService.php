@@ -129,6 +129,8 @@ final class AcquisitionOnboardingService
                     'onboarding_mode' => 'assisted',
                     'authorized_at' => now()->toIso8601String(),
                     'authorized_by_agent_id' => $agent->id,
+                    'authorization_channel' => data_get($data, 'authorization.channel'),
+                    'authorization_note' => trim((string) data_get($data, 'authorization.note', '')) ?: null,
                 ],
             ]);
 
