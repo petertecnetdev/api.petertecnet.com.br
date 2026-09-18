@@ -128,5 +128,9 @@ return [
         'private_key' => env('WEB_PUSH_PRIVATE_KEY'),
     ],
 
+    'artist_invitation_email' => [
+        'webhook_secret' => env('ARTIST_INVITATION_EMAIL_WEBHOOK_SECRET'),
+    ],
+
     'geo_ip' => ['endpoint' => env('GEO_IP_ENDPOINT', 'https://ipwho.is/{ip}')],
 ];
