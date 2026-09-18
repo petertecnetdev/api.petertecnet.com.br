@@ -2,6 +2,7 @@
 
 namespace App\Domain\Commerce\Services;
 
+use App\Domain\Commerce\Support\CommerceTotals;
 use App\Models\CommerceCoupon;
 use App\Models\CommerceCouponRedemption;
 use App\Models\CommerceOrder;
@@ -32,7 +33,7 @@ final class CommerceCouponService
         if ($coupon->starts_at && now()->lt($coupon->starts_at)) {
             throw ValidationException::withMessages(['coupon_code' => 'Este cupom ainda não está disponível.']);
         }
-        if ($coupon->expires_at && now()->gt($coupon->expires_at)) {
+        if ($coupon->expires_at && now()->gte($coupon->expires_at)) {
             throw ValidationException::withMessages(['coupon_code' => 'Este cupom expirou.']);
         }
         if ($coupon->max_uses !== null && (int) $coupon->uses_count >= (int) $coupon->max_uses) {
@@ -50,14 +51,16 @@ final class CommerceCouponService
         $discount = $coupon->discount_type === 'percentage'
             ? round($subtotal * min(100, max(0, (float)$coupon->discount_value)) / 100, 2)
             : min($subtotal, round(max(0, (float)$coupon->discount_value), 2));
-        $discount = min($subtotal, max(0, $discount));
+        $totals = CommerceTotals::calculate([
+            ['unit_price' => max(0.0, $subtotal), 'quantity' => 1],
+        ], $discount);
 
         return [
             'coupon' => $coupon,
             'code' => $coupon->code,
-            'discount_amount' => $discount,
-            'subtotal' => round($subtotal, 2),
-            'total' => round(max(0, $subtotal - $discount), 2),
+            'discount_amount' => $totals['discount'],
+            'subtotal' => $totals['subtotal'],
+            'total' => $totals['total'],
         ];
     }
 
