@@ -2,6 +2,7 @@
 
 use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
+use App\Domain\Catalog\Http\Controllers\OwnedItemPaginationController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
 use App\Domain\Commerce\Http\Controllers\CommerceOrderPaymentRetryController;
@@ -153,6 +154,7 @@ Route::prefix('v1/apps/{application}')
                 Route::delete('/establishments/{establishment}', [EstablishmentController::class, 'destroy']);
                 Route::get('/establishments/{establishment}/metrics', [MetricsController::class, 'establishment']);
                 Route::get('/establishments/{establishment}/items', [ItemController::class, 'mine']);
+                Route::get('/establishments/{establishment}/items/paginated', [OwnedItemPaginationController::class, 'index'])->whereNumber('establishment');
                 Route::post('/items', [ItemController::class, 'store']);
                 Route::patch('/items/{item}', [ItemController::class, 'update']);
                 Route::delete('/items/{item}', [ItemController::class, 'destroy']);
