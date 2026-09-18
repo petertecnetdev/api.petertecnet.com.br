@@ -38,6 +38,7 @@ final class EventManagementController extends Controller
             'city' => 'nullable|string|max:120',
             'status' => 'nullable|in:draft,published,cancelled,upcoming,past',
             'production_id' => 'nullable|integer|min:1',
+            'artist_id' => 'nullable|integer|min:1',
             'from' => 'nullable|date_format:Y-m-d',
             'to' => 'nullable|date_format:Y-m-d|after_or_equal:from',
             'per_page' => 'nullable|integer|min:1|max:100',
@@ -74,7 +75,7 @@ final class EventManagementController extends Controller
             $query
                 ->with([
                     'production:id,app_id,name,slug,user_id,app_slug',
-                    'artists:id,app_id,slug,stage_name',
+                    'artists:id,app_id,slug,stage_name,photo',
                 ])
                 ->withCount([
                     'tickets' => fn ($q) => $q->where('app_id', $appId),
@@ -88,6 +89,10 @@ final class EventManagementController extends Controller
                     ->orWhere('venue', 'like', "%{$term}%")
                     ->orWhereHas('production', fn ($production) => $production
                         ->where('name', 'like', "%{$term}%")
+                    )
+                    ->orWhereHas('artists', fn ($artist) => $artist
+                        ->where('stage_name', 'like', "%{$term}%")
+                        ->orWhere('slug', 'like', "%{$term}%")
                     );
             });
         }
@@ -97,6 +102,9 @@ final class EventManagementController extends Controller
         }
         if (!empty($data['production_id'])) {
             $query->where('production_id', $data['production_id']);
+        }
+        if (!empty($data['artist_id'])) {
+            $query->whereHas('artists', fn ($artist) => $artist->whereKey((int) $data['artist_id']));
         }
         if (!empty($data['from'])) {
             $query->where('start_date', '>=', Carbon::createFromFormat('Y-m-d', $data['from'], config('app.timezone'))->startOfDay());
@@ -131,7 +139,7 @@ final class EventManagementController extends Controller
     public function show(Request $request,int $id)
     {
         $event=$this->ownedEvent($id,$request->user());$appId=$this->context->id();
-        $event->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']);
+        $event->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name,photo']);
         $event->loadCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);
         $this->attachSellableTicketCounts(collect([$event]));
         return response()->json(['event'=>$event]);
@@ -214,7 +222,7 @@ final class EventManagementController extends Controller
             try{$extension=pathinfo($source->image,PATHINFO_EXTENSION)?:'webp';$newImage=dirname($source->image).'/'.Str::uuid().'.'.$extension;Storage::disk('public')->copy($source->image,$newImage);$duplicate->forceFill(['image'=>$newImage])->save();}catch(Throwable $e){report($e);}
         }
 
-        return response()->json(['message'=>'Nova edição criada como rascunho. Ingressos, itens e line-up foram reaproveitados; vendas, passes, check-ins e histórico não foram copiados.','event'=>$duplicate->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']),'copied'=>['tickets'=>$duplicate->tickets()->count(),'items'=>EventItem::query()->where('event_id',$duplicate->id)->count(),'artists'=>$duplicate->artists()->count()]],201);
+        return response()->json(['message'=>'Nova edição criada como rascunho. Ingressos, itens e line-up foram reaproveitados; vendas, passes, check-ins e histórico não foram copiados.','event'=>$duplicate->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name,photo']),'copied'=>['tickets'=>$duplicate->tickets()->count(),'items'=>EventItem::query()->where('event_id',$duplicate->id)->count(),'artists'=>$duplicate->artists()->count()]],201);
     }
 
     public function destroyMany(Request $request)
