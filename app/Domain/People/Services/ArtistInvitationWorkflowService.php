@@ -394,6 +394,7 @@ final class ArtistInvitationWorkflowService
         ?string $userAgent
     ): array {
         abort_unless(in_array($decision, ['accept', 'reject'], true), 422, 'Resposta inválida.');
+        abort_unless($user->email_verified_at, 403, 'Confirme seu e-mail antes de responder ao convite artístico.');
 
         $invitation = $this->invitationByToken($appId, $token);
         $event = Event::query()->where('app_id', $appId)->with('production')->findOrFail($invitation->event_id);
@@ -1328,7 +1329,9 @@ final class ArtistInvitationWorkflowService
                 'important_change_count' => (int) ($invitation->important_change_count ?? 0),
                 'last_material_change_at' => $invitation->last_material_change_at,
                 'material_changes' => $materialChanges,
-                'can_respond' => in_array($invitation->status, ['pending','pending_change'], true)
+                'requires_email_verification' => ! (bool) $user->email_verified_at,
+                'can_respond' => (bool) $user->email_verified_at
+                    && in_array($invitation->status, ['pending','pending_change'], true)
                     && ! $event->is_cancelled
                     && (! $event->start_date || Carbon::parse($event->start_date)->isFuture()),
             ],
