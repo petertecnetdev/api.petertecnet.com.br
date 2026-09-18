@@ -6,6 +6,7 @@ use App\Models\AcquisitionReferral;
 use App\Models\CommerceOrder;
 use App\Models\EventAcquisitionCommission;
 use App\Models\User;
+use App\Services\ProducerOnboardingService;
 use App\Support\ApplicationContext;
 
 final class AcquisitionAgentService
@@ -14,6 +15,7 @@ final class AcquisitionAgentService
         private readonly ApplicationContext $context,
         private readonly AcquisitionAccess $access,
         private readonly AcquisitionCommissionPolicy $commissionPolicy,
+        private readonly ProducerOnboardingService $producerOnboarding,
     ) {}
 
     public function commissionCeilingPercentage(): float
@@ -89,6 +91,11 @@ final class AcquisitionAgentService
             ->latest()
             ->limit(12)
             ->get();
+
+        $recent->each(function (AcquisitionReferral $referral) {
+            if (! $referral->production) return;
+            $referral->setAttribute('onboarding', $this->producerOnboarding->status($referral->production));
+        });
 
         $total = (clone $referrals)->count();
         $accepted = (clone $referrals)->where('status', 'accepted')->count();
