@@ -20,26 +20,29 @@ final class ArtistReferenceService
             return;
         }
 
+        $relationshipKey = [
+            'app_id' => (int) $artist->app_id,
+            'artist_id' => (int) $artist->id,
+            'related_type' => 'organization',
+            'related_id' => (int) $production->id,
+            'relationship_type' => $createdFromRelationship ? 'introduced_by' : 'event_collaboration',
+        ];
+        $existingRelationship = DB::table('artist_relationships')->where($relationshipKey)->first();
+
         DB::table('artist_relationships')->updateOrInsert(
+            $relationshipKey,
             [
-                'app_id' => (int) $artist->app_id,
-                'artist_id' => (int) $artist->id,
-                'related_type' => 'organization',
-                'related_id' => (int) $production->id,
-                'relationship_type' => $createdFromRelationship ? 'introduced_by' : 'event_collaboration',
-            ],
-            [
-                'first_event_id' => (int) $event->id,
-                'is_public' => true,
+                'first_event_id' => $existingRelationship?->first_event_id ?: (int) $event->id,
+                'is_public' => $existingRelationship ? (bool) $existingRelationship->is_public : true,
                 'status' => 'active',
-                'first_seen_at' => DB::raw('COALESCE(first_seen_at, CURRENT_TIMESTAMP)'),
+                'first_seen_at' => $existingRelationship?->first_seen_at ?: now(),
                 'last_seen_at' => now(),
                 'metadata' => json_encode([
                     'organization_name' => $production->name,
                     'actor_user_id' => (int) $actor->id,
                 ]),
                 'updated_at' => now(),
-                'created_at' => now(),
+                'created_at' => $existingRelationship?->created_at ?: now(),
             ]
         );
 
