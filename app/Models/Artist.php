@@ -16,7 +16,8 @@ class Artist extends Model
         'short_bio', 'bio', 'city', 'uf', 'genres', 'photo', 'cover', 'instagram_url', 'youtube_url',
         'spotify_url', 'website_url', 'professional_email', 'professional_phone', 'verification_status',
         'verified_at', 'is_active', 'is_published', 'profile_completion', 'press_kit', 'technical_rider',
-        'hospitality_rider', 'settings', 'metadata',
+        'hospitality_rider', 'settings', 'metadata', 'origin_type', 'origin_id', 'origin_label', 'reference_visible',
+        'onboarding_completed_at',
     ];
 
     protected $hidden = [
@@ -36,6 +37,8 @@ class Artist extends Model
         'hospitality_rider' => 'array',
         'settings' => 'array',
         'metadata' => 'array',
+        'reference_visible' => 'boolean',
+        'onboarding_completed_at' => 'datetime',
     ];
 
     public function application(){return $this->belongsTo(Application::class,'app_id');}
