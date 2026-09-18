@@ -32,8 +32,49 @@ final class SocialGraphController extends Controller
 
     public function publicArtist(Request $request,string $slug)
     {
-        $artist=Artist::query()->where('app_id',$this->context->id())->where('slug',$slug)->where('is_published',true)->where('is_active',true)->firstOrFail();if(!$artist->reference_visible)$artist->makeHidden(['origin_type','origin_label']);$artist->setAttribute('followers_count',$this->followersCount('artist',$artist->id));$artist->setAttribute('is_following',$this->isFollowing($request,'artist',$artist->id));
-        return response()->json(['artist'=>$artist,'upcoming_events'=>$this->artistEvents($artist->id,true)->limit(12)->get(),'past_events'=>$this->artistEvents($artist->id,false)->limit(12)->get()]);
+        $appId=$this->context->id();
+        $artist=Artist::query()->where('app_id',$appId)->where('slug',$slug)->where('is_published',true)->where('is_active',true)->firstOrFail();
+
+        if(!$artist->reference_visible)$artist->makeHidden(['origin_type','origin_label']);
+        $artist->setAttribute('followers_count',$this->followersCount('artist',$artist->id));
+        $artist->setAttribute('is_following',$this->isFollowing($request,'artist',$artist->id));
+
+        $upcomingQuery=$this->artistEvents($artist->id,true);
+        $pastQuery=$this->artistEvents($artist->id,false);
+        $upcomingCount=(clone $upcomingQuery)->count();
+        $pastCount=(clone $pastQuery)->count();
+
+        $pendingEvents=collect();
+        $pendingCount=0;
+        if($this->canViewPendingEvents($artist,$request->user())){
+            $pendingQuery=$this->artistPendingEvents($artist->id);
+            $pendingCount=(clone $pendingQuery)->count();
+            $pendingEvents=$pendingQuery->limit(12)->get();
+        }
+
+        $originOrganization=null;
+        if($artist->reference_visible&&$artist->origin_type==='organization'&&$artist->origin_id){
+            $originOrganization=Production::query()
+                ->where('app_id',$appId)
+                ->whereKey($artist->origin_id)
+                ->where('is_published',true)
+                ->where(fn($q)=>$q->where('is_cancelled',false)->orWhereNull('is_cancelled'))
+                ->first(['id','name','slug','logo','city','uf']);
+        }
+
+        return response()->json([
+            'artist'=>$artist,
+            'origin_organization'=>$originOrganization,
+            'event_summary'=>[
+                'upcoming'=>$upcomingCount,
+                'past'=>$pastCount,
+                'total'=>$upcomingCount+$pastCount,
+                'pending'=>$pendingCount,
+            ],
+            'upcoming_events'=>$upcomingQuery->limit(12)->get(),
+            'past_events'=>$pastQuery->limit(12)->get(),
+            'pending_events'=>$pendingEvents,
+        ]);
     }
 
     public function myArtists(Request $request)
@@ -166,7 +207,46 @@ final class SocialGraphController extends Controller
 
     public function preferences(Request $request){$key=['app_id'=>$this->context->id(),'user_id'=>$request->user()->id];if($request->isMethod('get'))return response()->json(['preferences'=>DB::table('application_user_preferences')->where($key)->first()]);$data=$request->validate(['preferred_city'=>'nullable|string|max:120','preferred_uf'=>'nullable|string|size:2','latitude'=>'nullable|numeric|between:-90,90','longitude'=>'nullable|numeric|between:-180,180','radius_km'=>'nullable|integer|min:1|max:500','interests'=>'nullable|array|max:50']);if(isset($data['preferred_uf']))$data['preferred_uf']=strtoupper($data['preferred_uf']);DB::table('application_user_preferences')->updateOrInsert($key,array_merge($data,['updated_at'=>now(),'created_at'=>now()]));return response()->json(['message'=>'Preferências de descoberta salvas.','preferences'=>DB::table('application_user_preferences')->where($key)->first()]);}
 
-    private function artistEvents(int $artistId,bool $upcoming){$query=Event::query()->where('events.app_id',$this->context->id())->where('events.is_published',true)->where('events.is_cancelled',false)->where('events.is_private',false)->whereHas('artists',fn($q)=>$q->where('artists.id',$artistId)->where(fn($p)=>$p->where('event_artist.status','confirmed')->orWhereNull('event_artist.status')))->with('production:id,name,slug,logo');return$upcoming?$query->where('events.end_date','>',now())->orderBy('events.start_date'):$query->where('events.end_date','<=',now())->orderByDesc('events.start_date');}
+    private function artistEvents(int $artistId,bool $upcoming)
+    {
+        $query=Event::query()
+            ->where('events.app_id',$this->context->id())
+            ->publiclyVisible()
+            ->whereHas('artists',fn($q)=>$q
+                ->where('artists.id',$artistId)
+                ->where(fn($p)=>$p->where('event_artist.status','confirmed')->orWhereNull('event_artist.status')))
+            ->with('production:id,name,slug,logo');
+
+        if($upcoming){
+            return $query
+                ->where(fn($dates)=>$dates->whereNull('events.end_date')->orWhere('events.end_date','>',now()))
+                ->orderBy('events.start_date');
+        }
+
+        return $query
+            ->whereNotNull('events.end_date')
+            ->where('events.end_date','<=',now())
+            ->orderByDesc('events.start_date');
+    }
+
+    private function artistPendingEvents(int $artistId)
+    {
+        return Event::query()
+            ->where('events.app_id',$this->context->id())
+            ->publiclyVisible()
+            ->where(fn($dates)=>$dates->whereNull('events.end_date')->orWhere('events.end_date','>',now()))
+            ->whereHas('artists',fn($q)=>$q
+                ->where('artists.id',$artistId)
+                ->where('event_artist.status','pending'))
+            ->with('production:id,name,slug,logo')
+            ->orderBy('events.start_date');
+    }
+
+    private function canViewPendingEvents(Artist $artist,?User $user):bool
+    {
+        return $user ? $this->canManageArtist($artist,$user) : false;
+    }
+
     private function followersCount(string $type,int $id):int{return DB::table('follows')->where(['app_id'=>$this->context->id(),'target_type'=>$type,'target_id'=>$id])->count();}
     private function isFollowing(Request $request,string $type,int $id):bool{$user=$request->user();return$user?(bool)DB::table('follows')->where(['app_id'=>$this->context->id(),'user_id'=>$user->id,'target_type'=>$type,'target_id'=>$id])->exists():false;}
     private function decorateArtist(Artist $artist,Request $request):Artist{if(!$artist->reference_visible)$artist->makeHidden(['origin_type','origin_label']);$artist->setAttribute('followers_count',$this->followersCount('artist',$artist->id));$artist->setAttribute('is_following',$this->isFollowing($request,'artist',$artist->id));return$artist;}

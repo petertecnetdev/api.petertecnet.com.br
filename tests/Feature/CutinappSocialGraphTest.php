@@ -8,6 +8,7 @@ use App\Models\Artist;
 use App\Models\Production;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -142,6 +143,105 @@ class CutinappSocialGraphTest extends TestCase
         $this->withHeaders($ph)->getJson('/api/cutinapp/notifications')->assertOk()
             ->assertJsonPath('notifications.data.0.type', 'event_interest')
             ->assertJsonPath('notifications.data.0.reference_id', $event['id']);
+    }
+
+    public function test_artist_profile_keeps_visible_event_when_end_date_is_null(): void
+    {
+        $producer=$this->user('Legacy Artist Producer','legacy-artist-producer@cutinapp.test');
+        $headers=$this->headersFor($producer);
+        $app=Application::where('slug','cutinapp')->firstOrFail();
+        $production=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Legacy Artist Prod'])->assertCreated()->json('production');
+        $event=$this->withHeaders($headers)->postJson('/api/cutinapp/events',[
+            'production_id'=>$production['id'],
+            'title'=>'Evento Legado do Artista',
+            'description'=>'Evento público legado com dados de privacidade e término incompletos.',
+            'address'=>'Rua Legado, 10',
+            'city'=>'Goiânia',
+            'uf'=>'GO',
+            'start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),
+            'end_date'=>now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s'),
+        ])->assertCreated()->json('event');
+
+        $artist=Artist::create([
+            'app_id'=>$app->id,
+            'user_id'=>$producer->id,
+            'created_by_user_id'=>$producer->id,
+            'slug'=>'artista-legado-publico',
+            'artist_type'=>'solo',
+            'stage_name'=>'Artista Legado Público',
+            'is_published'=>true,
+            'is_active'=>true,
+            'verification_status'=>'account_linked',
+        ]);
+
+        $this->withHeaders($headers)->postJson('/api/cutinapp/events/'.$event['id'].'/artists',[
+            'artist_id'=>$artist->id,
+            'participation_type'=>'show',
+        ])->assertOk();
+        $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',[
+            'event_id'=>$event['id'],
+            'name'=>'Cortesia',
+            'quantity'=>5,
+        ])->assertCreated();
+        $this->withHeaders($headers)->postJson('/api/cutinapp/events/'.$event['id'].'/publish')->assertOk();
+
+        DB::table('events')->where('id',$event['id'])->update([
+            'end_date'=>null,
+            'updated_at'=>now(),
+        ]);
+
+        $this->getJson('/api/v1/apps/cutinapp/artists/'.$artist->slug)
+            ->assertOk()
+            ->assertJsonPath('event_summary.upcoming',1)
+            ->assertJsonPath('event_summary.total',1)
+            ->assertJsonPath('upcoming_events.0.id',$event['id']);
+    }
+
+    public function test_artist_owner_sees_pending_event_invitation_without_publishing_it_as_confirmed_participation(): void
+    {
+        $producer=$this->user('Produtor Convite','producer-pending-artist@cutinapp.test');
+        $artistUser=$this->user('Marco Artista','marco-pending-artist@cutinapp.test');
+        $producerHeaders=$this->headersFor($producer);
+        $artistHeaders=$this->headersFor($artistUser);
+        $production=$this->withHeaders($producerHeaders)->postJson('/api/cutinapp/productions',['name'=>'La Fyesta Test'])->assertCreated()->json('production');
+        $event=$this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events',[
+            'production_id'=>$production['id'],
+            'title'=>'Noite La Fyesta',
+            'description'=>'Evento com convite artístico pendente.',
+            'address'=>'Rua Festa, 100',
+            'city'=>'Goiânia',
+            'uf'=>'GO',
+            'start_date'=>now()->addDays(3)->format('Y-m-d H:i:s'),
+            'end_date'=>now()->addDays(3)->addHours(4)->format('Y-m-d H:i:s'),
+        ])->assertCreated()->json('event');
+
+        $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/courtesies',[
+            'event_id'=>$event['id'],
+            'name'=>'Cortesia',
+            'quantity'=>10,
+        ])->assertCreated();
+        $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events/'.$event['id'].'/publish')->assertOk();
+
+        $invitation=$this->withHeaders($producerHeaders)->postJson('/api/v1/apps/cutinapp/events/'.$event['id'].'/artists/resolve',[
+            'identifier'=>$artistUser->email,
+            'participation_type'=>'show',
+        ])->assertCreated()
+            ->assertJsonPath('participation_status','pending');
+
+        $artistSlug=$invitation->json('artist.slug');
+
+        $this->getJson('/api/v1/apps/cutinapp/artists/'.$artistSlug)
+            ->assertOk()
+            ->assertJsonPath('event_summary.upcoming',0)
+            ->assertJsonPath('event_summary.pending',0)
+            ->assertJsonCount(0,'pending_events');
+
+        $this->withHeaders($artistHeaders)->getJson('/api/v1/apps/cutinapp/artists/'.$artistSlug)
+            ->assertOk()
+            ->assertJsonPath('origin_organization.id',$production['id'])
+            ->assertJsonPath('event_summary.upcoming',0)
+            ->assertJsonPath('event_summary.pending',1)
+            ->assertJsonPath('pending_events.0.id',$event['id']);
     }
 
     private function headersFor(User $user): array
