@@ -956,7 +956,8 @@ final class ArtistInvitationWorkflowService
         $invitation = DB::table('artist_invitations')
             ->where('app_id', $appId)
             ->where('token', $token)
-            ->firstOrFail();
+            ->first();
+        abort_unless($invitation, 404, 'Convite não encontrado.');
 
         $updates = [
             'email_status' => $status,
@@ -1331,10 +1332,14 @@ final class ArtistInvitationWorkflowService
 
     private function invitationByToken(int $appId, string $token): object
     {
-        return DB::table('artist_invitations')
+        $invitation = DB::table('artist_invitations')
             ->where('app_id', $appId)
             ->where('token', $token)
-            ->firstOrFail();
+            ->first();
+
+        abort_unless($invitation, 404, 'Convite não encontrado.');
+
+        return $invitation;
     }
 
     private function expireIfNeeded(object $invitation, Event $event): void
