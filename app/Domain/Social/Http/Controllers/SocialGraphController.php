@@ -55,7 +55,7 @@ final class SocialGraphController extends Controller
     public function publicEventArtists(string $slug)
     {
         $event=Event::query()->where('app_id',$this->context->id())->where('slug',$slug)->where('is_published',true)->where('is_cancelled',false)->where('is_private',false)->firstOrFail();
-        return response()->json(['artists'=>$event->artists()->where('artists.app_id',$this->context->id())->where('artists.is_published',true)->where('artists.is_active',true)->where(fn($q)=>$q->where('event_artist.status','confirmed')->orWhereNull('event_artist.status'))->orderByDesc('event_artist.is_headliner')->orderBy('event_artist.sort_order')->get()]);
+        $artists=$event->artists()->where('artists.app_id',$this->context->id())->where('artists.is_published',true)->where('artists.is_active',true)->where(fn($q)=>$q->where('event_artist.status','confirmed')->orWhereNull('event_artist.status'))->orderByDesc('event_artist.is_headliner')->orderBy('event_artist.sort_order')->get();$artists->each(fn(Artist $artist)=>!$artist->reference_visible?$artist->makeHidden(['origin_type','origin_label']):$artist);return response()->json(['artists'=>$artists]);
     }
 
     public function eventArtists(Request $request,int $eventId){$event=$this->ownedEvent($eventId,$request->user());return response()->json(['artists'=>$event->artists()->orderBy('event_artist.sort_order')->get()]);}
