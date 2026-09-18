@@ -88,6 +88,7 @@ final class PayoutIdempotencyService
     public function replay(Production $production, int $payoutId): ?array
     {
         $payout = DB::table('financial_payouts')
+            ->where('app_slug', (string) $production->app_slug)
             ->where('source_type', 'production')
             ->where('source_id', (int) $production->id)
             ->where('id', $payoutId)
