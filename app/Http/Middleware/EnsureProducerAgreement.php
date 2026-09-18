@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AcquisitionReferral;
 use App\Models\Production;
 use App\Services\ProducerAgreementService;
 use App\Support\ApplicationContext;
@@ -30,6 +31,15 @@ final class EnsureProducerAgreement
                 ->exists();
 
             abort_unless($belongsToApplication, 404, 'Organização não encontrada neste contexto.');
+
+            $referral = AcquisitionReferral::query()
+                ->where('application_id', $this->context->id())
+                ->where('production_id', $organizationId)
+                ->latest()
+                ->first();
+            if (data_get((array) ($referral?->metadata ?? []), 'onboarding_mode') === 'assisted') {
+                return $next($request);
+            }
 
             $signed = DB::table('contract_acceptances')
                 ->where('app_id', $this->context->id())
