@@ -5,7 +5,6 @@ namespace App\Domain\Contracts\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Production;
 use App\Services\ProducerAgreementService;
-use App\Services\ProducerOnboardingService;
 use App\Support\ApplicationContext;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -18,7 +17,6 @@ final class ProducerAgreementController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly ProducerAgreementService $agreements,
-        private readonly ProducerOnboardingService $producerOnboarding,
     ) {}
 
     public function show(Request $request, int $organizationId)
@@ -76,9 +74,7 @@ final class ProducerAgreementController extends Controller
         });
 
         $emailSent = $acceptance->email_sent_at || $this->sendCopy($organization, $user->email, $acceptance);
-        $onboarding = $this->producerOnboarding->status($organization);
-        $this->producerOnboarding->notifyIfSalesReady($organization);
-        return response()->json(['message' => $emailSent ? 'Termo assinado e enviado ao seu e-mail.' : 'Termo assinado. A cópia por e-mail poderá ser reenviada.', 'onboarding' => $onboarding, 'agreement' => [
+        return response()->json(['message' => $emailSent ? 'Termo assinado e enviado ao seu e-mail.' : 'Termo assinado. A cópia por e-mail poderá ser reenviada.', 'agreement' => [
             'version' => $acceptance->contract_version, 'hash' => $acceptance->contract_hash, 'accepted' => true,
             'accepted_at' => $acceptance->accepted_at, 'email_sent_at' => $emailSent ? now()->toIso8601String() : null,
             'signer_name' => $acceptance->signer_name,
