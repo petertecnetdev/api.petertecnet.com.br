@@ -124,6 +124,10 @@ class ProducerAssistedOnboardingTest extends TestCase
                 'signer_role' => 'Responsável pela produção',
                 'accepted' => true,
             ])
+            ->assertOk();
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/apps/cutinapp/organizations/'.$productionId.'/onboarding')
             ->assertOk()
             ->assertJsonPath('onboarding.status', 'awaiting_payout');
 
