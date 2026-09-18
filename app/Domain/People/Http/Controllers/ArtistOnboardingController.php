@@ -69,7 +69,7 @@ final class ArtistOnboardingController extends Controller
     {
         $data = $request->validate([
             'evidence_text' => 'nullable|string|max:3000',
-            'evidence_url' => 'nullable|url|max:2048',
+            'evidence_url' => 'nullable|url|max:2048|starts_with:http://,https://',
         ]);
 
         return response()->json(
