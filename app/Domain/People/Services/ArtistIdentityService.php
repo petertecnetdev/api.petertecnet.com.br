@@ -3,12 +3,17 @@
 namespace App\Domain\People\Services;
 
 use App\Models\Artist;
+use App\Models\Event;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 final class ArtistIdentityService
 {
+    public function __construct(private readonly ArtistReferenceService $references)
+    {
+    }
+
     public function resolveUser(string $identifier): ?User
     {
         $value = trim($identifier);
@@ -29,14 +34,32 @@ final class ArtistIdentityService
         return User::query()->whereRaw('LOWER(user_name) = ?', [mb_strtolower($username)])->first();
     }
 
-    public function getOrCreate(int $appId, User $user, User $actor): Artist
-    {
-        return DB::transaction(function () use ($appId, $user, $actor) {
-            $existing = Artist::query()->where('app_id', $appId)->where('user_id', $user->id)->where('artist_type', 'solo')->lockForUpdate()->first();
-            if ($existing) return $existing;
+    public function getOrCreate(
+        int $appId,
+        User $user,
+        User $actor,
+        ?Event $sourceEvent = null
+    ): Artist {
+        return DB::transaction(function () use ($appId, $user, $actor, $sourceEvent) {
+            $existing = Artist::query()
+                ->where('app_id', $appId)
+                ->where('user_id', $user->id)
+                ->where('artist_type', 'solo')
+                ->lockForUpdate()
+                ->first();
 
-            $name = trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: ($user->user_name ?: 'Artista');
-            return Artist::query()->create([
+            if ($existing) {
+                if ($sourceEvent) {
+                    $this->references->recordEventRelationship($existing, $sourceEvent, $actor, false);
+                }
+
+                return $existing;
+            }
+
+            $name = trim(($user->first_name ?? '').' '.($user->last_name ?? ''))
+                ?: ($user->user_name ?: 'Artista');
+
+            $artist = Artist::query()->create([
                 'app_id' => $appId,
                 'user_id' => $user->id,
                 'created_by_user_id' => $actor->id,
@@ -51,7 +74,19 @@ final class ArtistIdentityService
                 'is_active' => true,
                 'is_published' => true,
                 'profile_completion' => 25,
+                'origin_type' => $sourceEvent ? 'organization' : 'self',
+                'origin_id' => $sourceEvent?->production_id,
+                'origin_label' => $sourceEvent?->production?->name,
+                'reference_visible' => (bool) $sourceEvent,
             ]);
+
+            if ($sourceEvent) {
+                $this->references->recordEventRelationship($artist, $sourceEvent, $actor, true);
+            } else {
+                $this->references->markSelfOrigin($artist);
+            }
+
+            return $artist->fresh();
         }, 3);
     }
 
