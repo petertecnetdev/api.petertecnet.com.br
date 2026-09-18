@@ -243,11 +243,15 @@ final class ArtistInvitationWorkflowService
         } elseif ($result['participationStatus'] === 'pending_change') {
             $message = $sent
                 ? 'Alteração importante salva. O artista recebeu um novo pedido de confirmação.'
-                : 'Alteração importante salva e aguarda nova confirmação do artista.';
+                : ($result['shouldDeliver']
+                    ? 'Alteração importante salva, mas o e-mail de nova confirmação falhou. O convite continua pendente.'
+                    : 'Alteração importante salva e aguarda nova confirmação do artista.');
         } else {
             $message = $sent
                 ? 'Usuário localizado. O convite foi enviado e a participação ficará aguardando aceite.'
-                : 'Participação atualizada e continua aguardando aceite do artista.';
+                : ($result['shouldDeliver']
+                    ? 'Convite criado, mas o e-mail não pôde ser enviado agora. A participação continua aguardando aceite.'
+                    : 'Participação atualizada e continua aguardando aceite do artista.');
         }
 
         return [
@@ -1314,7 +1318,7 @@ final class ArtistInvitationWorkflowService
                     'is_reminder' => $isReminder,
                     'is_reconfirmation' => $invitation->status === 'pending_change',
                     'changed_fields' => $changedFields,
-                    'event_image' => $event->image,
+                    'event_image' => $this->absoluteMediaUrl($event->image),
                     'start_date' => optional($event->start_date)->toIso8601String(),
                     'end_date' => optional($event->end_date)->toIso8601String(),
                     'venue' => $event->venue,
@@ -1640,6 +1644,15 @@ final class ArtistInvitationWorkflowService
         } catch (\Throwable) {
             return null;
         }
+    }
+
+    private function absoluteMediaUrl(?string $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '') return null;
+        if (filter_var($value, FILTER_VALIDATE_URL)) return $value;
+
+        return rtrim((string) config('app.url'), '/').'/'.ltrim($value, '/');
     }
 
     private function baseUrl(?Application $application): string
