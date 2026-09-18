@@ -135,7 +135,7 @@ final class SocialGraphController extends Controller
             return response()->json([
                 ...$result,
                 'artists'=>$event->fresh()->artists()->orderBy('event_artist.sort_order')->get(),
-            ],201);
+            ]);
         }
 
         $event->artists()->syncWithoutDetaching([$artist->id=>[
