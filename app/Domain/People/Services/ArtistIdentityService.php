@@ -38,9 +38,10 @@ final class ArtistIdentityService
         int $appId,
         User $user,
         User $actor,
-        ?Event $sourceEvent = null
+        ?Event $sourceEvent = null,
+        string $source = 'producer_event'
     ): Artist {
-        return DB::transaction(function () use ($appId, $user, $actor, $sourceEvent) {
+        return DB::transaction(function () use ($appId, $user, $actor, $sourceEvent, $source) {
             $existing = Artist::query()
                 ->where('app_id', $appId)
                 ->where('user_id', $user->id)
@@ -93,6 +94,22 @@ final class ArtistIdentityService
 
             if ($sourceEvent) {
                 $this->references->recordEventRelationship($artist, $sourceEvent, $actor, true);
+                DB::table('artist_analytics_events')->insert([
+                    'app_id' => $appId,
+                    'artist_id' => $artist->id,
+                    'event_id' => $sourceEvent->id,
+                    'user_id' => $user->id,
+                    'event_type' => 'artist_identity_created',
+                    'source' => $source,
+                    'session_hash' => null,
+                    'metadata' => json_encode([
+                        'origin_type' => 'organization',
+                        'origin_id' => $sourceEvent->production_id,
+                    ]),
+                    'occurred_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
             } else {
                 $this->references->markSelfOrigin($artist);
             }
