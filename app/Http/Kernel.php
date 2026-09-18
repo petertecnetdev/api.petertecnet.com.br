@@ -58,6 +58,9 @@ class Kernel extends HttpKernel
         'app.capability' => \App\Http\Middleware\RequireApplicationCapability::class,
         'compatibility.route' => \App\Http\Middleware\MarkCompatibilityRoute::class,
         'producer.agreement' => \App\Http\Middleware\EnsureProducerAgreement::class,
+        'producer.sales-ready' => \App\Http\Middleware\EnsureProducerSalesReadiness::class,
+        'producer.commerce-ready' => \App\Http\Middleware\ApplyProducerCommerceReadiness::class,
+        'producer.onboarding-notify' => \App\Http\Middleware\NotifyProducerOnboardingReadiness::class,
         'token.version' => \App\Http\Middleware\EnsureTokenVersion::class,
     ];
 }
