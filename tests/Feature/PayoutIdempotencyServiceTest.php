@@ -54,6 +54,57 @@ class PayoutIdempotencyServiceTest extends TestCase
         $this->assertDatabaseCount('financial_payout_idempotency_keys', 3);
     }
 
+    public function test_completed_intent_replays_original_payout_id_without_reacquiring(): void
+    {
+        $service = app(PayoutIdempotencyService::class);
+        $production = $this->production(41, 'cutinapp');
+        $user = $this->user(7);
+        $key = 'payout-intent-completed-001';
+
+        $this->assertSame('acquired', $service->claim($production, $user, $key, 75.00)['state']);
+        $service->complete($production, $key, 991);
+
+        $replay = $service->claim($production, $user, $key, 75.00);
+
+        $this->assertSame('replay', $replay['state']);
+        $this->assertSame(991, $replay['payout_id']);
+        $this->assertDatabaseCount('financial_payout_idempotency_keys', 1);
+    }
+
+    public function test_validation_release_allows_same_intent_to_be_retried_without_duplicate_claim(): void
+    {
+        $service = app(PayoutIdempotencyService::class);
+        $production = $this->production(41, 'cutinapp');
+        $user = $this->user(7);
+        $key = 'payout-intent-retryable-001';
+
+        $this->assertSame('acquired', $service->claim($production, $user, $key, 25.00)['state']);
+        $service->release($production, $key);
+        $this->assertDatabaseCount('financial_payout_idempotency_keys', 0);
+
+        $retry = $service->claim($production, $user, $key, 25.00);
+
+        $this->assertSame('acquired', $retry['state']);
+        $this->assertDatabaseCount('financial_payout_idempotency_keys', 1);
+    }
+
+    public function test_release_cannot_delete_completed_intent(): void
+    {
+        $service = app(PayoutIdempotencyService::class);
+        $production = $this->production(41, 'cutinapp');
+        $user = $this->user(7);
+        $key = 'payout-intent-locked-001';
+
+        $service->claim($production, $user, $key, 90.00);
+        $service->complete($production, $key, 992);
+        $service->release($production, $key);
+
+        $replay = $service->claim($production, $user, $key, 90.00);
+        $this->assertSame('replay', $replay['state']);
+        $this->assertSame(992, $replay['payout_id']);
+        $this->assertDatabaseCount('financial_payout_idempotency_keys', 1);
+    }
+
     private function production(int $id, string $appSlug): Production
     {
         $production = new Production();
