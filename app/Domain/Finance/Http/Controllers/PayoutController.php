@@ -7,7 +7,6 @@ use App\Http\Controllers\Controller;
 use App\Services\FinancialPayoutService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
-use RuntimeException;
 
 /**
  * Canonical provider-neutral payout surface.
@@ -35,7 +34,9 @@ final class PayoutController extends Controller
             // Backward-compatible aliases for older clients.
             'provider' => $this->provider->name(),
             'current_settlement_mode' => 'platform_collection',
-            'manual_payout_requests_enabled' => true,
+            // Fail closed while payout creation lacks a caller-stable,
+            // transactionally persisted idempotency contract.
+            'manual_payout_requests_enabled' => false,
             'platform_collection_enabled' => (bool) config(
                 "platform.applications.{$organization->app_slug}.commerce.allow_platform_collection",
                 false
@@ -50,48 +51,19 @@ final class PayoutController extends Controller
 
     public function requestPayout(Request $request, int $organizationId)
     {
-        $organization = $this->ownedOrganization($request, $organizationId);
-        $data = $request->validate([
-            'amount' => 'required|numeric|min:0.01|max:999999999.99',
-        ]);
-        $amount = round((float) $data['amount'], 2);
+        // Authorization still runs before the circuit breaker so callers cannot
+        // use this endpoint to probe organizations belonging to another app/user.
+        $this->ownedOrganization($request, $organizationId);
 
-        $overview = $this->payouts->overview($organization, $request->user());
-        $eligible = (bool) ($overview['ready_for_payout'] ?? false)
-            && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
-
-        if ($eligible) {
-            if (! $this->provider->isConfigured()) {
-                return response()->json([
-                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
-                ], 503);
-            }
-
-            try {
-                if ($this->provider->availableBalance() + 0.00001 < $amount) {
-                    return response()->json([
-                        'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
-                    ], 503);
-                }
-            } catch (RuntimeException $exception) {
-                report($exception);
-
-                return response()->json([
-                    'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
-                ], 503);
-            }
-        }
-
-        try {
-            return response()->json(
-                $this->payouts->requestPayout($organization, $request->user(), $amount),
-                201
-            );
-        } catch (RuntimeException $exception) {
-            report($exception);
-
-            return response()->json(['message' => $exception->getMessage()], 502);
-        }
+        // P0 safety circuit breaker: FinancialPayoutService currently generates
+        // a fresh idempotency key for every request. A client retry after an
+        // ambiguous provider response can therefore create a second transfer.
+        // Keep producer funds reserved and fail closed until the API accepts a
+        // stable caller key and enforces replay/conflict semantics atomically.
+        return response()->json([
+            'message' => 'Solicitações de repasse Pix estão temporariamente indisponíveis enquanto uma proteção de idempotência é aplicada. Nenhum saldo será perdido.',
+            'code' => 'payout_idempotency_safety_hold',
+        ], 503);
     }
 
     public function cancel(Request $request, int $organizationId, int $payoutId)
