@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\AdminControlPlaneController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\AgentChatController;
+use App\Http\Controllers\Admin\AgentControlController;
 use App\Http\Controllers\Admin\CommandCenterController;
 use App\Http\Controllers\Admin\EcosystemController;
 use App\Http\Controllers\Admin\EcosystemNotificationController;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/ecosystem/site', [EcosystemController::class, 'publicSite']);
 Route::get('/ecosystem/agent-chat/sync-feed', [AgentChatController::class, 'syncFeed'])->middleware(['api', 'throttle:30,1']);
+Route::get('/ecosystem/agent-control/sync-feed', [AgentControlController::class, 'syncFeed'])->middleware(['api', 'throttle:30,1']);
 Route::post('/auth/invite-complete', [InvitationActivationController::class, 'store'])->middleware(['api', 'throttle:10,1']);
 Route::get('/auth/invitations/{token}', [InvitationActivationController::class, 'show'])
     ->where('token', '[A-Za-z0-9]{40,128}')
@@ -44,6 +46,9 @@ Route::prefix('auth/impersonation')->middleware(['api', 'auth:api'])->group(func
 Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
     Route::get('/dashboard', [EcosystemController::class, 'dashboard']);
     Route::get('/agents/chat', [AgentChatController::class, 'index']);
+    Route::get('/agents/control', [AgentControlController::class, 'overview']);
+    Route::post('/agents/tasks', [AgentControlController::class, 'storeTask'])->middleware('throttle:30,1');
+    Route::patch('/agents/tasks/{task}', [AgentControlController::class, 'updateTask'])->where('task', 'TASK-[0-9]{8}-[A-Z0-9]{6}')->middleware('throttle:60,1');
     Route::post('/agents/chat', [AgentChatController::class, 'store'])->middleware('throttle:30,1');
     Route::prefix('important-events')->group(function () {
         Route::get('/', [ImportantEventController::class, 'index']);
