@@ -251,3 +251,42 @@ Route::prefix('admin/ecosystem/files')->middleware(['api', 'auth:api', \App\Http
     Route::post('/cleanup', [AdminFileManagementController::class, 'cleanup'])->middleware('throttle:10,1');
     Route::delete('/{file}', [AdminFileManagementController::class, 'destroy'])->whereNumber('file')->middleware('throttle:20,1');
 });
+
+
+/*
+|--------------------------------------------------------------------------
+| Generic forecasting domain
+|--------------------------------------------------------------------------
+*/
+Route::prefix('forecasts')->middleware('api')->group(function () {
+    Route::get('/health', [\App\Http\Controllers\ForecastController::class, 'health'])->name('forecasts.health');
+    Route::get('/ranking', [\App\Http\Controllers\ForecastController::class, 'ranking'])->name('forecasts.ranking');
+    Route::get('/timeline', [\App\Http\Controllers\ForecastController::class, 'timeline'])->name('forecasts.timeline');
+    Route::get('/sitemap.xml', [\App\Http\Controllers\ForecastController::class, 'sitemap'])->name('forecasts.sitemap');
+    Route::get('/forecasters/{username}', [\App\Http\Controllers\ForecastController::class, 'forecaster'])->name('forecasts.forecaster');
+    Route::get('/', [\App\Http\Controllers\ForecastController::class, 'index'])->name('forecasts.index');
+    Route::get('/{slug}', [\App\Http\Controllers\ForecastController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->name('forecasts.show');
+});
+
+Route::prefix('forecasts')->middleware(['api','auth:api'])->group(function () {
+    Route::get('/me/list', [\App\Http\Controllers\ForecastController::class, 'mine'])->name('forecasts.mine');
+    Route::post('/analyze', [\App\Http\Controllers\ForecastController::class, 'analyze'])->middleware('throttle:20,1')->name('forecasts.analyze');
+    Route::post('/', [\App\Http\Controllers\ForecastController::class, 'store'])->middleware('throttle:12,1')->name('forecasts.store');
+    Route::put('/{slug}', [\App\Http\Controllers\ForecastController::class, 'update'])->middleware('throttle:20,1')->name('forecasts.update');
+    Route::delete('/{slug}', [\App\Http\Controllers\ForecastController::class, 'destroy'])->middleware('throttle:20,1')->name('forecasts.destroy');
+    Route::post('/{slug}/estimate', [\App\Http\Controllers\ForecastController::class, 'estimate'])->middleware('throttle:40,1')->name('forecasts.estimate');
+    Route::post('/{slug}/follow', [\App\Http\Controllers\ForecastController::class, 'follow'])->middleware('throttle:60,1')->name('forecasts.follow');
+    Route::post('/{slug}/evidence', [\App\Http\Controllers\ForecastController::class, 'evidence'])->middleware('throttle:20,1')->name('forecasts.evidence');
+    Route::post('/{slug}/comments', [\App\Http\Controllers\ForecastController::class, 'comment'])->middleware('throttle:30,1')->name('forecasts.comment');
+    Route::post('/{slug}/report', [\App\Http\Controllers\ForecastController::class, 'report'])->middleware('throttle:10,1')->name('forecasts.report');
+    Route::post('/{slug}/disputes', [\App\Http\Controllers\ForecastController::class, 'dispute'])->middleware('throttle:10,1')->name('forecasts.dispute');
+});
+
+Route::prefix('admin/forecasts')->middleware(['api','auth:api',\App\Http\Middleware\PeterTecnetAdminApi::class])->group(function () {
+    Route::get('/reports', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'reports']);
+    Route::get('/resolving', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'resolving']);
+    Route::patch('/{forecast}/moderate', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'moderate']);
+    Route::post('/{forecast}/propose-resolution', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'proposeResolution']);
+    Route::post('/{forecast}/resolve', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'resolve']);
+    Route::patch('/reports/{report}', [\App\Http\Controllers\Admin\ForecastAdminController::class, 'updateReport']);
+});
