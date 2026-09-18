@@ -42,6 +42,8 @@ final class ArtistIdentityService
         string $source = 'producer_event'
     ): Artist {
         return DB::transaction(function () use ($appId, $user, $actor, $sourceEvent, $source) {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+
             $existing = Artist::query()
                 ->where('app_id', $appId)
                 ->where('user_id', $user->id)
