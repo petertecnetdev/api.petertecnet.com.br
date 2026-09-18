@@ -13,17 +13,28 @@ class ForecastAnalysisService
         $clean = trim(preg_replace('/\s+/u', ' ', strip_tags($text)) ?? '');
         $moderation = $this->moderate($clean);
         $result = $this->fallback($clean);
-        $apiKey = (string) config('services.openai.api_key');
+        $apiKey = trim((string) config('services.openai.api_key'));
+        $cloudflareReady = trim((string) config('creative.cloudflare.account_id')) !== ''
+            && trim((string) config('creative.cloudflare.api_token')) !== ''
+            && trim((string) config('creative.cloudflare.text_model')) !== '';
+        $provider = 'heuristic';
 
-        if ($apiKey !== '') {
-            try {
+        try {
+            if ($apiKey !== '') {
                 $ai = $this->withModel($clean);
-                if (is_array($ai)) {
-                    $result = array_merge($result, array_filter($ai, fn ($v) => $v !== null));
-                }
-            } catch (\Throwable) {
-                // Fallback keeps drafting available during provider degradation.
+                $provider = 'openai';
+            } elseif ($cloudflareReady) {
+                $ai = $this->withCloudflare($clean);
+                $provider = 'cloudflare';
+            } else {
+                $ai = null;
             }
+
+            if (is_array($ai)) {
+                $result = array_merge($result, array_filter($ai, fn ($v) => $v !== null));
+            }
+        } catch (\Throwable) {
+            // Fallback keeps drafting available during provider degradation.
         }
 
         $result['original_statement'] = $clean;
@@ -33,7 +44,12 @@ class ForecastAnalysisService
             && mb_strlen((string) ($result['resolution_criteria'] ?? '')) >= 12;
         $result['platform_probability'] = null;
         $result['platform_confidence'] = 0;
-        $result['model_version'] = $apiKey !== '' ? (string) config('services.openai.text_model') : 'heuristic-v1';
+        $result['analysis_provider'] = $provider;
+        $result['model_version'] = match ($provider) {
+            'openai' => (string) config('services.openai.text_model'),
+            'cloudflare' => (string) config('creative.cloudflare.text_model'),
+            default => 'heuristic-v1',
+        };
 
         return $result;
     }
@@ -149,6 +165,59 @@ PROMPT;
         ];
     }
 
+    private function withCloudflare(string $text): ?array
+    {
+        $account = trim((string) config('creative.cloudflare.account_id'));
+        $token = trim((string) config('creative.cloudflare.api_token'));
+        $model = trim((string) config('creative.cloudflare.text_model', '@cf/meta/llama-3.3-70b-instruct-fp8-fast'));
+
+        $prompt = 'Estruture uma previsão probabilística verificável. Retorne SOMENTE JSON válido com statement, summary, category, topics, entities, deadline_at, resolution_criteria, source_requirements, verifiable, ambiguity e suggested_author_probability. Não invente fontes nem probabilidade da plataforma. Se faltar prazo ou critério objetivo, verifiable=false.';
+
+        $response = Http::withToken($token)->acceptJson()->asJson()
+            ->timeout((int) config('creative.cloudflare.timeout', 45))
+            ->retry(1, 350, throw: false)
+            ->post(sprintf('https://api.cloudflare.com/client/v4/accounts/%s/ai/run/%s', rawurlencode($account), $model), [
+                'messages' => [
+                    ['role' => 'system', 'content' => $prompt],
+                    ['role' => 'user', 'content' => $text],
+                ],
+                'max_tokens' => 1200,
+                'temperature' => 0.1,
+            ]);
+
+        if (! $response->successful()) return null;
+
+        $raw = data_get($response->json(), 'result.response')
+            ?? data_get($response->json(), 'result.output_text')
+            ?? data_get($response->json(), 'result.output');
+        if (is_array($raw)) $raw = json_encode($raw, JSON_UNESCAPED_UNICODE);
+        if (! is_string($raw) || trim($raw) === '') return null;
+
+        $start = strpos($raw, '{');
+        $end = strrpos($raw, '}');
+        if ($start !== false && $end !== false && $end >= $start) $raw = substr($raw, $start, $end - $start + 1);
+        $d = json_decode($raw, true);
+        if (! is_array($d)) return null;
+
+        if (! empty($d['deadline_at'])) {
+            try { $d['deadline_at'] = Carbon::parse($d['deadline_at'])->toIso8601String(); }
+            catch (\Throwable) { $d['deadline_at'] = null; }
+        }
+
+        return [
+            'statement'=>trim((string) ($d['statement'] ?? '')),
+            'summary'=>trim((string) ($d['summary'] ?? '')),
+            'category'=>Str::limit(trim((string) ($d['category'] ?? 'Geral')),100,''),
+            'topics'=>array_values(array_slice((array) ($d['topics'] ?? []),0,10)),
+            'entities'=>array_values(array_slice((array) ($d['entities'] ?? []),0,10)),
+            'deadline_at'=>$d['deadline_at'] ?? null,
+            'resolution_criteria'=>trim((string) ($d['resolution_criteria'] ?? '')),
+            'source_requirements'=>array_values(array_slice((array) ($d['source_requirements'] ?? []),0,8)),
+            'verifiable'=>(bool) ($d['verifiable'] ?? false),
+            'ambiguity'=>array_values(array_slice((array) ($d['ambiguity'] ?? []),0,8)),
+            'suggested_author_probability'=>isset($d['suggested_author_probability']) ? max(0,min(100,(float)$d['suggested_author_probability'])) : null,
+        ];
+    }
     private function fallback(string $text): array
     {
         $category = match (true) {
