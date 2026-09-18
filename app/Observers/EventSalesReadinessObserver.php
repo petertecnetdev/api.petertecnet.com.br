@@ -4,8 +4,7 @@ namespace App\Observers;
 
 use App\Models\Event;
 use App\Models\Ticket;
-use App\Services\ProducerAgreementService;
-use Illuminate\Support\Facades\DB;
+use App\Services\OrganizationSalesReadinessService;
 use Illuminate\Validation\ValidationException;
 
 final class EventSalesReadinessObserver
@@ -27,37 +26,11 @@ final class EventSalesReadinessObserver
             return;
         }
 
-        $version = app(ProducerAgreementService::class)->version();
+        $readiness = app(OrganizationSalesReadinessService::class)->status((int) $event->production_id);
 
-        $agreementSigned = DB::table('contract_acceptances')
-            ->where('app_id', $event->app_id)
-            ->where('production_id', $event->production_id)
-            ->where('contract_version', $version)
-            ->exists();
-
-        if (! $agreementSigned) {
+        if (! $readiness['ready']) {
             throw ValidationException::withMessages([
-                'agreement' => ['Assine o contrato vigente antes de publicar um evento com ingressos pagos.'],
-            ]);
-        }
-
-        $ownerUserId = DB::table('establishments')
-            ->where('id', $event->production_id)
-            ->value('user_id');
-
-        $payoutReady = $ownerUserId && DB::table('financial_payout_destinations as destination')
-            ->join('financial_beneficiaries as beneficiary', 'beneficiary.id', '=', 'destination.beneficiary_id')
-            ->where('destination.source_type', 'production')
-            ->where('destination.source_id', $event->production_id)
-            ->whereIn('destination.status', ['active', 'cooling'])
-            ->whereNotNull('destination.verified_at')
-            ->where('beneficiary.user_id', $ownerUserId)
-            ->where('beneficiary.status', 'verified')
-            ->exists();
-
-        if (! $payoutReady) {
-            throw ValidationException::withMessages([
-                'payout' => ['Conclua a verificação financeira e cadastre uma chave Pix válida antes de publicar um evento com ingressos pagos.'],
+                'sales_readiness' => [$readiness['message']],
             ]);
         }
     }
