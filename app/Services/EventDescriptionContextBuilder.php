@@ -80,11 +80,16 @@ final class EventDescriptionContextBuilder
             if ($referenceText === '') continue;
 
             $historicalTexts[] = $referenceText;
+            $flatReference = preg_replace('/\s+/u', ' ', $referenceText) ?: $referenceText;
+            $opening = trim((string) (preg_split('/(?<=[.!?])\s+/u', $flatReference)[0] ?? $flatReference));
+            $paragraphCount = max(1, count(array_filter(preg_split('/\n\s*\n+/u', $referenceText) ?: [])));
+            $wordCount = count(array_filter(preg_split('/\s+/u', trim(strip_tags($referenceText))) ?: []));
             $current['historical_style_' . ($index + 1)] = mb_substr(
-                'Título anterior: ' . trim((string) $reference->title) . "\n" .
-                'Descrição anterior: ' . $referenceText,
+                'Título anterior: ' . trim((string) $reference->title) . '; ' .
+                'abertura já usada: ' . mb_substr($opening, 0, 260) . '; ' .
+                'estrutura: ' . $wordCount . ' palavras em ' . $paragraphCount . ' parágrafos.',
                 0,
-                900,
+                500,
             );
         }
 

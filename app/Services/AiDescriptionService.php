@@ -181,7 +181,11 @@ class AiDescriptionService
             'producer_draft' => mb_substr($currentDraft, 0, 1800),
             'current_facts' => $facts,
             'historical_openings_to_avoid' => array_values(array_map(
-                fn ($text) => mb_substr(trim((string) $text), 0, 500),
+                function ($text) {
+                    $flat = preg_replace('/\s+/u', ' ', trim((string) $text)) ?: trim((string) $text);
+                    $opening = trim((string) (preg_split('/(?<=[.!?])\s+/u', $flat)[0] ?? $flat));
+                    return mb_substr($opening, 0, 280);
+                },
                 array_slice($historicalTexts, 0, 5),
             )),
         ];
