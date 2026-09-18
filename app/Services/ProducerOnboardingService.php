@@ -111,6 +111,12 @@ final class ProducerOnboardingService
     {
         $status = $this->status($production);
 
+        // Existing/self-service productions keep their established lifecycle.
+        // The strict contract + Pix gate is introduced only for assisted onboarding.
+        if (! $status['assisted_onboarding']) {
+            return $status;
+        }
+
         if ($status['can_sell_tickets']) {
             return $status;
         }
@@ -129,7 +135,7 @@ final class ProducerOnboardingService
     public function notifyIfSalesReady(Production $production): bool
     {
         $status = $this->status($production);
-        if (! $status['can_sell_tickets']) {
+        if (! $status['assisted_onboarding'] || ! $status['can_sell_tickets']) {
             return false;
         }
 
