@@ -45,6 +45,6 @@ class Artist extends Model
     public function user(){return $this->belongsTo(User::class);}
     public function creator(){return $this->belongsTo(User::class,'created_by_user_id');}
     public function claims(){return $this->hasMany(ArtistClaim::class);}
-    public function events(){return $this->belongsToMany(Event::class,'event_artist','artist_id','event_id')->withPivot(['app_id','participation_type','stage','scheduled_at','description','sort_order','is_headliner','status','invited_by_user_id','invited_at','responded_at','checked_in_at','fee_cents','payment_status','invite_token','private_notes','metadata'])->withTimestamps();}
+    public function events(){return $this->belongsToMany(Event::class,'event_artist','artist_id','event_id')->withPivot(['app_id','participation_type','stage','scheduled_at','description','sort_order','is_headliner','status','invited_by_user_id','invited_at','responded_at','checked_in_at','fee_cents','payment_status','invite_token','private_notes','metadata','response_user_id','decline_reason','cancelled_at','last_material_change_at'])->withTimestamps();}
     public function members(){return $this->hasMany(ArtistMember::class)->orderBy('sort_order')->orderBy('id');}
 }
