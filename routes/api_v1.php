@@ -114,7 +114,7 @@ Route::prefix('v1/apps/{application}')
         });
 
         Route::middleware('app.capability:events,commerce')->group(function () {
-            Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
+            Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog'])->middleware('producer.commerce-ready');
         });
 
         Route::middleware('app.capability:organizations')->group(function () {
@@ -241,7 +241,7 @@ Route::prefix('v1/apps/{application}')
 
             Route::middleware('app.capability:agreements')->group(function () {
                 Route::get('/organizations/{organizationId}/agreement', [ProducerAgreementController::class, 'show'])->whereNumber('organizationId');
-                Route::post('/organizations/{organizationId}/agreement/sign', [ProducerAgreementController::class, 'sign'])->whereNumber('organizationId')->middleware('throttle:10,1');
+                Route::post('/organizations/{organizationId}/agreement/sign', [ProducerAgreementController::class, 'sign'])->whereNumber('organizationId')->middleware(['producer.onboarding-notify', 'throttle:10,1']);
                 Route::post('/organizations/{organizationId}/agreement/resend', [ProducerAgreementController::class, 'resend'])->whereNumber('organizationId')->middleware('throttle:5,1');
                 Route::get('/organizations/{organizationId}/agreement/pdf', [ProducerAgreementController::class, 'pdf'])->whereNumber('organizationId');
             });
@@ -251,7 +251,7 @@ Route::prefix('v1/apps/{application}')
                 Route::get('/events/{id}/manage', [EventManagementController::class, 'show'])->whereNumber('id');
                 Route::post('/events', [EventManagementController::class, 'store'])->middleware('producer.agreement');
                 Route::match(['put', 'patch'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id');
-                Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
+                Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id')->middleware('producer.sales-ready:route');
                 Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
                 Route::post('/events/{id}/duplicate', [EventManagementController::class, 'duplicate'])->whereNumber('id');
                 Route::delete('/events/bulk', [EventManagementController::class, 'destroyMany']);
@@ -272,7 +272,7 @@ Route::prefix('v1/apps/{application}')
             });
 
             Route::middleware('app.capability:commerce')->group(function () {
-                Route::post('/commerce/checkout', [EventCommerceController::class, 'checkout'])->middleware('throttle:30,1');
+                Route::post('/commerce/checkout', [EventCommerceController::class, 'checkout'])->middleware(['producer.sales-ready:checkout', 'throttle:30,1']);
                 Route::get('/commerce/orders/mine', [EventCommerceController::class, 'mine']);
                 Route::get('/commerce/orders/{publicId}', [EventCommerceController::class, 'show']);
                 Route::post('/commerce/orders/{publicId}/payment/retry', [CommerceOrderPaymentRetryController::class, 'store'])->middleware('throttle:12,1');
@@ -297,7 +297,7 @@ Route::prefix('v1/apps/{application}')
                 Route::post('/organizations/{organizationId}/finance/identity/document', [FinancialController::class, 'uploadDocument'])->whereNumber('organizationId')->middleware('throttle:10,1');
                 Route::post('/organizations/{organizationId}/finance/identity/liveness-session', [FinancialController::class, 'startLiveness'])->whereNumber('organizationId')->middleware('throttle:10,1');
                 Route::post('/organizations/{organizationId}/finance/identity/liveness-complete', [FinancialController::class, 'completeLiveness'])->whereNumber('organizationId')->middleware('throttle:10,1');
-                Route::put('/organizations/{organizationId}/finance/pix', [FinancialController::class, 'savePix'])->whereNumber('organizationId')->middleware('throttle:5,1');
+                Route::put('/organizations/{organizationId}/finance/pix', [FinancialController::class, 'savePix'])->whereNumber('organizationId')->middleware(['producer.onboarding-notify', 'throttle:5,1']);
                 Route::post('/organizations/{organizationId}/finance/payouts', [FinancialController::class, 'requestPayout'])->whereNumber('organizationId')->middleware('throttle:5,1');
             });
 
