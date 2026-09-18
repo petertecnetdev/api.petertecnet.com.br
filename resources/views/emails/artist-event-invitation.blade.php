@@ -27,7 +27,8 @@
                                     @if($participationType)<div><strong style="color:#fff;">Participação:</strong> {{ $participationType }}</div>@endif
                                     @if($stage)<div><strong style="color:#fff;">Palco / espaço:</strong> {{ $stage }}</div>@endif
                                     @if($scheduledAt)<div><strong style="color:#fff;">Horário previsto:</strong> {{ $scheduledAt }}</div>@endif
-                                    <div style="margin-top:8px;">Crie sua conta usando este mesmo e-mail. Depois da confirmação do e-mail, o convite ficará vinculado automaticamente ao seu perfil artístico.</div>
+                                    <div style="margin-top:8px;">Crie sua conta usando este mesmo e-mail. Depois da confirmação, o convite será vinculado automaticamente à sua identidade artística.</div>
+                                    <div style="margin-top:8px;">Se este for seu primeiro vínculo artístico, {{ $producerName }} poderá aparecer como <strong style="color:#fff;">produção de referência</strong> por ter apresentado você à Cutinapp. Isso não dá à produção propriedade nem permissão automática para editar seu perfil.</div>
                                 </td>
                             </tr>
                         </table>
