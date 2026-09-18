@@ -145,7 +145,7 @@ class CutinappSocialGraphTest extends TestCase
             ->assertJsonPath('notifications.data.0.reference_id', $event['id']);
     }
 
-    public function test_artist_profile_keeps_legacy_public_event_when_privacy_and_end_date_are_null(): void
+    public function test_artist_profile_keeps_visible_event_when_end_date_is_null(): void
     {
         $producer=$this->user('Legacy Artist Producer','legacy-artist-producer@cutinapp.test');
         $headers=$this->headersFor($producer);
@@ -186,7 +186,6 @@ class CutinappSocialGraphTest extends TestCase
         $this->withHeaders($headers)->postJson('/api/cutinapp/events/'.$event['id'].'/publish')->assertOk();
 
         DB::table('events')->where('id',$event['id'])->update([
-            'is_private'=>null,
             'end_date'=>null,
             'updated_at'=>now(),
         ]);
