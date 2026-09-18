@@ -50,13 +50,28 @@ final class OrganizationSalesReadinessService
 
         $payment = $this->payments->readiness($organizationId);
         $paymentAvailable = (bool) ($payment['available'] ?? false);
-        $ready = $agreement && $payout && $paymentAvailable;
+        $settlementMode = (string) ($payment['settlement_mode'] ?? 'unavailable');
 
-        $code = $ready ? 'ready' : (! $agreement ? 'agreement_required' : (! $payout ? 'payout_required' : 'payment_unavailable'));
+        // Platform collection must not block a sale because payout setup is still
+        // pending. The platform receives the payment first and the producer credit
+        // stays safely in the ledger until a verified payout destination is ready.
+        // A verified Pix destination is mandatory only for the actual payout.
+        $payoutRequiredForSale = $settlementMode !== 'platform_collection';
+        $ready = $agreement && $paymentAvailable && (! $payoutRequiredForSale || $payout);
+
+        $code = $ready
+            ? 'ready'
+            : (! $agreement
+                ? 'agreement_required'
+                : (! $paymentAvailable
+                    ? 'payment_unavailable'
+                    : 'payout_required'));
         $message = match ($code) {
-            'ready' => 'Produção pronta para vender.',
+            'ready' => $payout
+                ? 'Produção pronta para vender.'
+                : 'Produção pronta para vender. Os créditos ficarão no saldo até a conclusão do cadastro de recebimento.',
             'agreement_required' => 'O produtor precisa assinar o contrato vigente antes de vender ingressos pagos.',
-            'payout_required' => 'O produtor precisa concluir a verificação financeira e cadastrar uma chave Pix válida antes de vender.',
+            'payout_required' => 'O produtor precisa concluir a verificação financeira e cadastrar uma chave Pix válida antes de receber repasses.',
             default => (string) ($payment['message'] ?? 'O meio de pagamento está temporariamente indisponível.'),
         };
 
