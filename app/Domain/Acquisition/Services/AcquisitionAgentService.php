@@ -86,7 +86,7 @@ final class AcquisitionAgentService
         });
 
         $recent = (clone $referrals)
-            ->with(['referredUser:id,first_name,last_name,email,email_verified_at', 'production:id,name,slug,is_published'])
+            ->with(['referredUser:id,first_name,last_name,email,email_verified_at', 'production:id,app_id,user_id,name,slug,is_published'])
             ->withCount('commissions')
             ->latest()
             ->limit(12)
