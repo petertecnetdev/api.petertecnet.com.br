@@ -46,6 +46,8 @@ Route::prefix('v1/apps/{application}')
                     ->whereNumber('eventId');
                 Route::post('/events/{eventId}/artist-invitations/{invitationId}/resend', [ArtistInvitationController::class, 'resend'])
                     ->whereNumber('eventId')->whereNumber('invitationId')->middleware('throttle:10,1');
+                Route::patch('/events/{eventId}/artist-invitations/{invitationId}/recipient-email', [ArtistInvitationController::class, 'updateRecipientEmail'])
+                    ->whereNumber('eventId')->whereNumber('invitationId')->middleware('throttle:10,1');
                 Route::delete('/events/{eventId}/artist-invitations/{invitationId}', [ArtistInvitationController::class, 'cancel'])
                     ->whereNumber('eventId')->whereNumber('invitationId')->middleware('throttle:20,1');
                 Route::put('/events/{eventId}/artists/{artistId}/response', [ArtistWorkflowController::class, 'respond'])
