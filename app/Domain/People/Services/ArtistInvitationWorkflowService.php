@@ -733,6 +733,9 @@ final class ArtistInvitationWorkflowService
             DB::table('event_artist')->where('app_id', $appId)->where('event_id', $event->id)->where('artist_id', $artistId)->update($allowed);
 
             if ($needsReaccept) {
+                $nextParticipation = $this->participationPayload(array_merge((array) $pivot, $allowed));
+                $nextParticipation['_changed_fields'] = $materialChanges;
+
                 DB::table('artist_invitations')
                     ->where('app_id', $appId)
                     ->where('event_id', $event->id)
@@ -742,6 +745,7 @@ final class ArtistInvitationWorkflowService
                     ->limit(1)
                     ->update([
                         'status' => 'pending_change',
+                        'payload' => json_encode($nextParticipation),
                         'responded_at' => null,
                         'responded_by_user_id' => null,
                         'important_change_count' => DB::raw('important_change_count + 1'),
@@ -1196,6 +1200,11 @@ final class ArtistInvitationWorkflowService
                 ->all();
         }
 
+        $storedPayload = json_decode((string) ($invitation->payload ?? '{}'), true) ?: [];
+        $materialChanges = is_array($storedPayload['_changed_fields'] ?? null)
+            ? $storedPayload['_changed_fields']
+            : [];
+
         return [
             'invitation' => [
                 'id' => (int) $invitation->id,
@@ -1208,6 +1217,7 @@ final class ArtistInvitationWorkflowService
                 'viewed_at' => $invitation->viewed_at ?: now(),
                 'important_change_count' => (int) ($invitation->important_change_count ?? 0),
                 'last_material_change_at' => $invitation->last_material_change_at,
+                'material_changes' => $materialChanges,
                 'can_respond' => in_array($invitation->status, ['pending','pending_change'], true)
                     && ! $event->is_cancelled
                     && (! $event->start_date || Carbon::parse($event->start_date)->isFuture()),
