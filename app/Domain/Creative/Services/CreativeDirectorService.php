@@ -81,10 +81,10 @@ final class CreativeDirectorService
     private const FORMATS = [
         'cover' => [
             'label' => 'Capa do evento',
-            'ratio' => '16:9',
-            'width' => 1600,
-            'height' => 900,
-            'prompt' => 'wide 16:9 event-page hero composition; keep the main visual interest in the central 70% and preserve crop-safe margins for responsive desktop and mobile presentation',
+            'ratio' => '2:3',
+            'width' => 1024,
+            'height' => 1536,
+            'prompt' => 'portrait 2:3 event-poster composition for a 1024x1536 master artwork; preserve safe margins around all edges, keep the main focal subject in the central vertical area and reserve clean zones for canonical event information',
         ],
         'post' => [
             'label' => 'Post / feed',
