@@ -72,32 +72,48 @@ class AgentChatGithubService
             throw new RuntimeException('A mensagem não pode ficar vazia.');
         }
 
+        $messageId = (string) Str::uuid();
         $author = $this->authorName($user);
         $to = $this->singleLine((string) ($data['to'] ?? '@todos')) ?: '@todos';
         $subject = $this->singleLine((string) ($data['subject'] ?? 'Mensagem do Admin Center')) ?: 'Mensagem do Admin Center';
+        $taskId = $this->singleLine((string) ($data['task_id'] ?? '')) ?: null;
+        $context = $this->singleLine((string) ($data['application_context'] ?? '')) ?: null;
+        $priority = strtoupper($this->singleLine((string) ($data['priority'] ?? 'NORMAL')) ?: 'NORMAL');
         $type = strtoupper($this->singleLine((string) ($data['type'] ?? 'REQUEST')) ?: 'REQUEST');
-        $allowedTypes = ['INFO', 'QUESTION', 'REQUEST', 'REVIEW', 'DONE', 'BLOCKED', 'START'];
+        $allowedTypes = ['INFO', 'QUESTION', 'REQUEST', 'RECEIVED', 'START', 'CHECKPOINT', 'REVIEW', 'DONE', 'BLOCKED', 'DECISION'];
 
         if (! in_array($type, $allowedTypes, true)) {
             $type = 'REQUEST';
         }
 
+        if (! in_array($priority, ['CRITICAL', 'HIGH', 'NORMAL', 'LOW'], true)) {
+            $priority = 'NORMAL';
+        }
+
         if (! $this->directWriteEnabled()) {
             return $this->queueForGithubActions(
+                messageId: $messageId,
                 author: $author,
                 to: $to,
                 subject: $subject,
                 message: $message,
                 type: $type,
+                taskId: $taskId,
+                context: $context,
+                priority: $priority,
             );
         }
 
         return $this->appendDirect(
+            messageId: $messageId,
             author: $author,
             to: $to,
             subject: $subject,
             message: $message,
             type: $type,
+            taskId: $taskId,
+            context: $context,
+            priority: $priority,
         );
     }
 
@@ -126,15 +142,19 @@ class AgentChatGithubService
         return $this->token !== '';
     }
 
-    private function appendDirect(string $author, string $to, string $subject, string $message, string $type): array
+    private function appendDirect(string $messageId, string $author, string $to, string $subject, string $message, string $type, ?string $taskId, ?string $context, string $priority): array
     {
-        $entry = $this->formatEntry(
+        $entry = rtrim($this->formatEntry(
+            messageId: $messageId,
             author: $author,
             to: $to,
             subject: $subject,
             message: $message,
             type: $type,
-        );
+            taskId: $taskId,
+            context: $context,
+            priority: $priority,
+        )) . "\n" . $this->marker($messageId) . "\n";
 
         for ($attempt = 1; $attempt <= 4; $attempt++) {
             $file = $this->fetchRemote();
@@ -178,19 +198,22 @@ class AgentChatGithubService
         throw new RuntimeException('O Agent Chat foi alterado por outro agente durante o envio. Tente novamente.');
     }
 
-    private function queueForGithubActions(string $author, string $to, string $subject, string $message, string $type): array
+    private function queueForGithubActions(string $messageId, string $author, string $to, string $subject, string $message, string $type, ?string $taskId, ?string $context, string $priority): array
     {
-        $id = (string) Str::uuid();
         $entry = rtrim($this->formatEntry(
+            messageId: $messageId,
             author: $author,
             to: $to,
             subject: $subject,
             message: $message,
             type: $type,
-        )) . "\n" . $this->marker($id) . "\n";
+            taskId: $taskId,
+            context: $context,
+            priority: $priority,
+        )) . "\n" . $this->marker($messageId) . "\n";
 
         $record = [
-            'id' => $id,
+            'id' => $messageId,
             'entry' => $entry,
             'created_at' => now()->toIso8601String(),
         ];
@@ -203,7 +226,7 @@ class AgentChatGithubService
 
         $parsed = $this->parseMessages($entry);
         $structured = $parsed[0] ?? [
-            'id' => 'pending-' . $id,
+            'id' => 'pending-' . $messageId,
             'timestamp' => now('America/Sao_Paulo')->format('Y-m-d H:i') . ' BRT',
             'author' => $author,
             'type' => $type,
@@ -215,7 +238,7 @@ class AgentChatGithubService
             'commit' => 'n/a',
             'status' => $type,
         ];
-        $structured['id'] = 'pending-' . $id;
+        $structured['id'] = 'pending-' . $messageId;
         $structured['sync_status'] = 'pending';
 
         return [
@@ -300,17 +323,21 @@ class AgentChatGithubService
         );
     }
 
-    private function formatEntry(string $author, string $to, string $subject, string $message, string $type): string
+    private function formatEntry(string $messageId, string $author, string $to, string $subject, string $message, string $type, ?string $taskId, ?string $context, string $priority): string
     {
         $timestamp = now('America/Sao_Paulo')->format('Y-m-d H:i') . ' BRT';
 
         return sprintf(
-            "### %s — %s — %s\n**Para:** %s\n**Assunto:** %s\n\n%s\n\n**Repo:** %s\n**Branch:** %s\n**Commit/PR:** n/a\n**Status:** %s\n---\n",
+            "**Mensagem-ID:** %s\n### %s — %s — %s\n**Para:** %s\n**Assunto:** %s\n**Tarefa:** %s\n**Contexto:** %s\n**Prioridade:** %s\n\n%s\n\n**Repo:** %s\n**Branch:** %s\n**Commit/PR:** n/a\n**Status:** %s\n---\n",
+            $messageId,
             $timestamp,
             $this->singleLine($author),
             $type,
             $to,
             $subject,
+            $taskId ?: 'n/a',
+            $context ?: 'geral',
+            $priority,
             $message,
             $this->repository,
             $this->branch,
@@ -320,40 +347,77 @@ class AgentChatGithubService
 
     private function parseMessages(string $content): array
     {
-        $blocks = preg_split('/(?=^### )/m', $content) ?: [];
+        $normalized = preg_replace('/(?=^\\*\\*Mensagem-ID:\\*\\*)/m', '', $content) ?: $content;
+        $blocks = preg_split('/(?=^(?:\\*\\*Mensagem-ID:\\*\\*[^\\r\\n]*\\R)?### )/m', $normalized) ?: [];
         $messages = [];
 
-        $pattern = '/^### (?<timestamp>[^\r\n]+?)\s+—\s+(?<author>.+?)\s+—\s+(?<type>[A-Z_]+)\R'
-            . '\*\*Para:\*\*\s*(?<to>[^\r\n]*)\R'
-            . '\*\*Assunto:\*\*\s*(?<subject>[^\r\n]*)\R\R'
-            . '(?<message>.*?)\R\R'
-            . '\*\*Repo:\*\*\s*(?<repo>[^\r\n]*)\R'
-            . '\*\*Branch:\*\*\s*(?<branch>[^\r\n]*)\R'
-            . '\*\*Commit\/PR:\*\*\s*(?<commit>[^\r\n]*)\R'
-            . '\*\*Status:\*\*\s*(?<status>[^\r\n]*)\R'
-            . '---/su';
-
         foreach ($blocks as $block) {
-            if (! str_starts_with($block, '### ')) {
+            $block = trim($block);
+            if ($block === '' || ! str_contains($block, '### ')) {
                 continue;
             }
 
-            if (! preg_match($pattern, trim($block), $match)) {
+            $messageId = null;
+            if (preg_match('/^\\*\\*Mensagem-ID:\\*\\*\\s*([^\\r\\n]+)\\R/', $block, $idMatch)) {
+                $messageId = trim($idMatch[1]);
+                $block = preg_replace('/^\\*\\*Mensagem-ID:\\*\\*[^\\r\\n]+\\R/', '', $block, 1) ?: $block;
+            }
+
+            if (! preg_match('/^### (?<timestamp>[^\\r\\n]+?)\\s+—\\s+(?<author>.+?)\\s+—\\s+(?<type>[A-Z_]+)\\R/', $block, $header)) {
                 continue;
+            }
+
+            $lines = preg_split('/\\R/', $block) ?: [];
+            $meta = [];
+            $body = [];
+            $readingBody = false;
+
+            foreach (array_slice($lines, 1) as $line) {
+                if (preg_match('/^\\*\\*([^*]+):\\*\\*\\s*(.*)$/u', $line, $metaMatch)) {
+                    $key = trim($metaMatch[1]);
+                    if (in_array($key, ['Repo', 'Branch', 'Commit/PR', 'Status'], true)) {
+                        $readingBody = false;
+                    }
+                    $meta[$key] = trim($metaMatch[2]);
+                    continue;
+                }
+
+                if (trim($line) === '---') {
+                    continue;
+                }
+
+                if (! $readingBody && trim($line) === '') {
+                    if (isset($meta['Assunto'])) {
+                        $readingBody = true;
+                    }
+                    continue;
+                }
+
+                if ($readingBody) {
+                    $body[] = $line;
+                }
+            }
+
+            while ($body !== [] && trim((string) end($body)) === '') {
+                array_pop($body);
             }
 
             $messages[] = [
-                'id' => substr(hash('sha256', trim($block)), 0, 20),
-                'timestamp' => trim($match['timestamp']),
-                'author' => trim($match['author']),
-                'type' => trim($match['type']),
-                'to' => trim($match['to']),
-                'subject' => trim($match['subject']),
-                'message' => trim($match['message']),
-                'repo' => trim($match['repo']),
-                'branch' => trim($match['branch']),
-                'commit' => trim($match['commit']),
-                'status' => trim($match['status']),
+                'id' => $messageId ?: substr(hash('sha256', trim($block)), 0, 20),
+                'message_id' => $messageId,
+                'timestamp' => trim($header['timestamp']),
+                'author' => trim($header['author']),
+                'type' => trim($header['type']),
+                'to' => $meta['Para'] ?? '@todos',
+                'subject' => $meta['Assunto'] ?? '',
+                'task_id' => ($meta['Tarefa'] ?? 'n/a') !== 'n/a' ? ($meta['Tarefa'] ?? null) : null,
+                'application_context' => ($meta['Contexto'] ?? 'geral') !== 'geral' ? ($meta['Contexto'] ?? null) : null,
+                'priority' => $meta['Prioridade'] ?? 'NORMAL',
+                'message' => trim(implode("\n", $body)),
+                'repo' => $meta['Repo'] ?? '',
+                'branch' => $meta['Branch'] ?? '',
+                'commit' => $meta['Commit/PR'] ?? 'n/a',
+                'status' => $meta['Status'] ?? trim($header['type']),
                 'sync_status' => 'synced',
             ];
         }
