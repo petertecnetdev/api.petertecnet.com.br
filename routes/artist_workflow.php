@@ -13,6 +13,9 @@ Route::prefix('v1/apps/{application}')
             Route::post('/artists/{artistId}/analytics/track', [ArtistWorkflowController::class, 'track'])
                 ->whereNumber('artistId')
                 ->middleware('throttle:120,1');
+            Route::get('/artist-invitations/{token}/open.gif', [ArtistInvitationController::class, 'trackOpen'])
+                ->where('token', '[A-Za-z0-9]+')
+                ->middleware('throttle:240,1');
         });
 
         Route::middleware(['auth:api', 'token.version'])->group(function (): void {
@@ -25,6 +28,23 @@ Route::prefix('v1/apps/{application}')
                     ->middleware('throttle:60,1');
                 Route::post('/artist-invitations/claim-pending', [ArtistInvitationController::class, 'claimPending'])
                     ->middleware('throttle:30,1');
+                Route::get('/artist-invitations', [ArtistInvitationController::class, 'mine'])
+                    ->middleware('throttle:120,1');
+                Route::get('/artist-invitations/{token}', [ArtistInvitationController::class, 'show'])
+                    ->where('token', '[A-Za-z0-9]+')
+                    ->middleware('throttle:120,1');
+                Route::put('/artist-invitations/{token}/response', [ArtistInvitationController::class, 'respond'])
+                    ->where('token', '[A-Za-z0-9]+')
+                    ->middleware('throttle:30,1');
+                Route::get('/artist-invitations/{token}/calendar.ics', [ArtistInvitationController::class, 'calendar'])
+                    ->where('token', '[A-Za-z0-9]+')
+                    ->middleware('throttle:60,1');
+                Route::get('/events/{eventId}/artist-invitations', [ArtistInvitationController::class, 'eventIndex'])
+                    ->whereNumber('eventId');
+                Route::post('/events/{eventId}/artist-invitations/{invitationId}/resend', [ArtistInvitationController::class, 'resend'])
+                    ->whereNumber('eventId')->whereNumber('invitationId')->middleware('throttle:10,1');
+                Route::delete('/events/{eventId}/artist-invitations/{invitationId}', [ArtistInvitationController::class, 'cancel'])
+                    ->whereNumber('eventId')->whereNumber('invitationId')->middleware('throttle:20,1');
                 Route::put('/events/{eventId}/artists/{artistId}/response', [ArtistWorkflowController::class, 'respond'])
                     ->whereNumber('eventId')
                     ->whereNumber('artistId');
