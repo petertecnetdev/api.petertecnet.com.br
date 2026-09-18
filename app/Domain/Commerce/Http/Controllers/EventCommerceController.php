@@ -13,6 +13,7 @@ use App\Models\Production;
 use App\Models\Ticket;
 use App\Services\MerchantPaymentAccountService;
 use App\Services\MercadoPagoService;
+use App\Services\OrganizationSalesReadinessService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -25,6 +26,7 @@ final class EventCommerceController extends Controller
         private readonly ApplicationContext $context,
         private readonly MercadoPagoService $mercadoPago,
         private readonly MerchantPaymentAccountService $accounts,
+        private readonly OrganizationSalesReadinessService $salesReadiness,
     ) {}
 
     public function catalog(Request $request, string $slug)
@@ -99,7 +101,8 @@ final class EventCommerceController extends Controller
         });
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
-        $paymentAvailable = ! $salesClosed && $readiness['available'];
+        $salesReadiness = $this->salesReadiness->status((int) $event->production_id);
+        $paymentAvailable = ! $salesClosed && $readiness['available'] && $salesReadiness['ready'];
 
         return response()->json([
             'event' => $event->only(['id','title','slug','start_date','end_date','temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions']),
@@ -116,7 +119,10 @@ final class EventCommerceController extends Controller
                 'methods' => $paymentAvailable ? $readiness['methods'] : [],
                 'payout_ready' => (bool) ($readiness['payout_ready'] ?? false),
                 'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
-                'message' => $salesClosed ? 'As vendas deste evento foram encerradas.' : $readiness['message'],
+                'message' => $salesClosed
+                    ? 'As vendas deste evento foram encerradas.'
+                    : ($salesReadiness['ready'] ? $readiness['message'] : $salesReadiness['message']),
+                'sales_readiness' => $salesReadiness,
             ],
         ]);
     }
@@ -166,6 +172,11 @@ final class EventCommerceController extends Controller
                 ? 'Este evento já foi encerrado. Não aceita novas compras.'
                 : 'Este evento não está disponível para venda.'
         );
+
+        if ($data['payment_method'] !== 'free') {
+            $salesReadiness = $this->salesReadiness->status((int) $eventForReadiness->production_id);
+            abort_unless($salesReadiness['ready'], 428, $salesReadiness['message']);
+        }
 
         $platformRate = max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100));
         $expirationMinutes = (int) $this->context->option('commerce.order_expiration_minutes', 30);
