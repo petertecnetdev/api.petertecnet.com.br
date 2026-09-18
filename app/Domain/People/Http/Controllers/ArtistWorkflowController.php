@@ -28,10 +28,11 @@ final class ArtistWorkflowController extends Controller
         elseif (strlen($digits) >= 8) $query->where(fn($q)=>$q->where('phone_normalized',$digits)->orWhere('phone',$digits)->orWhere('cpf',$digits));
         else { $username=ltrim($term,'@'); $query->where(fn($q)=>$q->where('user_name','like',$username.'%')->orWhereRaw("CONCAT_WS(' ', first_name, last_name) LIKE ?",['%'.$username.'%'])); }
 
-        $users=$query->limit(10)->get()->map(function(User $user){
+        $users=$query->limit(10)->get()->map(function(User $user)use($eventId){
             $artist=Artist::query()->where('app_id',$this->context->id())->where('user_id',$user->id)->where('artist_type','solo')->first();
+            $alreadyInEvent=$artist?DB::table('event_artist')->where('app_id',$this->context->id())->where('event_id',$eventId)->where('artist_id',$artist->id)->exists():false;
             $name=trim(($user->first_name??'').' '.($user->last_name??''))?:($user->user_name?:'Usuário');
-            return ['id'=>(int)$user->id,'name'=>$name,'username'=>$user->user_name?'@'.$user->user_name:null,'avatar'=>$user->avatar,'city'=>$user->city,'uf'=>$user->uf,'email_hint'=>$this->maskEmail($user->email),'phone_hint'=>$this->maskPhone($user->phone_normalized?:$user->phone),'artist'=>$artist?['id'=>(int)$artist->id,'stage_name'=>$artist->stage_name,'slug'=>$artist->slug,'photo'=>$artist->photo]:null];
+            return ['id'=>(int)$user->id,'name'=>$name,'username'=>$user->user_name?'@'.$user->user_name:null,'avatar'=>$user->avatar,'city'=>$user->city,'uf'=>$user->uf,'email_hint'=>$this->maskEmail($user->email),'phone_hint'=>$this->maskPhone($user->phone_normalized?:$user->phone),'already_in_event'=>$alreadyInEvent,'artist'=>$artist?['id'=>(int)$artist->id,'stage_name'=>$artist->stage_name,'slug'=>$artist->slug,'photo'=>$artist->photo]:null];
         })->values();
         return response()->json(['users'=>$users]);
     }
