@@ -56,7 +56,10 @@ class AgentChatController extends Controller
             'message' => ['required', 'string', 'max:5000'],
             'to' => ['nullable', 'string', 'max:80'],
             'subject' => ['nullable', 'string', 'max:160'],
-            'type' => ['nullable', 'string', 'in:INFO,QUESTION,REQUEST,REVIEW,DONE,BLOCKED,START'],
+            'task_id' => ['nullable', 'string', 'regex:/^TASK-[0-9]{8}-[A-Z0-9]{6}$/'],
+            'application_context' => ['nullable', 'string', 'max:50'],
+            'priority' => ['nullable', 'string', 'in:CRITICAL,HIGH,NORMAL,LOW'],
+            'type' => ['nullable', 'string', 'in:INFO,QUESTION,REQUEST,RECEIVED,START,CHECKPOINT,REVIEW,DONE,BLOCKED,DECISION'],
         ]);
 
         try {
