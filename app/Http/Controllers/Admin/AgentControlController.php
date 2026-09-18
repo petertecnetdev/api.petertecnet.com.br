@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Services\AgentControlRepositoryService;
+use App\Services\AgentChatGithubService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -31,7 +32,7 @@ class AgentControlController extends Controller
         }
     }
 
-    public function storeTask(Request $request, AgentControlRepositoryService $control): JsonResponse
+    public function storeTask(Request $request, AgentControlRepositoryService $control, AgentChatGithubService $chat): JsonResponse
     {
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:180'],
@@ -47,7 +48,30 @@ class AgentControlController extends Controller
         ]);
 
         try {
-            return response()->json($control->createTask($validated, $request->user()), 201);
+            $result = $control->createTask($validated, $request->user());
+            $task = (array) ($result['task'] ?? []);
+
+            try {
+                $chatResult = $chat->append([
+                    'message' => trim((string) ($task['description'] ?? '')) ?: ('Nova tarefa: ' . ($task['title'] ?? $task['task_id'] ?? '')),
+                    'to' => ! empty($task['assigned_agent_id']) ? '@' . $task['assigned_agent_id'] : '@todos',
+                    'subject' => (string) ($task['title'] ?? 'Nova tarefa'),
+                    'task_id' => $task['task_id'] ?? null,
+                    'application_context' => $task['application_context'] ?? null,
+                    'priority' => $task['priority'] ?? 'NORMAL',
+                    'type' => 'REQUEST',
+                ], $request->user());
+
+                $result['chat_message'] = $chatResult['message'] ?? null;
+            } catch (Throwable $chatException) {
+                Log::warning('Task created but Agent Chat notification failed.', [
+                    'task_id' => $task['task_id'] ?? null,
+                    'message' => $chatException->getMessage(),
+                ]);
+                $result['chat_message'] = null;
+            }
+
+            return response()->json($result, 201);
         } catch (RuntimeException $exception) {
             return response()->json(['message' => $exception->getMessage()], 422);
         }
