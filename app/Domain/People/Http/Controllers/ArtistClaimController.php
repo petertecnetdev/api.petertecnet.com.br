@@ -31,8 +31,11 @@ final class ArtistClaimController extends Controller
 
             $query->where(fn ($q) => $q
                 ->where('user_id', $user->id)
-                ->orWhere('created_by_user_id', $user->id)
-                ->orWhereIn('id', $managed));
+                ->orWhereIn('id', $managed)
+                ->orWhere(fn ($legacyGroup) => $legacyGroup
+                    ->where('created_by_user_id', $user->id)
+                    ->whereNull('user_id')
+                    ->where('artist_type', '!=', 'solo')));
         }
 
         return response()->json([
@@ -323,7 +326,11 @@ final class ArtistClaimController extends Controller
         abort_unless(
             $user->hasProfile('Administrador')
                 || (int) $artist->user_id === (int) $user->id
-                || (int) $artist->created_by_user_id === (int) $user->id
+                || (
+                    (int) $artist->created_by_user_id === (int) $user->id
+                    && is_null($artist->user_id)
+                    && $artist->artist_type !== 'solo'
+                )
                 || $manager,
             403,
             'Você não pode administrar este artista.',
