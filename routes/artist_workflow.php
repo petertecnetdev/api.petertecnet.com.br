@@ -16,6 +16,9 @@ Route::prefix('v1/apps/{application}')
             Route::get('/artist-invitations/{token}/open.gif', [ArtistInvitationController::class, 'trackOpen'])
                 ->where('token', '[A-Za-z0-9]+')
                 ->middleware('throttle:240,1');
+            Route::post('/artist-invitations/{token}/email-delivery', [ArtistInvitationController::class, 'emailDelivery'])
+                ->where('token', '[A-Za-z0-9]+')
+                ->middleware('throttle:240,1');
         });
 
         Route::middleware(['auth:api', 'token.version'])->group(function (): void {
