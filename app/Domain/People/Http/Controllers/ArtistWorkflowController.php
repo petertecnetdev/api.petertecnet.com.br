@@ -44,7 +44,7 @@ final class ArtistWorkflowController extends Controller
         if(!$user) return $this->createExternalInvitation($event,$actor,$data);
 
         [$artist,$status,$conflicts,$created]=DB::transaction(function()use($event,$actor,$user,$data){
-            $artist=$this->identity->getOrCreate($this->context->id(),$user,$actor);
+            $artist=$this->identity->getOrCreate($this->context->id(),$user,$actor,$event);
             $existing=DB::table('event_artist')->where('event_id',$event->id)->where('artist_id',$artist->id)->first();
             $status=$existing?->status==='confirmed'?'confirmed':'pending'; $token=$existing?->invite_token?:Str::random(48);
             $pivot=['app_id'=>$this->context->id(),'participation_type'=>$data['participation_type'],'description'=>$data['description']??null,'sort_order'=>$data['sort_order']??0,'scheduled_at'=>$data['scheduled_at']??null,'stage'=>$data['stage']??null,'is_headliner'=>(bool)($data['is_headliner']??false),'status'=>$status,'invited_by_user_id'=>$actor->id,'invited_at'=>$existing?->invited_at?:now(),'fee_cents'=>$data['fee_cents']??null,'payment_status'=>$existing?->payment_status?:'not_applicable','invite_token'=>$token,'private_notes'=>$data['private_notes']??null,'updated_at'=>now()];
