@@ -144,7 +144,11 @@ final class EventDescriptionContextBuilder
                 ->take(6)
                 ->map(function ($ticket) {
                     $price = (float) $ticket->price;
-                    return trim((string) $ticket->name) . ' — ' .
+                    $name = trim((string) $ticket->name);
+                    if ($price <= 0) {
+                        $name = trim((string) preg_replace('/\s*[—-]?\s*(free|gratuito|grátis|gratis)\s*$/iu', '', $name));
+                    }
+                    return $name . ' — ' .
                         ($price <= 0 ? 'gratuito' : 'R$ ' . number_format($price, 2, ',', '.'));
                 })
                 ->filter()

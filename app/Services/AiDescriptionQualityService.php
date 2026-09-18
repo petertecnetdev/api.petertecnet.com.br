@@ -138,7 +138,14 @@ final class AiDescriptionQualityService
             }
         }
 
-        $knownFacts = $this->normalize(implode(' ', array_values(array_filter($context, 'is_scalar'))));
+        $factValues = [];
+        foreach ($context as $key => $value) {
+            if (str_starts_with((string) $key, 'historical_style_')) continue;
+            if (str_starts_with((string) $key, 'editorial_')) continue;
+            if ((string) $key === 'event_items') continue;
+            if (is_scalar($value)) $factValues[] = (string) $value;
+        }
+        $knownFacts = $this->normalize(implode(' ', $factValues));
         preg_match_all('/R\$\s*[0-9]+(?:[.,][0-9]{1,2})?/iu', $candidate, $moneyMatches);
         foreach ($moneyMatches[0] ?? [] as $money) {
             if (! str_contains($knownFacts, $this->normalize($money))) {
@@ -146,6 +153,27 @@ final class AiDescriptionQualityService
                 $issues[] = 'contém valor monetário que não consta nos dados atuais';
                 break;
             }
+        }
+
+        $creativeTerms = [
+            'musica', 'dj', 'banda', 'show', 'pista', 'danca', 'cerveja', 'energetico',
+            'rosh', 'drinks', 'bebida', 'comida', 'open bar', 'dois ambientes',
+        ];
+        foreach ($creativeTerms as $term) {
+            if (preg_match('/(?<![a-z0-9])' . preg_quote($term, '/') . '(?![a-z0-9])/', $normalizedCandidate)
+                && ! preg_match('/(?<![a-z0-9])' . preg_quote($term, '/') . '(?![a-z0-9])/', $knownFacts)
+                && ! preg_match('/(?<![a-z0-9])' . preg_quote($term, '/') . '(?![a-z0-9])/', $this->normalize($draft))) {
+                $scores['fidelity'] -= 28;
+                $issues[] = 'inclui elemento de experiência que não está confirmado no evento atual';
+                break;
+            }
+        }
+
+        if ((str_contains($normalizedCandidate, 'no coracao de') || str_contains($normalizedCandidate, 'bem no centro de'))
+            && ! str_contains($knownFacts, 'no coracao de')
+            && ! str_contains($knownFacts, 'bem no centro de')) {
+            $scores['fidelity'] -= 20;
+            $issues[] = 'atribui uma localização qualitativa não confirmada';
         }
 
         $artistFacts = $this->normalize((string) ($context['artists'] ?? ''));

@@ -171,6 +171,7 @@ class AiDescriptionService
         $facts = [];
         foreach ($context as $key => $value) {
             if (str_starts_with((string) $key, 'historical_style_')) continue;
+            if (in_array((string) $key, ['event_items', 'editorial_avoid_phrases', 'editorial_profile'], true)) continue;
             if (! is_scalar($value)) continue;
             $facts[(string) $key] = mb_substr(trim((string) $value), 0, 500);
         }
@@ -375,7 +376,11 @@ PROMPT;
         }
 
         if ($entityType === 'event') {
-            $allowedSource = $title . ' ' . $currentDescription . ' ' . implode(' ', array_values($creativeContext));
+            $factContext = $this->eventFactContext($context);
+            $allowedSource = $title . ' ' . $currentDescription . ' ' . implode(' ', array_values($factContext));
+            if ($this->contextValue($context, ['artists']) !== '') {
+                $allowedSource .= ' artista dj banda show música musica palco';
+            }
             if ($this->containsUnsupportedCreativeClaims($creative, $allowedSource)) {
                 $creative = $this->eventOpening(
                     title: $this->cleanText($title),
@@ -505,13 +510,33 @@ Regras:
 PROMPT;
     }
 
+    private function eventFactContext(array $context): array
+    {
+        $allowed = [
+            'venue', 'local', 'establishment', 'estabelecimento',
+            'city', 'cidade', 'uf', 'state', 'estado',
+            'production_name', 'category', 'categoria', 'event_format',
+            'artists', 'weekday', 'content_density',
+            'entityId', 'eventId', 'event_id', 'production_id', 'productionId',
+        ];
+
+        $facts = [];
+        foreach ($context as $key => $value) {
+            if (in_array((string) $key, $allowed, true) && is_scalar($value)) {
+                $facts[(string) $key] = (string) $value;
+            }
+        }
+
+        return $facts;
+    }
+
     private function eventCreativeContext(array $context): array
     {
         $allowed = [
             'venue', 'local', 'establishment', 'estabelecimento',
             'city', 'cidade', 'uf', 'state', 'estado',
             'production_name', 'category', 'categoria', 'event_format',
-            'artists', 'event_items',
+            'artists',
             'entityId', 'eventId', 'event_id', 'production_id', 'productionId',
             'generation_action', 'candidate_angle', 'editorial_goal', 'quality_feedback',
             'avoid_previous_ai', 'editorial_avoid_phrases', 'editorial_profile', 'prompt_version',
@@ -533,10 +558,13 @@ PROMPT;
         $generated = Str::ascii(mb_strtolower($text));
         $allowed = Str::ascii(mb_strtolower($allowedSource));
         $strictClaims = [
+            'musica', 'música', 'dj', 'banda', 'show', 'pista', 'danca', 'dança',
+            'cerveja', 'energetico', 'energético', 'rosh', 'drinks', 'bebida', 'comida',
             'open bar', 'bebida liberada', 'bebidas liberadas', 'comida liberada',
-            'dois ambientes', 'tres ambientes', 'área vip', 'area vip',
-            'iluminacao profissional', 'som de alta qualidade', 'estrutura premium',
-            'estacionamento gratuito', 'promocao exclusiva',
+            'dois ambientes', 'tres ambientes', 'três ambientes', 'área vip', 'area vip',
+            'iluminacao profissional', 'iluminação profissional', 'som de alta qualidade',
+            'estrutura premium', 'estacionamento gratuito', 'promoção exclusiva', 'promocao exclusiva',
+            'no coracao de', 'no coração de', 'bem no centro de',
         ];
 
         foreach ($strictClaims as $term) {
