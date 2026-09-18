@@ -45,7 +45,7 @@ final class SocialGraphController extends Controller
         if($type==='solo'){
             $existing=Artist::query()->where('app_id',$this->context->id())->where('user_id',$user->id)->where('artist_type','solo')->first();
             if($existing)return response()->json(['message'=>'Sua conta já possui um perfil artístico.','artist'=>$existing],409);
-            $data['user_id']=$user->id;$data['claimed_at']=now();$data['verification_status']='account_linked';
+            $data['user_id']=$user->id;$data['claimed_at']=now();$data['verification_status']='account_linked';$data['origin_type']='self';$data['origin_id']=null;$data['origin_label']=null;$data['reference_visible']=false;
         }else{$data['user_id']=null;$data['verification_status']='managed_group';}
         $artist=Artist::create($data);return response()->json(['message'=>'Perfil artístico criado com sucesso.','artist'=>$artist],201);
     }
