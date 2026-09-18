@@ -2,10 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Event;
-use App\Models\Production;
 use App\Services\AiDescriptionService;
-use App\Support\ApplicationContext;
+use App\Services\EventDescriptionPipelineService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,9 +14,8 @@ class AiContentController extends Controller
 {
     public function __construct(
         private readonly AiDescriptionService $descriptions,
-        private readonly ApplicationContext $applicationContext,
-    ) {
-    }
+        private readonly EventDescriptionPipelineService $eventPipeline,
+    ) {}
 
     public function description(Request $request): JsonResponse
     {
@@ -27,9 +24,10 @@ class AiContentController extends Controller
             'title' => ['nullable', 'string', 'max:200'],
             'current_description' => ['nullable', 'string', 'max:5000'],
             'context' => ['nullable', 'array', 'max:30'],
-            'context.*' => ['nullable', 'string', 'max:500'],
+            'context.*' => ['nullable', 'string', 'max:1200'],
             'locale' => ['nullable', 'string', 'max:10'],
-            'tone' => ['nullable', 'string', 'max:160'],
+            'tone' => ['nullable', 'string', 'max:220'],
+            'action' => ['nullable', 'in:improve,rewrite,enrich'],
         ]);
 
         $title = trim((string) ($data['title'] ?? ''));
@@ -45,20 +43,31 @@ class AiContentController extends Controller
             ]);
         }
 
-        $data['context'] = $this->enrichContext($data['entity_type'], $context, $request);
+        $data['context'] = $context;
+        $data['action'] = $data['action'] ?? 'improve';
 
         try {
-            $result = $this->descriptions->generateDescription(
-                $data,
-                $request->user('api')?->getAuthIdentifier(),
-            );
+            $user = $request->user('api') ?? $request->user();
+
+            if (($data['entity_type'] ?? '') === 'event' && $user) {
+                $result = $this->eventPipeline->generate($data, $user);
+            } else {
+                $result = $this->descriptions->generateDescription(
+                    $data,
+                    $user?->getAuthIdentifier(),
+                );
+            }
 
             return response()->json([
                 'description' => $result['description'],
                 'mode' => $result['mode'],
+                'generation_id' => $result['generation_id'] ?? null,
                 'meta' => [
                     'model' => $result['model'],
                     'usage' => $result['usage'],
+                    'prompt_version' => $result['prompt_version'] ?? null,
+                    'candidate_count' => $result['candidate_count'] ?? 1,
+                    'quality' => $result['quality'] ?? null,
                 ],
             ]);
         } catch (RuntimeException $exception) {
@@ -82,112 +91,4 @@ class AiContentController extends Controller
             ], 503);
         }
     }
-
-    private function enrichContext(string $entityType, array $context, Request $request): array
-    {
-        if ($entityType !== 'event') {
-            return $context;
-        }
-
-        $user = $request->user('api') ?? $request->user();
-        if (! $user) {
-            return $context;
-        }
-
-        $eventId = (int) ($context['entityId'] ?? $context['eventId'] ?? $context['event_id'] ?? 0);
-        $event = null;
-        $production = null;
-
-        if ($eventId > 0) {
-            $event = Event::query()
-                ->where('app_id', $this->applicationContext->id())
-                ->with('production:id,app_id,user_id,name')
-                ->find($eventId);
-            $production = $event?->production;
-        }
-
-        if (! $production) {
-            $productionId = (int) ($context['production_id'] ?? $context['productionId'] ?? 0);
-            if ($productionId > 0) {
-                $production = Production::query()
-                    ->where('app_id', $this->applicationContext->id())
-                    ->find($productionId);
-            }
-        }
-
-        if (! $production) {
-            return $context;
-        }
-
-        $isOwner = (int) $production->user_id === (int) $user->getAuthIdentifier();
-        $isAdmin = method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
-        $isPlatformAdmin = strtolower(trim((string) $user->email)) === 'petertecnet@gmail.com';
-
-        if (! $isOwner && ! $isAdmin && ! $isPlatformAdmin) {
-            return $context;
-        }
-
-        if (! isset($context['production_name']) && $production->name) {
-            $context['production_name'] = mb_substr((string) $production->name, 0, 500);
-        }
-
-        if ($event) {
-            $context['event_start'] ??= $event->start_date?->format('Y-m-d H:i:s');
-            $context['event_end'] ??= $event->end_date?->format('Y-m-d H:i:s');
-            $context['venue'] ??= $event->venue ?: null;
-            $context['city'] ??= $event->city ?: null;
-            $context['uf'] ??= $event->uf ?: null;
-
-            $ticketOptions = $event->tickets()
-                ->where('quantity', '>', 0)
-                ->orderBy('price')
-                ->limit(4)
-                ->get(['name', 'price'])
-                ->map(function ($ticket) {
-                    $price = (float) $ticket->price;
-                    $priceLabel = $price <= 0
-                        ? 'gratuito'
-                        : 'R$ ' . number_format($price, 2, ',', '.');
-                    return trim((string) $ticket->name) . ' — ' . $priceLabel;
-                })
-                ->filter()
-                ->implode('; ');
-
-            if ($ticketOptions !== '') {
-                $context['ticket_options'] = mb_substr($ticketOptions, 0, 500);
-            }
-        }
-
-        $referencesQuery = Event::query()
-            ->where('app_id', $this->applicationContext->id())
-            ->where('production_id', $production->id)
-            ->whereNotNull('description')
-            ->where('description', '!=', '');
-
-        if ($event) {
-            $referencesQuery->whereKeyNot($event->id);
-        }
-
-        $references = $referencesQuery
-            ->orderByDesc('updated_at')
-            ->limit(6)
-            ->get(['id', 'title', 'description', 'start_date']);
-
-        foreach ($references as $index => $reference) {
-            $referenceText = trim((string) $reference->description);
-            if ($referenceText === '') {
-                continue;
-            }
-
-            $context['historical_style_' . ($index + 1)] = mb_substr(
-                'Título anterior: ' . trim((string) $reference->title) . "\n" .
-                'Descrição anterior: ' . $referenceText,
-                0,
-                500,
-            );
-        }
-
-        return array_slice($context, 0, 30, true);
-    }
-
 }

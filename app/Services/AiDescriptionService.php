@@ -160,6 +160,176 @@ class AiDescriptionService
         }
     }
 
+    public function planEventDescription(
+        string $title,
+        string $currentDraft,
+        array $context,
+        array $historicalTexts,
+    ): ?array {
+        if (! $this->isCloudflareConfigured()) return null;
+
+        $facts = [];
+        foreach ($context as $key => $value) {
+            if (str_starts_with((string) $key, 'historical_style_')) continue;
+            if (! is_scalar($value)) continue;
+            $facts[(string) $key] = mb_substr(trim((string) $value), 0, 500);
+        }
+
+        $payload = [
+            'title' => mb_substr($title, 0, 220),
+            'producer_draft' => mb_substr($currentDraft, 0, 1800),
+            'current_facts' => $facts,
+            'historical_openings_to_avoid' => array_values(array_map(
+                fn ($text) => mb_substr(trim((string) $text), 0, 500),
+                array_slice($historicalTexts, 0, 5),
+            )),
+        ];
+
+        $system = <<<'PROMPT'
+Você é o planejador editorial invisível da Cutinapp. Antes da redação final, crie um plano curto para uma descrição de evento.
+
+O plano deve:
+- preservar a intenção do rascunho do produtor;
+- definir um gancho original e diferente dos eventos anteriores;
+- listar somente fatos atuais úteis;
+- definir uma estrutura de 2 a 4 parágrafos;
+- indicar clichês, aberturas e padrões que devem ser evitados;
+- nunca inventar atrações, benefícios ou características.
+
+Responda SOMENTE JSON válido:
+{"hook":"...","intent":"...","facts_to_highlight":["..."],"structure":["..."],"avoid":["..."],"target_words":120}
+PROMPT;
+
+        try {
+            $response = $this->cloudflareTextRequest([
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)],
+            ], 420, 0.15);
+
+            $text = trim($this->extractCloudflareText($response));
+            $text = str_replace(chr(96) . chr(96) . chr(96) . 'json', '', $text);
+            $text = str_replace(chr(96) . chr(96) . chr(96), '', $text);
+            $decoded = json_decode(trim($text), true);
+
+            if (! is_array($decoded) && preg_match('/\{.*\}/su', $text, $match)) {
+                $decoded = json_decode($match[0], true);
+            }
+            if (! is_array($decoded)) return null;
+
+            return [
+                'hook' => mb_substr((string) ($decoded['hook'] ?? ''), 0, 280),
+                'intent' => mb_substr((string) ($decoded['intent'] ?? ''), 0, 420),
+                'facts_to_highlight' => array_slice((array) ($decoded['facts_to_highlight'] ?? []), 0, 8),
+                'structure' => array_slice((array) ($decoded['structure'] ?? []), 0, 6),
+                'avoid' => array_slice((array) ($decoded['avoid'] ?? []), 0, 10),
+                'target_words' => max(60, min(200, (int) ($decoded['target_words'] ?? 120))),
+                'model' => $this->cloudflareTextModel,
+            ];
+        } catch (\Throwable $exception) {
+            try {
+                Log::warning('Planejador editorial de IA indisponível; seguindo com plano determinístico.', [
+                    'model' => $this->cloudflareTextModel,
+                    'message' => $exception->getMessage(),
+                ]);
+            } catch (\Throwable) {
+            }
+            return null;
+        }
+    }
+
+    public function reviewEventCandidates(
+        array $candidates,
+        string $currentDraft,
+        array $context,
+        array $historicalTexts,
+    ): ?array {
+        if (! $this->isCloudflareConfigured() || count($candidates) < 2) {
+            return null;
+        }
+
+        $safeCandidates = array_values(array_map(
+            fn ($text) => mb_substr(trim((string) $text), 0, 2200),
+            array_slice($candidates, 0, 4),
+        ));
+
+        $facts = [];
+        foreach ($context as $key => $value) {
+            if (str_starts_with((string) $key, 'historical_style_')) continue;
+            if (! is_scalar($value)) continue;
+            $facts[(string) $key] = mb_substr(trim((string) $value), 0, 500);
+        }
+
+        $history = array_values(array_filter(array_map(
+            fn ($text) => mb_substr(trim((string) $text), 0, 900),
+            array_slice($historicalTexts, 0, 6),
+        )));
+
+        $payload = [
+            'current_draft' => mb_substr($currentDraft, 0, 1500),
+            'current_facts' => $facts,
+            'historical_references_do_not_copy_facts' => $history,
+            'candidates' => $safeCandidates,
+        ];
+
+        $system = <<<'PROMPT'
+Você é o crítico editorial final da Cutinapp. Avalie descrições candidatas de um evento.
+
+Critérios, nesta ordem:
+1. fidelidade aos fatos atuais e à intenção do rascunho;
+2. riqueza e naturalidade;
+3. originalidade em relação às referências históricas;
+4. clareza e leitura no celular;
+5. persuasão sem exagero;
+6. ausência de repetição, clichês e frases vazias.
+
+As referências históricas servem SOMENTE para detectar repetição. Nunca considere fatos históricos como fatos do evento atual.
+Desqualifique candidato que invente artista, atração, preço, benefício, estrutura, música ou qualquer fato ausente dos dados atuais.
+Prefira texto autoral, específico e humano, não um template.
+
+Responda SOMENTE JSON válido, sem markdown:
+{"preferred_index":0,"scores":[{"index":0,"score":0}],"issues":["..."],"reason":"..."}
+preferred_index usa índice começando em zero.
+PROMPT;
+
+        try {
+            $response = $this->cloudflareTextRequest([
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)],
+            ], 500, 0.1);
+
+            $text = trim($this->extractCloudflareText($response));
+            $text = str_replace(chr(96) . chr(96) . chr(96) . 'json', '', $text);
+            $text = str_replace(chr(96) . chr(96) . chr(96), '', $text);
+
+            $decoded = json_decode(trim($text), true);
+            if (! is_array($decoded) && preg_match('/\{.*\}/su', $text, $match)) {
+                $decoded = json_decode($match[0], true);
+            }
+
+            if (! is_array($decoded)) return null;
+            $preferred = (int) ($decoded['preferred_index'] ?? -1);
+            if (! array_key_exists($preferred, $safeCandidates)) return null;
+
+            return [
+                'preferred_index' => $preferred,
+                'scores' => array_slice((array) ($decoded['scores'] ?? []), 0, 4),
+                'issues' => array_slice((array) ($decoded['issues'] ?? []), 0, 8),
+                'reason' => mb_substr((string) ($decoded['reason'] ?? ''), 0, 800),
+                'model' => $this->cloudflareTextModel,
+            ];
+        } catch (\Throwable $exception) {
+            try {
+                Log::warning('Crítico editorial de IA indisponível; usando avaliação determinística.', [
+                    'model' => $this->cloudflareTextModel,
+                    'message' => $exception->getMessage(),
+                ]);
+            } catch (\Throwable) {
+            }
+
+            return null;
+        }
+    }
+
     private function generateWithCloudflare(
         string $entityType,
         string $title,
@@ -234,7 +404,7 @@ class AiDescriptionService
                 $paragraphs[] = $schedule;
             }
             if ($ticketOptions !== '') {
-                $paragraphs[] = 'Para entrada, as opções cadastradas incluem ' . rtrim($ticketOptions, '. ') . '.';
+                $paragraphs[] = $this->ticketOptionsParagraph($ticketOptions);
             }
 
             $description = $this->formatForPublication(implode("\n\n", array_filter($paragraphs)), $title);
@@ -321,11 +491,15 @@ Regras:
 - O rascunho do usuário é a principal matéria-prima. Corrija ortografia, concordância, pontuação, clareza e ritmo; preserve a intenção e desenvolva a ideia.
 - Use o NOME/TÍTULO como eixo criativo, sem simplesmente repeti-lo como cabeçalho.
 - As REFERÊNCIAS HISTÓRICAS são apenas uma lista negativa: observe o que já foi escrito e crie uma abertura, construção e vocabulário diferentes. Não copie frases nem importe fatos delas.
+- Respeite GENERATION_ACTION, CANDIDATE_ANGLE, EDITORIAL_GOAL, QUALITY_FEEDBACK e AVOID_PREVIOUS_AI quando estiverem no contexto; eles definem a estratégia editorial desta tentativa.
+- EDITORIAL_AVOID_PHRASES representa construções muito repetidas pela produção. Evite reutilizá-las.
 - Para eventos, escreva apenas o corpo editorial. Não mencione horários, datas, ingressos, preços, endereço ou capacidade; o sistema acrescentará esses dados depois.
-- Não invente atrações, música, DJ, banda, show, bebidas, comida, pista, dança, ambientes, estrutura, iluminação, som, promoções, público, lotação, benefícios ou promessas que não estejam no rascunho atual.
+- Artistas só podem ser mencionados quando estiverem no campo ARTISTS do contexto atual ou no rascunho atual.
+- Não invente atrações, música, DJ, banda, show, bebidas, comida, pista, dança, ambientes, estrutura, iluminação, som, promoções, público, lotação, benefícios ou promessas que não estejam no rascunho ou nos fatos atuais permitidos.
 - Enriqueça a linguagem, não os fatos. Evite "inesquecível", "imperdível", "energia contagiante", "muita diversão" e outros clichês sem base.
 - Evite CTA genérico como "venha", "não perca", "garanta já" e "prepare-se".
-- Prefira 1 ou 2 parágrafos editoriais, com 45 a 90 palavras no total para eventos. Para outras entidades, use até 140 palavras quando houver contexto.
+- Adapte o tamanho à densidade do contexto: CONTENT_DENSITY=lean pede 45-75 palavras editoriais; medium, 60-100; rich, 80-120. Os dados operacionais serão acrescentados depois.
+- Prefira 1 ou 2 parágrafos editoriais para eventos. Para outras entidades, use até 140 palavras quando houver contexto.
 - Não use markdown, listas, hashtags, cabeçalhos ou comentários sobre o processo.
 - Entregue somente o texto final.
 PROMPT;
@@ -337,7 +511,11 @@ PROMPT;
             'venue', 'local', 'establishment', 'estabelecimento',
             'city', 'cidade', 'uf', 'state', 'estado',
             'production_name', 'category', 'categoria', 'event_format',
+            'artists', 'event_items',
             'entityId', 'eventId', 'event_id', 'production_id', 'productionId',
+            'generation_action', 'candidate_angle', 'editorial_goal', 'quality_feedback',
+            'avoid_previous_ai', 'editorial_avoid_phrases', 'editorial_profile', 'prompt_version',
+            'weekday', 'content_density', 'editorial_plan',
         ];
 
         $result = [];
@@ -354,18 +532,25 @@ PROMPT;
     {
         $generated = Str::ascii(mb_strtolower($text));
         $allowed = Str::ascii(mb_strtolower($allowedSource));
-        $terms = [
-            'musica', 'dj', 'banda', 'show', 'pista', 'danca', 'dancar',
-            'bebida', 'drinks', 'comida', 'open bar', 'iluminacao', 'som',
-            'ambiente', 'ambientes', 'promocao', 'promocional', 'diversao',
-            'inesquecivel', 'imperdivel', 'energia contagiante', 'estrutura',
+        $strictClaims = [
+            'open bar', 'bebida liberada', 'bebidas liberadas', 'comida liberada',
+            'dois ambientes', 'tres ambientes', 'área vip', 'area vip',
+            'iluminacao profissional', 'som de alta qualidade', 'estrutura premium',
+            'estacionamento gratuito', 'promocao exclusiva',
         ];
 
-        foreach ($terms as $term) {
-            $pattern = '/(?<![a-z0-9])' . preg_quote($term, '/') . '(?![a-z0-9])/';
+        foreach ($strictClaims as $term) {
+            $asciiTerm = Str::ascii(mb_strtolower($term));
+            $pattern = '/(?<![a-z0-9])' . preg_quote($asciiTerm, '/') . '(?![a-z0-9])/';
             if (preg_match($pattern, $generated) && ! preg_match($pattern, $allowed)) {
                 return true;
             }
+        }
+
+        $artistClaim = preg_match('/\b(dj|banda|cantor|cantora|show|atra[cç][aã]o)\b/iu', $text) === 1;
+        $artistAllowed = preg_match('/\b(dj|banda|cantor|cantora|show|atra[cç][aã]o)\b/iu', $allowedSource) === 1;
+        if ($artistClaim && ! $artistAllowed) {
+            return true;
         }
 
         return false;
@@ -443,7 +628,7 @@ PROMPT;
             }
 
             if ($ticketOptions !== '') {
-                $paragraphs[] = 'Entre as opções de entrada cadastradas estão ' . rtrim($ticketOptions, '. ') . '.';
+                $paragraphs[] = $this->ticketOptionsParagraph($ticketOptions);
             }
 
             $closing = $this->freshVariant([
@@ -591,6 +776,36 @@ PROMPT;
         } catch (\Throwable) {
             return '';
         }
+    }
+
+    private function ticketOptionsParagraph(string $ticketOptions): string
+    {
+        $items = array_values(array_filter(array_map('trim', explode(';', $ticketOptions))));
+        if ($items === []) return '';
+
+        $natural = [];
+        foreach ($items as $item) {
+            $parts = preg_split('/\s+[—-]\s+/u', $item, 2) ?: [$item];
+            $name = trim((string) ($parts[0] ?? ''));
+            $price = trim((string) ($parts[1] ?? ''));
+            if ($name === '') continue;
+
+            if ($price === '') {
+                $natural[] = $name;
+            } elseif (mb_strtolower($price) === 'gratuito') {
+                $natural[] = $name . ' com entrada gratuita';
+            } else {
+                $natural[] = $name . ' por ' . $price;
+            }
+        }
+
+        if ($natural === []) return '';
+        if (count($natural) === 1) {
+            return 'Para participar, está disponível ' . $natural[0] . '.';
+        }
+
+        $last = array_pop($natural);
+        return 'Para participar, as opções disponíveis incluem ' . implode(', ', $natural) . ' e ' . $last . '.';
     }
 
     private function eventScheduleParagraph(string $where, string $start, string $end): string
