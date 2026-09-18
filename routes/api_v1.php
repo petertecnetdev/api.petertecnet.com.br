@@ -19,6 +19,7 @@ use App\Domain\Discovery\Http\Controllers\GlobalSearchController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
+use App\Domain\Events\Http\Middleware\NormalizeEventPoster;
 use App\Domain\Events\Http\Controllers\EventSocialPreviewController;
 use App\Domain\Events\Http\Controllers\EventTicketController;
 use App\Domain\Finance\Http\Controllers\FinancialController;
@@ -247,8 +248,8 @@ Route::prefix('v1/apps/{application}')
             Route::middleware('app.capability:events')->group(function () {
                 Route::get('/events/mine', [EventManagementController::class, 'mine']);
                 Route::get('/events/{id}/manage', [EventManagementController::class, 'show'])->whereNumber('id');
-                Route::post('/events', [EventManagementController::class, 'store'])->middleware('producer.agreement');
-                Route::match(['put', 'patch'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id');
+                Route::post('/events', [EventManagementController::class, 'store'])->middleware(['producer.agreement', NormalizeEventPoster::class]);
+                Route::match(['put', 'patch'], '/events/{id}', [EventManagementController::class, 'update'])->whereNumber('id')->middleware(NormalizeEventPoster::class);
                 Route::post('/events/{id}/publish', [EventManagementController::class, 'publish'])->whereNumber('id');
                 Route::post('/events/{id}/unpublish', [EventManagementController::class, 'unpublish'])->whereNumber('id');
                 Route::post('/events/{id}/duplicate', [EventManagementController::class, 'duplicate'])->whereNumber('id');
