@@ -67,32 +67,8 @@ final class PayoutController extends Controller
             ], 428);
         }
 
-        $overview = $this->payouts->overview($organization, $request->user());
-        $eligible = (bool) ($overview['ready_for_payout'] ?? false)
-            && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
-
-        if ($eligible) {
-            if (! $this->provider->isConfigured()) {
-                return response()->json([
-                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
-                ], 503);
-            }
-
-            try {
-                if ($this->provider->availableBalance() + 0.00001 < $amount) {
-                    return response()->json([
-                        'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
-                    ], 503);
-                }
-            } catch (RuntimeException $exception) {
-                report($exception);
-
-                return response()->json([
-                    'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
-                ], 503);
-            }
-        }
-
+        // Resolve the financial intent before any provider preflight. Replays and
+        // in-flight retries must not depend on current provider liquidity/config.
         $claim = $this->idempotency->claim($organization, $request->user(), $idempotencyKey, $amount);
 
         if ($claim['state'] === 'conflict') {
@@ -121,6 +97,40 @@ final class PayoutController extends Controller
                 'message' => 'A solicitação idempotente existe, mas o repasse associado precisa de conciliação.',
                 'code' => 'payout_idempotency_reconciliation_required',
             ], 409);
+        }
+
+        $overview = $this->payouts->overview($organization, $request->user());
+        $eligible = (bool) ($overview['ready_for_payout'] ?? false)
+            && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
+
+        if ($eligible) {
+            if (! $this->provider->isConfigured()) {
+                // No provider side effect has started, so this intent may be retried.
+                $this->idempotency->release($organization, $idempotencyKey);
+
+                return response()->json([
+                    'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
+                ], 503);
+            }
+
+            try {
+                if ($this->provider->availableBalance() + 0.00001 < $amount) {
+                    // Liquidity preflight is side-effect free; do not strand the intent.
+                    $this->idempotency->release($organization, $idempotencyKey);
+
+                    return response()->json([
+                        'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
+                    ], 503);
+                }
+            } catch (RuntimeException $exception) {
+                report($exception);
+                // Provider availability lookup failed before transfer creation.
+                $this->idempotency->release($organization, $idempotencyKey);
+
+                return response()->json([
+                    'message' => 'Não foi possível confirmar a disponibilidade operacional do repasse agora. Tente novamente.',
+                ], 503);
+            }
         }
 
         try {
