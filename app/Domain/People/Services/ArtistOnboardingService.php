@@ -166,6 +166,21 @@ final class ArtistOnboardingService
                 ]);
             }
 
+            if ($artist->artist_type === 'solo') {
+                $existingSolo = Artist::query()
+                    ->where('app_id', $appId)
+                    ->where('user_id', $user->id)
+                    ->where('artist_type', 'solo')
+                    ->whereKeyNot($artist->id)
+                    ->first();
+
+                if ($existingSolo) {
+                    throw ValidationException::withMessages([
+                        'artist' => ['Sua conta já possui um perfil artístico solo. Use o perfil existente para evitar duplicidade.'],
+                    ]);
+                }
+            }
+
             $professionalEmail = mb_strtolower(trim((string) $artist->professional_email));
             $userEmail = mb_strtolower(trim((string) $user->email));
             $canAutoApprove = $professionalEmail !== '' && hash_equals($professionalEmail, $userEmail);
@@ -263,6 +278,16 @@ final class ArtistOnboardingService
 
             if ($approved) {
                 abort_if($artist->user_id && (int) $artist->user_id !== (int) $claim->user_id, 409, 'O perfil já foi vinculado a outro usuário.');
+
+                if ($artist->artist_type === 'solo') {
+                    $alreadyOwned = Artist::query()
+                        ->where('app_id', $appId)
+                        ->where('user_id', $claim->user_id)
+                        ->where('artist_type', 'solo')
+                        ->whereKeyNot($artist->id)
+                        ->exists();
+                    abort_if($alreadyOwned, 409, 'O usuário já possui outro perfil artístico solo.');
+                }
 
                 $artist->forceFill([
                     'user_id' => (int) $claim->user_id,
