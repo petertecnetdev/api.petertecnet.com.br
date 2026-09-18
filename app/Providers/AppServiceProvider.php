@@ -34,6 +34,9 @@ use App\Services\ResilientRealtimePublisher;
 use App\Support\ApplicationContext;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -56,6 +59,21 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot()
     {
+        // Production performance guardrails: surface accidental N+1 access in
+        // non-production and record genuinely slow requests/queries in production.
+        Model::preventLazyLoading(! $this->app->isProduction());
+
+        DB::whenQueryingForLongerThan(
+            (int) env('DB_SLOW_REQUEST_MS', 750),
+            function ($connection, $event): void {
+                Log::warning('database.slow_request', [
+                    'connection' => $connection->getName(),
+                    'time_ms' => $event->time,
+                    'sql' => $event->sql,
+                ]);
+            }
+        );
+
         Relation::morphMap(['establishment' => 'App\\Models\\Establishment', 'event' => 'App\\Models\\Event']);
         Event::listen(DocumentSignatureRecorded::class, SyncLeaseDocumentSignature::class);
 
