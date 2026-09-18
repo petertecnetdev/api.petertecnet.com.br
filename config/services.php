@@ -114,6 +114,14 @@ return [
         'timeout' => (int) env('OPENAI_API_TIMEOUT', 45),
     ],
 
+    'agent_chat' => [
+        'repository' => env('AGENT_CHAT_GITHUB_REPOSITORY', 'petertecnetdev/petertecnet.com.br'),
+        'branch' => env('AGENT_CHAT_GITHUB_BRANCH', 'main'),
+        'path' => env('AGENT_CHAT_GITHUB_PATH', '.agents/AGENT_CHAT.md'),
+        'token' => env('AGENT_CHAT_GITHUB_TOKEN'),
+        'timeout' => (int) env('AGENT_CHAT_GITHUB_TIMEOUT', 12),
+    ],
+
     'webpush' => [
         'subject' => env('WEB_PUSH_SUBJECT', 'mailto:petertecnet@gmail.com'),
         'public_key' => env('WEB_PUSH_PUBLIC_KEY'),
