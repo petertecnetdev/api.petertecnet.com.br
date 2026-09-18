@@ -24,6 +24,10 @@ class AcquisitionLifecycleHardeningTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer '.$token)
             ->postJson('/api/v1/apps/cutinapp/acquisition/onboardings', [
+                'authorization' => [
+                    'confirmed' => true,
+                    'channel' => 'email',
+                ],
                 'user' => [
                     'first_name' => 'Produtor',
                     'email' => 'invalid-event@example.test',
@@ -194,6 +198,10 @@ class AcquisitionLifecycleHardeningTest extends TestCase
     private function validOnboardingPayload(string $email, string $productionName): array
     {
         return [
+            'authorization' => [
+                'confirmed' => true,
+                'channel' => 'whatsapp',
+            ],
             'user' => [
                 'first_name' => 'Produtor',
                 'last_name' => 'Teste',
