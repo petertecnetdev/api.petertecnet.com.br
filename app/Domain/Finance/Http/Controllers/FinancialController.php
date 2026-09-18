@@ -8,7 +8,6 @@ use App\Models\Production;
 use App\Services\AsaasWithdrawalAuthorizationService;
 use App\Services\FinancialIdentityService;
 use App\Services\FinancialPayoutService;
-use App\Services\ProducerOnboardingService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,7 +22,6 @@ class FinancialController extends Controller
         private PayoutProvider $payoutProvider,
         private AsaasWithdrawalAuthorizationService $withdrawalAuthorization,
         private ApplicationContext $context,
-        private ProducerOnboardingService $producerOnboarding,
     ) {}
 
     public function overview(Request $request, int $organizationId)
@@ -84,33 +82,8 @@ class FinancialController extends Controller
 
     public function savePix(Request $request, int $organizationId)
     {
-        $organization = $this->ownedOrganization($request, $organizationId);
-        $data = $request->validate([
-            'pix_key_type' => 'required|string|in:CPF,CNPJ,EMAIL,PHONE,EVP',
-            'pix_key' => 'required|string|min:3|max:190',
-        ]);
-
-        try {
-            $overview = $this->payouts->savePixDestination(
-                $organization,
-                $request->user(),
-                $data['pix_key_type'],
-                $data['pix_key']
-            );
-            $onboarding = $this->producerOnboarding->status($organization);
-            $this->producerOnboarding->notifyIfSalesReady($organization);
-
-            return response()->json([
-                'message' => data_get($overview, 'destination.status') === 'cooling'
-                    ? 'Nova chave Pix verificada. Por segurança, os repasses ficarão bloqueados durante o período indicado.'
-                    : 'Chave Pix verificada e ativada para recebimentos.',
-                ...$overview,
-                'onboarding' => $onboarding,
-            ]);
-        } catch (RuntimeException $e) {
-            report($e);
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+        $organization=$this->ownedOrganization($request,$organizationId);$data=$request->validate(['pix_key_type'=>'required|string|in:CPF,CNPJ,EMAIL,PHONE,EVP','pix_key'=>'required|string|min:3|max:190']);
+        try{$overview=$this->payouts->savePixDestination($organization,$request->user(),$data['pix_key_type'],$data['pix_key']);return response()->json(['message'=>data_get($overview,'destination.status')==='cooling'?'Nova chave Pix verificada. Por segurança, os repasses ficarão bloqueados durante o período indicado.':'Chave Pix verificada e ativada para recebimentos.',...$overview]);}catch(RuntimeException $e){report($e);return response()->json(['message'=>$e->getMessage()],422);}
     }
 
     public function requestPayout(Request $request, int $organizationId)
