@@ -23,6 +23,7 @@ final class OrganizationSalesReadinessService
         if (! $organization) {
             return [
                 'ready' => false,
+                'can_sell_tickets' => false,
                 'agreement' => false,
                 'payout' => false,
                 'payment' => false,
@@ -61,6 +62,7 @@ final class OrganizationSalesReadinessService
 
         return [
             'ready' => $ready,
+            'can_sell_tickets' => $ready,
             'agreement' => $agreement,
             'payout' => $payout,
             'payment' => $paymentAvailable,
