@@ -156,4 +156,20 @@ final class ArtistInvitationController extends Controller
             'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
         ]);
     }
+
+    public function emailDelivery(Request $request, string $token): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => 'required|in:delivered,bounced,failed',
+        ]);
+
+        return response()->json(
+            $this->workflow->recordEmailDeliveryEvent(
+                $this->context->id(),
+                $token,
+                $data['status'],
+                (string) $request->header('X-Artist-Invitation-Signature')
+            )
+        );
+    }
 }
