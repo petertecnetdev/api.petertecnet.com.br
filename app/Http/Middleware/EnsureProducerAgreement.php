@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Production;
 use App\Services\ProducerAgreementService;
 use App\Support\ApplicationContext;
 use Closure;
@@ -23,7 +24,7 @@ final class EnsureProducerAgreement
 
         $organizationId = (int) $request->input('production_id', 0);
         if ($organizationId > 0) {
-            $belongsToApplication = DB::table('productions')
+            $belongsToApplication = Production::query()
                 ->where('id', $organizationId)
                 ->where('app_id', $this->context->id())
                 ->exists();
@@ -36,7 +37,7 @@ final class EnsureProducerAgreement
                 ->where('contract_version', $this->agreements->version())
                 ->exists();
 
-            abort_unless($signed, 428, 'Antes de criar o primeiro evento desta organização, leia e assine o termo de adesão.');
+            abort_unless($signed, 428, 'Antes de iniciar as vendas desta organização, leia e assine o termo de adesão.');
         }
 
         return $next($request);
