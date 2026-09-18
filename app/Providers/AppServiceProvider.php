@@ -17,6 +17,7 @@ use App\Models\Item;
 use App\Models\Order;
 use App\Models\Profile;
 use App\Models\User;
+use App\Observers\ArtistInvitationEventObserver;
 use App\Observers\CognitiveInteractionObserver;
 use App\Observers\EstablishmentOwnershipNotificationObserver;
 use App\Observers\EventFeedActivityObserver;
@@ -80,6 +81,7 @@ class AppServiceProvider extends ServiceProvider
         Order::observe(OrderScheduleGuardObserver::class);
         Establishment::observe(EstablishmentOwnershipNotificationObserver::class);
         EventModel::observe(EventProducerNotificationObserver::class);
+        EventModel::observe(ArtistInvitationEventObserver::class);
         EventModel::observe(EventFeedActivityObserver::class);
 
         // Cognitive learning consumes the existing interaction stream and stays disabled unless COGNITION_ENABLED=true.
