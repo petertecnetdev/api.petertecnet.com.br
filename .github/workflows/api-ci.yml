@@ -45,7 +45,9 @@ jobs:
       - name: Prepare application environment
         shell: bash
         run: |
-          cat > .env <<'EOF'
+          set -euo pipefail
+          JWT_SECRET="$(openssl rand -hex 32)"
+          cat > .env <<EOF
           APP_NAME=PeterTecnetAPI
           APP_ENV=testing
           APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
@@ -58,7 +60,7 @@ jobs:
           SESSION_DRIVER=array
           QUEUE_CONNECTION=sync
           MAIL_MAILER=array
-          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          JWT_SECRET=$JWT_SECRET
           EOF
           touch /tmp/api.sqlite
 
