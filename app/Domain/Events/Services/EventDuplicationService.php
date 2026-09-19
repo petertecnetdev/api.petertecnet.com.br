@@ -109,7 +109,7 @@ final class EventDuplicationService
                     'image' => $copiedImage,
                     'app_id' => $appId,
                     'app_slug' => $resolvedAppSlug,
-                    'is_published' => false,
+                    'is_published' => true,
                     'is_cancelled' => false,
                     'is_featured' => false,
                     'reviews' => [],
