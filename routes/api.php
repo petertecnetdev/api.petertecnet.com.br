@@ -45,7 +45,7 @@ Route::prefix('auth')->middleware('api')->group(function () {
         Route::get('/check-auth', [AuthController::class, 'checkauth']);
         Route::post('/email-verify', [AuthController::class, 'emailVerify']);
         Route::post('/change-password', [AuthController::class, 'changePassword']);
-        Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('throttle:5,1');
+        Route::post('/resend-code-email-verification', [AuthController::class, 'resendCodeEmailVerification'])->middleware('throttle:email-verification-resend');
     });
 });
 
