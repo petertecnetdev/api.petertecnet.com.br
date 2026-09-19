@@ -207,6 +207,99 @@ class OrganizationMediaManagementTest extends TestCase
         $this->assertDatabaseCount('organization_media_reports', 1);
     }
 
+    public function test_owner_can_crop_reprocess_and_receive_cover_recommendations(): void
+    {
+        Storage::fake('public');
+
+        $app = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $owner = $this->user('Advanced Gallery Owner', 'advanced-gallery-owner@example.test');
+        $production = $this->production($app, $owner);
+        $headers = $this->headersFor($owner);
+
+        $upload = $this->withHeaders($headers)->post('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media', [
+            'photo' => UploadedFile::fake()->image('horizontal.jpg', 1800, 1200),
+            'caption' => 'Ambiente principal',
+        ])->assertCreated();
+
+        $mediaId = (int) $upload->json('media.id');
+        $originalUrl = $upload->json('media.original_url');
+
+        $crop = $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media/'.$mediaId.'/crop', [
+                'aspect' => 'square',
+                'zoom' => 100,
+                'focal_x' => 50,
+                'focal_y' => 50,
+            ])
+            ->assertOk()
+            ->assertJsonPath('media.width', 1200)
+            ->assertJsonPath('media.height', 1200);
+
+        $this->assertSame($originalUrl, $crop->json('media.original_url'));
+        $this->assertNotEmpty($crop->json('media.cover_score'));
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media/'.$mediaId.'/reprocess')
+            ->assertOk()
+            ->assertJsonPath('media.width', 1800)
+            ->assertJsonPath('media.height', 1200)
+            ->assertJsonPath('media.original_url', $originalUrl);
+
+        $this->withHeaders($headers)
+            ->getJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media-recommendations')
+            ->assertOk()
+            ->assertJsonPath('recommendations.0.id', $mediaId)
+            ->assertJsonStructure([
+                'recommendations' => [
+                    '*' => [
+                        'id',
+                        'cover_score',
+                        'brightness_score',
+                        'sharpness_score',
+                        'recommendation' => ['score', 'reasons'],
+                    ],
+                ],
+            ]);
+    }
+
+    public function test_similarity_analysis_surfaces_visually_identical_photos(): void
+    {
+        Storage::fake('public');
+
+        $app = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $owner = $this->user('Similarity Owner', 'similarity-owner@example.test');
+        $production = $this->production($app, $owner);
+        $headers = $this->headersFor($owner);
+
+        $binary = UploadedFile::fake()->image('same.jpg', 1400, 900)->getContent();
+
+        $first = $this->withHeaders($headers)->post('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media', [
+            'photo' => UploadedFile::fake()->createWithContent('same-one.jpg', $binary),
+        ])->assertCreated();
+
+        $second = $this->withHeaders($headers)->post('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media', [
+            'photo' => UploadedFile::fake()->createWithContent('same-two.jpg', $binary),
+        ])->assertCreated();
+
+        $firstId = (int) $first->json('media.id');
+        $secondId = (int) $second->json('media.id');
+
+        $response = $this->withHeaders($headers)
+            ->getJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media-similar')
+            ->assertOk()
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('pairs.0.similarity', 100);
+
+        $pairIds = [
+            (int) $response->json('pairs.0.left.id'),
+            (int) $response->json('pairs.0.right.id'),
+        ];
+        sort($pairIds);
+        $expected = [$firstId, $secondId];
+        sort($expected);
+        $this->assertSame($expected, $pairIds);
+    }
+
     private function production(Application $app, User $owner): Production
     {
         return Production::create([
