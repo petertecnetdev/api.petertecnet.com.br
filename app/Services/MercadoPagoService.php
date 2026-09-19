@@ -39,12 +39,12 @@ class MercadoPagoService
         return $this->oauthToken(['client_id'=>$this->clientId(),'client_secret'=>$this->clientSecret(),'grant_type'=>'refresh_token','refresh_token'=>$refreshToken]);
     }
 
-    public function createPayment(string $sellerAccessToken, array $payload, string $idempotencyKey): array
+    public function createPayment(string $sellerAccessToken, array $payload, string $idempotencyKey, bool $allowSameAccountFallback = true): array
     {
         $response = $this->postPaymentWithTransientRetry($sellerAccessToken, $payload, $idempotencyKey);
         if ($response->successful()) return $response->json();
 
-        if (array_key_exists('application_fee',$payload) && $this->isApplicationFeeNotAllowed($response->json()) && $this->sellerIsPlatformAccount($sellerAccessToken)) {
+        if ($allowSameAccountFallback && array_key_exists('application_fee',$payload) && $this->isApplicationFeeNotAllowed($response->json()) && $this->sellerIsPlatformAccount($sellerAccessToken)) {
             unset($payload['application_fee']); data_set($payload,'metadata.settlement_mode','same_account');
             $retry = $this->postPaymentWithTransientRetry($sellerAccessToken,$payload,$idempotencyKey.'-same-account');
             if ($retry->successful()) { $result=$retry->json(); $result['_same_account']=true; return $result; }
