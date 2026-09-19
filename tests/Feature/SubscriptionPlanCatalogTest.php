@@ -36,14 +36,10 @@ class SubscriptionPlanCatalogTest extends TestCase
             ->assertJsonPath('data.plans.2.price_cents', 14990);
     }
 
-    public function test_kryvion_is_freemium(): void
+    public function test_kryvion_is_not_published_after_retirement(): void
     {
         $this->getJson('/api/v1/apps/kryvion/subscription-plans')
-            ->assertOk()
-            ->assertJsonPath('data.freemium', true)
-            ->assertJsonPath('data.plans.0.price_cents', 0)
-            ->assertJsonPath('data.plans.1.price_cents', 2990)
-            ->assertJsonPath('data.plans.2.price_cents', 5990);
+            ->assertNotFound();
     }
 
     public function test_locaio_monthly_prices_are_published(): void
