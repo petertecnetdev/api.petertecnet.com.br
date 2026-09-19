@@ -52,11 +52,11 @@ final class OrganizationSalesReadinessService
         $paymentAvailable = (bool) ($payment['available'] ?? false);
         $settlementMode = (string) ($payment['settlement_mode'] ?? 'unavailable');
 
-        // Platform collection must not block a sale because payout setup is still
-        // pending. The platform receives the payment first and the producer credit
-        // stays safely in the ledger until a verified payout destination is ready.
-        // A verified Pix destination is mandatory only for the actual payout.
-        $payoutRequiredForSale = $settlementMode !== 'platform_collection';
+        // A payout destination is only relevant when the platform must later
+        // transfer funds. Platform collection may defer payout setup, while
+        // automatic split sends the producer share directly to the connected
+        // merchant account and therefore never requires a Peter Tecnet Pix payout.
+        $payoutRequiredForSale = ! in_array($settlementMode, ['platform_collection', 'automatic_split'], true);
         $ready = $agreement && $paymentAvailable && (! $payoutRequiredForSale || $payout);
 
         $code = $ready
@@ -67,9 +67,11 @@ final class OrganizationSalesReadinessService
                     ? 'payment_unavailable'
                     : 'payout_required'));
         $message = match ($code) {
-            'ready' => $payout
-                ? 'Produção pronta para vender.'
-                : 'Produção pronta para vender. Os créditos ficarão no saldo até a conclusão do cadastro de recebimento.',
+            'ready' => $settlementMode === 'automatic_split'
+                ? 'Produção pronta para vender com recebimento direto pelo Mercado Pago.'
+                : ($payout
+                    ? 'Produção pronta para vender.'
+                    : 'Produção pronta para vender. Os créditos ficarão no saldo até a conclusão do cadastro de recebimento.'),
             'agreement_required' => 'O produtor precisa assinar o contrato vigente antes de vender ingressos pagos.',
             'payout_required' => 'O produtor precisa concluir a verificação financeira e cadastrar uma chave Pix válida antes de receber repasses.',
             default => (string) ($payment['message'] ?? 'O meio de pagamento está temporariamente indisponível.'),
@@ -80,6 +82,7 @@ final class OrganizationSalesReadinessService
             'can_sell_tickets' => $ready,
             'agreement' => $agreement,
             'payout' => $payout,
+            'payout_required_for_sale' => $payoutRequiredForSale,
             'payment' => $paymentAvailable,
             'code' => $code,
             'message' => $message,

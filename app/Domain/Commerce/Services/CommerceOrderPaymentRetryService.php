@@ -222,12 +222,20 @@ final class CommerceOrderPaymentRetryService
     {
         $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);
         $usesMerchant = (bool) ($account && $account->access_token);
-        $allowPlatform = (bool) config('services.finance.allow_platform_collection', false)
-            || (bool) $this->context->option('commerce.allow_platform_collection', false);
+        $requiresAutomaticSplit = (bool) $this->context->option('commerce.require_automatic_split', false);
+        $allowPlatform = ! $requiresAutomaticSplit && (
+            (bool) config('services.finance.allow_platform_collection', false)
+            || (bool) $this->context->option('commerce.allow_platform_collection', false)
+        );
         $platformToken = trim((string) config('services.mercadopago.access_token'));
 
-        if (! $usesMerchant && (! $allowPlatform || $platformToken === '')) {
-            throw new HttpException(422, 'Gateway de contingência indisponível.');
+        if (! $usesMerchant && ($requiresAutomaticSplit || ! $allowPlatform || $platformToken === '')) {
+            throw new HttpException(
+                422,
+                $requiresAutomaticSplit
+                    ? 'O produtor precisa conectar a conta Mercado Pago antes de retomar o pagamento.'
+                    : 'Gateway de contingência indisponível.'
+            );
         }
 
         $sellerToken = $usesMerchant ? $this->accounts->freshAccessToken($account)[1] : $platformToken;
@@ -256,7 +264,9 @@ final class CommerceOrderPaymentRetryService
         }
 
         try {
-            $remote = $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
+            $remote = $requiresAutomaticSplit
+                ? $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey, false)
+                : $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
         } catch (Throwable $exception) {
             report($exception);
             throw new HttpException(503, 'O provedor de PIX não respondeu. O pedido continua reservado; tente novamente.');
