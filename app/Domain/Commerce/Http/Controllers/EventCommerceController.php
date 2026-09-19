@@ -535,7 +535,9 @@ final class EventCommerceController extends Controller
                 if (! empty($data['issuer_id'])) $payload['issuer_id'] = $data['issuer_id'];
             }
 
-            $remote = $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
+            $remote = $requiresAutomaticSplit
+                ? $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey, false)
+                : $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
             $transaction = data_get($remote, 'point_of_interaction.transaction_data', []);
             $providerFee = collect($remote['fee_details'] ?? [])->sum(fn ($fee) => (float) ($fee['amount'] ?? 0));
 
