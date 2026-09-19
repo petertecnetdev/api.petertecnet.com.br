@@ -25,6 +25,10 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::patch('/organizations/{organizationId}/media/{mediaId}', [OrganizationMediaController::class, 'update'])->whereNumber('organizationId')->whereNumber('mediaId');
         Route::post('/organizations/{organizationId}/media/{mediaId}/replace', [OrganizationMediaController::class, 'replace'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:20,1');
         Route::post('/organizations/{organizationId}/media/{mediaId}/rotate', [OrganizationMediaController::class, 'rotate'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:30,1');
+        Route::post('/organizations/{organizationId}/media/{mediaId}/crop', [OrganizationMediaController::class, 'crop'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:30,1');
+        Route::post('/organizations/{organizationId}/media/{mediaId}/reprocess', [OrganizationMediaController::class, 'reprocess'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:20,1');
+        Route::get('/organizations/{organizationId}/media-recommendations', [OrganizationMediaController::class, 'recommendations'])->whereNumber('organizationId');
+        Route::get('/organizations/{organizationId}/media-similar', [OrganizationMediaController::class, 'similar'])->whereNumber('organizationId');
         Route::patch('/organizations/{organizationId}/media-order', [OrganizationMediaController::class, 'reorder'])->whereNumber('organizationId');
         Route::patch('/organizations/{organizationId}/media-bulk', [OrganizationMediaController::class, 'bulkUpdate'])->whereNumber('organizationId');
         Route::post('/organizations/{organizationId}/media-import-cover', [OrganizationMediaController::class, 'importCover'])->whereNumber('organizationId');
