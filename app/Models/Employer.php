@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Config;
@@ -29,6 +30,21 @@ class Employer extends Model
     protected $appends = ['metrics'];
 
     protected $entity_name = 'employer';
+
+    protected static function booted(): void
+    {
+        static::saved(function (Employer $employer): void {
+            if ($employer->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $employer->user_id);
+            }
+        });
+
+        static::deleted(function (Employer $employer): void {
+            if ($employer->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $employer->user_id);
+            }
+        });
+    }
 
     /* ==========================
        RELACIONAMENTOS

@@ -4,6 +4,7 @@ namespace App\Services\Admin;
 
 use App\Models\EcosystemAuditLog;
 use App\Models\User;
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -35,6 +36,8 @@ class AdminUserAccountAccessService
                 ->where('status', 'blocked')
                 ->update(['status' => 'active', 'updated_at' => now()]);
         }
+
+        app(ApplicationProfileSyncService::class)->syncUser((int) $target->id);
 
         $after = DB::table('application_user')
             ->where('user_id', $target->id)

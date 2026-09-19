@@ -84,6 +84,15 @@ Route::prefix('v1/apps/{application}')
                 ->middleware(EnsureApplicationAdmin::class.':finance.view');
 
             Route::middleware(EnsureApplicationAdmin::class.':admin.access.manage')->group(function () {
+                Route::get('/role-profiles', [ApplicationAdminController::class, 'roleProfiles']);
+                Route::get('/role-assignments', [ApplicationAdminController::class, 'roleAssignments']);
+                Route::post('/users/{userId}/role-profiles', [ApplicationAdminController::class, 'assignRoleProfiles'])
+                    ->whereNumber('userId')
+                    ->middleware('throttle:30,1');
+                Route::delete('/role-assignments/{assignmentId}', [ApplicationAdminController::class, 'revokeRoleAssignment'])
+                    ->whereNumber('assignmentId')
+                    ->middleware('throttle:30,1');
+
                 Route::get('/profiles', [ApplicationAdminController::class, 'profiles']);
                 Route::post('/profiles', [ApplicationAdminController::class, 'storeProfile'])->middleware('throttle:30,1');
                 Route::put('/profiles/{profileId}', [ApplicationAdminController::class, 'updateProfile'])

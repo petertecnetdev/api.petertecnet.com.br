@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Config;
@@ -73,6 +74,18 @@ class Establishment extends Model
     {
         static::creating(function ($model) {
             $model->entity_name = 'establishment';
+        });
+
+        static::saved(function ($model) {
+            if ($model->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $model->user_id);
+            }
+        });
+
+        static::deleted(function ($model) {
+            if ($model->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $model->user_id);
+            }
         });
     }
 

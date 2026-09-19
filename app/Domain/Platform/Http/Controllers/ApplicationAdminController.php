@@ -6,6 +6,7 @@ use App\Domain\Platform\Services\ApplicationAdminOverviewService;
 use App\Domain\Platform\Services\ApplicationAdminSecurityService;
 use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Domain\Platform\Services\ApplicationAdminUserService;
+use App\Domain\Platform\Services\ApplicationProfileManagementService;
 use App\Http\Controllers\Controller;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +19,7 @@ class ApplicationAdminController extends Controller
         private readonly ApplicationAdminOverviewService $overviewService,
         private readonly ApplicationAdminUserService $userService,
         private readonly ApplicationAdminSecurityService $securityService,
+        private readonly ApplicationProfileManagementService $profileManagement,
     ) {
     }
 
@@ -239,6 +241,91 @@ class ApplicationAdminController extends Controller
                 $this->auditContext($request),
             ),
         ]);
+    }
+
+    public function roleProfiles(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->profileManagement->profiles(
+                $this->applicationId($request),
+                $request->user(),
+            ),
+        ]);
+    }
+
+    public function roleAssignments(Request $request): JsonResponse
+    {
+        return response()->json([
+            'success' => true,
+            'data' => $this->profileManagement->assignments(
+                $this->applicationId($request),
+                $request->user(),
+            ),
+        ]);
+    }
+
+    public function assignRoleProfiles(Request $request, int $userId): JsonResponse
+    {
+        $validated = $request->validate([
+            'profile_ids' => ['required', 'array', 'min:1', 'max:20'],
+            'profile_ids.*' => ['required', 'integer', 'distinct', 'min:1'],
+            'scope_type' => ['nullable', 'string', 'in:application,establishment,artist'],
+            'scope_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $target = User::query()->findOrFail($userId);
+        $applicationId = $this->applicationId($request);
+        $assignments = $this->profileManagement->assign(
+            $applicationId,
+            $request->user(),
+            $target,
+            $validated['profile_ids'],
+            $validated['scope_type'] ?? 'application',
+            $validated['scope_id'] ?? null,
+        );
+
+        $this->service->auditAction(
+            $applicationId,
+            $request->user(),
+            $target,
+            'functional_profiles_assigned',
+            [
+                'profile_ids' => array_values($validated['profile_ids']),
+                'scope_type' => $validated['scope_type'] ?? 'application',
+                'scope_id' => $validated['scope_id'] ?? 0,
+            ],
+            $this->auditContext($request),
+        );
+
+        return response()->json(['success' => true, 'data' => $assignments], 201);
+    }
+
+    public function revokeRoleAssignment(Request $request, int $assignmentId): JsonResponse
+    {
+        $applicationId = $this->applicationId($request);
+        $assignment = $this->profileManagement->revoke(
+            $applicationId,
+            $request->user(),
+            $assignmentId,
+        );
+
+        $target = User::query()->find($assignment->user_id);
+        $this->service->auditAction(
+            $applicationId,
+            $request->user(),
+            $target,
+            'functional_profile_revoked',
+            [
+                'assignment_id' => $assignment->id,
+                'profile_id' => $assignment->profile_id,
+                'scope_type' => $assignment->scope_type,
+                'scope_id' => $assignment->scope_id,
+            ],
+            $this->auditContext($request),
+        );
+
+        return response()->json(['success' => true, 'data' => $assignment]);
     }
 
     public function audit(Request $request): JsonResponse

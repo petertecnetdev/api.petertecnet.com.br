@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -40,6 +41,21 @@ class Artist extends Model
         'reference_visible' => 'boolean',
         'onboarding_completed_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::saved(function (Artist $artist): void {
+            if ($artist->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $artist->user_id);
+            }
+        });
+
+        static::deleted(function (Artist $artist): void {
+            if ($artist->user_id) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $artist->user_id);
+            }
+        });
+    }
 
     public function application(){return $this->belongsTo(Application::class,'app_id');}
     public function user(){return $this->belongsTo(User::class);}

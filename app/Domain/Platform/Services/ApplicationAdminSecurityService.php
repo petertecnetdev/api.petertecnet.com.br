@@ -4,6 +4,7 @@ namespace App\Domain\Platform\Services;
 
 use App\Models\ApplicationAdminAssignment;
 use App\Models\User;
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -87,6 +88,8 @@ class ApplicationAdminSecurityService
                 $locked->forceFill(['auth_version' => max((int) ($locked->auth_version ?: 1), 1) + 1])->save();
             }
         });
+
+        app(ApplicationProfileSyncService::class)->syncUser((int) $target->id);
 
         $this->admin->auditAction($applicationId, $actor, $target, 'application_user_status_changed', [
             'before' => $before,

@@ -23,6 +23,13 @@ class AdminUserDetailService
         $user->load([
             'profile:id,name,permissions',
             'applications:id,name,slug,logo,url,is_active',
+            'applicationProfileAssignments' => fn ($query) => $query
+                ->where('status', 'active')
+                ->whereNull('revoked_at')
+                ->with([
+                    'application:id,name,slug',
+                    'profile:id,application_id,slug,name,description,permissions',
+                ]),
             'establishments.app:id,name,slug,logo,url',
         ]);
 
@@ -109,6 +116,26 @@ class AdminUserDetailService
             'user' => $this->userPayload($user),
             'summary' => $summary,
             'platforms' => $this->platforms($user, $applications, $usage, $resources),
+            'role_profiles' => $user->applicationProfileAssignments
+                ->map(fn ($assignment) => [
+                    'assignment_id' => (int) $assignment->id,
+                    'application' => $assignment->application ? [
+                        'id' => (int) $assignment->application->id,
+                        'slug' => (string) $assignment->application->slug,
+                        'name' => (string) $assignment->application->name,
+                    ] : null,
+                    'profile' => $assignment->profile ? [
+                        'id' => (int) $assignment->profile->id,
+                        'slug' => (string) $assignment->profile->slug,
+                        'name' => (string) $assignment->profile->name,
+                        'description' => $assignment->profile->description,
+                        'permissions' => array_values((array) $assignment->profile->permissions),
+                    ] : null,
+                    'scope_type' => (string) $assignment->scope_type,
+                    'scope_id' => (int) $assignment->scope_id,
+                    'source' => (string) $assignment->source,
+                ])
+                ->values(),
             'resources' => $resources,
             'application_usage' => $usage->values(),
             'activity_by_type' => $this->activityByType($user),

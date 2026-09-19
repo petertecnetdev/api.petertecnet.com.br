@@ -4,6 +4,7 @@ namespace App\Domain\Platform\Services;
 
 use App\Mail\WelcomeMail;
 use App\Models\User;
+use App\Services\ApplicationProfileSyncService;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -19,9 +20,16 @@ class ApplicationAdminUserService
         $query = User::query()
             ->select(['id', 'first_name', 'last_name', 'user_name', 'email', 'phone', 'city', 'uf', 'avatar', 'created_at'])
             ->whereHas('applications', fn ($applicationQuery) => $applicationQuery->whereKey($applicationId))
-            ->with(['applications' => fn ($applicationQuery) => $applicationQuery
-                ->whereKey($applicationId)
-                ->select(['applications.id', 'applications.slug', 'applications.name'])]);
+            ->with([
+                'applications' => fn ($applicationQuery) => $applicationQuery
+                    ->whereKey($applicationId)
+                    ->select(['applications.id', 'applications.slug', 'applications.name']),
+                'applicationProfileAssignments' => fn ($profileQuery) => $profileQuery
+                    ->where('application_id', $applicationId)
+                    ->where('status', 'active')
+                    ->whereNull('revoked_at')
+                    ->with('profile:id,application_id,slug,name,description,permissions'),
+            ]);
 
         if ($needle !== '') {
             $query->where(function ($userQuery) use ($needle) {
@@ -81,6 +89,8 @@ class ApplicationAdminUserService
 
             return $user->fresh(['applications']);
         });
+
+        app(ApplicationProfileSyncService::class)->syncUser((int) $user->id);
 
         if ($created) {
             Mail::to($user->email)->send(new WelcomeMail($verificationCode, $user, $temporaryPassword));

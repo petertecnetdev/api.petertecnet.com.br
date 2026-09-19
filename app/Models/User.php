@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Models\Traits\HasFiles;
+use App\Services\ApplicationProfileAccessService;
+use App\Services\ApplicationProfileSyncService;
 use App\Services\LocationService;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -62,6 +64,12 @@ class User extends Authenticatable implements JWTSubject
                 $user->auth_version = $currentVersion + 1;
             }
         });
+
+        static::saved(function (User $user) {
+            if ($user->wasRecentlyCreated || $user->wasChanged(['is_producer', 'is_promoter', 'profile_id'])) {
+                app(ApplicationProfileSyncService::class)->syncUser((int) $user->id);
+            }
+        });
     }
 
     public function getJWTIdentifier()
@@ -109,6 +117,11 @@ class User extends Authenticatable implements JWTSubject
         return $this->belongsToMany(Application::class, 'application_user')
             ->withPivot(['role', 'status', 'metadata', 'joined_at'])
             ->withTimestamps();
+    }
+
+    public function applicationProfileAssignments()
+    {
+        return $this->hasMany(ApplicationProfileAssignment::class);
     }
 
     public function interactions()
@@ -170,14 +183,55 @@ class User extends Authenticatable implements JWTSubject
         return $this->profile && $this->profile->name === $profileName;
     }
 
-    public function hasPermission($permissionName): bool
-    {
+    public function hasApplicationProfile(
+        string $profileName,
+        ?int $applicationId = null,
+        ?string $scopeType = null,
+        ?int $scopeId = null,
+    ): bool {
+        return app(ApplicationProfileAccessService::class)->hasProfile(
+            $this,
+            $profileName,
+            $applicationId,
+            $scopeType,
+            $scopeId,
+        );
+    }
+
+    public function applicationPermissions(
+        ?int $applicationId = null,
+        ?string $scopeType = null,
+        ?int $scopeId = null,
+    ): array {
+        return app(ApplicationProfileAccessService::class)->permissions(
+            $this,
+            $applicationId,
+            $scopeType,
+            $scopeId,
+        );
+    }
+
+    public function applicationProfileContext(
+        ?int $applicationId = null,
+        ?string $scopeType = null,
+        ?int $scopeId = null,
+    ): array {
+        return app(ApplicationProfileAccessService::class)->context(
+            $this,
+            $applicationId,
+            $scopeType,
+            $scopeId,
+        );
+    }
+
+    public function hasPermission(
+        $permissionName,
+        ?int $applicationId = null,
+        ?string $scopeType = null,
+        ?int $scopeId = null,
+    ): bool {
         if ($this->hasProfile('Administrador')) {
             return true;
-        }
-
-        if (! $this->profile || ! is_array($this->profile->permissions)) {
-            return false;
         }
 
         $aliases = [
@@ -188,9 +242,22 @@ class User extends Authenticatable implements JWTSubject
         ];
 
         $canonicalPermission = $aliases[$permissionName] ?? $permissionName;
+        $legacyPermissions = is_array($this->profile?->permissions)
+            ? $this->profile->permissions
+            : [];
 
-        return in_array($canonicalPermission, $this->profile->permissions, true)
-            || in_array($permissionName, $this->profile->permissions, true);
+        if (in_array($canonicalPermission, $legacyPermissions, true)
+            || in_array($permissionName, $legacyPermissions, true)) {
+            return true;
+        }
+
+        return app(ApplicationProfileAccessService::class)->hasPermission(
+            $this,
+            (string) $permissionName,
+            $applicationId,
+            $scopeType,
+            $scopeId,
+        );
     }
 
     public function updateAddress($city, $uf)
