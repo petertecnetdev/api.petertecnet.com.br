@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
-use App\Services\MerchantPaymentAccountService;
 use App\Services\OrganizationSalesReadinessService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
@@ -20,7 +19,6 @@ final class OrganizationOnboardingController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly OrganizationSalesReadinessService $salesReadiness,
-        private readonly MerchantPaymentAccountService $paymentAccounts,
     ) {}
 
     public function initiate(Request $request)
@@ -253,7 +251,6 @@ final class OrganizationOnboardingController extends Controller
             ->orderBy('id')
             ->first();
 
-        $payment = $this->paymentAccounts->readiness($organization->id);
         $record = DB::table('organization_onboardings')
             ->where('app_id', $this->context->id())
             ->where('establishment_id', $organization->id)
@@ -297,7 +294,7 @@ final class OrganizationOnboardingController extends Controller
             'sales_readiness_code' => (string) ($salesReadiness['code'] ?? ''),
             'sales_readiness_message' => (string) ($salesReadiness['message'] ?? ''),
             'payment_available' => $paymentAvailable,
-            'payment_methods' => array_values($payment['methods'] ?? $salesReadiness['methods'] ?? []),
+            'payment_methods' => array_values($salesReadiness['methods'] ?? []),
             'payout_ready' => $payoutReady,
             'agreement_signed' => $agreementSigned,
             'assisted' => (bool) $record,
