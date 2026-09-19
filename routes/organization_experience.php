@@ -12,6 +12,9 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
     });
 
     Route::middleware(['auth:api', 'token.version', 'app.capability:organizations'])->group(function () {
+        Route::post('/organizations/public/{slug}/media/{mediaId}/report', [OrganizationMediaController::class, 'report'])->whereNumber('mediaId')->middleware('throttle:10,1');
+        Route::get('/organization-media-reports', [OrganizationMediaController::class, 'moderationReports']);
+        Route::patch('/organization-media-reports/{reportId}', [OrganizationMediaController::class, 'reviewReport'])->whereNumber('reportId');
         Route::get('/organizations/{id}/workspace', [OrganizationExperienceController::class, 'workspace'])->whereNumber('id');
         Route::patch('/organizations/{id}/experience-profile', [OrganizationExperienceController::class, 'updateProfile'])->whereNumber('id');
         Route::post('/organizations/{organizationId}/community', [OrganizationCommunityController::class, 'createPost'])->whereNumber('organizationId')->middleware('throttle:30,1');
