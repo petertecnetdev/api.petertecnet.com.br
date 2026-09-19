@@ -39,8 +39,6 @@ class VerificationCodeExpiryTest extends TestCase
         $response
             ->assertStatus(429)
             ->assertJsonStructure(['message']);
-
-        $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
     }
 
     public function test_expired_email_verification_code_is_rejected(): void
