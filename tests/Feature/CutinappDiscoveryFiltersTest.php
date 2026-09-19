@@ -129,6 +129,40 @@ class CutinappDiscoveryFiltersTest extends TestCase
         $this->getJson('/api/cutinapp/events?from=2026-09-10&to=2026-09-01&period=custom')->assertStatus(422);
     }
 
+    public function test_nearby_filter_keeps_same_city_events_without_coordinates_as_fallback(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 9, 19, 10, 0, 0, 'America/Sao_Paulo'));
+        [$app, $production] = $this->base();
+
+        $near = $this->event($app->id, $production->id, 'Perto com coordenadas', 'Goiânia', 'GO', '2026-09-22 20:00:00');
+        $near->forceFill(['latitude' => -16.6875, 'longitude' => -49.2655])->saveQuietly();
+
+        $legacyLocal = $this->event($app->id, $production->id, 'Local sem coordenadas', 'Goiânia', 'GO', '2026-09-20 20:00:00');
+
+        $far = $this->event($app->id, $production->id, 'Geocodificado distante', 'Goiânia', 'GO', '2026-09-21 20:00:00');
+        $far->forceFill(['latitude' => -15.7939, 'longitude' => -47.8828])->saveQuietly();
+
+        $this->event($app->id, $production->id, 'Outra cidade sem coordenadas', 'Anápolis', 'GO', '2026-09-20 21:00:00');
+
+        $response = $this->getJson('/api/cutinapp/events?city=Goi%C3%A2nia&uf=GO&lat=-16.6869&lng=-49.2648&radius_km=50')
+            ->assertOk();
+
+        $ids = array_column($response->json('events.data'), 'id');
+        $this->assertSame([$near->id, $legacyLocal->id], $ids);
+        $response->assertJsonPath('events.data.0.distance_km', fn ($value) => is_numeric($value) && (float) $value < 5);
+        $response->assertJsonPath('events.data.1.distance_km', null);
+        $this->assertNotContains($far->id, $ids);
+
+        Cache::flush();
+
+        $strict = $this->getJson('/api/cutinapp/events?lat=-16.6869&lng=-49.2648&radius_km=50')
+            ->assertOk();
+        $strictIds = array_column($strict->json('events.data'), 'id');
+
+        $this->assertContains($near->id, $strictIds);
+        $this->assertNotContains($legacyLocal->id, $strictIds);
+    }
+
     private function base(): array
     {
         $app = Application::query()->where('slug', 'cutinapp')->firstOrFail();
