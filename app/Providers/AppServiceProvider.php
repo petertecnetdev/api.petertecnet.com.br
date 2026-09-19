@@ -27,6 +27,7 @@ use App\Observers\OrderContextIntegrityObserver;
 use App\Observers\OrderPricingObserver;
 use App\Observers\OrderScheduleGuardObserver;
 use App\Services\AsaasPayoutService;
+use App\Services\ManualPixPayoutProvider;
 use App\Services\Operations\OperationalIssueService;
 use App\Services\Operations\OperationalTelemetryService;
 use App\Services\Operations\ResilientOperationalIssueService;
@@ -50,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(PayoutProvider::class, function ($app) {
             return match (mb_strtolower((string) config('services.finance.payout_provider', 'asaas'))) {
                 'asaas' => $app->make(AsaasPayoutService::class),
+                'manual_pix' => $app->make(ManualPixPayoutProvider::class),
                 default => throw new LogicException('O provider de payout configurado não possui adapter registrado.'),
             };
         });
