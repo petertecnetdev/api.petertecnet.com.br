@@ -475,13 +475,20 @@ final class EventCommerceController extends Controller
 
         $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);
         $usesMerchant = (bool) ($account && $account->access_token);
-        $allowPlatform = (bool) config('services.finance.allow_platform_collection', false)
-            || (bool) $this->context->option('commerce.allow_platform_collection', false);
+        $requiresAutomaticSplit = (bool) $this->context->option('commerce.require_automatic_split', false);
+        $allowPlatform = ! $requiresAutomaticSplit && (
+            (bool) config('services.finance.allow_platform_collection', false)
+            || (bool) $this->context->option('commerce.allow_platform_collection', false)
+        );
         $platformToken = trim((string) config('services.mercadopago.access_token'));
 
-        if (! $usesMerchant && (! $allowPlatform || $platformToken === '')) {
+        if (! $usesMerchant && ($requiresAutomaticSplit || ! $allowPlatform || $platformToken === '')) {
             $this->cancelOrder($order);
-            return response()->json(['message' => 'Conecte uma conta de pagamento antes de iniciar vendas pagas.'], 422);
+            return response()->json([
+                'message' => $requiresAutomaticSplit
+                    ? 'O produtor precisa conectar a conta Mercado Pago antes de aceitar vendas pagas.'
+                    : 'Conecte uma conta de pagamento antes de iniciar vendas pagas.',
+            ], 422);
         }
 
         try {
