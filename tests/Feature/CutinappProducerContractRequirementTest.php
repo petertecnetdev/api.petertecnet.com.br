@@ -129,6 +129,8 @@ class CutinappProducerContractRequirementTest extends TestCase
             ->assertJsonPath('event.is_published', false);
 
         $event = Event::query()->where('title', 'Evento preparado pelo suporte')->firstOrFail();
+        $this->assertTrue((bool) data_get($event->extra_info, 'assisted_producer_setup'));
+        $this->assertTrue((bool) data_get($event->extra_info, 'agreement_required_for_publish'));
 
         $this->withHeaders([
             'Authorization' => 'Bearer '.$token,
