@@ -46,6 +46,7 @@ final class OrganizationMediaController extends Controller
         $checksum = hash_file('sha256', $file->getRealPath());
         $duplicate = $this->activeMediaQuery($organization)->where('checksum', $checksum)->first();
         $variants = $this->storeImageVariants($organization, $file);
+        $similar = $duplicate ? null : $this->findVisuallySimilar($organization, $variants['perceptual_hash'] ?? null);
         $position = (int) ($this->activeMediaQuery($organization)->max('position') ?? -1) + 1;
         $caption = trim((string) ($data['caption'] ?? '')) ?: null;
         $alt = trim((string) ($data['alt_text'] ?? ''))
@@ -70,6 +71,12 @@ final class OrganizationMediaController extends Controller
             'width' => $variants['width'],
             'height' => $variants['height'],
             'checksum' => $checksum,
+            'perceptual_hash' => $variants['perceptual_hash'],
+            'brightness_score' => $variants['brightness_score'],
+            'sharpness_score' => $variants['sharpness_score'],
+            'cover_score' => $variants['cover_score'],
+            'processing_version' => 2,
+            'last_processed_at' => now(),
             'focal_x' => 50,
             'focal_y' => 50,
             'rotation' => 0,
@@ -82,6 +89,7 @@ final class OrganizationMediaController extends Controller
         $this->track($organization, $request, 'production_media.upload', [
             'media_id' => $id,
             'duplicate_of' => $duplicate?->id,
+            'similar_to' => $similar?->id,
             'width' => $variants['width'],
             'height' => $variants['height'],
             'file_size' => $file->getSize(),
@@ -92,9 +100,17 @@ final class OrganizationMediaController extends Controller
         return response()->json([
             'message' => 'Foto adicionada à galeria.',
             'media' => $this->mediaPayload($media, true),
-            'warning' => $duplicate ? 'Esta imagem parece já existir na galeria.' : null,
+            'warning' => $duplicate
+                ? 'Esta imagem parece já existir na galeria.'
+                : ($similar ? 'Esta foto é visualmente muito parecida com outra imagem já publicada.' : null),
             'duplicate_of' => $duplicate ? (int) $duplicate->id : null,
-            'quality_warnings' => $this->qualityWarnings($variants['width'], $variants['height']),
+            'similar_to' => $similar ? (int) $similar->id : null,
+            'quality_warnings' => $this->qualityWarnings(
+                $variants['width'],
+                $variants['height'],
+                $variants['brightness_score'],
+                $variants['sharpness_score']
+            ),
             'limit' => self::MAX_MEDIA,
         ], 201);
     }
