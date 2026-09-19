@@ -101,6 +101,9 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
         Route::get('/transactions/{payment}', [FinancialController::class, 'transaction'])->whereNumber('payment');
         Route::get('/orders', [FinancialController::class, 'orders']);
         Route::get('/payouts', [FinancialController::class, 'payouts']);
+        Route::get('/payouts/{payout}/destination', [FinancialController::class, 'payoutDestination'])->whereNumber('payout')->middleware('throttle:30,1');
+        Route::post('/payouts/{payout}/complete', [FinancialController::class, 'completeManualPayout'])->whereNumber('payout')->middleware('throttle:20,1');
+        Route::post('/payouts/{payout}/reject', [FinancialController::class, 'rejectManualPayout'])->whereNumber('payout')->middleware('throttle:20,1');
         Route::get('/health', [FinancialController::class, 'health']);
         Route::get('/ledger', [FinancialController::class, 'ledger']);
         Route::get('/reconciliations', [FinancialController::class, 'reconciliations']);

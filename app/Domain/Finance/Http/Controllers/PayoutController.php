@@ -13,8 +13,8 @@ use RuntimeException;
  * Canonical provider-neutral payout surface.
  *
  * Collections remain on the payment provider configured for commerce, while
- * actual producer withdrawals are delegated to the payout provider (Asaas in
- * production today). Both canonical and compatibility routes share the same
+ * actual producer withdrawals are delegated to the configured payout provider.
+ * Both canonical and compatibility routes share the same
  * financial_payouts storage and balance rules.
  */
 final class PayoutController extends Controller
@@ -22,7 +22,6 @@ final class PayoutController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly FinancialPayoutService $payouts,
-        private readonly PayoutProvider $provider,
     ) {}
 
     public function summary(Request $request, int $organizationId)
@@ -33,7 +32,7 @@ final class PayoutController extends Controller
         return response()->json([
             ...$overview,
             // Backward-compatible aliases for older clients.
-            'provider' => $this->provider->name(),
+            'provider' => (string) config('services.finance.payout_provider', 'manual_pix'),
             'current_settlement_mode' => 'platform_collection',
             'manual_payout_requests_enabled' => true,
             'platform_collection_enabled' => (bool) config(
@@ -63,14 +62,15 @@ final class PayoutController extends Controller
         $manualPix = config('services.finance.payout_provider') === 'manual_pix';
 
         if ($eligible && ! $manualPix) {
-            if (! $this->provider->isConfigured()) {
+            $provider = app(PayoutProvider::class);
+            if (! $provider->isConfigured()) {
                 return response()->json([
                     'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',
                 ], 503);
             }
 
             try {
-                if ($this->provider->availableBalance() + 0.00001 < $amount) {
+                if ($provider->availableBalance() + 0.00001 < $amount) {
                     return response()->json([
                         'message' => 'O repasse está temporariamente aguardando liquidação operacional. Tente novamente mais tarde.',
                     ], 503);

@@ -145,19 +145,33 @@ class FinancialPayoutService
             throw ValidationException::withMessages(['pix_key_type' => 'Tipo de chave Pix inválido.']);
         }
 
-        $normalizedKey = $this->asaas->normalizePixKey($type, $key);
+        $manualPix = (string) config('services.finance.payout_provider', 'manual_pix') === 'manual_pix';
+        $normalizedKey = $manualPix
+            ? $this->normalizePixKeyLocally($type, $key)
+            : $this->asaas->normalizePixKey($type, $key);
         if ($normalizedKey === '') {
             throw ValidationException::withMessages(['pix_key' => 'Informe uma chave Pix válida.']);
         }
 
-        $lookup = $this->asaas->lookupPixKey($type, $normalizedKey);
-        $ownerName = trim((string) (data_get($lookup, 'owner.name') ?: data_get($lookup, 'name', '')));
-        $ownerDocumentMasked = trim((string) (data_get($lookup, 'owner.cpfCnpj') ?: data_get($lookup, 'cpfCnpj', '')));
+        $lookup = [];
+        $ownerName = trim((string) $beneficiary->legal_name);
+        $ownerDocumentMasked = '';
         $beneficiaryDocument = $this->identity->decryptedDocument($beneficiary);
 
-        if (!$this->maskedDocumentMatches($ownerDocumentMasked, $beneficiaryDocument)) {
+        if (! $manualPix) {
+            $lookup = $this->asaas->lookupPixKey($type, $normalizedKey);
+            $ownerName = trim((string) (data_get($lookup, 'owner.name') ?: data_get($lookup, 'name', '')));
+            $ownerDocumentMasked = trim((string) (data_get($lookup, 'owner.cpfCnpj') ?: data_get($lookup, 'cpfCnpj', '')));
+
+            if (!$this->maskedDocumentMatches($ownerDocumentMasked, $beneficiaryDocument)) {
+                throw ValidationException::withMessages([
+                    'pix_key' => 'A chave Pix informada não pertence ao documento verificado deste produtor.',
+                ]);
+            }
+        } elseif (in_array($type, ['CPF', 'CNPJ'], true)
+            && preg_replace('/\D+/', '', $normalizedKey) !== preg_replace('/\D+/', '', $beneficiaryDocument)) {
             throw ValidationException::withMessages([
-                'pix_key' => 'A chave Pix informada não pertence ao CPF verificado deste produtor.',
+                'pix_key' => 'A chave Pix documental precisa ser a mesma identidade verificada do produtor.',
             ]);
         }
 
@@ -179,14 +193,15 @@ class FinancialPayoutService
             ],
             'financialInstitution' => data_get($lookup, 'financialInstitution'),
             'ispbName' => data_get($lookup, 'ispbName'),
-            'verified_at' => $now->toIso8601String(),
+            'verification_mode' => $manualPix ? 'manual_review' : 'provider_lookup',
+            'verified_at' => $manualPix ? null : $now->toIso8601String(),
         ];
 
         DB::table('financial_payout_destinations')->updateOrInsert(
             ['source_type' => 'production', 'source_id' => $production->id],
             [
                 'beneficiary_id' => $beneficiary->id,
-                'provider' => 'asaas',
+                'provider' => $manualPix ? 'manual_pix' : 'asaas',
                 'type' => 'pix',
                 'pix_key_type' => $type,
                 'pix_key' => Crypt::encryptString($normalizedKey),
@@ -196,7 +211,7 @@ class FinancialPayoutService
                 'holder_document_masked' => $ownerDocumentMasked,
                 'status' => $status,
                 'provider_snapshot' => json_encode($snapshot, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
-                'verified_at' => $now,
+                'verified_at' => $manualPix ? null : $now,
                 'cooling_until' => $coolingUntil,
                 'changed_at' => $isReplacement ? $now : ($existing?->changed_at ?? $now),
                 'created_at' => $existing?->created_at ?? $now,
@@ -573,6 +588,22 @@ class FinancialPayoutService
             'payout_status' => $fresh?->status,
             'provider_status' => $providerStatus,
         ];
+    }
+
+
+    private function normalizePixKeyLocally(string $type, string $key): string
+    {
+        $key = trim($key);
+
+        return match ($type) {
+            'CPF', 'CNPJ' => preg_replace('/\D+/', '', $key) ?: '',
+            'EMAIL' => filter_var(mb_strtolower($key), FILTER_VALIDATE_EMAIL) ? mb_strtolower($key) : '',
+            'PHONE' => (($digits = preg_replace('/\D+/', '', $key) ?: '') && strlen($digits) >= 10 && strlen($digits) <= 13)
+                ? ('+' . (str_starts_with($digits, '55') ? $digits : '55' . $digits))
+                : '',
+            'EVP' => preg_match('/^[0-9a-fA-F-]{32,36}$/', $key) ? mb_strtolower($key) : '',
+            default => '',
+        };
     }
 
     private function maskedDocumentMatches(string $masked, string $document): bool

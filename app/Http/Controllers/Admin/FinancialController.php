@@ -296,6 +296,90 @@ class FinancialController extends Controller
         ]);
     }
 
+    public function payoutDestination(Request $request, int $payout)
+    {
+        $row = DB::table('financial_payouts')->where('id', $payout)->first();
+        abort_unless($row, 404);
+
+        $destination = DB::table('financial_payout_destinations')->where('id', $row->payout_destination_id)->first();
+        abort_unless($destination, 404);
+
+        return response()->json([
+            'payout_id' => $row->id,
+            'reference' => $row->reference,
+            'amount' => (float) $row->amount,
+            'status' => $row->status,
+            'pix_key_type' => $destination->pix_key_type,
+            'pix_key' => IlluminateSupportFacadesCrypt::decryptString($destination->pix_key),
+            'holder_name' => $destination->holder_name,
+            'holder_document_masked' => $destination->holder_document_masked,
+        ]);
+    }
+
+    public function completeManualPayout(Request $request, int $payout)
+    {
+        $data = $request->validate([
+            'payment_reference' => 'required|string|max:190',
+            'receipt_url' => 'nullable|url|max:2000',
+        ]);
+
+        $row = DB::transaction(function () use ($payout, $data, $request) {
+            $row = DB::table('financial_payouts')->where('id', $payout)->lockForUpdate()->first();
+            abort_unless($row, 404);
+
+            if ($row->status === 'paid') return $row;
+            abort_unless(in_array($row->status, ['pending', 'processing'], true), 409);
+
+            $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+            if (! is_array($metadata)) $metadata = [];
+            $metadata['manual_payment_reference'] = $data['payment_reference'];
+            $metadata['transaction_receipt_url'] = $data['receipt_url'] ?? null;
+            $metadata['completed_by_user_id'] = $request->user()?->id;
+            $metadata['completed_at'] = now()->toIso8601String();
+
+            DB::table('financial_payouts')->where('id', $row->id)->update([
+                'provider' => 'manual_pix',
+                'provider_transfer_id' => $data['payment_reference'],
+                'status' => 'paid',
+                'paid_at' => now(),
+                'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at' => now(),
+            ]);
+
+            return DB::table('financial_payouts')->where('id', $row->id)->first();
+        });
+
+        return response()->json(['message' => 'Repasse manual confirmado.', 'payout' => $row]);
+    }
+
+    public function rejectManualPayout(Request $request, int $payout)
+    {
+        $data = $request->validate(['reason' => 'required|string|max:500']);
+
+        $row = DB::transaction(function () use ($payout, $data, $request) {
+            $row = DB::table('financial_payouts')->where('id', $payout)->lockForUpdate()->first();
+            abort_unless($row, 404);
+            abort_unless(in_array($row->status, ['pending', 'processing'], true), 409);
+
+            $metadata = $row->metadata ? json_decode($row->metadata, true) : [];
+            if (! is_array($metadata)) $metadata = [];
+            $metadata['manual_rejection_reason'] = $data['reason'];
+            $metadata['rejected_by_user_id'] = $request->user()?->id;
+            $metadata['rejected_at'] = now()->toIso8601String();
+
+            DB::table('financial_payouts')->where('id', $row->id)->update([
+                'status' => 'rejected',
+                'failed_at' => now(),
+                'metadata' => json_encode($metadata, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'updated_at' => now(),
+            ]);
+
+            return DB::table('financial_payouts')->where('id', $row->id)->first();
+        });
+
+        return response()->json(['message' => 'Repasse rejeitado e saldo liberado.', 'payout' => $row]);
+    }
+
     public function health(Request $request)
     {
         return response()->json($this->healthSnapshot());
