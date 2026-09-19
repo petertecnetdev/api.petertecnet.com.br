@@ -48,7 +48,7 @@ final class EventDiscoveryController extends Controller
         [$from, $to] = $this->periodRange($data, $timezone);
         $cacheQuery = $request->query();
         ksort($cacheQuery);
-        $cacheKey = 'event-discovery:v3:'.$appId.':'.hash('sha256', http_build_query($cacheQuery));
+        $cacheKey = 'event-discovery:v4:'.$appId.':'.hash('sha256', http_build_query($cacheQuery));
         if (($cached = Cache::get($cacheKey)) !== null) {
             return response()->json($cached)->header('X-Peter-Cache', 'HIT');
         }
@@ -144,16 +144,41 @@ final class EventDiscoveryController extends Controller
         }
 
         $distanceEnabled = isset($data['lat'], $data['lng']);
+        $allowCityLocationFallback = $distanceEnabled && ! empty($data['city']);
+
         if ($distanceEnabled) {
             $lat = (float) $data['lat'];
             $lng = (float) $data['lng'];
             $radius = (int) ($data['radius_km'] ?? 50);
-            $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(events.latitude)) * cos(radians(events.longitude) - radians(?)) + sin(radians(?)) * sin(radians(events.latitude))))';
-            $query->whereNotNull('events.latitude')
-                ->whereNotNull('events.longitude')
-                ->select('events.*')
-                ->selectRaw("{$distanceSql} AS distance_km", [$lat, $lng, $lat])
-                ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
+            // Clamp the cosine expression to [-1, 1] to avoid floating-point
+            // rounding producing an invalid ACOS value for very close points.
+            $distanceSql = '(6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(events.latitude)) * cos(radians(events.longitude) - radians(?)) + sin(radians(?)) * sin(radians(events.latitude))))))';
+
+            $query->select('events.*')
+                ->selectRaw(
+                    "CASE WHEN events.latitude IS NULL OR events.longitude IS NULL THEN NULL ELSE {$distanceSql} END AS distance_km",
+                    [$lat, $lng, $lat]
+                );
+
+            if ($allowCityLocationFallback) {
+                // The city/UF filters above already constrain the candidate set.
+                // Keep local legacy events that do not have precise coordinates yet,
+                // while still excluding geocoded events that are outside the radius.
+                $query->where(function ($location) use ($distanceSql, $lat, $lng, $radius) {
+                    $location->where(function ($precise) use ($distanceSql, $lat, $lng, $radius) {
+                        $precise->whereNotNull('events.latitude')
+                            ->whereNotNull('events.longitude')
+                            ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
+                    })->orWhere(function ($fallback) {
+                        $fallback->whereNull('events.latitude')
+                            ->orWhereNull('events.longitude');
+                    });
+                });
+            } else {
+                $query->whereNotNull('events.latitude')
+                    ->whereNotNull('events.longitude')
+                    ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
+            }
         } elseif (($data['view'] ?? null) === 'compact') {
             $query->select([
                 'events.id', 'events.app_id', 'events.production_id', 'events.title', 'events.slug',
@@ -177,7 +202,10 @@ final class EventDiscoveryController extends Controller
                 break;
             default:
                 if ($distanceEnabled) {
-                    $query->orderBy('distance_km');
+                    // Precise nearby matches first; city fallback rows without
+                    // coordinates remain visible afterwards instead of disappearing.
+                    $query->orderByRaw('CASE WHEN distance_km IS NULL THEN 1 ELSE 0 END')
+                        ->orderBy('distance_km');
                 }
                 $query->orderBy('events.start_date');
         }
