@@ -17,7 +17,7 @@ class CutinappEventLifecycleTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_event_can_be_created_edited_published_opened_and_unpublished(): void
+    public function test_event_is_created_published_can_be_edited_opened_and_unpublished(): void
     {
         $user = $this->user('Produtor Evento', 'event-owner@cutinapp.test');
         $headers = $this->headersFor($user);
@@ -26,23 +26,21 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)->getJson('/api/cutinapp/events/mine')->assertOk()->assertJsonCount(0, 'events.data');
         $created = $this->withHeaders($headers)->postJson('/api/cutinapp/events', [
             'production_id'=>$production['id'],'title'=>'Evento Inicial','description'=>'Descrição inicial do evento.','address'=>'Rua Inicial, 10','google_maps_url'=>'https://www.google.com/maps?q=-23.5505,-46.6333','venue'=>'Espaço Inicial','city'=>'São Paulo','uf'=>'SP','start_date'=>now()->addDays(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s'),
-        ])->assertCreated()->assertJsonPath('event.app_id',$application->id)->assertJsonPath('event.production_id',$production['id'])->assertJsonPath('event.google_maps_url','https://www.google.com/maps?q=-23.5505,-46.6333')->assertJsonPath('event.is_published',false);
+        ])->assertCreated()->assertJsonPath('event.app_id',$application->id)->assertJsonPath('event.production_id',$production['id'])->assertJsonPath('event.google_maps_url','https://www.google.com/maps?q=-23.5505,-46.6333')->assertJsonPath('event.is_published',true);
         $eventId=(int)$created->json('event.id');$originalSlug=$created->json('event.slug');
         $this->withHeaders($headers)->getJson('/api/cutinapp/events/mine')->assertOk()->assertJsonPath('events.data.0.available_tickets_count',0);
         $this->withHeaders($headers)->getJson("/api/cutinapp/events/show/{$eventId}")->assertOk()->assertJsonPath('event.title','Evento Inicial')->assertJsonPath('event.production.id',$production['id'])->assertJsonPath('event.available_tickets_count',0);
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}", ['title'=>'Evento Editado','description'=>'Descrição editada e persistida.','address'=>'Rua Editada, 20','google_maps_url'=>'https://maps.google.com/?q=Campinas','venue'=>'Espaço Editado','city'=>'Campinas','uf'=>'SP','start_date'=>now()->addDays(3)->format('Y-m-d H:i:s'),'end_date'=>now()->addDays(3)->addHours(4)->format('Y-m-d H:i:s')])->assertOk()->assertJsonPath('event.title','Evento Editado')->assertJsonPath('event.city','Campinas')->assertJsonPath('event.google_maps_url','https://maps.google.com/?q=Campinas')->assertJsonPath('event.app_id',$application->id)->assertJsonPath('event.production_id',$production['id']);
         $edited=$this->withHeaders($headers)->getJson("/api/cutinapp/events/show/{$eventId}")->assertOk()->assertJsonPath('event.title','Evento Editado')->assertJsonPath('event.address','Rua Editada, 20');
-        $editedSlug=$edited->json('event.slug');$this->assertNotSame($originalSlug,$editedSlug);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
-        $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertStatus(422)->assertJsonPath('message','Crie ao menos um ingresso disponível antes de publicar o evento.');
+        $editedSlug=$edited->json('event.slug');$this->assertNotSame($originalSlug,$editedSlug);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertOk()->assertJsonPath('event.id',$eventId);
         $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',['event_id'=>$eventId,'name'=>'Cortesia Publicação','quantity'=>10])->assertCreated()->assertJsonPath('ticket.app_id',$application->id);
         $this->withHeaders($headers)->getJson('/api/cutinapp/events/mine')->assertOk()->assertJsonPath('events.data.0.available_tickets_count',1);
         $this->withHeaders($headers)->getJson("/api/cutinapp/events/show/{$eventId}")->assertOk()->assertJsonPath('event.available_tickets_count',1);
-        $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk()->assertJsonPath('event.is_published',true);
         $this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertOk()->assertJsonPath('event.id',$eventId)->assertJsonPath('event.google_maps_url','https://maps.google.com/?q=Campinas')->assertJsonPath('event.production.id',$production['id'])->assertJsonPath('tickets.0.remaining',10);
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/unpublish")->assertOk()->assertJsonPath('event.is_published',false);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
     }
 
-    public function test_paid_event_can_be_published_before_payout_setup(): void
+    public function test_paid_event_is_created_published_before_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
@@ -61,7 +59,7 @@ class CutinappEventLifecycleTest extends TestCase
             'uf' => 'GO',
             'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
             'end_date' => now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s'),
-        ])->assertCreated()->json('event');
+        ])->assertCreated()->assertJsonPath('event.is_published', true)->json('event');
 
         $this->withHeaders($headers)->postJson('/api/cutinapp/tickets', [
             'event_id' => $event['id'],
@@ -70,11 +68,6 @@ class CutinappEventLifecycleTest extends TestCase
             'price' => 25.00,
             'ticket_type' => 'full',
         ])->assertCreated();
-
-        $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
-            ->assertOk()
-            ->assertJsonPath('event.is_published', true);
 
         $this->assertDatabaseHas('events', ['id' => $event['id'], 'is_published' => true]);
 
@@ -204,10 +197,9 @@ class CutinappEventLifecycleTest extends TestCase
         try {
             $user=$this->user('Produtor Datas','event-dates@cutinapp.test');$headers=$this->headersFor($user);$productionId=$this->withHeaders($headers)->postJson('/api/cutinapp/productions',['name'=>'Produção Datas'])->assertCreated()->json('production.id');
             $base=['production_id'=>$productionId,'title'=>'Evento Datas','description'=>'Validação de datas.','address'=>'Rua Datas, 1','city'=>'São Paulo','uf'=>'SP'];
-            $sameDay=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>now()->addHours(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addHours(4)->format('Y-m-d H:i:s')])->assertCreated()->assertJsonPath('event.is_published',false);
+            $sameDay=$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>now()->addHours(2)->format('Y-m-d H:i:s'),'end_date'=>now()->addHours(4)->format('Y-m-d H:i:s')])->assertCreated()->assertJsonPath('event.is_published',true);
             $eventId=(int)$sameDay->json('event.id');
             $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',['event_id'=>$eventId,'name'=>'Cortesia Hoje','quantity'=>5])->assertCreated();
-            $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/publish")->assertOk()->assertJsonPath('event.is_published',true);
             $this->getJson('/api/cutinapp/events?period=today')->assertOk()->assertJsonFragment(['id'=>$eventId,'title'=>'Evento Datas']);
             $this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['title'=>'Evento Passado','start_date'=>now()->subHour()->format('Y-m-d H:i:s'),'end_date'=>now()->addHour()->format('Y-m-d H:i:s')])->assertStatus(422)->assertJsonPath('errors.start_date.0','O horário de início do evento precisa estar no futuro.');
             $same=now()->addDays(2)->format('Y-m-d H:i:s');$this->withHeaders($headers)->postJson('/api/cutinapp/events',$base+['start_date'=>$same,'end_date'=>$same])->assertStatus(422)->assertJsonPath('errors.end_date.0','O término do evento precisa ser posterior ao início.');
