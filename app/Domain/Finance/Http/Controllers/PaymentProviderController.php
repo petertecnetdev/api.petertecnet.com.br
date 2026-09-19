@@ -60,7 +60,7 @@ final class PaymentProviderController extends Controller
             DB::table('merchant_payment_accounts')->updateOrInsert(['app_id'=>$this->context->id(),'production_id'=>$organizationId,'provider'=>'mercadopago'],[
                 'status'=>'connected','provider_recipient_id'=>(string)($tokens['user_id']??''),'access_token'=>Crypt::encryptString($access),'refresh_token'=>!empty($tokens['refresh_token'])?Crypt::encryptString((string)$tokens['refresh_token']):null,'token_expires_at'=>!empty($tokens['expires_in'])?$now->copy()->addSeconds((int)$tokens['expires_in']):null,'metadata'=>json_encode(['public_key'=>$tokens['public_key']??null,'scope'=>$tokens['scope']??null,'live_mode'=>$tokens['live_mode']??null,'connected_by_user_id'=>$state['actor_id']??null],JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),'connected_at'=>$now,'verified_at'=>$now,'updated_at'=>$now,'created_at'=>$now,
             ]);
-            $frontend=rtrim((string)($application->url?:config('app.url')),'/');return redirect($frontend.'/finance?payment_provider=connected&organization='.$organizationId);
+            $frontend=rtrim((string)($application->url?:config('app.url')),'/');$returnPath=(string)$this->context->option('payments.onboarding_return_path','/finance');if($returnPath===''||$returnPath[0]!=='/')$returnPath='/finance';return redirect($frontend.$returnPath.'?payment_provider=connected&organization='.$organizationId);
         }catch(Throwable $e){report($e);return response('Não foi possível conectar a conta de pagamento. Volte à aplicação e tente novamente.',502);}
     }
 
