@@ -7,7 +7,7 @@ use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
 use App\Services\MerchantPaymentAccountService;
-use App\Services\ProducerAgreementService;
+use App\Services\OrganizationSalesReadinessService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +19,7 @@ final class OrganizationOnboardingController extends Controller
 {
     public function __construct(
         private readonly ApplicationContext $context,
-        private readonly ProducerAgreementService $agreements,
+        private readonly OrganizationSalesReadinessService $salesReadiness,
         private readonly MerchantPaymentAccountService $paymentAccounts,
     ) {}
 
@@ -145,7 +145,7 @@ final class OrganizationOnboardingController extends Controller
         }
 
         return response()->json([
-            'message' => 'Onboarding assistido criado. A produção e o primeiro evento ficaram em rascunho para o produtor concluir contrato e recebimentos.',
+            'message' => 'Onboarding assistido criado. A produção e o primeiro evento ficaram preparados em rascunho. O produtor deve assinar o contrato para ativar vendas pagas e concluir os recebimentos para receber repasses.',
             'onboarding' => $this->statusPayload($result['organization'], $result['owner']),
         ], 201);
     }
@@ -181,7 +181,7 @@ final class OrganizationOnboardingController extends Controller
 
         $data = $request->validate([
             'q' => 'nullable|string|max:120',
-            'status' => 'nullable|in:awaiting_owner,awaiting_agreement,awaiting_payout,ready_to_sell',
+            'status' => 'nullable|in:awaiting_owner,awaiting_agreement,awaiting_payout,awaiting_payment,ready_to_sell',
             'per_page' => 'nullable|integer|min:1|max:100',
         ]);
 
@@ -241,21 +241,11 @@ final class OrganizationOnboardingController extends Controller
 
     private function statusPayload(Production $organization, User $owner): array
     {
-        $agreementSigned = DB::table('contract_acceptances')
-            ->where('app_id', $this->context->id())
-            ->where('production_id', $organization->id)
-            ->where('contract_version', $this->agreements->version())
-            ->exists();
-
-        $payoutReady = DB::table('financial_payout_destinations as destination')
-            ->join('financial_beneficiaries as beneficiary', 'beneficiary.id', '=', 'destination.beneficiary_id')
-            ->where('destination.source_type', 'production')
-            ->where('destination.source_id', $organization->id)
-            ->whereIn('destination.status', ['active', 'cooling'])
-            ->whereNotNull('destination.verified_at')
-            ->where('beneficiary.user_id', $owner->id)
-            ->where('beneficiary.status', 'verified')
-            ->exists();
+        $salesReadiness = $this->salesReadiness->status((int) $organization->id);
+        $agreementSigned = (bool) ($salesReadiness['agreement'] ?? false);
+        $payoutReady = (bool) ($salesReadiness['payout'] ?? false);
+        $paymentAvailable = (bool) ($salesReadiness['payment'] ?? false);
+        $salesReady = (bool) ($salesReadiness['ready'] ?? false);
 
         $firstEvent = Event::query()
             ->where('app_id', $this->context->id())
@@ -277,11 +267,12 @@ final class OrganizationOnboardingController extends Controller
             'payout' => $payoutReady,
         ];
         $completed = count(array_filter($steps));
-        $salesReady = $agreementSigned && $payoutReady && (bool) ($payment['available'] ?? false);
 
         $status = $salesReady
             ? 'ready_to_sell'
-            : ($agreementSigned ? 'awaiting_payout' : 'awaiting_agreement');
+            : (! $agreementSigned
+                ? 'awaiting_agreement'
+                : (! $paymentAvailable ? 'awaiting_payment' : 'awaiting_payout'));
 
         if ($record && ($record->status !== $status || ($salesReady && ! $record->completed_at))) {
             DB::table('organization_onboardings')
@@ -303,8 +294,10 @@ final class OrganizationOnboardingController extends Controller
             'progress' => (int) round(($completed / count($steps)) * 100),
             'status' => $status,
             'sales_ready' => $salesReady,
-            'payment_available' => (bool) ($payment['available'] ?? false),
-            'payment_methods' => array_values($payment['methods'] ?? []),
+            'sales_readiness_code' => (string) ($salesReadiness['code'] ?? ''),
+            'sales_readiness_message' => (string) ($salesReadiness['message'] ?? ''),
+            'payment_available' => $paymentAvailable,
+            'payment_methods' => array_values($payment['methods'] ?? $salesReadiness['methods'] ?? []),
             'payout_ready' => $payoutReady,
             'agreement_signed' => $agreementSigned,
             'assisted' => (bool) $record,
