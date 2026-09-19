@@ -150,9 +150,7 @@ final class EventDiscoveryController extends Controller
             $lat = (float) $data['lat'];
             $lng = (float) $data['lng'];
             $radius = (int) ($data['radius_km'] ?? 50);
-            // Clamp the cosine expression to [-1, 1] to avoid floating-point
-            // rounding producing an invalid ACOS value for very close points.
-            $distanceSql = '(6371 * acos(LEAST(1, GREATEST(-1, cos(radians(?)) * cos(radians(events.latitude)) * cos(radians(events.longitude) - radians(?)) + sin(radians(?)) * sin(radians(events.latitude))))))';
+            $distanceSql = '(6371 * acos(cos(radians(?)) * cos(radians(events.latitude)) * cos(radians(events.longitude) - radians(?)) + sin(radians(?)) * sin(radians(events.latitude))))';
 
             $query->select('events.*')
                 ->selectRaw(
