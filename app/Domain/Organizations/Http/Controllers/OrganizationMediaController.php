@@ -218,7 +218,8 @@ final class OrganizationMediaController extends Controller
         $source = $row->original_path ?: $row->path;
         abort_unless($source && Storage::disk('public')->exists($source), 422, 'Arquivo original indisponível para rotação.');
 
-        $image = Image::make(Storage::disk('public')->path($source))->orientate()->rotate(-1 * (int) $data['degrees']);
+        $rotation = ((int) ($row->rotation ?? 0) + (int) $data['degrees']) % 360;
+        $image = Image::make(Storage::disk('public')->path($source))->orientate()->rotate(-1 * $rotation);
         $width = $image->width();
         $height = $image->height();
         $base = 'images/apps/'.$this->context->slug().'/organizations/'.$organization->id.'/gallery/';
@@ -244,7 +245,6 @@ final class OrganizationMediaController extends Controller
         $metrics = $this->analyzeImage(clone $image);
         $oldPath = $row->path;
         $oldThumb = $row->thumbnail_path;
-        $rotation = ((int) ($row->rotation ?? 0) + (int) $data['degrees']) % 360;
         DB::table('organization_media')->where('id', $row->id)->update([
             'path' => $newPath,
             'thumbnail_path' => $thumbPath,
