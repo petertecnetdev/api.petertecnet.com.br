@@ -33,6 +33,24 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('tickets.0.available', true);
     }
 
+    public function test_cutinapp_paid_sales_are_disabled_until_producer_connects_mercado_pago(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', true);
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'asaas');
+
+        [, $event] = $this->paidEventFixture('split-required');
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('payment_config.available', false)
+            ->assertJsonPath('payment_config.merchant_connected', false)
+            ->assertJsonPath('payment_config.provider', 'mercadopago')
+            ->assertJsonPath('payment_config.settlement_mode', 'sales_disabled')
+            ->assertJsonPath('payment_config.methods', [])
+            ->assertJsonPath('payment_config.payout_setup_required', false);
+    }
+
     public function test_paid_sales_use_platform_collection_before_producer_completes_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
