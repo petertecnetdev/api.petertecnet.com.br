@@ -243,7 +243,29 @@ class OrganizationMediaManagementTest extends TestCase
             ->assertOk()
             ->assertJsonPath('media.width', 1800)
             ->assertJsonPath('media.height', 1200)
+            ->assertJsonPath('media.rotation', 0)
             ->assertJsonPath('media.original_url', $originalUrl);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media/'.$mediaId.'/rotate', ['degrees' => 90])
+            ->assertOk()
+            ->assertJsonPath('media.rotation', 90)
+            ->assertJsonPath('media.width', 1200)
+            ->assertJsonPath('media.height', 1800);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media/'.$mediaId.'/rotate', ['degrees' => 90])
+            ->assertOk()
+            ->assertJsonPath('media.rotation', 180)
+            ->assertJsonPath('media.width', 1800)
+            ->assertJsonPath('media.height', 1200);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media/'.$mediaId.'/reprocess')
+            ->assertOk()
+            ->assertJsonPath('media.rotation', 0)
+            ->assertJsonPath('media.width', 1800)
+            ->assertJsonPath('media.height', 1200);
 
         $this->withHeaders($headers)
             ->getJson('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media-recommendations')
