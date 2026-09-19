@@ -23,17 +23,17 @@
 </td></tr>
 </table>
 
-<p style="margin:0 0 12px"><strong>Para começar a vender ingressos, faltam duas etapas obrigatórias:</strong></p>
+<p style="margin:0 0 12px"><strong>Seu evento já pode ser revisado. Para concluir a ativação comercial:</strong></p>
 <ol style="margin:0 0 24px;padding-left:20px;color:#c8d2e6;line-height:1.8">
-<li>Revisar e assinar o contrato vigente.</li>
-<li>Concluir a verificação financeira e cadastrar sua chave Pix para recebimentos.</li>
+<li>Revisar e assinar o contrato vigente para habilitar vendas de ingressos pagos.</li>
+<li>Concluir a verificação financeira e cadastrar sua chave Pix para receber repasses. Quando a cobrança ocorrer pela plataforma, os créditos podem ficar no saldo até essa etapa ser concluída.</li>
 </ol>
 
 <p style="margin:0 0 14px"><a href="{{ $onboardingUrl }}" style="display:inline-block;background:#5b7cff;color:#fff;text-decoration:none;padding:13px 20px;border-radius:10px;font-weight:700">Concluir meu onboarding</a></p>
 <p style="margin:0 0 8px"><a href="{{ $agreementUrl }}" style="color:#8fb5ff">Revisar e assinar contrato</a></p>
 <p style="margin:0 0 24px"><a href="{{ $financeUrl }}" style="color:#8fb5ff">Configurar recebimentos e Pix</a></p>
 
-<p style="margin:0;color:#9aa8c1;font-size:13px;line-height:1.55">Seu primeiro evento foi preparado como rascunho. Depois de concluir as etapas acima, revise os dados, configure os ingressos e publique. Os próximos eventos podem ser criados e administrados diretamente por você.</p>
+<p style="margin:0;color:#9aa8c1;font-size:13px;line-height:1.55">Seu primeiro evento foi preparado como rascunho e pode ser revisado antes da assinatura. A assinatura é feita somente por você ou por um representante autorizado da produção. Depois, configure os ingressos e ative as vendas quando a produção estiver pronta comercialmente. Os próximos eventos podem ser criados e administrados diretamente por você.</p>
 </td></tr>
 </table>
 </td></tr>
