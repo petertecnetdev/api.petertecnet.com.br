@@ -252,6 +252,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_verified_recipient_is_not_enough_when_platform_collection_is_disabled(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', false);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
 
