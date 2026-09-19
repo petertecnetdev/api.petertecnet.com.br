@@ -33,10 +33,14 @@ class VerificationCodeExpiryTest extends TestCase
             ->postJson('/api/auth/resend-code-email-verification')
             ->assertOk();
 
-        $this->withHeaders($headers)
-            ->postJson('/api/auth/resend-code-email-verification')
+        $response = $this->withHeaders($headers)
+            ->postJson('/api/auth/resend-code-email-verification');
+
+        $response
             ->assertStatus(429)
-            ->assertJsonStructure(['message', 'retry_after']);
+            ->assertJsonStructure(['message']);
+
+        $this->assertGreaterThan(0, (int) $response->headers->get('Retry-After'));
     }
 
     public function test_expired_email_verification_code_is_rejected(): void
