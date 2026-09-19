@@ -132,12 +132,12 @@ class CutinappProducerContractRequirementTest extends TestCase
         $this->assertTrue((bool) data_get($event->extra_info, 'assisted_producer_setup'));
         $this->assertTrue((bool) data_get($event->extra_info, 'agreement_required_for_publish'));
 
-        $this->withHeaders([
+        $publish = $this->withHeaders([
             'Authorization' => 'Bearer '.$token,
             'X-Peter-App' => 'cutinapp',
-        ])->postJson('/api/cutinapp/events/'.$event->id.'/publish')
-            ->assertStatus(428);
+        ])->postJson('/api/cutinapp/events/'.$event->id.'/publish');
 
+        $this->assertSame(428, $publish->status(), $publish->getContent());
         $this->assertFalse((bool) $event->fresh()->is_published);
     }
 
