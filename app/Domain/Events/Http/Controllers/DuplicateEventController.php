@@ -34,7 +34,7 @@ final class DuplicateEventController extends Controller
         );
 
         return response()->json([
-            'message' => 'Evento duplicado como rascunho. Revise a nova data e publique quando estiver pronto.',
+            'message' => 'Evento duplicado e publicado automaticamente. Revise a nova data e os detalhes da edição.',
             'event' => $duplicate,
             'copied' => [
                 'tickets' => $duplicate->tickets_count,
