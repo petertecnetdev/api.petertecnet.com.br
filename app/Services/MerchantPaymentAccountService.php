@@ -28,7 +28,12 @@ final class MerchantPaymentAccountService
         }
 
         $account = (clone $query)->where('status', 'connected')->first();
-        if ($account && $provider === 'mercadopago' && $this->platformCollectionReady($organizationId)) {
+        if (
+            $account
+            && $provider === 'mercadopago'
+            && ! $this->requiresAutomaticSplit()
+            && $this->platformCollectionReady($organizationId)
+        ) {
             (clone $query)->where('id', $account->id)->update([
                 'status' => 'legacy_disabled',
                 'updated_at' => now(),
@@ -62,9 +67,13 @@ final class MerchantPaymentAccountService
             (int) $organization->user_id
         );
 
-        $primary = mb_strtolower(trim((string) config('services.finance.payment_primary_provider', 'asaas')));
-        $fallback = mb_strtolower(trim((string) config('services.finance.payment_fallback_provider', 'mercadopago')));
+        $primary = mb_strtolower(trim((string) config('services.finance.payment_primary_provider', 'mercadopago')));
+        $fallback = mb_strtolower(trim((string) config('services.finance.payment_fallback_provider', '')));
         $platformCollectionEnabled = $this->platformCollectionEnabled();
+
+        if ($this->requiresAutomaticSplit()) {
+            return $this->mercadoPagoReadiness($organizationId, true);
+        }
 
         if ($primary === 'asaas' && $platformCollectionEnabled && $this->asaas->isConfigured()) {
             return $this->readinessPayload(
@@ -224,6 +233,22 @@ final class MerchantPaymentAccountService
             );
         }
 
+        if ($this->requiresAutomaticSplit()) {
+            return $this->readinessPayload(
+                available: false,
+                merchantConnected: false,
+                settlementMode: 'sales_disabled',
+                publicKey: '',
+                methods: [],
+                message: 'Conecte sua conta Mercado Pago para habilitar vendas pagas. O valor do produtor será recebido diretamente na conta conectada e a comissão da plataforma será separada automaticamente.',
+                payoutReady: false,
+                provider: 'mercadopago',
+                fallbackProvider: null,
+                requiresPayerDocument: false,
+                cardMode: 'embedded',
+            );
+        }
+
         if ($platformConfigured) {
             $this->account($organizationId, 'mercadopago', true);
 
@@ -320,6 +345,11 @@ final class MerchantPaymentAccountService
             'payout_ready' => $payoutReady,
             'payout_setup_required' => $available && ! $payoutReady && $settlementMode === 'platform_collection',
         ];
+    }
+
+    private function requiresAutomaticSplit(): bool
+    {
+        return (bool) $this->context->option('commerce.require_automatic_split', false);
     }
 
     private function platformCollectionEnabled(): bool
