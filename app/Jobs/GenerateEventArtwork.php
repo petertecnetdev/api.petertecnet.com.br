@@ -31,11 +31,12 @@ final class GenerateEventArtwork implements ShouldQueue, ShouldBeUnique
 
     public function handle(EventArtworkService $artwork): void
     {
-        $artwork->generate($this->eventId, $this->applicationId);
-    }
-
-    public function failed(Throwable $exception): void
-    {
-        report($exception);
+        try {
+            $artwork->generate($this->eventId, $this->applicationId);
+        } catch (Throwable $exception) {
+            // A arte é um enriquecimento best-effort. Falha de provedor, cota ou
+            // configuração nunca pode invalidar o evento: o frontend exibirá as iniciais.
+            report($exception);
+        }
     }
 }
