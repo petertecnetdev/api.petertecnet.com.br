@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Commerce\Services\TicketInventoryService;
+use App\Domain\Events\Services\EventArtworkService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Ticket;
@@ -17,6 +18,7 @@ final class EventDiscoveryController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly TicketInventoryService $ticketInventory,
+        private readonly EventArtworkService $artwork,
     ) {}
 
     public function events(Request $request)
@@ -238,6 +240,7 @@ final class EventDiscoveryController extends Controller
                     ->orderBy('event_artist.sort_order'),
             ])
             ->firstOrFail();
+        $this->artwork->requestGeneration($event);
         $eventEnded = $event->hasEnded($now);
         $allTickets = Ticket::query()
             ->where('app_id', $appId)
