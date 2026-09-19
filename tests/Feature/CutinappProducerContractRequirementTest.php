@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Models\ImpersonationSession;
 use App\Models\Production;
 use App\Models\User;
+use App\Services\ProducerAgreementService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -131,6 +132,11 @@ class CutinappProducerContractRequirementTest extends TestCase
         $event = Event::query()->where('title', 'Evento preparado pelo suporte')->firstOrFail();
         $this->assertTrue((bool) data_get($event->extra_info, 'assisted_producer_setup'));
         $this->assertTrue((bool) data_get($event->extra_info, 'agreement_required_for_publish'));
+        $this->assertDatabaseMissing('contract_acceptances', [
+            'app_id' => $application->id,
+            'production_id' => $production->id,
+            'contract_version' => ProducerAgreementService::VERSION,
+        ]);
 
         $publish = $this->withHeaders([
             'Authorization' => 'Bearer '.$token,
