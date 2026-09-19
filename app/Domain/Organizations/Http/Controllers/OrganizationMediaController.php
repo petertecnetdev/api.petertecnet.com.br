@@ -608,6 +608,215 @@ final class OrganizationMediaController extends Controller
         return response()->json(['message' => 'Álbum removido. As fotos continuam na galeria.']);
     }
 
+    public function report(Request $request, string $slug, int $mediaId)
+    {
+        $data = $request->validate([
+            'reason' => 'required|in:inappropriate,fraud,misleading,copyright,privacy,other',
+            'details' => 'nullable|string|max:1000',
+        ]);
+
+        $organization = Production::query()
+            ->where('app_id', $this->context->id())
+            ->where('slug', $slug)
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->firstOrFail();
+
+        $media = $this->activeMediaQuery($organization)->where('id', $mediaId)->first();
+        abort_unless($media, 404, 'Foto não encontrada.');
+
+        $user = $request->user();
+        $existing = DB::table('organization_media_reports')
+            ->where('app_id', $this->context->id())
+            ->where('media_id', $media->id)
+            ->where('reporter_user_id', $user->id)
+            ->whereIn('status', ['open', 'reviewing'])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'message' => 'Sua denúncia desta foto já está em análise.',
+                'report_id' => (int) $existing->id,
+            ]);
+        }
+
+        $id = DB::table('organization_media_reports')->insertGetId([
+            'app_id' => $this->context->id(),
+            'organization_id' => $organization->id,
+            'media_id' => $media->id,
+            'reporter_user_id' => $user->id,
+            'reason' => $data['reason'],
+            'details' => trim((string) ($data['details'] ?? '')) ?: null,
+            'status' => 'open',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->track($organization, $request, 'production_media.report', [
+            'media_id' => (int) $media->id,
+            'report_id' => $id,
+            'reason' => $data['reason'],
+        ]);
+
+        return response()->json([
+            'message' => 'Denúncia enviada para análise.',
+            'report_id' => $id,
+        ], 201);
+    }
+
+    public function moderationReports(Request $request)
+    {
+        $this->requireModerator($request);
+        $data = $request->validate([
+            'status' => 'nullable|in:open,reviewing,resolved,dismissed',
+            'q' => 'nullable|string|max:120',
+            'per_page' => 'nullable|integer|min:10|max:100',
+        ]);
+
+        $query = DB::table('organization_media_reports as reports')
+            ->join('organization_media as media', 'media.id', '=', 'reports.media_id')
+            ->join('establishments as organizations', 'organizations.id', '=', 'reports.organization_id')
+            ->join('users as reporter', 'reporter.id', '=', 'reports.reporter_user_id')
+            ->leftJoin('users as reviewer', 'reviewer.id', '=', 'reports.reviewed_by_user_id')
+            ->where('reports.app_id', $this->context->id())
+            ->select([
+                'reports.id',
+                'reports.organization_id',
+                'reports.media_id',
+                'reports.reason',
+                'reports.details',
+                'reports.status',
+                'reports.moderation_note',
+                'reports.reviewed_at',
+                'reports.created_at',
+                'organizations.name as organization_name',
+                'organizations.slug as organization_slug',
+                'media.path as media_path',
+                'media.caption as media_caption',
+                'reporter.first_name as reporter_first_name',
+                'reporter.last_name as reporter_last_name',
+                'reporter.email as reporter_email',
+                'reviewer.first_name as reviewer_first_name',
+                'reviewer.last_name as reviewer_last_name',
+            ]);
+
+        if (! empty($data['status'])) {
+            $query->where('reports.status', $data['status']);
+        }
+
+        if ($term = trim((string) ($data['q'] ?? ''))) {
+            $query->where(function ($search) use ($term) {
+                $search->where('organizations.name', 'like', '%'.$term.'%')
+                    ->orWhere('media.caption', 'like', '%'.$term.'%')
+                    ->orWhere('reports.details', 'like', '%'.$term.'%')
+                    ->orWhere('reporter.email', 'like', '%'.$term.'%');
+            });
+        }
+
+        $reports = $query
+            ->orderByRaw("CASE reports.status WHEN 'open' THEN 0 WHEN 'reviewing' THEN 1 WHEN 'resolved' THEN 2 ELSE 3 END")
+            ->orderByDesc('reports.created_at')
+            ->paginate((int) ($data['per_page'] ?? 25));
+
+        $reports->getCollection()->transform(function ($report) {
+            $report->media_url = $report->media_path ? Storage::disk('public')->url($report->media_path) : null;
+            unset($report->media_path);
+            return $report;
+        });
+
+        return response()->json([
+            'reports' => $reports,
+            'counts' => [
+                'open' => DB::table('organization_media_reports')->where(['app_id' => $this->context->id(), 'status' => 'open'])->count(),
+                'reviewing' => DB::table('organization_media_reports')->where(['app_id' => $this->context->id(), 'status' => 'reviewing'])->count(),
+                'resolved' => DB::table('organization_media_reports')->where(['app_id' => $this->context->id(), 'status' => 'resolved'])->count(),
+                'dismissed' => DB::table('organization_media_reports')->where(['app_id' => $this->context->id(), 'status' => 'dismissed'])->count(),
+            ],
+        ]);
+    }
+
+    public function reviewReport(Request $request, int $reportId)
+    {
+        $this->requireModerator($request);
+        $data = $request->validate([
+            'status' => 'required|in:open,reviewing,resolved,dismissed',
+            'moderation_note' => 'nullable|string|max:2000',
+            'remove_media' => 'sometimes|boolean',
+        ]);
+
+        $report = DB::table('organization_media_reports')
+            ->where('app_id', $this->context->id())
+            ->where('id', $reportId)
+            ->first();
+        abort_unless($report, 404, 'Denúncia não encontrada.');
+
+        $organization = Production::query()
+            ->where('app_id', $this->context->id())
+            ->findOrFail($report->organization_id);
+
+        DB::transaction(function () use ($request, $data, $report) {
+            DB::table('organization_media_reports')->where('id', $report->id)->update([
+                'status' => $data['status'],
+                'moderation_note' => trim((string) ($data['moderation_note'] ?? '')) ?: null,
+                'reviewed_by_user_id' => $request->user()->id,
+                'reviewed_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            if (! empty($data['remove_media'])) {
+                DB::table('organization_media')
+                    ->where('app_id', $this->context->id())
+                    ->where('organization_id', $report->organization_id)
+                    ->where('id', $report->media_id)
+                    ->whereNull('deleted_at')
+                    ->update([
+                        'status' => 'deleted',
+                        'deleted_by_user_id' => $request->user()->id,
+                        'deleted_at' => now(),
+                        'updated_by_user_id' => $request->user()->id,
+                        'updated_at' => now(),
+                    ]);
+            }
+        });
+
+        if (! empty($data['remove_media'])) {
+            $this->normalizePositions($organization);
+            $note = trim((string) ($data['moderation_note'] ?? '')) ?: 'A imagem não atende às diretrizes da plataforma.';
+            if ($organization->user_id) {
+                try {
+                    $this->notifications->sendToUser($this->context->id(), (int) $organization->user_id, [
+                        'type' => 'production_media_moderated',
+                        'title' => 'Foto removida da galeria',
+                        'message' => 'Uma foto de '.$organization->name.' foi removida pela moderação. Motivo: '.$note,
+                        'reference_type' => 'production',
+                        'reference_id' => $organization->id,
+                        'reference_url' => '/production/edit/'.$organization->id.'#production-editor-gallery',
+                        'data' => [
+                            'organization_id' => $organization->id,
+                            'media_id' => (int) $report->media_id,
+                            'report_id' => (int) $report->id,
+                            'reason' => $note,
+                        ],
+                    ]);
+                } catch (Throwable $e) {
+                    report($e);
+                }
+            }
+        }
+
+        $this->track($organization, $request, 'production_media.report_review', [
+            'media_id' => (int) $report->media_id,
+            'report_id' => (int) $report->id,
+            'status' => $data['status'],
+            'removed' => (bool) ($data['remove_media'] ?? false),
+        ]);
+
+        return response()->json([
+            'message' => 'Denúncia atualizada.',
+            'report' => DB::table('organization_media_reports')->where('id', $report->id)->first(),
+        ]);
+    }
+
     private function storeImageVariants(Production $organization, UploadedFile $file): array
     {
         $image = Image::make($file->getRealPath())->orientate();
@@ -725,6 +934,16 @@ final class OrganizationMediaController extends Controller
         }
 
         return $payload;
+    }
+
+    private function requireModerator(Request $request): void
+    {
+        $user = $request->user();
+        abort_unless(
+            $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador'),
+            403,
+            'Acesso restrito à moderação.'
+        );
     }
 
     private function managedOrganization(Request $request, int $id): Production
