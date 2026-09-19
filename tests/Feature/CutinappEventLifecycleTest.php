@@ -81,9 +81,11 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)
             ->getJson('/api/cutinapp/events/mine')
             ->assertOk()
-            ->assertJsonPath('events.data.0.payment_readiness.available', true)
-            ->assertJsonPath('events.data.0.payment_readiness.payout_ready', false)
-            ->assertJsonPath('events.data.0.payment_readiness.payout_setup_required', true);
+            ->assertJsonPath('events.data.0.payment_readiness.available', false)
+            ->assertJsonPath('events.data.0.payment_readiness.merchant_connected', false)
+            ->assertJsonPath('events.data.0.payment_readiness.provider', 'mercadopago')
+            ->assertJsonPath('events.data.0.payment_readiness.settlement_mode', 'sales_disabled')
+            ->assertJsonPath('events.data.0.payment_readiness.payout_setup_required', false);
     }
 
     public function test_owner_can_delete_multiple_selected_events_atomically(): void
