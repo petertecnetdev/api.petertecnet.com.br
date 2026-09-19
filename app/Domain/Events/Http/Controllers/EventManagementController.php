@@ -12,6 +12,7 @@ use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Services\MerchantPaymentAccountService;
+use App\Services\ProducerAgreementService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -28,6 +29,7 @@ final class EventManagementController extends Controller
         private readonly ApplicationContext $context,
         private readonly TicketInventoryService $ticketInventory,
         private readonly MerchantPaymentAccountService $paymentAccounts,
+        private readonly ProducerAgreementService $producerAgreements,
     ) {}
 
     public function mine(Request $request)
@@ -142,8 +144,17 @@ final class EventManagementController extends Controller
         $this->normalizeInput($request);$data=$request->validate($this->rules(true),$this->messages(),$this->attributes());$production=$this->ownedProduction((int)$data['production_id'],$request->user());$this->validateDates($data,null);
         if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
         $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
-        $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
         $assistedSetup=(bool)$request->attributes->get('assisted_producer_setup',false);
+        if($assistedSetup){
+            $impersonation=$request->attributes->get('impersonation_session');
+            $data['extra_info']=[
+                'assisted_producer_setup'=>true,
+                'assisted_producer_setup_at'=>now()->toIso8601String(),
+                'assisted_producer_setup_session_id'=>$impersonation?->id,
+                'agreement_required_for_publish'=>true,
+            ];
+        }
+        $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
         return response()->json([
             'message'=>$assistedSetup
                 ? 'Evento preparado como rascunho em modo assistido. O responsável precisa assinar o termo antes de publicar e vender.'
@@ -164,6 +175,15 @@ final class EventManagementController extends Controller
     public function publish(Request $request,int $id)
     {
         $event=$this->ownedEvent($id,$request->user());$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);abort_if($event->is_cancelled,422,'Um evento cancelado não pode ser publicado.');abort_if(!$event->end_date||Carbon::parse($event->end_date,$timezone)->lte($now),422,'Um evento já encerrado não pode ser publicado.');abort_if(!$event->start_date||Carbon::parse($event->start_date,$timezone)->lte($now),422,'O evento precisa ser publicado antes do horário de início.');
+        $extraInfo=is_array($event->extra_info)?$event->extra_info:[];
+        if((bool)($extraInfo['agreement_required_for_publish']??false)){
+            $signed=DB::table('contract_acceptances')
+                ->where('app_id',$this->context->id())
+                ->where('production_id',$event->production_id)
+                ->where('contract_version',$this->producerAgreements->version())
+                ->exists();
+            abort_unless($signed,428,'Este evento foi preparado em modo assistido. O responsável da organização precisa assinar o termo de adesão antes de publicar e iniciar vendas.');
+        }
         $sellableTickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$event->id)->where('quantity','>',0)->where(fn($q)=>$q->whereNull('limit_date')->orWhere('limit_date','>',$now));$hasAvailableTicket=(clone $sellableTickets)->exists();abort_unless($hasAvailableTicket,422,'Crie ao menos um ingresso disponível antes de publicar o evento.');$wasPublished=(bool)$event->is_published;$event->forceFill(['is_published'=>true])->save();if(!$wasPublished&&!$event->is_private)$this->notifyProductionFollowers($event);
         return response()->json(['message'=>$event->is_private?'Evento privado ativado.':'Evento publicado.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
     }
