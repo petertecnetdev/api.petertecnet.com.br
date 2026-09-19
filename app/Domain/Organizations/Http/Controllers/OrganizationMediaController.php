@@ -643,6 +643,190 @@ final class OrganizationMediaController extends Controller
         return response()->json(['message' => 'Álbum removido. As fotos continuam na galeria.']);
     }
 
+    public function crop(Request $request, int $organizationId, int $mediaId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        $row = $this->mediaRow($organization, $mediaId);
+        $data = $request->validate([
+            'aspect' => 'required|in:square,portrait,landscape,cover',
+            'zoom' => 'nullable|integer|min:100|max:300',
+            'focal_x' => 'nullable|integer|min:0|max:100',
+            'focal_y' => 'nullable|integer|min:0|max:100',
+        ]);
+
+        $source = $row->original_path ?: $row->path;
+        abort_unless($source && Storage::disk('public')->exists($source), 422, 'Arquivo original indisponível para recorte.');
+
+        $image = Image::make(Storage::disk('public')->path($source))->orientate();
+        $sourceWidth = max(1, $image->width());
+        $sourceHeight = max(1, $image->height());
+        $ratios = [
+            'square' => 1.0,
+            'portrait' => 4 / 5,
+            'landscape' => 4 / 3,
+            'cover' => 1920 / 700,
+        ];
+        $targetRatio = $ratios[$data['aspect']];
+        $sourceRatio = $sourceWidth / $sourceHeight;
+
+        if ($sourceRatio > $targetRatio) {
+            $baseHeight = $sourceHeight;
+            $baseWidth = (int) round($baseHeight * $targetRatio);
+        } else {
+            $baseWidth = $sourceWidth;
+            $baseHeight = (int) round($baseWidth / $targetRatio);
+        }
+
+        $zoom = max(1, ((int) ($data['zoom'] ?? 100)) / 100);
+        $cropWidth = max(1, min($sourceWidth, (int) round($baseWidth / $zoom)));
+        $cropHeight = max(1, min($sourceHeight, (int) round($baseHeight / $zoom)));
+        $focalX = (int) ($data['focal_x'] ?? $row->focal_x ?? 50);
+        $focalY = (int) ($data['focal_y'] ?? $row->focal_y ?? 50);
+        $centerX = ($focalX / 100) * $sourceWidth;
+        $centerY = ($focalY / 100) * $sourceHeight;
+        $left = (int) round(max(0, min($sourceWidth - $cropWidth, $centerX - ($cropWidth / 2))));
+        $top = (int) round(max(0, min($sourceHeight - $cropHeight, $centerY - ($cropHeight / 2))));
+
+        $image->crop($cropWidth, $cropHeight, $left, $top);
+        $paths = $this->saveProcessedVariants($organization, $image, 'crop');
+        $metrics = $this->analyzeImage(clone $image);
+
+        $oldPath = $row->path;
+        $oldThumb = $row->thumbnail_path;
+        DB::table('organization_media')->where('id', $row->id)->update([
+            'path' => $paths['path'],
+            'thumbnail_path' => $paths['thumbnail_path'],
+            'width' => $cropWidth,
+            'height' => $cropHeight,
+            'perceptual_hash' => $metrics['perceptual_hash'],
+            'brightness_score' => $metrics['brightness_score'],
+            'sharpness_score' => $metrics['sharpness_score'],
+            'cover_score' => $this->coverScore($cropWidth, $cropHeight, $metrics['brightness_score'], $metrics['sharpness_score']),
+            'processing_version' => 2,
+            'last_processed_at' => now(),
+            'focal_x' => 50,
+            'focal_y' => 50,
+            'rotation' => 0,
+            'updated_by_user_id' => $request->user()->id,
+            'updated_at' => now(),
+        ]);
+
+        foreach (array_unique(array_filter([$oldPath, $oldThumb])) as $old) {
+            if ($old !== $source) Storage::disk('public')->delete($old);
+        }
+
+        $this->track($organization, $request, 'production_media.crop', [
+            'media_id' => $row->id,
+            'aspect' => $data['aspect'],
+            'zoom' => (int) ($data['zoom'] ?? 100),
+        ]);
+
+        return response()->json([
+            'message' => 'Recorte aplicado sem alterar o arquivo original.',
+            'media' => $this->mediaPayload(DB::table('organization_media')->where('id', $row->id)->first(), true),
+        ]);
+    }
+
+    public function reprocess(Request $request, int $organizationId, int $mediaId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        $row = $this->mediaRow($organization, $mediaId);
+        $source = $row->original_path ?: $row->path;
+        abort_unless($source && Storage::disk('public')->exists($source), 422, 'Arquivo original indisponível para reprocessamento.');
+
+        $image = Image::make(Storage::disk('public')->path($source))->orientate();
+        $width = $image->width();
+        $height = $image->height();
+        $paths = $this->saveProcessedVariants($organization, $image, 'reprocessed');
+        $metrics = $this->analyzeImage(clone $image);
+
+        $oldPath = $row->path;
+        $oldThumb = $row->thumbnail_path;
+        DB::table('organization_media')->where('id', $row->id)->update([
+            'path' => $paths['path'],
+            'thumbnail_path' => $paths['thumbnail_path'],
+            'width' => $width,
+            'height' => $height,
+            'perceptual_hash' => $metrics['perceptual_hash'],
+            'brightness_score' => $metrics['brightness_score'],
+            'sharpness_score' => $metrics['sharpness_score'],
+            'cover_score' => $this->coverScore($width, $height, $metrics['brightness_score'], $metrics['sharpness_score']),
+            'processing_version' => 2,
+            'last_processed_at' => now(),
+            'updated_by_user_id' => $request->user()->id,
+            'updated_at' => now(),
+        ]);
+
+        foreach (array_unique(array_filter([$oldPath, $oldThumb])) as $old) {
+            if ($old !== $source) Storage::disk('public')->delete($old);
+        }
+
+        $this->track($organization, $request, 'production_media.reprocess', ['media_id' => $row->id]);
+
+        return response()->json([
+            'message' => 'Imagem reprocessada e otimizada.',
+            'media' => $this->mediaPayload(DB::table('organization_media')->where('id', $row->id)->first(), true),
+        ]);
+    }
+
+    public function recommendations(Request $request, int $organizationId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        $this->refreshLegacyMetrics($organization);
+
+        $items = $this->activeMediaQuery($organization)
+            ->orderByDesc('cover_score')
+            ->orderBy('position')
+            ->limit(5)
+            ->get()
+            ->map(function ($row) {
+                $payload = $this->mediaPayload($row, true);
+                $payload['recommendation'] = [
+                    'score' => (int) ($row->cover_score ?? 0),
+                    'reasons' => $this->coverReasons($row),
+                ];
+                return $payload;
+            })
+            ->values();
+
+        return response()->json([
+            'message' => $items->isEmpty() ? 'Adicione fotos para receber sugestões.' : 'Sugestões calculadas pela qualidade visual, resolução e enquadramento.',
+            'recommendations' => $items,
+        ]);
+    }
+
+    public function similar(Request $request, int $organizationId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        $this->refreshLegacyMetrics($organization);
+        $rows = $this->activeMediaQuery($organization)
+            ->whereNotNull('perceptual_hash')
+            ->orderBy('position')
+            ->get();
+
+        $pairs = [];
+        for ($left = 0; $left < $rows->count(); $left++) {
+            for ($right = $left + 1; $right < $rows->count(); $right++) {
+                $distance = $this->hashDistance($rows[$left]->perceptual_hash, $rows[$right]->perceptual_hash);
+                if ($distance !== null && $distance <= 8) {
+                    $pairs[] = [
+                        'distance' => $distance,
+                        'similarity' => max(0, 100 - (int) round(($distance / 64) * 100)),
+                        'left' => $this->mediaPayload($rows[$left], true),
+                        'right' => $this->mediaPayload($rows[$right], true),
+                    ];
+                }
+            }
+        }
+
+        usort($pairs, fn ($a, $b) => $a['distance'] <=> $b['distance']);
+
+        return response()->json([
+            'pairs' => array_slice($pairs, 0, 20),
+            'count' => count($pairs),
+        ]);
+    }
+
     public function report(Request $request, string $slug, int $mediaId)
     {
         $data = $request->validate([
