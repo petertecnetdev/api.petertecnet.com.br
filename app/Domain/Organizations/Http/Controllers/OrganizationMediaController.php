@@ -760,6 +760,7 @@ final class OrganizationMediaController extends Controller
             'cover_score' => $this->coverScore($width, $height, $metrics['brightness_score'], $metrics['sharpness_score']),
             'processing_version' => 2,
             'last_processed_at' => now(),
+            'rotation' => 0,
             'updated_by_user_id' => $request->user()->id,
             'updated_at' => now(),
         ]);
