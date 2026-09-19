@@ -195,6 +195,34 @@ final class MerchantPaymentAccountService
         $platformToken = trim((string) config('services.mercadopago.access_token'));
         $platformPublicKey = trim((string) config('services.mercadopago.public_key'));
         $platformConfigured = $this->platformCollectionEnabled() && $platformToken !== '';
+        $connectedAccount = $this->account($organizationId, 'mercadopago', true);
+
+        // Prefer native Mercado Pago split whenever the producer connected an account.
+        // Platform collection is reserved for producers that chose manual Pix payout.
+        if ($connectedAccount && $connectedAccount->access_token) {
+            $metadata = $connectedAccount->metadata ? json_decode($connectedAccount->metadata, true) : [];
+            $merchantPublicKey = trim((string) ($metadata['public_key'] ?? ''));
+            $methods = ['pix'];
+            if ($merchantPublicKey !== '') {
+                $methods[] = 'card';
+            }
+
+            return $this->readinessPayload(
+                available: true,
+                merchantConnected: true,
+                settlementMode: 'automatic_split',
+                publicKey: $merchantPublicKey,
+                methods: $methods,
+                message: $merchantPublicKey !== ''
+                    ? 'Mercado Pago conectado. Os recebimentos usam split automático.'
+                    : 'PIX habilitado. Reconecte o Mercado Pago para atualizar a chave necessária ao cartão.',
+                payoutReady: true,
+                provider: 'mercadopago',
+                fallbackProvider: null,
+                requiresPayerDocument: false,
+                cardMode: 'embedded',
+            );
+        }
 
         if ($platformConfigured) {
             $this->account($organizationId, 'mercadopago', true);
@@ -211,8 +239,8 @@ final class MerchantPaymentAccountService
                 publicKey: $platformPublicKey,
                 methods: $methods,
                 message: $recipientReady
-                    ? 'Pagamentos habilitados pelo gateway de contingência.'
-                    : 'Pagamentos habilitados. Os valores do produtor ficarão acumulados até a conclusão do cadastro de recebimento.',
+                    ? 'Mercado Pago habilitado. O produtor receberá por repasse Pix manual.'
+                    : 'Mercado Pago habilitado. Os valores do produtor ficarão acumulados até a conclusão do cadastro de recebimento.',
                 payoutReady: $recipientReady,
                 provider: 'mercadopago',
                 fallbackProvider: null,

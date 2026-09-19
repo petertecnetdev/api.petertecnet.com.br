@@ -126,7 +126,7 @@ class FinancialPayoutService
             ] : null,
             'balance' => $this->balance($production),
             'payouts' => $history,
-            'payout_provider' => 'asaas',
+            'payout_provider' => (string) config('services.finance.payout_provider', 'manual_pix'),
             'ready_for_sales' => $salesReady,
             'ready_for_payout' => $payoutReady,
             'payout_setup_required' => $platformCollectionReady && ! $payoutReady,
@@ -267,7 +267,7 @@ class FinancialPayoutService
                 'payout_destination_id' => $destination->id,
                 'requested_by_user_id' => $user->id,
                 'reference' => $reference,
-                'provider' => 'asaas',
+                'provider' => (string) config('services.finance.payout_provider', 'manual_pix'),
                 'status' => 'pending',
                 'amount' => $amount,
                 'idempotency_key' => (string) Str::uuid(),
@@ -285,6 +285,14 @@ class FinancialPayoutService
 
             return DB::table('financial_payouts')->find($id);
         });
+
+        if ((string) config('services.finance.payout_provider', 'manual_pix') === 'manual_pix') {
+            return [
+                'message' => 'Solicitação registrada. O repasse será realizado manualmente para a chave Pix cadastrada após conferência financeira.',
+                'payout' => DB::table('financial_payouts')->find($payout->id),
+                'balance' => $this->balance($production),
+            ];
+        }
 
         try {
             $destination = DB::table('financial_payout_destinations')->find($payout->payout_destination_id);

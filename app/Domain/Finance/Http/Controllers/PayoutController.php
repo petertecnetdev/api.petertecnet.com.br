@@ -60,7 +60,9 @@ final class PayoutController extends Controller
         $eligible = (bool) ($overview['ready_for_payout'] ?? false)
             && $amount <= (float) data_get($overview, 'balance.available', 0) + 0.00001;
 
-        if ($eligible) {
+        $manualPix = config('services.finance.payout_provider') === 'manual_pix';
+
+        if ($eligible && ! $manualPix) {
             if (! $this->provider->isConfigured()) {
                 return response()->json([
                     'message' => 'O serviço de repasses Pix ainda não está configurado para operação.',

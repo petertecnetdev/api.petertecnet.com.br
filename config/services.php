@@ -77,9 +77,9 @@ return [
     ],
 
     'finance' => [
-        'payment_primary_provider' => env('PAYMENT_PRIMARY_PROVIDER', 'asaas'),
-        'payment_fallback_provider' => env('PAYMENT_FALLBACK_PROVIDER', 'mercadopago'),
-        'payout_provider' => env('FINANCE_PAYOUT_PROVIDER', 'asaas'),
+        'payment_primary_provider' => env('PAYMENT_PRIMARY_PROVIDER', 'mercadopago'),
+        'payment_fallback_provider' => env('PAYMENT_FALLBACK_PROVIDER', ''),
+        'payout_provider' => env('FINANCE_PAYOUT_PROVIDER', 'manual_pix'),
         'payout_hold_hours' => (int) env('FINANCE_PAYOUT_HOLD_HOURS', 24),
         'payout_reserve_percent' => (float) env('FINANCE_PAYOUT_RESERVE_PERCENT', 10),
         'payout_destination_cooling_hours' => (int) env('FINANCE_PIX_CHANGE_COOLING_HOURS', 24),
