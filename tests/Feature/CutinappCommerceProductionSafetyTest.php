@@ -51,6 +51,75 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('payment_config.payout_setup_required', false);
     }
 
+    public function test_connected_producer_checkout_uses_seller_token_and_application_fee(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', true);
+        config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
+
+        [, $event, $ticket, $productionId] = $this->paidEventFixture('seller-split');
+        $applicationId = Application::query()->where('slug', 'cutinapp')->value('id');
+
+        DB::table('merchant_payment_accounts')->insert([
+            'app_id' => $applicationId,
+            'production_id' => $productionId,
+            'provider' => 'mercadopago',
+            'status' => 'connected',
+            'provider_recipient_id' => 'seller-test-id',
+            'access_token' => Crypt::encryptString('merchant-test-token'),
+            'refresh_token' => null,
+            'token_expires_at' => null,
+            'metadata' => json_encode(['public_key' => 'APP_USR_TEST_PUBLIC_KEY'], JSON_THROW_ON_ERROR),
+            'connected_at' => now(),
+            'verified_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $mercadoPago = Mockery::mock(MercadoPagoService::class);
+        $mercadoPago->shouldReceive('createPayment')
+            ->once()
+            ->withArgs(function (string $token, array $payload, string $idempotencyKey): bool {
+                $this->assertSame('merchant-test-token', $token);
+                $this->assertNotSame('', $idempotencyKey);
+                $this->assertSame('pix', $payload['payment_method_id']);
+                $this->assertSame('automatic_split', $payload['metadata']['settlement_mode']);
+                $this->assertSame(1.6, (float) $payload['application_fee']);
+
+                return true;
+            })
+            ->andReturn([
+                'id' => 908172635,
+                'status' => 'pending',
+                'transaction_amount' => 20.0,
+                'fee_details' => [],
+                'point_of_interaction' => [
+                    'transaction_data' => [
+                        'transaction_id' => 'pix-seller-split',
+                        'qr_code' => '000201-seller-split',
+                        'qr_code_base64' => 'dGVzdA==',
+                    ],
+                ],
+            ]);
+        $this->app->instance(MercadoPagoService::class, $mercadoPago);
+
+        $buyer = $this->user('Comprador Split', 'buyer-seller-split@cutinapp.test');
+        $response = $this->withHeaders($this->headersFor($buyer))
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('payment.provider', 'mercadopago');
+
+        $metadata = json_decode((string) DB::table('commerce_orders')
+            ->where('id', $response->json('order.id'))
+            ->value('metadata'), true);
+
+        $this->assertSame('automatic_split', $metadata['settlement_mode'] ?? null);
+        $this->assertDatabaseMissing('financial_payouts', ['source_id' => $productionId]);
+    }
+
     public function test_paid_sales_use_platform_collection_before_producer_completes_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
