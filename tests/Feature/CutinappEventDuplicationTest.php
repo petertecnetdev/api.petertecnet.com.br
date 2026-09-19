@@ -71,6 +71,7 @@ class CutinappEventDuplicationTest extends TestCase
                     'date' => '2026-09-20',
                 ])
                 ->assertCreated()
+                ->assertJsonPath('event.is_published', true)
                 ->assertJsonPath('copied.tickets', 1);
 
             $copyId = (int) $response->json('event.id');
