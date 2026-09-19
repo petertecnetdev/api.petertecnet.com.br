@@ -2,6 +2,7 @@
 
 use App\Domain\Organizations\Http\Controllers\OrganizationCommunityController;
 use App\Domain\Organizations\Http\Controllers\OrganizationExperienceController;
+use App\Domain\Organizations\Http\Controllers\OrganizationMediaController;
 use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1/apps/{application}')->middleware('app.context')->group(function () {
@@ -17,7 +18,17 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::delete('/organization-community/{postId}', [OrganizationCommunityController::class, 'deletePost'])->whereNumber('postId');
         Route::post('/organization-community/{postId}/like', [OrganizationCommunityController::class, 'like'])->whereNumber('postId')->middleware('throttle:120,1');
         Route::delete('/organization-community/{postId}/like', [OrganizationCommunityController::class, 'unlike'])->whereNumber('postId');
-        Route::post('/organizations/{organizationId}/media', [OrganizationCommunityController::class, 'storeMedia'])->whereNumber('organizationId')->middleware('throttle:20,1');
-        Route::delete('/organizations/{organizationId}/media/{mediaId}', [OrganizationCommunityController::class, 'deleteMedia'])->whereNumber('organizationId')->whereNumber('mediaId');
+        Route::post('/organizations/{organizationId}/media', [OrganizationMediaController::class, 'store'])->whereNumber('organizationId')->middleware('throttle:40,1');
+        Route::patch('/organizations/{organizationId}/media/{mediaId}', [OrganizationMediaController::class, 'update'])->whereNumber('organizationId')->whereNumber('mediaId');
+        Route::post('/organizations/{organizationId}/media/{mediaId}/replace', [OrganizationMediaController::class, 'replace'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:20,1');
+        Route::post('/organizations/{organizationId}/media/{mediaId}/rotate', [OrganizationMediaController::class, 'rotate'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:30,1');
+        Route::patch('/organizations/{organizationId}/media-order', [OrganizationMediaController::class, 'reorder'])->whereNumber('organizationId');
+        Route::post('/organizations/{organizationId}/media-delete', [OrganizationMediaController::class, 'bulkDelete'])->whereNumber('organizationId');
+        Route::post('/organizations/{organizationId}/media-restore', [OrganizationMediaController::class, 'restore'])->whereNumber('organizationId');
+        Route::post('/organizations/{organizationId}/media/{mediaId}/cover', [OrganizationMediaController::class, 'setCover'])->whereNumber('organizationId')->whereNumber('mediaId');
+        Route::delete('/organizations/{organizationId}/media/{mediaId}', [OrganizationMediaController::class, 'delete'])->whereNumber('organizationId')->whereNumber('mediaId');
+        Route::get('/organizations/{organizationId}/media-albums', [OrganizationMediaController::class, 'albums'])->whereNumber('organizationId');
+        Route::post('/organizations/{organizationId}/media-albums', [OrganizationMediaController::class, 'storeAlbum'])->whereNumber('organizationId');
+        Route::delete('/organizations/{organizationId}/media-albums/{albumId}', [OrganizationMediaController::class, 'deleteAlbum'])->whereNumber('organizationId')->whereNumber('albumId');
     });
 });
