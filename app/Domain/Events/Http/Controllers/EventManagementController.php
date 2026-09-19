@@ -145,16 +145,19 @@ final class EventManagementController extends Controller
         if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
         $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
         $assistedSetup=(bool)$request->attributes->get('assisted_producer_setup',false);
+        $event=Event::create($data);
         if($assistedSetup){
             $impersonation=$request->attributes->get('impersonation_session');
-            $data['extra_info']=[
+            $extraInfo=is_array($event->extra_info)?$event->extra_info:[];
+            $event->forceFill(['extra_info'=>[
+                ...$extraInfo,
                 'assisted_producer_setup'=>true,
                 'assisted_producer_setup_at'=>now()->toIso8601String(),
                 'assisted_producer_setup_session_id'=>$impersonation?->id,
                 'agreement_required_for_publish'=>true,
-            ];
+            ]])->saveQuietly();
         }
-        $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
+        if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
         return response()->json([
             'message'=>$assistedSetup
                 ? 'Evento preparado como rascunho em modo assistido. O responsável precisa assinar o termo antes de publicar e vender.'
