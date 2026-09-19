@@ -51,9 +51,6 @@ class EventController extends Controller
 
         $data['slug'] = $this->uniqueSlug($data['slug'] ?? $data['title']);
         $data['image'] = $request->hasFile('image') ? $this->storeImage($request->file('image')) : null;
-        // Cutinapp events are public immediately after creation. The producer
-        // can still unpublish later from event management when necessary.
-        $data['is_published'] = true;
 
         $event = Event::create($data);
         $importedItems = $request->boolean('use_production_items')
