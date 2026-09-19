@@ -51,6 +51,8 @@ class EventController extends Controller
 
         $data['slug'] = $this->uniqueSlug($data['slug'] ?? $data['title']);
         $data['image'] = $request->hasFile('image') ? $this->storeImage($request->file('image')) : null;
+        // Eventos novos entram no catálogo imediatamente; rascunhos não fazem parte do fluxo.
+        $data['is_published'] = true;
 
         $event = Event::create($data);
         $importedItems = $request->boolean('use_production_items')
@@ -64,7 +66,7 @@ class EventController extends Controller
         }
 
         return response()->json([
-            'message' => 'Evento cadastrado com sucesso.',
+            'message' => 'Evento cadastrado e publicado com sucesso.',
             'event' => $event->load(self::PRODUCTION_RELATION),
             'event_items_imported' => $importedItems,
         ], 201);
