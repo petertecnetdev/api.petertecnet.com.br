@@ -143,7 +143,15 @@ final class EventManagementController extends Controller
         if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
         $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
         $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
-        return response()->json(['message'=>'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')],201);
+        $assistedSetup=(bool)$request->attributes->get('assisted_producer_setup',false);
+        return response()->json([
+            'message'=>$assistedSetup
+                ? 'Evento preparado como rascunho em modo assistido. O responsável precisa assinar o termo antes de publicar e vender.'
+                : 'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.',
+            'assisted_setup'=>$assistedSetup,
+            'agreement_required_for_publish'=>$assistedSetup,
+            'event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')
+        ],201);
     }
 
     public function update(Request $request,int $id)
