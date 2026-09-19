@@ -3,6 +3,7 @@
 namespace App\Domain\Organizations\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Models\Employer;
 use App\Models\Interaction;
 use App\Models\Production;
 use App\Services\AppNotificationService;
@@ -951,7 +952,26 @@ final class OrganizationMediaController extends Controller
         $organization = Production::query()->where('app_id', $this->context->id())->findOrFail($id);
         $user = $request->user();
         $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
-        abort_unless($user && ($admin || (int) $organization->user_id === (int) $user->id), 403, 'Você não pode gerenciar esta organização.');
+        $owner = $user && (int) $organization->user_id === (int) $user->id;
+        $mediaManager = false;
+
+        if ($user && ! $owner && ! $admin) {
+            $membership = Employer::query()
+                ->where('establishment_id', $organization->id)
+                ->where('user_id', $user->id)
+                ->first(['id', 'permissions']);
+
+            $permissions = is_array($membership?->permissions) ? $membership->permissions : [];
+            $mediaManager = in_array('media.manage', $permissions, true)
+                || in_array('gallery.manage', $permissions, true);
+        }
+
+        abort_unless(
+            $user && ($admin || $owner || $mediaManager),
+            403,
+            'Você não pode gerenciar a galeria desta organização.'
+        );
+
         return $organization;
     }
 
