@@ -30,7 +30,12 @@ final class OrganizationExperienceService
 
         return [
             'analytics' => $this->analytics($organization, $viewer),
-            'media' => $this->media($organization),
+            'media' => $this->media($organization, false),
+            'gallery' => [
+                'limit' => 40,
+                'recommended_min' => 4,
+                'albums' => $this->albums($organization),
+            ],
             'social_proof' => $this->socialProof($organization),
             'reviews' => $this->reviews($organization),
             'related_productions' => $this->relatedOrganizations($organization),
@@ -60,7 +65,12 @@ final class OrganizationExperienceService
             'organization' => $organization,
             'events' => $events,
             'analytics' => $this->analytics($organization, $user),
-            'media' => $this->media($organization),
+            'media' => $this->media($organization, true),
+            'gallery' => [
+                'limit' => 40,
+                'recommended_min' => 4,
+                'albums' => $this->albums($organization),
+            ],
             'social_proof' => $this->socialProof($organization),
             'reviews' => $this->reviews($organization),
         ];
@@ -296,18 +306,60 @@ final class OrganizationExperienceService
             ->all();
     }
 
-    private function media(Production $organization): array
+    private function media(Production $organization, bool $includeOriginal = false): array
     {
         return DB::table('organization_media')
             ->where('app_id', $this->context->id())
             ->where('organization_id', $organization->id)
+            ->whereNull('deleted_at')
+            ->where('status', 'published')
             ->orderBy('position')
             ->orderBy('id')
             ->get()
+            ->map(function ($row) use ($includeOriginal) {
+                $url = Storage::disk('public')->url($row->path);
+                $payload = [
+                    'id' => (int) $row->id,
+                    'url' => $url,
+                    'thumbnail_url' => $row->thumbnail_path ? Storage::disk('public')->url($row->thumbnail_path) : $url,
+                    'caption' => $row->caption,
+                    'alt_text' => $row->alt_text ?: $row->caption,
+                    'is_featured' => (bool) ($row->is_featured ?? false),
+                    'album_id' => $row->album_id ? (int) $row->album_id : null,
+                    'position' => (int) $row->position,
+                    'focal_x' => (int) ($row->focal_x ?? 50),
+                    'focal_y' => (int) ($row->focal_y ?? 50),
+                    'rotation' => (int) ($row->rotation ?? 0),
+                    'width' => $row->width ? (int) $row->width : null,
+                    'height' => $row->height ? (int) $row->height : null,
+                    'file_size' => $row->file_size ? (int) $row->file_size : null,
+                    'created_at' => $row->created_at,
+                    'updated_at' => $row->updated_at,
+                ];
+
+                if ($includeOriginal) {
+                    $payload['original_url'] = $row->original_path ? Storage::disk('public')->url($row->original_path) : $url;
+                    $payload['original_name'] = $row->original_name;
+                    $payload['mime_type'] = $row->mime_type;
+                }
+
+                return $payload;
+            })
+            ->all();
+    }
+
+    private function albums(Production $organization): array
+    {
+        return DB::table('organization_media_albums')
+            ->where('app_id', $this->context->id())
+            ->where('organization_id', $organization->id)
+            ->orderBy('position')
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug', 'position'])
             ->map(fn ($row) => [
                 'id' => (int) $row->id,
-                'url' => Storage::disk('public')->url($row->path),
-                'caption' => $row->caption,
+                'name' => $row->name,
+                'slug' => $row->slug,
                 'position' => (int) $row->position,
             ])
             ->all();
