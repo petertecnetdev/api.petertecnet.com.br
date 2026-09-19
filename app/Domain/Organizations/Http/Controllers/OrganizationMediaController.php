@@ -183,6 +183,12 @@ final class OrganizationMediaController extends Controller
             'width' => $variants['width'],
             'height' => $variants['height'],
             'checksum' => $checksum,
+            'perceptual_hash' => $variants['perceptual_hash'],
+            'brightness_score' => $variants['brightness_score'],
+            'sharpness_score' => $variants['sharpness_score'],
+            'cover_score' => $variants['cover_score'],
+            'processing_version' => 2,
+            'last_processed_at' => now(),
             'rotation' => 0,
             'updated_by_user_id' => $request->user()->id,
             'updated_at' => now(),
@@ -194,7 +200,12 @@ final class OrganizationMediaController extends Controller
         return response()->json([
             'message' => 'Foto substituída sem perder sua posição e legenda.',
             'media' => $this->mediaPayload(DB::table('organization_media')->where('id', $row->id)->first(), true),
-            'quality_warnings' => $this->qualityWarnings($variants['width'], $variants['height']),
+            'quality_warnings' => $this->qualityWarnings(
+                $variants['width'],
+                $variants['height'],
+                $variants['brightness_score'],
+                $variants['sharpness_score']
+            ),
         ]);
     }
 
@@ -230,6 +241,7 @@ final class OrganizationMediaController extends Controller
             $constraint->upsize();
         })->encode('webp', 82)->save(Storage::disk('public')->path($thumbPath));
 
+        $metrics = $this->analyzeImage(clone $image);
         $oldPath = $row->path;
         $oldThumb = $row->thumbnail_path;
         $rotation = ((int) ($row->rotation ?? 0) + (int) $data['degrees']) % 360;
@@ -238,6 +250,12 @@ final class OrganizationMediaController extends Controller
             'thumbnail_path' => $thumbPath,
             'width' => $width,
             'height' => $height,
+            'perceptual_hash' => $metrics['perceptual_hash'],
+            'brightness_score' => $metrics['brightness_score'],
+            'sharpness_score' => $metrics['sharpness_score'],
+            'cover_score' => $this->coverScore($width, $height, $metrics['brightness_score'], $metrics['sharpness_score']),
+            'processing_version' => 2,
+            'last_processed_at' => now(),
             'rotation' => $rotation,
             'updated_by_user_id' => $request->user()->id,
             'updated_at' => now(),
