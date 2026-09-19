@@ -92,7 +92,7 @@ return [
         'client_secret' => env('MERCADOPAGO_CLIENT_SECRET'),
         'public_key' => env('MERCADOPAGO_PUBLIC_KEY'),
         'access_token' => env('MERCADOPAGO_ACCESS_TOKEN'),
-        'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/payments/mercadopago/oauth/callback'),
+        'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/v1/payments/mercadopago/oauth/callback'),
         'webhook_secret' => env('MERCADOPAGO_WEBHOOK_SECRET'),
     ],
 
