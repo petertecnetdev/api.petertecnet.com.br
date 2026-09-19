@@ -1048,6 +1048,7 @@ final class OrganizationMediaController extends Controller
         $thumbPath = $base.'thumbs/'.$stem.'-'.$uuid.'.webp';
 
         $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'jpg');
+        $extension = preg_replace('/[^a-z0-9]/', '', $extension) ?: 'jpg';
         $originalPath = $base.'originals/'.$stem.'-'.$uuid.'.'.$extension;
 
         $this->ensureDirectory(Storage::disk('public')->path($path));
@@ -1067,10 +1068,214 @@ final class OrganizationMediaController extends Controller
             $constraint->upsize();
         })->encode('webp', 82)->save(Storage::disk('public')->path($thumbPath));
 
-        return compact('path', 'originalPath', 'thumbPath', 'width', 'height') + [
+        $metrics = $this->analyzeImage(clone $image);
+
+        return [
+            'path' => $path,
             'original_path' => $originalPath,
             'thumbnail_path' => $thumbPath,
+            'width' => $width,
+            'height' => $height,
+            'perceptual_hash' => $metrics['perceptual_hash'],
+            'brightness_score' => $metrics['brightness_score'],
+            'sharpness_score' => $metrics['sharpness_score'],
+            'cover_score' => $this->coverScore($width, $height, $metrics['brightness_score'], $metrics['sharpness_score']),
         ];
+    }
+
+    private function saveProcessedVariants(Production $organization, $image, string $suffix): array
+    {
+        $base = 'images/apps/'.$this->context->slug().'/organizations/'.$organization->id.'/gallery/';
+        $stem = Str::slug($organization->name) ?: 'organization';
+        $uuid = (string) Str::uuid();
+        $safeSuffix = preg_replace('/[^a-z0-9-]/', '', strtolower($suffix)) ?: 'processed';
+        $path = $base.$stem.'-'.$safeSuffix.'-'.$uuid.'.webp';
+        $thumbPath = $base.'thumbs/'.$stem.'-'.$safeSuffix.'-'.$uuid.'.webp';
+
+        $this->ensureDirectory(Storage::disk('public')->path($path));
+        $this->ensureDirectory(Storage::disk('public')->path($thumbPath));
+
+        $main = clone $image;
+        $main->resize(2000, 1500, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })->encode('webp', 86)->save(Storage::disk('public')->path($path));
+
+        $thumb = clone $image;
+        $thumb->resize(720, 720, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })->encode('webp', 82)->save(Storage::disk('public')->path($thumbPath));
+
+        return ['path' => $path, 'thumbnail_path' => $thumbPath];
+    }
+
+    private function analyzeImage($image): array
+    {
+        try {
+            $sample = clone $image;
+            $sample->resize(64, 64);
+            $brightnessTotal = 0.0;
+            $sharpnessTotal = 0.0;
+            $brightnessSamples = 0;
+            $sharpnessSamples = 0;
+
+            for ($y = 0; $y < 64; $y += 4) {
+                for ($x = 0; $x < 64; $x += 4) {
+                    $current = $this->pixelLuminance($sample->pickColor($x, $y, 'array'));
+                    $brightnessTotal += $current;
+                    $brightnessSamples++;
+
+                    if ($x + 4 < 64) {
+                        $sharpnessTotal += abs($current - $this->pixelLuminance($sample->pickColor($x + 4, $y, 'array')));
+                        $sharpnessSamples++;
+                    }
+                    if ($y + 4 < 64) {
+                        $sharpnessTotal += abs($current - $this->pixelLuminance($sample->pickColor($x, $y + 4, 'array')));
+                        $sharpnessSamples++;
+                    }
+                }
+            }
+
+            $brightnessRaw = $brightnessSamples > 0 ? $brightnessTotal / $brightnessSamples : 127;
+            $sharpnessRaw = $sharpnessSamples > 0 ? $sharpnessTotal / $sharpnessSamples : 0;
+            $brightnessScore = max(0, min(100, (int) round(($brightnessRaw / 255) * 100)));
+            $sharpnessScore = max(0, min(100, (int) round($sharpnessRaw * 3.5)));
+
+            $hashImage = clone $image;
+            $hashImage->resize(9, 8)->greyscale();
+            $bits = '';
+            for ($y = 0; $y < 8; $y++) {
+                for ($x = 0; $x < 8; $x++) {
+                    $left = $this->pixelLuminance($hashImage->pickColor($x, $y, 'array'));
+                    $right = $this->pixelLuminance($hashImage->pickColor($x + 1, $y, 'array'));
+                    $bits .= $left > $right ? '1' : '0';
+                }
+            }
+
+            $hash = '';
+            for ($index = 0; $index < 64; $index += 4) {
+                $hash .= dechex(bindec(substr($bits, $index, 4)));
+            }
+
+            return [
+                'perceptual_hash' => $hash,
+                'brightness_score' => $brightnessScore,
+                'sharpness_score' => $sharpnessScore,
+            ];
+        } catch (Throwable $e) {
+            report($e);
+            return [
+                'perceptual_hash' => null,
+                'brightness_score' => null,
+                'sharpness_score' => null,
+            ];
+        }
+    }
+
+    private function pixelLuminance($color): float
+    {
+        if (! is_array($color)) {
+            return 127.0;
+        }
+
+        $red = (float) ($color[0] ?? $color['r'] ?? 127);
+        $green = (float) ($color[1] ?? $color['g'] ?? 127);
+        $blue = (float) ($color[2] ?? $color['b'] ?? 127);
+
+        return ($red * 0.2126) + ($green * 0.7152) + ($blue * 0.0722);
+    }
+
+    private function coverScore(int $width, int $height, ?int $brightness, ?int $sharpness): int
+    {
+        $ratio = $height > 0 ? $width / $height : 1;
+        $resolution = min(35, (int) round((min($width, 2200) / 2200) * 20 + (min($height, 1200) / 1200) * 15));
+        $ratioScore = max(0, 35 - (int) round(abs($ratio - 2.2) * 18));
+        $brightnessScore = $brightness === null ? 10 : max(0, 15 - (int) round(abs($brightness - 58) * 0.45));
+        $sharpnessScore = $sharpness === null ? 5 : min(15, (int) round($sharpness * 0.15));
+
+        return max(0, min(100, $resolution + $ratioScore + $brightnessScore + $sharpnessScore));
+    }
+
+    private function coverReasons(object $row): array
+    {
+        $reasons = [];
+        $ratio = (int) ($row->height ?? 0) > 0 ? ((int) $row->width / (int) $row->height) : 1;
+
+        if ((int) ($row->width ?? 0) >= 1400) $reasons[] = 'boa resolução';
+        if ($ratio >= 1.6 && $ratio <= 3.0) $reasons[] = 'formato horizontal favorável';
+        if ((int) ($row->sharpness_score ?? 0) >= 35) $reasons[] = 'bons detalhes';
+        if ((int) ($row->brightness_score ?? 0) >= 28 && (int) ($row->brightness_score ?? 0) <= 82) $reasons[] = 'exposição equilibrada';
+        if (! $reasons) $reasons[] = 'melhor combinação disponível';
+
+        return $reasons;
+    }
+
+    private function findVisuallySimilar(Production $organization, ?string $hash): ?object
+    {
+        if (! $hash) return null;
+
+        $rows = $this->activeMediaQuery($organization)
+            ->whereNotNull('perceptual_hash')
+            ->get(['id', 'perceptual_hash']);
+
+        $best = null;
+        $bestDistance = 65;
+        foreach ($rows as $row) {
+            $distance = $this->hashDistance($hash, $row->perceptual_hash);
+            if ($distance !== null && $distance < $bestDistance) {
+                $bestDistance = $distance;
+                $best = $row;
+            }
+        }
+
+        return $bestDistance <= 8 ? $best : null;
+    }
+
+    private function hashDistance(?string $left, ?string $right): ?int
+    {
+        $left = strtolower(trim((string) $left));
+        $right = strtolower(trim((string) $right));
+        if ($left === '' || $right === '' || strlen($left) !== strlen($right)) return null;
+
+        $distance = 0;
+        for ($index = 0; $index < strlen($left); $index++) {
+            $xor = hexdec($left[$index]) ^ hexdec($right[$index]);
+            $distance += substr_count(decbin($xor), '1');
+        }
+
+        return $distance;
+    }
+
+    private function refreshLegacyMetrics(Production $organization): void
+    {
+        $rows = $this->activeMediaQuery($organization)
+            ->where(function ($query) {
+                $query->whereNull('perceptual_hash')->orWhereNull('cover_score');
+            })
+            ->limit(self::MAX_MEDIA)
+            ->get();
+
+        foreach ($rows as $row) {
+            $source = $row->original_path ?: $row->path;
+            if (! $source || ! Storage::disk('public')->exists($source)) continue;
+
+            try {
+                $image = Image::make(Storage::disk('public')->path($source))->orientate();
+                $metrics = $this->analyzeImage(clone $image);
+                DB::table('organization_media')->where('id', $row->id)->update([
+                    'perceptual_hash' => $metrics['perceptual_hash'],
+                    'brightness_score' => $metrics['brightness_score'],
+                    'sharpness_score' => $metrics['sharpness_score'],
+                    'cover_score' => $this->coverScore($image->width(), $image->height(), $metrics['brightness_score'], $metrics['sharpness_score']),
+                    'processing_version' => 2,
+                    'last_processed_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
     }
 
     private function deleteStoredVariants(object $row): void
@@ -1080,7 +1285,7 @@ final class OrganizationMediaController extends Controller
         }
     }
 
-    private function qualityWarnings(int $width, int $height): array
+    private function qualityWarnings(int $width, int $height, ?int $brightness = null, ?int $sharpness = null): array
     {
         $warnings = [];
         if ($width < 900 || $height < 600) {
@@ -1089,6 +1294,15 @@ final class OrganizationMediaController extends Controller
         $ratio = $height > 0 ? $width / $height : 1;
         if ($ratio > 3.2 || $ratio < .32) {
             $warnings[] = 'O formato é muito estreito e pode exigir recorte na grade.';
+        }
+        if ($brightness !== null && $brightness < 20) {
+            $warnings[] = 'A imagem parece escura; confira se os detalhes principais estão visíveis.';
+        }
+        if ($brightness !== null && $brightness > 92) {
+            $warnings[] = 'A imagem parece muito clara; confira se há áreas estouradas.';
+        }
+        if ($sharpness !== null && $sharpness < 15) {
+            $warnings[] = 'A imagem pode estar desfocada ou com poucos detalhes.';
         }
         return $warnings;
     }
