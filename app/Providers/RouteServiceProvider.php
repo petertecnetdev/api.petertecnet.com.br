@@ -114,22 +114,11 @@ class RouteServiceProvider extends ServiceProvider
             $appKey = $this->rateLimitApplicationKey($request);
             $key = $userId ? 'user:'.$userId : 'ip:'.$request->ip();
 
-            $tooMany = static function (Request $request, array $headers) {
-                $retryAfter = max(1, (int) ($headers['Retry-After'] ?? 60));
-
-                return response()->json([
-                    'message' => 'Aguarde '.$retryAfter.' segundos antes de solicitar outro código. O código mais recente continua válido por 30 minutos.',
-                    'retry_after' => $retryAfter,
-                ], 429, $headers);
-            };
-
             return [
                 Limit::perMinute(1)
-                    ->by('email-verification-resend:minute:'.$key.':'.$appKey)
-                    ->response($tooMany),
+                    ->by('email-verification-resend:minute:'.$key.':'.$appKey),
                 Limit::perHour(5)
-                    ->by('email-verification-resend:hour:'.$key.':'.$appKey)
-                    ->response($tooMany),
+                    ->by('email-verification-resend:hour:'.$key.':'.$appKey),
             ];
         });
 
