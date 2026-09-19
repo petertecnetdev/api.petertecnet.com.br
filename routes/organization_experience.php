@@ -23,6 +23,8 @@ Route::prefix('v1/apps/{application}')->middleware('app.context')->group(functio
         Route::post('/organizations/{organizationId}/media/{mediaId}/replace', [OrganizationMediaController::class, 'replace'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:20,1');
         Route::post('/organizations/{organizationId}/media/{mediaId}/rotate', [OrganizationMediaController::class, 'rotate'])->whereNumber('organizationId')->whereNumber('mediaId')->middleware('throttle:30,1');
         Route::patch('/organizations/{organizationId}/media-order', [OrganizationMediaController::class, 'reorder'])->whereNumber('organizationId');
+        Route::patch('/organizations/{organizationId}/media-bulk', [OrganizationMediaController::class, 'bulkUpdate'])->whereNumber('organizationId');
+        Route::post('/organizations/{organizationId}/media-import-cover', [OrganizationMediaController::class, 'importCover'])->whereNumber('organizationId');
         Route::post('/organizations/{organizationId}/media-delete', [OrganizationMediaController::class, 'bulkDelete'])->whereNumber('organizationId');
         Route::post('/organizations/{organizationId}/media-restore', [OrganizationMediaController::class, 'restore'])->whereNumber('organizationId');
         Route::post('/organizations/{organizationId}/media/{mediaId}/cover', [OrganizationMediaController::class, 'setCover'])->whereNumber('organizationId')->whereNumber('mediaId');
