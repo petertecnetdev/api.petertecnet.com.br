@@ -116,6 +116,9 @@ class CutinappProducerContractRequirementTest extends TestCase
             'title' => 'Evento preparado pelo suporte',
             'description' => 'Rascunho criado em modo assistido sem assinar pelo cliente.',
             'address' => 'Rua Teste, 10',
+            'city_id' => 5208707,
+            'city' => 'Goiânia',
+            'uf' => 'GO',
             'start_date' => now()->addDay()->format('Y-m-d H:i:s'),
             'end_date' => now()->addDay()->addHours(2)->format('Y-m-d H:i:s'),
         ]);
