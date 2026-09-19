@@ -34,6 +34,7 @@ final class ProducerAgreementController extends Controller
             'email_sent_at' => $acceptance?->email_sent_at,
             'signer_name' => $acceptance?->signer_name,
             'signer_document' => $acceptance?->signer_document,
+            'can_sign' => (int) $organization->user_id === (int) $request->user()->id,
             'organization' => $organization->only(['id','name','cnpj','slug']),
         ]]);
     }
@@ -42,6 +43,11 @@ final class ProducerAgreementController extends Controller
     {
         $organization = $this->ownedOrganization($request, $organizationId);
         $user = $request->user();
+        abort_unless(
+            (int) $organization->user_id === (int) $user->id,
+            403,
+            'O termo deve ser assinado pelo responsável da produção autenticado na própria conta.'
+        );
         $data = $request->validate([
             'signer_name' => 'required|string|min:3|max:255',
             'signer_document' => 'required|string|min:5|max:32',
@@ -86,7 +92,9 @@ final class ProducerAgreementController extends Controller
         $organization = $this->ownedOrganization($request, $organizationId);
         $acceptance = $this->acceptance($organization->id);
         abort_unless($acceptance, 404, 'Termo ainda não foi assinado.');
-        abort_unless($this->sendCopy($organization, $request->user()->email, $acceptance), 502, 'Não foi possível enviar a cópia do termo agora.');
+        $ownerEmail = (string) $organization->user()->value('email');
+        abort_unless($ownerEmail !== '', 422, 'A produção não possui um responsável com e-mail válido.');
+        abort_unless($this->sendCopy($organization, $ownerEmail, $acceptance), 502, 'Não foi possível enviar a cópia do termo agora.');
         return response()->json(['message' => 'Cópia do termo enviada para o seu e-mail.']);
     }
 
