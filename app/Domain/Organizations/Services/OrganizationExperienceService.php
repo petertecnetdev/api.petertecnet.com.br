@@ -34,6 +34,7 @@ final class OrganizationExperienceService
             'gallery' => [
                 'limit' => 40,
                 'recommended_min' => 4,
+                'can_manage_media' => false,
                 'albums' => $this->albums($organization),
             ],
             'social_proof' => $this->socialProof($organization),
@@ -69,6 +70,7 @@ final class OrganizationExperienceService
             'gallery' => [
                 'limit' => 40,
                 'recommended_min' => 4,
+                'can_manage_media' => true,
                 'albums' => $this->albums($organization),
             ],
             'social_proof' => $this->socialProof($organization),
@@ -308,15 +310,24 @@ final class OrganizationExperienceService
 
     private function media(Production $organization, bool $includeOriginal = false): array
     {
-        return DB::table('organization_media')
+        $rows = DB::table('organization_media')
             ->where('app_id', $this->context->id())
             ->where('organization_id', $organization->id)
             ->whereNull('deleted_at')
             ->where('status', 'published')
             ->orderBy('position')
             ->orderBy('id')
-            ->get()
-            ->map(function ($row) use ($includeOriginal) {
+            ->get();
+
+        $uploaders = $includeOriginal
+            ? User::query()
+                ->whereIn('id', $rows->pluck('user_id')->filter())
+                ->get(['id', 'first_name', 'last_name'])
+                ->keyBy('id')
+            : collect();
+
+        return $rows
+            ->map(function ($row) use ($includeOriginal, $uploaders) {
                 $url = Storage::disk('public')->url($row->path);
                 $payload = [
                     'id' => (int) $row->id,
@@ -338,9 +349,14 @@ final class OrganizationExperienceService
                 ];
 
                 if ($includeOriginal) {
+                    $uploader = $row->user_id ? $uploaders->get($row->user_id) : null;
                     $payload['original_url'] = $row->original_path ? Storage::disk('public')->url($row->original_path) : $url;
                     $payload['original_name'] = $row->original_name;
                     $payload['mime_type'] = $row->mime_type;
+                    $payload['uploaded_by'] = $uploader ? [
+                        'id' => (int) $uploader->id,
+                        'name' => trim(($uploader->first_name ?? '').' '.($uploader->last_name ?? '')) ?: 'Produtor',
+                    ] : null;
                 }
 
                 return $payload;
