@@ -35,6 +35,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_paid_sales_use_platform_collection_before_producer_completes_payout_setup(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.finance.payment_primary_provider', 'mercadopago');
         config()->set('services.mercadopago.access_token', 'test-payment-token');
@@ -93,6 +94,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_asaas_platform_collection_does_not_block_checkout_when_payout_destination_is_not_ready(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.finance.payment_primary_provider', 'asaas');
         config()->set('services.asaas.api_key', 'test-asaas-key');
@@ -114,6 +116,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('platform.applications.cutinapp.commerce.order_expiration_minutes', 30);
         config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
@@ -200,6 +203,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_catalog_uses_platform_public_key_only_after_verified_pix_recipient(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
         config()->set('services.mercadopago.public_key', '');
@@ -254,6 +258,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
 
     public function test_pix_provider_failure_preserves_order_and_retry_resumes_same_payment_intent(): void
     {
+        config()->set('platform.applications.cutinapp.commerce.require_automatic_split', false);
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
