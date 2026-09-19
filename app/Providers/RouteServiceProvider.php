@@ -109,6 +109,30 @@ class RouteServiceProvider extends ServiceProvider
             ];
         });
 
+        RateLimiter::for('email-verification-resend', function (Request $request) {
+            $userId = $this->rateLimitUserId($request);
+            $appKey = $this->rateLimitApplicationKey($request);
+            $key = $userId ? 'user:'.$userId : 'ip:'.$request->ip();
+
+            $tooMany = static function (Request $request, array $headers) {
+                $retryAfter = max(1, (int) ($headers['Retry-After'] ?? 60));
+
+                return response()->json([
+                    'message' => 'Aguarde '.$retryAfter.' segundos antes de solicitar outro código. O código mais recente continua válido por 30 minutos.',
+                    'retry_after' => $retryAfter,
+                ], 429, $headers);
+            };
+
+            return [
+                Limit::perMinute(1)
+                    ->by('email-verification-resend:minute:'.$key.':'.$appKey)
+                    ->response($tooMany),
+                Limit::perHour(5)
+                    ->by('email-verification-resend:hour:'.$key.':'.$appKey)
+                    ->response($tooMany),
+            ];
+        });
+
         RateLimiter::for('google-login', function (Request $request) {
             $ip = $request->ip();
             $appKey = $this->rateLimitApplicationKey($request);
