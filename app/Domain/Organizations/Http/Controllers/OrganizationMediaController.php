@@ -5,6 +5,7 @@ namespace App\Domain\Organizations\Http\Controllers;
 use App\Http\Controllers\Controller;
 use App\Models\Interaction;
 use App\Models\Production;
+use App\Services\AppNotificationService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
@@ -20,7 +21,10 @@ final class OrganizationMediaController extends Controller
     private const MAX_UPLOAD_KB = 10240;
     private const RESTORE_WINDOW_HOURS = 24;
 
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly AppNotificationService $notifications,
+    ) {}
 
     public function store(Request $request, int $organizationId)
     {
@@ -111,11 +115,12 @@ final class OrganizationMediaController extends Controller
             $this->assertAlbum($organization, $data['album_id']);
         }
 
-        if (! empty($data['is_featured'])) {
-            $this->activeMediaQuery($organization)->where('id', '!=', $row->id)->update([
-                'is_featured' => false,
-                'updated_at' => now(),
-            ]);
+        if (! empty($data['is_featured']) && ! (bool) ($row->is_featured ?? false)) {
+            abort_if(
+                $this->activeMediaQuery($organization)->where('is_featured', true)->count() >= 6,
+                422,
+                'Você pode destacar até 6 fotos na galeria.'
+            );
         }
 
         foreach (['caption', 'alt_text'] as $field) {
@@ -266,12 +271,52 @@ final class OrganizationMediaController extends Controller
         ]);
     }
 
+    public function bulkUpdate(Request $request, int $organizationId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        $data = $request->validate([
+            'media_ids' => 'required|array|min:1|max:'.self::MAX_MEDIA,
+            'media_ids.*' => 'required|integer|min:1|distinct',
+            'album_id' => 'sometimes|nullable|integer|min:1',
+        ]);
+
+        $ids = collect($data['media_ids'])->map(fn ($id) => (int) $id)->values();
+        $rows = $this->activeMediaQuery($organization)->whereIn('id', $ids)->get();
+        abort_unless($rows->count() === $ids->count(), 422, 'Uma ou mais fotos não estão disponíveis.');
+
+        if (array_key_exists('album_id', $data)) {
+            $this->assertAlbum($organization, $data['album_id']);
+        }
+
+        $updates = [
+            'updated_by_user_id' => $request->user()->id,
+            'updated_at' => now(),
+        ];
+        if (array_key_exists('album_id', $data)) {
+            $updates['album_id'] = $data['album_id'];
+        }
+
+        DB::table('organization_media')->whereIn('id', $ids)->update($updates);
+
+        $this->track($organization, $request, 'production_media.bulk_update', [
+            'media_ids' => $ids->all(),
+            'fields' => array_keys($updates),
+        ]);
+
+        return response()->json([
+            'message' => 'Fotos atualizadas.',
+            'media' => $this->activeMediaQuery($organization)->orderBy('position')->orderBy('id')->get()
+                ->map(fn ($row) => $this->mediaPayload($row, true))->values(),
+        ]);
+    }
+
     public function bulkDelete(Request $request, int $organizationId)
     {
         $organization = $this->managedOrganization($request, $organizationId);
         $data = $request->validate([
             'media_ids' => 'required|array|min:1|max:'.self::MAX_MEDIA,
             'media_ids.*' => 'required|integer|min:1|distinct',
+            'reason' => 'nullable|string|max:500',
         ]);
         $ids = collect($data['media_ids'])->map(fn ($id) => (int) $id)->values();
 
@@ -287,10 +332,39 @@ final class OrganizationMediaController extends Controller
         ]);
 
         $this->normalizePositions($organization);
+        $reason = trim((string) ($data['reason'] ?? '')) ?: null;
         $this->track($organization, $request, 'production_media.delete', [
             'media_ids' => $ids->all(),
             'bulk' => $ids->count() > 1,
+            'reason' => $reason,
         ]);
+
+        $actor = $request->user();
+        $isAdminRemoval = $actor
+            && (int) $actor->id !== (int) $organization->user_id
+            && method_exists($actor, 'hasProfile')
+            && $actor->hasProfile('Administrador');
+        if ($isAdminRemoval && $organization->user_id) {
+            try {
+                $this->notifications->sendToUser($this->context->id(), (int) $organization->user_id, [
+                    'type' => 'production_media_moderated',
+                    'title' => 'Foto removida da galeria',
+                    'message' => $reason
+                        ? 'Uma foto de '.$organization->name.' foi removida pela moderação. Motivo: '.$reason
+                        : 'Uma foto de '.$organization->name.' foi removida pela moderação.',
+                    'reference_type' => 'production',
+                    'reference_id' => $organization->id,
+                    'reference_url' => '/production/edit/'.$organization->id.'#production-editor-gallery',
+                    'data' => [
+                        'organization_id' => $organization->id,
+                        'media_ids' => $ids->all(),
+                        'reason' => $reason,
+                    ],
+                ]);
+            } catch (Throwable $e) {
+                report($e);
+            }
+        }
 
         return response()->json([
             'message' => $ids->count() === 1 ? 'Foto removida.' : $ids->count().' fotos removidas.',
@@ -378,6 +452,88 @@ final class OrganizationMediaController extends Controller
             'background' => Storage::disk('public')->url($path),
             'path' => $path,
         ]);
+    }
+
+    public function importCover(Request $request, int $organizationId)
+    {
+        $organization = $this->managedOrganization($request, $organizationId);
+        abort_if($this->activeMediaQuery($organization)->count() >= self::MAX_MEDIA, 422, 'A galeria pode ter até '.self::MAX_MEDIA.' fotos.');
+
+        $source = (string) ($organization->background ?? '');
+        abort_unless($source && ! preg_match('#^https?://#i', $source) && Storage::disk('public')->exists($source), 422, 'A capa atual não está disponível para importar.');
+
+        $absoluteSource = Storage::disk('public')->path($source);
+        $checksum = hash_file('sha256', $absoluteSource);
+        $duplicate = $this->activeMediaQuery($organization)->where('checksum', $checksum)->first();
+        if ($duplicate) {
+            return response()->json([
+                'message' => 'A capa já está presente na galeria.',
+                'media' => $this->mediaPayload($duplicate, true),
+                'duplicate_of' => (int) $duplicate->id,
+            ]);
+        }
+
+        $image = Image::make($absoluteSource)->orientate();
+        $width = $image->width();
+        $height = $image->height();
+        $base = 'images/apps/'.$this->context->slug().'/organizations/'.$organization->id.'/gallery/';
+        $stem = Str::slug($organization->name) ?: 'organization';
+        $uuid = (string) Str::uuid();
+        $path = $base.$stem.'-'.$uuid.'.webp';
+        $thumbPath = $base.'thumbs/'.$stem.'-'.$uuid.'.webp';
+        $originalPath = $base.'originals/'.$stem.'-'.$uuid.'.webp';
+
+        foreach ([$path, $thumbPath, $originalPath] as $target) {
+            $this->ensureDirectory(Storage::disk('public')->path($target));
+        }
+
+        Storage::disk('public')->copy($source, $originalPath);
+
+        $main = clone $image;
+        $main->resize(2000, 1500, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })->encode('webp', 86)->save(Storage::disk('public')->path($path));
+
+        $thumb = clone $image;
+        $thumb->resize(720, 720, function ($constraint) {
+            $constraint->aspectRatio();
+            $constraint->upsize();
+        })->encode('webp', 82)->save(Storage::disk('public')->path($thumbPath));
+
+        $position = (int) ($this->activeMediaQuery($organization)->max('position') ?? -1) + 1;
+        $id = DB::table('organization_media')->insertGetId([
+            'app_id' => $this->context->id(),
+            'organization_id' => $organization->id,
+            'user_id' => $request->user()->id,
+            'path' => $path,
+            'original_path' => $originalPath,
+            'thumbnail_path' => $thumbPath,
+            'caption' => 'Capa da produção',
+            'alt_text' => $organization->name.' - capa da produção',
+            'is_featured' => false,
+            'status' => 'published',
+            'original_name' => basename($source),
+            'mime_type' => 'image/webp',
+            'file_size' => Storage::disk('public')->size($path),
+            'width' => $width,
+            'height' => $height,
+            'checksum' => $checksum,
+            'focal_x' => 50,
+            'focal_y' => 50,
+            'rotation' => 0,
+            'position' => $position,
+            'updated_by_user_id' => $request->user()->id,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->track($organization, $request, 'production_media.import_cover', ['media_id' => $id]);
+
+        return response()->json([
+            'message' => 'Capa adicionada à galeria.',
+            'media' => $this->mediaPayload(DB::table('organization_media')->where('id', $id)->first(), true),
+        ], 201);
     }
 
     public function albums(Request $request, int $organizationId)
