@@ -156,6 +156,57 @@ class OrganizationMediaManagementTest extends TestCase
         $this->assertDatabaseCount('organization_media', 2);
     }
 
+    public function test_authenticated_user_can_report_public_gallery_photo_without_duplicate_open_reports(): void
+    {
+        Storage::fake('public');
+
+        $app = Application::query()->where('slug', 'cutinapp')->firstOrFail();
+        $owner = $this->user('Report Owner', 'report-owner@example.test');
+        $reporter = $this->user('Gallery Reporter', 'gallery-reporter@example.test');
+        $production = $this->production($app, $owner);
+
+        $upload = $this->withHeaders($this->headersFor($owner))
+            ->post('/api/v1/apps/cutinapp/organizations/'.$production->id.'/media', [
+                'photo' => UploadedFile::fake()->image('reported.jpg', 1400, 900),
+                'caption' => 'Foto para análise',
+            ])
+            ->assertCreated();
+
+        $mediaId = (int) $upload->json('media.id');
+        $url = '/api/v1/apps/cutinapp/organizations/public/'.$production->slug.'/media/'.$mediaId.'/report';
+
+        $first = $this->withHeaders($this->headersFor($reporter))
+            ->postJson($url, [
+                'reason' => 'privacy',
+                'details' => 'A imagem expõe informação que deve ser analisada.',
+            ])
+            ->assertCreated()
+            ->assertJsonPath('message', 'Denúncia enviada para análise.');
+
+        $reportId = (int) $first->json('report_id');
+        $this->assertGreaterThan(0, $reportId);
+        $this->assertDatabaseHas('organization_media_reports', [
+            'id' => $reportId,
+            'app_id' => $app->id,
+            'organization_id' => $production->id,
+            'media_id' => $mediaId,
+            'reporter_user_id' => $reporter->id,
+            'reason' => 'privacy',
+            'status' => 'open',
+        ]);
+
+        $this->withHeaders($this->headersFor($reporter))
+            ->postJson($url, [
+                'reason' => 'privacy',
+                'details' => 'Tentativa duplicada.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('report_id', $reportId)
+            ->assertJsonPath('message', 'Sua denúncia desta foto já está em análise.');
+
+        $this->assertDatabaseCount('organization_media_reports', 1);
+    }
+
     private function production(Application $app, User $owner): Production
     {
         return Production::create([
