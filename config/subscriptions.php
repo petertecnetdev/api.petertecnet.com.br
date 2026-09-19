@@ -158,34 +158,6 @@ return [
             ],
         ],
 
-        'kryvion' => [
-            'name' => 'Kryvion',
-            'subscription_enabled' => true,
-            'freemium' => true,
-            'plans' => [
-                [
-                    'code' => 'free',
-                    'name' => 'Grátis',
-                    'price_cents' => 0,
-                    'recommended' => false,
-                    'features' => ['Dashboard básico', 'Análises básicas', 'Radar com acesso limitado'],
-                ],
-                [
-                    'code' => 'premium',
-                    'name' => 'Premium',
-                    'price_cents' => 2990,
-                    'recommended' => true,
-                    'features' => ['Sinais', 'Alertas em tempo real', 'Análises detalhadas', 'Portfólio'],
-                ],
-                [
-                    'code' => 'pro',
-                    'name' => 'Pro',
-                    'price_cents' => 5990,
-                    'recommended' => false,
-                    'features' => ['Tudo do Premium', 'Simulador', 'Guardião de risco', 'Notificações avançadas'],
-                ],
-            ],
-        ],
 
         'locaio' => [
             'name' => 'Locaio',

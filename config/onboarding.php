@@ -17,6 +17,5 @@ return [
         ['contains' => ['rasoio'], 'domain' => 'scheduling'],
         ['contains' => ['payflow'], 'domain' => 'crm'],
         ['contains' => ['locaio'], 'domain' => 'real_estate'],
-        ['contains' => ['kryvion'], 'domain' => 'market'],
     ],
 ];
