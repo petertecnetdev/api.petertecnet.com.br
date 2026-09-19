@@ -536,6 +536,7 @@ final class OrganizationMediaController extends Controller
             $constraint->upsize();
         })->encode('webp', 82)->save(Storage::disk('public')->path($thumbPath));
 
+        $metrics = $this->analyzeImage(clone $image);
         $position = (int) ($this->activeMediaQuery($organization)->max('position') ?? -1) + 1;
         $id = DB::table('organization_media')->insertGetId([
             'app_id' => $this->context->id(),
@@ -554,6 +555,12 @@ final class OrganizationMediaController extends Controller
             'width' => $width,
             'height' => $height,
             'checksum' => $checksum,
+            'perceptual_hash' => $metrics['perceptual_hash'],
+            'brightness_score' => $metrics['brightness_score'],
+            'sharpness_score' => $metrics['sharpness_score'],
+            'cover_score' => $this->coverScore($width, $height, $metrics['brightness_score'], $metrics['sharpness_score']),
+            'processing_version' => 2,
+            'last_processed_at' => now(),
             'focal_x' => 50,
             'focal_y' => 50,
             'rotation' => 0,
@@ -1356,6 +1363,11 @@ final class OrganizationMediaController extends Controller
             'width' => $row->width ? (int) $row->width : null,
             'height' => $row->height ? (int) $row->height : null,
             'file_size' => $row->file_size ? (int) $row->file_size : null,
+            'brightness_score' => isset($row->brightness_score) ? (int) $row->brightness_score : null,
+            'sharpness_score' => isset($row->sharpness_score) ? (int) $row->sharpness_score : null,
+            'cover_score' => isset($row->cover_score) ? (int) $row->cover_score : null,
+            'processing_version' => isset($row->processing_version) ? (int) $row->processing_version : null,
+            'last_processed_at' => $row->last_processed_at ?? null,
             'created_at' => $row->created_at ?? null,
             'updated_at' => $row->updated_at ?? null,
         ];
