@@ -264,7 +264,9 @@ final class CommerceOrderPaymentRetryService
         }
 
         try {
-            $remote = $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
+            $remote = $requiresAutomaticSplit
+                ? $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey, false)
+                : $this->mercadoPago->createPayment($sellerToken, $payload, $idempotencyKey);
         } catch (Throwable $exception) {
             report($exception);
             throw new HttpException(503, 'O provedor de PIX não respondeu. O pedido continua reservado; tente novamente.');
