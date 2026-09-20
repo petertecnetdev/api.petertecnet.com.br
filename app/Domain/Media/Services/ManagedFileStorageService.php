@@ -60,7 +60,7 @@ final class ManagedFileStorageService
             throw new InvalidArgumentException('applicationId must be a positive integer.');
         }
 
-        $safeContext = $this->mediaContext->normalize($context);
+        $safeContext = $this->mediaContext->canonical($context);
         $directory = sprintf('applications/%d/%s', $applicationId, $safeContext);
         $stored = $this->store($file, $directory, $disk);
 
