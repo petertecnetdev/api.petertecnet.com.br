@@ -205,3 +205,14 @@ Schedule::command('artists:remind-pending-invitations --limit=150')
     ->hourly()
     ->withoutOverlapping(20)
     ->onOneServer();
+
+
+Artisan::command('forecasting:resolve-due {--limit=50}', function () {
+    $result=app(\App\Services\ForecastEngineService::class)->markDue((int)$this->option('limit'));
+    foreach($result['forecast_ids'] as $forecastId){
+        \App\Jobs\ProposeForecastResolution::dispatch($forecastId);
+    }
+    $this->line(json_encode($result,JSON_PRETTY_PRINT|JSON_UNESCAPED_UNICODE));
+})->purpose('Move due forecasts to resolving state and enqueue evidence-based proposals');
+
+Schedule::command('forecasting:resolve-due --limit=100')->hourly()->withoutOverlapping(20)->onOneServer();
