@@ -62,11 +62,6 @@ final class MerchantPaymentAccountService
             (int) $organization->user_id
         );
 
-        // Commerce uses Mercado Pago exclusively for now.
-        $primary = 'mercadopago';
-        $fallback = '';
-        $platformCollectionEnabled = $this->platformCollectionEnabled();
-
         $mercadoPago = $this->mercadoPagoReadiness($organizationId, $recipientReady);
         if ($mercadoPago['available']) {
             return $mercadoPago;
