@@ -212,9 +212,11 @@ final class EventCommerceController extends Controller
         }
 
         $platformRate = max(0, min((float) $this->context->option('commerce.platform_fee_percent', 0), 100));
+        $processingRate = $this->buyerProcessingRate($data['payment_method'], (int) ($data['installments'] ?? 1));
+        $processingFixed = $this->buyerProcessingFixedFee($data['payment_method']);
         $expirationMinutes = (int) $this->context->option('commerce.order_expiration_minutes', 30);
 
-        $order = DB::transaction(function () use ($data, $user, $platformRate, $expirationMinutes) {
+        $order = DB::transaction(function () use ($data, $user, $platformRate, $processingRate, $processingFixed, $expirationMinutes) {
             $event = Event::query()
                 ->where('id', $data['event_id'])
                 ->where('app_id', $this->context->id())
@@ -364,12 +366,33 @@ final class EventCommerceController extends Controller
                 $subtotal += $line;
             }
 
+            // O produtor define o valor líquido. Comissão da plataforma e custo estimado
+            // do Mercado Pago são adicionados ao total pago pelo participante.
             $platformFee = round($subtotal * ($platformRate / 100), 2);
+            $baseWithPlatformFee = $subtotal + $platformFee + $processingFixed;
+            $buyerTotal = $processingRate > 0
+                ? round($baseWithPlatformFee / (1 - ($processingRate / 100)), 2)
+                : round($baseWithPlatformFee, 2);
+            $processingFee = max(0, round($buyerTotal - $subtotal - $platformFee, 2));
+
             $order->update([
                 'subtotal' => $subtotal,
                 'platform_fee' => $platformFee,
-                'total' => $subtotal,
-                'producer_net' => max(0, $subtotal - $platformFee),
+                'processor_fee' => $processingFee,
+                'total' => $buyerTotal,
+                'producer_net' => $subtotal,
+                'metadata' => array_merge($order->metadata ?? [], [
+                    'buyer_pays_fees' => true,
+                    'pricing' => [
+                        'base_amount' => $subtotal,
+                        'platform_fee' => $platformFee,
+                        'payment_processing_fee' => $processingFee,
+                        'buyer_total' => $buyerTotal,
+                        'seller_net_amount' => $subtotal,
+                        'processing_rate_percent' => $processingRate,
+                        'processing_fixed_fee' => $processingFixed,
+                    ],
+                ]),
             ]);
 
             if ($subtotal > 0) {
@@ -469,8 +492,9 @@ final class EventCommerceController extends Controller
             return response()->json(['message' => 'Esta forma de pagamento não está disponível para esta organização.'], 422);
         }
 
-        if (($readiness['provider'] ?? null) === 'asaas') {
-            return $this->startAsaasPayment($order, $data, $user, $readiness);
+        if (($readiness['provider'] ?? null) !== 'mercadopago') {
+            $this->cancelOrder($order);
+            return response()->json(['message' => 'Mercado Pago é o único provedor de pagamento habilitado no momento.'], 422);
         }
 
         $account = $this->accounts->account((int) $order->production_id, 'mercadopago', true);
@@ -514,8 +538,12 @@ final class EventCommerceController extends Controller
                 ],
             ];
 
-            if ($usesMerchant && (float) $order->platform_fee > 0) {
-                $payload['application_fee'] = (float) $order->platform_fee;
+            if ($usesMerchant) {
+                // O split retém somente a comissão da plataforma. A tarifa do Mercado Pago
+                // é coberta pelo acréscimo já embutido no transaction_amount do participante.
+                if ((float) $order->platform_fee > 0) {
+                    $payload['application_fee'] = (float) $order->platform_fee;
+                }
             }
 
             if ($data['payment_method'] === 'pix') {
@@ -550,7 +578,12 @@ final class EventCommerceController extends Controller
                 'failed_at' => in_array(($remote['status'] ?? ''), ['rejected','cancelled'], true) ? now() : null,
             ]);
 
-            $order->update(['processor_fee' => $providerFee]);
+            $pricing = (array) data_get($order->metadata, 'pricing', []);
+            $pricing['provider_fee_actual'] = round((float) $providerFee, 2);
+            $pricing['processing_fee_variance'] = round((float) $order->processor_fee - (float) $providerFee, 2);
+            $order->update([
+                'metadata' => array_merge($order->metadata ?? [], ['pricing' => $pricing]),
+            ]);
         } catch (Throwable $e) {
             report($e);
 
@@ -580,6 +613,28 @@ final class EventCommerceController extends Controller
         ], 201);
     }
 
+
+    private function buyerProcessingRate(string $method, int $installments = 1): float
+    {
+        if ($method === 'free') return 0.0;
+
+        if ($method === 'card') {
+            $rates = (array) config('services.mercadopago.buyer_fee.card_installments', []);
+            $installments = max(1, min($installments, 24));
+            $rate = $rates[$installments] ?? $rates[(string) $installments] ?? config('services.mercadopago.buyer_fee.card_percent', 0);
+            return max(0.0, min((float) $rate, 99.0));
+        }
+
+        $rate = config('services.mercadopago.buyer_fee.'.($method === 'boleto' ? 'boleto_percent' : 'pix_percent'), 0);
+        return max(0.0, min((float) $rate, 99.0));
+    }
+
+    private function buyerProcessingFixedFee(string $method): float
+    {
+        if ($method === 'free') return 0.0;
+        $key = $method === 'card' ? 'card_fixed' : ($method === 'boleto' ? 'boleto_fixed' : 'pix_fixed');
+        return max(0.0, (float) config('services.mercadopago.buyer_fee.'.$key, 0));
+    }
 
     private function startAsaasPayment(CommerceOrder $order, array $data, $user, array $readiness)
     {
