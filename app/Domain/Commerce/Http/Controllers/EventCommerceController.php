@@ -158,6 +158,12 @@ final class EventCommerceController extends Controller
             'payer_cpf_cnpj' => 'nullable|string|max:30',
             'payer_name' => 'nullable|string|max:160',
             'payer_email' => 'nullable|email|max:190',
+            'payer_zip_code' => 'nullable|string|max:12',
+            'payer_street_name' => 'nullable|string|max:190',
+            'payer_street_number' => 'nullable|string|max:30',
+            'payer_neighborhood' => 'nullable|string|max:120',
+            'payer_city' => 'nullable|string|max:120',
+            'payer_state' => 'nullable|string|size:2',
         ]);
 
         abort_if(empty($data['tickets']) && empty($data['items']), 422, 'Selecione ao menos um ingresso ou item.');
@@ -202,6 +208,14 @@ final class EventCommerceController extends Controller
                     ?: trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))
                     ?: (string) ($user->name ?? '')
                     ?: (string) ($user->email ?? 'Pagador');
+            } elseif ($data['payment_method'] === 'boleto') {
+                $document = preg_replace('/\D+/', '', (string) ($data['payer_identification_number'] ?? $data['payer_cpf_cnpj'] ?? $user->cpf ?? ''));
+                abort_if(strlen($document) !== 11, 422, 'Informe um CPF válido para gerar o boleto.');
+                foreach (['payer_zip_code','payer_street_name','payer_street_number','payer_neighborhood','payer_city','payer_state'] as $field) {
+                    abort_if(trim((string) ($data[$field] ?? '')) === '', 422, 'Preencha o endereço completo do pagador para gerar o boleto.');
+                }
+                $data['payer_identification_number'] = $document;
+                $data['payer_state'] = mb_strtoupper(trim((string) $data['payer_state']));
             } elseif ($data['payment_method'] === 'card') {
                 $document = preg_replace('/\D+/', '', (string) ($data['payer_identification_number'] ?? ''));
                 abort_if(strlen($document) !== 11, 422, 'Informe um CPF válido para o titular do cartão.');
@@ -519,8 +533,19 @@ final class EventCommerceController extends Controller
             ])]);
             $payer = ['email' => $data['payer_email'] ?? $user->email];
 
-            if ($data['payment_method'] === 'card') {
+            if (in_array($data['payment_method'], ['card', 'boleto'], true)) {
                 $payer['identification'] = ['type' => 'CPF', 'number' => $data['payer_identification_number']];
+            }
+            if ($data['payment_method'] === 'boleto') {
+                $payer['first_name'] = trim((string) ($data['payer_name'] ?? $user->first_name ?? $user->name ?? 'Pagador'));
+                $payer['address'] = [
+                    'zip_code' => preg_replace('/\D+/', '', (string) $data['payer_zip_code']),
+                    'street_name' => trim((string) $data['payer_street_name']),
+                    'street_number' => trim((string) $data['payer_street_number']) ?: 'S/N',
+                    'neighborhood' => trim((string) $data['payer_neighborhood']),
+                    'city' => trim((string) $data['payer_city']),
+                    'federal_unit' => $data['payer_state'],
+                ];
             }
 
             $payload = [
@@ -549,6 +574,9 @@ final class EventCommerceController extends Controller
             if ($data['payment_method'] === 'pix') {
                 $payload['payment_method_id'] = 'pix';
                 $payload['date_of_expiration'] = $order->expires_at->copy()->utc()->format('Y-m-d\TH:i:s.000\Z');
+            } elseif ($data['payment_method'] === 'boleto') {
+                $payload['payment_method_id'] = 'bolbradesco';
+                $payload['date_of_expiration'] = now('America/Sao_Paulo')->addDays(3)->endOfDay()->utc()->format('Y-m-d\TH:i:s.000\Z');
             } else {
                 $payload['token'] = $data['card_token'];
                 $payload['payment_method_id'] = $data['payment_method_id'];
@@ -573,7 +601,7 @@ final class EventCommerceController extends Controller
                 'provider_fee' => $providerFee,
                 'qr_code' => $transaction['qr_code'] ?? null,
                 'qr_code_image' => ! empty($transaction['qr_code_base64']) ? 'data:image/png;base64,'.$transaction['qr_code_base64'] : null,
-                'ticket_url' => $transaction['ticket_url'] ?? null,
+                'ticket_url' => $transaction['ticket_url'] ?? ($remote['transaction_details']['external_resource_url'] ?? null),
                 'provider_payload' => $remote,
                 'failed_at' => in_array(($remote['status'] ?? ''), ['rejected','cancelled'], true) ? now() : null,
             ]);
