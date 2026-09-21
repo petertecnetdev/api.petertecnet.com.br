@@ -32,6 +32,36 @@ class FinancialLedgerServiceTest extends TestCase
         $this->assertSame(2, DB::table('financial_ledger_entries')->where('financial_transaction_id', $first->id)->count());
     }
 
+    public function test_replays_same_idempotency_key_when_nested_audit_metadata_order_differs(): void
+    {
+        $appId = $this->application('ledger-metadata-order');
+        $cash = $this->account($appId, 'platform', 1);
+        $receivable = $this->account($appId, 'beneficiary', 10);
+        $entries = [
+            ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 2200, 'role' => 'gross'],
+            ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 2200, 'role' => 'receivable'],
+        ];
+        $service = app(FinancialLedgerService::class);
+
+        $first = $service->post($appId, 'refund:order:2', $entries, [
+            'type' => 'refund',
+            'metadata' => [
+                'order_id' => 2,
+                'reconciliation' => ['batch' => 'nightly', 'attempt' => 1],
+            ],
+        ]);
+        $second = $service->post($appId, 'refund:order:2', $entries, [
+            'type' => 'refund',
+            'metadata' => [
+                'reconciliation' => ['attempt' => 1, 'batch' => 'nightly'],
+                'order_id' => 2,
+            ],
+        ]);
+
+        $this->assertSame($first->id, $second->id);
+        $this->assertSame(1, DB::table('financial_transactions')->where('application_id', $appId)->count());
+    }
+
     public function test_rejects_same_idempotency_key_for_different_financial_operation(): void
     {
         $appId = $this->application('ledger-idempotency-conflict');
@@ -57,6 +87,29 @@ class FinancialLedgerServiceTest extends TestCase
             $this->assertSame(1, DB::table('financial_transactions')->where('application_id', $appId)->count());
             $this->assertSame(25000, (int) DB::table('financial_ledger_entries')->where('financial_transaction_id', $transaction->id)->sum('amount_cents'));
         }
+    }
+
+    public function test_rejects_same_idempotency_key_for_different_audit_metadata(): void
+    {
+        $appId = $this->application('ledger-metadata-conflict');
+        $cash = $this->account($appId, 'platform', 1);
+        $receivable = $this->account($appId, 'beneficiary', 10);
+        $entries = [
+            ['financial_account_id' => $cash, 'direction' => 'debit', 'amount_cents' => 1000, 'role' => 'gross'],
+            ['financial_account_id' => $receivable, 'direction' => 'credit', 'amount_cents' => 1000, 'role' => 'receivable'],
+        ];
+        $service = app(FinancialLedgerService::class);
+
+        $service->post($appId, 'refund:order:1', $entries, [
+            'type' => 'refund',
+            'metadata' => ['order_id' => 1, 'reason' => 'customer_request'],
+        ]);
+
+        $this->expectException(InvalidArgumentException::class);
+        $service->post($appId, 'refund:order:1', $entries, [
+            'type' => 'refund',
+            'metadata' => ['reason' => 'customer_request', 'order_id' => 2],
+        ]);
     }
 
     public function test_rejects_unbalanced_transaction_without_partial_write(): void
