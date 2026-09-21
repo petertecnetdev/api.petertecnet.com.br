@@ -62,39 +62,17 @@ final class MerchantPaymentAccountService
             (int) $organization->user_id
         );
 
-        $primary = mb_strtolower(trim((string) config('services.finance.payment_primary_provider', 'asaas')));
-        $fallback = mb_strtolower(trim((string) config('services.finance.payment_fallback_provider', 'mercadopago')));
+        // Commerce uses Mercado Pago exclusively for now.
+        $primary = 'mercadopago';
+        $fallback = '';
         $platformCollectionEnabled = $this->platformCollectionEnabled();
-
-        if ($primary === 'asaas' && $platformCollectionEnabled && $this->asaas->isConfigured()) {
-            return $this->readinessPayload(
-                available: true,
-                merchantConnected: false,
-                settlementMode: 'platform_collection',
-                publicKey: '',
-                methods: ['pix', 'card', 'boleto'],
-                message: $recipientReady
-                    ? 'Pagamentos via Asaas habilitados. PIX, cartão e boleto disponíveis.'
-                    : 'Pagamentos via Asaas habilitados. O crédito do produtor ficará no ledger até a conclusão do cadastro de recebimento.',
-                payoutReady: $recipientReady,
-                provider: 'asaas',
-                fallbackProvider: $fallback === 'mercadopago' && $this->mercadoPagoPlatformConfigured()
-                    ? 'mercadopago'
-                    : null,
-                requiresPayerDocument: true,
-                cardMode: 'redirect',
-            );
-        }
 
         $mercadoPago = $this->mercadoPagoReadiness($organizationId, $recipientReady);
         if ($mercadoPago['available']) {
             return $mercadoPago;
         }
 
-        // Se o Asaas estiver configurado mas temporariamente retirado da posição
-        // primária, ainda pode ser utilizado como contingência operacional.
-        if ($fallback === 'asaas' && $platformCollectionEnabled && $this->asaas->isConfigured()) {
-            return $this->readinessPayload(
+        return $this->readinessPayload(
                 available: true,
                 merchantConnected: false,
                 settlementMode: 'platform_collection',
