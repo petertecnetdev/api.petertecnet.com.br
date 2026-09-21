@@ -73,21 +73,6 @@ final class MerchantPaymentAccountService
         }
 
         return $this->readinessPayload(
-                available: true,
-                merchantConnected: false,
-                settlementMode: 'platform_collection',
-                publicKey: '',
-                methods: ['pix', 'card', 'boleto'],
-                message: 'Pagamentos via Asaas disponíveis como contingência.',
-                payoutReady: $recipientReady,
-                provider: 'asaas',
-                fallbackProvider: null,
-                requiresPayerDocument: true,
-                cardMode: 'redirect',
-            );
-        }
-
-        return $this->readinessPayload(
             available: false,
             merchantConnected: false,
             settlementMode: 'sales_disabled',
