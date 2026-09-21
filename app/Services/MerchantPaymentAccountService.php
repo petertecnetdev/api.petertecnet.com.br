@@ -202,7 +202,7 @@ final class MerchantPaymentAccountService
         if ($connectedAccount && $connectedAccount->access_token) {
             $metadata = $connectedAccount->metadata ? json_decode($connectedAccount->metadata, true) : [];
             $merchantPublicKey = trim((string) ($metadata['public_key'] ?? ''));
-            $methods = ['pix'];
+            $methods = ['pix', 'boleto'];
             if ($merchantPublicKey !== '') {
                 $methods[] = 'card';
             }
@@ -227,7 +227,7 @@ final class MerchantPaymentAccountService
         if ($platformConfigured) {
             $this->account($organizationId, 'mercadopago', true);
 
-            $methods = ['pix'];
+            $methods = ['pix', 'boleto'];
             if ($platformPublicKey !== '') {
                 $methods[] = 'card';
             }
