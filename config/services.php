@@ -94,6 +94,20 @@ return [
         'access_token' => env('MERCADOPAGO_ACCESS_TOKEN'),
         'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/payments/mercadopago/oauth/callback'),
         'webhook_secret' => env('MERCADOPAGO_WEBHOOK_SECRET'),
+        'buyer_fee' => [
+            // Taxas contratuais da conta Mercado Pago. O checkout faz gross-up para
+            // preservar o valor líquido definido pelo produtor.
+            'pix_percent' => (float) env('MERCADOPAGO_PIX_FEE_PERCENT', 0),
+            'pix_fixed' => (float) env('MERCADOPAGO_PIX_FEE_FIXED', 0),
+            'boleto_percent' => (float) env('MERCADOPAGO_BOLETO_FEE_PERCENT', 0),
+            'boleto_fixed' => (float) env('MERCADOPAGO_BOLETO_FEE_FIXED', 0),
+            'card_percent' => (float) env('MERCADOPAGO_CARD_FEE_PERCENT', 0),
+            'card_fixed' => (float) env('MERCADOPAGO_CARD_FEE_FIXED', 0),
+            'card_installments' => array_filter(array_map(
+                static fn ($value) => is_numeric($value) ? (float) $value : null,
+                explode(',', (string) env('MERCADOPAGO_CARD_INSTALLMENT_RATES', ''))
+            ), static fn ($value) => $value !== null),
+        ],
     ],
 
     'whatsapp' => [
