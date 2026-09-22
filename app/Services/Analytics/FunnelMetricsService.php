@@ -3,6 +3,7 @@
 namespace App\Services\Analytics;
 
 use App\Models\Interaction;
+use App\Models\Order;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 
@@ -60,7 +61,10 @@ class FunnelMetricsService
                 'ativacao' => 'sessão única com activation/first_value',
                 'transacao' => 'sessão única com purchase/order_created/booking_created/checkout_complete',
                 'recorrencia' => 'usuários autenticados com mais de uma transação no período',
-                'deduplication' => 'app_id + período + session_key nas etapas; user_id na recorrência',
+                'paid_order' => 'pedido da aplicação no período com payment_status=paid',
+                'gmv' => 'soma de total_price dos pedidos pagos no período',
+                'aov' => 'GMV dividido pela quantidade de pedidos pagos',
+                'deduplication' => 'app_id + período + session_key nas etapas; user_id na recorrência; order id nos agregados financeiros',
             ],
             'funnel' => [
                 'stages' => $stages,
@@ -71,7 +75,25 @@ class FunnelMetricsService
                     'recorrencia_from_transacao' => $this->rate($stages['recorrencia'], $stages['transacao']),
                 ],
             ],
+            'revenue' => $this->revenue($appId, $from, $to),
             'event_totals' => $events,
+        ];
+    }
+
+    private function revenue(int $appId, Carbon $from, Carbon $to): array
+    {
+        $paid = Order::query()
+            ->where('app_id', $appId)
+            ->where('payment_status', 'paid')
+            ->whereBetween(DB::raw('COALESCE(order_datetime, created_at)'), [$from, $to]);
+
+        $paidOrders = (clone $paid)->count();
+        $gmv = (float) ((clone $paid)->sum('total_price') ?? 0);
+
+        return [
+            'paid_orders' => $paidOrders,
+            'gmv' => round($gmv, 2),
+            'aov' => $paidOrders > 0 ? round($gmv / $paidOrders, 2) : 0.0,
         ];
     }
 
