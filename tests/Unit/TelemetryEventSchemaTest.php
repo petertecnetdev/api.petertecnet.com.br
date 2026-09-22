@@ -39,4 +39,20 @@ class TelemetryEventSchemaTest extends TestCase
         $this->assertSame('mobile', $event['device']);
         $this->assertSame('failed', $event['result']);
     }
+
+    public function test_result_aliases_are_canonicalized_and_invalid_duration_is_dropped(): void
+    {
+        $event = TelemetryEventSchema::normalize([
+            'type' => 'checkout',
+            'result' => 'canceled',
+            'duration_ms' => 86400001,
+            'route' => '  /checkout  ',
+            'device' => '  mobile  ',
+        ]);
+
+        $this->assertSame('cancelled', $event['result']);
+        $this->assertNull($event['duration_ms']);
+        $this->assertSame('/checkout', $event['route']);
+        $this->assertSame('mobile', $event['device']);
+    }
 }
