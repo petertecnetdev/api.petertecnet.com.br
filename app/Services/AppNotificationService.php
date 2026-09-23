@@ -35,7 +35,22 @@ class AppNotificationService
             'data' => $payload['data'] ?? null,
         ]);
 
-        event(new AppNotificationCreated($notification));
+        try {
+            event(new AppNotificationCreated($notification));
+        } catch (\Throwable $e) {
+            // Realtime is a delivery enhancement, never part of the business
+            // transaction. A Reverb/Pusher outage must not roll back actions
+            // such as event duplication, ticket creation or checkout.
+            Log::warning('Realtime broadcast failed; notification persisted.', [
+                'operation' => 'app-notification',
+                'notification_id' => $notification->id,
+                'app_id' => $notification->app_id,
+                'user_id' => $notification->user_id,
+                'type' => $notification->type,
+                'exception' => $e::class,
+                'message' => $e->getMessage(),
+            ]);
+        }
 
         if (($payload['send_email'] ?? true) !== false) {
             $this->sendNotificationEmail($notification);
