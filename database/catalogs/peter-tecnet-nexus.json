@@ -1,0 +1,779 @@
+{
+  "version": 1,
+  "application_slug": "nexus",
+  "owner_email": "petertecnet@gmail.com",
+  "establishment_slug": "peter-tecnet",
+  "make_primary": true,
+  "items": [
+    {
+      "name": "Desenvolvimento de Sistemas e Plataformas",
+      "slug": "desenvolvimento-de-sistemas-e-plataformas",
+      "type": "service",
+      "category": "Software & Plataformas",
+      "subcategory": "Sistemas Web",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 8000,
+      "is_featured": true,
+      "sort_order": 10,
+      "short_description": "Sistemas e plataformas web sob medida para digitalizar operações, centralizar dados e transformar processos em software.",
+      "description": "Projetamos e desenvolvemos sistemas web completos para operações que precisam sair de planilhas, mensagens e ferramentas desconectadas. A solução nasce do processo real da empresa e evolui com arquitetura preparada para integrações, automações, métricas e novos módulos.",
+      "tags": [
+        "sistemas web",
+        "plataformas",
+        "software sob medida",
+        "dashboard",
+        "gestão"
+      ],
+      "catalog_profile": {
+        "headline": "Transforme processos reais do seu negócio em uma plataforma que mede, automatiza e escala a operação.",
+        "problem": "Processos espalhados entre planilhas, WhatsApp, controles manuais e ferramentas isoladas aumentam retrabalho, erros e dificultam enxergar o que realmente acontece na operação.",
+        "benefits": [
+          "Centralização de dados e regras de negócio",
+          "Redução de tarefas repetitivas e retrabalho",
+          "Indicadores operacionais em tempo real",
+          "Base preparada para novas integrações e módulos"
+        ],
+        "deliverables": [
+          "Diagnóstico funcional e mapa do processo",
+          "Arquitetura e experiência da plataforma",
+          "Desenvolvimento web responsivo",
+          "Painéis, permissões e automações essenciais",
+          "Documentação e preparação para evolução"
+        ],
+        "audience": [
+          "Empresas com processos manuais ou fragmentados",
+          "Operações que cresceram além de planilhas",
+          "Negócios que precisam integrar vendas, atendimento, pagamentos ou gestão"
+        ],
+        "use_cases": [
+          "Portal operacional para equipes",
+          "Sistema de pedidos e atendimento",
+          "Painel de gestão e indicadores",
+          "Plataforma SaaS ou produto digital"
+        ],
+        "process": [
+          "Diagnóstico do processo e objetivos",
+          "Definição do MVP e arquitetura",
+          "Prototipação das jornadas essenciais",
+          "Desenvolvimento por entregas incrementais",
+          "Validação, publicação e evolução"
+        ],
+        "technologies": [
+          "React",
+          "Laravel",
+          "APIs REST",
+          "MariaDB",
+          "PWA",
+          "Observabilidade"
+        ],
+        "proof_points": [
+          "A Peter Tecnet mantém um ecossistema próprio de aplicações integradas por API central.",
+          "Arquitetura pensada para reutilização, segurança, telemetria e evolução contínua."
+        ],
+        "portfolio": [
+          {
+            "title": "Nexus",
+            "description": "Catálogos, empresas, itens, pedidos e comércio digital integrados.",
+            "url": "https://nexus.petertecnet.com.br"
+          },
+          {
+            "title": "Admin Center",
+            "description": "Administração central do ecossistema e das operações.",
+            "url": "https://admincenter.petertecnet.com.br"
+          }
+        ],
+        "faq": [
+          {
+            "question": "Preciso ter o sistema todo definido?",
+            "answer": "Não. O trabalho pode começar pelo problema e pelo processo atual; o escopo do MVP é definido durante o diagnóstico."
+          },
+          {
+            "question": "O sistema pode crescer depois?",
+            "answer": "Sim. A arquitetura é planejada para receber módulos, integrações e automações conforme a operação evolui."
+          }
+        ],
+        "cta_label": "Falar sobre meu projeto",
+        "duration_text": "MVPs e evoluções por etapas"
+      }
+    },
+    {
+      "name": "Aplicativos e PWAs",
+      "slug": "aplicativos-e-pwas",
+      "type": "service",
+      "category": "Aplicativos",
+      "subcategory": "Mobile & PWA",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 12000,
+      "is_featured": true,
+      "sort_order": 20,
+      "short_description": "Aplicativos e PWAs para levar serviços, vendas, agendamentos, notificações e relacionamento diretamente ao celular.",
+      "description": "Criamos experiências mobile integradas ao seu negócio, com foco em uso simples, desempenho e integração com a operação. Quando a estratégia pede velocidade de distribuição, PWAs instaláveis reduzem atrito e evitam depender exclusivamente de lojas de aplicativos.",
+      "tags": [
+        "aplicativo",
+        "pwa",
+        "mobile",
+        "notificações",
+        "instalável"
+      ],
+      "catalog_profile": {
+        "problem": "Clientes e equipes precisam acessar serviços pelo celular, mas a experiência atual depende de navegador, mensagens ou sistemas que não foram desenhados para uso mobile.",
+        "benefits": [
+          "Acesso rápido pelo celular",
+          "Experiência responsiva e instalável",
+          "Integração com login, pagamentos e notificações",
+          "Evolução compartilhada com a plataforma web"
+        ],
+        "deliverables": [
+          "Jornadas mobile e protótipo",
+          "Aplicação responsiva/PWA",
+          "Instalação, ícones e manifest",
+          "Integrações com a API e autenticação",
+          "Métricas de uso e eventos essenciais"
+        ],
+        "audience": [
+          "Empresas que querem oferecer autosserviço ao cliente",
+          "Operações com equipes externas",
+          "Produtos digitais que precisam de presença mobile"
+        ],
+        "use_cases": [
+          "Agendamentos",
+          "Pedidos e compras",
+          "Programas de relacionamento",
+          "Portais de serviços",
+          "Aplicações internas"
+        ],
+        "process": [
+          "Mapear jornadas mobile",
+          "Priorizar recursos do MVP",
+          "Construir interface e integrações",
+          "Testar em dispositivos e redes reais",
+          "Publicar e acompanhar uso"
+        ],
+        "technologies": [
+          "React",
+          "PWA",
+          "Capacitor quando necessário",
+          "Push notifications",
+          "Google OAuth"
+        ],
+        "proof_points": [
+          "Diversas aplicações do ecossistema Peter Tecnet já operam como PWAs instaláveis."
+        ],
+        "faq": [
+          {
+            "question": "Precisa estar na Play Store ou App Store?",
+            "answer": "Nem sempre. Dependendo do produto, uma PWA instalável pode reduzir custo, tempo e fricção de distribuição."
+          }
+        ],
+        "cta_label": "Planejar meu aplicativo",
+        "duration_text": "Entrega incremental"
+      }
+    },
+    {
+      "name": "Desenvolvimento de APIs e Back-end",
+      "slug": "desenvolvimento-de-apis-e-backend",
+      "type": "service",
+      "category": "APIs & Integrações",
+      "subcategory": "APIs e Back-end",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 7000,
+      "is_featured": true,
+      "sort_order": 30,
+      "short_description": "APIs seguras e reutilizáveis para conectar aplicativos, sistemas, dados, pagamentos e novas experiências digitais.",
+      "description": "Desenvolvemos back-ends e APIs preparados para centralizar regras de negócio e permitir que diferentes aplicações compartilhem dados e recursos com segurança, observabilidade e controle de acesso.",
+      "tags": [
+        "api",
+        "backend",
+        "laravel",
+        "integração",
+        "autenticação"
+      ],
+      "catalog_profile": {
+        "problem": "Sistemas isolados duplicam dados e obrigam pessoas a transferir informações manualmente entre ferramentas.",
+        "benefits": [
+          "Fonte única de regras e dados",
+          "Integrações consistentes",
+          "Autenticação e autorização centralizadas",
+          "Base reutilizável para novos canais"
+        ],
+        "deliverables": [
+          "Contrato de API e arquitetura",
+          "Endpoints e validações",
+          "Autenticação e autorização",
+          "Documentação técnica",
+          "Logs, telemetria e tratamento de erros"
+        ],
+        "audience": [
+          "Empresas integrando sistemas internos e externos",
+          "Produtos com web, mobile e painéis administrativos",
+          "Negócios que precisam disponibilizar dados a parceiros"
+        ],
+        "use_cases": [
+          "API de pedidos",
+          "API de clientes e CRM",
+          "Integração de pagamentos",
+          "Back-end multiaplicação"
+        ],
+        "process": [
+          "Mapear dados e operações",
+          "Definir contratos e permissões",
+          "Implementar e testar",
+          "Documentar e integrar",
+          "Monitorar e evoluir"
+        ],
+        "technologies": [
+          "Laravel",
+          "REST",
+          "OAuth/JWT",
+          "MariaDB",
+          "Redis",
+          "Webhooks"
+        ],
+        "proof_points": [
+          "A API central da Peter Tecnet atende múltiplas aplicações e domínios do ecossistema."
+        ],
+        "faq": [
+          {
+            "question": "Vocês integram uma API já existente?",
+            "answer": "Sim. Podemos criar uma API nova ou integrar e organizar serviços existentes."
+          }
+        ],
+        "cta_label": "Avaliar minha integração"
+      }
+    },
+    {
+      "name": "Integração de Sistemas e APIs",
+      "slug": "integracao-de-sistemas-e-apis",
+      "type": "service",
+      "category": "APIs & Integrações",
+      "subcategory": "Integrações",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 4500,
+      "is_featured": false,
+      "sort_order": 40,
+      "short_description": "Conectamos ferramentas e plataformas para sincronizar dados e eliminar digitação duplicada entre sistemas.",
+      "description": "Integramos APIs, ERPs, CRMs, pagamentos, plataformas de atendimento e sistemas próprios para automatizar troca de dados e reduzir tarefas manuais.",
+      "tags": [
+        "integração",
+        "webhook",
+        "erp",
+        "crm",
+        "pagamentos"
+      ],
+      "catalog_profile": {
+        "problem": "A equipe copia dados entre sistemas, confere informações manualmente e perde tempo corrigindo divergências.",
+        "benefits": [
+          "Menos digitação duplicada",
+          "Dados sincronizados",
+          "Redução de erros manuais",
+          "Processos rastreáveis"
+        ],
+        "deliverables": [
+          "Mapeamento origem/destino",
+          "Integração e autenticação",
+          "Webhooks ou sincronização programada",
+          "Logs e alertas de falha",
+          "Documentação operacional"
+        ],
+        "audience": [
+          "Empresas usando várias ferramentas desconectadas",
+          "Operações com alto volume de lançamentos repetitivos"
+        ],
+        "use_cases": [
+          "CRM ↔ ERP",
+          "Site ↔ sistema interno",
+          "Pagamento ↔ pedido",
+          "Planilha ↔ API"
+        ],
+        "process": [
+          "Mapear fluxo atual",
+          "Validar APIs e credenciais",
+          "Implementar integração",
+          "Testar falhas e reprocessamento",
+          "Monitorar"
+        ],
+        "technologies": [
+          "REST",
+          "Webhooks",
+          "Filas",
+          "ETL leve",
+          "OAuth"
+        ],
+        "cta_label": "Conectar meus sistemas"
+      }
+    },
+    {
+      "name": "Automação de Processos com IA",
+      "slug": "automacao-de-processos-com-ia",
+      "type": "service",
+      "category": "Automação & IA",
+      "subcategory": "Processos Empresariais",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 3500,
+      "is_featured": true,
+      "sort_order": 50,
+      "short_description": "Automação de tarefas repetitivas combinando regras de negócio, integrações e inteligência artificial onde ela realmente agrega valor.",
+      "description": "Transformamos rotinas manuais em fluxos automáticos, com validações, integrações, notificações e agentes de IA quando o processo exige classificação, geração, análise ou apoio à decisão.",
+      "tags": [
+        "automação",
+        "ia",
+        "agentes",
+        "processos",
+        "produtividade"
+      ],
+      "catalog_profile": {
+        "problem": "Pessoas gastam horas repetindo tarefas previsíveis, movendo informações e executando rotinas que poderiam acontecer automaticamente.",
+        "benefits": [
+          "Horas de trabalho devolvidas à equipe",
+          "Execução padronizada",
+          "Menos erros operacionais",
+          "Escala sem aumentar a mesma proporção de trabalho manual"
+        ],
+        "deliverables": [
+          "Mapeamento das tarefas automatizáveis",
+          "Fluxo automatizado",
+          "Integrações necessárias",
+          "Logs e mecanismos de recuperação",
+          "Métricas de tarefas e tempo economizado"
+        ],
+        "audience": [
+          "Equipes administrativas",
+          "Operações de atendimento",
+          "Times comerciais",
+          "Empresas com rotinas digitais repetitivas"
+        ],
+        "use_cases": [
+          "Classificação e encaminhamento de solicitações",
+          "Geração de documentos e respostas",
+          "Conciliação e atualização de dados",
+          "Alertas e rotinas programadas"
+        ],
+        "process": [
+          "Medir processo atual",
+          "Escolher automações de maior retorno",
+          "Construir fluxo seguro",
+          "Validar exceções",
+          "Medir ganho e expandir"
+        ],
+        "technologies": [
+          "APIs",
+          "Filas",
+          "IA generativa",
+          "Automations",
+          "Webhooks"
+        ],
+        "faq": [
+          {
+            "question": "IA é usada em tudo?",
+            "answer": "Não. Regras determinísticas são preferidas quando resolvem melhor; IA entra apenas onde interpretação ou geração traz vantagem real."
+          }
+        ],
+        "cta_label": "Encontrar o que automatizar"
+      }
+    },
+    {
+      "name": "Software Sob Medida",
+      "slug": "software-sob-medida",
+      "type": "service",
+      "category": "Software & Plataformas",
+      "subcategory": "Projetos Personalizados",
+      "pricing_model": "quote",
+      "price": 0,
+      "is_featured": false,
+      "sort_order": 60,
+      "short_description": "Soluções digitais desenhadas para necessidades específicas que ferramentas prontas não atendem bem.",
+      "description": "Quando o diferencial está no processo, produto ou modelo de negócio, construímos a solução ao redor dessa necessidade sem forçar sua operação a caber nas limitações de um software genérico.",
+      "tags": [
+        "software sob medida",
+        "mvp",
+        "produto digital",
+        "custom"
+      ],
+      "catalog_profile": {
+        "problem": "Ferramentas prontas resolvem parte do problema, mas criam adaptações, planilhas paralelas e etapas manuais nas partes mais importantes da operação.",
+        "benefits": [
+          "Software alinhado ao processo real",
+          "MVP para validar antes de ampliar investimento",
+          "Controle sobre roadmap e integrações",
+          "Evolução conforme o negócio aprende"
+        ],
+        "deliverables": [
+          "Descoberta e recorte do MVP",
+          "Protótipo das jornadas críticas",
+          "Software funcional",
+          "Métricas e telemetria",
+          "Plano de evolução"
+        ],
+        "audience": [
+          "Startups validando produto",
+          "Empresas com processo proprietário",
+          "Negócios criando um novo canal digital"
+        ],
+        "use_cases": [
+          "MVP SaaS",
+          "Portal de clientes",
+          "Ferramenta operacional proprietária",
+          "Novo produto digital"
+        ],
+        "process": [
+          "Descoberta",
+          "MVP",
+          "Construção",
+          "Validação com usuários",
+          "Evolução"
+        ],
+        "cta_label": "Validar minha ideia"
+      }
+    },
+    {
+      "name": "Modernização e Evolução de Sistemas",
+      "slug": "modernizacao-e-evolucao-de-sistemas",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "Modernização",
+      "pricing_model": "quote",
+      "price": 0,
+      "is_featured": false,
+      "sort_order": 70,
+      "short_description": "Modernização de sistemas existentes com foco em arquitetura, desempenho, segurança, UX e capacidade de continuar evoluindo.",
+      "description": "Avaliamos o que pode ser preservado e modernizamos por etapas para reduzir risco: interface, arquitetura, dependências, APIs, banco, observabilidade e fluxo de entrega.",
+      "tags": [
+        "modernização",
+        "legado",
+        "performance",
+        "segurança",
+        "refatoração"
+      ],
+      "catalog_profile": {
+        "problem": "O sistema ainda é importante para o negócio, mas ficou lento para evoluir, difícil de manter ou incompatível com novas integrações.",
+        "benefits": [
+          "Preservação do que ainda funciona",
+          "Menor risco que uma reescrita cega",
+          "Melhor desempenho e manutenção",
+          "Base para novas funcionalidades"
+        ],
+        "deliverables": [
+          "Diagnóstico técnico",
+          "Mapa de riscos e prioridades",
+          "Plano incremental de modernização",
+          "Implementação por etapas",
+          "Métricas antes/depois"
+        ],
+        "audience": [
+          "Empresas dependentes de sistemas legados",
+          "Produtos com dívida técnica bloqueando evolução"
+        ],
+        "use_cases": [
+          "Atualização de stack",
+          "Refatoração de arquitetura",
+          "Migração de APIs",
+          "Redesign de interface"
+        ],
+        "process": [
+          "Auditoria",
+          "Priorização",
+          "Estabilização",
+          "Modernização incremental",
+          "Medição"
+        ],
+        "cta_label": "Diagnosticar meu sistema"
+      }
+    },
+    {
+      "name": "Arquitetura de Ecossistemas Digitais",
+      "slug": "arquitetura-de-ecossistemas-digitais",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "Arquitetura",
+      "pricing_model": "quote",
+      "price": 0,
+      "is_featured": false,
+      "sort_order": 80,
+      "short_description": "Arquitetura para empresas que precisam conectar múltiplas aplicações, APIs, dados, autenticação e serviços sem criar novos silos.",
+      "description": "Projetamos uma base sustentável para que diferentes produtos e operações compartilhem capacidades comuns, mantendo isolamento de contexto, segurança e possibilidade de evolução independente.",
+      "tags": [
+        "arquitetura",
+        "ecossistema",
+        "multiapp",
+        "sso",
+        "plataforma"
+      ],
+      "catalog_profile": {
+        "problem": "Cada novo aplicativo recria usuários, pagamentos, dados e regras, aumentando custo e inconsistência.",
+        "benefits": [
+          "Reaproveitamento de capacidades comuns",
+          "Menos duplicação de código e dados",
+          "Governança entre aplicações",
+          "Escala tecnológica sustentável"
+        ],
+        "deliverables": [
+          "Mapa do ecossistema",
+          "Domínios e contratos",
+          "Estratégia de identidade e contexto",
+          "Arquitetura de dados e integrações",
+          "Roadmap técnico"
+        ],
+        "audience": [
+          "Empresas com múltiplos produtos digitais",
+          "Grupos com sistemas que precisam compartilhar dados e identidade"
+        ],
+        "use_cases": [
+          "SSO entre aplicações",
+          "API central multiaplicação",
+          "Administração central",
+          "Serviços compartilhados"
+        ],
+        "process": [
+          "Inventário",
+          "Definição de domínios",
+          "Desenho de contratos",
+          "Plano de migração",
+          "Implantação incremental"
+        ],
+        "technologies": [
+          "SSO",
+          "APIs",
+          "RBAC",
+          "Eventos",
+          "Observabilidade"
+        ],
+        "proof_points": [
+          "O próprio ecossistema Peter Tecnet aplica contexto por aplicação e recursos compartilhados."
+        ],
+        "cta_label": "Planejar meu ecossistema"
+      }
+    },
+    {
+      "name": "UI/UX para Produtos Digitais",
+      "slug": "ui-ux-para-produtos-digitais",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "UI/UX",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 3500,
+      "is_featured": false,
+      "sort_order": 90,
+      "short_description": "Redesign de interfaces e jornadas para tornar sistemas complexos mais claros, rápidos e fáceis de usar.",
+      "description": "Reorganizamos informação, fluxos e componentes para reduzir atrito sem tratar UI como maquiagem. O objetivo é melhorar conclusão de tarefas, clareza e consistência do produto.",
+      "tags": [
+        "ui",
+        "ux",
+        "produto digital",
+        "design system",
+        "redesign"
+      ],
+      "catalog_profile": {
+        "problem": "O sistema funciona, mas usuários se perdem, precisam de treinamento excessivo ou gastam cliques demais para concluir tarefas.",
+        "benefits": [
+          "Jornadas mais curtas",
+          "Interface consistente",
+          "Menos erros de uso",
+          "Melhor experiência em desktop e mobile"
+        ],
+        "deliverables": [
+          "Auditoria de jornadas",
+          "Arquitetura de informação",
+          "Protótipos e componentes",
+          "Implementação de interface",
+          "Validação responsiva e acessibilidade"
+        ],
+        "audience": [
+          "Sistemas administrativos",
+          "SaaS",
+          "Aplicativos e portais"
+        ],
+        "use_cases": [
+          "Redesign de dashboard",
+          "Simplificação de cadastro",
+          "Design system",
+          "Experiência mobile"
+        ],
+        "process": [
+          "Auditar",
+          "Priorizar atritos",
+          "Prototipar",
+          "Implementar",
+          "Medir"
+        ],
+        "cta_label": "Melhorar meu produto"
+      }
+    },
+    {
+      "name": "Landing Pages e Sites de Conversão",
+      "slug": "landing-pages-e-sites-de-conversao",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "Web & Conversão",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 2500,
+      "is_featured": true,
+      "sort_order": 100,
+      "short_description": "Sites e landing pages rápidos, mensuráveis e preparados para transformar tráfego em contato, orçamento, cadastro ou venda.",
+      "description": "Construímos páginas com proposta clara, estrutura de conversão, SEO técnico e instrumentação para que a empresa saiba o que gera interesse e oportunidades.",
+      "tags": [
+        "landing page",
+        "site",
+        "seo",
+        "conversão",
+        "leads"
+      ],
+      "catalog_profile": {
+        "problem": "A empresa está online, mas o site não conduz o visitante para uma ação nem mostra quais páginas geram resultado.",
+        "benefits": [
+          "Mensagem e CTA claros",
+          "SEO técnico e compartilhamento social",
+          "Métricas de interesse e conversão",
+          "Integração com formulário, WhatsApp e CRM"
+        ],
+        "deliverables": [
+          "Arquitetura da página",
+          "Copy e UI orientadas ao objetivo",
+          "Desenvolvimento responsivo",
+          "SEO e dados estruturados",
+          "Eventos de conversão"
+        ],
+        "audience": [
+          "Empresas vendendo serviços",
+          "Lançamentos e campanhas",
+          "Produtos que precisam captar leads"
+        ],
+        "use_cases": [
+          "Landing de serviço",
+          "Site institucional orientado a conversão",
+          "Página de lançamento",
+          "Captação de orçamento"
+        ],
+        "process": [
+          "Definir objetivo",
+          "Estruturar mensagem",
+          "Criar e desenvolver",
+          "Instrumentar",
+          "Publicar e otimizar"
+        ],
+        "technologies": [
+          "React",
+          "SEO técnico",
+          "Schema.org",
+          "Analytics"
+        ],
+        "cta_label": "Criar página de conversão"
+      }
+    },
+    {
+      "name": "Suporte e Evolução Contínua",
+      "slug": "suporte-e-evolucao-continua",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "Operação Contínua",
+      "pricing_model": "recurring",
+      "price": 0,
+      "recurring_price": 990,
+      "billing_interval": "monthly",
+      "is_featured": false,
+      "sort_order": 110,
+      "short_description": "Acompanhamento recorrente para corrigir, monitorar e evoluir aplicações sem deixar melhorias acumularem até virarem novos projetos.",
+      "description": "Plano de continuidade para aplicações que precisam de manutenção, pequenas evoluções, acompanhamento de incidentes e melhoria progressiva de desempenho, segurança e experiência.",
+      "tags": [
+        "suporte",
+        "manutenção",
+        "evolução",
+        "monitoramento",
+        "mensal"
+      ],
+      "catalog_profile": {
+        "problem": "Depois da entrega, correções e melhorias pequenas ficam acumuladas e o sistema volta a perder qualidade.",
+        "benefits": [
+          "Evolução contínua",
+          "Correções com contexto do produto",
+          "Menor acúmulo de dívida técnica",
+          "Acompanhamento de saúde e incidentes"
+        ],
+        "deliverables": [
+          "Fila priorizada de melhorias",
+          "Correções e pequenas evoluções",
+          "Monitoramento e revisão técnica",
+          "Relatório de entregas"
+        ],
+        "audience": [
+          "Produtos já em produção",
+          "Empresas sem time técnico dedicado"
+        ],
+        "use_cases": [
+          "Manutenção mensal",
+          "Evolução de funcionalidades",
+          "Correções pós-lançamento"
+        ],
+        "process": [
+          "Definir capacidade mensal",
+          "Priorizar backlog",
+          "Executar e validar",
+          "Revisar métricas",
+          "Planejar próximo ciclo"
+        ],
+        "cta_label": "Montar plano de evolução"
+      }
+    },
+    {
+      "name": "Diagnóstico e Consultoria Tecnológica",
+      "slug": "diagnostico-e-consultoria-tecnologica",
+      "type": "service",
+      "category": "Evolução Digital",
+      "subcategory": "Diagnóstico",
+      "pricing_model": "starting_at",
+      "price": 0,
+      "price_min": 750,
+      "is_featured": false,
+      "sort_order": 120,
+      "short_description": "Diagnóstico objetivo para descobrir onde tecnologia, integração ou automação pode gerar mais retorno antes de iniciar um projeto maior.",
+      "description": "Mapeamos o processo, identificamos gargalos, riscos e oportunidades e entregamos uma direção técnica priorizada. É a porta de entrada para quem sabe que precisa melhorar, mas ainda não sabe qual solução construir.",
+      "tags": [
+        "consultoria",
+        "diagnóstico",
+        "arquitetura",
+        "roadmap",
+        "automação"
+      ],
+      "catalog_profile": {
+        "problem": "Existe dor operacional ou tecnológica, mas ainda não há clareza suficiente para escolher entre sistema, integração, automação ou modernização.",
+        "benefits": [
+          "Decisão com menos achismo",
+          "Prioridades ordenadas por impacto",
+          "Riscos técnicos visíveis",
+          "Escopo inicial mais claro"
+        ],
+        "deliverables": [
+          "Entrevista e levantamento",
+          "Mapa do processo atual",
+          "Diagnóstico de gargalos",
+          "Recomendação de solução",
+          "Roadmap priorizado"
+        ],
+        "audience": [
+          "Empresas antes de contratar um projeto maior",
+          "Gestores avaliando automação ou modernização"
+        ],
+        "use_cases": [
+          "Escolha entre comprar ou desenvolver",
+          "Diagnóstico de sistema legado",
+          "Plano de automação",
+          "Roadmap de produto"
+        ],
+        "process": [
+          "Entender contexto",
+          "Mapear processo",
+          "Identificar oportunidades",
+          "Priorizar",
+          "Apresentar plano"
+        ],
+        "cta_label": "Solicitar diagnóstico"
+      }
+    }
+  ]
+}
