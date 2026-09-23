@@ -141,10 +141,15 @@ class FunnelMetricsService
             'failed_payments' => $failedPayments,
             'checkout_started_sessions' => $startedSessions,
             'checkout_completed_sessions' => $completedSessions,
-            'checkout_abandoned_sessions' => max(0, $startedSessions - $completedSessions),
+            'checkout_abandoned_sessions' => $this->abandonedSessions($startedSessions, $completedSessions),
             'gmv' => round($gmv, 2),
             'aov' => $paidOrders > 0 ? round($gmv / $paidOrders, 2) : 0.0,
         ];
+    }
+
+    private function abandonedSessions(int $started, int $completed): int
+    {
+        return max(0, $started - $completed);
     }
 
     private function rate(int $numerator, int $denominator): float
