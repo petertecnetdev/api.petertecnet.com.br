@@ -32,6 +32,7 @@ class ItemController extends Controller
         $query = Item::query()
             ->with('files')
             ->where('status', true)
+            ->whereNull('archived_at')
             ->where('entity_name', 'establishment')
             ->whereIn('entity_id', function ($subquery) use ($requiresApproval) {
                 $subquery->select('establishments.id')
@@ -83,7 +84,9 @@ class ItemController extends Controller
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
+            ->whereNull('archived_at')
             ->orderByDesc('is_featured')
+            ->orderBy('sort_order')
             ->orderBy('category')
             ->orderBy('name')
             ->get();
@@ -158,6 +161,7 @@ class ItemController extends Controller
 
         $fresh = $item->fresh()->load('files');
         $fresh->setAppends(['image_url']);
+        $fresh->recordCatalogVersion($userId, 'created');
 
         return response()->json([
             'success' => true,
@@ -195,6 +199,7 @@ class ItemController extends Controller
 
         $fresh = $model->fresh()->load('files');
         $fresh->setAppends(['image_url']);
+        $fresh->recordCatalogVersion($userId, 'updated');
 
         return response()->json([
             'success' => true,
@@ -208,8 +213,10 @@ class ItemController extends Controller
         $model = $this->ownedItem($request, $item);
         $model->update([
             'status' => false,
+            'archived_at' => now(),
             'updated_by' => $request->user()->id,
         ]);
+        $model->recordCatalogVersion((int) $request->user()->id, 'archived');
 
         return response()->json([
             'success' => true,
