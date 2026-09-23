@@ -39,8 +39,11 @@ return new class extends Migration
             if (! Schema::hasColumn('items', 'is_checkout_enabled')) {
                 $table->boolean('is_checkout_enabled')->default(true)->after('is_quote_enabled');
             }
+            if (! Schema::hasColumn('items', 'editor_config')) {
+                $table->longText('editor_config')->nullable()->after('notes');
+            }
             if (! Schema::hasColumn('items', 'catalog_profile')) {
-                $table->longText('catalog_profile')->nullable()->after('notes');
+                $table->longText('catalog_profile')->nullable()->after('editor_config');
             }
             if (! Schema::hasColumn('items', 'seo_title')) {
                 $table->string('seo_title')->nullable()->after('catalog_profile');
@@ -84,7 +87,7 @@ return new class extends Migration
             $columns = [
                 'short_description', 'pricing_model', 'price_min', 'price_max',
                 'setup_price', 'recurring_price', 'billing_interval', 'sort_order',
-                'is_quote_enabled', 'is_checkout_enabled', 'catalog_profile',
+                'is_quote_enabled', 'is_checkout_enabled', 'editor_config', 'catalog_profile',
                 'seo_title', 'seo_description', 'canonical_url', 'og_image', 'archived_at',
             ];
             foreach ($columns as $column) {
