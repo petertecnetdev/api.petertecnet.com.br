@@ -149,12 +149,7 @@ final class EventAgendaMaintenanceService
                 ->get();
 
             if ($linkedOccurrences->isEmpty()) {
-                [$event, $created] = $this->ensureOccurrence(
-                    $schedule,
-                    $source,
-                    $targetDates[0],
-                    $appSlug,
-                );
+                [$event, $created] = $this->ensureOccurrence($schedule, $source, $targetDates[0], $appSlug);
 
                 return [
                     'created_count' => $created ? 1 : 0,
@@ -273,13 +268,8 @@ final class EventAgendaMaintenanceService
 
         $completed = $linkedOccurrences
             ->filter(function (Event $event) use ($today, $timezone) {
-                if (! $event->event_schedule_occurrence_date) {
-                    return false;
-                }
-
-                return Carbon::parse($event->event_schedule_occurrence_date, $timezone)
-                    ->startOfDay()
-                    ->lt($today);
+                if (! $event->event_schedule_occurrence_date) return false;
+                return Carbon::parse($event->event_schedule_occurrence_date, $timezone)->startOfDay()->lt($today);
             })
             ->sortByDesc('event_schedule_occurrence_date')
             ->first();
@@ -287,7 +277,6 @@ final class EventAgendaMaintenanceService
         if ($completed) {
             $date = Carbon::parse($completed->event_schedule_occurrence_date, $timezone)->format('Y-m-d');
             $eligibleAt = $this->generationAtForOccurrence($date, $delayDays);
-
             return [
                 'eligible' => Carbon::now($timezone)->gte($eligibleAt),
                 'next_generation_at' => $eligibleAt->toIso8601String(),
@@ -301,7 +290,6 @@ final class EventAgendaMaintenanceService
 
         if ($nextLinked) {
             $date = Carbon::parse($nextLinked->event_schedule_occurrence_date, $timezone)->format('Y-m-d');
-
             return [
                 'eligible' => false,
                 'next_generation_at' => $this->generationAtForOccurrence($date, $delayDays)->toIso8601String(),
@@ -309,7 +297,6 @@ final class EventAgendaMaintenanceService
         }
 
         $fallbackDate = $this->targetDates($schedule, 1)[0];
-
         return [
             'eligible' => false,
             'next_generation_at' => $this->generationAtForOccurrence($fallbackDate, $delayDays)->toIso8601String(),
@@ -319,10 +306,7 @@ final class EventAgendaMaintenanceService
     private function generationAtForOccurrence(string $occurrenceDate, int $delayDays): Carbon
     {
         $timezone = config('app.timezone', 'America/Sao_Paulo');
-
-        return Carbon::createFromFormat('Y-m-d', $occurrenceDate, $timezone)
-            ->startOfDay()
-            ->addDays($delayDays);
+        return Carbon::createFromFormat('Y-m-d', $occurrenceDate, $timezone)->startOfDay()->addDays($delayDays);
     }
 
     private function ensureOccurrence(EventSchedule $schedule, Event $source, string $date, ?string $appSlug): array
@@ -340,9 +324,7 @@ final class EventAgendaMaintenanceService
                 ->whereDate('event_schedule_occurrence_date', $date)
                 ->first();
 
-            if ($existing) {
-                return [$existing, false];
-            }
+            if ($existing) return [$existing, false];
 
             $timezone = config('app.timezone', 'America/Sao_Paulo');
             $sourceStart = $source->start_date ? Carbon::parse($source->start_date, $timezone) : null;
@@ -357,17 +339,10 @@ final class EventAgendaMaintenanceService
                     'event_schedule_id' => $lockedSchedule->id,
                     'event_schedule_occurrence_date' => $date,
                 ])->saveQuietly();
-
                 return [$source->fresh(), false];
             }
 
-            $duplicate = $this->duplicator->duplicate(
-                $source,
-                $date,
-                (int) $lockedSchedule->app_id,
-                $appSlug,
-            );
-
+            $duplicate = $this->duplicator->duplicate($source, $date, (int) $lockedSchedule->app_id, $appSlug);
             $duplicate->forceFill([
                 'event_schedule_id' => $lockedSchedule->id,
                 'event_schedule_occurrence_date' => $date,
@@ -383,21 +358,34 @@ final class EventAgendaMaintenanceService
     {
         $timezone = config('app.timezone', 'America/Sao_Paulo');
         $now = Carbon::now($timezone);
+        $clock = substr((string) $schedule->start_time, 0, 8);
+        $intervalWeeks = $this->normalizeIntervalWeeks((int) ($schedule->interval_weeks ?: 1));
+
+        $anchorMoment = $schedule->updated_at
+            ? Carbon::parse($schedule->updated_at, $timezone)
+            : $now->copy();
+        $anchorDaysAhead = ((int) $schedule->day_of_week - (int) $anchorMoment->dayOfWeek + 7) % 7;
+        $anchor = $anchorMoment->copy()->startOfDay()->addDays($anchorDaysAhead);
+        if ($anchor->copy()->setTimeFromTimeString($clock)->lt($anchorMoment)) {
+            $anchor->addWeek();
+        }
+
         $daysAhead = ((int) $schedule->day_of_week - (int) $now->dayOfWeek + 7) % 7;
         $first = $now->copy()->startOfDay()->addDays($daysAhead);
-        $clock = substr((string) $schedule->start_time, 0, 8);
-        $firstStart = $first->copy()->setTimeFromTimeString($clock);
-
-        if ($firstStart->lte($now)) {
+        if ($first->copy()->setTimeFromTimeString($clock)->lte($now)) {
             $first->addWeek();
         }
 
-        $intervalWeeks = $this->normalizeIntervalWeeks((int) ($schedule->interval_weeks ?: 1));
+        $weeksFromAnchor = max(0, intdiv($anchor->copy()->startOfDay()->diffInDays($first->copy()->startOfDay()), 7));
+        $remainder = $weeksFromAnchor % $intervalWeeks;
+        if ($remainder !== 0) {
+            $first->addWeeks($intervalWeeks - $remainder);
+        }
+
         $dates = [];
         for ($occurrence = 0; $occurrence < $weeks; $occurrence++) {
             $dates[] = $first->copy()->addWeeks($occurrence * $intervalWeeks)->format('Y-m-d');
         }
-
         return $dates;
     }
 
@@ -413,21 +401,16 @@ final class EventAgendaMaintenanceService
 
         $retired = 0;
         foreach ($future as $event) {
-            if ($this->hasCommercialActivity($event)) {
-                continue;
-            }
-
+            if ($this->hasCommercialActivity($event)) continue;
             $this->retireOccurrence($event, (int) $schedule->source_event_id);
             $retired++;
         }
-
         return $retired;
     }
 
     private function retireOccurrence(Event $event, ?int $sourceEventId): void
     {
         $isTemplateSource = $sourceEventId && (int) $event->id === $sourceEventId;
-
         $event->forceFill([
             'event_schedule_id' => null,
             'event_schedule_occurrence_date' => null,
@@ -438,13 +421,8 @@ final class EventAgendaMaintenanceService
 
     private function hasCommercialActivity(Event $event): bool
     {
-        if (CommerceOrder::query()->where('event_id', $event->id)->exists()) {
-            return true;
-        }
-
-        return EventPass::query()
-            ->whereHas('ticket', fn ($tickets) => $tickets->where('event_id', $event->id))
-            ->exists();
+        if (CommerceOrder::query()->where('event_id', $event->id)->exists()) return true;
+        return EventPass::query()->whereHas('ticket', fn ($tickets) => $tickets->where('event_id', $event->id))->exists();
     }
 
     private function normalizeMode(?string $mode): string
