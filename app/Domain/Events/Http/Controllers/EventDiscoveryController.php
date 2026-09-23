@@ -199,6 +199,9 @@ final class EventDiscoveryController extends Controller
                     'sellable_free_lots_count' => 0,
                 ]);
                 $event->setAttribute('ticket_availability_status', $summary['status']);
+                $event->setAttribute('starting_price', $summary['starting_price']);
+                $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
+                $event->setAttribute('sellable_free_ticket_lots_count', $summary['sellable_free_lots_count']);
             });
         }
 
