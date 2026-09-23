@@ -119,7 +119,7 @@ class FunnelMetricsService
             ->whereIn('payment_status', ['failed', 'error', 'declined', 'rejected'])
             ->count();
 
-        $startedSessions = (clone $orders->getModel() ? Interaction::query() : Interaction::query())
+        $startedSessions = Interaction::query()
             ->where('app_id', $appId)
             ->whereBetween('created_at', [$from, $to])
             ->whereIn('interaction_type', self::CHECKOUT_STARTED)
