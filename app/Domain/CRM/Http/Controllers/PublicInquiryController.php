@@ -4,6 +4,8 @@ namespace App\Domain\CRM\Http\Controllers;
 
 use App\Http\Controllers\Controller;
 use App\Models\Establishment;
+use App\Models\Interaction;
+use App\Models\Item;
 use App\Support\ApplicationContext;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -54,6 +56,17 @@ final class PublicInquiryController extends Controller
             'owner_user_id' => (int) $establishment->user_id,
         ];
 
+        $item = null;
+        if (! empty($data['service_slug'])) {
+            $item = Item::query()
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $establishment->id)
+                ->where('slug', $data['service_slug'])
+                ->where('status', true)
+                ->whereNull('archived_at')
+                ->first();
+        }
+
         $attachmentPaths = [];
         foreach ($request->file('attachments', []) as $file) {
             $attachmentPaths[] = Storage::disk('local')->putFile(
@@ -90,17 +103,29 @@ final class PublicInquiryController extends Controller
             ]);
         }
 
+        $opportunityValue = $item
+            ? (float) ($item->price_min ?: $item->price ?: $item->setup_price ?: $item->recurring_price ?: 0)
+            : 0;
+
         $opportunityId = DB::table('crm_opportunities')->insertGetId([
             ...$scope,
             'contact_id' => $contactId,
-            'title' => $this->opportunityTitle($data),
+            'title' => $this->opportunityTitle($data, $item),
             'stage' => 'new',
-            'value' => 0,
+            'value' => $opportunityValue,
             'probability' => 20,
-            'notes' => $this->opportunityNotes($data, $attachmentPaths, $acquisitionSource),
+            'notes' => $this->opportunityNotes($data, $attachmentPaths, $acquisitionSource, $item),
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+
+        if ($item) {
+            Interaction::register('quote_submit', $item, $request->user(), [
+                'opportunity_id' => $opportunityId,
+                'contact_id' => $contactId,
+                'source' => $acquisitionSource,
+            ], $item->name);
+        }
 
         return response()->json([
             'success' => true,
@@ -178,13 +203,13 @@ final class PublicInquiryController extends Controller
         ])->filter()->join("\n");
     }
 
-    private function opportunityTitle(array $data): string
+    private function opportunityTitle(array $data, ?Item $item = null): string
     {
-        $need = trim((string) ($data['need'] ?? 'Nova solicitação'));
+        $need = $item?->name ?: trim((string) ($data['need'] ?? 'Nova solicitação'));
         return mb_substr('Inbound · ' . $need, 0, 255);
     }
 
-    private function opportunityNotes(array $data, array $attachments, string $acquisitionSource): string
+    private function opportunityNotes(array $data, array $attachments, string $acquisitionSource, ?Item $item = null): string
     {
         $serviceSlug = $data['service_slug'] ?? null;
         $budget = $data['budget'] ?? null;
@@ -202,6 +227,7 @@ final class PublicInquiryController extends Controller
             'Origem de aquisição: ' . $acquisitionSource,
             $attributionLine ? 'Atribuição: ' . $attributionLine : null,
             $serviceSlug ? 'Serviço: ' . $serviceSlug : null,
+            $item ? 'Item Nexus: #' . $item->id . ' · ' . $item->name . ' · modelo=' . ($item->pricing_model ?: 'fixed') : null,
             $budget ? 'Orçamento informado: ' . $budget : null,
             $urgency ? 'Urgência: ' . $urgency : null,
             $company ? 'Empresa: ' . $company : null,
