@@ -23,8 +23,15 @@ class Item extends Model
         'type',
         'sku',
         'description',
+        'short_description',
         'duration',
         'price',
+        'pricing_model',
+        'price_min',
+        'price_max',
+        'setup_price',
+        'recurring_price',
+        'billing_interval',
         'stock',
         'status',
         'limited_by_user',
@@ -35,12 +42,21 @@ class Item extends Model
         'availability_end',
         'image',
         'is_featured',
+        'sort_order',
+        'is_quote_enabled',
+        'is_checkout_enabled',
         'entity_id',
         'entity_name',
         'tags',
         'discount',
         'expiration_date',
         'notes',
+        'catalog_profile',
+        'seo_title',
+        'seo_description',
+        'canonical_url',
+        'og_image',
+        'archived_at',
         'created_by',
         'updated_by',
     ];
@@ -49,9 +65,17 @@ class Item extends Model
         'status' => 'boolean',
         'limited_by_user' => 'boolean',
         'is_featured' => 'boolean',
+        'is_quote_enabled' => 'boolean',
+        'is_checkout_enabled' => 'boolean',
         'price' => 'decimal:2',
+        'price_min' => 'decimal:2',
+        'price_max' => 'decimal:2',
+        'setup_price' => 'decimal:2',
+        'recurring_price' => 'decimal:2',
         'discount' => 'decimal:2',
         'tags' => 'array',
+        'catalog_profile' => 'array',
+        'archived_at' => 'datetime',
         'availability_start' => 'datetime',
         'availability_end' => 'datetime',
         'expiration_date' => 'datetime',
@@ -291,6 +315,27 @@ class Item extends Model
                 'engagement_score' => $engagementScore,
             ];
         });
+    }
+
+    public function recordCatalogVersion(?int $changedBy = null, ?string $reason = null): void
+    {
+        if (! \Illuminate\Support\Facades\Schema::hasTable('item_catalog_versions')) {
+            return;
+        }
+
+        $version = (int) \Illuminate\Support\Facades\DB::table('item_catalog_versions')
+            ->where('item_id', $this->id)
+            ->max('version') + 1;
+
+        \Illuminate\Support\Facades\DB::table('item_catalog_versions')->insert([
+            'item_id' => $this->id,
+            'app_id' => $this->app_id,
+            'version' => $version,
+            'snapshot' => json_encode($this->fresh()->toArray(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'changed_by' => $changedBy,
+            'reason' => $reason,
+            'created_at' => now(),
+        ]);
     }
 
     public static function totalDurationForItems(array $items): int
