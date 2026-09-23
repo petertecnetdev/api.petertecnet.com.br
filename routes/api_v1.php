@@ -2,6 +2,7 @@
 
 use App\Domain\Analytics\Http\Controllers\AppointmentDashboardController;
 use App\Domain\Catalog\Http\Controllers\CatalogDiscoveryController;
+use App\Domain\Catalog\Http\Controllers\CatalogEngagementController;
 use App\Domain\Catalog\Http\Controllers\OwnedItemPaginationController;
 use App\Domain\Catalog\Http\Controllers\EcosystemCatalogController;
 use App\Domain\Commerce\Http\Controllers\EventCommerceController;
