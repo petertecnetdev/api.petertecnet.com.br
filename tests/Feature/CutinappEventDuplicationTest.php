@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Artist;
 use App\Models\Ticket;
 use App\Models\User;
 use Carbon\Carbon;
@@ -66,6 +67,26 @@ class CutinappEventDuplicationTest extends TestCase
                 'limit_date' => '2026-09-25 22:00:00',
             ]);
 
+            $appId = (int) DB::table('events')->where('id', $eventId)->value('app_id');
+            $artist = Artist::create([
+                'app_id' => $appId,
+                'slug' => 'artista-duplicacao',
+                'stage_name' => 'Artista Duplicação',
+                'is_published' => true,
+                'is_active' => true,
+            ]);
+            DB::table('event_artist')->insert([
+                'app_id' => $appId,
+                'event_id' => $eventId,
+                'artist_id' => $artist->id,
+                'participation_type' => 'show',
+                'description' => 'Line-up que precisa sobreviver à duplicação.',
+                'sort_order' => 0,
+                'is_headliner' => false,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
             $response = $this->withHeaders($headers)
                 ->postJson("/api/v1/apps/cutinapp/events/{$eventId}/duplicate", [
                     'date' => '2026-09-20',
@@ -80,6 +101,12 @@ class CutinappEventDuplicationTest extends TestCase
 
             $copiedTicket = Ticket::query()->where('event_id', $copyId)->sole();
             $this->assertSame('2026-09-20 22:00:00', $copiedTicket->limit_date?->format('Y-m-d H:i:s'));
+            $this->assertDatabaseHas('event_artist', [
+                'app_id' => $appId,
+                'event_id' => $copyId,
+                'artist_id' => $artist->id,
+                'participation_type' => 'show',
+            ]);
         } finally {
             $this->travelBack();
         }
