@@ -32,6 +32,34 @@ class ItemController extends Controller
         );
     }
 
+    public function manageShow(Request $request, int $id)
+    {
+        $item = Item::withTrashed()->with('files')->findOrFail($id);
+        $this->assertCanManageItem($item);
+
+        if ($request->filled('app_id')) {
+            $applicationId = (int) $request->integer('app_id');
+            $belongsToApplication = (int) $item->app_id === $applicationId
+                || ($item->entity_name === 'establishment'
+                    && Establishment::query()
+                        ->whereKey($item->entity_id)
+                        ->where(function ($query) use ($applicationId) {
+                            $query->where('app_id', $applicationId)
+                                ->orWhereExists(function ($pivot) use ($applicationId) {
+                                    $pivot->selectRaw('1')
+                                        ->from('application_establishment')
+                                        ->whereColumn('application_establishment.establishment_id', 'establishments.id')
+                                        ->where('application_establishment.application_id', $applicationId);
+                                });
+                        })
+                        ->exists());
+
+            abort_unless($belongsToApplication, 404);
+        }
+
+        return response()->json(['success' => true, 'item' => $item]);
+    }
+
     public function listAll(Request $request)
     {
         $this->requirePermission('item_list');
@@ -359,10 +387,12 @@ class ItemController extends Controller
 
     private function validateItem(Request $request, bool $creating): array
     {
-        if ($request->has('catalog_profile') && is_string($request->input('catalog_profile'))) {
-            $decoded = json_decode((string) $request->input('catalog_profile'), true);
-            if (json_last_error() === JSON_ERROR_NONE) {
-                $request->merge(['catalog_profile' => $decoded]);
+        foreach (['editor_config', 'catalog_profile'] as $jsonField) {
+            if ($request->has($jsonField) && is_string($request->input($jsonField))) {
+                $decoded = json_decode((string) $request->input($jsonField), true);
+                if (json_last_error() === JSON_ERROR_NONE) {
+                    $request->merge([$jsonField => $decoded]);
+                }
             }
         }
 
@@ -388,6 +418,7 @@ class ItemController extends Controller
             'sort_order' => 'sometimes|nullable|integer|min:0|max:100000',
             'is_quote_enabled' => 'sometimes|boolean',
             'is_checkout_enabled' => 'sometimes|boolean',
+            'editor_config' => 'sometimes|nullable|array',
             'catalog_profile' => 'sometimes|nullable|array',
             'seo_title' => 'sometimes|nullable|string|max:255',
             'seo_description' => 'sometimes|nullable|string|max:320',
