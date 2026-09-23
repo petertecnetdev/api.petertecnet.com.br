@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Log;
 final class EventAgendaMaintenanceService
 {
     private const MAX_GENERATION_WEEKS = 52;
+    private const MAX_INTERVAL_WEEKS = 52;
 
     public function __construct(private readonly EventDuplicationService $duplicator) {}
 
@@ -125,6 +126,7 @@ final class EventAgendaMaintenanceService
         bool $force = false,
     ): array {
         $weeks = $this->normalizeWeeks($weeks ?: (int) ($schedule->generation_weeks ?: 1));
+        $intervalWeeks = $this->normalizeIntervalWeeks((int) ($schedule->interval_weeks ?: 1));
         $mode = $this->normalizeMode($schedule->generation_mode);
         $delayDays = $this->normalizeDelayDays((int) ($schedule->generation_delay_days ?: 1));
 
@@ -132,7 +134,7 @@ final class EventAgendaMaintenanceService
         $source = $schedule->sourceEvent;
 
         if (! $source || (int) $source->app_id !== (int) $schedule->app_id || (int) $source->production_id !== (int) $schedule->production_id) {
-            return $this->emptyResult($mode, $delayDays, $weeks);
+            return $this->emptyResult($mode, $delayDays, $weeks, $intervalWeeks);
         }
 
         $appSlug ??= Application::query()->whereKey($schedule->app_id)->value('slug');
@@ -164,6 +166,7 @@ final class EventAgendaMaintenanceService
                     'generation_mode' => $mode,
                     'generation_delay_days' => $delayDays,
                     'generation_weeks' => $weeks,
+                    'interval_weeks' => $intervalWeeks,
                     'next_generation_at' => $this->generationAtForOccurrence($targetDates[0], $delayDays)->toIso8601String(),
                 ];
             }
@@ -180,6 +183,7 @@ final class EventAgendaMaintenanceService
                     'generation_mode' => $mode,
                     'generation_delay_days' => $delayDays,
                     'generation_weeks' => $weeks,
+                    'interval_weeks' => $intervalWeeks,
                     'next_generation_at' => $gate['next_generation_at'],
                 ];
             }
@@ -205,6 +209,7 @@ final class EventAgendaMaintenanceService
             'generation_mode' => $mode,
             'generation_delay_days' => $delayDays,
             'generation_weeks' => $weeks,
+            'interval_weeks' => $intervalWeeks,
             'next_generation_at' => null,
         ];
     }
@@ -387,9 +392,10 @@ final class EventAgendaMaintenanceService
             $first->addWeek();
         }
 
+        $intervalWeeks = $this->normalizeIntervalWeeks((int) ($schedule->interval_weeks ?: 1));
         $dates = [];
-        for ($week = 0; $week < $weeks; $week++) {
-            $dates[] = $first->copy()->addWeeks($week)->format('Y-m-d');
+        for ($occurrence = 0; $occurrence < $weeks; $occurrence++) {
+            $dates[] = $first->copy()->addWeeks($occurrence * $intervalWeeks)->format('Y-m-d');
         }
 
         return $dates;
@@ -456,7 +462,12 @@ final class EventAgendaMaintenanceService
         return max(1, min(self::MAX_GENERATION_WEEKS, $weeks));
     }
 
-    private function emptyResult(string $mode, int $delayDays, int $weeks): array
+    private function normalizeIntervalWeeks(int $weeks): int
+    {
+        return max(1, min(self::MAX_INTERVAL_WEEKS, $weeks));
+    }
+
+    private function emptyResult(string $mode, int $delayDays, int $weeks, int $intervalWeeks = 1): array
     {
         return [
             'created_count' => 0,
@@ -468,6 +479,7 @@ final class EventAgendaMaintenanceService
             'generation_mode' => $mode,
             'generation_delay_days' => $delayDays,
             'generation_weeks' => $weeks,
+            'interval_weeks' => $intervalWeeks,
             'next_generation_at' => null,
         ];
     }
