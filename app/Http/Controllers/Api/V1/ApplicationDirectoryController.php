@@ -104,6 +104,7 @@ class ApplicationDirectoryController extends Controller
         $items = Item::query()
             ->where('entity_name', 'establishment')
             ->where('status', true)
+            ->whereNull('archived_at')
             ->whereIn('entity_id', $establishmentIds)
             ->with([
                 'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
