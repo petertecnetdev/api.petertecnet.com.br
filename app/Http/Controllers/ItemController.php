@@ -25,7 +25,8 @@ class ItemController extends Controller
         return response()->json(
             Item::query()
                 ->where('status', true)
-                ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
+                ->whereNull('archived_at')
+            ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
                 ->latest()
                 ->paginate($data['per_page'] ?? 20)
         );
@@ -53,7 +54,8 @@ class ItemController extends Controller
             Item::query()
                 ->where('app_id', $app_id)
                 ->where('status', true)
-                ->latest()
+                ->whereNull('archived_at')
+            ->latest()
                 ->paginate(20)
         );
     }
@@ -66,7 +68,10 @@ class ItemController extends Controller
             ->where('entity_name', 'establishment')
             ->where('entity_id', $establishment->id)
             ->where('status', true)
+                ->whereNull('archived_at')
             ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position')])
+            ->orderByDesc('is_featured')
+            ->orderBy('sort_order')
             ->orderByDesc('updated_at')
             ->get();
 
@@ -80,6 +85,7 @@ class ItemController extends Controller
             ->where('app_id', $establishment->app_id)
             ->where('entity_name', 'establishment')
             ->where('status', true)
+                ->whereNull('archived_at')
             ->whereHas('establishment', fn ($q) => $q
                 ->where('app_id', $establishment->app_id)
                 ->where('uf', $establishment->uf)
@@ -104,6 +110,7 @@ class ItemController extends Controller
         $query = Item::query()
             ->where('app_id', (int) $app_id)
             ->where('status', true)
+                ->whereNull('archived_at')
             ->whereHas('establishment', function ($q) use ($app_id, $data) {
                 $q->where('app_id', (int) $app_id);
                 if (! empty($data['city']) && $data['city'] !== 'Todas') {
@@ -134,6 +141,7 @@ class ItemController extends Controller
 
         $item = Item::query()
             ->where('status', true)
+                ->whereNull('archived_at')
             ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
             ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')])
             ->findOrFail($id);
@@ -147,6 +155,7 @@ class ItemController extends Controller
 
         $item = Item::query()
             ->where('status', true)
+                ->whereNull('archived_at')
             ->when(isset($data['app_id']), fn ($q) => $q->where('app_id', $data['app_id']))
             ->when(is_numeric($identifier), fn ($q) => $q->where('id', (int) $identifier), fn ($q) => $q->where('slug', $identifier))
             ->with(['files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')])
@@ -179,7 +188,7 @@ class ItemController extends Controller
 
         if ($data['entity_name'] === 'establishment') {
             Establishment::query()
-                ->where('app_id', $data['app_id'])
+                ->forApplication((int) $data['app_id'])
                 ->findOrFail($data['entity_id']);
         }
 
@@ -187,6 +196,7 @@ class ItemController extends Controller
             ->where($data)
             ->where('type', 'service')
             ->where('status', true)
+                ->whereNull('archived_at')
             ->get()]);
     }
 
@@ -211,8 +221,11 @@ class ItemController extends Controller
             return $item;
         });
 
+        $fresh = $item->fresh()->load('files');
+        $fresh->recordCatalogVersion((int) Auth::id(), 'created');
+
         $this->clearCache();
-        return response()->json(['message' => 'Item cadastrado com sucesso.', 'item' => $item->load('files')], 201);
+        return response()->json(['message' => 'Item cadastrado com sucesso.', 'item' => $fresh], 201);
     }
 
     public function storeBulk(Request $request)
@@ -281,8 +294,11 @@ class ItemController extends Controller
             }
         });
 
+        $fresh = $item->fresh()->load('files');
+        $fresh->recordCatalogVersion((int) Auth::id(), 'updated');
+
         $this->clearCache();
-        return response()->json(['message' => 'Item atualizado com sucesso.', 'item' => $item->fresh()->load('files')]);
+        return response()->json(['message' => 'Item atualizado com sucesso.', 'item' => $fresh]);
     }
 
     public function destroy(int $id)
@@ -292,17 +308,16 @@ class ItemController extends Controller
         $this->assertCanManageItem($item);
 
         DB::transaction(function () use ($item) {
-            foreach ($item->files as $file) {
-                if ($file->path) {
-                    Storage::disk('public')->delete($file->path);
-                }
-                $file->delete();
-            }
-            $item->delete();
+            $item->status = false;
+            $item->archived_at = now();
+            $item->is_featured = false;
+            $item->updated_by = Auth::id();
+            $item->save();
+            $item->recordCatalogVersion((int) Auth::id(), 'archived');
         });
 
         $this->clearCache();
-        return response()->json(['message' => 'Item deletado com sucesso.']);
+        return response()->json(['message' => 'Item arquivado com sucesso.']);
     }
 
     public function increasePricesByPercentage(Request $request)
@@ -344,6 +359,13 @@ class ItemController extends Controller
 
     private function validateItem(Request $request, bool $creating): array
     {
+        if ($request->has('catalog_profile') && is_string($request->input('catalog_profile'))) {
+            $decoded = json_decode((string) $request->input('catalog_profile'), true);
+            if (json_last_error() === JSON_ERROR_NONE) {
+                $request->merge(['catalog_profile' => $decoded]);
+            }
+        }
+
         $required = $creating ? 'required' : 'sometimes';
         return $request->validate([
             'app_id' => "$required|integer|exists:applications,id",
@@ -356,6 +378,22 @@ class ItemController extends Controller
             'status' => 'sometimes|boolean',
             'duration' => 'sometimes|nullable|integer|min:0|max:1440',
             'description' => 'sometimes|nullable|string|max:50000',
+            'short_description' => 'sometimes|nullable|string|max:1000',
+            'pricing_model' => 'sometimes|nullable|string|in:fixed,starting_at,range,quote,recurring,setup_recurring',
+            'price_min' => 'sometimes|nullable|numeric|min:0',
+            'price_max' => 'sometimes|nullable|numeric|min:0|gte:price_min',
+            'setup_price' => 'sometimes|nullable|numeric|min:0',
+            'recurring_price' => 'sometimes|nullable|numeric|min:0',
+            'billing_interval' => 'sometimes|nullable|string|in:monthly,quarterly,yearly,once',
+            'sort_order' => 'sometimes|nullable|integer|min:0|max:100000',
+            'is_quote_enabled' => 'sometimes|boolean',
+            'is_checkout_enabled' => 'sometimes|boolean',
+            'catalog_profile' => 'sometimes|nullable|array',
+            'seo_title' => 'sometimes|nullable|string|max:255',
+            'seo_description' => 'sometimes|nullable|string|max:320',
+            'canonical_url' => 'sometimes|nullable|url|max:2048',
+            'og_image' => 'sometimes|nullable|url|max:2048',
+            'archived_at' => 'sometimes|nullable|date',
             'category' => 'sometimes|nullable|string|max:255',
             'subcategory' => 'sometimes|nullable|string|max:255',
             'brand' => 'sometimes|nullable|string|max:255',
@@ -389,7 +427,14 @@ class ItemController extends Controller
             $establishment = Establishment::findOrFail($entityId);
 
             if ($expectedAppId !== null && (int) $establishment->app_id !== $expectedAppId) {
-                abort(422, 'A aplicação do item deve ser a mesma aplicação do estabelecimento.');
+                $linkedToApplication = DB::table('application_establishment')
+                    ->where('application_id', $expectedAppId)
+                    ->where('establishment_id', $establishment->id)
+                    ->exists();
+
+                if (! $linkedToApplication) {
+                    abort(422, 'O estabelecimento não está vinculado à aplicação informada.');
+                }
             }
 
             if ($user->hasProfile('Administrador')) {
