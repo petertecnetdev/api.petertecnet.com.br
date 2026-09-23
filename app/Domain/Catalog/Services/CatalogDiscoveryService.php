@@ -74,13 +74,14 @@ final class CatalogDiscoveryService
 
         $items = Item::query()
             ->where('entity_name', 'establishment')->where('status', true)
+            ->whereNull('archived_at')
             ->whereIn('entity_id', $establishments->pluck('id'))
             ->with([
                 'files' => fn ($q) => $q->where('visibility', 'public')->where('status', 'active')->orderBy('position'),
                 'establishment:id,app_id,name,fantasy,slug,city,uf',
             ])
             ->withCount(['views as total_views' => fn ($q) => $q->where('interaction_type', 'view')])
-            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get()
+            ->orderByDesc('is_featured')->orderBy('sort_order')->orderByDesc('updated_at')->limit($limit)->get()
             ->map(fn (Item $item) => $this->publicPayload->item($item))->values();
 
         return [
@@ -116,9 +117,10 @@ final class CatalogDiscoveryService
             ->map(fn (Establishment $establishment) => $this->publicPayload->establishment($establishment))->values();
 
         $items = Item::query()
-            ->where('status', true)->where('entity_name', 'establishment')
+            ->where('status', true)->whereNull('archived_at')->where('entity_name', 'establishment')
             ->where(fn ($q) => $q
                 ->where('name', 'like', $like)->orWhere('description', 'like', $like)
+                ->orWhere('short_description', 'like', $like)->orWhere('catalog_profile', 'like', $like)
                 ->orWhere('category', 'like', $like)->orWhere('subcategory', 'like', $like)
                 ->orWhere('brand', 'like', $like)->orWhere('sku', 'like', $like))
             ->whereHas('establishment', function (Builder $query) {
@@ -126,8 +128,8 @@ final class CatalogDiscoveryService
                 $query->forApplication($this->context->id())->whereNull('source_establishment_id');
             })
             ->with('establishment:id,name,fantasy,slug,city,uf')
-            ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'price')
-            ->orderByDesc('is_featured')->orderByDesc('updated_at')->limit($limit)->get()
+            ->select('id', 'entity_id', 'app_id', 'name', 'slug', 'type', 'category', 'subcategory', 'short_description', 'price', 'pricing_model', 'price_min', 'price_max', 'recurring_price', 'billing_interval', 'sort_order')
+            ->orderByDesc('is_featured')->orderBy('sort_order')->orderByDesc('updated_at')->limit($limit)->get()
             ->map(fn (Item $item) => $this->publicPayload->item($item))->values();
 
         return [
