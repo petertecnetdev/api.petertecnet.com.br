@@ -141,6 +141,7 @@ final class EventAgendaService
             'production_id' => $production->id,
             'image' => $image,
             'event_format' => $data['event_format'] ?? 'in_person',
+            'interval_weeks' => max(1, min(52, (int) ($data['interval_weeks'] ?? 1))),
             'is_active' => array_key_exists('is_active', $data) ? (bool) $data['is_active'] : true,
         ]);
 
@@ -264,6 +265,7 @@ final class EventAgendaService
             'generation_mode' => 'sometimes|in:immediate,delayed',
             'generation_delay_days' => 'sometimes|integer|between:1,6',
             'generation_weeks' => 'sometimes|integer|between:1,52',
+            'interval_weeks' => 'sometimes|integer|between:1,52',
             'is_active' => 'sometimes|boolean',
         ])->validate();
 
@@ -280,6 +282,7 @@ final class EventAgendaService
             (string) ($data['generation_mode'] ?? $targetSchedule?->generation_mode ?? 'immediate'),
             (int) ($data['generation_delay_days'] ?? $targetSchedule?->generation_delay_days ?? 1),
             (int) ($data['generation_weeks'] ?? $targetSchedule?->generation_weeks ?? 1),
+            (int) ($data['interval_weeks'] ?? $targetSchedule?->interval_weeks ?? 1),
         );
 
         $previousSourceEventId = $targetSchedule?->source_event_id;
@@ -356,6 +359,7 @@ final class EventAgendaService
         string $generationMode = 'immediate',
         int $generationDelayDays = 1,
         int $generationWeeks = 1,
+        int $intervalWeeks = 1,
     ): array
     {
         $timezone = config('app.timezone', 'America/Sao_Paulo');
@@ -394,6 +398,7 @@ final class EventAgendaService
             'generation_mode' => $generationMode === 'delayed' ? 'delayed' : 'immediate',
             'generation_delay_days' => max(1, min(6, $generationDelayDays)),
             'generation_weeks' => max(1, min(52, $generationWeeks)),
+            'interval_weeks' => max(1, min(52, $intervalWeeks)),
             'is_active' => $isActive,
         ];
     }
@@ -427,6 +432,10 @@ final class EventAgendaService
             'is_private' => 'sometimes|boolean',
             'event_format' => 'sometimes|nullable|in:in_person,online,hybrid',
             'online_url' => 'sometimes|nullable|url:http,https|max:2048',
+            'generation_mode' => 'sometimes|in:immediate,delayed',
+            'generation_delay_days' => 'sometimes|integer|between:1,6',
+            'generation_weeks' => 'sometimes|integer|between:1,52',
+            'interval_weeks' => 'sometimes|integer|between:1,52',
             'is_active' => 'sometimes|boolean',
         ])->validate();
 
@@ -543,6 +552,7 @@ final class EventAgendaService
         $data = $schedule->toArray();
         $data['start_time'] = substr((string) $schedule->start_time, 0, 5);
         $data['end_time'] = substr((string) $schedule->end_time, 0, 5);
+        $data['interval_weeks'] = max(1, (int) ($schedule->interval_weeks ?: 1));
         $data['is_active'] = (bool) $schedule->is_active;
         $data['is_private'] = (bool) $schedule->is_private;
         $data['source_event'] = $schedule->sourceEvent

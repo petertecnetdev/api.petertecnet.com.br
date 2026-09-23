@@ -34,6 +34,7 @@ class EventSchedule extends Model
         'generation_mode',
         'generation_delay_days',
         'generation_weeks',
+        'interval_weeks',
         'is_active',
     ];
 
@@ -48,6 +49,7 @@ class EventSchedule extends Model
         'is_private' => 'boolean',
         'generation_delay_days' => 'integer',
         'generation_weeks' => 'integer',
+        'interval_weeks' => 'integer',
         'is_active' => 'boolean',
     ];
 
