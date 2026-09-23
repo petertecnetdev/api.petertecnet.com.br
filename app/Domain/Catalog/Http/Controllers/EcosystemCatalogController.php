@@ -124,6 +124,7 @@ final class EcosystemCatalogController extends Controller
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
             ->where('status', true)
+            ->whereNull('archived_at')
             ->with([
                 'files' => fn ($builder) => $builder
                     ->where('visibility', 'public')
@@ -134,6 +135,7 @@ final class EcosystemCatalogController extends Controller
             ])
             ->withCount(['views as total_views' => fn ($builder) => $builder->where('interaction_type', 'view')])
             ->orderByDesc('is_featured')
+            ->orderBy('sort_order')
             ->orderByDesc('updated_at')
             ->get();
 
@@ -172,6 +174,7 @@ final class EcosystemCatalogController extends Controller
         $item = Item::query()
             ->where('entity_name', 'establishment')
             ->where('status', true)
+            ->whereNull('archived_at')
             ->whereHas('establishment', fn (Builder $builder) => $builder->forApplication($appId))
             ->when(
                 is_numeric($identifier),
@@ -231,6 +234,7 @@ final class EcosystemCatalogController extends Controller
             ->where('entity_name', 'establishment')
             ->where('entity_id', $company->id)
             ->where('status', true)
+            ->whereNull('archived_at')
             ->where('id', '!=', $item->id)
             ->with([
                 'files' => fn ($builder) => $builder
@@ -241,6 +245,7 @@ final class EcosystemCatalogController extends Controller
             ])
             ->withCount(['views as total_views' => fn ($builder) => $builder->where('interaction_type', 'view')])
             ->orderByDesc('is_featured')
+            ->orderBy('sort_order')
             ->orderByDesc('updated_at')
             ->limit(8)
             ->get();
