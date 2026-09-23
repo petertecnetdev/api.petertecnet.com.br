@@ -147,6 +147,7 @@ final class EventDuplicationService
                         : null;
 
                     $event->artists()->attach($artist->id, [
+                        'app_id' => $appId,
                         'participation_type' => $artist->pivot?->participation_type,
                         'stage' => $artist->pivot?->stage,
                         'scheduled_at' => $scheduledAt,
