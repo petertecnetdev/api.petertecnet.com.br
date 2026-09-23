@@ -80,9 +80,40 @@ class MetricsController extends Controller
             })
             ->firstOrFail();
 
+        $metrics = $model->getMetricsAttribute();
+        $funnelTypes = collect([
+            'view',
+            'whatsapp_click',
+            'contact_click',
+            'quote_start',
+            'quote_submit',
+            'quote_abandon',
+            'share',
+            'cta_click',
+        ]);
+        $counts = Interaction::query()
+            ->where('app_id', $applicationId)
+            ->where('entity_id', $model->id)
+            ->whereIn('entity_type', ['Item', 'item'])
+            ->whereIn('interaction_type', $funnelTypes->all())
+            ->selectRaw('interaction_type, COUNT(*) as aggregate')
+            ->groupBy('interaction_type')
+            ->pluck('aggregate', 'interaction_type');
+
+        $metrics['interaction_funnel'] = [
+            'counts' => $funnelTypes
+                ->mapWithKeys(fn (string $type) => [$type => (int) ($counts[$type] ?? 0)])
+                ->all(),
+        ];
+        $quoteStarts = (int) ($counts['quote_start'] ?? 0);
+        $quoteSubmits = (int) ($counts['quote_submit'] ?? 0);
+        $metrics['quote_conversion_rate'] = $quoteStarts > 0
+            ? round(($quoteSubmits / $quoteStarts) * 100, 2)
+            : 0;
+
         return response()->json([
             'success' => true,
-            'data' => $model->getMetricsAttribute(),
+            'data' => $metrics,
         ]);
     }
 
