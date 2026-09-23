@@ -53,6 +53,33 @@ class CutinappDiscoveryFiltersTest extends TestCase
             ->assertOk()->assertJsonCount(1, 'events.data')->assertJsonPath('events.data.0.city', 'São Paulo');
     }
 
+    public function test_discovery_exposes_lowest_sellable_ticket_price(): void
+    {
+        Carbon::setTestNow(Carbon::create(2026, 8, 31, 19, 0, 0, 'America/Sao_Paulo'));
+        [$app, $production] = $this->base();
+
+        $event = $this->event($app->id, $production->id, 'Preço Discovery', 'Goiânia', 'GO', '2026-09-05 20:00:00');
+        foreach ([75.00, 45.50, 120.00] as $index => $price) {
+            Ticket::create([
+                'app_id' => $app->id,
+                'app_slug' => 'cutinapp',
+                'event_id' => $event->id,
+                'name' => 'Lote '.($index + 1),
+                'ticket_type' => 'paid',
+                'type' => 'paid',
+                'price' => $price,
+                'quantity' => 20,
+                'limit_date' => Carbon::create(2026, 9, 5, 19, 0, 0, 'America/Sao_Paulo'),
+            ]);
+        }
+
+        $this->getJson('/api/cutinapp/events?city=Goi%C3%A2nia&available=1')
+            ->assertOk()
+            ->assertJsonPath('events.data.0.id', $event->id)
+            ->assertJsonPath('events.data.0.starting_price', 45.5)
+            ->assertJsonPath('events.data.0.ticket_availability_status', 'available');
+    }
+
     public function test_custom_ranges_pagination_closed_events_and_available_tickets(): void
     {
         Carbon::setTestNow(Carbon::create(2026, 8, 31, 19, 0, 0, 'America/Sao_Paulo'));
