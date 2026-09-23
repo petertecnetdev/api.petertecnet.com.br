@@ -29,7 +29,17 @@ class Ticket extends Model
 
     protected static function booted(): void
     {
-        static::created(fn (Ticket $ticket) => app(EventAudienceService::class)->notifyNewTicket($ticket));
+        static::created(function (Ticket $ticket): void {
+            // Ticket creation is also used internally when an event is cloned.
+            // Draft events must never notify the audience: besides being noisy,
+            // a realtime outage must not be able to abort the clone transaction.
+            $event = $ticket->event()->first();
+            if (! $event || ! $event->is_published || $event->is_cancelled) {
+                return;
+            }
+
+            app(EventAudienceService::class)->notifyNewTicket($ticket);
+        });
         static::saving(function (Ticket $ticket) {
             if (! $ticket->limit_date || ! $ticket->event_id) return;
             if ($ticket->exists && ! $ticket->isDirty(['limit_date', 'event_id'])) return;
