@@ -185,6 +185,7 @@ Route::prefix('item')->middleware('api')->group(function () {
     Route::get('/{id}', [ItemController::class, 'show'])->whereNumber('id')->name('item.show');
 });
 Route::prefix('item')->middleware(['api', 'auth:api'])->group(function () {
+    Route::get('/manage/{id}', [ItemController::class, 'manageShow'])->whereNumber('id')->name('item.manageShow');
     Route::get('/listall', [ItemController::class, 'listAll'])->name('item.listAll');
     Route::post('/', [ItemController::class, 'store'])->name('item.store');
     Route::post('/bulk', [ItemController::class, 'storeBulk'])->name('item.storeBulk');
