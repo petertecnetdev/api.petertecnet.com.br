@@ -163,7 +163,15 @@ final class EnsureIdempotentRequest
 
     private function applicationKey(Request $request): string
     {
-        $application = $request->route('application');
+        // BindApplicationContext resolves every supported application identifier
+        // (route parameter and X-Peter/X-App headers) into these attributes. Prefer
+        // that canonical context so the same idempotency key can never collide
+        // across applications merely because a route has no {application} segment.
+        $application = $request->attributes->get('application')
+            ?: $request->attributes->get('application_slug')
+            ?: $request->attributes->get('peter.application_slug')
+            ?: $request->route('application');
+
         if (is_object($application)) {
             $application = $application->slug ?? $application->id ?? null;
         }
