@@ -30,8 +30,14 @@ final class TelemetryEventSchema
         'cancelled' => 'cancelled', 'canceled' => 'cancelled', 'pending' => 'pending',
     ];
 
+    private const ALLOWED_FIELDS = [
+        'id', 'type', 'timestamp', 'page', 'route', 'screen', 'label', 'target',
+        'duration_ms', 'device', 'result', 'metadata',
+    ];
+
     public static function normalize(array $event): array
     {
+        $event = array_intersect_key($event, array_flip(self::ALLOWED_FIELDS));
         $type = strtolower(trim((string) ($event['type'] ?? '')));
         $event['type'] = self::TYPES[$type] ?? $type;
         $event['route'] = self::boundedString($event['route'] ?? $event['page'] ?? null, 1000);
