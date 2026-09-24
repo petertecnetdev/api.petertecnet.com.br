@@ -141,15 +141,29 @@ class FunnelMetricsService
             'failed_payments' => $failedPayments,
             'checkout_started_sessions' => $startedSessions,
             'checkout_completed_sessions' => $completedSessions,
-            'checkout_abandoned_sessions' => $this->abandonedSessions($startedSessions, $completedSessions),
+            'checkout_abandoned_sessions' => $this->abandonedSessionCount($appId, $from, $to),
             'gmv' => round($gmv, 2),
             'aov' => $paidOrders > 0 ? round($gmv / $paidOrders, 2) : 0.0,
         ];
     }
 
-    private function abandonedSessions(int $started, int $completed): int
+    private function abandonedSessionCount(int $appId, Carbon $from, Carbon $to): int
     {
-        return max(0, $started - $completed);
+        $completedSessionKeys = Interaction::query()
+            ->select('session_key')
+            ->where('app_id', $appId)
+            ->whereBetween('created_at', [$from, $to])
+            ->whereIn('interaction_type', self::CHECKOUT_COMPLETED)
+            ->whereNotNull('session_key');
+
+        return (int) Interaction::query()
+            ->where('app_id', $appId)
+            ->whereBetween('created_at', [$from, $to])
+            ->whereIn('interaction_type', self::CHECKOUT_STARTED)
+            ->whereNotNull('session_key')
+            ->whereNotIn('session_key', $completedSessionKeys)
+            ->distinct('session_key')
+            ->count('session_key');
     }
 
     private function rate(int $numerator, int $denominator): float
