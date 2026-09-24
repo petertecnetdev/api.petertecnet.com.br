@@ -30,6 +30,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('search:notify-saved --limit=200')
             ->hourly()
             ->withoutOverlapping(30);
+        $schedule->command('idempotency:prune --days=7')
+            ->daily()
+            ->withoutOverlapping(10);
     }
 
     protected function commands()
