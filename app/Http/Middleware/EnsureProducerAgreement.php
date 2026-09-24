@@ -21,22 +21,12 @@ final class EnsureProducerAgreement
             return $next($request);
         }
 
-        // Administrative impersonation is an assisted onboarding/support session.
-        // The administrator may prepare the customer's production and events, but
-        // the customer's legal acceptance must remain untouched and be completed
-        // later by the account owner. HandleImpersonation validates the session,
-        // binds it to the effective user/application and audits every request.
+        // Only a validated impersonation session may bypass the customer's legal
+        // acceptance during assisted onboarding. Administrator roles or specific
+        // email addresses must never bypass this requirement while acting as
+        // themselves. HandleImpersonation validates and audits the session before
+        // this attribute is made available to downstream middleware.
         if ($request->attributes->get('impersonation_session')) {
-            return $next($request);
-        }
-
-        $user = $request->user();
-        $isAssistedAdmin = $user && (
-            (method_exists($user, 'hasProfile') && $user->hasProfile('Administrador'))
-            || strtolower(trim((string) $user->email)) === 'petertecnet@gmail.com'
-        );
-
-        if ($isAssistedAdmin) {
             return $next($request);
         }
 
