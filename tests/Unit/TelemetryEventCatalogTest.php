@@ -50,6 +50,9 @@ class TelemetryEventCatalogTest extends TestCase
             'duration_ms' => 250,
             'device' => ' mobile ',
             'metadata' => ['non_sensitive' => 'kept'],
+            'password' => 'must-not-be-preserved',
+            'token' => 'must-not-be-preserved',
+            'unexpected_payload' => 'must-not-be-preserved',
         ]);
 
         $this->assertSame('/checkout', $event['route']);
@@ -60,5 +63,6 @@ class TelemetryEventCatalogTest extends TestCase
         $this->assertSame(['non_sensitive' => 'kept'], $event['metadata']);
         $this->assertArrayNotHasKey('password', $event);
         $this->assertArrayNotHasKey('token', $event);
+        $this->assertArrayNotHasKey('unexpected_payload', $event);
     }
 }
