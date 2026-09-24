@@ -39,7 +39,21 @@ final class EventCommunityController extends Controller
             ->orderBy('p.created_at')->get()->groupBy('parent_id');
         $liked=collect();
         if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
-        $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$user){$post->is_liked=$user?$liked->contains($post->id):false;$post->replies=collect($replies->get($post->id,[]))->map(function($reply)use($liked,$user){$reply->is_liked=$user?$liked->contains($reply->id):false;return$reply;})->values();return$post;}));
+        $eventOwnerId = (int) ($event->production?->user_id ?? 0);
+        $isAdmin = $user?->hasProfile('Administrador') ?? false;
+        $canDelete = static fn (object $post) => $user
+            && ((int) $post->user_id === (int) $user->id || $isAdmin || ($eventOwnerId > 0 && $eventOwnerId === (int) $user->id));
+
+        $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$user,$canDelete){
+            $post->is_liked=$user?$liked->contains($post->id):false;
+            $post->can_delete=$canDelete($post);
+            $post->replies=collect($replies->get($post->id,[]))->map(function($reply)use($liked,$user,$canDelete){
+                $reply->is_liked=$user?$liked->contains($reply->id):false;
+                $reply->can_delete=$canDelete($reply);
+                return$reply;
+            })->values();
+            return$post;
+        }));
         $rating=DB::table('event_ratings')->where('app_id',$appId)->where('event_id',$event->id)->selectRaw('ROUND(AVG(rating),1) average, COUNT(*) total')->first();
         $mine=$user?DB::table('event_ratings')->where(['app_id'=>$appId,'event_id'=>$event->id,'user_id'=>$user->id])->value('rating'):null;
         return response()->json(['posts'=>$posts,'rating'=>['average'=>$rating?->average?(float)$rating->average:0,'total'=>(int)($rating?->total??0),'mine'=>$mine?(int)$mine:null]]);
