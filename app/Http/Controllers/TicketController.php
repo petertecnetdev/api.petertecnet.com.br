@@ -15,14 +15,21 @@ class TicketController extends Controller
         $perPage = max(1, min((int) $request->input('per_page', 25), 100));
 
         return response()->json(
-            Ticket::query()->with('event')->latest()->paginate($perPage)
+            Ticket::query()
+                ->whereHas('event', fn ($query) => $query->publiclyVisible())
+                ->with('event')
+                ->latest()
+                ->paginate($perPage)
         );
     }
 
     public function show($id)
     {
         return response()->json([
-            'ticket' => Ticket::query()->with('event.production')->findOrFail($id),
+            'ticket' => Ticket::query()
+                ->whereHas('event', fn ($query) => $query->publiclyVisible())
+                ->with('event.production')
+                ->findOrFail($id),
         ]);
     }
 
@@ -84,7 +91,7 @@ class TicketController extends Controller
 
     public function listByEvent(Request $request, $eventId)
     {
-        Event::query()->findOrFail($eventId);
+        Event::query()->publiclyVisible()->findOrFail($eventId);
         $perPage = max(1, min((int) $request->input('per_page', 50), 100));
 
         return response()->json(
