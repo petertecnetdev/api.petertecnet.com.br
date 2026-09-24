@@ -28,9 +28,7 @@ final class EnsureIdempotentRequest
         }
 
         if (! preg_match('/^[A-Za-z0-9][A-Za-z0-9._:-]{7,79}$/', $key)) {
-            return response()->json([
-                'message' => 'A chave de idempotência é inválida.',
-            ], 422);
+            return response()->json(['message' => 'A chave de idempotência é inválida.'], 422);
         }
 
         $actorKey = $this->actorKey($request);
@@ -38,6 +36,8 @@ final class EnsureIdempotentRequest
         $routeSignature = strtoupper($request->method()).' '.$this->routeSignature($request);
         $fingerprint = hash('sha256', json_encode([
             'route' => $routeSignature,
+            'route_parameters' => $this->normalize($this->routeParameters($request)),
+            'query' => $this->normalize($request->query()),
             'payload' => $this->normalize($request->all()),
         ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION));
 
@@ -61,7 +61,6 @@ final class EnsureIdempotentRequest
             if ($existing) {
                 return $this->replay($existing, $fingerprint, $key);
             }
-
             throw $exception;
         }
 
@@ -71,14 +70,12 @@ final class EnsureIdempotentRequest
             if ($this->shouldReleaseAfterException($request, $exception)) {
                 $this->release($applicationKey, $actorKey, $key);
             }
-
             throw $exception;
         }
 
         $contentType = (string) $response->headers->get('Content-Type', '');
         if (! str_contains(strtolower($contentType), 'json')) {
             $this->release($applicationKey, $actorKey, $key);
-
             return $response;
         }
 
@@ -96,7 +93,6 @@ final class EnsureIdempotentRequest
             ]);
 
         $response->headers->set('Idempotency-Status', 'created');
-
         return $response;
     }
 
@@ -112,30 +108,21 @@ final class EnsureIdempotentRequest
     private function replay(object $record, string $fingerprint, string $key): Response
     {
         if (! hash_equals((string) $record->request_fingerprint, $fingerprint)) {
-            return response()->json([
-                'message' => 'Esta chave de idempotência já foi usada com dados diferentes.',
-            ], 409, [
-                'Idempotency-Status' => 'conflict',
-            ]);
+            return response()->json(['message' => 'Esta chave de idempotência já foi usada com dados diferentes.'], 409, ['Idempotency-Status' => 'conflict']);
         }
 
         if ($record->completed_at === null) {
-            return response()->json([
-                'message' => 'Esta operação já está em processamento. Tente novamente em instantes.',
-            ], 425, [
+            return response()->json(['message' => 'Esta operação já está em processamento. Tente novamente em instantes.'], 425, [
                 'Idempotency-Status' => 'processing',
                 'Retry-After' => '2',
             ]);
         }
 
-        $response = response(
-            (string) ($record->response_body ?? ''),
-            (int) ($record->response_status ?? 200),
-            ['Content-Type' => (string) ($record->content_type ?: 'application/json')]
-        );
+        $response = response((string) ($record->response_body ?? ''), (int) ($record->response_status ?? 200), [
+            'Content-Type' => (string) ($record->content_type ?: 'application/json'),
+        ]);
         $response->headers->set('Idempotency-Status', 'replayed');
         $response->headers->set('Idempotency-Replayed', 'true');
-
         return $response;
     }
 
@@ -155,60 +142,64 @@ final class EnsureIdempotentRequest
             return 'token:'.hash('sha256', $token);
         }
 
-        // Public commerce checkouts already send a high-entropy key per checkout
-        // intent. Scoping anonymous requests by application + idempotency key makes
-        // retries replay-safe without persisting IP addresses or other PII.
         return 'guest';
     }
 
     private function applicationKey(Request $request): string
     {
-        // BindApplicationContext resolves every supported application identifier
-        // (route parameter and X-Peter/X-App headers) into these attributes. Prefer
-        // that canonical context so the same idempotency key can never collide
-        // across applications merely because a route has no {application} segment.
         $application = $request->attributes->get('application')
             ?: $request->attributes->get('application_slug')
             ?: $request->attributes->get('peter.application_slug')
-            ?: $request->route('application');
+            ?: $request->route('application')
+            ?: $request->header('X-Peter-App')
+            ?: $request->header('X-App-Slug');
 
         if (is_object($application)) {
             $application = $application->slug ?? $application->id ?? null;
         }
 
         $value = strtolower(trim((string) ($application ?: 'global')));
-
         return substr($value, 0, 80);
     }
 
     private function routeSignature(Request $request): string
     {
         $route = $request->route();
-
         return $route && method_exists($route, 'uri')
             ? (string) $route->uri()
             : '/'.ltrim($request->path(), '/');
     }
 
+    private function routeParameters(Request $request): array
+    {
+        $route = $request->route();
+        if (! $route || ! method_exists($route, 'parameters')) {
+            return [];
+        }
+
+        return array_map(static function (mixed $value): mixed {
+            if (is_object($value)) {
+                if (method_exists($value, 'getRouteKey')) {
+                    return $value->getRouteKey();
+                }
+                if (isset($value->id)) {
+                    return $value->id;
+                }
+                return get_class($value);
+            }
+            return $value;
+        }, $route->parameters());
+    }
+
     private function shouldReleaseAfterException(Request $request, Throwable $exception): bool
     {
-        $status = $exception instanceof HttpExceptionInterface
-            ? $exception->getStatusCode()
-            : 500;
-
+        $status = $exception instanceof HttpExceptionInterface ? $exception->getStatusCode() : 500;
         if ($status < 500 || $status === 503) {
             return true;
         }
 
         $route = $request->route();
-        $action = $route && method_exists($route, 'getActionName')
-            ? (string) $route->getActionName()
-            : '';
-
-        // Ordering checkout commits the order and stock before external payment
-        // initialization. An unexpected 5xx after that boundary is ambiguous, so
-        // keep the claim and block a retry from creating a second order. Known 503
-        // payment initialization failures are compensated by the controller first.
+        $action = $route && method_exists($route, 'getActionName') ? (string) $route->getActionName() : '';
         return ! str_ends_with($action, 'OrderingController@checkout');
     }
 
@@ -230,10 +221,7 @@ final class EnsureIdempotentRequest
 
         if ($value instanceof UploadedFile) {
             $path = $value->getRealPath();
-            $contentHash = is_string($path) && $path !== '' && is_file($path)
-                ? hash_file('sha256', $path)
-                : false;
-
+            $contentHash = is_string($path) && $path !== '' && is_file($path) ? hash_file('sha256', $path) : false;
             return [
                 '__uploaded_file' => true,
                 'sha256' => $contentHash ?: null,
@@ -254,7 +242,6 @@ final class EnsureIdempotentRequest
         foreach ($value as $key => $item) {
             $value[$key] = $this->normalize($item, (string) $key);
         }
-
         return $value;
     }
 }
