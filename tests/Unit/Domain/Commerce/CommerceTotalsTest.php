@@ -11,9 +11,9 @@ class CommerceTotalsTest extends TestCase
     public function test_calculates_multi_item_totals_in_cents(): void
     {
         $this->assertSame([
-            'subtotal' => 35.5,
+            'subtotal' => 35.49,
             'discount' => 5.5,
-            'total' => 30.0,
+            'total' => 29.99,
         ], CommerceTotals::calculate([
             ['unit_price' => 10.25, 'quantity' => 2],
             ['unit_price' => 14.99, 'quantity' => 1],
