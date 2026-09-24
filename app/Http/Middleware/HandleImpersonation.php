@@ -16,6 +16,12 @@ class HandleImpersonation
         'secret', 'client_secret', 'card', 'card_number', 'cvv', 'cvc', 'cpf', 'document',
     ];
 
+    private const REDACTED_KEY_FRAGMENTS = [
+        'password', 'passwd', 'token', 'authorization', 'cookie', 'secret', 'credential', 'api_key', 'apikey',
+        'card_number', 'cardnumber', 'cvv', 'cvc', 'cpf', 'document', 'pix_key', 'pixkey', 'bank_account',
+        'bankaccount', 'routing_number', 'routingnumber', 'iban', 'swift',
+    ];
+
     public function __construct(private readonly ImpersonationService $service)
     {
     }
@@ -189,7 +195,7 @@ class HandleImpersonation
     private function redact(array $data): array
     {
         foreach ($data as $key => $value) {
-            if (in_array(strtolower((string) $key), self::REDACTED_KEYS, true)) {
+            if ($this->isSensitiveKey((string) $key)) {
                 $data[$key] = '[REDACTED]';
             } elseif (is_array($value)) {
                 $data[$key] = $this->redact($value);
@@ -198,5 +204,18 @@ class HandleImpersonation
             }
         }
         return $data;
+    }
+
+    private function isSensitiveKey(string $key): bool
+    {
+        $normalized = strtolower(trim($key));
+        if (in_array($normalized, self::REDACTED_KEYS, true)) return true;
+
+        $normalized = str_replace(['-', '.', ' '], '_', $normalized);
+        foreach (self::REDACTED_KEY_FRAGMENTS as $fragment) {
+            if (str_contains($normalized, $fragment)) return true;
+        }
+
+        return false;
     }
 }
