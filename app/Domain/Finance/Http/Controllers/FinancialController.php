@@ -57,8 +57,23 @@ class FinancialController extends Controller
     public function uploadDocument(Request $request, int $organizationId)
     {
         $this->ownedOrganization($request, $organizationId);
-        $data=$request->validate(['front'=>'required|file|mimes:jpg,jpeg,png,webp|max:8192','back'=>'nullable|file|mimes:jpg,jpeg,png,webp|max:8192','consent'=>'required|accepted']);
-        return response()->json(['message'=>'Documento recebido. Agora faça a prova de vida.','identity'=>$this->identity->uploadDocuments($request->user(),$request->file('front'),$request->file('back'),(bool)$data['consent'])],201);
+        $selfieRule = (bool) config('services.identity.selfie_with_document_required', true) ? 'required' : 'nullable';
+        $data=$request->validate([
+            'front'=>'required|file|mimes:jpg,jpeg,png,webp|max:8192',
+            'back'=>'nullable|file|mimes:jpg,jpeg,png,webp|max:8192',
+            'selfie_with_document'=>$selfieRule.'|file|mimes:jpg,jpeg,png,webp|max:8192',
+            'consent'=>'required|accepted',
+        ]);
+        return response()->json([
+            'message'=>'Documentos recebidos. Agora faça a prova de vida.',
+            'identity'=>$this->identity->uploadDocuments(
+                $request->user(),
+                $request->file('front'),
+                $request->file('back'),
+                $request->file('selfie_with_document'),
+                (bool)$data['consent']
+            )
+        ],201);
     }
 
     public function startLiveness(Request $request, int $organizationId)
