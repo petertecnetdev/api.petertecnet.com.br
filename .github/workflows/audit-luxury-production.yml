@@ -1,0 +1,41 @@
+name: Audit Luxury Production
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/audit-luxury-production.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect Luxury production fields
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          port="${VPS_PORT:-22}"
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$port" "$VPS_USER@$VPS_HOST" 'cd /var/www/api.petertecnet.com.br && php' <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $app=require 'bootstrap/app.php';
+          $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+          $p=App\Models\Production::query()->findOrFail(25);
+          $fields=['id','app_id','app_slug','name','fantasy','slug','address','address_number','neighborhood','address_complement','city','uf','cep','latitude','longitude','phone','instagram','description','user_id'];
+          $data=[];
+          foreach($fields as $field) $data[$field]=$p->getAttribute($field);
+          echo 'LUXURY_PRODUCTION_JSON=',json_encode($data,JSON_UNESCAPED_UNICODE|JSON_UNESCAPED_SLASHES),PHP_EOL;
+          PHP
