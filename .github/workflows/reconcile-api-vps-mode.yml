@@ -31,14 +31,14 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$port" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           cd /var/www/api.petertecnet.com.br
-          git fetch --prune origin main >/dev/null
+          git -c gc.auto=0 fetch --prune origin main >/dev/null
           local_hash="$(git hash-object routes/console.php)"
           remote_hash="$(git rev-parse origin/main:routes/console.php)"
           if [[ "$local_hash" != "$remote_hash" ]]; then
             echo "Refusing mode normalization: routes/console.php contents differ from origin/main." >&2
             exit 27
           fi
-          chmod 0644 routes/console.php
+          sudo chmod 0644 routes/console.php
           if [[ -n "$(git status --porcelain=v1 -- routes/console.php)" ]]; then
             echo "routes/console.php is still modified after chmod; refusing further changes." >&2
             git status --porcelain=v1 -- routes/console.php >&2
