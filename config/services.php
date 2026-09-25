@@ -95,8 +95,6 @@ return [
         'redirect_uri' => env('MERCADOPAGO_REDIRECT_URI', rtrim(env('APP_URL', ''), '/') . '/api/payments/mercadopago/oauth/callback'),
         'webhook_secret' => env('MERCADOPAGO_WEBHOOK_SECRET'),
         'buyer_fee' => [
-            // Taxas contratuais da conta Mercado Pago. O checkout faz gross-up para
-            // preservar o valor líquido definido pelo produtor.
             'pix_percent' => (float) env('MERCADOPAGO_PIX_FEE_PERCENT', 0),
             'pix_fixed' => (float) env('MERCADOPAGO_PIX_FEE_FIXED', 0),
             'boleto_percent' => (float) env('MERCADOPAGO_BOLETO_FEE_PERCENT', 0),
@@ -111,15 +109,33 @@ return [
     ],
 
     'whatsapp' => [
-        'enabled' => (bool) env('WHATSAPP_CLOUD_ENABLED', false),
+        'enabled' => filter_var(env('WHATSAPP_CLOUD_ENABLED', false), FILTER_VALIDATE_BOOL),
         'graph_version' => env('WHATSAPP_GRAPH_VERSION', 'v26.0'),
         'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
         'waba_id' => env('WHATSAPP_WABA_ID'),
         'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
         'language' => env('WHATSAPP_TEMPLATE_LANGUAGE', 'pt_BR'),
+        'default_calling_code' => env('WHATSAPP_DEFAULT_CALLING_CODE'),
         'invitation_template' => env('WHATSAPP_INVITATION_TEMPLATE', 'petertecnet_user_invitation'),
         'authentication_template' => env('WHATSAPP_AUTH_TEMPLATE', 'petertecnet_authentication_code'),
         'activation_template' => env('WHATSAPP_ACTIVATION_TEMPLATE', 'petertecnet_account_activated'),
+        'templates' => [
+            'AUTH_CODE' => env('WHATSAPP_TEMPLATE_AUTH_CODE', env('WHATSAPP_AUTH_TEMPLATE', 'petertecnet_authentication_code')),
+            'ACCOUNT_ACTIVATED' => env('WHATSAPP_TEMPLATE_ACCOUNT_ACTIVATED', env('WHATSAPP_ACTIVATION_TEMPLATE', 'petertecnet_account_activated')),
+            'USER_INVITATION' => env('WHATSAPP_TEMPLATE_USER_INVITATION', env('WHATSAPP_INVITATION_TEMPLATE', 'petertecnet_user_invitation')),
+            'EVENT_REMINDER' => env('WHATSAPP_TEMPLATE_EVENT_REMINDER'),
+            'TICKET_PURCHASED' => env('WHATSAPP_TEMPLATE_TICKET_PURCHASED'),
+            'PAYMENT_CONFIRMED' => env('WHATSAPP_TEMPLATE_PAYMENT_CONFIRMED'),
+            'PAYMENT_FAILED' => env('WHATSAPP_TEMPLATE_PAYMENT_FAILED'),
+            'PRODUCER_ACTION_REQUIRED' => env('WHATSAPP_TEMPLATE_PRODUCER_ACTION_REQUIRED'),
+        ],
+        'locales' => [
+            'pt-BR' => 'pt_BR',
+            'pt_BR' => 'pt_BR',
+            'en' => 'en_US',
+            'en-US' => 'en_US',
+            'en_US' => 'en_US',
+        ],
         'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
         'app_secret' => env('META_APP_SECRET'),
         'timeout' => (int) env('WHATSAPP_API_TIMEOUT', 15),
