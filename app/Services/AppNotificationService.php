@@ -7,6 +7,7 @@ use App\Mail\AppNotificationMail;
 use App\Models\AppNotification;
 use App\Models\Application;
 use App\Models\User;
+use App\Services\WhatsApp\WhatsAppChannel;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -20,6 +21,8 @@ class AppNotificationService
         'subscription_renewal_recovery',
         'subscription_renewal_reminder',
     ];
+
+    public function __construct(private readonly WhatsAppChannel $whatsAppChannel) {}
 
     public function sendToUser(int $appId, int $userId, array $payload): AppNotification
     {
@@ -38,9 +41,6 @@ class AppNotificationService
         try {
             event(new AppNotificationCreated($notification));
         } catch (\Throwable $e) {
-            // Realtime is a delivery enhancement, never part of the business
-            // transaction. A Reverb/Pusher outage must not roll back actions
-            // such as event duplication, ticket creation or checkout.
             Log::warning('Realtime broadcast failed; notification persisted.', [
                 'operation' => 'app-notification',
                 'notification_id' => $notification->id,
@@ -56,6 +56,23 @@ class AppNotificationService
             $this->sendNotificationEmail($notification);
         }
 
+        $channels = array_map('strtolower', array_map('strval', (array) ($payload['channels'] ?? [])));
+        if (($payload['send_whatsapp'] ?? false) === true || in_array('whatsapp', $channels, true)) {
+            try {
+                $whatsAppOptions = (array) ($payload['whatsapp'] ?? data_get($payload, 'data.whatsapp', []));
+                $this->whatsAppChannel->queue($notification, $whatsAppOptions);
+            } catch (\Throwable $e) {
+                Log::error('Falha ao enfileirar WhatsApp da notificação.', [
+                    'notification_id' => $notification->id,
+                    'app_id' => $notification->app_id,
+                    'user_id' => $notification->user_id,
+                    'type' => $notification->type,
+                    'exception' => $e::class,
+                    'message' => mb_substr($e->getMessage(), 0, 500),
+                ]);
+            }
+        }
+
         return $notification;
     }
 
@@ -63,7 +80,7 @@ class AppNotificationService
     {
         return collect($userIds)
             ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0 && (!$excludeUserId || $id !== $excludeUserId))
+            ->filter(fn ($id) => $id > 0 && (! $excludeUserId || $id !== $excludeUserId))
             ->unique()
             ->values()
             ->map(fn ($userId) => $this->sendToUser($appId, $userId, $payload));
@@ -72,8 +89,6 @@ class AppNotificationService
     private function sendNotificationEmail(AppNotification $notification): void
     {
         try {
-            // EventProducerCommunicationService already sends a richer event-management e-mail
-            // for these event lifecycle notifications. Skipping here prevents duplicate delivery.
             if (Str::startsWith((string) $notification->type, 'producer_event_')) {
                 return;
             }
