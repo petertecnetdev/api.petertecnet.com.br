@@ -2,15 +2,17 @@
 
 namespace App\Services;
 
+use App\Models\NotificationDelivery;
 use App\Models\UserInvitation;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class WhatsAppWebhookService
 {
     public function verify(string $mode, string $token, string $challenge): ?string
     {
         $expected = trim((string) config('services.whatsapp.webhook_verify_token'));
-
         if ($mode !== 'subscribe' || $expected === '' || ! hash_equals($expected, $token)) {
             return null;
         }
@@ -21,10 +23,8 @@ class WhatsAppWebhookService
     public function signatureIsValid(string $rawBody, ?string $signature): bool
     {
         $secret = trim((string) config('services.whatsapp.app_secret'));
-
         if ($secret === '') {
             Log::warning('WhatsApp webhook app secret is not configured; signature validation is temporarily unavailable.');
-
             return true;
         }
 
@@ -32,9 +32,7 @@ class WhatsAppWebhookService
             return false;
         }
 
-        $expected = 'sha256='.hash_hmac('sha256', $rawBody, $secret);
-
-        return hash_equals($expected, $signature);
+        return hash_equals('sha256='.hash_hmac('sha256', $rawBody, $secret), $signature);
     }
 
     public function process(array $payload): void
@@ -46,7 +44,6 @@ class WhatsAppWebhookService
                 }
 
                 $value = (array) ($change['value'] ?? []);
-
                 foreach ((array) ($value['statuses'] ?? []) as $status) {
                     $this->processStatus((array) $status);
                 }
@@ -62,15 +59,27 @@ class WhatsAppWebhookService
     {
         $messageId = trim((string) ($status['id'] ?? ''));
         $state = strtolower(trim((string) ($status['status'] ?? '')));
-
         if ($messageId === '' || ! in_array($state, ['sent', 'delivered', 'read', 'failed'], true)) {
             return;
         }
 
-        $invitation = UserInvitation::query()
-            ->where('provider_message_id', $messageId)
-            ->first();
+        $delivery = NotificationDelivery::query()->where('provider_message_id', $messageId)->first();
+        if ($delivery) {
+            $timestamp = isset($status['timestamp']) && is_numeric($status['timestamp'])
+                ? Carbon::createFromTimestampUTC((int) $status['timestamp'])
+                : now();
+            $fields = ['status' => strtoupper($state)];
+            $fields[$state.'_at'] = $timestamp;
 
+            if ($state === 'failed') {
+                $fields['error_code'] = Str::limit((string) data_get($status, 'errors.0.code'), 96, '');
+                $fields['error_message'] = Str::limit((string) (data_get($status, 'errors.0.title') ?: data_get($status, 'errors.0.message')), 500);
+            }
+
+            $delivery->forceFill($fields)->save();
+        }
+
+        $invitation = UserInvitation::query()->where('provider_message_id', $messageId)->first();
         if (! $invitation) {
             return;
         }
@@ -87,17 +96,13 @@ class WhatsAppWebhookService
             'updated_at' => now()->toIso8601String(),
         ], static fn ($value) => $value !== null && $value !== '');
 
-        $invitation->forceFill([
-            'delivery_status' => $state,
-            'metadata' => $metadata,
-        ])->save();
+        $invitation->forceFill(['delivery_status' => $state, 'metadata' => $metadata])->save();
     }
 
     private function recordInboundMessage(array $message, array $value): void
     {
         Log::info('WhatsApp inbound webhook received.', [
             'message_id' => $message['id'] ?? null,
-            'from' => $message['from'] ?? null,
             'type' => $message['type'] ?? null,
             'phone_number_id' => data_get($value, 'metadata.phone_number_id'),
         ]);
