@@ -170,27 +170,32 @@ class FinancialIdentityService
             throw ValidationException::withMessages(['selfie_with_document' => 'Envie uma foto sua segurando o documento ao lado do rosto.']);
         }
 
-        DB::transaction(function () use ($beneficiary, $frontPath, $backPath, $selfiePath) {
+        $livenessRequired = (bool) config('services.identity.liveness_required', false);
+        $selfieRequired = (bool) config('services.identity.selfie_with_document_required', true);
+        $verificationComplete = ! $livenessRequired && (! $selfieRequired || (bool) $selfiePath);
+
+        DB::transaction(function () use ($beneficiary, $frontPath, $backPath, $selfiePath, $verificationComplete) {
             DB::table('identity_verifications')->insert([
                 'beneficiary_id' => $beneficiary->id,
                 'provider' => 'aws_rekognition',
-                'status' => 'document_uploaded',
+                'status' => $verificationComplete ? 'verified' : 'document_uploaded',
                 'document_type' => 'identity_document',
                 'document_front_path' => $frontPath,
                 'document_back_path' => $backPath,
                 'selfie_document_path' => $selfiePath,
-                'document_status' => 'uploaded',
-                'liveness_status' => 'pending',
-                'face_match_status' => 'pending',
+                'document_status' => $verificationComplete ? 'selfie_received' : 'uploaded',
+                'liveness_status' => $verificationComplete ? 'not_required' : 'pending',
+                'face_match_status' => $verificationComplete ? 'not_required' : 'pending',
                 'consent_at' => now(),
+                'verified_at' => $verificationComplete ? now() : null,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
 
             DB::table('financial_beneficiaries')->where('id', $beneficiary->id)->update([
-                'status' => 'identity_pending',
-                'verification_level' => 'document_uploaded',
-                'verified_at' => null,
+                'status' => $verificationComplete ? 'verified' : 'identity_pending',
+                'verification_level' => $verificationComplete ? 'document_selfie' : 'document_uploaded',
+                'verified_at' => $verificationComplete ? now() : null,
                 'updated_at' => now(),
             ]);
         });
