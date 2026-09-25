@@ -38,7 +38,12 @@ jobs:
             echo "Refusing mode normalization: routes/console.php contents differ from origin/main." >&2
             exit 27
           fi
-          sudo chmod 0644 routes/console.php
+          tmp="$(mktemp routes/.console.php.modefix.XXXXXX)"
+          trap 'rm -f "$tmp"' EXIT
+          cat routes/console.php > "$tmp"
+          chmod 0644 "$tmp"
+          mv -f "$tmp" routes/console.php
+          trap - EXIT
           if [[ -n "$(git status --porcelain=v1 -- routes/console.php)" ]]; then
             echo "routes/console.php is still modified after chmod; refusing further changes." >&2
             git status --porcelain=v1 -- routes/console.php >&2
