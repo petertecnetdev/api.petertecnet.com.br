@@ -1,0 +1,46 @@
+name: Audit API VPS Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/audit-api-vps-source.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect protected VPS source changes
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          port="${VPS_PORT:-22}"
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$port" "$VPS_USER@$VPS_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/api.petertecnet.com.br
+          git fetch --prune origin main >/dev/null
+          echo 'VPS_STATUS_BEGIN'
+          git status --porcelain=v1 --untracked-files=all
+          echo 'VPS_STATUS_END'
+          echo 'VPS_HEAD_BEGIN'
+          git rev-parse HEAD
+          git rev-parse origin/main
+          git log --oneline --decorate --max-count=20 origin/main..HEAD || true
+          echo 'VPS_HEAD_END'
+          echo 'ROUTES_CONSOLE_DIFF_BEGIN'
+          git diff --no-ext-diff --unified=20 -- routes/console.php || true
+          echo 'ROUTES_CONSOLE_DIFF_END'
+          REMOTE
