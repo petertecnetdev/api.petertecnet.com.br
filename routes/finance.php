@@ -2,6 +2,7 @@
 
 use App\Domain\Finance\Http\Controllers\FinancialController;
 use App\Domain\Finance\Http\Controllers\PayoutController;
+use App\Domain\Finance\Http\Controllers\StripeWebhookController;
 use App\Domain\Finance\Http\Controllers\SubscriptionIntentController;
 use App\Domain\Finance\Http\Controllers\SubscriptionPaymentController;
 use App\Domain\Finance\Http\Controllers\SubscriptionPlanController;
@@ -42,6 +43,10 @@ Route::prefix('v1/apps/{application}/subscription-intents')
 Route::post('v1/subscription-payments/mercadopago/webhook', [SubscriptionPaymentController::class, 'webhook'])
     ->middleware('throttle:240,1')
     ->name('finance.subscription-payments.webhook');
+
+Route::post('webhooks/stripe', [StripeWebhookController::class, 'handle'])
+    ->middleware('throttle:600,1')
+    ->name('finance.webhooks.stripe');
 
 Route::prefix('finance/webhooks')->group(function () {
     Route::post('/asaas', [FinancialController::class, 'providerWebhook'])
