@@ -22,9 +22,12 @@ class FinancialIdentityService
             : null;
         $livenessRequired = (bool) config('services.identity.liveness_required', false);
         $documentUploaded = (bool) ($verification && !empty($verification->document_front_path));
+        $selfieRequired = (bool) config('services.identity.selfie_with_document_required', true);
+        $selfieUploaded = (bool) ($verification && !empty($verification->selfie_document_path));
+        $documentRequirementsMet = $documentUploaded && (!$selfieRequired || $selfieUploaded);
         $readyForPix = (bool) ($beneficiary && (
             $beneficiary->status === 'verified'
-            || (!$livenessRequired && $documentUploaded)
+            || (!$livenessRequired && $documentRequirementsMet)
         ));
 
         $profileName = trim(implode(' ', array_filter([$user->first_name, $user->last_name])));
@@ -55,6 +58,7 @@ class FinancialIdentityService
                 'document_status' => $verification->document_status,
                 'document_front_uploaded' => !empty($verification->document_front_path),
                 'document_back_uploaded' => !empty($verification->document_back_path),
+                'selfie_document_uploaded' => !empty($verification->selfie_document_path),
                 'liveness_status' => $verification->liveness_status,
                 'face_match_status' => $verification->face_match_status,
                 'face_similarity' => $verification->face_similarity,
@@ -64,6 +68,7 @@ class FinancialIdentityService
             ] : null,
             'ready_for_pix' => $readyForPix,
             'liveness_required' => $livenessRequired,
+            'selfie_document_required' => $selfieRequired,
             'next_action' => $this->nextAction($beneficiary, $verification),
         ];
     }
@@ -148,7 +153,7 @@ class FinancialIdentityService
         return $this->overview($user->fresh());
     }
 
-    public function uploadDocuments(User $user, UploadedFile $front, ?UploadedFile $back, bool $consent): array
+    public function uploadDocuments(User $user, UploadedFile $front, ?UploadedFile $back, ?UploadedFile $selfieWithDocument, bool $consent): array
     {
         if (!$consent) {
             throw ValidationException::withMessages(['consent' => 'É necessário autorizar o tratamento dos dados para verificação de identidade.']);
@@ -158,10 +163,14 @@ class FinancialIdentityService
         $directory = 'private/identity/' . $user->id . '/' . date('Y/m');
         $frontPath = $front->store($directory, 'local');
         $backPath = $back?->store($directory, 'local');
+        $selfiePath = $selfieWithDocument?->store($directory, 'local');
 
         if (!$frontPath) throw new RuntimeException('Não foi possível armazenar o documento com segurança.');
+        if ((bool) config('services.identity.selfie_with_document_required', true) && !$selfiePath) {
+            throw ValidationException::withMessages(['selfie_with_document' => 'Envie uma foto sua segurando o documento ao lado do rosto.']);
+        }
 
-        DB::transaction(function () use ($beneficiary, $frontPath, $backPath) {
+        DB::transaction(function () use ($beneficiary, $frontPath, $backPath, $selfiePath) {
             DB::table('identity_verifications')->insert([
                 'beneficiary_id' => $beneficiary->id,
                 'provider' => 'aws_rekognition',
@@ -169,6 +178,7 @@ class FinancialIdentityService
                 'document_type' => 'identity_document',
                 'document_front_path' => $frontPath,
                 'document_back_path' => $backPath,
+                'selfie_document_path' => $selfiePath,
                 'document_status' => 'uploaded',
                 'liveness_status' => 'pending',
                 'face_match_status' => 'pending',
@@ -275,6 +285,9 @@ class FinancialIdentityService
     {
         if (!$beneficiary) return 'identity_profile';
         if (!$verification || !$verification->document_front_path) return 'document';
+        if ((bool) config('services.identity.selfie_with_document_required', true)
+            && $beneficiary->status !== 'verified'
+            && !$verification->selfie_document_path) return 'selfie_document';
         if (!(bool) config('services.identity.liveness_required', false)) return 'pix';
         if ($beneficiary->status !== 'verified') return 'liveness';
         return 'pix';
