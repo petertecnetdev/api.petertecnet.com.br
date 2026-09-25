@@ -1,0 +1,167 @@
+name: Deploy Producer Onboarding
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-producer-onboarding.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-producer-onboarding
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+      - run: composer install --no-interaction --prefer-dist --no-progress
+      - name: Validate changed PHP
+        run: |
+          php -l app/Domain/Finance/Http/Controllers/FinancialController.php
+          php -l app/Services/FinancialIdentityService.php
+          php -l app/Domain/Organizations/Http/Controllers/OrganizationOnboardingController.php
+          php -l config/services.php
+          php -l database/migrations/2026_09_25_120000_add_selfie_document_path_to_identity_verifications.php
+      - name: Validate routes and migrations on clean database
+        shell: bash
+        run: |
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/onboarding.sqlite
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=onboarding-deploy-validation-secret
+          EOF
+          touch /tmp/onboarding.sqlite
+          php artisan config:clear
+          php artisan route:list >/tmp/routes.txt
+          grep -q 'organization-onboarding' /tmp/routes.txt
+          grep -q 'finance/identity/document' /tmp/routes.txt
+          php artisan migrate --force
+
+  backup:
+    needs: validate
+    uses: ./.github/workflows/reusable-verified-database-backup.yml
+    with:
+      kind: pre-deploy
+      local_retention_days: 14
+      artifact_retention_days: 90
+    secrets:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
+  deploy:
+    needs: [validate, backup]
+    uses: petertecnetdev/petertecnet.com.br/.github/workflows/reusable-vps-deploy.yml@main
+    with:
+      deploy_path: /var/www/api.petertecnet.com.br
+      deploy_type: laravel
+      deploy_branch: main
+      deploy_sha: ${{ github.sha }}
+      health_url: https://api.petertecnet.com.br/api/applications
+    secrets:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+
+  audit-luxury:
+    name: Audit Luxury producer state
+    needs: deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Inspect production safely
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          port="${VPS_PORT:-22}"
+          ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 -p "$port" "$VPS_USER@$VPS_HOST" 'cd /var/www/api.petertecnet.com.br && php' <<'PHP'
+          <?php
+          require 'vendor/autoload.php';
+          $app = require 'bootstrap/app.php';
+          $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+          $productions = App\Models\Production::query()
+              ->where(function ($q) {
+                  $q->whereRaw('LOWER(name) LIKE ?', ['%luxury%'])
+                    ->orWhereRaw('LOWER(fantasy) LIKE ?', ['%luxury%']);
+              })
+              ->get();
+
+          $result = [];
+          foreach ($productions as $production) {
+              $owner = App\Models\User::query()->find($production->user_id);
+              $events = App\Models\Event::query()
+                  ->where('production_id', $production->id)
+                  ->orderBy('start_date')
+                  ->get(['id','title','start_date','end_date','is_published','is_cancelled']);
+              $agreement = Illuminate\Support\Facades\DB::table('producer_agreement_acceptances')
+                  ->where('app_id', $production->app_id)
+                  ->where('establishment_id', $production->id)
+                  ->latest('id')->first();
+              $beneficiary = $owner ? Illuminate\Support\Facades\DB::table('financial_beneficiaries')->where('user_id', $owner->id)->first() : null;
+              $verification = $beneficiary ? Illuminate\Support\Facades\DB::table('identity_verifications')->where('beneficiary_id', $beneficiary->id)->latest('id')->first() : null;
+              $destination = Illuminate\Support\Facades\DB::table('financial_payout_destinations')->where('source_type','production')->where('source_id',$production->id)->first();
+
+              $result[] = [
+                  'production_id' => $production->id,
+                  'production' => $production->fantasy ?: $production->name,
+                  'owner_id' => $owner?->id,
+                  'owner_first_name' => $owner?->first_name,
+                  'owner_has_email' => (bool) $owner?->email,
+                  'events' => $events->map(fn($event) => [
+                      'id' => $event->id,
+                      'title' => $event->title,
+                      'start_date' => (string) $event->start_date,
+                      'weekday' => $event->start_date ? Illuminate\Support\Carbon::parse($event->start_date)->dayOfWeekIso : null,
+                      'published' => (bool) $event->is_published,
+                      'cancelled' => (bool) $event->is_cancelled,
+                  ])->values()->all(),
+                  'agreement_signed' => (bool) $agreement,
+                  'identity_profile' => (bool) $beneficiary,
+                  'document_uploaded' => (bool) ($verification?->document_front_path),
+                  'selfie_document_uploaded' => (bool) ($verification?->selfie_document_path),
+                  'liveness_status' => $verification?->liveness_status,
+                  'face_match_status' => $verification?->face_match_status,
+                  'pix_destination' => (bool) $destination,
+                  'pix_status' => $destination?->status,
+                  'handoff_sent' => (bool) Illuminate\Support\Facades\DB::table('organization_onboardings')
+                      ->where('app_id',$production->app_id)
+                      ->where('establishment_id',$production->id)
+                      ->whereNotNull('handoff_sent_at')->exists(),
+              ];
+          }
+
+          echo json_encode(['luxury_matches' => count($result), 'productions' => $result], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE), PHP_EOL;
+          PHP
