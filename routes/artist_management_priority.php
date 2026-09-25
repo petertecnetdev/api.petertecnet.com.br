@@ -11,12 +11,7 @@ Route::prefix('v1/apps/{application}')
         Route::get('/artists/manageable', [ArtistClaimController::class, 'manageable']);
     });
 
-Route::prefix('cutinapp')
-    ->middleware(['app.bind:cutinapp', 'compatibility.route', 'auth:api', 'token.version'])
-    ->group(function (): void {
-        Route::get('/artists/manageable', [ArtistClaimController::class, 'manageable']);
-    });
-
-// Keep the remaining artist workflow endpoints in the same priority block so
+// The legacy product-prefixed alias lives exclusively in routes/compatibility.php.
+// Keep the remaining artist workflow endpoints in this priority block so
 // app-scoped routes are registered before the generic public /artists/{slug} route.
 require __DIR__.'/artist_workflow.php';
