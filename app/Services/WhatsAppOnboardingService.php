@@ -3,12 +3,18 @@
 namespace App\Services;
 
 use App\Models\UserInvitation;
-use Illuminate\Http\Client\PendingRequest;
-use Illuminate\Support\Facades\Http;
+use App\Services\WhatsApp\PhoneNumberNormalizer;
+use App\Services\WhatsApp\WhatsAppCloudProvider;
+use InvalidArgumentException;
 use RuntimeException;
 
 class WhatsAppOnboardingService
 {
+    public function __construct(
+        private readonly PhoneNumberNormalizer $phones,
+        private readonly WhatsAppCloudProvider $provider,
+    ) {}
+
     public function isConfigured(): bool
     {
         return (bool) config('services.whatsapp.enabled')
@@ -20,20 +26,11 @@ class WhatsAppOnboardingService
 
     public function normalizePhone(?string $phone): ?string
     {
-        $raw = trim((string) $phone);
-        if ($raw === '') return null;
-
-        $digits = preg_replace('/\D+/', '', $raw) ?: '';
-        if (str_starts_with($digits, '00')) $digits = substr($digits, 2);
-
-        if (str_starts_with($raw, '+')) {
-            return strlen($digits) >= 8 && strlen($digits) <= 15 ? '+'.$digits : null;
+        try {
+            return $this->phones->normalize($phone);
+        } catch (InvalidArgumentException) {
+            return null;
         }
-
-        if (strlen($digits) === 10 || strlen($digits) === 11) $digits = '55'.$digits;
-        if (strlen($digits) < 12 || strlen($digits) > 15) return null;
-
-        return '+'.$digits;
     }
 
     public function sendInvitation(UserInvitation $invitation, string $code, string $rawToken): array
@@ -50,7 +47,7 @@ class WhatsAppOnboardingService
         $applicationName = (string) ($invitation->application?->name ?: 'Peter Tecnet');
         $activationUrl = $this->activationUrl($rawToken);
 
-        $welcome = $this->sendTemplate($phone, (string) config('services.whatsapp.invitation_template'), [[
+        $welcomeId = $this->provider->sendTemplate($phone, (string) config('services.whatsapp.invitation_template'), (string) config('services.whatsapp.language', 'pt_BR'), [[
             'type' => 'body',
             'parameters' => [
                 ['type' => 'text', 'text' => $name],
@@ -59,7 +56,7 @@ class WhatsAppOnboardingService
             ],
         ]]);
 
-        $authentication = $this->sendTemplate($phone, (string) config('services.whatsapp.authentication_template'), [
+        $authenticationId = $this->provider->sendTemplate($phone, (string) config('services.whatsapp.authentication_template'), (string) config('services.whatsapp.language', 'pt_BR'), [
             [
                 'type' => 'body',
                 'parameters' => [['type' => 'text', 'text' => $code]],
@@ -73,8 +70,8 @@ class WhatsAppOnboardingService
         ]);
 
         return [
-            'welcome_message_id' => data_get($welcome, 'messages.0.id'),
-            'authentication_message_id' => data_get($authentication, 'messages.0.id'),
+            'welcome_message_id' => $welcomeId,
+            'authentication_message_id' => $authenticationId,
         ];
     }
 
@@ -93,7 +90,7 @@ class WhatsAppOnboardingService
         $applicationName = (string) ($invitation->application?->name ?: 'Peter Tecnet');
         $applicationUrl = (string) ($invitation->application?->url ?: config('app.frontend_url', 'https://petertecnet.com.br'));
 
-        $response = $this->sendTemplate($phone, $template, [[
+        return $this->provider->sendTemplate($phone, $template, (string) config('services.whatsapp.language', 'pt_BR'), [[
             'type' => 'body',
             'parameters' => [
                 ['type' => 'text', 'text' => $name],
@@ -101,41 +98,6 @@ class WhatsAppOnboardingService
                 ['type' => 'text', 'text' => $applicationUrl],
             ],
         ]]);
-
-        return data_get($response, 'messages.0.id');
-    }
-
-    private function sendTemplate(string $phone, string $templateName, array $components): array
-    {
-        $phoneNumberId = trim((string) config('services.whatsapp.phone_number_id'));
-        $version = trim((string) config('services.whatsapp.graph_version', 'v26.0')) ?: 'v26.0';
-
-        $response = $this->client()->post("https://graph.facebook.com/{$version}/{$phoneNumberId}/messages", [
-            'messaging_product' => 'whatsapp',
-            'recipient_type' => 'individual',
-            'to' => preg_replace('/\D+/', '', $phone),
-            'type' => 'template',
-            'template' => [
-                'name' => $templateName,
-                'language' => ['code' => (string) config('services.whatsapp.language', 'pt_BR')],
-                'components' => $components,
-            ],
-        ]);
-
-        if (! $response->successful()) {
-            throw new RuntimeException((string) data_get($response->json(), 'error.message', 'Falha ao enviar mensagem pela WhatsApp Cloud API.'));
-        }
-
-        return (array) $response->json();
-    }
-
-    private function client(): PendingRequest
-    {
-        return Http::withToken((string) config('services.whatsapp.access_token'))
-            ->acceptJson()
-            ->asJson()
-            ->timeout(max(5, (int) config('services.whatsapp.timeout', 15)))
-            ->retry(2, 250, throw: false);
     }
 
     private function activationUrl(string $rawToken): string
