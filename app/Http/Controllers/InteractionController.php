@@ -18,8 +18,13 @@ class InteractionController extends Controller
             'events.*.type' => ['required', 'string', 'max:80', 'regex:/^[a-z][a-z0-9_]*$/'],
             'events.*.timestamp' => ['required', 'date'],
             'events.*.page' => ['nullable', 'string', 'max:1000'],
+            'events.*.route' => ['nullable', 'string', 'max:1000'],
+            'events.*.screen' => ['nullable', 'string', 'max:200'],
             'events.*.label' => ['nullable', 'string', 'max:200'],
             'events.*.target' => ['nullable', 'string', 'max:200'],
+            'events.*.result' => ['nullable', 'string', 'max:40'],
+            'events.*.duration_ms' => ['nullable', 'integer', 'min:0', 'max:86400000'],
+            'events.*.device' => ['nullable', 'string', 'max:80'],
             'events.*.metadata' => ['nullable', 'array'],
         ]);
 
