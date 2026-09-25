@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Production;
 use App\Models\User;
+use App\Services\FinancialIdentityService;
 use App\Services\MerchantPaymentAccountService;
 use App\Services\ProducerAgreementService;
 use App\Support\ApplicationContext;
@@ -21,6 +22,7 @@ final class OrganizationOnboardingController extends Controller
         private readonly ApplicationContext $context,
         private readonly ProducerAgreementService $agreements,
         private readonly MerchantPaymentAccountService $paymentAccounts,
+        private readonly FinancialIdentityService $identity,
     ) {}
 
     public function initiate(Request $request)
@@ -46,6 +48,14 @@ final class OrganizationOnboardingController extends Controller
             'event.venue' => 'nullable|string|max:255',
             'event.city' => 'nullable|string|max:120',
             'event.uf' => 'nullable|string|size:2',
+            'events' => 'nullable|array|max:12',
+            'events.*.title' => 'required|string|min:2|max:255',
+            'events.*.description' => 'nullable|string|max:50000',
+            'events.*.start_date' => 'required|date|after:now',
+            'events.*.end_date' => 'nullable|date|after:events.*.start_date',
+            'events.*.venue' => 'nullable|string|max:255',
+            'events.*.city' => 'nullable|string|max:120',
+            'events.*.uf' => 'nullable|string|size:2',
             'send_email' => 'sometimes|boolean',
         ]);
 
@@ -98,10 +108,14 @@ final class OrganizationOnboardingController extends Controller
                 'is_cancelled' => false,
             ]);
 
-            $event = null;
+            $eventPayloads = collect($data['events'] ?? []);
             if (! empty($data['event']['title'])) {
-                $eventData = $data['event'];
-                $event = Event::create([
+                $eventPayloads->prepend($data['event']);
+            }
+
+            $events = collect();
+            foreach ($eventPayloads as $eventData) {
+                $events->push(Event::create([
                     'app_id' => $this->context->id(),
                     'app_slug' => $this->context->slug(),
                     'production_id' => $organization->id,
@@ -116,8 +130,9 @@ final class OrganizationOnboardingController extends Controller
                     'is_published' => false,
                     'is_cancelled' => false,
                     'is_private' => false,
-                ]);
+                ]));
             }
+            $event = $events->first();
 
             DB::table('organization_onboardings')->updateOrInsert(
                 [
@@ -137,15 +152,25 @@ final class OrganizationOnboardingController extends Controller
                 ]
             );
 
-            return compact('owner', 'organization', 'event');
+            return compact('owner', 'organization', 'event', 'events');
         }, 3);
 
-        if ($request->boolean('send_email', true)) {
-            $this->sendHandoffEmail($result['organization'], $result['owner'], $result['event']);
+        $shouldSendEmail = $request->boolean('send_email', true);
+        $handoffSent = $shouldSendEmail
+            ? $this->sendHandoffEmail($result['organization'], $result['owner'], $result['event'], $result['events'])
+            : false;
+
+        $message = count($result['events'])
+            ? 'Onboarding assistido criado. A produção e os eventos iniciais ficaram em rascunho para o produtor assumir a operação.'
+            : 'Onboarding assistido criado. A produção ficou pronta para o produtor assumir a operação.';
+        if ($shouldSendEmail && ! $handoffSent) {
+            $message .= ' O cadastro foi salvo, mas o e-mail de entrega falhou e deve ser reenviado pelo Admin Center.';
         }
 
         return response()->json([
-            'message' => 'Onboarding assistido criado. A produção e o primeiro evento ficaram em rascunho para o produtor concluir contrato e recebimentos.',
+            'message' => $message,
+            'handoff_sent' => $handoffSent,
+            'events_created' => $result['events']->count(),
             'onboarding' => $this->statusPayload($result['organization'], $result['owner']),
         ], 201);
     }
@@ -233,10 +258,23 @@ final class OrganizationOnboardingController extends Controller
             ->where('establishment_id', $organization->id)
             ->first();
         $event = $row?->initial_event_id ? Event::query()->find($row->initial_event_id) : null;
+        $events = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('production_id', $organization->id)
+            ->orderBy('start_date')
+            ->limit(20)
+            ->get();
 
-        $this->sendHandoffEmail($organization, $owner, $event);
+        abort_unless(
+            $this->sendHandoffEmail($organization, $owner, $event, $events),
+            502,
+            'Não foi possível enviar o e-mail de entrega agora.'
+        );
 
-        return response()->json(['message' => 'E-mail de entrega do onboarding reenviado.']);
+        return response()->json([
+            'message' => 'E-mail de entrega do onboarding reenviado.',
+            'handoff_sent' => true,
+        ]);
     }
 
     private function statusPayload(Production $organization, User $owner): array
@@ -269,11 +307,27 @@ final class OrganizationOnboardingController extends Controller
             ->where('establishment_id', $organization->id)
             ->first();
 
+        $identity = $this->identity->overview($owner);
+        $verification = $identity['verification'] ?? null;
+        $identityProfileReady = (bool) ($identity['beneficiary'] ?? null);
+        $documentUploaded = (bool) data_get($verification, 'document_front_uploaded', false);
+        $selfieRequired = (bool) ($identity['selfie_document_required'] ?? true);
+        $selfieUploaded = ! $selfieRequired || (bool) data_get($verification, 'selfie_document_uploaded', false);
+        $livenessRequired = (bool) ($identity['liveness_required'] ?? false);
+        $livenessReady = ! $livenessRequired || (
+            data_get($verification, 'liveness_status') === 'passed'
+            && data_get($verification, 'face_match_status') === 'passed'
+        );
+
         $steps = [
             'account' => true,
             'organization' => true,
             'initial_event' => (bool) $firstEvent,
             'agreement' => $agreementSigned,
+            'identity' => $identityProfileReady,
+            'document' => $documentUploaded,
+            'selfie_document' => $selfieUploaded,
+            'liveness' => $livenessReady,
             'payout' => $payoutReady,
         ];
         $completed = count(array_filter($steps));
@@ -329,13 +383,15 @@ final class OrganizationOnboardingController extends Controller
         return $organization;
     }
 
-    private function sendHandoffEmail(Production $organization, User $owner, ?Event $event): void
+    private function sendHandoffEmail(Production $organization, User $owner, ?Event $event, iterable $events = []): bool
     {
         $application = $this->context->application();
         $frontend = 'https://' . $this->context->slug() . '.petertecnet.com.br';
         $onboardingUrl = $frontend . '/producer/onboarding?productionId=' . $organization->id;
         $agreementUrl = $frontend . '/producer/contracts?productionId=' . $organization->id;
         $financeUrl = $frontend . '/producer/finance?production=' . $organization->id . '&focus=activation';
+        $events = collect($events);
+        if ($events->isEmpty() && $event) $events = collect([$event]);
 
         try {
             Mail::send('emails.organization-onboarding-handoff', compact(
@@ -343,6 +399,7 @@ final class OrganizationOnboardingController extends Controller
                 'organization',
                 'owner',
                 'event',
+                'events',
                 'onboardingUrl',
                 'agreementUrl',
                 'financeUrl'
@@ -355,8 +412,11 @@ final class OrganizationOnboardingController extends Controller
                 ->where('app_id', $this->context->id())
                 ->where('establishment_id', $organization->id)
                 ->update(['handoff_sent_at' => now(), 'updated_at' => now()]);
+
+            return true;
         } catch (\Throwable $exception) {
             report($exception);
+            return false;
         }
     }
 
