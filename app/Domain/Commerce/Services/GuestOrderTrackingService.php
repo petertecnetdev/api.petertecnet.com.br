@@ -19,7 +19,7 @@ class GuestOrderTrackingService
     public function track(int $orderId, string $phone): array
     {
         $providedPhone = $this->normalizePhone($phone);
-        abort_if(strlen($providedPhone) < 8, 404);
+        abort_if(strlen($providedPhone) < 8 || strlen($providedPhone) > 15, 404);
 
         $order = Order::query()
             ->where('app_id', $this->context->id())
