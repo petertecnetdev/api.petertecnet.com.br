@@ -1,11 +1,19 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminEcosystemResourceController;
 use App\Http\Controllers\Admin\AdminEstablishmentEventController;
 use App\Http\Controllers\Admin\AdminEstablishmentResourceController;
 use App\Http\Controllers\Admin\AdminEventSeriesController;
 use App\Http\Controllers\Admin\EstablishmentEventController as EstablishmentTicketController;
 use App\Http\Controllers\Admin\ImportantEventController;
 use Illuminate\Support\Facades\Route;
+
+Route::prefix('admin/ecosystem')
+    ->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])
+    ->group(function () {
+        Route::get('/events', [AdminEcosystemResourceController::class, 'events'])
+            ->middleware('throttle:120,1');
+    });
 
 Route::prefix('admin/ecosystem/establishments/{establishment}/resources')
     ->middleware(['auth:api', \App\Http\Middleware\PeterTecnetAdminApi::class])
