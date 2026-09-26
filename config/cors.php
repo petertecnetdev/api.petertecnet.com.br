@@ -45,6 +45,7 @@ return [
         'X-Peter-Context-Role',
         'X-Peter-Ecosystem-SDK',
         'X-Peter-Telemetry',
+        'X-Search-Session',
         'X-Telemetry-Schema',
         'X-Frontend-Page',
         'X-Correlation-ID',
