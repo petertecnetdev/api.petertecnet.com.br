@@ -116,6 +116,7 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware('app.capability:events,commerce')->group(function () {
             Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
+            Route::get('/events/public/{slug}/items/{itemId}', [EventCommerceController::class, 'publicItem'])->whereNumber('itemId');
         });
 
         Route::middleware('app.capability:organizations')->group(function () {
