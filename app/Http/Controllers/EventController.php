@@ -338,7 +338,7 @@ class EventController extends Controller
             mkdir(dirname($absolute), 0755, true);
         }
 
-        Image::make($uploaded->getRealPath())->orientate()->fit(1024, 1536)->encode('webp', 88)->save($absolute);
+        Image::make($uploaded->getRealPath())->orientate()->fit(850, 450)->encode('webp', 85)->save($absolute);
         return $path;
     }
 
