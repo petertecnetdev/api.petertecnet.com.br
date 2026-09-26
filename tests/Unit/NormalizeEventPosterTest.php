@@ -35,19 +35,26 @@ final class NormalizeEventPosterTest extends TestCase
         $this->assertSame('image/webp', $stored->mime());
     }
 
-    public function test_it_rejects_landscape_art_for_the_main_event_poster(): void
+    public function test_it_normalizes_landscape_art_instead_of_rejecting_the_upload(): void
     {
         Storage::fake('public');
 
         $request = Request::create('/api/v1/apps/cutinapp/events', 'POST');
         $request->files->set('image', UploadedFile::fake()->image('landscape.jpg', 1600, 900));
 
-        $this->expectException(ValidationException::class);
-
-        (new NormalizeEventPoster)->handle(
+        $path = 'images/apps/cutinapp/events/test.webp';
+        $response = (new NormalizeEventPoster)->handle(
             $request,
-            fn () => new JsonResponse(['event' => ['image' => 'images/apps/cutinapp/events/test.webp']], 201)
+            fn () => new JsonResponse(['event' => ['image' => $path]], 201)
         );
+
+        $this->assertSame(201, $response->getStatusCode());
+        Storage::disk('public')->assertExists($path);
+
+        $stored = Image::make(Storage::disk('public')->get($path));
+        $this->assertSame(1024, $stored->width());
+        $this->assertSame(1536, $stored->height());
+        $this->assertSame('image/webp', $stored->mime());
     }
 
     public function test_it_rejects_an_unreadable_upload_with_validation_instead_of_server_error(): void
