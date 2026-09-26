@@ -9,6 +9,7 @@ use App\Models\CommercePayment;
 use App\Models\Event;
 use App\Models\EventItem;
 use App\Models\EventPass;
+use App\Models\Item;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Services\AsaasPaymentService;
@@ -42,6 +43,7 @@ final class EventCommerceController extends Controller
             ->where('slug', $slug)
             ->publiclyVisible()
             ->whereHas('production', fn ($q) => $q->where('app_id', $this->context->id()))
+            ->with('production')
             ->firstOrFail();
 
         $salesClosed = $event->salesClosed();
@@ -68,6 +70,19 @@ final class EventCommerceController extends Controller
             ->orderBy('name')
             ->get();
 
+        $sourceItemIds = $items->pluck('source_item_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $sourceItems = $sourceItemIds->isEmpty()
+            ? collect()
+            : Item::query()
+                ->with('files')
+                ->whereIn('id', $sourceItemIds)
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $event->production_id)
+                ->where('status', true)
+                ->get()
+                ->each(fn (Item $item) => $item->setAppends(['image_url']))
+                ->keyBy('id');
+
         $itemIds = $items->pluck('id')->map(fn ($id) => (int) $id)->all();
         $reservedByItem = collect();
         $soldByItem = collect();
@@ -93,15 +108,20 @@ final class EventCommerceController extends Controller
                 ->pluck('aggregate', 'oi.event_item_id');
         }
 
-        $items->each(function (EventItem $item) use ($salesClosed, $reservedByItem, $soldByItem) {
+        $items->each(function (EventItem $item) use ($salesClosed, $reservedByItem, $soldByItem, $sourceItems) {
             $reserved = (int) ($reservedByItem->get($item->id) ?? 0);
             $sold = (int) ($soldByItem->get($item->id) ?? 0);
             $remaining = max(0, (int) $item->quantity - $sold - $reserved);
+            $sourceItem = $sourceItems->get((int) $item->source_item_id);
 
             $item->setAttribute('reserved', $reserved);
             $item->setAttribute('sold', $sold);
             $item->setAttribute('remaining', $remaining);
             $item->setAttribute('available', ! $salesClosed && $remaining > 0);
+            $item->setAttribute('image_url', $sourceItem?->image_url);
+            $item->setAttribute('category', $sourceItem?->category);
+            $item->setAttribute('type', $sourceItem?->type);
+            $item->setAttribute('source_item_slug', $sourceItem?->slug);
         });
 
         $readiness = $this->accounts->readiness((int) $event->production_id);
@@ -109,7 +129,7 @@ final class EventCommerceController extends Controller
         $paymentAvailable = ! $salesClosed && $readiness['available'] && $salesReadiness['ready'];
 
         return response()->json([
-            'event' => $event->only(['id','title','slug','start_date','end_date','temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions']),
+            'event' => $this->publicEventPayload($event),
             'sales_closed' => $salesClosed,
             'tickets' => $tickets,
             'items' => $items,
@@ -131,6 +151,138 @@ final class EventCommerceController extends Controller
                     : ($salesReadiness['ready'] ? $readiness['message'] : $salesReadiness['message']),
                 'sales_readiness' => $salesReadiness,
             ],
+        ]);
+    }
+
+    public function publicItem(Request $request, string $slug, int $itemId)
+    {
+        $this->context->requireCapability('commerce');
+
+        $event = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('slug', $slug)
+            ->publiclyVisible()
+            ->whereHas('production', fn ($q) => $q->where('app_id', $this->context->id()))
+            ->with('production')
+            ->firstOrFail();
+
+        $eventItem = EventItem::query()
+            ->where('app_id', $this->context->id())
+            ->where('event_id', $event->id)
+            ->where('is_active', true)
+            ->findOrFail($itemId);
+
+        $this->appendItemAvailability($eventItem, $event->salesClosed());
+
+        $sourceItem = null;
+        if ((int) $eventItem->source_item_id > 0) {
+            $sourceItem = Item::query()
+                ->with('files')
+                ->whereKey((int) $eventItem->source_item_id)
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $event->production_id)
+                ->where('status', true)
+                ->first();
+
+            $sourceItem?->setAppends(['image_url']);
+        }
+
+        $item = array_merge($eventItem->toArray(), [
+            'image_url' => $sourceItem?->image_url,
+            'category' => $sourceItem?->category,
+            'type' => $sourceItem?->type,
+            'sku' => $sourceItem?->sku,
+            'short_description' => $sourceItem?->short_description,
+            'tags' => $sourceItem?->tags,
+            'source_item_slug' => $sourceItem?->slug,
+        ]);
+
+        $registrations = (int) $eventItem->source_item_id > 0
+            ? EventItem::query()
+                ->where('app_id', $this->context->id())
+                ->where('source_item_id', (int) $eventItem->source_item_id)
+                ->where('is_active', true)
+                ->get(['id','event_id','source_item_id','name','price','promotion_enabled','promotion_price'])
+            : collect([$eventItem]);
+
+        $registrationByEvent = $registrations->keyBy(fn (EventItem $registration) => (int) $registration->event_id);
+        $registeredEventIds = $registrations->pluck('event_id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+
+        $linkedEvents = $registeredEventIds === []
+            ? collect()
+            : Event::query()
+                ->where('app_id', $this->context->id())
+                ->whereIn('id', $registeredEventIds)
+                ->publiclyVisible()
+                ->whereHas('production', fn ($q) => $q->where('app_id', $this->context->id()))
+                ->with('production')
+                ->orderByRaw('CASE WHEN start_date >= ? THEN 0 ELSE 1 END', [now()])
+                ->orderBy('start_date')
+                ->limit(8)
+                ->get()
+                ->map(function (Event $linkedEvent) use ($registrationByEvent) {
+                    $registration = $registrationByEvent->get((int) $linkedEvent->id);
+                    return array_merge($this->publicEventPayload($linkedEvent), [
+                        'event_item_id' => (int) ($registration?->id ?? 0),
+                        'item_price' => $registration?->price,
+                        'item_promotion_enabled' => (bool) ($registration?->promotion_enabled ?? false),
+                        'item_promotion_price' => $registration?->promotion_price,
+                    ]);
+                })
+                ->values();
+
+        $otherItems = EventItem::query()
+            ->where('app_id', $this->context->id())
+            ->where('event_id', $event->id)
+            ->where('is_active', true)
+            ->whereKeyNot($eventItem->id)
+            ->orderBy('name')
+            ->limit(10)
+            ->get();
+
+        $otherSourceIds = $otherItems->pluck('source_item_id')->filter()->map(fn ($id) => (int) $id)->unique()->values();
+        $otherSourceItems = $otherSourceIds->isEmpty()
+            ? collect()
+            : Item::query()
+                ->with('files')
+                ->whereIn('id', $otherSourceIds)
+                ->where('entity_name', 'establishment')
+                ->where('entity_id', $event->production_id)
+                ->where('status', true)
+                ->get()
+                ->each(fn (Item $source) => $source->setAppends(['image_url']))
+                ->keyBy('id');
+
+        $otherItems = $otherItems->map(function (EventItem $other) use ($otherSourceItems, $slug) {
+            $source = $otherSourceItems->get((int) $other->source_item_id);
+            return array_merge($other->toArray(), [
+                'event_slug' => $slug,
+                'image_url' => $source?->image_url,
+                'category' => $source?->category,
+                'type' => $source?->type,
+            ]);
+        })->values();
+
+        $otherEvents = Event::query()
+            ->where('app_id', $this->context->id())
+            ->where('production_id', $event->production_id)
+            ->whereKeyNot($event->id)
+            ->publiclyVisible()
+            ->where('start_date', '>=', now()->subDay())
+            ->with('production')
+            ->orderBy('start_date')
+            ->limit(8)
+            ->get()
+            ->map(fn (Event $otherEvent) => $this->publicEventPayload($otherEvent))
+            ->values();
+
+        return response()->json([
+            'item' => $item,
+            'event' => $this->publicEventPayload($event),
+            'production' => $this->publicProductionPayload($event->production),
+            'registered_events' => $linkedEvents,
+            'other_items' => $otherItems,
+            'other_events' => $otherEvents,
         ]);
     }
 
@@ -924,6 +1076,53 @@ final class EventCommerceController extends Controller
             'payout_setup_required' => (bool) ($readiness['payout_setup_required'] ?? false),
             'provider' => $readiness['provider'] ?? null,
         ]);
+    }
+
+    private function publicProductionPayload(?Production $production): ?array
+    {
+        if (! $production) {
+            return null;
+        }
+
+        return $production->only([
+            'id','name','slug','logo','background','description','city','uf','country',
+            'website_url','instagram_url','phone','contact_phone',
+        ]);
+    }
+
+    private function publicEventPayload(Event $event): array
+    {
+        return array_merge($event->only([
+            'id','title','slug','description','category','image','start_date','end_date',
+            'venue','address','city','uf','state','country','temporal_status','has_started',
+            'has_ended','is_happening_now','sales_closed','allowed_actions',
+        ]), [
+            'production' => $this->publicProductionPayload($event->production),
+        ]);
+    }
+
+    private function appendItemAvailability(EventItem $item, bool $salesClosed): void
+    {
+        $reserved = (int) DB::table('inventory_reservations')
+            ->where('app_id', $this->context->id())
+            ->where('event_item_id', $item->id)
+            ->whereNull('released_at')
+            ->where('expires_at', '>', now())
+            ->sum('quantity');
+
+        $sold = (int) DB::table('commerce_order_items as oi')
+            ->join('commerce_orders as o', 'o.id', '=', 'oi.order_id')
+            ->where('oi.app_id', $this->context->id())
+            ->where('o.app_id', $this->context->id())
+            ->where('oi.event_item_id', $item->id)
+            ->where('o.status', 'paid')
+            ->sum('oi.quantity');
+
+        $remaining = max(0, (int) $item->quantity - $sold - $reserved);
+        $item->setAttribute('reserved', $reserved);
+        $item->setAttribute('sold', $sold);
+        $item->setAttribute('remaining', $remaining);
+        $item->setAttribute('available', ! $salesClosed && $remaining > 0);
     }
 
     private function appendUserTicketAvailability(Ticket $ticket, int $userId): void
