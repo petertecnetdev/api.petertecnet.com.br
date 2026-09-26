@@ -206,6 +206,7 @@ final class EventDescriptionContextBuilder
             'production_id', 'productionId', 'venue', 'city', 'uf', 'category',
             'event_format', 'start_date', 'end_date', 'event_start', 'event_end',
             'address', 'title',
+            'flyer_observed_facts', 'flyer_conflicts_review_required',
         ];
 
         foreach ($safeOverlay as $key) {
