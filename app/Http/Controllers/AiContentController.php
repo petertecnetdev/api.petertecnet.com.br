@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Services\AiDescriptionService;
 use App\Services\EventDescriptionPipelineService;
 use App\Services\FlyerDescriptionContextService;
+use App\Services\FlyerDateAnalysisService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +19,26 @@ class AiContentController extends Controller
         private readonly AiDescriptionService $descriptions,
         private readonly EventDescriptionPipelineService $eventPipeline,
         private readonly FlyerDescriptionContextService $flyerContext,
+        private readonly FlyerDateAnalysisService $flyerDates,
     ) {}
+
+    public function flyerDateReview(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'image_data_url' => ['required', 'string', 'max:7500000', 'regex:/^data:image\/(?:png|jpe?g|webp);base64,/i'],
+            'expected_start_at' => ['nullable', 'date'],
+            'timezone' => ['required', 'timezone'],
+            'locale' => ['nullable', 'string', 'max:16'],
+            'recurring' => ['nullable', 'boolean'],
+            'day_of_week' => ['nullable', 'integer', 'between:0,6'],
+        ]);
+
+        try {
+            return response()->json(['analysis' => $this->flyerDates->analyze($data)]);
+        } catch (RuntimeException $exception) {
+            return response()->json(['message' => $exception->getMessage(), 'code' => 'flyer_date_analysis_unavailable'], 503);
+        }
+    }
 
     public function description(Request $request): JsonResponse
     {
