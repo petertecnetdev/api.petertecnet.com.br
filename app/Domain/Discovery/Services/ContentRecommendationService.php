@@ -13,6 +13,95 @@ use Illuminate\Support\Str;
 
 class ContentRecommendationService
 {
+    public function forContent(string $slug, ?string $application = null): array
+    {
+        $entry = ContentEntry::query()
+            ->published()
+            ->forApplication($application)
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        return [
+            'related_events' => $this->events($entry)
+                ->map(fn (Event $event) => [
+                    'id' => $event->id,
+                    'slug' => $event->slug,
+                    'title' => $event->title,
+                    'description' => $event->description,
+                    'category' => $event->category,
+                    'image' => $event->image,
+                    'start_date' => $event->start_date,
+                    'end_date' => $event->end_date,
+                    'venue' => $event->venue,
+                    'city' => $event->city,
+                    'uf' => $event->uf,
+                    'country' => $event->country,
+                    'production' => $event->production ? [
+                        'id' => $event->production->id,
+                        'name' => $event->production->name,
+                        'fantasy' => $event->production->fantasy,
+                        'slug' => $event->production->slug,
+                        'logo' => $event->production->logo,
+                        'background' => $event->production->background,
+                    ] : null,
+                ])
+                ->values(),
+            'related_productions' => $this->productions($entry)
+                ->map(fn (Production $production) => [
+                    'id' => $production->id,
+                    'slug' => $production->slug,
+                    'name' => $production->name,
+                    'fantasy' => $production->fantasy,
+                    'description' => $production->description,
+                    'city' => $production->city,
+                    'uf' => $production->uf,
+                    'country' => $production->country,
+                    'logo' => $production->logo,
+                    'background' => $production->background,
+                ])
+                ->values(),
+            'related_artists' => $this->artists($entry)
+                ->map(fn (Artist $artist) => [
+                    'id' => $artist->id,
+                    'slug' => $artist->slug,
+                    'stage_name' => $artist->stage_name,
+                    'short_bio' => $artist->short_bio,
+                    'city' => $artist->city,
+                    'uf' => $artist->uf,
+                    'genres' => $artist->genres,
+                    'photo' => $artist->photo,
+                    'cover' => $artist->cover,
+                    'verification_status' => $artist->verification_status,
+                ])
+                ->values(),
+            'related_items' => $this->items($entry)
+                ->map(fn (Item $item) => [
+                    'id' => $item->id,
+                    'slug' => $item->slug,
+                    'name' => $item->name,
+                    'description' => $item->description,
+                    'category' => $item->category,
+                    'type' => $item->type,
+                    'price' => $item->price,
+                    'image_url' => $item->image_url,
+                    'files' => $item->files
+                        ->filter(fn ($file) => $file->isPublic() && ($file->type === 'image' || str_starts_with((string) $file->mime_type, 'image/')))
+                        ->map(fn ($file) => [
+                            'uuid' => $file->uuid,
+                            'type' => $file->type,
+                            'mime_type' => $file->mime_type,
+                            'public_url' => $file->public_url,
+                            'width' => $file->width,
+                            'height' => $file->height,
+                            'is_primary' => (bool) $file->is_primary,
+                        ])
+                        ->values(),
+                    'establishment' => $item->establishment,
+                ])
+                ->values(),
+        ];
+    }
+
     public function items(ContentEntry $entry, int $limit = 6): Collection
     {
         $terms = $this->terms($entry);
@@ -159,7 +248,7 @@ class ContentRecommendationService
             ->map(fn ($value) => trim((string) $value))
             ->filter(fn ($value) => mb_strlen($value) >= 4)
             ->reject(fn ($value) => in_array($value, [
-                'para', 'como', 'sobre', 'empresa', 'empresas', 'tecnologia', 'cutinapp',
+                'para', 'como', 'sobre', 'empresa', 'empresas', 'tecnologia',
                 'evento', 'eventos', 'guia', 'dicas', 'melhores', 'brasil',
             ], true))
             ->unique()
