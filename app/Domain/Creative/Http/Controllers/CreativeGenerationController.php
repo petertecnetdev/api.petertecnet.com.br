@@ -25,6 +25,7 @@ final class CreativeGenerationController extends Controller
         'open_graph',
         'commercial_campaign',
     ];
+    private const FLYER_DATE_CORRECTION = 'flyer_date_correction';
 
     public function __construct(
         private readonly ApplicationContext $context,
@@ -56,7 +57,7 @@ final class CreativeGenerationController extends Controller
     {
         $maxReferences = (int) config('creative.event_flyer.max_reference_images', 4);
         $data = $request->validate([
-            'purpose' => ['required', Rule::in(array_merge([CreativePromptTemplateService::EVENT_FLYER_BACKGROUND], self::MARKETING_PURPOSES))],
+            'purpose' => ['required', Rule::in(array_merge([CreativePromptTemplateService::EVENT_FLYER_BACKGROUND, self::FLYER_DATE_CORRECTION], self::MARKETING_PURPOSES))],
             'subject' => 'required|string|min:2|max:180',
             'description' => 'nullable|string|max:1200',
             'category' => 'nullable|string|max:180',
@@ -78,7 +79,7 @@ final class CreativeGenerationController extends Controller
             'brand_colors.*' => ['string', 'regex:/^#[0-9a-fA-F]{6}$/'],
             'reference_notes' => 'nullable|string|max:500',
             'reference_images' => 'nullable|array|max:'.$maxReferences,
-            'reference_images.*' => 'string|max:2000000',
+            'reference_images.*' => ['string', $request->input('purpose') === self::FLYER_DATE_CORRECTION ? 'max:7500000' : 'max:2000000'],
             'creative_memory' => 'nullable|array|max:8',
             'creative_memory.*' => 'string|max:120',
             'promotions' => 'nullable|array|max:8',
@@ -90,7 +91,15 @@ final class CreativeGenerationController extends Controller
             'candidate_variation' => ['nullable', Rule::in($this->candidates->variationKeys())],
             'regeneration_mode' => ['nullable', Rule::in($this->regeneration->keys())],
             'include_candidates' => 'nullable|boolean',
+            'date_action' => ['nullable', Rule::in(['remove', 'replace'])],
+            'expected_date' => 'nullable|date_format:Y-m-d',
+            'locale' => 'nullable|string|max:16',
+            'timezone' => 'nullable|timezone',
         ]);
+
+        if ($data['purpose'] === self::FLYER_DATE_CORRECTION) {
+            return $this->generateFlyerDateCorrection($request, $data);
+        }
 
         if ($data['purpose'] !== CreativePromptTemplateService::EVENT_FLYER_BACKGROUND) {
             return $this->generateMarketingImage($request, $data);
@@ -242,6 +251,68 @@ final class CreativeGenerationController extends Controller
             max(256, (int) round($width * $scale)),
             max(256, (int) round($height * $scale)),
         ];
+    }
+
+    private function generateFlyerDateCorrection(Request $request, array $data)
+    {
+        $this->context->requireCapability('events');
+        $references = array_values((array) ($data['reference_images'] ?? []));
+        abort_unless(count($references) === 1, 422, 'Envie exatamente o flyer original para preparar a correção.');
+
+        $action = (string) ($data['date_action'] ?? 'remove');
+        $expectedDate = trim((string) ($data['expected_date'] ?? ''));
+        if ($action === 'replace' && $expectedDate === '') {
+            abort(422, 'Confirme a data real do evento antes de substituir a data impressa.');
+        }
+
+        $instruction = $action === 'remove'
+            ? 'Remove only the printed calendar date. Reconstruct the pixels behind it naturally. Do not add a replacement date.'
+            : 'Replace only the printed calendar date with exactly '.$expectedDate.'. Do not alter the time, title or any other text.';
+
+        $prompt = implode("\n", [
+            'Perform a tightly constrained image edit on the single supplied event flyer.',
+            $instruction,
+            'Preserve the original dimensions, crop, people, faces, logos, typography style, colors, lighting, venue, prices, contacts, sponsors, QR codes and all other artwork and information.',
+            'Do not invent or rewrite any content. Do not translate text. Do not improve or redesign the flyer.',
+            'If the target date cannot be isolated confidently, leave that region unchanged rather than modifying unrelated content.',
+            'Return only the edited image.',
+        ]);
+
+        try {
+            $result = $this->generator->generate(
+                mb_substr($prompt, 0, 2048),
+                (int) $request->user()->id,
+                $this->context->id(),
+                [
+                    'width' => 1024,
+                    'height' => 1536,
+                    'format' => 'cover',
+                    'model' => config('creative.cloudflare.event_quality_model'),
+                    'steps' => config('creative.cloudflare.event_quality_steps'),
+                    'reference_images' => $references,
+                ],
+            );
+        } catch (RuntimeException $exception) {
+            report($exception);
+            return response()->json(['message' => $exception->getMessage(), 'fallback_available' => false], 503);
+        }
+
+        return response()->json([
+            'image' => $this->imagePayload($result),
+            'review' => [
+                'action' => $action,
+                'expected_date' => $expectedDate ?: null,
+                'requires_confirmation' => true,
+                'original_preserved' => true,
+                'warning' => 'Compare a prévia com o original. A alteração só será usada após sua confirmação.',
+            ],
+            'usage' => [
+                'purpose' => self::FLYER_DATE_CORRECTION,
+                'reference_count' => $result['reference_count'] ?? count($references),
+                'locale' => $data['locale'] ?? null,
+                'timezone' => $data['timezone'] ?? null,
+            ],
+        ]);
     }
 
     private function generateMarketingImage(Request $request, array $data)
