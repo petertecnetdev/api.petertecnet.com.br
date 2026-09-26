@@ -25,7 +25,24 @@ final class NormalizeEventPoster
             return $next($request);
         }
 
-        $source = Image::make($file->getRealPath())->orientate();
+        $path = $file->getRealPath();
+        $readable = $file->isValid()
+            && is_string($path)
+            && $path !== ''
+            && is_file($path)
+            && is_readable($path);
+
+        if (! $readable) {
+            $message = in_array($file->getError(), [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true)
+                ? 'A imagem principal do evento excede o limite permitido. Envie um arquivo de até 5 MB.'
+                : 'Não foi possível ler a imagem principal do evento. Envie um JPG, PNG ou WebP válido.';
+
+            throw ValidationException::withMessages([
+                'image' => [$message],
+            ]);
+        }
+
+        $source = Image::make($path)->orientate();
         $width = (int) $source->width();
         $height = (int) $source->height();
         $expectedRatio = self::WIDTH / self::HEIGHT;
