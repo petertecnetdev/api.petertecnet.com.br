@@ -49,4 +49,29 @@ final class NormalizeEventPosterTest extends TestCase
             fn () => new JsonResponse(['event' => ['image' => 'images/apps/cutinapp/events/test.webp']], 201)
         );
     }
+
+    public function test_it_rejects_an_unreadable_upload_with_validation_instead_of_server_error(): void
+    {
+        Storage::fake('public');
+
+        $request = Request::create('/api/v1/apps/cutinapp/events/265', 'PATCH');
+        $request->files->set(
+            'image',
+            new UploadedFile('', 'poster.jpg', 'image/jpeg', UPLOAD_ERR_INI_SIZE, true)
+        );
+
+        try {
+            (new NormalizeEventPoster)->handle(
+                $request,
+                fn () => new JsonResponse(['event' => ['image' => 'images/apps/cutinapp/events/test.webp']], 200)
+            );
+
+            $this->fail('Expected an invalid upload to be rejected.');
+        } catch (ValidationException $exception) {
+            $this->assertSame(
+                'A imagem principal do evento excede o limite permitido. Envie um arquivo de até 5 MB.',
+                $exception->errors()['image'][0] ?? null
+            );
+        }
+    }
 }
