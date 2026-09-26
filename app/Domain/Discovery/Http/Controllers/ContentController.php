@@ -84,6 +84,58 @@ class ContentController extends Controller
                     return $data;
                 })->values();
 
+            $payload['related_events'] = $this->recommendations->events($entry)
+                ->map(fn ($event) => [
+                    'id' => $event->id,
+                    'slug' => $event->slug,
+                    'title' => $event->title,
+                    'description' => $event->description,
+                    'category' => $event->category,
+                    'image' => $event->image,
+                    'start_date' => $event->start_date,
+                    'end_date' => $event->end_date,
+                    'venue' => $event->venue,
+                    'city' => $event->city,
+                    'uf' => $event->uf,
+                    'country' => $event->country,
+                    'production' => $event->production ? [
+                        'id' => $event->production->id,
+                        'name' => $event->production->name,
+                        'fantasy' => $event->production->fantasy,
+                        'slug' => $event->production->slug,
+                        'logo' => $event->production->logo,
+                        'background' => $event->production->background,
+                    ] : null,
+                ])->values();
+
+            $payload['related_productions'] = $this->recommendations->productions($entry)
+                ->map(fn ($production) => [
+                    'id' => $production->id,
+                    'slug' => $production->slug,
+                    'name' => $production->name,
+                    'fantasy' => $production->fantasy,
+                    'description' => $production->description,
+                    'city' => $production->city,
+                    'uf' => $production->uf,
+                    'country' => $production->country,
+                    'logo' => $production->logo,
+                    'background' => $production->background,
+                ])->values();
+
+            $payload['related_artists'] = $this->recommendations->artists($entry)
+                ->map(fn ($artist) => [
+                    'id' => $artist->id,
+                    'slug' => $artist->slug,
+                    'stage_name' => $artist->stage_name,
+                    'short_bio' => $artist->short_bio,
+                    'city' => $artist->city,
+                    'uf' => $artist->uf,
+                    'genres' => $artist->genres,
+                    'photo' => $artist->photo,
+                    'cover' => $artist->cover,
+                    'verification_status' => $artist->verification_status,
+                ])->values();
+
             $payload['related_items'] = $this->recommendations->items($entry)
                 ->map(fn ($item) => [
                     'id' => $item->id,
