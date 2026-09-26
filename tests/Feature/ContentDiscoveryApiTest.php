@@ -92,7 +92,7 @@ class ContentDiscoveryApiTest extends TestCase
             ->assertJsonPath('data.title', 'Como automatizar processos');
     }
 
-    public function test_content_show_exposes_contextual_recommendation_buckets(): void
+    public function test_content_recommendation_endpoint_exposes_contextual_buckets(): void
     {
         $application = $this->applicationFixture('cutinapp', ['name' => 'Cutinapp', 'is_active' => true]);
 
@@ -109,11 +109,10 @@ class ContentDiscoveryApiTest extends TestCase
             'published_at' => now(),
         ]);
 
-        $this->getJson('/api/v1/content/descoberta-contextual?application=cutinapp')
+        $this->getJson('/api/v1/content/descoberta-contextual/recommendations?application=cutinapp')
             ->assertOk()
             ->assertJsonStructure([
                 'data' => [
-                    'related_content',
                     'related_events',
                     'related_productions',
                     'related_artists',
