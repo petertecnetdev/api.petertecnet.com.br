@@ -69,6 +69,7 @@ $publicCompatibility('cutinapp', static function (): void {
     Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists']);
     Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
     Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
+    Route::get('/events/public/{slug}/items/{itemId}', [EventCommerceController::class, 'publicItem'])->whereNumber('itemId');
     Route::get('/payments/mercadopago/oauth/callback', [PaymentProviderController::class, 'callback'])->middleware('throttle:60,1');
     Route::post('/payments/mercadopago/webhook', [PaymentProviderController::class, 'webhook'])->middleware('throttle:240,1');
     Route::get('/artists', [SocialGraphController::class, 'artists']);
