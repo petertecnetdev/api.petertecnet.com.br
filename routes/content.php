@@ -3,6 +3,7 @@
 use App\Domain\CRM\Http\Controllers\PublicInquiryController;
 use App\Domain\Discovery\Http\Controllers\ContentController;
 use App\Domain\Discovery\Http\Controllers\ContentManagementController;
+use App\Domain\Discovery\Http\Controllers\ContentRecommendationController;
 use App\Domain\Discovery\Http\Controllers\DiscoveryAnalyticsController;
 use App\Domain\Discovery\Http\Controllers\DiscoveryController;
 use App\Domain\Discovery\Http\Controllers\DiscoveryEventController;
@@ -20,6 +21,7 @@ use Illuminate\Support\Facades\Route;
 
 Route::prefix('v1')->group(function () {
     Route::get('/content', [ContentController::class, 'index'])->middleware('throttle:120,1');
+    Route::get('/content/{slug}/recommendations', [ContentRecommendationController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->middleware('throttle:120,1');
     Route::get('/content/{slug}', [ContentController::class, 'show'])->where('slug', '[A-Za-z0-9\-]+')->middleware('throttle:120,1');
 
     Route::prefix('apps/{application}')
