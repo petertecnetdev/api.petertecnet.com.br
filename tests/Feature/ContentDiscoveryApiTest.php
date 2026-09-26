@@ -128,15 +128,31 @@ class ContentDiscoveryApiTest extends TestCase
         $this->seed(CutinappGrowthContentSeeder::class);
         $this->seed(CutinappGrowthContentSeeder::class);
 
+        $seededSlugs = [
+            'eventos-hoje-como-encontrar-o-que-fazer',
+            'boates-balada-e-vida-noturna-como-descobrir',
+            'como-comprar-ingresso-online-com-seguranca',
+            'como-vender-ingressos-online-para-eventos',
+            'como-divulgar-evento-sem-depender-so-de-anuncios',
+            'promoter-de-eventos-como-aumentar-alcance-e-conversao',
+            'artistas-e-eventos-como-ser-descoberto-pelo-publico',
+            'producao-de-eventos-checklist-para-publicar-e-vender',
+            'itens-do-evento-como-aumentar-a-experiencia-e-o-ticket',
+            'como-escolher-evento-pelo-artista-producao-e-estilo',
+        ];
+
         $entries = ContentEntry::query()
             ->where('application_id', $application->id)
             ->where('type', 'article')
             ->where('status', 'published')
+            ->whereIn('slug', $seededSlugs)
             ->get();
 
-        $this->assertCount(10, $entries);
-        $this->assertTrue($entries->contains('slug', 'como-vender-ingressos-online-para-eventos'));
-        $this->assertTrue($entries->contains('slug', 'eventos-hoje-como-encontrar-o-que-fazer'));
+        $this->assertCount(count($seededSlugs), $entries);
+        $this->assertSame(
+            collect($seededSlugs)->sort()->values()->all(),
+            $entries->pluck('slug')->sort()->values()->all(),
+        );
 
         $producerArticle = $entries->firstWhere('slug', 'como-vender-ingressos-online-para-eventos');
         $this->assertSame('producer', data_get($producerArticle?->metadata, 'audience'));
