@@ -9,6 +9,8 @@ Route::prefix('admin/ecosystem')
     ->group(function () {
         Route::get('/applications/{application}/operations', [ApplicationOperationsController::class, 'show'])
             ->whereNumber('application');
+        Route::get('/applications/{application}/operations/integrity', [ApplicationOperationsController::class, 'integrity'])
+            ->whereNumber('application');
         Route::get('/applications/{application}/runtime', [ApplicationOperationsController::class, 'runtime'])
             ->whereNumber('application');
         Route::put('/applications/{application}/runtime', [ApplicationOperationsController::class, 'updateRuntime'])
