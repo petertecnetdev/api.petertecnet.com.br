@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\AiDescriptionService;
 use App\Services\EventDescriptionPipelineService;
+use App\Services\FlyerDescriptionContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -16,6 +17,7 @@ class AiContentController extends Controller
     public function __construct(
         private readonly AiDescriptionService $descriptions,
         private readonly EventDescriptionPipelineService $eventPipeline,
+        private readonly FlyerDescriptionContextService $flyerContext,
     ) {}
 
     public function description(Request $request): JsonResponse
@@ -29,6 +31,10 @@ class AiContentController extends Controller
             'locale' => ['nullable', 'string', 'max:10'],
             'tone' => ['nullable', 'string', 'max:220'],
             'action' => ['nullable', 'in:improve,rewrite,enrich'],
+            'use_attached_media' => ['nullable', 'boolean'],
+            'media' => ['nullable', 'array', 'max:1'],
+            'media.*.kind' => ['nullable', 'string', 'max:30'],
+            'media.*.data_url' => ['required_with:media', 'string', 'max:7500000', 'regex:/^data:image\/(?:png|jpe?g|webp);base64,/i'],
         ]);
 
         $title = trim((string) ($data['title'] ?? ''));
@@ -49,6 +55,9 @@ class AiContentController extends Controller
 
         try {
             $user = $request->user('api') ?? $request->user();
+            $media = $this->flyerContext->augment($data, $user);
+            $data = $media['data'];
+            $mediaMeta = $media['meta'];
             $pipelineFallback = false;
 
             if (($data['entity_type'] ?? '') === 'event' && $user) {
@@ -91,6 +100,7 @@ class AiContentController extends Controller
                     'candidate_count' => $result['candidate_count'] ?? 1,
                     'quality' => $result['quality'] ?? null,
                     'event_pipeline_fallback' => $pipelineFallback,
+                    ...$mediaMeta,
                 ],
             ]);
         } catch (RuntimeException $exception) {
