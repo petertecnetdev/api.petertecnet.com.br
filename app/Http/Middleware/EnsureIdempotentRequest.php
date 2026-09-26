@@ -221,12 +221,18 @@ final class EnsureIdempotentRequest
 
         if ($value instanceof UploadedFile) {
             $path = $value->getRealPath();
-            $contentHash = is_string($path) && $path !== '' && is_file($path) ? hash_file('sha256', $path) : false;
+            $readable = $value->isValid()
+                && is_string($path)
+                && $path !== ''
+                && is_file($path)
+                && is_readable($path);
+            $contentHash = $readable ? hash_file('sha256', $path) : false;
+
             return [
                 '__uploaded_file' => true,
                 'sha256' => $contentHash ?: null,
-                'size' => $value->getSize(),
-                'mime_type' => $value->getMimeType(),
+                'size' => $readable ? $value->getSize() : null,
+                'mime_type' => $readable ? $value->getMimeType() : $value->getClientMimeType(),
             ];
         }
 
