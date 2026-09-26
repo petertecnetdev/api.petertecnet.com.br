@@ -130,6 +130,7 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
         'base_url' => env('OPENAI_API_BASE_URL', 'https://api.openai.com/v1'),
         'text_model' => env('OPENAI_TEXT_MODEL', 'gpt-5.6-luna'),
+        'vision_model' => env('OPENAI_VISION_MODEL', env('OPENAI_TEXT_MODEL', 'gpt-5.6-luna')),
         'timeout' => (int) env('OPENAI_API_TIMEOUT', 45),
     ],
 
