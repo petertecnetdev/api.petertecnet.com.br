@@ -15,7 +15,6 @@ final class NormalizeEventPoster
 {
     private const WIDTH = 1024;
     private const HEIGHT = 1536;
-    private const RATIO_TOLERANCE = 0.005;
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -45,15 +44,16 @@ final class NormalizeEventPoster
         $source = Image::make($path)->orientate();
         $width = (int) $source->width();
         $height = (int) $source->height();
-        $expectedRatio = self::WIDTH / self::HEIGHT;
-        $actualRatio = $height > 0 ? $width / $height : 0;
 
-        if ($width < 1 || $height < 1 || abs($actualRatio - $expectedRatio) > self::RATIO_TOLERANCE) {
+        if ($width < 1 || $height < 1) {
             throw ValidationException::withMessages([
-                'image' => ['A imagem principal do evento deve estar no formato vertical 2:3. Use 1024 × 1536 px.'],
+                'image' => ['Não foi possível identificar as dimensões da imagem principal do evento.'],
             ]);
         }
 
+        // The web editor normally sends an already adjusted 2:3 poster. This
+        // normalization is deliberately tolerant so older clients, media-library
+        // selections and integrations never fail only because of aspect ratio.
         $posterBinary = (string) $source
             ->fit(self::WIDTH, self::HEIGHT)
             ->encode('webp', 88);
