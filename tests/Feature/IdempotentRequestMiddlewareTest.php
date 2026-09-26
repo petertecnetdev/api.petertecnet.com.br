@@ -148,6 +148,29 @@ class IdempotentRequestMiddlewareTest extends TestCase
         $this->assertSame('true', $response->headers->get('Idempotency-Replayed'));
     }
 
+    public function test_invalid_uploaded_file_does_not_crash_idempotency_fingerprinting(): void
+    {
+        $middleware = new EnsureIdempotentRequest();
+        $file = new UploadedFile('', 'poster.jpg', 'image/jpeg', UPLOAD_ERR_INI_SIZE, true);
+        $request = Request::create(
+            '/api/v1/apps/cutinapp/events/265',
+            'PATCH',
+            [],
+            [],
+            ['image' => $file]
+        );
+        $request->headers->set('Authorization', 'Bearer idempotency-test-token');
+        $request->headers->set('Idempotency-Key', 'event-image-limit-test-0001');
+
+        $response = $middleware->handle(
+            $request,
+            fn () => response()->json(['message' => 'Imagem inválida.'], 422)
+        );
+
+        $this->assertSame(422, $response->getStatusCode());
+        $this->assertSame('created', $response->headers->get('Idempotency-Status'));
+    }
+
     private function fileRequest(string $contents): Request
     {
         $file = UploadedFile::fake()->createWithContent('document.png', $contents);
