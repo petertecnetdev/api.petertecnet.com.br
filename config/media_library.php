@@ -13,6 +13,10 @@ return [
     */
     'disk' => env('MEDIA_LIBRARY_DISK', 'public'),
     'max_upload_kb' => (int) env('MEDIA_LIBRARY_MAX_UPLOAD_KB', 153600),
+    'max_image_upload_kb' => (int) env('MEDIA_LIBRARY_MAX_IMAGE_UPLOAD_KB', 20480),
+    'max_video_upload_kb' => (int) env('MEDIA_LIBRARY_MAX_VIDEO_UPLOAD_KB', 153600),
+    'max_document_upload_kb' => (int) env('MEDIA_LIBRARY_MAX_DOCUMENT_UPLOAD_KB', 30720),
+    'max_image_pixels' => (int) env('MEDIA_LIBRARY_MAX_IMAGE_PIXELS', 40000000),
 
     'allowed_mime_types' => [
         'image/jpeg',
