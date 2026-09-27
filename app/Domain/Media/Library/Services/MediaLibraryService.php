@@ -72,6 +72,15 @@ final class MediaLibraryService
 
         $kind = $this->kindFromMime($mimeType);
         $this->assertUploadBudget($file, $kind);
+
+        $checksum = $this->storage->fingerprint($file);
+        if (MediaAsset::query()
+            ->where('application_id', $applicationId)
+            ->where('checksum', $checksum)
+            ->where('status', '!=', 'archived')
+            ->exists()) {
+            throw new InvalidArgumentException('This file is already registered for this application.');
+        }
         [$width, $height] = $kind === 'image' ? $this->imageDimensions($file) : [null, null];
         $this->assertImageDimensions($kind, $width, $height);
 
