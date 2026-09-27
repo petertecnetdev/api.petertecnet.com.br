@@ -4,10 +4,10 @@ namespace App\Domain\Media\Library\Http\Controllers;
 
 use App\Domain\Media\Library\Models\MediaAsset;
 use App\Domain\Media\Library\Models\MediaCollection;
+use App\Domain\Media\Library\Models\MediaCollectionItem;
 use App\Domain\Media\Library\Services\MediaLibraryService;
 use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 
 final class AdminMediaLibraryController extends Controller
@@ -203,7 +203,7 @@ final class AdminMediaLibraryController extends Controller
 
     public function detachCollection(MediaCollection $collection, MediaAsset $asset)
     {
-        DB::table('media_collection_items')
+        MediaCollectionItem::query()
             ->where('media_collection_id', $collection->id)
             ->where('media_asset_id', $asset->id)
             ->delete();
