@@ -340,7 +340,6 @@ final class MediaLibraryService
             'is_official' => $asset->is_official,
             'is_marketing_approved' => $asset->is_marketing_approved,
             'is_ai_generated' => $asset->is_ai_generated,
-            'metadata' => $asset->metadata,
             'approved_at' => $asset->approved_at,
             'created_at' => $asset->created_at,
             'updated_at' => $asset->updated_at,
@@ -351,12 +350,13 @@ final class MediaLibraryService
                     'file_size' => $variant->file_size,
                     'width' => $variant->width,
                     'height' => $variant->height,
-                    'metadata' => $variant->metadata,
+                    ...($includeInternal ? ['metadata' => $variant->metadata] : []),
                 ],
             ])->all(),
         ];
 
         if ($includeInternal) {
+            $payload['metadata'] = $asset->metadata;
             $payload['storage'] = [
                 'disk' => $asset->storage_disk,
                 'path' => $asset->storage_path,
