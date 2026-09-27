@@ -138,6 +138,12 @@ class CutinappEventCommunityTest extends TestCase
             ->assertJsonPath('community_activity.0.id', $postId)
             ->assertJsonPath('community_activity.0.media.0.type', 'image')
             ->assertJsonPath('community_activity.0.media.0.original_name', 'primeira-publicacao.jpg');
+
+        $this->getJson('/api/v1/apps/cutinapp/profiles/'.$participant->id)
+            ->assertOk()
+            ->assertJsonPath('posts.0.id', $postId)
+            ->assertJsonPath('posts.0.media.0.type', 'image')
+            ->assertJsonPath('posts.0.media.0.original_name', 'primeira-publicacao.jpg');
     }
 
     private function headersFor(User $user): array
