@@ -71,6 +71,10 @@ final class MediaLibraryService
         $this->assertAllowedMime($mimeType);
 
         $kind = $this->kindFromMime($mimeType);
+        $this->assertUploadBudget($file, $kind);
+        [$width, $height] = $kind === 'image' ? $this->imageDimensions($file) : [null, null];
+        $this->assertImageDimensions($kind, $width, $height);
+
         $category = $this->taxonomy($attributes['category'] ?? 'general');
         $purpose = $this->taxonomy($attributes['purpose'] ?? 'general');
         $disk = (string) config('media_library.disk', 'public');
@@ -81,8 +85,6 @@ final class MediaLibraryService
             'library/'.$category,
             $disk
         );
-
-        [$width, $height] = $kind === 'image' ? $this->imageDimensions($file) : [null, null];
 
         $asset = MediaAsset::query()->create([
             'uuid' => $stored['uuid'],
@@ -371,6 +373,36 @@ final class MediaLibraryService
         }
 
         return $payload;
+    }
+
+    private function assertUploadBudget(UploadedFile $file, string $kind): void
+    {
+        $sizeKb = (int) ceil(max(0, (int) $file->getSize()) / 1024);
+        $limit = match ($kind) {
+            'image' => (int) config('media_library.max_image_upload_kb', 20480),
+            'video' => (int) config('media_library.max_video_upload_kb', 153600),
+            default => (int) config('media_library.max_document_upload_kb', 30720),
+        };
+
+        if ($sizeKb > max(1, $limit)) {
+            throw new InvalidArgumentException('Media file exceeds the allowed size for its type.');
+        }
+    }
+
+    private function assertImageDimensions(string $kind, ?int $width, ?int $height): void
+    {
+        if ($kind !== 'image') {
+            return;
+        }
+
+        if (! $width || ! $height) {
+            throw new InvalidArgumentException('Image dimensions could not be validated.');
+        }
+
+        $pixels = $width * $height;
+        if ($pixels > max(1000000, (int) config('media_library.max_image_pixels', 40000000))) {
+            throw new InvalidArgumentException('Image dimensions exceed the safe processing budget.');
+        }
     }
 
     private function assertAllowedMime(string $mimeType): void
