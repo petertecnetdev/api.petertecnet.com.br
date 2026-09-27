@@ -2,6 +2,7 @@
 
 namespace App\Domain\Events\Http\Controllers;
 
+use App\Domain\Social\Services\PostMediaService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\EventPass;
@@ -18,6 +19,7 @@ final class EventCommunityController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AppNotificationService $notifications,
+        private readonly PostMediaService $postMedia,
     ) {}
 
     public function publicCommunity(Request $request, string $slug)
@@ -37,19 +39,23 @@ final class EventCommunityController extends Controller
             ->select(['p.id','p.parent_id','p.user_id','p.body','p.created_at','p.edited_at','u.first_name','u.last_name','u.avatar'])
             ->selectSub(fn($q)=>$q->from('event_post_likes as l')->selectRaw('COUNT(*)')->whereColumn('l.post_id','p.id')->where('l.app_id',$appId),'likes_count')
             ->orderBy('p.created_at')->get()->groupBy('parent_id');
+        $all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();
         $liked=collect();
-        if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
+        if($user&&$all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');
+        $media=$this->postMedia->forPostIds($appId,$all);
         $eventOwnerId = (int) ($event->production?->user_id ?? 0);
         $isAdmin = $user?->hasProfile('Administrador') ?? false;
         $canDelete = static fn (object $post) => $user
             && ((int) $post->user_id === (int) $user->id || $isAdmin || ($eventOwnerId > 0 && $eventOwnerId === (int) $user->id));
 
-        $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$user,$canDelete){
+        $posts->setCollection(collect($posts->items())->map(function($post)use($replies,$liked,$media,$user,$canDelete){
             $post->is_liked=$user?$liked->contains($post->id):false;
             $post->can_delete=$canDelete($post);
-            $post->replies=collect($replies->get($post->id,[]))->map(function($reply)use($liked,$user,$canDelete){
+            $post->media=collect($media->get($post->id,[]))->values();
+            $post->replies=collect($replies->get($post->id,[]))->map(function($reply)use($liked,$media,$user,$canDelete){
                 $reply->is_liked=$user?$liked->contains($reply->id):false;
                 $reply->can_delete=$canDelete($reply);
+                $reply->media=collect($media->get($reply->id,[]))->values();
                 return$reply;
             })->values();
             return$post;
@@ -61,7 +67,21 @@ final class EventCommunityController extends Controller
 
     public function createPost(Request $request,int $eventId)
     {
-        $user=$request->user();$appId=$this->context->id();$data=$request->validate(['body'=>'required|string|min:2|max:3000','parent_id'=>'nullable|integer|min:1']);
+        $user=$request->user();
+        $appId=$this->context->id();
+        $data=$request->validate([
+            'body'=>'nullable|string|max:3000',
+            'parent_id'=>'nullable|integer|min:1',
+            'media'=>'nullable|array|max:'.PostMediaService::MAX_ITEMS,
+            'media.*'=>'file|max:61440',
+        ]);
+        $body=trim((string)($data['body']??''));
+        $files=$this->postMedia->normalizeUploads($request->file('media',[]));
+        if($files!==[])$this->postMedia->assertUploads($files);
+
+        abort_if($body===''&&$files===[],422,'Escreva algo ou adicione uma foto ou vídeo para publicar.');
+        abort_if($body!==''&&mb_strlen($body)<2,422,'Escreva pelo menos 2 caracteres para publicar.');
+        abort_if(($data['parent_id']??null)&&$files!==[],422,'Comentários ainda não aceitam mídia.');
 
         // eventId=0 represents the authenticated global timeline. Root posts and
         // replies both live in event_posts; global replies simply keep event_id null.
@@ -71,21 +91,63 @@ final class EventCommunityController extends Controller
                 $parent=DB::table('event_posts')->where('id',$parentId)->where('app_id',$appId)->whereNull('event_id')->whereNull('parent_id')->where('status','published')->first();
                 abort_unless($parent,422,'A publicação que você tentou comentar não está mais disponível.');
             }
-            $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>null,'user_id'=>$user->id,'parent_id'=>$data['parent_id']??null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
+
+            $id=DB::transaction(function()use($appId,$user,$data,$body,$files){
+                $id=DB::table('event_posts')->insertGetId([
+                    'app_id'=>$appId,
+                    'event_id'=>null,
+                    'user_id'=>$user->id,
+                    'parent_id'=>$data['parent_id']??null,
+                    'body'=>$body,
+                    'status'=>'published',
+                    'is_pinned'=>false,
+                    'created_at'=>now(),
+                    'updated_at'=>now(),
+                ]);
+                $this->postMedia->storeForPost($appId,$id,(int)$user->id,$files);
+                return$id;
+            });
+
             return response()->json(['message'=>$parent?'Comentário publicado.':'Publicação adicionada à timeline.','post_id'=>$id],201);
         }
 
-        $event=$this->publicEventById($eventId);$parent=null;
-        if($parentId=$data['parent_id']??null){$parent=DB::table('event_posts')->where('id',$parentId)->where('app_id',$appId)->where('event_id',$event->id)->whereNull('parent_id')->where('status','published')->first();abort_unless($parent,422,'A publicação que você tentou responder não está mais disponível.');}
-        $id=DB::table('event_posts')->insertGetId(['app_id'=>$appId,'event_id'=>$event->id,'user_id'=>$user->id,'parent_id'=>$data['parent_id']??null,'body'=>trim($data['body']),'status'=>'published','is_pinned'=>false,'created_at'=>now(),'updated_at'=>now()]);
-        $this->notifyCommunityActivity($event,$user,$id,$parent);return response()->json(['message'=>$parent?'Comentário publicado.':'Publicação adicionada ao evento.','post_id'=>$id],201);
+        $event=$this->publicEventById($eventId);
+        $parent=null;
+        if($parentId=$data['parent_id']??null){
+            $parent=DB::table('event_posts')->where('id',$parentId)->where('app_id',$appId)->where('event_id',$event->id)->whereNull('parent_id')->where('status','published')->first();
+            abort_unless($parent,422,'A publicação que você tentou responder não está mais disponível.');
+        }
+
+        $id=DB::transaction(function()use($appId,$event,$user,$data,$body,$files){
+            $id=DB::table('event_posts')->insertGetId([
+                'app_id'=>$appId,
+                'event_id'=>$event->id,
+                'user_id'=>$user->id,
+                'parent_id'=>$data['parent_id']??null,
+                'body'=>$body,
+                'status'=>'published',
+                'is_pinned'=>false,
+                'created_at'=>now(),
+                'updated_at'=>now(),
+            ]);
+            $this->postMedia->storeForPost($appId,$id,(int)$user->id,$files);
+            return$id;
+        });
+
+        $this->notifyCommunityActivity($event,$user,$id,$parent);
+        return response()->json(['message'=>$parent?'Comentário publicado.':'Publicação adicionada ao evento.','post_id'=>$id],201);
     }
 
     public function deletePost(Request $request,int $postId)
     {
         $user=$request->user();$appId=$this->context->id();$post=DB::table('event_posts')->where('app_id',$appId)->where('id',$postId)->first();abort_unless($post,404,'Publicação não encontrada.');
         $event=$post->event_id?Event::with('production')->where('app_id',$appId)->find($post->event_id):null;$can=(int)$post->user_id===(int)$user->id||$user->hasProfile('Administrador')||($event?->production&&(int)$event->production->user_id===(int)$user->id);abort_unless($can,403,'Você não tem permissão para remover esta publicação.');
-        DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->update(['status'=>'hidden','updated_at'=>now()]);return response()->json(['message'=>'Publicação removida.']);
+        $affectedIds=DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->pluck('id')->map(fn($id)=>(int)$id)->all();
+        DB::transaction(function()use($appId,$postId,$affectedIds){
+            DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->update(['status'=>'hidden','updated_at'=>now()]);
+            $this->postMedia->hideForPosts($appId,$affectedIds);
+        });
+        return response()->json(['message'=>'Publicação removida.']);
     }
 
     public function like(Request $request,int $postId)
