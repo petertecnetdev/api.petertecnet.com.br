@@ -7,7 +7,6 @@ use App\Domain\Media\Services\MediaContext;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 final class PostMediaService
@@ -188,7 +187,6 @@ final class PostMediaService
      */
     private function payload(object $row): array
     {
-        $disk = (string) ($row->storage_disk ?? 'public');
         $path = (string) ($row->storage_path ?? '');
 
         return [
@@ -196,7 +194,7 @@ final class PostMediaService
             'post_id' => (int) $row->post_id,
             'type' => (string) $row->type,
             'mime_type' => (string) $row->mime_type,
-            'url' => $path !== '' ? Storage::disk($disk)->url($path) : null,
+            'url' => $path !== '' ? $path : null,
             'path' => $path,
             'original_name' => $row->original_name ?? null,
             'file_size' => (int) ($row->file_size ?? 0),
