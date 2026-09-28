@@ -11,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 final class MessagingService
@@ -1007,7 +1008,27 @@ final class MessagingService
 
     private function broadcast(int $conversationId, string $eventName, array $payload, $userIds = []): void
     {
-        event(new MessagingRealtimeEvent($conversationId, $eventName, $payload, collect($userIds)->map(fn ($id) => (int) $id)->all()));
+        try {
+            event(new MessagingRealtimeEvent(
+                $conversationId,
+                $eventName,
+                $payload,
+                collect($userIds)->map(fn ($id) => (int) $id)->all(),
+            ));
+        } catch (\Throwable $exception) {
+            // Realtime is an enhancement. A Pusher/Reverb outage must never
+            // break opening, reading or sending a Direct conversation.
+            try {
+                Log::warning('Messaging realtime broadcast failed; primary operation preserved.', [
+                    'conversation_id' => $conversationId,
+                    'event' => $eventName,
+                    'exception' => $exception::class,
+                    'message' => $exception->getMessage(),
+                ]);
+            } catch (\Throwable) {
+                // Logging failure must not re-introduce the realtime outage.
+            }
+        }
     }
 
     private function messageTypeLabel(string $type): string
