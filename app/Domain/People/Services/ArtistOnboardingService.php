@@ -246,6 +246,7 @@ final class ArtistOnboardingService
                 'artist_identity_claims.evidence_url',
                 'artist_identity_claims.created_at',
                 'artists.stage_name',
+                'artists.slug as artist_slug',
                 'artists.photo',
                 'users.first_name',
                 'users.last_name',
