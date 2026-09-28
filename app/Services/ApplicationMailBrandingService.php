@@ -41,17 +41,20 @@ class ApplicationMailBrandingService
             $logoUrl = $this->assetUrl('/images/logo.png', $appUrl);
         }
 
+        // E-mail branding is channel-specific, so an explicit email_brand token
+        // must override the generic published application branding. Published
+        // branding remains the fallback for applications without mail overrides.
         $primary = $this->color(
-            $published['primary_color'] ?? null,
-            $configured['primary_color'] ?? '#6d28d9'
+            $configured['primary_color'] ?? $published['primary_color'] ?? null,
+            '#6d28d9'
         );
         $secondary = $this->color(
-            $published['secondary_color'] ?? null,
-            $configured['secondary_color'] ?? '#2563eb'
+            $configured['secondary_color'] ?? $published['secondary_color'] ?? null,
+            '#2563eb'
         );
         $accent = $this->color(
-            $published['accent_color'] ?? null,
-            $configured['accent_color'] ?? '#0891b2'
+            $configured['accent_color'] ?? $published['accent_color'] ?? null,
+            '#0891b2'
         );
 
         $headerBackground = $this->color(
