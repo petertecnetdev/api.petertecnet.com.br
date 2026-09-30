@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use Database\Seeders\CutinappGrowthContentSeeder;
 use App\Models\ContentEntry;
 use App\Models\Profile;
 use App\Models\User;
@@ -89,6 +90,73 @@ class ContentDiscoveryApiTest extends TestCase
         $this->getJson('/api/v1/content/como-automatizar-processos?application=peter')
             ->assertOk()
             ->assertJsonPath('data.title', 'Como automatizar processos');
+    }
+
+    public function test_content_recommendation_endpoint_exposes_contextual_buckets(): void
+    {
+        $application = $this->applicationFixture('cutinapp', ['name' => 'Cutinapp', 'is_active' => true]);
+
+        ContentEntry::create([
+            'application_id' => $application->id,
+            'type' => 'article',
+            'status' => 'published',
+            'title' => 'Descoberta contextual',
+            'slug' => 'descoberta-contextual',
+            'category' => 'Eventos',
+            'tags' => ['festa', 'musica'],
+            'cluster' => 'vida-noturna',
+            'search_intent' => 'festas e shows',
+            'published_at' => now(),
+        ]);
+
+        $this->getJson('/api/v1/content/descoberta-contextual/recommendations?application=cutinapp')
+            ->assertOk()
+            ->assertJsonStructure([
+                'data' => [
+                    'related_events',
+                    'related_productions',
+                    'related_artists',
+                    'related_items',
+                ],
+            ]);
+    }
+
+    public function test_cutinapp_growth_content_seeder_is_idempotent(): void
+    {
+        $application = $this->applicationFixture('cutinapp', ['name' => 'Cutinapp', 'is_active' => true]);
+
+        $this->seed(CutinappGrowthContentSeeder::class);
+        $this->seed(CutinappGrowthContentSeeder::class);
+
+        $seededSlugs = [
+            'eventos-hoje-como-encontrar-o-que-fazer',
+            'boates-balada-e-vida-noturna-como-descobrir',
+            'como-comprar-ingresso-online-com-seguranca',
+            'como-vender-ingressos-online-para-eventos',
+            'como-divulgar-evento-sem-depender-so-de-anuncios',
+            'promoter-de-eventos-como-aumentar-alcance-e-conversao',
+            'artistas-e-eventos-como-ser-descoberto-pelo-publico',
+            'producao-de-eventos-checklist-para-publicar-e-vender',
+            'itens-do-evento-como-aumentar-a-experiencia-e-o-ticket',
+            'como-escolher-evento-pelo-artista-producao-e-estilo',
+        ];
+
+        $entries = ContentEntry::query()
+            ->where('application_id', $application->id)
+            ->where('type', 'article')
+            ->where('status', 'published')
+            ->whereIn('slug', $seededSlugs)
+            ->get();
+
+        $this->assertCount(count($seededSlugs), $entries);
+        $this->assertSame(
+            collect($seededSlugs)->sort()->values()->all(),
+            $entries->pluck('slug')->sort()->values()->all(),
+        );
+
+        $producerArticle = $entries->firstWhere('slug', 'como-vender-ingressos-online-para-eventos');
+        $this->assertSame('producer', data_get($producerArticle?->metadata, 'audience'));
+        $this->assertSame('/production/create', data_get($producerArticle?->metadata, 'primary_cta.path'));
     }
 
     public function test_discovery_builds_local_seo_for_company_category_and_item(): void
