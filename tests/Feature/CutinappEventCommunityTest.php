@@ -5,8 +5,10 @@ namespace Tests\Feature;
 use App\Models\Application;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
@@ -110,6 +112,38 @@ class CutinappEventCommunityTest extends TestCase
 
         $this->withHeaders($ph)->deleteJson('/api/cutinapp/community/' . $postId)->assertOk();
         $this->assertDatabaseHas('event_posts', ['id'=>$postId,'status'=>'hidden']);
+    }
+
+
+    public function test_participant_can_publish_media_to_global_feed(): void
+    {
+        Storage::fake('public');
+
+        $participant = $this->user('Participante Midia', 'media-user@cutinapp.test');
+        $headers = $this->headersFor($participant);
+        $image = UploadedFile::fake()->image('primeira-publicacao.jpg', 1080, 1350)->size(1200);
+
+        $postId = $this->withHeaders($headers)->post('/api/cutinapp/events/0/community', [
+            'body' => 'Nossa primeira publicação com mídia.',
+            'media' => [$image],
+        ])->assertCreated()->json('post_id');
+
+        $media = DB::table('post_media')->where('post_id', $postId)->first();
+        $this->assertNotNull($media);
+        $this->assertSame('image', $media->type);
+        Storage::disk('public')->assertExists($media->storage_path);
+
+        $this->withHeaders($headers)->getJson('/api/cutinapp/feed')
+            ->assertOk()
+            ->assertJsonPath('community_activity.0.id', $postId)
+            ->assertJsonPath('community_activity.0.media.0.type', 'image')
+            ->assertJsonPath('community_activity.0.media.0.original_name', 'primeira-publicacao.jpg');
+
+        $this->getJson('/api/v1/apps/cutinapp/profiles/'.$participant->id)
+            ->assertOk()
+            ->assertJsonPath('posts.0.id', $postId)
+            ->assertJsonPath('posts.0.media.0.type', 'image')
+            ->assertJsonPath('posts.0.media.0.original_name', 'primeira-publicacao.jpg');
     }
 
     private function headersFor(User $user): array

@@ -2,6 +2,7 @@
 
 namespace App\Domain\People\Services;
 
+use App\Domain\Social\Services\PostMediaService;
 use App\Models\Event;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +12,7 @@ final class PublicUserProfileService
 {
     public function __construct(
         private readonly UserActorIdentityService $actorIdentity,
+        private readonly PostMediaService $postMedia,
     ) {}
 
     public function show(int $userId, int $appId, ?int $viewerId = null): array
@@ -99,9 +101,48 @@ final class PublicUserProfileService
         $followersPreview = $settings['show_followers'] ? $this->userPreviews($followerIds->take(12)) : collect();
         $followingPreview = $settings['show_following'] ? $this->userPreviews($followingIds->take(12)) : collect();
 
-        $postCount = DB::table('event_posts')->where([
-            'app_id' => $appId, 'user_id' => $user->id, 'status' => 'published',
-        ])->count();
+        $postsQuery = DB::table('event_posts as p')
+            ->leftJoin('events as e', 'e.id', '=', 'p.event_id')
+            ->where('p.app_id', $appId)
+            ->where('p.user_id', $user->id)
+            ->whereNull('p.parent_id')
+            ->where('p.status', 'published')
+            ->where(function ($query) use ($appId) {
+                $query->whereNull('p.event_id')
+                    ->orWhere(function ($eventQuery) use ($appId) {
+                        $eventQuery->where('e.app_id', $appId)
+                            ->where('e.is_published', true)
+                            ->where('e.is_cancelled', false)
+                            ->where(fn ($privacyQuery) => $privacyQuery
+                                ->where('e.is_private', false)
+                                ->orWhereNull('e.is_private'));
+                    });
+            });
+
+        $postCount = (clone $postsQuery)->count('p.id');
+        $posts = (clone $postsQuery)
+            ->select([
+                'p.id', 'p.event_id', 'p.body', 'p.created_at', 'p.is_pinned',
+                'e.title as event_title', 'e.slug as event_slug',
+            ])
+            ->selectSub(fn ($q) => $q->from('event_post_likes as l')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('l.post_id', 'p.id')
+                ->where('l.app_id', $appId), 'likes_count')
+            ->selectSub(fn ($q) => $q->from('event_posts as r')
+                ->selectRaw('COUNT(*)')
+                ->whereColumn('r.parent_id', 'p.id')
+                ->where('r.status', 'published'), 'comments_count')
+            ->orderByDesc('p.created_at')
+            ->orderByDesc('p.id')
+            ->limit(40)
+            ->get();
+
+        $profileMedia = $this->postMedia->forPostIds($appId, $posts->pluck('id'));
+        $posts = $posts->map(function ($post) use ($profileMedia) {
+            $post->media = collect($profileMedia->get($post->id, []))->values();
+            return $post;
+        })->values();
 
         return [
             'profile' => [
@@ -128,6 +169,7 @@ final class PublicUserProfileService
                 'following_productions' => DB::table('follows')->where(['app_id' => $appId, 'user_id' => $user->id, 'target_type' => 'production'])->count(),
                 'posts' => $postCount,
             ],
+            'posts' => $posts,
             'interests' => $interests,
             'social_settings' => $settings,
             'interested_events' => $interestedEvents,

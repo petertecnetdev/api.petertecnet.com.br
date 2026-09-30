@@ -2,6 +2,7 @@
 
 namespace App\Domain\Social\Http\Controllers;
 
+use App\Domain\Social\Services\PostMediaService;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Support\ApplicationContext;
@@ -10,7 +11,10 @@ use Illuminate\Support\Facades\DB;
 
 final class FeedController extends Controller
 {
-    public function __construct(private readonly ApplicationContext $context) {}
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly PostMediaService $postMedia,
+    ) {}
 
     public function index(Request $request)
     {
@@ -188,11 +192,14 @@ final class FeedController extends Controller
             ->where('user_id', $user->id)
             ->whereIn('post_id', $allPostIds)
             ->pluck('post_id');
+        $media = $this->postMedia->forPostIds($appId, $allPostIds);
 
-        $community = $community->map(function ($post) use ($replies, $liked) {
+        $community = $community->map(function ($post) use ($replies, $liked, $media) {
             $post->is_liked = $liked->contains($post->id);
-            $post->replies = collect($replies->get($post->id, []))->map(function ($reply) use ($liked) {
+            $post->media = collect($media->get($post->id, []))->values();
+            $post->replies = collect($replies->get($post->id, []))->map(function ($reply) use ($liked, $media) {
                 $reply->is_liked = $liked->contains($reply->id);
+                $reply->media = collect($media->get($reply->id, []))->values();
                 $reply->comments_count = 0;
                 $reply->replies = [];
                 return $reply;
