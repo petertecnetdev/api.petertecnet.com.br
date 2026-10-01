@@ -41,6 +41,16 @@ class ApplicationMailBrandingService
             $logoUrl = $this->assetUrl('/images/logo.png', $appUrl);
         }
 
+        // Inline the bundled default logo to avoid email-client/proxy cache failures.
+        // A runtime branding override keeps its own remote URL instead of silently
+        // falling back to a stale bundled identity.
+        $configuredLogo = trim((string) ($configured['logo_path'] ?? ''));
+        $usesConfiguredLogo = $configuredLogo !== ''
+            && trim((string) $logoCandidate) === $configuredLogo;
+        $logoInlinePath = $usesConfiguredLogo
+            ? $this->localAssetPath($configured['inline_logo_path'] ?? null)
+            : null;
+
         $primary = $this->color(
             $published['primary_color'] ?? null,
             $configured['primary_color'] ?? '#6d28d9'
@@ -88,6 +98,7 @@ class ApplicationMailBrandingService
             'short_name' => trim((string) ($published['short_name'] ?? $name)) ?: $name,
             'app_url' => $appUrl,
             'logo_url' => $logoUrl,
+            'logo_inline_path' => $logoInlinePath,
             'logo_alt' => 'Logo '.$name,
             'initials' => $this->initials($name),
             'primary_color' => $primary,
@@ -140,6 +151,28 @@ class ApplicationMailBrandingService
         }
 
         return $appUrl.'/'.ltrim($value, '/');
+    }
+
+    private function localAssetPath(mixed $value): ?string
+    {
+        $value = trim((string) $value);
+        if ($value === '' || str_contains($value, "\0") || Str::startsWith($value, ['http://', 'https://', '//'])) {
+            return null;
+        }
+
+        $basePath = realpath(base_path());
+        $candidate = realpath(base_path(ltrim($value, '/\\')));
+
+        if (! $basePath || ! $candidate || ! is_file($candidate) || ! is_readable($candidate)) {
+            return null;
+        }
+
+        $basePrefix = rtrim($basePath, DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR;
+        if (! Str::startsWith($candidate, $basePrefix)) {
+            return null;
+        }
+
+        return $candidate;
     }
 
     private function color(mixed $candidate, string $fallback): string

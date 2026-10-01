@@ -21,6 +21,11 @@ class ApplicationMailBrandingServiceTest extends TestCase
         $this->assertSame('Cutinapp', $brand['name']);
         $this->assertSame('Cutinapp', $brand['sender_name']);
         $this->assertSame('https://cutinapp.petertecnet.com.br/images/logo.png', $brand['logo_url']);
+        $this->assertSame(
+            realpath(resource_path('mail/brands/cutinapp/logo.png')),
+            $brand['logo_inline_path']
+        );
+        $this->assertFileExists($brand['logo_inline_path']);
         $this->assertSame('#b847fa', $brand['primary_color']);
         $this->assertSame('#2b62f4', $brand['secondary_color']);
         $this->assertSame('#06affa', $brand['accent_color']);
@@ -46,6 +51,7 @@ class ApplicationMailBrandingServiceTest extends TestCase
 
         $this->assertSame('Cutinapp Eventos', $brand['name']);
         $this->assertSame('https://cdn.example.test/cutinapp.png', $brand['logo_url']);
+        $this->assertNull($brand['logo_inline_path']);
         $this->assertSame('#112233', $brand['primary_color']);
         $this->assertSame('#445566', $brand['secondary_color']);
         $this->assertSame('#778899', $brand['accent_color']);
