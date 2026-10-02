@@ -346,7 +346,7 @@ final class EventAgendaMaintenanceService
             $duplicate->forceFill([
                 'event_schedule_id' => $lockedSchedule->id,
                 'event_schedule_occurrence_date' => $date,
-                'is_published' => (bool) $source->is_published,
+                'is_published' => true,
                 'is_approved' => $source->is_approved,
             ])->saveQuietly();
 
