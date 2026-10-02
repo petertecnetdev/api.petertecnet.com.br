@@ -66,7 +66,7 @@ final class PaymentProviderController extends Controller
 
     public function webhook(Request $request)
     {
-        $dataId=(string)($request->query('data.id')?:data_get($request->all(),'data.id',''));if($dataId==='')return response()->json(['ok'=>true]);
+        $dataId=(string)($request->query('data.id')?:data_get($request->all(),'data.id',''));if($dataId==='')abort(422,'Identificador do pagamento ausente.');
         abort_unless($this->mercadoPago->validateWebhookSignature($request->header('x-signature'),$request->header('x-request-id'),$dataId),401,'Assinatura inválida.');
         $type=(string)($request->input('type')?:$request->query('type','payment'));if($type!=='payment')return response()->json(['ok'=>true]);
         $payment=CommercePayment::query()->where('provider','mercadopago')->where('provider_payment_id',$dataId)->with('order')->first();if(!$payment||!$payment->order)return response()->json(['ok'=>true]);
@@ -190,14 +190,22 @@ final class PaymentProviderController extends Controller
     private function reversePayment(CommercePayment $payment,CommerceOrder $order,string $status):void
     {
         if(in_array($payment->status,['refunded','charged_back'],true))return;$payment->update(['status'=>$status,'refunded_at'=>now()]);DB::table('commerce_orders')->where('app_id',$this->context->id())->where('id',$order->id)->update(['status'=>$status,'updated_at'=>now()]);$itemIds=$order->items->where('type','ticket')->pluck('id');EventPass::query()->whereIn('commerce_order_item_id',$itemIds)->whereIn('status',['issued','active'])->update(['status'=>$status==='charged_back'?'charged_back':'refunded','updated_at'=>now()]);DB::table('ledger_entries')->where('app_id',$this->context->id())->where('payment_id',$payment->id)->whereIn('type',['gross_sale','platform_fee','producer_credit'])->where('status','posted')->update(['status'=>'reversed','updated_at'=>now()]);
-        if(!DB::table('ledger_entries')->where('app_id',$this->context->id())->where('payment_id',$payment->id)->where('type','reversal')->exists())DB::table('ledger_entries')->insert(['app_id'=>$this->context->id(),'production_id'=>$order->production_id,'order_id'=>$order->id,'payment_id'=>$payment->id,'type'=>'reversal','status'=>'posted','amount'=>-(float)$order->subtotal,'description'=>$status==='charged_back'?'Reversão por contestação/chargeback':'Reversão por reembolso','metadata'=>json_encode(['provider'=>'mercadopago','remote_status'=>$status]),'created_at'=>now(),'updated_at'=>now()]);
     }
 
     private function paymentAccessToken(CommercePayment $payment,CommerceOrder $order):string
     {
-        $mode=(string)data_get($order->metadata,'settlement_mode',data_get($payment->provider_payload,'metadata.settlement_mode','automatic_split'));if($mode==='platform_collection'){$token=trim((string)config('services.mercadopago.access_token'));if($token==='')throw new RuntimeException('Token do provedor da plataforma não configurado.');return$token;}return$this->accounts->accessTokenForOrganization((int)$order->production_id)[1];
+        $account=$this->accounts->findActive($order->production_id,$payment->provider);if($account&&$account->access_token)return Crypt::decryptString($account->access_token);$token=(string)config('services.mercadopago.access_token');if($token==='')throw new RuntimeException('Token do provedor não configurado.');return$token;
     }
-    private function assertOrganizationOwner(Request $request,int $id):void{abort_unless($this->isOrganizationOwner($request,$id),403);}
-    private function isOrganizationOwner(Request $request,int $id):bool{$organization=Production::query()->where('app_id',$this->context->id())->find($id);if(!$organization||!$request->user())return false;$admin=method_exists($request->user(),'hasProfile')&&$request->user()->hasProfile('Administrador');return$admin||(int)$organization->user_id===(int)$request->user()->id;}
-    private function stateKey(string $state):string{return'payments:mercadopago:oauth:'.hash('sha256',$state);}
+
+    private function stateKey(string $state):string{return'mercadopago:oauth:'.hash('sha256',$state);}
+
+    private function assertOrganizationOwner(Request $request,int $organizationId):void
+    {
+        abort_unless($this->isOrganizationOwner($request,$organizationId),403);
+    }
+
+    private function isOrganizationOwner(Request $request,int $organizationId):bool
+    {
+        return Production::query()->where('app_id',$this->context->id())->whereKey($organizationId)->where('user_id',(int)$request->user()->id)->exists();
+    }
 }
