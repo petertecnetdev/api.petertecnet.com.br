@@ -4,11 +4,14 @@ namespace Tests\Feature;
 
 use App\Events\EcosystemUpdated;
 use App\Models\Interaction;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Tests\TestCase;
 
 class SemanticTelemetryTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_schema_three_accepts_semantic_events_and_preserves_outcomes(): void
     {
         Event::fake([EcosystemUpdated::class]);
