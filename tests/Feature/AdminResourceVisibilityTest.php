@@ -16,7 +16,7 @@ class AdminResourceVisibilityTest extends TestCase
     public function test_admin_can_inspect_visibility_states_across_applications(): void
     {
         $profile = Profile::create([
-            'name' => 'Administrador',
+            'name' => 'Super Admin',
             'permissions' => [],
         ]);
         $admin = User::create([

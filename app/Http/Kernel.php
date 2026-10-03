@@ -29,6 +29,7 @@ class Kernel extends HttpKernel
 
         'api' => [
             'throttle:api',
+            \App\Http\Middleware\EnsureAdminAccess::class,
             \Illuminate\Routing\Middleware\SubstituteBindings::class,
             \App\Http\Middleware\EnsureIdempotentRequest::class,
             \App\Http\Middleware\HandleImpersonation::class,
