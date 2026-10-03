@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w07-batch:
+  delete-verified-w08-batch-d:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W07 allowlisted refs only when heads still match
+      - name: Delete W08 batch D refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,32 +22,51 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["agent/np01-t1/canonical-api-contract-guard"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
-            ["agent/np01-t3/app-notification-scope"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
-            ["agent/np05-t3/batch-preload-saved-searches"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
-            ["agent/np09-t2/funil-analytics"]="ce7b9bab40b760a6023fd7d2a711097dc7318b09"
-            ["agent/np09-t3/admin-telemetry-integrity-report"]="ce7b9bab40b760a6023fd7d2a711097dc7318b09"
-            ["artist-upgrade-temp"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp2"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp3"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp4"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp5"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp6"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp7"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp8"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["artist-upgrade-temp9"]="1c1072e9800abc086c369814388762fe99f64676"
-            ["refactor/platform-core-v1-2026-08-28"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
-            ["refactor/platform-core-v1-2026-08-28b"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
-            ["refactor/platform-core-v1-final"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
-            ["hotfix/direct-pusher-email"]="9bf5a48df83b32b331da8773b51f4b34348aac9a"
-            ["owner/nexus-catalog-v2"]="215a145b84c19370b9ee2e5df83951eaeb64ca11"
+            ["feat/generic-pix-beneficiary-payouts"]="c86b2eb8c9ea0f9a22fb1ad150324378e84c9ce6"
+            ["feat/generic-service-scheduling"]="ebfea609cc94d86d9e13ec507c26a5de8368acf1"
+            ["feat/generic-subscription-foundation"]="28b5d97ceb69f3ab9c599d07abfdf86fc914105e"
+            ["feat/generic-subscription-intents"]="19873ea8f012fd3061333a3703e823d9c3ee190a"
+            ["feat/google-place-picker"]="0341315af6982600a81ec6778f7704e9c6ab4a96"
+            ["feat/identity-platform-20260903"]="a0bcf72be3a8aa52664d5c2b3fd572ca21167ef4"
+            ["feat/issue-645-flyer-description-api"]="8607423828e11625d55979c4c71924ecb0ee0d1d"
+            ["feat/item-discovery-view"]="a62a750bde3b98c81310d21cd4d75c9ee46482b1"
+            ["feat/kryvion-airdrops"]="a060d6c44e83b36bd5be95de88e2725d6cc6ec18"
+            ["feat/leasing-lifecycle-intelligence"]="78ab3bbd0fa125fb4c50916f0f6e332308f981d9"
+            ["feat/leasing-lifecycle-intelligence-v2"]="4cd858bee9daa7dd88692554cc396070ad29b54a"
+            ["feat/leasing-lifecycle-production"]="dab49c89c877ffd5d2bac195f1cf1d437d501a03"
+            ["feat/lifecycle-write-breaker"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/mission-control-observability-v2"]="ffa31248c53d90c738edc39e0cc0835032ba5193"
+            ["feat/nexus-discovery-v2"]="2d0d69270bd4885ff703f37f7b410683b6a6e11a"
+            ["feat/nexus-profitability-50"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
+            ["feat/payflow-domain"]="23f60ff369015d3a46d7523a36316933470da1a9"
+            ["feat/stop-branch-loop"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/user-profile-background-20260905"]="fcd489319e19636dd72abd2f37d451b4d7731e2f"
+            ["feature/admin-copilot-v2"]="f53b6b4244df0811c280e60de6ad66eeb8f16c30"
+            ["feature/admin-user-communications-20260906"]="721217ecf8b62c5115df10f5feba1cfd18d71154"
+            ["feature/admin-user-communications-mainready-20260906"]="6036c311741d42a8486821f9ec10db938808176d"
+            ["feature/commerce-coupons"]="d005bb65074532e77f46d4f6c28ab2a1dec9edbe"
+            ["feature/creative-director-v2"]="be6c85bf6d0666d3966de09970b4d593307f86df"
+            ["feature/cutinapp-participant-social-v2"]="42ac94bc6892fced657673932ebabe5a7ee9678f"
+            ["feature/cutinapp-payments"]="9cf16089fbafb85c613dd3e4f319417650981c4b"
+            ["feature/direct-instagram-level-20260911"]="94613c2574c083b41d3f96daf21912527cfe8a6e"
+            ["feat/sellable-free-ticket-signals"]="d77d364b4a5c033bf145e6c45c3d495f56caedfb"
+            ["feat/subscription-intents-profitability"]="6e150f66062d7b98cb89021ff0dca7c74d166f7d"
+            ["feat/subscription-pix-lifecycle"]="83780b2c14416e628ac69e009e7a589b0a171639"
+            ["feat/subscription-plan-entitlements"]="f285475eecafd4adb15a66f5b51599fcdb793b8e"
+            ["feat/ticket-multi-event-20260908"]="61f144e7202efee12f69a376a20accf67549dfc1"
+            ["feat/ticket-sales-cutoff-rule-20260908"]="457a5e8e770442f447d8e32a5400dc1534749742"
+            ["feat/weekly-agenda-event-picker"]="74933a15ff55add7294ac3693bda43d887b6bf22"
+            ["feat/weekly-event-agenda-20260905"]="05b13ef54f850d191fa8a15c70d51a095d7998d7"
+            ["feature/acquisition-agent"]="3a7bd320681743972784b701147a0c6ec7249787"
+            ["feature/admin-financial-control-center"]="5ce6969c79fe588602e6992609647d5804ef3e7d"
+            ["feature/application-branding-manager-20260903"]="2572f0acea85f41a3ce28da6ae52079eef452f8c"
+            ["feature/application-runtime-controls-20260911"]="90c5fb544f438dc543419c585b26941c165877da"
+            ["feature/cutinapp-admin-impersonation"]="6302deb293515039bd69faca04882922b9fdca64"
           )
-
           failures=0
           deleted=0
           absent=0
           changed=0
-
           for branch in "${!expected[@]}"; do
             echo "Checking $branch"
             current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
@@ -70,7 +89,6 @@ jobs:
               failures=$((failures + 1))
             fi
           done
-
           echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
           if [ "$failures" -ne 0 ]; then
             exit 1
