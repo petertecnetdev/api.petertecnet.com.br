@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w08-batch-c:
+  delete-verified-w07-batch:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W08 allowlisted refs only when heads still match
+      - name: Delete W07 allowlisted refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,46 +22,25 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["feat/discovery-learning-loop-20260903"]="0fdaad7daac454ab7522414f32b06f0255385116"
-            ["feat/discovery-learning-loop-v2-20260903"]="71ae2e45e5698452e20869d84fc9bdf7c9e17a96"
-            ["feat/document-signature-production"]="764c48cfc7d3fdecac3767ed79d74678401c10f6"
-            ["feat/document-signature-workflow"]="dfa379c4d50daf4039a6c4887d530f93388225ad"
-            ["feat/ecosystem-support-20260905-v2"]="6b7262d26d6d44b9bdf1e6d506f919a0cb8549ee"
-            ["feat/ecosystem-support-20260905"]="84c2cc62d14fe8f0ce32de1c33f53ad31dd31182"
-            ["feat/email-verification-deferral"]="bc770234d364df121cb739275064f7eea24b4349"
-            ["feat/enforce-entitlement-limits"]="cf5dcd1aafdf181453121979e30c17317958d015"
-            ["feat/event-addons-management-20260906"]="60281b6948cc20d2e15142ee7851747b82f4c1bf"
-            ["feat/event-catalog-addons"]="8273b54fe050d60e2be89810f04cc2307375e054"
-            ["feat/event-date-item-redemption"]="09069a16614e2ffac8f6c34c8a83882ad1e4bfac"
-            ["feat/event-lifecycle-generic-20260903-2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/event-lifecycle-generic-20260903"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/event-lifecycle-implementation"]="2dda1993873a16110f4bd06143f280d74974487c"
-            ["feat/event-lifecycle-implementation-2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/event-lifecycle-implementation-3"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/event-lifecycle-working"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/event-no-show-metrics-20260905"]="11cde1a1a81effb7317dc637687c92f124e59bdb"
-            ["feat/event-share-preview-20260907"]="9fc72dc01a946770a8343b343352bdab10721da7"
-            ["feat/explicit-checkout-recovery-intent"]="939486e9c6e810a1b6e40db317e5398e4b978edc"
-            ["feat/flyer-date-consistency"]="06afd697a251e26358722f6f825857022adef2cc"
-            ["feat/generic-app-messaging"]="432b39b347a85f6ff08718bf27920aa85beb6f7b"
-            ["feat/generic-establishment-conversion-20260903"]="f93380872dfcf2a5869e97a0d18da54138a0f9b9"
-            ["feat/generic-event-lifecycle-protection"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/generic-event-lifecycle-protection-final"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/generic-event-lifecycle-protection-impl"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/generic-event-lifecycle-protection-v2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
-            ["feat/generic-fulfillment-lifecycle"]="b354c698bcfff44edef920d0a1f56836cea85041"
-            ["feat/generic-lease-contract-templates"]="21b22329a95e902938e8fad28f0b427f5b620429"
-            ["feat/generic-leasing-domain"]="1b3cfa28afc6e74067475f75b0dd7590d5f4f3d8"
-            ["feat/generic-onboarding-data-quality-v2-final"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2-impl"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2-mainwork"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2-pr"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2-pr2"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2-work"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-data-quality-v2"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-hardening-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-hardening-final2-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
-            ["feat/generic-onboarding-hardening-final-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["agent/np01-t1/canonical-api-contract-guard"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
+            ["agent/np01-t3/app-notification-scope"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
+            ["agent/np05-t3/batch-preload-saved-searches"]="076f339f494605108ba11f4c78d2b7cfb29be9c0"
+            ["agent/np09-t2/funil-analytics"]="ce7b9bab40b760a6023fd7d2a711097dc7318b09"
+            ["agent/np09-t3/admin-telemetry-integrity-report"]="ce7b9bab40b760a6023fd7d2a711097dc7318b09"
+            ["artist-upgrade-temp"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp2"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp3"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp4"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp5"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp6"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp7"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp8"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["artist-upgrade-temp9"]="1c1072e9800abc086c369814388762fe99f64676"
+            ["refactor/platform-core-v1-2026-08-28"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
+            ["refactor/platform-core-v1-2026-08-28b"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
+            ["refactor/platform-core-v1-final"]="c7a03aa38800136f61b35f739b0ad452d9fd2db0"
+            ["hotfix/direct-pusher-email"]="9bf5a48df83b32b331da8773b51f4b34348aac9a"
+            ["owner/nexus-catalog-v2"]="215a145b84c19370b9ee2e5df83951eaeb64ca11"
           )
 
           failures=0
