@@ -23,4 +23,8 @@ Route::prefix('v1/apps/{application}')
         Route::get('/event-media/{eventId}/download', [EventMediaLibraryController::class, 'download'])
             ->whereNumber('eventId')
             ->middleware('throttle:60,1');
+        Route::get('/event-media/{eventId}/soundtrack/{itemId}/download', [EventMediaLibraryController::class, 'downloadSoundtrackItem'])
+            ->whereNumber('eventId')
+            ->where('itemId', '[A-Za-z0-9_-]+')
+            ->middleware('throttle:60,1');
     });
