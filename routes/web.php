@@ -1,10 +1,19 @@
 <?php
 
+use App\Domain\Events\Http\Controllers\EventSharePreviewController;
 use Illuminate\Support\Facades\Route;
 
 Route::view('/', 'welcome')->name('api.landing');
 
 Route::view('/docs', 'api-docs')->name('api.docs');
+
+Route::get('/share/apps/{application}/events/{slug}', EventSharePreviewController::class)
+    ->where([
+        'application' => '[A-Za-z0-9\-]+',
+        'slug' => '[A-Za-z0-9\-]+',
+    ])
+    ->middleware('throttle:120,1')
+    ->name('share.event');
 
 Route::get('/api', function () {
     return response()->json([
