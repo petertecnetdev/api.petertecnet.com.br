@@ -11,44 +11,88 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-main-ancestor-branches:
+  delete-verified-w08-batch-c:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete allowlisted branches verified as ancestors of main
+      - name: Delete W08 allowlisted refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -u
-          branches=(
-            "feat/payflow-domain-v2"
-            "feat/plat-production-ready-staging"
-            "feat/profit-checkout-recovery-20260905"
-            "feat/rasoio-reassign-atendimento"
-            "feat/resource-visibility-platform"
-            "feat/resource-visibility-platform-temp"
-            "feat/revenue-funnel-metrics"
+          declare -A expected=(
+            ["feat/discovery-learning-loop-20260903"]="0fdaad7daac454ab7522414f32b06f0255385116"
+            ["feat/discovery-learning-loop-v2-20260903"]="71ae2e45e5698452e20869d84fc9bdf7c9e17a96"
+            ["feat/document-signature-production"]="764c48cfc7d3fdecac3767ed79d74678401c10f6"
+            ["feat/document-signature-workflow"]="dfa379c4d50daf4039a6c4887d530f93388225ad"
+            ["feat/ecosystem-support-20260905-v2"]="6b7262d26d6d44b9bdf1e6d506f919a0cb8549ee"
+            ["feat/ecosystem-support-20260905"]="84c2cc62d14fe8f0ce32de1c33f53ad31dd31182"
+            ["feat/email-verification-deferral"]="bc770234d364df121cb739275064f7eea24b4349"
+            ["feat/enforce-entitlement-limits"]="cf5dcd1aafdf181453121979e30c17317958d015"
+            ["feat/event-addons-management-20260906"]="60281b6948cc20d2e15142ee7851747b82f4c1bf"
+            ["feat/event-catalog-addons"]="8273b54fe050d60e2be89810f04cc2307375e054"
+            ["feat/event-date-item-redemption"]="09069a16614e2ffac8f6c34c8a83882ad1e4bfac"
+            ["feat/event-lifecycle-generic-20260903-2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/event-lifecycle-generic-20260903"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/event-lifecycle-implementation"]="2dda1993873a16110f4bd06143f280d74974487c"
+            ["feat/event-lifecycle-implementation-2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/event-lifecycle-implementation-3"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/event-lifecycle-working"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/event-no-show-metrics-20260905"]="11cde1a1a81effb7317dc637687c92f124e59bdb"
+            ["feat/event-share-preview-20260907"]="9fc72dc01a946770a8343b343352bdab10721da7"
+            ["feat/explicit-checkout-recovery-intent"]="939486e9c6e810a1b6e40db317e5398e4b978edc"
+            ["feat/flyer-date-consistency"]="06afd697a251e26358722f6f825857022adef2cc"
+            ["feat/generic-app-messaging"]="432b39b347a85f6ff08718bf27920aa85beb6f7b"
+            ["feat/generic-establishment-conversion-20260903"]="f93380872dfcf2a5869e97a0d18da54138a0f9b9"
+            ["feat/generic-event-lifecycle-protection"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/generic-event-lifecycle-protection-final"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/generic-event-lifecycle-protection-impl"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/generic-event-lifecycle-protection-v2"]="bc47336e16e5a2fff581e0a5df5ccf6d8fd44abc"
+            ["feat/generic-fulfillment-lifecycle"]="b354c698bcfff44edef920d0a1f56836cea85041"
+            ["feat/generic-lease-contract-templates"]="21b22329a95e902938e8fad28f0b427f5b620429"
+            ["feat/generic-leasing-domain"]="1b3cfa28afc6e74067475f75b0dd7590d5f4f3d8"
+            ["feat/generic-onboarding-data-quality-v2-final"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2-impl"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2-mainwork"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2-pr"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2-pr2"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2-work"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-data-quality-v2"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-hardening-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-hardening-final2-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
+            ["feat/generic-onboarding-hardening-final-20260903"]="1e09ba566bd7098419d9a8a6267eea588296bf17"
           )
 
           failures=0
-          for branch in "${branches[@]}"; do
+          deleted=0
+          absent=0
+          changed=0
+
+          for branch in "${!expected[@]}"; do
             echo "Checking $branch"
-            if gh api "repos/$REPO/git/ref/heads/$branch" >/dev/null 2>&1; then
-              if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
-                echo "Deleted $branch"
-              else
-                echo "FAILED to delete $branch"
-                failures=$((failures + 1))
-              fi
-            else
+            current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            if [ -z "$current" ]; then
               echo "Already absent: $branch"
+              absent=$((absent + 1))
+              continue
+            fi
+            if [ "$current" != "${expected[$branch]}" ]; then
+              echo "HEAD CHANGED; refusing deletion: $branch expected=${expected[$branch]} current=$current"
+              changed=$((changed + 1))
+              failures=$((failures + 1))
+              continue
+            fi
+            if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
+              echo "Deleted $branch"
+              deleted=$((deleted + 1))
+            else
+              echo "FAILED to delete $branch"
+              failures=$((failures + 1))
             fi
           done
 
+          echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
           if [ "$failures" -ne 0 ]; then
-            echo "$failures branch deletions failed"
             exit 1
           fi
-
-          echo "Verified allowlist deletion pass completed."
