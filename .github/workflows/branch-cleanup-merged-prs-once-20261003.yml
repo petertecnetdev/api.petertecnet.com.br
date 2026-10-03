@@ -1,0 +1,64 @@
+name: Branch cleanup merged PRs once 2026-10-03
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/branch-cleanup-merged-prs-once-20261003.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  delete-verified-merged-pr-source-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete allowlisted source branches from merged PRs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -u
+          branches=(
+            "feat/payflow-mvp-complete"
+            "feat/payment-recovery-state"
+            "feat/plat-plan-entitlements-main"
+            "feat/production-discovery-cards-20260905"
+            "feat/production-public-experience-195"
+            "feat/profitability-action-queue-20260907"
+            "feat/profitability-loss-guardrail"
+            "feat/profitability-net-payment-margin"
+            "feat/profitability-revenue-attribution"
+            "feat/public-auth-config"
+            "feat/public-resource-availability"
+            "feat/rasoio-dashboard-tempo-real"
+            "feat/recovery-channel-observed-economics-v2"
+            "feat/recovery-channel-profitability-20260908"
+            "feat/recovery-channel-specific-cost-ceiling"
+            "feat/recovery-click-attribution"
+            "feat/recovery-confidence-guardrail"
+            "feat/recovery-cost-ceiling"
+            "feat/recovery-require-cost-ceiling"
+            "feat/recovery-segment-safe-ceilings"
+            "feat/rent-pix-payments"
+          )
+          failures=0
+          for branch in "${branches[@]}"; do
+            echo "Checking $branch"
+            if gh api "repos/$REPO/git/ref/heads/$branch" >/dev/null 2>&1; then
+              if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
+                echo "Deleted $branch"
+              else
+                echo "FAILED to delete $branch"
+                failures=$((failures + 1))
+              fi
+            else
+              echo "Already absent: $branch"
+            fi
+          done
+          if [ "$failures" -ne 0 ]; then
+            echo "$failures branch deletions failed"
+            exit 1
+          fi
+          echo "Merged-PR deletion pass completed."
