@@ -31,6 +31,7 @@ class RouteServiceProvider extends ServiceProvider
             Route::prefix('api')->group(base_path('routes/event_duplication.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/event_pass_transfer.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/organization_experience.php'));
+            Route::middleware('api')->prefix('api')->group(base_path('routes/media_library.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/acquisition.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/workforce.php'));
             Route::middleware('api')->prefix('api')->group(base_path('routes/commerce_fulfillment.php'));
