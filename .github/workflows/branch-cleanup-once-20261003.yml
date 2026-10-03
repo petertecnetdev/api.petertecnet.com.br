@@ -1,0 +1,54 @@
+name: Branch cleanup once 2026-10-03
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/branch-cleanup-once-20261003.yml
+
+permissions:
+  contents: write
+
+jobs:
+  delete-verified-main-ancestor-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete allowlisted branches verified as ancestors of main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -u
+          branches=(
+            "feat/payflow-domain-v2"
+            "feat/plat-production-ready-staging"
+            "feat/profit-checkout-recovery-20260905"
+            "feat/rasoio-reassign-atendimento"
+            "feat/resource-visibility-platform"
+            "feat/resource-visibility-platform-temp"
+            "feat/revenue-funnel-metrics"
+          )
+
+          failures=0
+          for branch in "${branches[@]}"; do
+            echo "Checking $branch"
+            if gh api "repos/$REPO/git/ref/heads/$branch" >/dev/null 2>&1; then
+              if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
+                echo "Deleted $branch"
+              else
+                echo "FAILED to delete $branch"
+                failures=$((failures + 1))
+              fi
+            else
+              echo "Already absent: $branch"
+            fi
+          done
+
+          if [ "$failures" -ne 0 ]; then
+            echo "$failures branch deletions failed"
+            exit 1
+          fi
+
+          echo "Verified allowlist deletion pass completed."
