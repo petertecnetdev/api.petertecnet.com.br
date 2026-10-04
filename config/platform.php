@@ -26,6 +26,7 @@ return [
             ],
             'email_brand' => [
                 'logo_path' => '/images/logo.png',
+                'inline_logo_path' => 'resources/mail/brands/cutinapp/logo.png',
                 'primary_color' => '#b847fa',
                 'secondary_color' => '#2b62f4',
                 'accent_color' => '#06affa',

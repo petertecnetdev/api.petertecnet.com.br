@@ -3,6 +3,16 @@
     $brandName = $brand['name'] ?? config('app.name', 'Peter Tecnet');
     $brandInitials = $brand['initials'] ?? 'PT';
     $logoUrl = $brand['logo_url'] ?? null;
+    $logoInlinePath = $brand['logo_inline_path'] ?? null;
+    $logoSrc = $logoUrl;
+
+    if ($logoInlinePath && isset($message)) {
+        try {
+            $logoSrc = $message->embed($logoInlinePath);
+        } catch (\Throwable) {
+            $logoSrc = $logoUrl;
+        }
+    }
     $primary = $brand['primary_color'] ?? '#6d28d9';
     $secondary = $brand['secondary_color'] ?? '#2563eb';
     $accent = $brand['accent_color'] ?? '#0891b2';
@@ -39,9 +49,9 @@
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
                                 <tr>
                                     <td width="84" valign="middle" style="width:84px;">
-                                        @if($logoUrl)
+                                        @if($logoSrc)
                                             <div style="width:72px;height:72px;border-radius:999px;overflow:hidden;background:#ffffff;border:2px solid rgba(255,255,255,.18);box-shadow:0 8px 24px rgba(0,0,0,.22);">
-                                                <img src="{{ $logoUrl }}" alt="{{ $brand['logo_alt'] ?? ('Logo '.$brandName) }}" width="72" height="72" style="display:block;width:72px;height:72px;border:0;border-radius:999px;object-fit:cover;">
+                                                <img src="{{ $logoSrc }}" alt="{{ $brand['logo_alt'] ?? ('Logo '.$brandName) }}" width="72" height="72" style="display:block;width:72px;height:72px;border:0;border-radius:999px;object-fit:cover;">
                                             </div>
                                         @else
                                             <div style="width:72px;height:72px;line-height:72px;text-align:center;border-radius:999px;background:{{ $primary }};color:{{ $brand['button_text_color'] ?? '#ffffff' }};font-size:22px;font-weight:800;letter-spacing:.03em;">
