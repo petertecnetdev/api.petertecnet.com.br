@@ -1,4 +1,4 @@
-name: Branch cleanup merged PRs once 2026-10-03
+name: Branch cleanup verified refs
 
 on:
   push:
@@ -10,55 +10,45 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-merged-pr-source-branches:
+  delete-verified-refs:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete allowlisted source branches from merged PRs
+      - name: Delete SHA-guarded allowlisted refs
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -u
-          branches=(
-            "feat/payflow-mvp-complete"
-            "feat/payment-recovery-state"
-            "feat/plat-plan-entitlements-main"
-            "feat/production-discovery-cards-20260905"
-            "feat/production-public-experience-195"
-            "feat/profitability-action-queue-20260907"
-            "feat/profitability-loss-guardrail"
-            "feat/profitability-net-payment-margin"
-            "feat/profitability-revenue-attribution"
-            "feat/public-auth-config"
-            "feat/public-resource-availability"
-            "feat/rasoio-dashboard-tempo-real"
-            "feat/recovery-channel-observed-economics-v2"
-            "feat/recovery-channel-profitability-20260908"
-            "feat/recovery-channel-specific-cost-ceiling"
-            "feat/recovery-click-attribution"
-            "feat/recovery-confidence-guardrail"
-            "feat/recovery-cost-ceiling"
-            "feat/recovery-require-cost-ceiling"
-            "feat/recovery-segment-safe-ceilings"
-            "feat/rent-pix-payments"
-          )
+          deleted=0
+          absent=0
+          changed=0
           failures=0
-          for branch in "${branches[@]}"; do
+          while IFS='|' read -r branch expected; do
+            [ -n "$branch" ] || continue
             echo "Checking $branch"
-            if gh api "repos/$REPO/git/ref/heads/$branch" >/dev/null 2>&1; then
-              if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
-                echo "Deleted $branch"
-              else
-                echo "FAILED to delete $branch"
-                failures=$((failures + 1))
-              fi
-            else
+            current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            if [ -z "$current" ]; then
               echo "Already absent: $branch"
+              absent=$((absent + 1))
+              continue
             fi
-          done
-          if [ "$failures" -ne 0 ]; then
-            echo "$failures branch deletions failed"
+            if [ "$current" != "$expected" ]; then
+              echo "CHANGED: $branch expected=$expected current=$current"
+              changed=$((changed + 1))
+              continue
+            fi
+            if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
+              echo "Deleted $branch"
+              deleted=$((deleted + 1))
+            else
+              echo "FAILED: $branch"
+              failures=$((failures + 1))
+            fi
+          done <<'EOF'
+          agent/account-09-telemetry/telemetry-contract-tests|8d0fe5b39110160401936a53d0c1e7cc905ad7c4
+          EOF
+          echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
+          if [ "$changed" -ne 0 ] || [ "$failures" -ne 0 ]; then
             exit 1
           fi
-          echo "Merged-PR deletion pass completed."
