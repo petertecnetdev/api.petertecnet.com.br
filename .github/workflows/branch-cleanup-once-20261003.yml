@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w08-batch-n:
+  delete-verified-w08-batch-o:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W08 batch N refs only when heads still match
+      - name: Delete W08 batch O refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,8 +22,12 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["feat/commerce-card-payment-retry"]="f2db3565630c5492fe7ad839ec0ab330b877acc5"
-            ["fix/commerce-card-payment-recovery"]="eacdf3c64aaa25f1fede882b1e47b374f4b58870"
+            ["feat/generic-resource-operations"]="a481506d31d7048a90f3acfdbfd6391a151fa47a"
+            ["feat/generic-portfolio-analytics"]="12e2190c06c476bd6917db5c1a7183e464e4caf5"
+            ["feat/admin-pdf-reports-20260903"]="538c02d802b69446838b5b1ca202ed09c2b797a6"
+            ["refactor/commerce-domain-maturity"]="a547f2b8e5ec43b37ae91aa6f75d928e51961d21"
+            ["hardening/public-file-privacy-20260902"]="2306855ffc590366eec590fe1b3a392882dbfc95"
+            ["hardening/health-deploy-gate-20260902"]="e1ba91ca2aabaee664d62c9ee1d49665bf11b32d"
           )
           failures=0
           deleted=0
