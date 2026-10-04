@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w07-batch:
+  delete-verified-w08-batch-g:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W07 verified refs only when heads still match
+      - name: Delete W08 batch G refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,7 +22,46 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["feat/admin-users-management-20260905"]="4b9bf69a5bd3786a2e0fcf72daf73ee3f08f4869"
+            ["audit/cutinapp-courtesy-mutation-lock-2026-09-01"]="26ab7c539c34b811ce05d7871dae79137bac829e"
+            ["audit/cutinapp-event-capacity-2026-09-01"]="aa7af7a2950955f877ffd213b9f838d2b5fb739e"
+            ["audit/cutinapp-private-courtesy-guard-2026-09-01"]="3de32e42ae846becec02ae6907930083220c3b71"
+            ["audit/cutinapp-private-event-visibility-2026-09-01"]="a72f0c61f382936015d3e0143db1542a1385d5a4"
+            ["audit/cutinapp-public-production-visibility-2026-09-01"]="5df70462469c60a745e5fcd40cd23374df31d2e8"
+            ["audit/cutinapp-safe-lineup-notifications-2026-09-01"]="1eb1033e40b6983c3df37cd8fd4405154a3929ce"
+            ["audit/cutinapp-social-visible-targets-2026-09-01"]="7ddc0245ada3c188a57cface46150be696f001c7"
+            ["audit/platform-hardening-2026-08-28"]="47f0e9aaf334ceee9a562b7db734271740e1e55b"
+            ["automation/acquisition-net-margin-20260907"]="b79a1f772251d16c05230c016f242d5ef00543c6"
+            ["automation/agenda-ticket-availability-r10"]="6bf3eb34a29cbf0807a8cdadc382e0cf5b65d9df"
+            ["automation/cutinapp-r11-gmv"]="6ebf9fa2270ea88117f13c6a22ab3b70c5c0c323"
+            ["automation/cutinapp-rollout-readiness-api"]="bb373c6b2679c9657be0b5dd14358d133492da06"
+            ["automation/cutinapp-ticket-availability-status"]="c2ee044ee905ada312104971d318193ea0898d4c"
+            ["automation/establishment-interaction-funnel-r11"]="327b677c03d9b59b39107939441fafab17b678f9"
+            ["automation/event-pass-wallet-cta"]="bad673d19a0e4675c2cd9a3e21d6ddfe2c65c7b5"
+            ["automation/event-sellable-readiness-20260909"]="a253b6fdd374fb3eaaa01bc0e071476896713f77"
+            ["automation/expected-recovery-contribution"]="1a8e0031e5cabb832f8871226184e32f95ef61bb"
+            ["automation/expected-recovery-value-20260907"]="e6c1a9ed2aafdcc3b92ea1d13a2c79c4b2815adc"
+            ["automation/feed-ticket-availability-r11"]="fa6f33abe7236f7f9be68cc5141f705475e0bcae"
+            ["automation/fix-recovery-seconds-contract"]="dc8b20c163bff92463941c196a8e328716c453f8"
+            ["automation/fix-revenue-funnel-grouping-r11"]="c683b26dd6661b0c45050ad67beac0404c4c3b2a"
+            ["automation/frontend-telemetry-environment-r15"]="a6f64b748412e6c2ff44aba210f59b15317ba4f5"
+            ["automation/preserve-profile-photo-ordering-r17"]="dc53373886ffd34ca888ede14887d8f319037b25"
+            ["automation/profitability-confidence-adjusted-value"]="9d4676bccf77bc183cab76ec02e4ab72e6ab4dd6"
+            ["automation/profitability-dashboard-alert-20260907"]="c368e128f25cee56d0f788338f3bfcfce5b757f1"
+            ["automation/profitability-recovery-action-cost"]="dad0a1ea2a3b11bf0aae6bcf47b5ab069766fc1c"
+            ["automation/profitability-recovery-break-even-margin"]="c886f99f4569ef6be6ce672b1d20bd4426081389"
+            ["automation/profitability-recovery-guardrails"]="85bd763a1ed2f277169f122bd6e074ec1f9b7262"
+            ["automation/profitability-recovery-roi"]="84f8f8c46d6b4ffe70982fbd91904e5a5ce932ba"
+            ["automation/profitability-recovery-segment-probability"]="fba68bca93769fbfb6689573b2fa1d3053ec65d0"
+            ["automation/profitability-risk-queue-v2"]="dbeb66196793b921e639d34c0f680661efec4fb1"
+            ["automation/provider-failure-r11"]="d68a261cafe746d4dd02990eb7732b629ef5fc3e"
+            ["automation/public-event-ticket-availability"]="c2c3aa1c8e6a9b9d2a5a98297b9d2bd29e644ba4"
+            ["automation/public-scheduling-availability-r5"]="d0958468c887671dc5ebf2a8c18ad40dda68483c"
+            ["automation/public-sellable-inventory-run11"]="61a84d56280ff3f3565b91b89b4a98f706ea9def"
+            ["automation/reconcile-prod-discovery-r11"]="23e2430e5d50c14679e1469d3984f6e95bc1687d"
+            ["automation/recovery-confidence-r11"]="67d7027a3a147d4b49f21b94f9bdf0b41ac133b7"
+            ["automation/recovery-decision-policy-r20"]="d93d64e99dc1b9d2146ec99632a0c8155cfd04e5"
+            ["automation/recovery-incrementality-confidence-20260909"]="f6ff4b9be419a4cb4c4ea66314be8c3e1a06f72d"
+            ["automation/recovery-platform-revenue-priority"]="1cd6be19899d8755b3cbb9ed3b491b967bcc7b11"
           )
           failures=0
           deleted=0
@@ -38,16 +77,12 @@ jobs:
             fi
             if [ "$current" != "${expected[$branch]}" ]; then
               echo "HEAD CHANGED; refusing deletion: $branch expected=${expected[$branch]} current=$current"
-              changed=$((changed + 1))
-              failures=$((failures + 1))
-              continue
+              changed=$((changed + 1)); failures=$((failures + 1)); continue
             fi
             if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
-              echo "Deleted $branch"
-              deleted=$((deleted + 1))
+              echo "Deleted $branch"; deleted=$((deleted + 1))
             else
-              echo "FAILED to delete $branch"
-              failures=$((failures + 1))
+              echo "FAILED to delete $branch"; failures=$((failures + 1))
             fi
           done
           echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
