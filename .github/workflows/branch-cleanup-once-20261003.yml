@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w08-batch-q:
+  delete-verified-w10-batch-r:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W08 batch Q ref only when head still matches
+      - name: Delete W10 batch R ref only when head still matches
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,7 +22,7 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["agent/np02/fastix100-event-price"]="a4b9486ab1863d278aae25f13d4be46a0d8ba2c3"
+            ["agent/account-09-funnels-bi/analytics-window-guard"]="5413b273cccdc153cae1d7b09a038dbbcd74fada"
           )
           failures=0
           deleted=0
