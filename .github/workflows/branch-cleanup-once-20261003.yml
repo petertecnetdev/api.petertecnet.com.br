@@ -11,10 +11,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w08-batch-f:
+  delete-verified-w07-batch:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W08 batch F refs only when heads still match
+      - name: Delete W07 verified refs only when heads still match
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,31 +22,7 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["feat/payflow-mvp-complete"]="2893e420d92925043c2eb09cfb5e2cc4a4a37696"
-            ["feat/payment-recovery-state"]="ac40c2cbbf0c4fd6390fdcfb22eab566fd05a752"
-            ["feat/peter-platform-v1-architecture"]="f0f9bc8bc9f52d6914d083b39d0cbed495d808b6"
-            ["feat/plat-plan-entitlements"]="bc55f013581fe070f51d4860de381813bb6ac358"
-            ["feat/plat-production-ready"]="867989175f306ef794f22d6a04928942c8a40de9"
-            ["feat/production-owner-transfer-20260904"]="4d89a16aba631149c31eecc285217fc70838b3fd"
-            ["feat/profitability-risk-priority"]="e5a397b6ecbec01f62f5d7644d505053d2f0662a"
-            ["feat/recovery-channel-observed-economics"]="e09df958a78b57e9639f0de1c2d324520ba9d940"
-            ["feat/profitability-break-even-revenue-gap"]="9870ec5db9fb9ad597553505173dc2d73fa95842"
-            ["feat/public-catalog-hardening-20260903"]="1706c0af31fc17fa2070fa6c9b8a2eeb15095f37"
-            ["feat/recovery-surface-revenue-economics"]="e64aab9d8c3708e414365205d6efd27d5607e232"
-            ["perf/ecosystem-hardening-20260908"]="ab31c5a8c0311d08c81991e9651b95cd7744d12a"
-            ["production/rasoio-20260902"]="11e92922beac7cb9f390edd00b999f549efd6707"
-            ["profit/recovery-surface-economics-20260909"]="f43e3b0c494dbe165931d3df4ce713ec14972451"
-            ["profit/recovery-surface-maturity"]="9e42e04cc76e47fe6d648076b7696b506c716f3f"
-            ["profitability/checkout-recovery-deeplink"]="62ea8c99fa599bbd18d6abeaced8aca2c80b6380"
-            ["profitability/pix-recovery-timing-experiment"]="36e8c950264e8ee155cee60f26053287335fe6bd"
-            ["revenue/enforce-staff-entitlement-plat"]="dc571588420338813a0527ae0990e2c3c0fba014"
-            ["revenue/recover-subscription-intent"]="d9ea1a6776a931013d55d0ada9461aed4f833e81"
-            ["revenue/subscription-pix-email-recovery"]="9c24c4113b53b64cf02fa93e69fe11e92ca964c4"
-            ["review/api-core-hardening"]="dc4325c70ab724b6d60b924741e91e0c6bbb4b80"
-            ["security/dependency-audit-20260904"]="449878d11cfea629dea4b636b703aabc0446b512"
-            ["seo/dynamic-sitemap-20260908"]="5bdc08f724769082c5057f83c3451e23cf84a7ab"
-            ["tmp-noop"]="78e3d91baec5f179b2be2ebd46d90d2006e08792"
-            ["w08/artist-claim-relations"]="2533a1d54ea2aacd04f34eb66ff58a2d17066e9e"
+            ["feat/admin-users-management-20260905"]="4b9bf69a5bd3786a2e0fcf72daf73ee3f08f4869"
           )
           failures=0
           deleted=0
