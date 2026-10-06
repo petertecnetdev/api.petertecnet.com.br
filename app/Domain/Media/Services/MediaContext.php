@@ -54,4 +54,47 @@ final class MediaContext
 
         return $normalized;
     }
+
+    public function canonical(string $context): string
+    {
+        $normalized = $this->normalize($context);
+
+        return $this->aliases()[$normalized] ?? $normalized;
+    }
+
+    public function isKnown(string $context): bool
+    {
+        return in_array($this->canonical($context), $this->known(), true);
+    }
+
+    /** @return array<string, string> */
+    public function aliases(): array
+    {
+        return [
+            'avatar' => self::PROFILE_AVATAR,
+            'avatars' => self::PROFILE_AVATAR,
+            'profile-avatar' => self::PROFILE_AVATAR,
+            'profile-avatars' => self::PROFILE_AVATAR,
+            'logo' => self::ESTABLISHMENT_LOGO,
+            'logos' => self::ESTABLISHMENT_LOGO,
+            'establishment-logo' => self::ESTABLISHMENT_LOGO,
+            'cover' => self::ESTABLISHMENT_COVER,
+            'covers' => self::ESTABLISHMENT_COVER,
+            'establishment-cover' => self::ESTABLISHMENT_COVER,
+            'item' => self::ITEM_IMAGE,
+            'items' => self::ITEM_IMAGE,
+            'item-image' => self::ITEM_IMAGE,
+            'item-images' => self::ITEM_IMAGE,
+            'event-banner' => self::EVENT_BANNER,
+            'event-banners' => self::EVENT_BANNER,
+            'post' => self::POST_MEDIA,
+            'posts' => self::POST_MEDIA,
+            'post-media' => self::POST_MEDIA,
+            'message-attachment' => self::MESSAGE_ATTACHMENT,
+            'message-attachments' => self::MESSAGE_ATTACHMENT,
+            'support-attachment' => self::SUPPORT_ATTACHMENT,
+            'support-attachments' => self::SUPPORT_ATTACHMENT,
+            'documents' => self::DOCUMENT,
+        ];
+    }
 }
