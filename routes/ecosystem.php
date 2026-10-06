@@ -3,6 +3,8 @@
 use App\Http\Controllers\InvitationActivationController;
 use App\Http\Controllers\ImpersonationController;
 use App\Http\Controllers\Admin\AdminControlPlaneController;
+use App\Http\Controllers\Admin\AdminDataController;
+use App\Http\Controllers\Admin\AdminEstablishmentMediaController;
 use App\Http\Controllers\Admin\AdminEventController;
 use App\Http\Controllers\Admin\AdminUserDetailController;
 use App\Http\Controllers\Admin\AgentChatController;
@@ -127,6 +129,15 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
         Route::post('/trash/{resource}/{id}/restore', [AdminControlPlaneController::class, 'restoreTrash'])->whereNumber('id');
         Route::get('/export/{resource}', [AdminControlPlaneController::class, 'export']);
         Route::post('/import/{resource}', [AdminControlPlaneController::class, 'import']);
+
+        Route::get('/data/tables', [AdminDataController::class, 'tables']);
+        Route::get('/data/{table}', [AdminDataController::class, 'index'])->where('table', '[A-Za-z0-9_]+');
+        Route::get('/data/{table}/{key}', [AdminDataController::class, 'show'])
+            ->where('table', '[A-Za-z0-9_]+')
+            ->where('key', '[A-Za-z0-9_-]+');
+        Route::put('/data/{table}/{key}', [AdminDataController::class, 'update'])
+            ->where('table', '[A-Za-z0-9_]+')
+            ->where('key', '[A-Za-z0-9_-]+');
     });
 
     Route::prefix('event-management')->group(function () {
@@ -162,6 +173,7 @@ Route::prefix('admin/ecosystem')->middleware(['auth:api', \App\Http\Middleware\P
     Route::get('/establishments/{establishment}/resources/events', [EstablishmentEventController::class, 'index'])->whereNumber('establishment');
     Route::get('/establishments/{establishment}/resources/events/{event}/tickets', [EstablishmentEventController::class, 'tickets'])->whereNumber('establishment')->whereNumber('event');
     Route::put('/establishments/{establishment}', [EcosystemController::class, 'updateEstablishment'])->whereNumber('establishment');
+    Route::post('/establishments/{establishment}/media', [AdminEstablishmentMediaController::class, 'store'])->whereNumber('establishment');
     Route::put('/establishments/{establishment}/owner', [EcosystemController::class, 'transferEstablishmentOwner'])->whereNumber('establishment');
     Route::delete('/establishments/{establishment}', [EcosystemController::class, 'destroyEstablishment'])->whereNumber('establishment');
     Route::get('/items', [EcosystemController::class, 'items']);
