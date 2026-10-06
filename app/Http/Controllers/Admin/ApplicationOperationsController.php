@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Application;
 use App\Models\ApplicationAdminAudit;
 use App\Services\Admin\ApplicationOperationsService;
+use App\Services\Admin\OperationalIntegrityReportService;
 use App\Services\ApplicationRuntimeControlService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,15 @@ class ApplicationOperationsController extends Controller
         ]);
 
         return response()->json($service->dashboard($application, (int) ($validated['days'] ?? 30)));
+    }
+
+    public function integrity(Request $request, Application $application, OperationalIntegrityReportService $service): JsonResponse
+    {
+        $validated = $request->validate([
+            'hours' => ['nullable', 'integer', 'min:1', 'max:168'],
+        ]);
+
+        return response()->json($service->report($application, (int) ($validated['hours'] ?? 24)));
     }
 
     public function runtime(Application $application, ApplicationRuntimeControlService $runtime): JsonResponse
