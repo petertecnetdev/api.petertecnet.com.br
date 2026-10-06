@@ -141,9 +141,9 @@ final class EventManagementController extends Controller
     {
         $this->normalizeInput($request);$data=$request->validate($this->rules(true),$this->messages(),$this->attributes());$production=$this->ownedProduction((int)$data['production_id'],$request->user());$this->validateDates($data,null);
         if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
-        $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
+        $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=true;$data['is_cancelled']=false;unset($data['image']);
         $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
-        return response()->json(['message'=>'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')],201);
+        return response()->json(['message'=>'Evento criado e publicado automaticamente. Configure ingressos e demais detalhes quando necessário.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')],201);
     }
 
     public function update(Request $request,int $id)
@@ -175,7 +175,7 @@ final class EventManagementController extends Controller
 
         $duplicate=DB::transaction(function()use($source,$sourceStart,$newStart,$newEnd,$timezone){
             $copy=$source->replicate(['slug','start_date','end_date','is_published','is_cancelled','is_featured','is_approved','rating','reviews','remaining_tickets','image']);
-            $copy->slug=$this->uniqueSlug($source->title);$copy->start_date=$newStart;$copy->end_date=$newEnd;$copy->is_published=false;$copy->is_cancelled=false;$copy->is_featured=false;$copy->is_approved=false;$copy->rating=0;$copy->reviews=[];$copy->remaining_tickets=null;$copy->image=null;$copy->save();
+            $copy->slug=$this->uniqueSlug($source->title);$copy->start_date=$newStart;$copy->end_date=$newEnd;$copy->is_published=true;$copy->is_cancelled=false;$copy->is_featured=false;$copy->is_approved=false;$copy->rating=0;$copy->reviews=[];$copy->remaining_tickets=null;$copy->image=null;$copy->save();
 
             $tickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$source->id)->orderBy('id')->get();
             foreach($tickets as$ticket){

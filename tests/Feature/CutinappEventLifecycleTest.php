@@ -40,7 +40,7 @@ class CutinappEventLifecycleTest extends TestCase
         $this->withHeaders($headers)->postJson("/api/cutinapp/events/{$eventId}/unpublish")->assertOk()->assertJsonPath('event.is_published',false);$this->getJson("/api/cutinapp/events/public/{$editedSlug}")->assertNotFound();
     }
 
-    public function test_paid_event_can_be_published_before_payout_setup(): void
+    public function test_paid_event_is_created_published_before_payout_setup(): void
     {
         config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
         config()->set('services.mercadopago.access_token', 'platform-access-token');
@@ -59,7 +59,7 @@ class CutinappEventLifecycleTest extends TestCase
             'uf' => 'GO',
             'start_date' => now()->addDays(2)->format('Y-m-d H:i:s'),
             'end_date' => now()->addDays(2)->addHours(3)->format('Y-m-d H:i:s'),
-        ])->assertCreated()->json('event');
+        ])->assertCreated()->assertJsonPath('event.is_published', true)->json('event');
 
         $this->withHeaders($headers)->postJson('/api/cutinapp/tickets', [
             'event_id' => $event['id'],
@@ -68,11 +68,6 @@ class CutinappEventLifecycleTest extends TestCase
             'price' => 25.00,
             'ticket_type' => 'full',
         ])->assertCreated();
-
-        $this->withHeaders($headers)
-            ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
-            ->assertOk()
-            ->assertJsonPath('event.is_published', true);
 
         $this->assertDatabaseHas('events', ['id' => $event['id'], 'is_published' => true]);
 
