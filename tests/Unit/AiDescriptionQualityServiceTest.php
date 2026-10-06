@@ -56,4 +56,20 @@ class AiDescriptionQualityServiceTest extends TestCase
         $this->assertLessThan(100, $quality['scores']['fidelity']);
         $this->assertContains('menciona atração ou artista sem confirmação no evento atual', $quality['issues']);
     }
+
+    public function test_unconfirmed_money_value_reduces_fidelity(): void
+    {
+        $service = new AiDescriptionQualityService();
+
+        $quality = $service->evaluate(
+            "Uma noite para sair da rotina com música e encontros.\n\nGaranta seu ingresso por R$ 49,90 e aproveite a programação.",
+            'uma noite para sair da rotina',
+            ['venue' => 'La Fyesta Pub', 'city' => 'Goiânia', 'ticket_options' => 'Pista — gratuito'],
+            [],
+        );
+
+        $this->assertLessThan(100, $quality['scores']['fidelity']);
+        $this->assertContains('contém valor monetário que não consta nos dados atuais', $quality['issues']);
+        $this->assertFalse($quality['passes']);
+    }
 }
