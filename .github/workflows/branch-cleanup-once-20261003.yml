@@ -2,8 +2,7 @@ name: Branch cleanup once 2026-10-04
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - .github/workflows/branch-cleanup-once-20261003.yml
 
@@ -11,10 +10,10 @@ permissions:
   contents: write
 
 jobs:
-  delete-verified-w10-batch-r:
+  delete-verified-merged-historical:
     runs-on: ubuntu-latest
     steps:
-      - name: Delete W10 batch R ref only when head still matches
+      - name: Delete verified merged historical branches
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -22,25 +21,122 @@ jobs:
         run: |
           set -u
           declare -A expected=(
-            ["agent/account-09-funnels-bi/analytics-window-guard"]="5413b273cccdc153cae1d7b09a038dbbcd74fada"
+            ["feat/commerce-availability-controls"]="6a4f946cba6268534458dd23acdff4d964ba47ea"
+            ["fix/reconcile-underfulfilled-paid-orders"]="1860311814ff77dd9c79af6dd9b4d5aba5c08af5"
+            ["feature/recovery-channel-min-sample"]="1e34ff67203039a49a8b84c61351e6d5f69c4ff1"
+            ["automation/r14-reconciliation-app-breakdown"]="93b54305902535efd06d556862f4c02f063ebc6e"
+            ["fix/architecture-gate-all-products-20260904"]="b015a75cbfa7dc1da04035bbe939647e49deb9e3"
+            ["automation/admin-fulfillment-reprocess-r11"]="fac9f91951166df0d21fcd77e4f296113894c4ac"
+            ["automation/fulfillment-sla-r11"]="51f176a46542403f3e25ff7388aa2686ab27fe99"
+            ["fix/nonroot-verified-backup-deploy-20260906"]="c7617abab1480fb0facb7f12f1fe104c273d7b79"
+            ["refactor/finalize-generic-platform-20260903"]="1534c0be7712bfd238ec066213a962b9ce09a67b"
+            ["automation/paid-fulfillment-health-r11"]="fbd1f0420ec634c4b24e1c79a5656f7190a7beee"
+            ["automation/fulfillment-recovery-attribution-r11"]="e49b5b90f0369169b48860c992141806549319fc"
+            ["feat/application-admin-access-20260906"]="20148701f01a075ba1caf6ac679d4a7e61b24e06"
+            ["ops/reconcile-observability-schema-20260904-v2"]="4ec6573dab02ad94386e70eaef4ebfa5c0cd60f0"
+            ["fix/deploy-preflight-resilience"]="31aac45f73855e1dd728d9cd8f08ac6847e1fc3d"
+            ["infra/database-backups-20260906"]="56e6c02d5940c2c70d8c4329b7d03135577ca25d"
+            ["automation/recovery-surface-revenue-r11"]="4d9b8192b68c524dc1e2c10c25cea8d46ae2faa7"
+            ["fix/organization-soft-delete-20260904"]="9faa96ce43330967c401f1952a104b1fb9cde0ba"
+            ["fix/plat-recognized-revenue-dashboard"]="4b27c108bce3ba657cdb7f89129960a84d9fc4b1"
+            ["feat/cognitive-consciousness-research-core"]="17b86fcf18964ae90895a8865f7b00eb422e70e0"
+            ["automation/commerce-fulfillment-alert-r11"]="530ee6a614a0fd11317bdb6901a791b3640ff982"
+            ["fix/commerce-compatibility-boundary-round13"]="ab01ccee76e51ac9a74c824f452630e8c02dfdcc"
+            ["feat/account-profile-documents-production"]="32cab78c0c6b6a0400c904df4d3a713502d90d01"
+            ["automation/fulfillment-recovery-economics-r11"]="b35d11c15adedb2504be6fe51e016bee10b23dd6"
+            ["feat-acquisition-commission-margin-guard-20260906"]="90b5fb7615ea26020ed26c224be65e0529ff36fb"
+            ["fix/api-architecture-gate-sep05"]="3df8a26d6b388bf27abfa696234329ebf5d37e84"
+            ["fix/automated-database-backups-20260904"]="bdc17b3c1ae54c37861727284d55d1cb0e518729"
+            ["fix/app-code-invite-activation-url"]="832e86dbe2d285296c5584b178a6c4791a69828f"
+            ["automation/recovery-realized-profit-20260909"]="d462d864ac77a29664fbaca66a1d52c511b847e0"
+            ["automation/revenue-analytics-index-20260907"]="edeb460e2593ab081b78f348459a8c4fb201ae27"
+            ["fix/guest-order-tracking-transport-boundary-v2"]="0006ef8fb42c6d960d6293484cd110cae6b5c3b5"
+            ["refactor/generic-cutinapp-api-20260903"]="6572da04d1977c26e872932421af511351ba7b05"
+            ["fix/generic-commerce-orders-contract-20260903"]="d5314d56a2949464e2373fa60b2ac6b32240344d"
+            ["fix/enforce-generic-architecture-20260904"]="8f979520f7b2e90acd79fbc52bfb86800f30abbb"
+            ["fix/order-removal-pricing"]="e7e67db1b31380b3062887921485791c872a3505"
+            ["automation/fulfillment-auto-escalation-r11"]="daae77f2d8d0b6f392630d2f243436668f6f4a71"
+            ["automation/guest-order-tracking-r1"]="2b4bef82f380e10586ac32fa2483825a4c43711f"
+            ["refactor/contract-generic-database-storage-20260903"]="5f9d3521a433e145503be9877ec1a584fcfad882"
+            ["automation/recovery-rollout-economics-r11"]="9fefebd2bf45d8ecc540fdef3112f1fe92be7f4d"
+            ["fix/order-context-integrity-current-main"]="80a6637edf87b468a421345bf3ef3fa1d76ada46"
+            ["fix/booking-blocked-schedules"]="cf91535e49bf7f2638f3f3d24086ac27fbd98ce5"
+            ["fix/production-rating-metrics-20260905"]="09fa1978260d72b805a90db66b1c8557bf885b87"
+            ["fix/rasoio-disponibilidade-real"]="99475d013be05be1e2810f5f3b153e6b1250212e"
+            ["fix/admin-command-center-route-contract-v2-20260903"]="3cf1f9798d5d4eb2530cfaabfefc78fae7ca50b1"
+            ["fix/scheduling-adjacent-appointments"]="e02faff943830374832ded6fec3170091996b0be"
+            ["automation/sellable-inventory-r11"]="5c833fd98f8796af15346cd460e7618bcf4dcbc2"
+            ["fix/generic-establishment-experience-context-v2"]="0d60af42546d83730634dbd7eec98db1e38391a3"
+            ["fix/admin-email-deferrals-production"]="0cfe8b27177ab3ac668652a0df1bdd116ec85abe"
+            ["fix/artist-profile-events-v3"]="7eafe1c4e958e86746563241405e2c4df2616799"
+            ["feature/weekly-agenda-rolling-horizon-20260910"]="249b20b6189d39214eaebc20569a91594b3678c8"
+            ["fix/cutinapp-catalog-capability"]="7b14e72c385e94bc2b9e8414903985f064f759ea"
+            ["fix/scheduling-recurring-block-availability"]="c946b0aae85725da4a69f61875f19d9f4932bbce"
+            ["fix/rate-limit-isolation-20260905"]="4a8a604e708560f67201f257d8569757c5287cc2"
+            ["fix/weekly-agenda-delay-max-6-20260910"]="222863843c0cd81b98b0719b65935f30ef898319"
+            ["feat/admin-establishment-event-duplicate"]="99510c783f7afe28edd5621791e9f691766aa06d"
+            ["fix/rasoio-owner-como-colaborador"]="40ccbd1b55f649d863668c5ac50914f46a1dc456"
+            ["fix/leasing-production-hardening"]="e415638689da8f04ab994f8c251213bfb92328d8"
+            ["feat/cutinapp-email-notifications"]="c88cb6aaae9f3aeb4eff9c842a1e0b05744bb7cc"
+            ["fix/resilient-realtime-broadcast"]="caa07ae536be6538777404e9c046e3af703d2c12"
+            ["fix/acquisition-capability-sync"]="3ff3cd5aac6403f62f762ca1eff3d93b4de3ecd9"
+            ["feat/content-discovery-seo-20260903"]="80b124dcad5bbe508203491d3b83bcdf2a40ad55"
+            ["feat/creative-event-quality-model"]="490378c04c9876d55d341409f2280ce2d4c29c0b"
+            ["feat/cognitive-control-center"]="8ab956e4c6a0477ccf800cba6ec2bc099b58532d"
+            ["fix/scheduling-reassignment-availability"]="06767a3b09023846519d90250db324f574b215e7"
+            ["feat/discovery-intelligence-rum-search-20260903"]="53a8fccd3f3a2e72f9ee5f1eb632edeee5c5b6a6"
+            ["fix/rasoio-remocao-colaborador-resposta"]="60c04523ac68347c9025d7d52b8dcd9a9ebe27cd"
+            ["fix/event-agenda-transport-boundary"]="e89e2c81521a929c631b717f512cbe208880668d"
+            ["fix/branding-global-logo-propagation-20260903"]="9b1f33da28f8b7533bff6023f1ee45d6cd2ed389"
+            ["refactor/platform-core-v1-final2"]="257affb34f8abb9695e0a8f03a9c048063b5bfc3"
+            ["fix/catalog-discovery-public-payload-20260903"]="772ac75b94706c9653656892ef7b0af7b16468e7"
+            ["fix/acquisition-lifecycle-hardening"]="db478642ca69d96e30b0017818faa0347bda8796"
+            ["feat/admin-cutinapp-ticket-management"]="598c31845a2ce02d566eca3912e9c299ede05a38"
+            ["fix/cutinapp-duplicate-event-v1"]="4830933a39b05847c6b6e29f5c527272ae9feb10"
+            ["feature/weekly-agenda-existing-events-20260910"]="d6f119b475d450b1b27d71bdaee984df2c5606b8"
+            ["feat/advanced-social-profile"]="ef44bfe1bf8e251e1f89d62e397d5c63c0f0efeb"
+            ["automation/workforce-invite-r5"]="4a12b8aacf916513ef6fa4db5dec42d6f75907bc"
+            ["chore/cognition-runtime-config"]="b52dd3cb309c69972019fb00d630b4098a8d4f16"
+            ["fix/rasoio-owner-manager-legacy-endpoint"]="9b9936b318690304f7b157d40c01b37af7e256b1"
+            ["feat/cutinapp-duplicate-event"]="a607c96f1d41ae8513dca48be18944a59ab4c0b6"
+            ["fix/mission-control-resilience-contract-20260903"]="cb9b7c5dc3a2c2aa3fb808714630cf5e3bd7c4ca"
+            ["automation/frontend-telemetry-environment-r15"]="a6f64b748412e6c2ff44aba210f59b15317ba4f5"
+            ["automation/profitability-recovery-roi"]="84f8f8c46d6b4ffe70982fbd91904e5a5ce932ba"
+            ["automation/recovery-platform-revenue-priority"]="1cd6be19899d8755b3cbb9ed3b491b967bcc7b11"
+            ["audit/platform-hardening-2026-08-28"]="47f0e9aaf334ceee9a562b7db734271740e1e55b"
+            ["automation/event-sellable-readiness-20260909"]="a253b6fdd374fb3eaaa01bc0e071476896713f77"
+            ["automation/agenda-ticket-availability-r10"]="6bf3eb34a29cbf0807a8cdadc382e0cf5b65d9df"
+            ["automation/fix-recovery-seconds-contract"]="dc8b20c163bff92463941c196a8e328716c453f8"
+            ["automation/expected-recovery-value-20260907"]="e6c1a9ed2aafdcc3b92ea1d13a2c79c4b2815adc"
+            ["automation/public-scheduling-availability-r5"]="d0958468c887671dc5ebf2a8c18ad40dda68483c"
+            ["audit/cutinapp-public-production-visibility-2026-09-01"]="5df70462469c60a745e5fcd40cd23374df31d2e8"
+            ["automation/reconcile-prod-discovery-r11"]="23e2430e5d50c14679e1469d3984f6e95bc1687d"
+            ["audit/cutinapp-event-capacity-2026-09-01"]="aa7af7a2950955f877ffd213b9f838d2b5fb739e"
+            ["automation/profitability-recovery-action-cost"]="dad0a1ea2a3b11bf0aae6bcf47b5ab069766fc1c"
+            ["automation/expected-recovery-contribution"]="1a8e0031e5cabb832f8871226184e32f95ef61bb"
+            ["automation/recovery-incrementality-confidence-20260909"]="f6ff4b9be419a4cb4c4ea66314be8c3e1a06f72d"
+            ["automation/acquisition-net-margin-20260907"]="b79a1f772251d16c05230c016f242d5ef00543c6"
+            ["automation/profitability-risk-queue-v2"]="dbeb66196793b921e639d34c0f680661efec4fb1"
+            ["audit/cutinapp-private-event-visibility-2026-09-01"]="a72f0c61f382936015d3e0143db1542a1385d5a4"
+            ["automation/fix-revenue-funnel-grouping-r11"]="c683b26dd6661b0c45050ad67beac0404c4c3b2a"
+            ["audit/cutinapp-safe-lineup-notifications-2026-09-01"]="1eb1033e40b6983c3df37cd8fd4405154a3929ce"
+            ["automation/recovery-confidence-r11"]="67d7027a3a147d4b49f21b94f9bdf0b41ac133b7"
           )
           failures=0
           deleted=0
           absent=0
           changed=0
           for branch in "${!expected[@]}"; do
-            echo "Checking $branch"
             current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
-            if [ -z "$current" ]; then echo "Already absent: $branch"; absent=$((absent + 1)); continue; fi
+            if [ -z "$current" ]; then echo "Already absent: $branch"; absent=$((absent+1)); continue; fi
             if [ "$current" != "${expected[$branch]}" ]; then
-              echo "HEAD CHANGED; refusing deletion: $branch expected=${expected[$branch]} current=$current"
-              changed=$((changed + 1)); failures=$((failures + 1)); continue
+              echo "HEAD CHANGED; refusing deletion: $branch"; changed=$((changed+1)); failures=$((failures+1)); continue
             fi
             if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
-              echo "Deleted $branch"; deleted=$((deleted + 1))
+              echo "Deleted $branch"; deleted=$((deleted+1))
             else
-              echo "FAILED to delete $branch"; failures=$((failures + 1))
+              echo "FAILED to delete $branch"; failures=$((failures+1))
             fi
           done
-          echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
+          echo "SUMMARY deleted=$deleted absent=$absent changed=$changed failures=$failures"
           if [ "$failures" -ne 0 ]; then exit 1; fi
