@@ -65,6 +65,27 @@ class CatalogAvailabilityTest extends TestCase
         $this->assertSame(123, $result['viewer']['resource_id']);
     }
 
+    public function test_cancelled_resource_cannot_be_previewed_or_exposed_as_public(): void
+    {
+        $establishment = $this->establishment([
+            'is_published' => true,
+            'is_approved' => true,
+            'is_cancelled' => true,
+        ]);
+
+        $result = $this->availability->evaluate($establishment, 10, true, true);
+
+        $this->assertSame('unavailable', $result['status']);
+        $this->assertSame('disabled', $result['reason']);
+        $this->assertSame(410, $result['http_status']);
+        $this->assertFalse($result['is_public']);
+        $this->assertFalse($result['indexable']);
+        $this->assertFalse($result['preview']);
+        $this->assertTrue($result['viewer']['is_owner']);
+        $this->assertFalse($result['viewer']['can_manage']);
+        $this->assertFalse($result['viewer']['can_preview']);
+    }
+
     public function test_public_resource_is_indexable(): void
     {
         $establishment = $this->establishment([
