@@ -77,8 +77,13 @@ class FrontendTelemetryService
                     'source_channel' => 'frontend',
                     'frontend_event' => $type,
                     'frontend_page' => $event['page'] ?? null,
+                    'route' => $event['route'] ?? null,
+                    'screen' => $event['screen'] ?? null,
                     'target' => $event['target'] ?? null,
                     'label' => $event['label'] ?? null,
+                    'result' => $event['result'] ?? $outcome,
+                    'duration_ms' => $event['duration_ms'] ?? null,
+                    'device' => $event['device'] ?? null,
                     'client_timestamp' => $event['timestamp'],
                     'metadata' => $metadata,
                     'status' => $status,
@@ -171,7 +176,7 @@ class FrontendTelemetryService
 
         return match ($type) {
             'session_start' => 'Iniciou uma sessão',
-            'session_end' => 'Encerrou a sessão',
+            'session_end' => 'Encerrou uma sessão',
             'navigation' => 'Navegou para '.($page ?: 'outra página'),
             'screen_view' => 'Visualizou '.($label ?: 'uma tela'),
             'click' => 'Clicou em '.($label ?: 'um elemento'),
