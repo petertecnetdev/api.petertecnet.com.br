@@ -15,7 +15,7 @@ use Illuminate\Support\Facades\Schema;
 
 final class ReindexDiscoverySearch extends Command
 {
-    protected $signature = 'search:reindex {application=cutinapp}';
+    protected $signature = 'search:reindex {application}';
     protected $description = 'Reconstrói os índices externos do motor de descoberta.';
 
     public function handle(ExternalSearchIndexGateway $gateway): int
@@ -138,7 +138,7 @@ final class ReindexDiscoverySearch extends Command
 
             return [
                 'id' => (int) $user->id,
-                'title' => $name ?: ($user->user_name ?: 'Usuário Cutinapp'),
+                'title' => $name ?: ($user->user_name ?: 'Usuário'),
                 'subtitle' => $user->user_name ? '@'.ltrim($user->user_name, '@') : null,
                 'search_text' => trim(implode(' ', array_filter([$name, $user->user_name, $user->occupation, $user->about]))),
                 'city' => $showCity ? $user->city : null,
