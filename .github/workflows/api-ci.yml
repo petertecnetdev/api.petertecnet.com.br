@@ -16,6 +16,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      DB_CONNECTION: sqlite
+      DB_DATABASE: /tmp/api.sqlite
 
     steps:
       - name: Checkout
@@ -60,6 +63,7 @@ jobs:
           MAIL_MAILER=array
           JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
           EOF
+          rm -f /tmp/api.sqlite
           touch /tmp/api.sqlite
 
       - name: Build Laravel caches
@@ -126,6 +130,7 @@ jobs:
           grep -q 'api/v1/apps/{application}/events' <<< "$routes"
           grep -q 'api/v1/apps/{application}/checkin' <<< "$routes"
           grep -q 'api/v1/apps/{application}/commerce/checkout' <<< "$routes"
+          grep -q 'engagement-email/preview' <<< "$routes"
 
       - name: Run architecture gate
         id: architecture
