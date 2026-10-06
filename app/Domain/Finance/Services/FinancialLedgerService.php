@@ -114,6 +114,12 @@ class FinancialLedgerService
             }
         }
 
+        $storedMetadata = $this->normalizeMetadata($existing->metadata ?? null);
+        $requestedMetadata = $this->normalizeMetadata($attributes['metadata'] ?? null);
+        if ($storedMetadata !== $requestedMetadata) {
+            throw new InvalidArgumentException('Idempotency key is already associated with different financial metadata.');
+        }
+
         $storedEntries = DB::table('financial_ledger_entries')
             ->where('financial_transaction_id', $existing->id)
             ->get(['financial_account_id', 'direction', 'amount_cents', 'role'])
@@ -141,6 +147,36 @@ class FinancialLedgerService
         if ($storedEntries !== $requestedEntries) {
             throw new InvalidArgumentException('Idempotency key is already associated with different ledger entries.');
         }
+    }
+
+    /** @return array<string, mixed>|null */
+    private function normalizeMetadata(mixed $metadata): ?array
+    {
+        if ($metadata === null || $metadata === '') {
+            return null;
+        }
+
+        if (is_string($metadata)) {
+            $decoded = json_decode($metadata, true);
+            if (! is_array($decoded)) {
+                throw new InvalidArgumentException('Financial metadata must be a JSON object.');
+            }
+            $metadata = $decoded;
+        }
+
+        if (! is_array($metadata)) {
+            throw new InvalidArgumentException('Financial metadata must be an array.');
+        }
+
+        ksort($metadata);
+
+        foreach ($metadata as $key => $value) {
+            if (is_array($value)) {
+                $metadata[$key] = $this->normalizeMetadata($value);
+            }
+        }
+
+        return $metadata;
     }
 
     /** @param array<int, array{financial_account_id:int,direction:string,amount_cents:int,role:string}> $entries */
