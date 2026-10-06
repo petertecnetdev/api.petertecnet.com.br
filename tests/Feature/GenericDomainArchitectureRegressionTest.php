@@ -70,6 +70,30 @@ class GenericDomainArchitectureRegressionTest extends TestCase
         $this->assertStringNotContainsString('storeAs(', $source);
     }
 
+    public function test_leasing_payment_controller_delegates_to_shared_finance_domain(): void
+    {
+        $source = $this->source('Domain/Leasing/Http/Controllers/LeasePixPaymentController.php');
+
+        $this->assertStringContainsString('LeasePaymentService', $source);
+        $this->assertStringNotContainsString('Support\\Facades\\DB', $source);
+        $this->assertStringNotContainsString('Support\\Facades\\Crypt', $source);
+        $this->assertStringNotContainsString('ecosystem_payments', $source);
+        $this->assertStringNotContainsString('PixBrCodeService', $source);
+        $this->assertStringNotContainsString('LeasingController::class', $source);
+    }
+
+    public function test_finance_orchestrator_is_application_scoped_and_source_generic(): void
+    {
+        $source = $this->source('Domain/Finance/Services/PaymentOrchestratorService.php');
+
+        $this->assertStringContainsString("where('app_id', \$input['app_id'])", $source);
+        $this->assertStringContainsString("where('source_type', \$input['source_type'])", $source);
+        $this->assertStringContainsString("where('source_reference', \$input['source_reference'])", $source);
+        $this->assertStringNotContainsString('lease_charge', $source);
+        $this->assertStringNotContainsString('leases', $source);
+        $this->assertStringNotContainsString('lease_charges', $source);
+    }
+
     private function source(string $relativePath): string
     {
         $source = file_get_contents(app_path($relativePath));
