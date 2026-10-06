@@ -4,12 +4,15 @@ namespace Tests\Feature;
 
 use App\Services\Operations\OperationalIssueService;
 use App\Services\Operations\OperationalTelemetryService;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminCommandCenterObservabilityTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_observability_storage_is_provisioned(): void
     {
         $this->assertTrue(Schema::hasTable('operational_issues'));
