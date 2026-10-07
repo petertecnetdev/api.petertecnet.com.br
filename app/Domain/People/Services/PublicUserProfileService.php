@@ -13,6 +13,28 @@ final class PublicUserProfileService
         private readonly UserActorIdentityService $actorIdentity,
     ) {}
 
+    public function previewIndex(int $appId, int $perPage = 100)
+    {
+        $perPage = max(1, min(100, $perPage));
+
+        return User::query()
+            ->whereHas('applications', fn ($application) => $application
+                ->where('applications.id', $appId)
+                ->where('application_user.status', 'active'))
+            ->whereNotNull('email_verified_at')
+            ->when(Schema::hasTable('user_social_preferences'), fn ($query) => $query->whereNotExists(function ($privacy) use ($appId) {
+                $privacy->selectRaw('1')
+                    ->from('user_social_preferences')
+                    ->whereColumn('user_social_preferences.user_id', 'users.id')
+                    ->where('user_social_preferences.app_id', $appId)
+                    ->where('user_social_preferences.discoverable', false);
+            }))
+            ->select(['users.id'])
+            ->orderBy('users.id')
+            ->paginate($perPage)
+            ->through(fn (User $user) => ['id' => (int) $user->id]);
+    }
+
     public function show(int $userId, int $appId, ?int $viewerId = null): array
     {
         $user = User::query()
