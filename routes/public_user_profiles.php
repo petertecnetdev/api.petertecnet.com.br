@@ -6,6 +6,9 @@ use Illuminate\Support\Facades\Route;
 Route::prefix('v1/apps/{application}')
     ->middleware(['app.context', 'app.capability:social'])
     ->group(function () {
+        Route::get('/profiles', [PublicUserProfileController::class, 'index'])
+            ->middleware('throttle:60,1');
+
         Route::get('/profiles/{userId}', PublicUserProfileController::class)
             ->whereNumber('userId')
             ->middleware('throttle:120,1');
