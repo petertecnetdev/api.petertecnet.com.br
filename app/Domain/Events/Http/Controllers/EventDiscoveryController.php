@@ -28,6 +28,7 @@ final class EventDiscoveryController extends Controller
             'category' => 'nullable|string|max:120',
             'artist_id' => 'nullable|integer|min:1',
             'production_id' => 'nullable|integer|min:1',
+            'kind' => 'nullable|in:commercial,community',
             'period' => 'nullable|in:today,tomorrow,weekend,friday,saturday,sunday,next7,next30,month,custom',
             'date' => 'nullable|date_format:Y-m-d',
             'from' => 'nullable|date_format:Y-m-d',
@@ -65,6 +66,7 @@ final class EventDiscoveryController extends Controller
                 ->orWhere('events.end_date', '>', $now))
             ->with([
                 'production:id,app_id,name,slug,user_id,app_slug,logo,city,uf',
+                'creator:id,first_name,last_name,user_name,avatar',
                 'artists:id,app_id,slug,stage_name,photo',
             ])
             ->withCount([
@@ -95,6 +97,9 @@ final class EventDiscoveryController extends Controller
         }
         if (!empty($data['production_id'])) {
             $query->where('events.production_id', $data['production_id']);
+        }
+        if (!empty($data['kind'])) {
+            $query->where('events.kind', $data['kind']);
         }
         if (!empty($data['artist_id'])) {
             $query->whereHas('artists', fn ($q) => $q->where('artists.id', $data['artist_id']));
@@ -156,7 +161,7 @@ final class EventDiscoveryController extends Controller
                 ->whereRaw("{$distanceSql} <= ?", [$lat, $lng, $lat, $radius]);
         } elseif (($data['view'] ?? null) === 'compact') {
             $query->select([
-                'events.id', 'events.app_id', 'events.production_id', 'events.title', 'events.slug',
+                'events.id', 'events.app_id', 'events.production_id', 'events.created_by_user_id', 'events.kind', 'events.title', 'events.slug',
                 'events.image', 'events.start_date', 'events.end_date', 'events.city', 'events.uf',
                 'events.venue', 'events.address', 'events.category', 'events.latitude', 'events.longitude',
                 'events.created_at',
@@ -235,6 +240,7 @@ final class EventDiscoveryController extends Controller
             ->where(fn ($q) => $q->where('is_private', false)->orWhereNull('is_private'))
             ->with([
                 'production:id,app_id,name,slug,user_id,app_slug,logo,background,description,city,uf,instagram_url,website_url',
+                'creator:id,first_name,last_name,user_name,avatar',
                 'artists' => fn ($q) => $q
                     ->where('artists.app_id', $appId)
                     ->where('artists.is_published', true)
@@ -276,9 +282,16 @@ final class EventDiscoveryController extends Controller
                 ->where('event_id', $event->id)
                 ->selectRaw('ROUND(AVG(rating),1) average, COUNT(*) total')
                 ->first();
+            $communityAttendance = $event->isCommunity()
+                ? DB::table('event_attendances')->where('app_id', $appId)->where('event_id', $event->id)
+                : null;
             $history = [
-                'participants' => (clone $validPasses)->whereNotNull('user_id')->distinct()->count('user_id'),
-                'checkins' => (clone $validPasses)->whereNotNull('checked_in_at')->count(),
+                'participants' => $event->isCommunity()
+                    ? (clone $communityAttendance)->whereIn('status', ['going', 'attended'])->distinct()->count('user_id')
+                    : (clone $validPasses)->whereNotNull('user_id')->distinct()->count('user_id'),
+                'checkins' => $event->isCommunity()
+                    ? (clone $communityAttendance)->where('status', 'attended')->whereNotNull('checked_in_at')->count()
+                    : (clone $validPasses)->whereNotNull('checked_in_at')->count(),
                 'community_posts' => DB::table('event_posts')->where('app_id', $appId)->where('event_id', $event->id)->where('status', 'published')->count(),
                 'artists' => $event->artists->count(),
                 'rating_average' => $rating?->average ? (float) $rating->average : 0,
