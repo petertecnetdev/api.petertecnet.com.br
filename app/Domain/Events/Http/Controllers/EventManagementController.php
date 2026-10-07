@@ -49,10 +49,13 @@ final class EventManagementController extends Controller
 
         $query = Event::query()
             ->where('app_id', $appId)
-            ->whereHas('production', fn ($q) => $q
-                ->where('app_id', $appId)
-                ->where('user_id', $user->id)
-            );
+            ->where(function ($ownership) use ($appId, $user) {
+                $ownership->where('created_by_user_id', $user->id)
+                    ->orWhereHas('production', fn ($q) => $q
+                        ->where('app_id', $appId)
+                        ->where('user_id', $user->id)
+                    );
+            });
 
         if ($isPicker) {
             $query
@@ -74,6 +77,7 @@ final class EventManagementController extends Controller
             $query
                 ->with([
                     'production:id,app_id,name,slug,user_id,app_slug',
+                    'creator:id,first_name,last_name,user_name,avatar',
                     'artists:id,app_id,slug,stage_name',
                 ])
                 ->withCount([
@@ -131,7 +135,7 @@ final class EventManagementController extends Controller
     public function show(Request $request,int $id)
     {
         $event=$this->ownedEvent($id,$request->user());$appId=$this->context->id();
-        $event->load(['production:id,app_id,name,slug,user_id,app_slug','artists:id,app_id,slug,stage_name']);
+        $event->load(['production:id,app_id,name,slug,user_id,app_slug','creator:id,first_name,last_name,user_name,avatar','artists:id,app_id,slug,stage_name']);
         $event->loadCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);
         $this->attachSellableTicketCounts(collect([$event]));
         return response()->json(['event'=>$event]);
@@ -139,25 +143,105 @@ final class EventManagementController extends Controller
 
     public function store(Request $request)
     {
-        $this->normalizeInput($request);$data=$request->validate($this->rules(true),$this->messages(),$this->attributes());$production=$this->ownedProduction((int)$data['production_id'],$request->user());$this->validateDates($data,null);
-        if(empty($data['city'])&&$production->city)$data['city']=$production->city;if(empty($data['uf'])&&$production->uf)$data['uf']=$production->uf;
-        $data['app_id']=$this->context->id();$data['app_slug']=$this->context->slug();$data['slug']=$this->uniqueSlug($data['title']);$data['is_published']=false;$data['is_cancelled']=false;unset($data['image']);
-        $event=Event::create($data);if($request->hasFile('image')){$event->image=$this->storeImage($request->file('image'));$event->save();}
-        return response()->json(['message'=>'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')],201);
+        $request->merge(['kind' => $request->input('kind', 'commercial')]);
+        $this->normalizeInput($request);
+        $data = $request->validate($this->rules(true), $this->messages(), $this->attributes());
+        $this->validateDates($data, null);
+
+        $community = ($data['kind'] ?? 'commercial') === 'community';
+        $production = null;
+
+        if ($community) {
+            $data['production_id'] = null;
+            $data['created_by_user_id'] = $request->user()->id;
+            $data['event_format'] = $data['event_format'] ?? 'in_person';
+        } else {
+            $production = $this->ownedProduction((int) $data['production_id'], $request->user());
+            if (empty($data['city']) && $production->city) $data['city'] = $production->city;
+            if (empty($data['uf']) && $production->uf) $data['uf'] = $production->uf;
+        }
+
+        $data['app_id'] = $this->context->id();
+        $data['app_slug'] = $this->context->slug();
+        $data['slug'] = $this->uniqueSlug($data['title']);
+        $data['is_published'] = false;
+        $data['is_cancelled'] = false;
+        unset($data['image']);
+
+        $event = Event::create($data);
+        if ($request->hasFile('image')) {
+            $event->image = $this->storeImage($request->file('image'));
+            $event->save();
+        }
+
+        return response()->json([
+            'message' => $community
+                ? 'Encontro criado como rascunho. Publique para começar a reunir pessoas.'
+                : 'Evento criado como rascunho. Configure ao menos um ingresso e publique para ele aparecer na descoberta.',
+            'event' => $event->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','creator:id,first_name,last_name,user_name,avatar']),
+        ], 201);
     }
 
     public function update(Request $request,int $id)
     {
-        $event=$this->ownedEvent($id,$request->user());$this->normalizeInput($request);$data=$request->validate($this->rules(false),$this->messages(),$this->attributes());if(isset($data['production_id']))$this->ownedProduction((int)$data['production_id'],$request->user());$this->validateDates($data,$event);if(!empty($data['title'])&&$data['title']!==$event->title)$data['slug']=$this->uniqueSlug($data['title'],$event->id);unset($data['image'],$data['app_id'],$data['app_slug'],$data['is_published'],$data['is_cancelled']);$event->update($data);
-        if($request->hasFile('image')){if($event->image)Storage::disk('public')->delete($event->image);$event->image=$this->storeImage($request->file('image'));$event->save();}
-        return response()->json(['message'=>'Evento atualizado com sucesso.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
+        $event = $this->ownedEvent($id, $request->user());
+        $this->normalizeInput($request);
+        $data = $request->validate($this->rules(false), $this->messages(), $this->attributes());
+
+        if (isset($data['kind']) && $data['kind'] !== $event->kind) {
+            abort(422, 'O tipo do evento não pode ser alterado depois da criação.');
+        }
+        if ($event->isCommunity()) {
+            unset($data['production_id']);
+        } elseif (isset($data['production_id'])) {
+            $this->ownedProduction((int) $data['production_id'], $request->user());
+        }
+
+        $this->validateDates($data, $event);
+        if (!empty($data['title']) && $data['title'] !== $event->title) $data['slug'] = $this->uniqueSlug($data['title'], $event->id);
+        unset($data['image'], $data['app_id'], $data['app_slug'], $data['is_published'], $data['is_cancelled'], $data['created_by_user_id']);
+        $event->update($data);
+
+        if ($request->hasFile('image')) {
+            if ($event->image) Storage::disk('public')->delete($event->image);
+            $event->image = $this->storeImage($request->file('image'));
+            $event->save();
+        }
+
+        return response()->json([
+            'message' => $event->isCommunity() ? 'Encontro atualizado com sucesso.' : 'Evento atualizado com sucesso.',
+            'event' => $event->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','creator:id,first_name,last_name,user_name,avatar']),
+        ]);
     }
 
     public function publish(Request $request,int $id)
     {
-        $event=$this->ownedEvent($id,$request->user());$timezone=config('app.timezone','America/Sao_Paulo');$now=Carbon::now($timezone);abort_if($event->is_cancelled,422,'Um evento cancelado não pode ser publicado.');abort_if(!$event->end_date||Carbon::parse($event->end_date,$timezone)->lte($now),422,'Um evento já encerrado não pode ser publicado.');abort_if(!$event->start_date||Carbon::parse($event->start_date,$timezone)->lte($now),422,'O evento precisa ser publicado antes do horário de início.');
-        $sellableTickets=Ticket::query()->where('app_id',$this->context->id())->where('event_id',$event->id)->where('quantity','>',0)->where(fn($q)=>$q->whereNull('limit_date')->orWhere('limit_date','>',$now));$hasAvailableTicket=(clone $sellableTickets)->exists();abort_unless($hasAvailableTicket,422,'Crie ao menos um ingresso disponível antes de publicar o evento.');$wasPublished=(bool)$event->is_published;$event->forceFill(['is_published'=>true])->save();if(!$wasPublished&&!$event->is_private)$this->notifyProductionFollowers($event);
-        return response()->json(['message'=>$event->is_private?'Evento privado ativado.':'Evento publicado.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);
+        $event = $this->ownedEvent($id, $request->user());
+        $timezone = config('app.timezone', 'America/Sao_Paulo');
+        $now = Carbon::now($timezone);
+        abort_if($event->is_cancelled, 422, $event->isCommunity() ? 'Um encontro cancelado não pode ser publicado.' : 'Um evento cancelado não pode ser publicado.');
+        abort_if(!$event->end_date || Carbon::parse($event->end_date, $timezone)->lte($now), 422, 'Um evento já encerrado não pode ser publicado.');
+        abort_if(!$event->start_date || Carbon::parse($event->start_date, $timezone)->lte($now), 422, 'O evento precisa ser publicado antes do horário de início.');
+
+        if (! $event->isCommunity()) {
+            $sellableTickets = Ticket::query()
+                ->where('app_id', $this->context->id())
+                ->where('event_id', $event->id)
+                ->where('quantity', '>', 0)
+                ->where(fn($q) => $q->whereNull('limit_date')->orWhere('limit_date', '>', $now));
+            abort_unless((clone $sellableTickets)->exists(), 422, 'Crie ao menos um ingresso disponível antes de publicar o evento.');
+        }
+
+        $wasPublished = (bool) $event->is_published;
+        $event->forceFill(['is_published' => true])->save();
+        if (!$wasPublished && !$event->is_private && !$event->isCommunity()) $this->notifyProductionFollowers($event);
+
+        return response()->json([
+            'message' => $event->is_private
+                ? ($event->isCommunity() ? 'Encontro privado ativado.' : 'Evento privado ativado.')
+                : ($event->isCommunity() ? 'Encontro publicado.' : 'Evento publicado.'),
+            'event' => $event->fresh()->load(['production:id,app_id,name,slug,user_id,app_slug','creator:id,first_name,last_name,user_name,avatar']),
+        ]);
     }
 
     public function unpublish(Request $request,int $id){$event=$this->ownedEvent($id,$request->user());$event->forceFill(['is_published'=>false])->save();return response()->json(['message'=>'Evento retirado da publicação. Os ingressos já emitidos foram preservados.','event'=>$event->fresh()->load('production:id,app_id,name,slug,user_id,app_slug')]);}
@@ -469,7 +553,37 @@ final class EventManagementController extends Controller
         }
     }
 
-    private function rules(bool $creating):array{$required=$creating?'required|':'sometimes|';return['production_id'=>$required.'integer|exists:productions,id','title'=>$required.'string|min:2|max:255','description'=>$required.'string|max:50000','category'=>'sometimes|nullable|string|max:120','image'=>'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120','address'=>'sometimes|nullable|string|max:500','google_maps_url'=>'sometimes|nullable|url:http,https|max:2048','start_date'=>$required.'date','end_date'=>$required.'date','venue'=>'sometimes|nullable|string|max:255','uf'=>'sometimes|nullable|string|size:2','city'=>'sometimes|nullable|string|max:120','cep'=>'sometimes|nullable|string|max:20','latitude'=>'sometimes|nullable|numeric|between:-90,90','longitude'=>'sometimes|nullable|numeric|between:-180,180','max_attendees'=>'sometimes|nullable|integer|min:1|max:1000000','contact_email'=>'sometimes|nullable|email|max:255','contact_phone'=>'sometimes|nullable|string|max:50','is_private'=>'sometimes|boolean','event_format'=>'sometimes|nullable|in:in_person,online,hybrid','online_url'=>'sometimes|nullable|url:http,https|max:2048'];}
+    private function rules(bool $creating): array
+    {
+        $required = $creating ? 'required|' : 'sometimes|';
+
+        return [
+            'kind' => $creating ? 'required|in:commercial,community' : 'sometimes|in:commercial,community',
+            'production_id' => ($creating ? 'nullable|required_if:kind,commercial|' : 'sometimes|nullable|').'integer|exists:productions,id',
+            'title' => $required.'string|min:2|max:255',
+            'description' => $required.'string|max:50000',
+            'category' => 'sometimes|nullable|string|max:120',
+            'image' => 'sometimes|nullable|image|mimes:jpg,jpeg,png,webp|max:5120',
+            'address' => 'sometimes|nullable|string|max:500',
+            'google_maps_url' => 'sometimes|nullable|url:http,https|max:2048',
+            'start_date' => $required.'date',
+            'end_date' => $required.'date',
+            'venue' => 'sometimes|nullable|string|max:255',
+            'uf' => 'sometimes|nullable|string|size:2',
+            'city' => 'sometimes|nullable|string|max:120',
+            'cep' => 'sometimes|nullable|string|max:20',
+            'latitude' => 'sometimes|nullable|numeric|between:-90,90',
+            'longitude' => 'sometimes|nullable|numeric|between:-180,180',
+            'max_attendees' => 'sometimes|nullable|integer|min:1|max:1000000',
+            'attendance_radius_m' => 'sometimes|nullable|integer|min:50|max:2000',
+            'show_attendees' => 'sometimes|boolean',
+            'contact_email' => 'sometimes|nullable|email|max:255',
+            'contact_phone' => 'sometimes|nullable|string|max:50',
+            'is_private' => 'sometimes|boolean',
+            'event_format' => 'sometimes|nullable|in:in_person,online,hybrid',
+            'online_url' => 'sometimes|nullable|url:http,https|max:2048',
+        ];
+    }
     private function normalizeInput(Request $request):void{$merge=[];$errors=[];if($request->has('uf'))$merge['uf']=strtoupper(trim((string)$request->input('uf')));foreach(['start_date','end_date']as$field){if(!$request->filled($field))continue;try{$merge[$field]=Carbon::parse((string)$request->input($field),config('app.timezone'))->format('Y-m-d H:i:s');}catch(Throwable){$errors[$field][]=$field==='start_date'?'Informe uma data de início válida.':'Informe uma data de término válida.';}}if($errors)throw ValidationException::withMessages($errors);if($merge)$request->merge($merge);}
     private function validateDates(array $data, ?Event $event): void
     {
@@ -520,10 +634,27 @@ final class EventManagementController extends Controller
         if ($errors) throw ValidationException::withMessages($errors);
     }
     private function ownedProduction(int $id,User $user):Production{$production=Production::query()->where('app_id',$this->context->id())->findOrFail($id);abort_unless(($user->hasProfile('Administrador')||strtolower(trim((string)$user->email))==='petertecnet@gmail.com')||(int)$production->user_id===(int)$user->id,403,'Você não pode gerenciar esta organização.');return$production;}
-    private function ownedEvent(int $id,User $user):Event{$event=Event::query()->where('app_id',$this->context->id())->with('production')->findOrFail($id);abort_unless($event->production&&(int)$event->production->app_id===$this->context->id(),404,'Evento não encontrado neste contexto.');abort_unless(($user->hasProfile('Administrador')||strtolower(trim((string)$user->email))==='petertecnet@gmail.com')||(int)$event->production->user_id===(int)$user->id,403,'Você não pode gerenciar este evento.');return$event;}
-    private function notifyProductionFollowers(Event $event):void{if($event->is_private)return;$appId=$this->context->id();$followers=DB::table('follows')->where(['app_id'=>$appId,'target_type'=>'production','target_id'=>$event->production_id])->pluck('user_id');foreach($followers as$userId)AppNotification::create(['app_id'=>$appId,'user_id'=>$userId,'type'=>'production_event_published','title'=>'Novo evento publicado','message'=>$event->production?->name.' publicou '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->slug,'data'=>['production_id'=>$event->production_id,'event_id'=>$event->id]]);}
+    private function ownedEvent(int $id, User $user): Event
+    {
+        $event = Event::query()
+            ->where('app_id', $this->context->id())
+            ->with(['production', 'creator'])
+            ->findOrFail($id);
+        $admin = $user->hasProfile('Administrador') || strtolower(trim((string) $user->email)) === 'petertecnet@gmail.com';
+
+        if ($event->isCommunity()) {
+            abort_unless($admin || (int) $event->created_by_user_id === (int) $user->id, 403, 'Você não pode gerenciar este encontro.');
+            return $event;
+        }
+
+        abort_unless($event->production && (int) $event->production->app_id === $this->context->id(), 404, 'Evento não encontrado neste contexto.');
+        abort_unless($admin || (int) $event->production->user_id === (int) $user->id, 403, 'Você não pode gerenciar este evento.');
+
+        return $event;
+    }
+    private function notifyProductionFollowers(Event $event):void{if($event->is_private||!$event->production_id)return;$appId=$this->context->id();$followers=DB::table('follows')->where(['app_id'=>$appId,'target_type'=>'production','target_id'=>$event->production_id])->pluck('user_id');foreach($followers as$userId)AppNotification::create(['app_id'=>$appId,'user_id'=>$userId,'type'=>'production_event_published','title'=>'Novo evento publicado','message'=>$event->production?->name.' publicou '.$event->title.'.','reference_type'=>'event','reference_id'=>$event->id,'reference_url'=>'/event/'.$event->slug,'data'=>['production_id'=>$event->production_id,'event_id'=>$event->id]]);}
     private function uniqueSlug(string $title,?int $ignoreId=null):string{$base=Str::slug($title)?:'evento';$slug=$base;$counter=2;while(Event::query()->when($ignoreId,fn($q)=>$q->whereKeyNot($ignoreId))->where('slug',$slug)->exists())$slug=$base.'-'.$counter++;return$slug;}
     private function storeImage($file):string{$directory='images/apps/'.$this->context->slug().'/events';$path=$directory.'/'.Str::uuid().'.webp';$image=Image::make($file)->orientate()->resize(1600,900,function($c){$c->aspectRatio();$c->upsize();})->encode('webp',80);Storage::disk('public')->put($path,(string)$image);return$path;}
     private function messages():array{return['required'=>'Preencha :attribute.','exists'=>':attribute não foi encontrado.'];}
-    private function attributes():array{return['production_id'=>'organização','title'=>'título','description'=>'descrição','start_date'=>'início','end_date'=>'término'];}
+    private function attributes():array{return['production_id'=>'organização','kind'=>'tipo','title'=>'título','description'=>'descrição','start_date'=>'início','end_date'=>'término'];}
 }

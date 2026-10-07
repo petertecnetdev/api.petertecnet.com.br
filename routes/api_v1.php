@@ -18,6 +18,7 @@ use App\Domain\Contracts\Http\Controllers\ProducerAgreementController;
 use App\Domain\CRM\Http\Controllers\SalesPipelineController;
 use App\Domain\Discovery\Http\Controllers\GlobalSearchController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
+use App\Domain\Events\Http\Controllers\EventAttendanceController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
 use App\Domain\Events\Http\Middleware\NormalizeEventPoster;
@@ -112,6 +113,7 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware('app.capability:events,event_community')->group(function () {
             Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
+            Route::get('/events/public/{slug}/attendance', [EventAttendanceController::class, 'publicSummary']);
         });
 
         Route::middleware('app.capability:events,commerce')->group(function () {
@@ -337,6 +339,12 @@ Route::prefix('v1/apps/{application}')
                 Route::delete('/community/{postId}/like', [EventCommunityController::class, 'unlike'])->whereNumber('postId');
                 Route::put('/events/{eventId}/rating', [EventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
                 Route::post('/events/{eventId}/report', [EventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
+
+                Route::get('/events/{eventId}/attendance', [EventAttendanceController::class, 'show'])->whereNumber('eventId');
+                Route::put('/events/{eventId}/attendance', [EventAttendanceController::class, 'update'])->whereNumber('eventId')->middleware('throttle:30,1');
+                Route::post('/events/{eventId}/attendance/checkin', [EventAttendanceController::class, 'selfCheckin'])->whereNumber('eventId')->middleware('throttle:20,1');
+                Route::get('/events/{eventId}/attendance/manage', [EventAttendanceController::class, 'manage'])->whereNumber('eventId');
+                Route::post('/events/{eventId}/attendance/{userId}/checkin', [EventAttendanceController::class, 'organizerCheckin'])->whereNumber('eventId')->whereNumber('userId')->middleware('throttle:60,1');
             });
 
             Route::middleware('app.capability:notifications')->group(function () {
