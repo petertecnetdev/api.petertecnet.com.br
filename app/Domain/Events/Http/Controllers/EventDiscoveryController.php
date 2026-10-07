@@ -197,13 +197,21 @@ final class EventDiscoveryController extends Controller
             $availabilityByEvent = $this->ticketInventory->availabilityByEvent($pageTickets, $now);
 
             $events->getCollection()->each(function (Event $event) use ($availabilityByEvent) {
-                $summary = $availabilityByEvent->get((int) $event->id, [
-                    'status' => 'tickets_pending',
-                    'configured_lots_count' => 0,
-                    'sellable_lots_count' => 0,
-                    'sellable_free_lots_count' => 0,
-                    'starting_price' => null,
-                ]);
+                $summary = $event->isCommunity()
+                    ? [
+                        'status' => 'free_available',
+                        'configured_lots_count' => 0,
+                        'sellable_lots_count' => 0,
+                        'sellable_free_lots_count' => 0,
+                        'starting_price' => null,
+                    ]
+                    : $availabilityByEvent->get((int) $event->id, [
+                        'status' => 'tickets_pending',
+                        'configured_lots_count' => 0,
+                        'sellable_lots_count' => 0,
+                        'sellable_free_lots_count' => 0,
+                        'starting_price' => null,
+                    ]);
                 $event->setAttribute('ticket_availability_status', $summary['status']);
                 $event->setAttribute('starting_price', $summary['starting_price']);
                 $event->setAttribute('sellable_ticket_lots_count', $summary['sellable_lots_count']);
@@ -255,7 +263,9 @@ final class EventDiscoveryController extends Controller
             ->orderBy('created_at')
             ->get();
         $ticketStates = $this->ticketInventory->states($allTickets, $now);
-        $availability = $this->ticketInventory->availability($allTickets, $now, $ticketStates);
+        $availability = $event->isCommunity()
+            ? ['status' => 'free_available', 'sellable_lots_count' => 0, 'sellable_free_lots_count' => 0]
+            : $this->ticketInventory->availability($allTickets, $now, $ticketStates);
         $event->setAttribute('ticket_availability_status', $availability['status']);
         $event->setAttribute('sellable_ticket_lots_count', $availability['sellable_lots_count']);
         $event->setAttribute('sellable_free_ticket_lots_count', $availability['sellable_free_lots_count']);
