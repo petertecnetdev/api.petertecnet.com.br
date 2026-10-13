@@ -109,6 +109,53 @@ class ApplicationAdminServiceTest extends TestCase
         );
     }
 
+    public function test_full_delegated_admin_remains_strictly_scoped_to_one_application(): void
+    {
+        $otherApplication = Application::query()->create([
+            'name' => 'Another Application',
+            'slug' => 'another-application',
+            'is_active' => true,
+        ]);
+
+        $profile = $this->service->createProfile($this->application->id, $this->root, [
+            'name' => 'Full delegated application administrator',
+            'permissions' => ApplicationAdminService::PERMISSION_CATALOG,
+        ]);
+
+        $this->service->assign(
+            $this->application->id,
+            $this->root,
+            $this->delegated->email,
+            $profile->id,
+        );
+
+        $context = $this->service->context($this->delegated->fresh(), $this->application->id);
+        $otherContext = $this->service->context($this->delegated->fresh(), $otherApplication->id);
+
+        $this->assertTrue($context['authorized']);
+        $this->assertSame('delegated_admin', $context['authority_level']);
+        $this->assertFalse($context['is_owner']);
+        $this->assertFalse($context['is_root']);
+        $this->assertEqualsCanonicalizing(ApplicationAdminService::PERMISSION_CATALOG, $context['permissions']);
+
+        foreach (ApplicationAdminService::PERMISSION_CATALOG as $permission) {
+            $this->assertTrue($this->service->hasPermission($this->delegated, $this->application->id, $permission));
+            $this->assertFalse($this->service->hasPermission($this->delegated, $otherApplication->id, $permission));
+        }
+
+        $this->assertFalse($this->service->isRoot($this->delegated));
+        $this->assertFalse($this->service->isOwner($this->delegated, $this->application->id));
+        $this->assertFalse($this->service->hasPermission(
+            $this->delegated,
+            $this->application->id,
+            ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+        $this->assertFalse($this->service->hasAccess($this->delegated, $otherApplication->id));
+        $this->assertFalse($otherContext['authorized']);
+        $this->assertSame([], $otherContext['permissions']);
+        $this->assertTrue($this->service->isOwner($this->root, $otherApplication->id));
+    }
+
     private function createUser(string $email, string $name): User
     {
         return User::query()->create([
