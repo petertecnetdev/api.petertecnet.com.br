@@ -15,6 +15,7 @@ use App\Models\Ticket;
 use App\Services\AsaasPaymentService;
 use App\Services\CommercePaymentSettlementService;
 use App\Services\MerchantPaymentAccountService;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Services\MercadoPagoService;
 use App\Services\OrganizationSalesReadinessService;
 use App\Support\ApplicationContext;
@@ -32,6 +33,7 @@ final class EventCommerceController extends Controller
         private readonly CommercePaymentSettlementService $settlement,
         private readonly MerchantPaymentAccountService $accounts,
         private readonly OrganizationSalesReadinessService $salesReadiness,
+        private readonly ListingCommercePolicy $listingCommerce,
     ) {}
 
     public function catalog(Request $request, string $slug)
@@ -46,7 +48,7 @@ final class EventCommerceController extends Controller
             ->with('production')
             ->firstOrFail();
 
-        $salesClosed = $event->salesClosed();
+        $salesClosed = $event->salesClosed() || ! $this->listingCommerce->allowsLegacyOrVerified($event);
         $userId = (int) ($request->user()?->id ?? 0);
 
         $tickets = Ticket::query()
@@ -334,6 +336,8 @@ final class EventCommerceController extends Controller
                 : 'Este evento não está disponível para venda.'
         );
 
+        $this->listingCommerce->assertLegacyOrVerified($eventForReadiness);
+
         $initialReadiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
 
         if ($data['payment_method'] !== 'free') {
@@ -398,6 +402,8 @@ final class EventCommerceController extends Controller
                     ? 'Este evento já foi encerrado. Não aceita novas compras.'
                     : 'Este evento não está disponível para venda.'
             );
+
+            $this->listingCommerce->assertLegacyOrVerified($event);
 
             $expiresAt = $data['payment_method'] === 'boleto'
                 ? now('America/Sao_Paulo')->addDays(max(1, (int) config('services.asaas.boleto_due_days', 1)))->endOfDay()

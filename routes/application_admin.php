@@ -16,6 +16,12 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::prefix('admin')->middleware(EnsureApplicationAdmin::class)->group(function () {
             Route::get('/context', [ApplicationAdminController::class, 'context']);
+            Route::get('/independence/claims', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':moderation.view');
+            Route::patch('/independence/claims/{claimId}', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'review'])
+                ->whereNumber('claimId')
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:15,1']);
+
             Route::get('/overview', [ApplicationAdminController::class, 'overview'])
                 ->middleware(EnsureApplicationAdmin::class.':dashboard.view');
             Route::get('/permissions', [ApplicationAdminController::class, 'permissionCatalog']);

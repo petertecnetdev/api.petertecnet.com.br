@@ -34,6 +34,30 @@ final class ListingCommercePolicy
             && $this->verified($production, (int) $production->user_id > 0);
     }
 
+    /**
+     * Legacy records have NULL ownership markers and retain the pre-existing
+     * commerce rules. Once either entity enters the Independence flow, only
+     * explicit verified ownership may enable new sales.
+     */
+    public function allowsLegacyOrVerified(Event $event): bool
+    {
+        $production = $event->production;
+        if (! $production instanceof Production || (int) $production->app_id !== (int) $event->app_id) {
+            return false;
+        }
+        if ($event->ownership_status === null && $production->ownership_status === null) {
+            return true;
+        }
+
+        return $this->canSell($event);
+    }
+
+    public function assertLegacyOrVerified(Event $event): void
+    {
+        abort_unless($this->allowsLegacyOrVerified($event), 403,
+            'Esta ficha é informativa. A venda exige titularidade verificada e autorização comercial.');
+    }
+
     public function assertCanSell(Event $event): void
     {
         abort_unless($this->canSell($event), 403,

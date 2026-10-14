@@ -134,6 +134,11 @@ Route::prefix('v1/apps/{application}')
 
         Route::middleware(['auth:api', 'token.version'])->group(function () {
             Route::get('/me', [AccountContextController::class, 'show']);
+            Route::middleware('app.capability:events')->group(function () {
+                Route::post('/independence/claims', [\App\Http\Controllers\Api\Independence\OwnershipClaimIntakeController::class, 'store'])->middleware('throttle:4,1');
+                Route::get('/independence/claims/mine', [\App\Http\Controllers\Api\Independence\OwnershipClaimIntakeController::class, 'mine'])->middleware('throttle:30,1');
+            });
+
             Route::post('/global-search/convert', [GlobalSearchController::class, 'convert'])->middleware('throttle:120,1');
             Route::get('/global-search/recent', [GlobalSearchController::class, 'recent']);
             Route::delete('/global-search/recent', [GlobalSearchController::class, 'clearRecent']);
