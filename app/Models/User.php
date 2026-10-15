@@ -3,7 +3,7 @@
 namespace App\Models;
 
 use App\Models\Traits\HasFiles;
-use App\Domain\Platform\Services\CutinappOperationalAccess;
+use App\Domain\Platform\Services\ApplicationOperationalAccess;
 use App\Services\ApplicationProfileAccessService;
 use App\Services\ApplicationProfileSyncService;
 use App\Services\LocationService;
@@ -252,7 +252,7 @@ class User extends Authenticatable implements JWTSubject
             return true;
         }
 
-        if (app(CutinappOperationalAccess::class)->allows($this, (string) $permissionName, $applicationId)) {
+        if (app(ApplicationOperationalAccess::class)->allows($this, (string) $permissionName, $applicationId)) {
             return true;
         }
 

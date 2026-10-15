@@ -9,7 +9,7 @@ use App\Support\ApplicationContext;
  * Adapta permissões administrativas da aplicação aos endpoints legados.
  * Falha fechada fora do contexto confiável da Cutinapp.
  */
-final class CutinappOperationalAccess
+final class ApplicationOperationalAccess
 {
     private const ACTIONS = [
         'production_show' => 'establishments.view',
@@ -40,7 +40,7 @@ final class CutinappOperationalAccess
         }
 
         $context = app(ApplicationContext::class);
-        if (! $context->has() || $context->slug() !== 'cutinapp') {
+        if (! $context->has() || ! $context->option('operational_admin_access', false)) {
             return false;
         }
 
