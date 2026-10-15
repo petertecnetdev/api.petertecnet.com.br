@@ -18,6 +18,18 @@ class EventAudienceService
     {
         $eventId = $event instanceof Event ? $event->id : $event;
 
+        if ($event instanceof Event && $event->isCommunity()) {
+            return DB::table('event_attendances')
+                ->where('app_id', $event->app_id)
+                ->where('event_id', $eventId)
+                ->whereIn('status', ['going', 'attended'])
+                ->pluck('user_id')
+                ->map(fn ($id) => (int) $id)
+                ->filter()
+                ->unique()
+                ->values();
+        }
+
         return EventPass::query()
             ->where('event_id', $eventId)
             ->whereNotNull('user_id')
@@ -30,13 +42,27 @@ class EventAudienceService
 
     public function interestedUserIds(Event $event): Collection
     {
-        return DB::table('event_engagements')
+        $legacy = DB::table('event_engagements')
             ->where('app_id', $event->app_id)
             ->where('event_id', $event->id)
             ->where('is_interested', true)
-            ->pluck('user_id')
+            ->pluck('user_id');
+
+        if (! $event->isCommunity()) {
+            return $legacy->map(fn ($id) => (int) $id)->filter()->values();
+        }
+
+        return $legacy
+            ->merge(
+                DB::table('event_attendances')
+                    ->where('app_id', $event->app_id)
+                    ->where('event_id', $event->id)
+                    ->where('status', 'interested')
+                    ->pluck('user_id')
+            )
             ->map(fn ($id) => (int) $id)
             ->filter()
+            ->unique()
             ->values();
     }
 

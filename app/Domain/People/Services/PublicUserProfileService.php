@@ -13,6 +13,42 @@ final class PublicUserProfileService
         private readonly UserActorIdentityService $actorIdentity,
     ) {}
 
+    public function index(int $appId, int $perPage = 50)
+    {
+        $perPage = max(1, min(100, $perPage));
+
+        $query = User::query()
+            ->select([
+                'users.id', 'users.first_name', 'users.last_name', 'users.user_name',
+                'users.avatar', 'users.background', 'users.about', 'users.created_at',
+            ])
+            ->whereHas('applications', fn ($applications) => $applications->where('applications.id', $appId));
+
+        if (Schema::hasTable('user_social_preferences')) {
+            $query->whereNotExists(function ($preferences) use ($appId) {
+                $preferences->selectRaw('1')
+                    ->from('user_social_preferences as usp')
+                    ->whereColumn('usp.user_id', 'users.id')
+                    ->where('usp.app_id', $appId)
+                    ->where('usp.discoverable', false);
+            });
+        }
+
+        return $query
+            ->orderBy('users.id')
+            ->paginate($perPage)
+            ->through(fn (User $user) => [
+                'id' => (int) $user->id,
+                'first_name' => $user->first_name,
+                'last_name' => $user->last_name,
+                'user_name' => $user->user_name,
+                'avatar' => $user->avatar,
+                'background' => $user->background,
+                'about' => $user->about,
+                'created_at' => $user->created_at,
+            ]);
+    }
+
     public function show(int $userId, int $appId, ?int $viewerId = null): array
     {
         $user = User::query()

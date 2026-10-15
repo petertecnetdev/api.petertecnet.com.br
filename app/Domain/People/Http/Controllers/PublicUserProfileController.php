@@ -14,6 +14,15 @@ final class PublicUserProfileController extends Controller
         private readonly PublicUserProfileService $service,
     ) {}
 
+    public function index(Request $request)
+    {
+        $perPage = max(1, min(100, (int) $request->integer('per_page', 50)));
+
+        return response()->json([
+            'profiles' => $this->service->index($this->context->id(), $perPage),
+        ]);
+    }
+
     public function __invoke(Request $request, int $userId)
     {
         $viewerId = $request->user('api')?->id;

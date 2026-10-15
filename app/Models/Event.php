@@ -13,11 +13,11 @@ use Illuminate\Validation\ValidationException;
 
 class Event extends Model
 {
-    protected $attributes = ['is_private' => false];
+    protected $attributes = ['is_private' => false, 'kind' => 'commercial', 'attendance_radius_m' => 250, 'show_attendees' => true];
 
-    protected $fillable = ['app_id','app_slug','production_id','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','max_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'];
-    protected $casts = ['start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer'];
-    protected $appends = ['temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions'];
+    protected $fillable = ['app_id','app_slug','production_id','created_by_user_id','kind','title','description','category','image','event_format','address','address_number','neighborhood','address_complement','address_reference','formatted_address','place_id','google_maps_url','online_platform','online_url','online_instructions','start_date','end_date','venue','city_id','uf','establishment_type','slug','city','state','country','location','cep','latitude','longitude','is_featured','is_published','is_approved','is_cancelled','max_attendees','attendance_radius_m','show_attendees','remaining_tickets','extra_info','agenda','menu','additional_info','facebook_url','twitter_url','instagram_url','youtube_url','contact_email','contact_phone','website','registration_link','organizer_name','organizer_email','organizer_phone','organizer_description','speaker_list','sponsor_list','partners','reviews','rating','is_private','requires_approval','approval_message','segments','establishment_name'];
+    protected $casts = ['start_date'=>'datetime','end_date'=>'datetime','is_featured'=>'boolean','is_published'=>'boolean','is_approved'=>'boolean','is_cancelled'=>'boolean','is_private'=>'boolean','requires_approval'=>'boolean','show_attendees'=>'boolean','extra_info'=>'array','agenda'=>'array','menu'=>'array','additional_info'=>'array','speaker_list'=>'array','sponsor_list'=>'array','partners'=>'array','reviews'=>'array','segments'=>'array','rating'=>'decimal:2','latitude'=>'decimal:7','longitude'=>'decimal:7','max_attendees'=>'integer','attendance_radius_m'=>'integer','remaining_tickets'=>'integer','city_id'=>'integer'];
+    protected $appends = ['temporal_status','has_started','has_ended','is_happening_now','sales_closed','allowed_actions','is_community'];
 
     public function scopePubliclyVisible($query)
     {
@@ -65,7 +65,7 @@ class Event extends Model
             $publishedNow = $event->wasChanged('is_published') && $event->is_published && ! $event->is_cancelled;
             if ($publishedNow) {
                 app(EventLineupNotificationService::class)->notifyPublishedEvent($event);
-                app(EventAudienceService::class)->notifyProductionFollowers($event, [
+                if ($event->production_id) app(EventAudienceService::class)->notifyProductionFollowers($event, [
                     'type' => 'production_event_published',
                     'title' => 'Novo evento de uma produção que você segue',
                     'message' => $event->title.' acabou de ser publicado. Confira data, local e ingressos.',
@@ -111,7 +111,7 @@ class Event extends Model
         if (! $event->is_published || $event->is_private) return;
 
         $actorId = request()->user()?->id;
-        if (! $actorId) $actorId = $event->production()->value('user_id');
+        if (! $actorId) $actorId = $event->created_by_user_id ?: $event->production()->value('user_id');
         if (! $actorId) return;
 
         $body = trim($body);
@@ -176,17 +176,22 @@ class Event extends Model
         $public = $this->is_published && ! $this->is_cancelled && ! $this->is_private;
         $salesOpen = $public && $status !== 'past';
 
+        $community = $this->isCommunity();
+
         return [
-            'purchase' => $salesOpen,
-            'claim_courtesy' => $salesOpen,
+            'purchase' => ! $community && $salesOpen,
+            'claim_courtesy' => ! $community && $salesOpen,
             'mark_interested' => $public && $status !== 'past',
             'check_in' => $public && $status === 'ongoing',
             'share' => $public,
             'save' => $public,
             'community' => $public,
+            'rsvp' => $community && $public && $status !== 'past',
         ];
     }
 
+    public function isCommunity(): bool { return $this->kind === 'community'; }
+    public function getIsCommunityAttribute(): bool { return $this->isCommunity(); }
     public function getTemporalStatusAttribute(): string { return $this->temporalStatus(); }
     public function getHasStartedAttribute(): bool { return $this->hasStarted(); }
     public function getHasEndedAttribute(): bool { return $this->hasEnded(); }
@@ -194,6 +199,6 @@ class Event extends Model
     public function getSalesClosedAttribute(): bool { return $this->salesClosed(); }
     public function getAllowedActionsAttribute(): array { return $this->allowedActions(); }
 
-    public function application(){return $this->belongsTo(Application::class,'app_id');} public function production(){return $this->belongsTo(Production::class);} public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');} public function tickets(){return $this->hasMany(Ticket::class);} public function artists(){return $this->belongsToMany(Artist::class,'event_artist','event_id','artist_id')->withPivot(['app_id','participation_type','stage','scheduled_at','description','sort_order','is_headliner','status','invited_by_user_id','invited_at','responded_at','checked_in_at','fee_cents','payment_status','invite_token','private_notes','metadata','response_user_id','decline_reason','cancelled_at','last_material_change_at'])->withTimestamps();} public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','event');}
+    public function application(){return $this->belongsTo(Application::class,'app_id');} public function production(){return $this->belongsTo(Production::class);} public function creator(){return $this->belongsTo(User::class,'created_by_user_id');} public function attendances(){return $this->hasMany(EventAttendance::class);} public function municipality(){return $this->belongsTo(BrazilianMunicipality::class,'city_id','ibge_code');} public function tickets(){return $this->hasMany(Ticket::class);} public function artists(){return $this->belongsToMany(Artist::class,'event_artist','event_id','artist_id')->withPivot(['app_id','participation_type','stage','scheduled_at','description','sort_order','is_headliner','status','invited_by_user_id','invited_at','responded_at','checked_in_at','fee_cents','payment_status','invite_token','private_notes','metadata','response_user_id','decline_reason','cancelled_at','last_material_change_at'])->withTimestamps();} public function interactions(){return $this->hasMany(Interaction::class,'entity_id')->where('entity_type','event');}
     public function getSegmentsnNamesAttribute(){ $assigned=is_array($this->segments)?$this->segments:[];if($assigned===[])return '<i>Nenhum segmento atribuído</i>';$names=[];$segments=Config::get('segments',[]);foreach($assigned as $key)if(isset($segments[$key]['name']))$names[]=$segments[$key]['name'];return implode(' | ',$names);}
 }

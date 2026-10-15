@@ -11,6 +11,7 @@ use App\Domain\Connections\Http\Controllers\ConnectionModerationController;
 use App\Domain\Connections\Http\Controllers\ConnectionPrivacyController;
 use App\Domain\Contracts\Http\Controllers\ProducerAgreementController;
 use App\Domain\CRM\Http\Controllers\SalesPipelineController;
+use App\Domain\Events\Http\Controllers\EventAttendanceController;
 use App\Domain\Events\Http\Controllers\EventCommunityController;
 use App\Domain\Events\Http\Controllers\EventDiscoveryController;
 use App\Domain\Events\Http\Controllers\EventManagementController;
@@ -68,6 +69,7 @@ $publicCompatibility('cutinapp', static function (): void {
     Route::get('/events/public/{slug}', [EventDiscoveryController::class, 'publicEvent']);
     Route::get('/events/public/{slug}/artists', [SocialGraphController::class, 'publicEventArtists']);
     Route::get('/events/public/{slug}/community', [EventCommunityController::class, 'publicCommunity']);
+    Route::get('/events/public/{slug}/attendance', [EventAttendanceController::class, 'publicSummary']);
     Route::get('/events/public/{slug}/commerce', [EventCommerceController::class, 'catalog']);
     Route::get('/events/public/{slug}/items/{itemId}', [EventCommerceController::class, 'publicItem'])->whereNumber('itemId');
     Route::get('/payments/mercadopago/oauth/callback', [PaymentProviderController::class, 'callback'])->middleware('throttle:60,1');
@@ -126,6 +128,11 @@ $authenticatedCompatibility('cutinapp', static function (): void {
     Route::delete('/community/{postId}/like', [EventCommunityController::class, 'unlike'])->whereNumber('postId');
     Route::put('/events/{eventId}/rating', [EventCommunityController::class, 'rate'])->whereNumber('eventId')->middleware('throttle:30,1');
     Route::post('/events/{eventId}/report', [EventCommunityController::class, 'report'])->whereNumber('eventId')->middleware('throttle:10,1');
+    Route::get('/events/{eventId}/attendance', [EventAttendanceController::class, 'show'])->whereNumber('eventId');
+    Route::put('/events/{eventId}/attendance', [EventAttendanceController::class, 'update'])->whereNumber('eventId')->middleware('throttle:30,1');
+    Route::post('/events/{eventId}/attendance/checkin', [EventAttendanceController::class, 'selfCheckin'])->whereNumber('eventId')->middleware('throttle:20,1');
+    Route::get('/events/{eventId}/attendance/manage', [EventAttendanceController::class, 'manage'])->whereNumber('eventId');
+    Route::post('/events/{eventId}/attendance/{userId}/checkin', [EventAttendanceController::class, 'organizerCheckin'])->whereNumber('eventId')->whereNumber('userId')->middleware('throttle:60,1');
 
     Route::get('/artists/manageable', [ArtistClaimController::class, 'manageable']);
     Route::post('/artists/provisional', [ArtistClaimController::class, 'storeProvisional']);

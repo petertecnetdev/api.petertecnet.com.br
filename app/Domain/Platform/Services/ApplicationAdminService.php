@@ -22,6 +22,7 @@ class ApplicationAdminService
         'dashboard.view',
         'events.view',
         'events.manage',
+        'artists.manage',
         'establishments.view',
         'establishments.manage',
         'tickets.view',

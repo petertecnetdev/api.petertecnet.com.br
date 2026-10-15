@@ -39,7 +39,7 @@ final class EventCommunityController extends Controller
             ->orderBy('p.created_at')->get()->groupBy('parent_id');
         $liked=collect();
         if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
-        $eventOwnerId = (int) ($event->production?->user_id ?? 0);
+        $eventOwnerId = (int) ($event->created_by_user_id ?: ($event->production?->user_id ?? 0));
         $isAdmin = $user?->hasProfile('Administrador') ?? false;
         $canDelete = static fn (object $post) => $user
             && ((int) $post->user_id === (int) $user->id || $isAdmin || ($eventOwnerId > 0 && $eventOwnerId === (int) $user->id));

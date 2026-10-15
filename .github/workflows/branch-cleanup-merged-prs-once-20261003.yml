@@ -1,0 +1,54 @@
+name: Branch cleanup verified refs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/branch-cleanup-merged-prs-once-20261003.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  delete-verified-refs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete SHA-guarded allowlisted refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -u
+          deleted=0
+          absent=0
+          changed=0
+          failures=0
+          while IFS='|' read -r branch expected; do
+            [ -n "$branch" ] || continue
+            echo "Checking $branch"
+            current="$(gh api "repos/$REPO/git/ref/heads/$branch" --jq '.object.sha' 2>/dev/null || true)"
+            if [ -z "$current" ]; then
+              echo "Already absent: $branch"
+              absent=$((absent + 1))
+              continue
+            fi
+            if [ "$current" != "$expected" ]; then
+              echo "CHANGED: $branch expected=$expected current=$current"
+              changed=$((changed + 1))
+              continue
+            fi
+            if gh api --method DELETE "repos/$REPO/git/refs/heads/$branch" >/dev/null; then
+              echo "Deleted $branch"
+              deleted=$((deleted + 1))
+            else
+              echo "FAILED: $branch"
+              failures=$((failures + 1))
+            fi
+          done <<'EOF'
+          agent/account-09-telemetry/telemetry-contract-tests|8d0fe5b39110160401936a53d0c1e7cc905ad7c4
+          EOF
+          echo "SUMMARY deleted=$deleted already_absent=$absent changed=$changed failures=$failures"
+          if [ "$changed" -ne 0 ] || [ "$failures" -ne 0 ]; then
+            exit 1
+          fi
