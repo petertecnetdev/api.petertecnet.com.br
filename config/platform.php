@@ -14,6 +14,7 @@ return [
     // services and routes consume capabilities through ApplicationContext.
     'applications' => [
         'cutinapp' => [
+            'operational_admin_access' => true,
             'capabilities' => ['organizations','events','event_tickets','event_community','social','catalog','commerce','payments','payouts','agreements','notifications','moderation','acquisition'],
             'commerce' => [
                 'platform_fee_percent' => (float) env('CUTINAPP_PLATFORM_FEE_PERCENT', 8),
