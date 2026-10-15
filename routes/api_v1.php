@@ -79,6 +79,7 @@ Route::prefix('v1/apps/{application}')
 
         Route::get('/locations/states', [LocationController::class, 'states']);
         Route::get('/locations/cities', [LocationController::class, 'cities'])->middleware('throttle:120,1');
+        Route::get('/locations/available-cities', [LocationController::class, 'availableCities'])->middleware('throttle:120,1');
         Route::get('/locations/cep/{cep}', [LocationController::class, 'cep'])->where('cep', '[0-9-]{8,9}')->middleware('throttle:60,1');
 
         Route::middleware('app.capability:catalog')->group(function () {
