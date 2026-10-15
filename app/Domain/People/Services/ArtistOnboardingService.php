@@ -102,7 +102,7 @@ final class ArtistOnboardingService
         $artist = Artist::query()->where('app_id', $appId)->findOrFail($artistId);
 
         abort_unless(
-            (int) $artist->user_id === (int) $user->id || $user->hasProfile('Administrador'),
+            (int) $artist->user_id === (int) $user->id || $user->hasProfile('Administrador') || $user->hasPermission('artist_curate'),
             403,
             'Somente o artista pode escolher se a produção de referência aparece publicamente.'
         );
@@ -231,7 +231,7 @@ final class ArtistOnboardingService
 
     public function claimQueue(int $appId, User $reviewer): array
     {
-        abort_unless($reviewer->hasProfile('Administrador'), 403, 'Apenas administradores podem analisar reivindicações artísticas.');
+        abort_unless(($reviewer->hasProfile('Administrador') || $reviewer->hasPermission('artist_curate')), 403, 'Apenas administradores podem analisar reivindicações artísticas.');
 
         return DB::table('artist_identity_claims')
             ->join('artists', 'artists.id', '=', 'artist_identity_claims.artist_id')
@@ -262,7 +262,7 @@ final class ArtistOnboardingService
 
     public function reviewClaim(int $appId, User $reviewer, int $claimId, array $data): array
     {
-        abort_unless($reviewer->hasProfile('Administrador'), 403, 'Apenas administradores podem analisar reivindicações artísticas.');
+        abort_unless(($reviewer->hasProfile('Administrador') || $reviewer->hasPermission('artist_curate')), 403, 'Apenas administradores podem analisar reivindicações artísticas.');
 
         return DB::transaction(function () use ($appId, $reviewer, $claimId, $data) {
             $claim = DB::table('artist_identity_claims')
