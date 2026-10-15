@@ -181,10 +181,8 @@ final class ArtistOnboardingService
                 }
             }
 
-            $professionalEmail = mb_strtolower(trim((string) $artist->professional_email));
-            $userEmail = mb_strtolower(trim((string) $user->email));
-            $canAutoApprove = $professionalEmail !== '' && hash_equals($professionalEmail, $userEmail);
-
+            // E-mail profissional público não comprova titularidade de identidade artística.
+            // Todas as solicitações dependem de verificação humana pela equipe da aplicação.
             DB::table('artist_identity_claims')->updateOrInsert(
                 [
                     'app_id' => $appId,
@@ -192,32 +190,16 @@ final class ArtistOnboardingService
                     'user_id' => $user->id,
                 ],
                 [
-                    'status' => $canAutoApprove ? 'approved' : 'pending',
+                    'status' => 'pending',
                     'evidence_text' => $data['evidence_text'] ?? null,
                     'evidence_url' => $data['evidence_url'] ?? null,
-                    'reviewed_by_user_id' => $canAutoApprove ? $user->id : null,
-                    'review_notes' => $canAutoApprove ? 'E-mail profissional confirmado automaticamente.' : null,
-                    'reviewed_at' => $canAutoApprove ? now() : null,
+                    'reviewed_by_user_id' => null,
+                    'review_notes' => null,
+                    'reviewed_at' => null,
                     'updated_at' => now(),
                     'created_at' => now(),
                 ]
             );
-
-            if ($canAutoApprove) {
-                $artist->forceFill([
-                    'user_id' => $user->id,
-                    'claimed_at' => now(),
-                    'verification_status' => 'account_linked',
-                ])->save();
-
-                $this->track($appId, $artist->id, $user->id, 'artist_identity_claim_approved', 'professional_email');
-
-                return [
-                    'message' => 'Perfil artístico vinculado à sua conta.',
-                    'status' => 'approved',
-                    'artist' => $artist->fresh(),
-                ];
-            }
 
             $this->track($appId, $artist->id, $user->id, 'artist_identity_claim_requested', 'manual_evidence');
 
