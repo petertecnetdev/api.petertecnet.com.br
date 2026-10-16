@@ -1014,6 +1014,7 @@ final class EventCommerceController extends Controller
             ? EventItem::query()->where('app_id', $this->context->id())->where('event_id', $event->id)->findOrFail($itemId)
             : new EventItem(['app_id' => $this->context->id(), 'event_id' => $event->id]);
 
+        $this->listingCommerce->assertLegacyOrVerified($event);
         $item->fill($data)->save();
         return response()->json(['item' => $item], $itemId ? 200 : 201);
     }
