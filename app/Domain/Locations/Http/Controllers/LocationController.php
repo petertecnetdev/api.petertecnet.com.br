@@ -3,6 +3,8 @@
 namespace App\Domain\Locations\Http\Controllers;
 
 use App\Domain\Locations\Services\MunicipalityService;
+use App\Domain\Locations\Services\AvailableCitiesService;
+use App\Support\ApplicationContext;
 use App\Http\Controllers\Controller;
 use App\Models\BrazilianMunicipality;
 use Illuminate\Http\Request;
@@ -50,6 +52,28 @@ class LocationController extends Controller
 
         return response()->json([
             'cities' => $query->orderBy('name')->orderBy('uf')->limit(30)->get(['ibge_code','name','uf','slug']),
+        ]);
+    }
+
+    public function availableCities(Request $request, AvailableCitiesService $service, ApplicationContext $context)
+    {
+        $data = $request->validate([
+            'entity' => 'required|in:events,productions,artists,items',
+            'scope' => 'nullable|in:upcoming,all',
+            'q' => 'nullable|string|max:120',
+            'limit' => 'nullable|integer|min:1|max:100',
+        ]);
+        $cities = $service->available($context->id(), $data['entity'], $data['scope'] ?? 'upcoming');
+        if (! empty($data['q'])) {
+            $term = Str::lower(Str::ascii(trim($data['q'])));
+            $cities = array_values(array_filter($cities, fn ($city) =>
+                str_contains(Str::lower(Str::ascii($city['city'])), $term)));
+        }
+
+        return response()->json([
+            'cities' => array_slice($cities, 0, $data['limit'] ?? 100),
+            'entity' => $data['entity'],
+            'scope' => $data['scope'] ?? 'upcoming',
         ]);
     }
 
