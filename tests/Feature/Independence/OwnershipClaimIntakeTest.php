@@ -55,6 +55,21 @@ final class OwnershipClaimIntakeTest extends TestCase
         return ['Authorization' => 'Bearer '.JWTAuth::fromUser($user)];
     }
 
+    public function test_public_artist_exposes_claimability_without_granting_management(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $claimant = $this->claimant();
+        $unclaimed = $this->artist($app->id);
+        $claimed = $this->artist($app->id, $claimant->id);
+        $claimed->forceFill(['claimed_at' => now()])->save();
+
+        $this->getJson('/api/v1/apps/cutinapp/artists/'.$unclaimed->slug)
+            ->assertOk()->assertJsonPath('artist.ownership_status', 'unclaimed');
+        $this->getJson('/api/v1/apps/cutinapp/artists/'.$claimed->slug)
+            ->assertOk()->assertJsonPath('artist.ownership_status', 'verified');
+        $this->assertNull($unclaimed->fresh()->user_id);
+    }
+
     public function test_authenticated_verified_user_can_submit_artist_claim_without_ownership_transfer(): void
     {
         $app = $this->applicationFixture('cutinapp');
