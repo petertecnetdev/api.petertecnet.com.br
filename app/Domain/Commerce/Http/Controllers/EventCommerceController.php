@@ -174,7 +174,8 @@ final class EventCommerceController extends Controller
             ->where('is_active', true)
             ->findOrFail($itemId);
 
-        $this->appendItemAvailability($eventItem, $event->salesClosed());
+        $salesClosed = $event->salesClosed() || ! $this->listingCommerce->allowsLegacyOrVerified($event);
+        $this->appendItemAvailability($eventItem, $salesClosed);
 
         $sourceItem = null;
         if ((int) $eventItem->source_item_id > 0) {
