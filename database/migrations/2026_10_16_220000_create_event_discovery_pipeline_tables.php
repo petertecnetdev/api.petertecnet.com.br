@@ -20,6 +20,8 @@ return new class extends Migration
                 $table->char('default_uf', 2)->nullable();
                 $table->string('timezone', 64)->default('America/Sao_Paulo');
                 $table->boolean('enabled')->default(false);
+                $table->unsignedBigInteger('authorized_by_user_id')->nullable();
+                $table->timestamp('authorized_at')->nullable();
                 $table->timestamp('last_scanned_at')->nullable();
                 $table->string('last_error', 500)->nullable();
                 $table->timestamps();
