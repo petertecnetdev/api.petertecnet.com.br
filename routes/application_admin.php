@@ -25,10 +25,10 @@ Route::prefix('v1/apps/{application}')
             Route::get('/event-discovery/sources', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':moderation.view');
             Route::post('/event-discovery/sources', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'store'])
-                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:10,1']);
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', EnsureApplicationAdmin::class.':events.manage', 'throttle:10,1']);
             Route::patch('/event-discovery/sources/{sourceId}', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'update'])
                 ->whereNumber('sourceId')
-                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:15,1']);
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', EnsureApplicationAdmin::class.':events.manage', 'throttle:15,1']);
 
             // Descoberta: revisão de evidências e criação controlada de rascunhos.
             Route::get('/event-discovery/candidates', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoveryReviewController::class, 'index'])
