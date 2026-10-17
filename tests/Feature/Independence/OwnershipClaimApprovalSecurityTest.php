@@ -208,4 +208,41 @@ final class OwnershipClaimApprovalSecurityTest extends TestCase
         $this->assertNotNull($artist->fresh()->claimed_at);
         $this->assertDatabaseCount('independence_entity_grants', 0);
     }
+    public function test_revoke_is_scoped_and_immediately_removes_approved_access(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $admin = $this->person(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $curator = $this->person('curador-revogacao@example.test');
+        $claimant = $this->person('titular-revogacao@example.test');
+        $production = $this->production($app->id, $curator);
+
+        $claimId = $this->requestClaim('production', $production->id, $claimant);
+        $this->approve($claimId, $admin)->assertOk();
+        $grantId = (int) DB::table('independence_entity_grants')
+            ->where('approved_claim_id', $claimId)->value('id');
+        $this->assertTrue(app(ScopedEntityGrant::class)->canManage(
+            $app->id, 'production', $production->id, $claimant->id
+        ));
+
+        $endpoint = '/api/v1/apps/cutinapp/admin/independence/grants/'.$grantId;
+        $this->withHeaders($this->headers($claimant))
+            ->deleteJson($endpoint, ['review_note' => 'Tentativa indevida do requerente.'])
+            ->assertForbidden();
+        $this->withHeaders($this->headers($admin))
+            ->deleteJson($endpoint, ['review_note' => 'Identidade contestada e acesso retirado após revisão.'])
+            ->assertOk();
+
+        $this->assertFalse(app(ScopedEntityGrant::class)->canManage(
+            $app->id, 'production', $production->id, $claimant->id
+        ));
+        $this->assertSame('unclaimed', $production->fresh()->ownership_status);
+        $this->assertDatabaseHas('independence_claim_audits', [
+            'claim_id' => $claimId, 'decision' => 'revoked',
+        ]);
+        $this->withHeaders($this->headers($admin))
+            ->deleteJson($endpoint, ['review_note' => 'Outra tentativa de revogação.'])
+            ->assertStatus(409);
+    }
+
+
 }
