@@ -4,6 +4,7 @@ namespace App\Domain\EventDiscovery\Services;
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 final class DiscoverySourceRegistry
 {
@@ -21,13 +22,20 @@ final class DiscoverySourceRegistry
 
     public function register(int $appId, array $input, ?int $actorId): object
     {
-        if (($input['authorization_confirmed'] ?? false) !== true) {
+        if (! filter_var($input['authorization_confirmed'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
             throw ValidationException::withMessages([
                 'authorization_confirmed' => 'Confirme que o acesso automatizado à fonte foi autorizado.',
             ]);
         }
 
-        $this->policy->assertAllowed($input['url']);
+        try {
+            $this->policy->assertAllowed(trim((string) $input['url']));
+        } catch (InvalidArgumentException $exception) {
+            throw ValidationException::withMessages(['url' => $exception->getMessage()]);
+        }
+        if (trim((string) ($input['name'] ?? '')) === '') {
+            throw ValidationException::withMessages(['name' => 'Informe o nome da fonte.']);
+        }
         $timezone = (string) ($input['timezone'] ?? 'America/Sao_Paulo');
         if (! in_array($timezone, timezone_identifiers_list(), true)) {
             throw ValidationException::withMessages(['timezone' => 'Timezone IANA inválido.']);
