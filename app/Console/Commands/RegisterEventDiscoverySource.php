@@ -64,6 +64,8 @@ final class RegisterEventDiscoverySource extends Command
                 'default_uf' => $uf ?: null,
                 'timezone' => $timezone,
                 'enabled' => true,
+                'authorized_at' => now(),
+                'authorized_by_user_id' => null,
                 'updated_at' => now(),
             ]
         );
