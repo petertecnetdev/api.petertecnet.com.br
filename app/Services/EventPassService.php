@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Models\AppNotification;
 use App\Models\Event;
 use App\Models\EventPass;
@@ -15,7 +16,10 @@ final class EventPassService
 {
     private const INVALID_PASS_STATUSES = ['cancelled', 'refunded', 'charged_back'];
 
-    public function __construct(private readonly ApplicationContext $context)
+    public function __construct(
+        private readonly ApplicationContext $context,
+        private readonly ApplicationAdminService $applicationAdmin,
+    )
     {
     }
 
@@ -387,6 +391,45 @@ final class EventPassService
         return $result;
     }
 
+    /**
+     * Eventos que o operador pode efetivamente validar neste aplicativo.
+     * Nunca devolve eventos de outras aplicações ou de produções externas.
+     */
+    public function operableEvents(User $operator, ?string $search = null, int $perPage = 100): \Illuminate\Contracts\Pagination\LengthAwarePaginator
+    {
+        $appId = $this->context->id();
+        $query = Event::query()
+            ->where('app_id', $appId)
+            ->whereHas('production', fn ($production) => $production->where('app_id', $appId))
+            ->where('is_published', true)
+            ->where('is_cancelled', false)
+            ->with('production:id,app_id,name,slug')
+            ->select(['id', 'app_id', 'production_id', 'title', 'slug', 'start_date', 'end_date', 'is_published', 'is_cancelled']);
+
+        if (! $this->hasGlobalCheckinPermission($operator, $appId)) {
+            $scope = $this->operatorScope($operator, $appId);
+            $query->where(function ($allowed) use ($operator, $scope) {
+                $allowed->whereHas('production', fn ($production) => $production->where('user_id', $operator->id));
+                if ($scope['event_ids']) {
+                    $allowed->orWhereIn('id', $scope['event_ids']);
+                }
+                if ($scope['production_ids']) {
+                    $allowed->orWhereIn('production_id', $scope['production_ids']);
+                }
+            });
+        }
+
+        if ($search = trim((string) $search)) {
+            $query->where(function ($match) use ($search) {
+                $match->where('title', 'like', '%'.$search.'%')
+                    ->orWhereHas('production', fn ($production) => $production->where('name', 'like', '%'.$search.'%'));
+            });
+        }
+
+        return $query->orderByDesc('start_date')->orderByDesc('id')
+            ->paginate(max(1, min($perPage, 100)));
+    }
+
     public function eventStats(User $operator, int $eventId): array
     {
         $event = $this->manageableEvent($eventId, $operator);
@@ -423,18 +466,35 @@ final class EventPassService
         return $event;
     }
 
+    private function hasGlobalCheckinPermission(User $operator, int $appId): bool
+    {
+        return $this->applicationAdmin->isRoot($operator)
+            || $this->applicationAdmin->hasPermission($operator, $appId, 'checkin.manage');
+    }
+
     private function canOperateEvent(User $operator, Event $event, int $appId): bool
     {
         $production = $event->production;
 
-        if ($operator->hasProfile('Administrador')) {
+        if ($this->hasGlobalCheckinPermission($operator, $appId)) {
             return true;
         }
+
         if ($production && (int) $production->user_id === (int) $operator->id) {
             return true;
         }
+
+        $scope = $this->operatorScope($operator, $appId);
+
+        return in_array((int) $event->id, $scope['event_ids'], true)
+            || ($production && in_array((int) $production->id, $scope['production_ids'], true));
+    }
+
+    private function operatorScope(User $operator, int $appId): array
+    {
+        $empty = ['event_ids' => [], 'production_ids' => []];
         if (! $operator->hasPermission('ticket_checkin') && ! $operator->hasPermission('event_checkin')) {
-            return false;
+            return $empty;
         }
 
         $membership = DB::table('application_user')
@@ -443,7 +503,7 @@ final class EventPassService
             ->where('status', 'active')
             ->first();
         if (! $membership) {
-            return false;
+            return $empty;
         }
 
         $metadata = $membership->metadata ?? null;
@@ -453,14 +513,13 @@ final class EventPassService
             $metadata = (array) $metadata;
         }
         if (! is_array($metadata)) {
-            return false;
+            return $empty;
         }
 
-        $eventIds = array_map('intval', is_array($metadata['event_ids'] ?? null) ? $metadata['event_ids'] : []);
-        $productionIds = array_map('intval', is_array($metadata['production_ids'] ?? null) ? $metadata['production_ids'] : []);
-
-        return in_array((int) $event->id, $eventIds, true)
-            || ($production && in_array((int) $production->id, $productionIds, true));
+        return [
+            'event_ids' => array_map('intval', is_array($metadata['event_ids'] ?? null) ? $metadata['event_ids'] : []),
+            'production_ids' => array_map('intval', is_array($metadata['production_ids'] ?? null) ? $metadata['production_ids'] : []),
+        ];
     }
 
     private function registerParticipation(int $appId, int $userId, string $role): void

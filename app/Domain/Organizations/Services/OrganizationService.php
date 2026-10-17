@@ -11,6 +11,7 @@ use App\Models\EventSchedule;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\Independence\ScopedEntityGrant;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -280,7 +281,8 @@ final class OrganizationService
     {
         return Production::query()
             ->where('app_id', $appId)
-            ->where('user_id', $user->id)
+            ->where(fn ($query) => $query->where('user_id', $user->id)
+                ->orWhereIn('id', app(ScopedEntityGrant::class)->idsForUser($appId, 'production', (int) $user->id)))
             ->withCount(['events' => fn ($events) => $events->where('app_id', $appId)])
             ->latest()
             ->get();
@@ -346,6 +348,9 @@ final class OrganizationService
     public function delete(int $appId, User $user, int $id): void
     {
         $organization = $this->owned($appId, $user, $id);
+        // A scoped claim permits editing this page, not deleting its event roster.
+        abort_unless((int) $organization->user_id === (int) $user->id, 403,
+            'Uma reivindicação não autoriza excluir toda a produção.');
 
         abort_if(
             $organization->events()->whereHas('tickets.passes')->exists(),
@@ -377,7 +382,9 @@ final class OrganizationService
             ->findOrFail($id);
 
         $admin = method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
-        abort_unless($admin || (int) $organization->user_id === (int) $user->id, 403, 'Você não pode gerenciar esta organização.');
+        abort_unless($admin || (int) $organization->user_id === (int) $user->id
+            || app(ScopedEntityGrant::class)->canManage($appId, 'production', (int) $organization->id, (int) $user->id),
+            403, 'Você não pode gerenciar esta organização.');
 
         return $organization;
     }
