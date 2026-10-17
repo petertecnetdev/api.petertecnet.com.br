@@ -24,33 +24,34 @@ final class OwnershipClaimAdminController extends Controller
         return response()->json(['success' => true, 'data' => $claims]);
     }
 
-    public function review(Request $request, int $claimId): JsonResponse
+    public function review(Request $request, int $claimId, OwnershipClaimReviewService $reviews): JsonResponse
     {
         $input = $request->validate([
-            'decision' => ['required', 'in:rejected,needs_info'],
+            'decision' => ['required', 'in:approved,rejected,needs_info'],
             'review_note' => ['required', 'string', 'min:5', 'max:2000'],
+            'verification_method' => ['required_if:decision,approved', 'nullable',
+                'in:official_channel,corporate_domain,documentation'],
+            'evidence_reference' => ['required_if:decision,approved', 'nullable',
+                'string', 'min:8', 'max:2000'],
+            'verification_attested' => ['required_if:decision,approved', 'accepted'],
+            'app_id' => ['missing'],
+            'entity_id' => ['missing'],
+            'claimant_user_id' => ['missing'],
+            'user_id' => ['missing'],
+            'commerce_authorized_at' => ['missing'],
         ]);
 
-        $claim = DB::transaction(function () use ($request, $claimId, $input): OwnershipClaim {
-            $claim = OwnershipClaim::query()
-                ->where('app_id', (int) $request->attributes->get('app_id'))
-                ->lockForUpdate()->findOrFail($claimId);
-            abort_unless(in_array($claim->status, ['pending', 'needs_info'], true), 409);
-            $claim->forceFill([
-                'status' => $input['decision'],
-                'reviewed_by_user_id' => $request->user('api')->getKey(),
-                'review_note' => $input['review_note'],
-                'reviewed_at' => now(),
-                'active_claim_key' => $input['decision'] === 'rejected' ? null : $claim->active_claim_key,
-            ])->save();
-            return $claim->fresh();
-        }, 3);
+        $claim = $reviews->review(
+            (int) $request->attributes->get('app_id'),
+            $claimId,
+            $request->user('api'),
+            $input,
+        );
 
-        // Explicitly excludes "approved" until verifiable proof, atomic grants,
-        // separate event/production/artist permissions and audit trail exist.
         return response()->json([
             'success' => true,
             'data' => ['id' => $claim->id, 'status' => $claim->status],
+            'message' => 'Análise registrada com trilha de auditoria.',
         ]);
     }
 }
