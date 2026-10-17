@@ -25,7 +25,12 @@ final class DiscoveryFeedService
         $this->policy->assertAllowed($source->url);
 
         $response = Http::timeout(15)
-            ->withOptions(['allow_redirects' => false, 'verify' => true])
+            ->withOptions([
+                'allow_redirects' => false,
+                'verify' => true,
+                'stream' => true,
+                'force_ip_resolve' => 'v4',
+            ])
             ->acceptJson()
             ->get($source->url);
 
@@ -33,8 +38,20 @@ final class DiscoveryFeedService
             throw new RuntimeException('Fonte retornou HTTP '.$response->status());
         }
 
-        $body = $response->body();
-        if (strlen($body) > (int) config('event_discovery.max_feed_bytes', 2097152)) {
+        $maxBytes = (int) config('event_discovery.max_feed_bytes', 2097152);
+        if ((int) $response->header('Content-Length', 0) > $maxBytes) {
+            throw new RuntimeException('Feed excedeu o limite permitido.');
+        }
+
+        // Streaming impede carregar uma resposta arbitrariamente grande na memória.
+        $body = '';
+        $stream = $response->toPsrResponse()->getBody();
+        while (! $stream->eof() && strlen($body) <= $maxBytes) {
+            $chunk = $stream->read(min(65536, $maxBytes + 1 - strlen($body)));
+            if ($chunk === '') break;
+            $body .= $chunk;
+        }
+        if (strlen($body) > $maxBytes) {
             throw new RuntimeException('Feed excedeu o limite permitido.');
         }
 
@@ -167,7 +184,6 @@ final class DiscoveryFeedService
             'source_url' => $url,
             'evidence' => json_encode([
                 'source_name' => $source->name,
-                'source_url' => $source->url,
                 'source_event_id' => $external,
                 'timezone' => $timezone,
                 'retrieved_at' => now()->toIso8601String(),
