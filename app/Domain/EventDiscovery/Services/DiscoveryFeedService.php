@@ -141,7 +141,7 @@ final class DiscoveryFeedService
 
         if ($start->lessThan(now()->subHours(6))
             || $start->greaterThan(now()->addDays(400))
-            || ($end && (! $end->greaterThan($start) || $end->greaterThan($start->addDays(14)))
+            || ($end && (! $end->greaterThan($start) || $end->greaterThan($start->addDays(14))))
         ) return null;
 
         $sourceKey = hash('sha256', $external);
