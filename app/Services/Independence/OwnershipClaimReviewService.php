@@ -91,6 +91,75 @@ final class OwnershipClaimReviewService
         }, 3);
     }
 
+    /**
+     * Fail-closed revocation of a scoped grant. A historical artist identity
+     * must be contested through a separate, manually verified process.
+     */
+    public function revoke(int $appId, int $grantId, User $reviewer, string $reason): void
+    {
+        abort_unless($appId > 0
+            && app(ApplicationAdminService::class)->hasPermission($reviewer, $appId, 'moderation.manage'),
+            403, 'Sem permissão de revisão nesta aplicação.');
+        abort_unless(mb_strlen(trim($reason)) >= 10, 422, 'Informe o motivo da revogação.');
+
+        DB::transaction(function () use ($appId, $grantId, $reviewer, $reason): void {
+            $grant = DB::table('independence_entity_grants')
+                ->where('app_id', $appId)
+                ->where('id', $grantId)
+                ->lockForUpdate()
+                ->first();
+            abort_unless($grant, 404);
+            abort_unless($grant->revoked_at === null, 409, 'Concessão já revogada.');
+            abort_unless((int) $grant->user_id !== (int) $reviewer->id, 403,
+                'A pessoa beneficiária não pode revisar sua própria concessão.');
+
+            $entity = match ($grant->entity_type) {
+                'production' => Production::query()->where('app_id', $appId)
+                    ->lockForUpdate()->findOrFail($grant->entity_id),
+                'event' => Event::query()->where('app_id', $appId)
+                    ->lockForUpdate()->findOrFail($grant->entity_id),
+                default => abort(422, 'Tipo inválido para revogação automática.'),
+            };
+
+            abort_unless($entity->ownership_status === 'verified'
+                && $entity->verification_status === 'manual_approved', 409,
+                'A titularidade mudou; requer análise individual antes de revogar.');
+
+            DB::table('independence_entity_grants')->where('id', $grantId)->update([
+                'revoked_at' => now(), 'updated_at' => now(),
+            ]);
+            $entity->forceFill([
+                'ownership_status' => 'unclaimed',
+                'ownership_verified_at' => null,
+                'verification_status' => null,
+                'commerce_authorized_at' => null,
+            ])->saveOrFail();
+
+            DB::table('independence_claim_audits')->insert([
+                'app_id' => $appId,
+                'claim_id' => $grant->approved_claim_id,
+                'actor_user_id' => $reviewer->getKey(),
+                'previous_status' => 'approved',
+                'decision' => 'revoked',
+                'verification_method' => null,
+                'evidence_digest' => null,
+                'review_note' => trim($reason),
+                'created_at' => now(),
+            ]);
+
+            AppNotification::query()->create([
+                'app_id' => $appId,
+                'user_id' => $grant->user_id,
+                'type' => 'independence_claim_review',
+                'title' => 'Acesso à página revogado',
+                'message' => 'O acesso à página foi revogado após revisão administrativa. Entre em contato com o suporte para esclarecimentos.',
+                'reference_type' => $grant->entity_type,
+                'reference_id' => $grant->entity_id,
+                'data' => ['claim_id' => $grant->approved_claim_id, 'status' => 'revoked'],
+            ]);
+        }, 3);
+    }
+
     private function approve(int $appId, OwnershipClaim $claim, User $reviewer): void
     {
         $user = User::query()->whereKey($claim->claimant_user_id)->lockForUpdate()->firstOrFail();
