@@ -1,0 +1,144 @@
+<?php
+
+declare(strict_types=1);
+
+namespace App\Services\Independence;
+
+use App\Models\AppNotification;
+use App\Models\Artist;
+use App\Models\Event;
+use App\Models\Independence\OwnershipClaim;
+use App\Models\Production;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpException;
+
+/**
+ * Human decision + narrow management grant are committed as one transaction.
+ * No request field can select application, claimant, owner or commerce rights.
+ */
+final class OwnershipClaimReviewService
+{
+    public function review(int $appId, int $claimId, User $reviewer, array $decision): OwnershipClaim
+    {
+        abort_unless($appId > 0, 403);
+
+        return DB::transaction(function () use ($appId, $claimId, $reviewer, $decision): OwnershipClaim {
+            $claim = OwnershipClaim::query()
+                ->where('app_id', $appId)
+                ->lockForUpdate()
+                ->findOrFail($claimId);
+
+            abort_unless(in_array($claim->status, ['pending', 'needs_info'], true), 409,
+                'Esta reivindicação já foi concluída.');
+
+            $newStatus = $decision['decision'];
+            $method = $decision['verification_method'] ?? null;
+            $evidence = trim((string) ($decision['evidence_reference'] ?? ''));
+            if ($newStatus === 'approved') {
+                abort_unless((int) $reviewer->getKey() !== (int) $claim->claimant_user_id, 403,
+                    'Você não pode aprovar sua própria reivindicação.');
+                $this->approve($appId, $claim, $reviewer);
+            }
+
+            DB::table('independence_claim_audits')->insert([
+                'app_id' => $appId,
+                'claim_id' => $claim->getKey(),
+                'actor_user_id' => $reviewer->getKey(),
+                'previous_status' => $claim->status,
+                'decision' => $newStatus,
+                'verification_method' => $newStatus === 'approved' ? $method : null,
+                'evidence_digest' => $newStatus === 'approved' ? hash('sha256', $evidence) : null,
+                'review_note' => trim($decision['review_note']),
+                'created_at' => now(),
+            ]);
+
+            $claim->forceFill([
+                'status' => $newStatus,
+                'reviewed_by_user_id' => $reviewer->getKey(),
+                'review_note' => trim($decision['review_note']),
+                'reviewed_at' => now(),
+                'active_claim_key' => in_array($newStatus, ['rejected', 'approved'], true)
+                    ? null : $claim->active_claim_key,
+            ])->saveOrFail();
+
+            if ($newStatus !== 'needs_info') {
+                AppNotification::query()->create([
+                    'app_id' => $appId,
+                    'user_id' => $claim->claimant_user_id,
+                    'type' => 'independence_claim_review',
+                    'title' => $newStatus === 'approved' ? 'Reivindicação aprovada' : 'Reivindicação analisada',
+                    'message' => $newStatus === 'approved'
+                        ? 'Sua titularidade foi verificada. O acesso é restrito à página aprovada; vendas exigem liberação separada.'
+                        : 'Sua solicitação foi analisada. Consulte o suporte para esclarecimentos.',
+                    'reference_type' => $claim->entity_type,
+                    'reference_id' => $claim->entity_id,
+                    'data' => ['claim_id' => $claim->id, 'status' => $newStatus],
+                ]);
+            }
+
+            return $claim->fresh();
+        }, 3);
+    }
+
+    private function approve(int $appId, OwnershipClaim $claim, User $reviewer): void
+    {
+        $user = User::query()->whereKey($claim->claimant_user_id)->lockForUpdate()->firstOrFail();
+        abort_unless($user->email_verified_at && $claim->contact_verified_at
+            && strcasecmp((string) $user->email, (string) $claim->contact_email) === 0,
+            409, 'A identidade de contato não está mais verificada. Solicite nova conferência.');
+
+        $type = $claim->entity_type;
+        $entity = match ($type) {
+            'artist' => Artist::query()->where('app_id', $appId)->lockForUpdate()->findOrFail($claim->entity_id),
+            'production' => Production::query()->where('app_id', $appId)->lockForUpdate()->findOrFail($claim->entity_id),
+            'event' => Event::query()->where('app_id', $appId)->lockForUpdate()->findOrFail($claim->entity_id),
+            default => throw new HttpException(422, 'Tipo de cadastro inválido.'),
+        };
+
+        if ($entity instanceof Artist) {
+            abort_unless(! $entity->user_id && ! $entity->claimed_at, 409,
+                'Este artista já possui titularidade.');
+            // A personal artist identity uses the existing single owner contract.
+            $entity->forceFill([
+                'user_id' => $user->getKey(),
+                'claimed_at' => now(),
+                'verification_status' => 'verified',
+                'verified_at' => now(),
+            ])->saveOrFail();
+            return;
+        }
+
+        abort_unless(in_array($entity->ownership_status, ['unclaimed', 'pending_claim'], true)
+            && filled($entity->listing_source) && filled($entity->source_url),
+            409, 'A ficha não tem origem curatorial auditável ou já foi reivindicada.');
+
+        if ($entity instanceof Event) {
+            abort_unless($entity->production_id && Production::query()
+                ->where('app_id', $appId)->whereKey($entity->production_id)->exists(),
+                409, 'O evento não possui uma produção válida nesta aplicação.');
+        }
+
+        DB::table('independence_entity_grants')->insert([
+            'app_id' => $appId,
+            'entity_type' => $type,
+            'entity_id' => $entity->getKey(),
+            'user_id' => $user->getKey(),
+            'approved_claim_id' => $claim->getKey(),
+            'approved_by_user_id' => $reviewer->getKey(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        // A curated entity keeps its original institutional author for audit.
+        // Granting one production NEVER grants the producer's separate events.
+        $entity->forceFill([
+            'ownership_status' => 'verified',
+            'ownership_verified_at' => now(),
+            'verification_status' => 'manual_approved',
+            // Independent commerce onboarding is mandatory and stays closed.
+            'commerce_authorized_at' => null,
+        ])->saveOrFail();
+    }
+}
