@@ -73,8 +73,6 @@ final class OwnershipClaimApprovalSecurityTest extends TestCase
             'user_id' => $curator->id,
             'name' => 'Produção Curada '.$number,
             'slug' => 'producao-curada-'.$number,
-            'city' => 'Brasília',
-            'uf' => 'DF',
             'is_published' => true,
         ]);
         $production->forceFill([
