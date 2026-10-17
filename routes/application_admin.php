@@ -21,6 +21,9 @@ Route::prefix('v1/apps/{application}')
             Route::patch('/independence/claims/{claimId}', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'review'])
                 ->whereNumber('claimId')
                 ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:15,1']);
+            Route::delete('/independence/grants/{grantId}', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'revoke'])
+                ->whereNumber('grantId')
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:10,1']);
 
             Route::get('/event-discovery/sources', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':moderation.view');
