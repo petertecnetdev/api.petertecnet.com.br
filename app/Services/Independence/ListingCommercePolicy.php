@@ -70,7 +70,11 @@ final class ListingCommercePolicy
             return false;
         }
         if ($entity->verification_status === 'manual_approved') {
-            return $entity->ownership_verified_at !== null;
+            // Ownership verification is not merchant onboarding or payment authorization.
+            // Only a separate commercial approval for BOTH event and production
+            // can unlock new sales for an Independence listing.
+            return $entity->ownership_verified_at !== null
+                && $entity->commerce_authorized_at !== null;
         }
         return $entity->verification_status === 'legacy_owner_record'
             && $entity->listing_source === 'legacy_organizer'
