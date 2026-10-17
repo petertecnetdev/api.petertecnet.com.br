@@ -23,9 +23,9 @@ Route::prefix('v1/apps/{application}')
                 ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:15,1']);
 
             // Descoberta: revisão de evidências e criação controlada de rascunhos.
-            Route::get('/event-discovery/candidates', [\App\Domain\EventDiscovery\\Http\\Controllers\\EventDiscoveryReviewController::class, 'index'])
+            Route::get('/event-discovery/candidates', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoveryReviewController::class, 'index'])
                 ->middleware(EnsureApplicationAdmin::class.':moderation.view');
-            Route::patch('/event-discovery/candidates/{candidateId}', [\App\Domain\EventDiscovery\\Http\\Controllers\\EventDiscoveryReviewController::class, 'review'])
+            Route::patch('/event-discovery/candidates/{candidateId}', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoveryReviewController::class, 'review'])
                 ->whereNumber('candidateId')
                 ->middleware([
                     EnsureApplicationAdmin::class.':moderation.manage',
