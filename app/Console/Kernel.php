@@ -30,6 +30,9 @@ class Kernel extends ConsoleKernel
         $schedule->command('search:notify-saved --limit=200')
             ->hourly()
             ->withoutOverlapping(30);
+        // O comando faz no-op até habilitação explícita e fontes autorizadas.
+        $schedule->command('events:discover')->hourly()->withoutOverlapping(30);
+
         $schedule->command('idempotency:prune --days=7')
             ->daily()
             ->withoutOverlapping(10);
