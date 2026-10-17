@@ -132,6 +132,8 @@ final class OwnershipClaimApprovalSecurityTest extends TestCase
             'title' => 'Evento de Curadoria',
             'slug' => 'evento-de-curadoria',
             'kind' => 'commercial',
+            'event_format' => 'online',
+            'online_url' => 'https://example.org/transmissao',
             'start_date' => now()->addDays(10),
             'end_date' => now()->addDays(10)->addHours(3),
             'is_published' => true,
