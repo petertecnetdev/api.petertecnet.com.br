@@ -282,4 +282,31 @@ final class OwnershipClaimApprovalSecurityTest extends TestCase
         ]);
     }
 
+    public function test_moderation_queue_exposes_only_active_scoped_grant(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $admin = $this->person(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $curator = $this->person('curador-fila@example.test');
+        $claimant = $this->person('titular-fila@example.test');
+        $production = $this->production($app->id, $curator);
+        $claimId = $this->requestClaim('production', $production->id, $claimant);
+        $this->approve($claimId, $admin)->assertOk();
+        $grantId = (int) DB::table('independence_entity_grants')
+            ->where('approved_claim_id', $claimId)->value('id');
+
+        $queue = '/api/v1/apps/cutinapp/admin/independence/claims?status=approved';
+        $this->withHeaders($this->headers($admin))->getJson($queue)
+            ->assertOk()->assertJsonPath('data.data.0.id', $claimId)
+            ->assertJsonPath('data.data.0.grant_id', $grantId);
+
+        $this->withHeaders($this->headers($claimant))->getJson($queue)->assertForbidden();
+
+        $this->withHeaders($this->headers($admin))
+            ->deleteJson('/api/v1/apps/cutinapp/admin/independence/grants/'.$grantId, [
+                'review_note' => 'Titularidade contestada com provas verificadas.',
+            ])->assertOk();
+        $this->withHeaders($this->headers($admin))->getJson($queue)
+            ->assertOk()->assertJsonPath('data.data.0.grant_id', null);
+    }
+
 }
