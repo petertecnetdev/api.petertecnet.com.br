@@ -126,7 +126,7 @@ final class OwnershipClaimReviewService
                 'A titularidade mudou; requer análise individual antes de revogar.');
 
             DB::table('independence_entity_grants')->where('id', $grantId)->update([
-                'revoked_at' => now(), 'updated_at' => now(),
+                'revoked_at' => now(), 'active_entity_key' => null, 'updated_at' => now(),
             ]);
             $entity->forceFill([
                 'ownership_status' => 'unclaimed',
@@ -198,7 +198,13 @@ final class OwnershipClaimReviewService
                 409, 'O evento não possui uma produção válida nesta aplicação.');
         }
 
+        $activeKey = $appId.':'.$type.':'.$entity->getKey();
+        abort_if(DB::table('independence_entity_grants')
+            ->where('active_entity_key', $activeKey)->whereNull('revoked_at')->exists(),
+            409, 'Esta página já possui uma concessão ativa.');
+
         DB::table('independence_entity_grants')->insert([
+            'active_entity_key' => $activeKey,
             'app_id' => $appId,
             'entity_type' => $type,
             'entity_id' => $entity->getKey(),

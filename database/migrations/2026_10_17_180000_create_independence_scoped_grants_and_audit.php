@@ -22,8 +22,10 @@ return new class extends Migration
                 $table->unsignedBigInteger('approved_claim_id');
                 $table->unsignedBigInteger('approved_by_user_id');
                 $table->timestamp('revoked_at')->nullable();
+                // NULL on revocation permits a new reviewed owner without erasing audit history.
+                // A unique non-NULL active key enforces at most one current owner on MySQL/SQLite.
+                $table->string('active_entity_key', 128)->nullable()->unique('independence_one_active_owner');
                 $table->timestamps();
-                $table->unique(['app_id', 'entity_type', 'entity_id'], 'independence_one_owner_per_entity');
                 $table->index(['app_id', 'user_id', 'entity_type', 'revoked_at'], 'independence_grants_by_user');
             });
         }

@@ -245,4 +245,41 @@ final class OwnershipClaimApprovalSecurityTest extends TestCase
     }
 
 
+    public function test_revoked_production_can_be_approved_again_without_restoring_old_access(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $admin = $this->person(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $curator = $this->person('curador-reclamacao@example.test');
+        $first = $this->person('primeiro-titular@example.test');
+        $second = $this->person('novo-titular@example.test');
+        $production = $this->production($app->id, $curator);
+
+        $firstClaim = $this->requestClaim('production', $production->id, $first);
+        $this->approve($firstClaim, $admin)->assertOk();
+        $firstGrant = DB::table('independence_entity_grants')
+            ->where('approved_claim_id', $firstClaim)->first();
+
+        $this->withHeaders($this->headers($admin))
+            ->deleteJson('/api/v1/apps/cutinapp/admin/independence/grants/'.$firstGrant->id, [
+                'review_note' => 'Troca formal de titularidade conferida pela equipe administrativa.',
+            ])->assertOk();
+
+        $secondClaim = $this->requestClaim('production', $production->id, $second);
+        $this->approve($secondClaim, $admin)->assertOk();
+        $grants = app(ScopedEntityGrant::class);
+        $this->assertFalse($grants->canManage($app->id, 'production', $production->id, $first->id));
+        $this->assertTrue($grants->canManage($app->id, 'production', $production->id, $second->id));
+        $this->assertDatabaseCount('independence_entity_grants', 2);
+        $this->assertDatabaseHas('independence_entity_grants', [
+            'id' => $firstGrant->id, 'active_entity_key' => null,
+        ]);
+        $this->assertDatabaseHas('independence_entity_grants', [
+            'approved_claim_id' => $secondClaim,
+            'active_entity_key' => $app->id.':production:'.$production->id,
+        ]);
+        $this->assertDatabaseHas('independence_claim_audits', [
+            'claim_id' => $firstClaim, 'decision' => 'revoked',
+        ]);
+    }
+
 }
