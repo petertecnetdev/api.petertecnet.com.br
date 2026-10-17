@@ -6,16 +6,16 @@ namespace App\Http\Controllers\Api\Independence;
 
 use App\Http\Controllers\Controller;
 use App\Models\Independence\OwnershipClaim;
+use App\Services\Independence\OwnershipClaimReviewService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 final class OwnershipClaimAdminController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
         $input = $request->validate([
-            'status' => ['nullable', 'in:pending,needs_info,rejected'],
+            'status' => ['nullable', 'in:pending,needs_info,rejected,approved'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $claims = OwnershipClaim::query()->where('app_id', (int) $request->attributes->get('app_id'))
