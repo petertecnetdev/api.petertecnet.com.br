@@ -66,15 +66,21 @@ final class OwnershipClaimReviewService
                     ? null : $claim->active_claim_key,
             ])->saveOrFail();
 
-            if ($newStatus !== 'needs_info') {
+            {
                 AppNotification::query()->create([
                     'app_id' => $appId,
                     'user_id' => $claim->claimant_user_id,
                     'type' => 'independence_claim_review',
-                    'title' => $newStatus === 'approved' ? 'Reivindicação aprovada' : 'Reivindicação analisada',
+                    'title' => match ($newStatus) {
+                        'approved' => 'Reivindicação aprovada',
+                        'needs_info' => 'Informações adicionais solicitadas',
+                        default => 'Reivindicação analisada',
+                    },
                     'message' => $newStatus === 'approved'
                         ? 'Sua titularidade foi verificada. O acesso é restrito à página aprovada; vendas exigem liberação separada.'
-                        : 'Sua solicitação foi analisada. Consulte o suporte para esclarecimentos.',
+                        : ($newStatus === 'needs_info'
+                            ? 'Precisamos de informações adicionais sobre seu vínculo. Consulte a Central de Ajuda e informe o protocolo da solicitação.'
+                            : 'Sua solicitação foi analisada. Consulte o suporte para esclarecimentos.'),
                     'reference_type' => $claim->entity_type,
                     'reference_id' => $claim->entity_id,
                     'data' => ['claim_id' => $claim->id, 'status' => $newStatus],
