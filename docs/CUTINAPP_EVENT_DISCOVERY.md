@@ -62,6 +62,12 @@ Se `city` ou `uf` não vierem no evento, usa os padrões da fonte. O campo `id` 
 
 ## Administração
 
+Fontes (autenticação, `token.version`, isolamento por aplicação):
+- `GET /api/v1/apps/{application}/admin/event-discovery/sources` — `moderation.view`.
+- `POST /api/v1/apps/{application}/admin/event-discovery/sources` — `moderation.manage` + `events.manage`, incluindo o aceite do operador.
+  Exemplo JSON: `{"name":"Agenda autorizada","url":"https://agenda-parceira.example.org/events.json","city":"Brasília","uf":"DF","timezone":"America/Sao_Paulo","authorization_confirmed":true}`.
+- `PATCH /api/v1/apps/{application}/admin/event-discovery/sources/{sourceId}` — mesmas permissões; JSON `{"enabled":false}` ou `{"enabled":true}`.
+
 Requer autenticação, sessão válida e autorização isolada por aplicação.
 
 - `GET /api/v1/apps/{application}/admin/event-discovery/candidates?status=pending` exige `moderation.view`.
