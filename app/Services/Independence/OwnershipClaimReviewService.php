@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Services\Independence;
 
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Models\AppNotification;
 use App\Models\Artist;
 use App\Models\Event;
@@ -22,7 +23,9 @@ final class OwnershipClaimReviewService
 {
     public function review(int $appId, int $claimId, User $reviewer, array $decision): OwnershipClaim
     {
-        abort_unless($appId > 0, 403);
+        abort_unless($appId > 0
+            && app(ApplicationAdminService::class)->hasPermission($reviewer, $appId, 'moderation.manage'),
+            403, 'Sem permissão de revisão nesta aplicação.');
 
         return DB::transaction(function () use ($appId, $claimId, $reviewer, $decision): OwnershipClaim {
             $claim = OwnershipClaim::query()
