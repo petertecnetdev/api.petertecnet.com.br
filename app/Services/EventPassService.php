@@ -61,6 +61,8 @@ final class EventPassService
                 422,
                 'Este evento já foi encerrado. Não é mais possível emitir ingressos.'
             );
+            abort_if((bool) $ticket->curatorial_information_only, 403,
+                'Ingresso curatorial disponível apenas para consulta.');
             abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if(
                 $ticket->limit_date && now()->greaterThan($ticket->limit_date),
