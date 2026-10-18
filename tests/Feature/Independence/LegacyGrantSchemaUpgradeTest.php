@@ -6,7 +6,7 @@ namespace Tests\Feature\Independence;
 
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Foundation\Testing\DatabaseMigrations;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use RuntimeException;
@@ -14,7 +14,7 @@ use Tests\TestCase;
 
 final class LegacyGrantSchemaUpgradeTest extends TestCase
 {
-    use DatabaseMigrations;
+    use RefreshDatabase;
 
     private function prepareLegacyTable(bool $unique = true): void
     {
