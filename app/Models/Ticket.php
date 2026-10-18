@@ -16,14 +16,19 @@ class Ticket extends Model
     protected $fillable = [
         'app_id','app_slug','event_id','name','type','price','limit_date','sales_cutoff_mode',
         'sales_cutoff_offset_minutes','ticket_type','quantity','max_per_user','description',
+        'curatorial_information_only','curatorial_source_url','curatorial_price_observed_at','curatorial_bundle_size',
     ];
     protected $casts = [
         'price'=>'decimal:2',
         'quantity'=>'integer',
+        'curatorial_information_only'=>'boolean',
+        'curatorial_price_observed_at'=>'date:Y-m-d',
+        'curatorial_bundle_size'=>'integer',
         'max_per_user'=>'integer',
         'limit_date'=>'datetime',
         'sales_cutoff_offset_minutes'=>'integer',
     ];
+    protected $hidden = ['curatorial_source_url'];
     protected $appends = ['remaining','available','expired'];
     protected $table = 'tickets';
 
@@ -87,7 +92,7 @@ class Ticket extends Model
             return false;
         }
 
-        return ! $this->expired && $this->remaining > 0;
+        return ! (bool) $this->curatorial_information_only && ! $this->expired && $this->remaining > 0;
     }
     public function application(){return $this->belongsTo(Application::class,'app_id');} public function event(){return $this->belongsTo(Event::class);} public function passes(){return $this->hasMany(EventPass::class,'ticket_id');}
 }
