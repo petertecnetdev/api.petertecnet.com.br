@@ -32,4 +32,20 @@ final class CuratorialTicketAvailabilityTest extends TestCase
 
         $this->assertFalse($ticket->available);
     }
+    public function test_curatorial_ticket_with_stock_remains_unavailable(): void
+    {
+        $ticket = new Ticket([
+            'quantity' => 50,
+            'price' => 35,
+            'curatorial_information_only' => true,
+            'curatorial_source_url' => 'https://example.org/event/123',
+            'curatorial_bundle_size' => 1,
+        ]);
+
+        $this->assertFalse($ticket->available);
+        $payload = $ticket->toArray();
+        $this->assertFalse($payload['available']);
+        $this->assertTrue($payload['curatorial_information_only']);
+        $this->assertArrayNotHasKey('curatorial_source_url', $payload);
+    }
 }
