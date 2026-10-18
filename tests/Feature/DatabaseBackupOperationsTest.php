@@ -6,10 +6,13 @@ use App\Services\Operations\OperationalTelemetryService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class DatabaseBackupOperationsTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_backup_command_refuses_unsupported_database_drivers(): void
     {
         $this->assertSame('sqlite', config('database.default'));
