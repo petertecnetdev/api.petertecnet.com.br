@@ -78,6 +78,16 @@ class Ticket extends Model
         return max(0,$total-$issued-$reserved);
     }
 
-    public function getAvailableAttribute(): bool { return !$this->expired && $this->remaining>0; }
+    public function getAvailableAttribute(): bool
+    {
+        // Catálogos curatoriais podem exibir preços sem oferecer compra.
+        // O endpoint público define available=false mesmo quando há estoque;
+        // o accessor não pode ignorar essa restrição de segurança.
+        if (array_key_exists('available', $this->attributes) && $this->attributes['available'] === false) {
+            return false;
+        }
+
+        return ! $this->expired && $this->remaining > 0;
+    }
     public function application(){return $this->belongsTo(Application::class,'app_id');} public function event(){return $this->belongsTo(Event::class);} public function passes(){return $this->hasMany(EventPass::class,'ticket_id');}
 }
