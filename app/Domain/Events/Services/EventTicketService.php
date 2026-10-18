@@ -4,6 +4,8 @@ namespace App\Domain\Events\Services;
 
 use App\Models\Event;
 use App\Models\Ticket;
+use App\Domain\Platform\Services\ApplicationAdminService;
+use App\Services\Independence\ScopedEntityGrant;
 use App\Services\EventAudienceService;
 use App\Support\ApplicationContext;
 use Illuminate\Support\Facades\DB;
@@ -264,15 +266,26 @@ final class EventTicketService
             ->where('app_id', $this->context->id())
             ->with('production')
             ->findOrFail($id);
-        $admin = $user && method_exists($user, 'hasProfile') && $user->hasProfile('Administrador');
+        $appId = $this->context->id();
 
         abort_unless(
-            $event->production && (int) $event->production->app_id === $this->context->id(),
+            $event->production && (int) $event->production->app_id === $appId,
             404,
             'Evento não encontrado neste contexto.'
         );
+
+        $admin = $user && app(ApplicationAdminService::class)
+            ->hasPermission($user, $appId, 'tickets.manage');
+        $legacyProducer = $user
+            && $event->ownership_status === null
+            && $event->production->ownership_status === null
+            && (int) $event->production->user_id === (int) $user->id;
+        $verifiedClaim = $user
+            && $event->ownership_status === 'verified'
+            && app(ScopedEntityGrant::class)->canManage($appId, 'event', (int) $event->id, (int) $user->id);
+
         abort_unless(
-            $user && ($admin || (int) $event->production->user_id === (int) $user->id),
+            $user && ($admin || $legacyProducer || $verifiedClaim),
             403,
             'Você não pode gerenciar ingressos deste evento.'
         );
