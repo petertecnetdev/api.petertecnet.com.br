@@ -60,7 +60,7 @@ final class EventCommerceController extends Controller
             ->each(function (Ticket $ticket) use ($salesClosed, $userId) {
                 $this->appendUserTicketAvailability($ticket, $userId);
 
-                if ($salesClosed || $ticket->getAttribute('remaining_per_user') === 0) {
+                if ($salesClosed || $ticket->curatorial_information_only || $ticket->getAttribute('remaining_per_user') === 0) {
                     $ticket->setAttribute('available', false);
                 }
             });
@@ -432,6 +432,8 @@ final class EventCommerceController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
+                abort_if((bool) $ticket->curatorial_information_only, 403,
+                    'Este ingresso é informativo e não pode ser comprado.');
                 abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, "O lote {$ticket->name} não está mais disponível.");
 
                 $qty = (int) $requested['quantity'];
