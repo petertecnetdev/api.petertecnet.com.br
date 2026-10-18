@@ -14,24 +14,50 @@ final class ListingCommercePolicy
     public function canSell(Event $event): bool
     {
         $production = $event->production;
+        $appId = (int) $event->app_id;
+
         if (! $production instanceof Production
-            || (int) $event->app_id < 1
-            || (int) $production->app_id !== (int) $event->app_id
-            || (int) $event->owner_user_id < 1
-            || (int) $production->user_id < 1
-            || $event->isCommunity()) {
+            || $appId < 1
+            || (int) $production->app_id !== $appId
+            || $event->isCommunity()
+            || ! $this->verified($event, (int) $event->created_by_user_id > 0)
+            || ! $this->verified($production, (int) $production->user_id > 0)) {
             return false;
         }
 
+        // A ficha legada conserva as regras de autoria pré-Independence.
         if ($event->verification_status === 'legacy_owner_record'
-            && $production->verification_status === 'legacy_owner_record'
-            && ((int) $event->created_by_user_id !== (int) $production->user_id
-                || (int) $event->owner_user_id !== (int) $event->created_by_user_id)) {
+            && $production->verification_status === 'legacy_owner_record') {
+            return (int) $event->created_by_user_id > 0
+                && (int) $event->created_by_user_id === (int) $production->user_id;
+        }
+
+        // Aprovação humana de titularidade não altera created_by_user_id/user_id.
+        // Usar apenas as concessões auditadas para cruzar a titularidade das DUAS
+        // entidades. Isso não equivale à autorização comercial, verificada acima.
+        if ($event->verification_status !== 'manual_approved'
+            || $production->verification_status !== 'manual_approved') {
             return false;
         }
 
-        return $this->verified($event, (int) $event->created_by_user_id > 0)
-            && $this->verified($production, (int) $production->user_id > 0);
+        $eventOwner = $this->activeOwner($appId, 'event', (int) $event->id);
+        $productionOwner = $this->activeOwner($appId, 'production', (int) $production->id);
+
+        return $eventOwner > 0 && $eventOwner === $productionOwner;
+    }
+
+    private function activeOwner(int $appId, string $type, int $entityId): int
+    {
+        if ($entityId < 1) {
+            return 0;
+        }
+
+        return (int) (\\Illuminate\\Support\\Facades\\DB::table('independence_entity_grants')
+            ->where('app_id', $appId)
+            ->where('entity_type', $type)
+            ->where('entity_id', $entityId)
+            ->whereNull('revoked_at')
+            ->value('user_id') ?? 0);
     }
 
     /**
