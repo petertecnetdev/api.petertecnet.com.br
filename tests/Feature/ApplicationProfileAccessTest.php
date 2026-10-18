@@ -16,9 +16,8 @@ class ApplicationProfileAccessTest extends TestCase
 
     public function test_permissions_are_union_of_profiles_inside_the_requested_scope(): void
     {
-        $application = Application::query()->create([
+        $application = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
             'is_active' => true,
         ]);
 
@@ -79,9 +78,8 @@ class ApplicationProfileAccessTest extends TestCase
 
     public function test_revoked_and_other_application_profiles_do_not_leak_permissions(): void
     {
-        $cutinapp = Application::query()->create([
+        $cutinapp = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
             'is_active' => true,
         ]);
 
