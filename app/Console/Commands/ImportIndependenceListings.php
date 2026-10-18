@@ -150,7 +150,7 @@ final class ImportIndependenceListings extends Command
                         'title' => $candidate['title'],
                         'slug' => $this->uniqueSlug('events', $candidate['key'].'-bh'),
                         'description' => $candidate['description'].
-                            "\n\nFicha informativa da curadoria Cutinapp. O organizador ainda não reivindicou o evento. Ingressos e valores são apenas informativos; não há vendas, reservas ou emissão pela Cutinapp.",
+                            "\n\nFicha informativa da curadoria aplicação. O organizador ainda não reivindicou o evento. Ingressos e valores são apenas informativos; não há vendas, reservas ou emissão pela aplicação.",
                         'category' => 'shows', 'event_format' => 'in_person',
                         'venue' => $candidate['venue'], 'address' => $candidate['address'],
                         'city' => $candidate['city'], 'uf' => $candidate['state'],
@@ -173,7 +173,7 @@ final class ImportIndependenceListings extends Command
                             'event_id' => $eventId, 'name' => $offer['label'],
                             'type' => 'paid', 'ticket_type' => 'standard',
                             'price' => $offer['price_brl'], 'quantity' => 0,
-                            'description' => 'Preço anunciado para referência, sujeito a alteração. Venda indisponível na Cutinapp.',
+                            'description' => 'Preço anunciado para referência, sujeito a alteração. Venda indisponível na aplicação.',
                             'curatorial_information_only' => true,
                             'curatorial_source_url' => $candidate['source_url'],
                             'curatorial_price_observed_at' => $offer['price_as_of'],
@@ -220,7 +220,7 @@ final class ImportIndependenceListings extends Command
 
     private function validateManifest(mixed $data): void
     {
-        if (! is_array($data) || ($data['application_slug'] ?? null) !== 'cutinapp'
+        if (! is_array($data) || ! is_string($data['application_slug'] ?? null) || trim($data['application_slug']) === ''
             || ($data['publish_policy'] ?? null) !== 'information_only_unclaimed'
             || ($data['status'] ?? null) !== 'reviewed_sources_ready_for_import_gate'
             || ! is_array($data['events'] ?? null) || ! is_array($data['organizers'] ?? null)
