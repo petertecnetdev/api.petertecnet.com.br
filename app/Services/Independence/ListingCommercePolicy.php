@@ -52,7 +52,7 @@ final class ListingCommercePolicy
             return 0;
         }
 
-        return (int) (\\Illuminate\\Support\\Facades\\DB::table('independence_entity_grants')
+        return (int) (\Illuminate\Support\Facades\DB::table('independence_entity_grants')
             ->where('app_id', $appId)
             ->where('entity_type', $type)
             ->where('entity_id', $entityId)
