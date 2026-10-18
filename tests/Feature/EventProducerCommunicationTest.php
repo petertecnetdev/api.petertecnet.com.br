@@ -22,9 +22,8 @@ class EventProducerCommunicationTest extends TestCase
     {
         Mail::fake();
 
-        $application = Application::create([
+        $application = $this->applicationFixture('cutinapp', [
             'name' => 'Cutinapp',
-            'slug' => 'cutinapp',
             'url' => 'https://cutinapp.example.test',
             'is_active' => true,
         ]);
