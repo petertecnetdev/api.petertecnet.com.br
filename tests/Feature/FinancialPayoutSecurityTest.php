@@ -18,6 +18,15 @@ class FinancialPayoutSecurityTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Estes cenários exercitam o fluxo automático Asaas, não o modo manual Pix.
+        // A escolha fica isolada ao teste e não altera o provider padrão do sistema.
+        config()->set('services.finance.payout_provider', 'asaas');
+    }
+
     public function test_in_flight_payout_reserves_balance_and_done_webhook_is_authenticated_and_idempotent(): void
     {
         config()->set('services.finance.payout_hold_hours', 0);
