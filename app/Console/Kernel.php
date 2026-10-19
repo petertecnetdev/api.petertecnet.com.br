@@ -33,6 +33,9 @@ class Kernel extends ConsoleKernel
         // O comando faz no-op até habilitação explícita e fontes autorizadas.
         $schedule->command('events:discover')->hourly()->withoutOverlapping(30);
 
+        // Orquestrador fail-closed; só executa controles habilitados por aplicação.
+        $schedule->command('automation:dispatch')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
+
         $schedule->command('idempotency:prune --days=7')
             ->daily()
             ->withoutOverlapping(10);
