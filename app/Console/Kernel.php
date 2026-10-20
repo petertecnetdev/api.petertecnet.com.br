@@ -36,6 +36,8 @@ class Kernel extends ConsoleKernel
         // Orquestrador fail-closed; só executa controles habilitados por aplicação.
         $schedule->command('automation:dispatch')->everyFiveMinutes()->withoutOverlapping(10)->onOneServer();
 
+        $schedule->command('automation:recover-stale --minutes=120')->hourly()->withoutOverlapping(10)->onOneServer();
+
         $schedule->command('idempotency:prune --days=7')
             ->daily()
             ->withoutOverlapping(10);

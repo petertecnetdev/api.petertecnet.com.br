@@ -1,0 +1,56 @@
+name: Workers Laravel — testes focados
+
+on:
+  push:
+    branches: [Independence, main]
+    paths:
+      - 'app/Domain/Automation/**'
+      - 'app/Jobs/RunAutomationWorker.php'
+      - 'app/Console/Commands/*Automation*.php'
+      - 'config/automation_workers.php'
+      - 'routes/application_admin.php'
+      - 'tests/Feature/Automation*Test.php'
+      - 'database/migrations/2026_10_19_220000_create_automation_worker_tables.php'
+      - '.github/workflows/automation-workers.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+      - name: Instalar dependências
+        run: composer install --prefer-dist --no-interaction --no-progress
+      - name: Validar sintaxe das automações
+        run: |
+          find app/Domain/Automation app/Console/Commands config -name '*.php' -print0 | xargs -0 -n1 php -l
+          php -l app/Jobs/RunAutomationWorker.php
+      - name: Preparar ambiente de testes
+        run: |
+          cat > .env <<'EOF'
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_URL=http://localhost
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/automation.sqlite
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          touch /tmp/automation.sqlite
+          php artisan migrate --force
+      - name: Testar isolamento, agendamento, permissões e recuperação
+        run: php artisan test tests/Feature/AutomationWorkersTest.php tests/Feature/AutomationControlApiTest.php

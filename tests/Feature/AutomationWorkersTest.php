@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Domain\Automation\Workers\DiscoveryCandidateQualityWorker;
+use App\Domain\Automation\Workers\CatalogQualityWorker;
 use App\Jobs\RunAutomationWorker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +88,31 @@ final class AutomationWorkersTest extends TestCase
             'id' => $id,
             'status' => 'skipped',
         ]);
+    }
+
+    public function test_catalog_quality_handles_shared_schema_without_writing_any_records(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $metrics = app(CatalogQualityWorker::class)->run($app->id);
+        $this->assertSame(0, $metrics['upcoming_events']);
+        $this->assertSame(0, $metrics['productions_without_logo']);
+        $this->assertSame(0, $metrics['artists_without_photo']);
+    }
+
+    public function test_stale_runs_can_be_recovered_without_touching_fresh_runs(): void
+    {
+        $app = $this->applicationFixture('cutinapp');
+        $old = DB::table('automation_worker_runs')->insertGetId([
+            'app_id' => $app->id, 'worker_key' => 'catalog_quality', 'status' => 'running',
+            'created_at' => now()->subHours(4), 'updated_at' => now()->subHours(4),
+        ]);
+        $new = DB::table('automation_worker_runs')->insertGetId([
+            'app_id' => $app->id, 'worker_key' => 'catalog_quality', 'status' => 'queued',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+        $this->artisan('automation:recover-stale --minutes=120')->assertExitCode(0);
+        $this->assertDatabaseHas('automation_worker_runs', ['id' => $old, 'status' => 'failed']);
+        $this->assertDatabaseHas('automation_worker_runs', ['id' => $new, 'status' => 'queued']);
     }
 
     private function candidate(int $appId, int $sourceId, string $key, string $status): int
