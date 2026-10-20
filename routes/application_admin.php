@@ -50,7 +50,7 @@ Route::prefix('v1/apps/{application}')
             Route::put('/automations/workers/{key}', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'configure'])
                 ->where('key', '[a-z0-9_]+')
                 ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:20,1']);
-            Route::post('/automations/workers/{key}/dispatch', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'dispatch'])
+            Route::post('/automations/workers/{key}/dispatch', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'dispatchWorker'])
                 ->where('key', '[a-z0-9_]+')
                 ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:6,1']);
 

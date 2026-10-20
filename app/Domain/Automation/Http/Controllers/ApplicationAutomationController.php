@@ -40,7 +40,7 @@ final class ApplicationAutomationController extends Controller
         ]);
     }
 
-    public function dispatch(Request $request, string $key): JsonResponse
+    public function dispatchWorker(Request $request, string $key): JsonResponse
     {
         return response()->json([
             'success' => true,
