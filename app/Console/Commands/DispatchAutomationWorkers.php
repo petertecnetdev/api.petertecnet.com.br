@@ -76,6 +76,15 @@ final class DispatchAutomationWorkers extends Command
                     return null;
                 }
 
+                // Never enqueue concurrent runs of a worker within one application.
+                if (DB::table('automation_worker_runs')
+                    ->where('app_id', $current->app_id)
+                    ->where('worker_key', $current->worker_key)
+                    ->whereIn('status', ['queued', 'running'])
+                    ->exists()) {
+                    return null;
+                }
+
                 $runId = DB::table('automation_worker_runs')->insertGetId([
                     'app_id' => $current->app_id,
                     'worker_key' => $current->worker_key,
@@ -94,8 +103,19 @@ final class DispatchAutomationWorkers extends Command
 
             if ($runId !== null) {
                 // Dispatched only after committing the run record.
-                RunAutomationWorker::dispatch($runId);
-                $dispatched++;
+                try {
+                    RunAutomationWorker::dispatch($runId);
+                    $dispatched++;
+                } catch (\Throwable $exception) {
+                    DB::table('automation_worker_runs')->where('id', $runId)
+                        ->where('status', 'queued')->update([
+                            'status' => 'failed',
+                            'last_error' => get_class($exception),
+                            'finished_at' => now(),
+                            'updated_at' => now(),
+                        ]);
+                    throw $exception;
+                }
             }
         }
 

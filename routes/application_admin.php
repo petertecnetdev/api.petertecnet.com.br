@@ -44,6 +44,16 @@ Route::prefix('v1/apps/{application}')
                     'throttle:15,1',
                 ]);
 
+            // Automação por aplicação: permissões do backend, nunca do frontend.
+            Route::get('/automations', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':operations.view');
+            Route::put('/automations/workers/{key}', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'configure'])
+                ->where('key', '[a-z0-9_]+')
+                ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:20,1']);
+            Route::post('/automations/workers/{key}/dispatch', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'dispatch'])
+                ->where('key', '[a-z0-9_]+')
+                ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:6,1']);
+
             Route::get('/overview', [ApplicationAdminController::class, 'overview'])
                 ->middleware(EnsureApplicationAdmin::class.':dashboard.view');
             Route::get('/permissions', [ApplicationAdminController::class, 'permissionCatalog']);

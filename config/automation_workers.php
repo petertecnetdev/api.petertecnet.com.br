@@ -10,6 +10,14 @@ return [
             'handler' => \App\Domain\Automation\Workers\DiscoveryCandidateQualityWorker::class,
             'interval_minutes' => 120,
         ],
+        'catalog_quality' => [
+            'handler' => \App\Domain\Automation\Workers\CatalogQualityWorker::class,
+            'interval_minutes' => 120,
+        ],
+        'candidate_freshness' => [
+            'handler' => \App\Domain\Automation\Workers\CandidateFreshnessWorker::class,
+            'interval_minutes' => 120,
+        ],
         'discovery_health' => [
             'handler' => \App\Domain\Automation\Workers\DiscoverySourceHealthWorker::class,
             'interval_minutes' => 30,

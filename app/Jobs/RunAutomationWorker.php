@@ -9,6 +9,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use RuntimeException;
 use Throwable;
 
@@ -30,6 +31,21 @@ final class RunAutomationWorker implements ShouldQueue
     }
 
     public function handle(): void
+    {
+        // Distributed lock avoids duplicate delivery executing the same job twice.
+        $lock = Cache::lock('automation:run:'.$this->runId, 90);
+        if (! $lock->get()) {
+            $this->release(15);
+            return;
+        }
+        try {
+            $this->executeLocked();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function executeLocked(): void
     {
         $run = DB::table('automation_worker_runs')->where('id', $this->runId)->first();
         if (! $run || ! in_array($run->status, ['queued', 'running'], true)) {
