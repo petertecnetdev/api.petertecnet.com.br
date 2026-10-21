@@ -28,16 +28,9 @@ return new class extends Migration
 
         $this->assertExpectedForeignKey();
 
-        // Alteração única preserva o vínculo das produções comerciais e seus índices,
-        // sem deixar o banco em estado intermediário sem FK.
-        DB::statement(
-            'ALTER TABLE `events` '.
-            'DROP FOREIGN KEY `events_production_id_foreign`, '.
-            'MODIFY COLUMN `production_id` BIGINT UNSIGNED NULL, '.
-            'ADD CONSTRAINT `events_production_id_foreign` '.
-            'FOREIGN KEY (`production_id`) REFERENCES `establishments` (`id`) '.
-            'ON DELETE RESTRICT ON UPDATE RESTRICT'
-        );
+        // MariaDB devolve errno 121 ao remover e recriar uma FK com o mesmo nome
+        // no MESMO ALTER. Separe os comandos, preservando o nome e o vínculo.
+        $this->alterProductionNullability('NULL');
     }
 
     public function down(): void
@@ -55,14 +48,31 @@ return new class extends Migration
         }
 
         $this->assertExpectedForeignKey();
+        $this->alterProductionNullability('NOT NULL');
+    }
+
+    private function alterProductionNullability(string $nullability): void
+    {
         DB::statement(
             'ALTER TABLE `events` '.
             'DROP FOREIGN KEY `events_production_id_foreign`, '.
-            'MODIFY COLUMN `production_id` BIGINT UNSIGNED NOT NULL, '.
-            'ADD CONSTRAINT `events_production_id_foreign` '.
-            'FOREIGN KEY (`production_id`) REFERENCES `establishments` (`id`) '.
-            'ON DELETE RESTRICT ON UPDATE RESTRICT'
+            'MODIFY COLUMN `production_id` BIGINT UNSIGNED '.$nullability
         );
+
+        try {
+            DB::statement(
+                'ALTER TABLE `events` ADD CONSTRAINT `events_production_id_foreign` '.
+                'FOREIGN KEY (`production_id`) REFERENCES `establishments` (`id`) '.
+                'ON DELETE RESTRICT ON UPDATE RESTRICT'
+            );
+        } catch (\Throwable $exception) {
+            // Em caso de erro, o nome da FK permanece disponível para nova
+            // tentativa segura sem alterar novamente os dados já existentes.
+            throw new RuntimeException(
+                'A coluna foi ajustada, mas a FK precisa ser restaurada antes de prosseguir.',
+                previous: $exception
+            );
+        }
     }
 
     private function productionIsNullable(): bool
