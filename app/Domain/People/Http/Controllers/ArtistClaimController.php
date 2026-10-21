@@ -23,7 +23,7 @@ final class ArtistClaimController extends Controller
         $user = $request->user();
         $query = Artist::query()->where('app_id', $this->context->id());
 
-        if (! $user->hasProfile('Administrador')) {
+        if (! $user->hasProfile('Administrador') && ! $user->hasPermission('artist_curate')) {
             $managed = DB::table('artist_managers')
                 ->where('app_id', $this->context->id())
                 ->where('user_id', $user->id)
@@ -48,10 +48,14 @@ final class ArtistClaimController extends Controller
         $user = $request->user();
         $data = $this->artistData($request);
         $claimMyself = (bool) ($data['claim_myself'] ?? false);
+        // A curadoria cadastra a identidade, mas não se torna proprietária dela.
+        if ($user->hasPermission('artist_curate')) {
+            $claimMyself = false;
+        }
         $type = $data['artist_type'] ?? 'solo';
         unset($data['claim_myself']);
 
-        if ($type === 'solo') {
+        if ($type === 'solo' && ! $user->hasPermission('artist_curate') && ! $user->hasProfile('Administrador')) {
             throw ValidationException::withMessages([
                 'artist' => [
                     'Perfis de artista solo são criados somente quando um produtor adiciona o usuário a um evento por @username, e-mail, telefone ou CPF.',
@@ -63,7 +67,7 @@ final class ArtistClaimController extends Controller
         $data['created_by_user_id'] = $user->id;
         $data['user_id'] = $claimMyself ? $user->id : null;
         $data['claimed_at'] = $claimMyself ? now() : null;
-        $data['verification_status'] = $claimMyself ? 'account_linked' : 'managed_group';
+        $data['verification_status'] = $claimMyself ? 'account_linked' : ($type === 'solo' ? 'unverified' : 'managed_group');
         $data['is_active'] = true;
         $data['slug'] = $this->uniqueArtistSlug($data['stage_name']);
 
@@ -306,7 +310,7 @@ final class ArtistClaimController extends Controller
     {
         $event = Event::query()->where('app_id', $this->context->id())->with('production')->findOrFail($eventId);
         abort_unless(
-            $event->production && ($user->hasProfile('Administrador') || (int) $event->production->user_id === (int) $user->id),
+            $event->production && ($user->hasProfile('Administrador') || $user->hasPermission('event_edit') || (int) $event->production->user_id === (int) $user->id),
             403,
             'Você não pode analisar solicitações deste evento.',
         );
@@ -324,7 +328,7 @@ final class ArtistClaimController extends Controller
         ])->exists();
 
         abort_unless(
-            $user->hasProfile('Administrador')
+            ($user->hasProfile('Administrador') || $user->hasPermission('artist_curate'))
                 || (int) $artist->user_id === (int) $user->id
                 || (
                     (int) $artist->created_by_user_id === (int) $user->id

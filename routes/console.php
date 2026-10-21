@@ -205,3 +205,8 @@ Schedule::command('artists:remind-pending-invitations --limit=150')
     ->hourly()
     ->withoutOverlapping(20)
     ->onOneServer();
+
+Schedule::command('curation:editorial --apply')
+    ->everyThirtyMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();

@@ -15,7 +15,6 @@ final class NormalizeEventPoster
 {
     private const WIDTH = 1024;
     private const HEIGHT = 1536;
-    private const RATIO_TOLERANCE = 0.005;
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -42,15 +41,32 @@ final class NormalizeEventPoster
             ]);
         }
 
-        $source = Image::make($path)->orientate();
-        $width = (int) $source->width();
-        $height = (int) $source->height();
-        $expectedRatio = self::WIDTH / self::HEIGHT;
-        $actualRatio = $height > 0 ? $width / $height : 0;
-
-        if ($width < 1 || $height < 1 || abs($actualRatio - $expectedRatio) > self::RATIO_TOLERANCE) {
+        // A API é a proteção final para clientes antigos: nunca exigir que a
+        // pessoa redimensione a própria foto. O editor web permite ajustar
+        // manualmente, e outros clientes recebem recorte central automático.
+        if ($file->getSize() > 5 * 1024 * 1024) {
             throw ValidationException::withMessages([
-                'image' => ['A imagem principal do evento deve estar no formato vertical 2:3. Use 1024 × 1536 px.'],
+                'image' => ['A imagem principal deve ter no máximo 5 MB.'],
+            ]);
+        }
+
+        $dimensions = @getimagesize($path);
+        $width = (int) ($dimensions[0] ?? 0);
+        $height = (int) ($dimensions[1] ?? 0);
+        $mime = (string) ($dimensions['mime'] ?? '');
+        if ($width < 1 || $height < 1 || $width > 12000 || $height > 12000
+            || ($width * $height) > 60000000
+            || ! in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            throw ValidationException::withMessages([
+                'image' => ['Não foi possível processar a imagem. Envie JPG, PNG ou WebP válido, até 60 megapixels.'],
+            ]);
+        }
+
+        try {
+            $source = Image::make($path)->orientate();
+        } catch (\Throwable $exception) {
+            throw ValidationException::withMessages([
+                'image' => ['Não foi possível ler esta imagem. Envie JPG, PNG ou WebP válido.'],
             ]);
         }
 

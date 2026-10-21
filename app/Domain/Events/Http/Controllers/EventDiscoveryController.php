@@ -3,6 +3,8 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Domain\Commerce\Services\TicketInventoryService;
+use App\Domain\Locations\Services\AvailableCitiesService;
+use App\Models\BrazilianMunicipality;
 use App\Http\Controllers\Controller;
 use App\Models\Event;
 use App\Models\Ticket;
@@ -24,6 +26,7 @@ final class EventDiscoveryController extends Controller
         $data = $request->validate([
             'q' => 'nullable|string|max:120',
             'city' => 'nullable|string|max:120',
+            'city_id' => 'nullable|integer|exists:brazilian_municipalities,ibge_code',
             'uf' => 'nullable|string|size:2',
             'category' => 'nullable|string|max:120',
             'artist_id' => 'nullable|integer|min:1',
@@ -86,7 +89,16 @@ final class EventDiscoveryController extends Controller
                 },
             ]);
 
-        if (!empty($data['city'])) {
+        if (! empty($data['city_id'])) {
+            $municipality = BrazilianMunicipality::query()->findOrFail($data['city_id']);
+            $query->where(fn ($location) => $location
+                ->where('events.city_id', $municipality->ibge_code)
+                ->orWhere(fn ($legacy) => $legacy->whereNull('events.city_id')
+                    ->where('events.uf', $municipality->uf)
+                    ->where(fn ($names) => $names
+                        ->whereRaw('LOWER(events.city) = LOWER(?)', [$municipality->name])
+                        ->orWhereRaw('LOWER(events.city) = LOWER(?)', [\Illuminate\Support\Str::ascii($municipality->name)]))));
+        } elseif (!empty($data['city'])) {
             $query->whereRaw('LOWER(events.city) = LOWER(?)', [trim($data['city'])]);
         }
         if (!empty($data['uf'])) {
@@ -226,6 +238,7 @@ final class EventDiscoveryController extends Controller
                 'from' => $from?->toIso8601String(),
                 'to' => $to?->toIso8601String(),
                 'city' => $data['city'] ?? null,
+                'city_id' => $data['city_id'] ?? null,
                 'uf' => isset($data['uf']) ? strtoupper($data['uf']) : null,
                 'period' => $data['period'] ?? null,
             ],
@@ -316,7 +329,7 @@ final class EventDiscoveryController extends Controller
     {
         $appId = $this->context->id();
         $now = Carbon::now(config('app.timezone', 'America/Sao_Paulo'));
-        $cacheKey = 'event-facets:v2:'.$appId;
+        $cacheKey = 'event-facets:v3:'.$appId;
         if (($cached = Cache::get($cacheKey)) !== null) {
             return response()->json($cached)->header('X-Peter-Cache', 'HIT');
         }
@@ -327,19 +340,7 @@ final class EventDiscoveryController extends Controller
             ->whereNull('end_date')
             ->orWhere('end_date', '>', $now));
 
-        $cities = Event::query()
-            ->where('app_id', $appId)
-            ->where('is_published', true)
-            ->where('is_cancelled', false)
-            ->where($public)
-            ->where($active)
-            ->whereNotNull('city')
-            ->selectRaw('city, uf, COUNT(*) total')
-            ->groupBy('city', 'uf')
-            ->orderByDesc('total')
-            ->orderBy('city')
-            ->limit(100)
-            ->get();
+        $cities = array_slice(app(AvailableCitiesService::class)->available($appId, 'events', 'upcoming'), 0, 100);
 
         $categories = Event::query()
             ->where('app_id', $appId)
@@ -355,7 +356,7 @@ final class EventDiscoveryController extends Controller
             ->limit(50)
             ->get();
 
-        $payload = ['cities' => $cities->toArray(), 'categories' => $categories->toArray()];
+        $payload = ['cities' => $cities, 'categories' => $categories->toArray()];
         Cache::put($cacheKey, $payload, now()->addMinutes(2));
 
         return response()->json($payload)->header('X-Peter-Cache', 'MISS');
