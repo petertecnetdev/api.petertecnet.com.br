@@ -7,12 +7,21 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
 
 class CutinappCommunityMeetupFlowTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_schema_supports_community_meetups_without_production(): void
+    {
+        $column = collect(Schema::getColumns('events'))->firstWhere('name', 'production_id');
+
+        $this->assertNotNull($column);
+        $this->assertTrue((bool) ($column['nullable'] ?? false), 'Um encontro não pode exigir produção.');
+    }
 
     public function test_regular_user_can_create_and_publish_community_meetup_without_production_or_ticket(): void
     {
