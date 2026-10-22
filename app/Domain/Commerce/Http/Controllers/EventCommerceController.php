@@ -342,10 +342,13 @@ final class EventCommerceController extends Controller
         $initialReadiness = $this->accounts->readiness((int) $eventForReadiness->production_id);
 
         if ($data['payment_method'] !== 'free') {
+            // Informar primeiro quando o gateway está desabilitado; a falta
+            // de habilitação não deve ser confundida com pendência cadastral.
+            // Os dois bloqueios continuam obrigatórios para qualquer venda.
+            abort_if(! $initialReadiness['available'], 422, $initialReadiness['message']);
+
             $salesReadiness = $this->salesReadiness->status((int) $eventForReadiness->production_id);
             abort_unless($salesReadiness['ready'], 428, $salesReadiness['message']);
-
-            abort_if(! $initialReadiness['available'], 422, $initialReadiness['message']);
             abort_if(
                 ! in_array($data['payment_method'], $initialReadiness['methods'], true),
                 422,
