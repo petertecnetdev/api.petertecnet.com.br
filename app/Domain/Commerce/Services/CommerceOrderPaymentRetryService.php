@@ -232,7 +232,14 @@ final class CommerceOrderPaymentRetryService
 
         $sellerToken = $usesMerchant ? $this->accounts->freshAccessToken($account)[1] : $platformToken;
         $settlementMode = $usesMerchant ? 'automatic_split' : 'platform_collection';
-        $idempotencyKey = 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
+        // Quando a chamada inicial ao gateway falha antes de persistirmos um
+        // pagamento, não sabemos se o provedor já aceitou a operação. Reusar
+        // a chave original evita emitir outro PIX para o mesmo pedido.
+        // Uma nova chave só é permitida após uma tentativa terminal conhecida.
+        $originalKey = trim((string) data_get($order->metadata, 'provider_payment_idempotency_key', ''));
+        $idempotencyKey = $retryAttempt === 1
+            ? ($originalKey !== '' ? $originalKey : 'commerce-order-' . $order->public_id)
+            : 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
 
         $payload = [
             'transaction_amount' => (float) $order->total,
