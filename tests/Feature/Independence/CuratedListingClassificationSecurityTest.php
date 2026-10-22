@@ -47,5 +47,9 @@ final class CuratedListingClassificationSecurityTest extends TestCase
 
         $this->artisan('independence:classify-curated-listing', [...$args, '--apply' => true])
             ->assertExitCode(1);
+        // A segunda tentativa não pode sobrescrever a origem nem produzir
+        // um segundo registro de auditoria para a mesma classificação.
+        $this->assertDatabaseCount('independence_listing_classification_audits', 1);
+        $this->assertSame('https://example.org/agenda', $listing->fresh()->source_url);
     }
 }

@@ -58,9 +58,15 @@ final class ClassifyCuratedListing extends Command
         }
 
         try {
-            $inspect = function () use ($administrators, $app, $id, $type): array {
-                $query = $type === 'event' ? Event::query() : Production::query();
-                $entity = $query->where('app_id', $app->id)->findOrFail($id);
+            $inspect = function (bool $forUpdate = false) use ($administrators, $app, $id, $type): array {
+                $query = ($type === 'event' ? Event::query() : Production::query())
+                    ->where('app_id', $app->id);
+                // O preflight não bloqueia; a mutação trava a mesma linha até
+                // persistir classificação e auditoria, evitando revisão dupla.
+                if ($forUpdate) {
+                    $query->lockForUpdate();
+                }
+                $entity = $query->findOrFail($id);
 
                 $institutionalAuthorId = $type === 'event'
                     ? (int) $entity->created_by_user_id : (int) $entity->user_id;
@@ -95,7 +101,7 @@ final class ClassifyCuratedListing extends Command
             }
 
             DB::transaction(function () use ($app, $type, $id, $reviewerId, $sourceUrl, $reason, $inspect): void {
-                [$entity, $authorId] = $inspect();
+                [$entity, $authorId] = $inspect(true);
                 $entity->forceFill([
                     'ownership_status' => 'unclaimed',
                     'listing_source' => 'curated_public',
