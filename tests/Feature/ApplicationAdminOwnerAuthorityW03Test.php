@@ -82,6 +82,49 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_owners', 0);
     }
 
+    /**
+     * Recuperação administrativa persistida na base deve invalidar a autoridade
+     * antiga sem depender de logout, cache de usuário ou nova instância.
+     * Não habilita endpoint público de transferência de titularidade.
+     */
+    public function test_reassociacao_persistida_revoga_owner_anterior_sem_nova_sessao(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $anterior = $this->usuario('owner-anterior-w03@example.test');
+        $atual = $this->usuario('owner-atual-w03@example.test');
+        $autoridade = app(ApplicationOwnerAuthorityService::class);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $anterior);
+
+        $this->assertTrue($autoridade->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($administracao->hasAccess($anterior, $cutinapp->id));
+        $this->assertFalse($autoridade->isOwner($atual, $cutinapp->id));
+
+        // Simula somente recuperação autorizada no banco, não uma rota de troca.
+        $vinculo = ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail();
+        $vinculo->forceFill([
+            'user_id' => $atual->id,
+            'bound_by_user_id' => $atual->id,
+            'bound_at' => now(),
+        ])->save();
+
+        $this->assertFalse($autoridade->isOwner($anterior, $cutinapp->id));
+        $this->assertFalse($administracao->hasAccess($anterior, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission(
+            $anterior, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+        $this->assertTrue($autoridade->isOwner($atual, $cutinapp->id));
+        $this->assertTrue($administracao->hasAccess($atual, $cutinapp->id));
+        $this->assertTrue($administracao->hasPermission(
+            $atual, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+        $this->assertSame($atual->id, $autoridade->ownerId($cutinapp->id));
+        $this->assertDatabaseCount('application_owners', 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
