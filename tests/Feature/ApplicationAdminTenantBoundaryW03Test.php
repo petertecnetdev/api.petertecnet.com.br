@@ -698,6 +698,31 @@ final class ApplicationAdminTenantBoundaryW03Test extends TestCase
         }
     }
 
+    public function test_owner_local_nao_acessa_administracao_global_com_app_id_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $ownerLocal = $this->criarUsuario('cutinapp@gmail.com');
+
+        ApplicationOwner::query()->create([
+            'application_id' => $cutinapp->id,
+            'user_id' => $ownerLocal->id,
+            'bootstrap_email' => ApplicationAdminService::ROOT_ADMIN_EMAIL,
+            'bound_at' => now(),
+            'bound_by_user_id' => $ownerLocal->id,
+        ]);
+
+        $administracao = app(ApplicationAdminService::class);
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+        $this->assertFalse($administracao->isRoot($ownerLocal));
+
+        // Um owner da aplicação não vira administrador global por query/header.
+        $cabecalhos = $this->cabecalhos($ownerLocal, 'cutinapp');
+        $this->getJson('/api/admin/applications?app_id='.$cutinapp->id, $cabecalhos)
+            ->assertForbidden();
+        $this->getJson('/api/admin/applications?application_id='.$cutinapp->id, $cabecalhos)
+            ->assertForbidden();
+    }
+
     public function test_identidade_root_nao_pode_ser_substituida_por_perfil_delegado(): void
     {
         $cutinapp = $this->applicationFixture('cutinapp');
