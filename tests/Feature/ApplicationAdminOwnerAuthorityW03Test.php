@@ -290,6 +290,55 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('data.permissions', ['dashboard.view']);
     }
 
+    /**
+     * Revogar o vínculo delegado deve impedir a leitura de workers no mesmo JWT
+     * imediatamente, sem retirar o vínculo legítimo em outro aplicativo.
+     * A revogação não pode depender de expiração de token nem de cache de sessão.
+     */
+    public function test_revogacao_de_vinculo_operacional_nao_afeta_outro_app_com_mesmo_jwt(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-revogado-cross-app-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Leitura operacional Cutinapp W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Leitura operacional Rasoio W03',
+            'permissions' => ['operations.view'],
+        ]);
+
+        $vinculoCutinapp = $administracao->assign(
+            $cutinapp->id, $root, $leitor->email, $perfilCutinapp->id,
+        );
+        $administracao->assign($rasoio->id, $root, $leitor->email, $perfilRasoio->id);
+
+        $token = JWTAuth::fromUser($leitor);
+
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertTrue($administracao->hasPermission($leitor, $rasoio->id, 'operations.view'));
+
+        $administracao->revoke($cutinapp->id, $vinculoCutinapp->id, $root);
+
+        $this->assertFalse($administracao->hasAccess($leitor, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertTrue($administracao->hasAccess($leitor, $rasoio->id));
+        $this->assertTrue($administracao->hasPermission($leitor, $rasoio->id, 'operations.view'));
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertFalse($administracao->isRoot($leitor));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
