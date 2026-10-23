@@ -139,12 +139,21 @@ jobs:
           status=${PIPESTATUS[0]}
           set -e
           printf '%s\n' "$status" > /tmp/w03-ci/phpunit-exit-code.txt
+          # Executar o gate mesmo quando o PHPUnit falhar: guardar diagnóstico
+          # independente de integridade JUnit sem ocultar o exit code oficial.
+          set +e
+          python3 tests/ci/w03_junit_gate.py /tmp/w03-ci/phpunit-w03.xml 2>&1 | tee /tmp/w03-ci/junit-gate.log
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$gate_status" > /tmp/w03-ci/junit-gate-exit-code.txt
           if (( status != 0 )); then
-            echo "::error::PHPUnit W03 falhou: exit $status"
+            echo "::error::PHPUnit W03 falhou: exit $status (gate JUnit: $gate_status)"
             exit "$status"
           fi
-          test -s /tmp/w03-ci/phpunit-w03.xml
-          python3 tests/ci/w03_junit_gate.py /tmp/w03-ci/phpunit-w03.xml
+          if (( gate_status != 0 )); then
+            echo "::error::Integridade JUnit W03 falhou: exit $gate_status"
+            exit "$gate_status"
+          fi
 
       - name: Exigir gate de rotas após executar PHPUnit
         if: always() && steps.rotas.outcome == 'failure'
