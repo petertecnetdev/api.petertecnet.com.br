@@ -35,6 +35,17 @@ final class ListingCommerceCompatibilityTest extends TestCase
         self::assertFalse($policy->allowsLegacyOrVerified($this->pair('pending_claim', 'verified')));
     }
 
+    public function test_legacy_event_with_curatorial_metadata_cannot_sell(): void
+    {
+        $event = $this->pair(null, null);
+        $event->forceFill(['extra_info' => [
+            'curation' => ['sale_mode' => 'information_only', 'ticket_checkout_enabled' => false],
+        ]]);
+        $policy = new ListingCommercePolicy();
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+        self::assertFalse($policy->canSell($event));
+    }
+
     public function test_cross_application_record_never_allows_checkout(): void
     {
         self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($this->pair(null, null, 2)));

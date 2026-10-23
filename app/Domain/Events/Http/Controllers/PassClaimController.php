@@ -31,7 +31,8 @@ final class PassClaimController extends Controller
 
             abort_unless($event->production && (int) $event->production->app_id === $this->context->id() && ! $event->is_cancelled && $event->is_published && ! $event->is_private, 422, 'Este evento não está disponível para retirada pública de cortesias.');
             $this->listingCommerce->assertLegacyOrVerified($event);
-            abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
+            abort_if($ticket->informational_only, 403, 'Ingresso informativo da curadoria: retirada não autorizada.');
+            abort_if($ticket->price === null || (float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, 'O prazo para retirada desta cortesia terminou.');
 
             $existing = EventPass::query()->where('ticket_id', $ticket->id)->where('user_id', $user->id)->first();

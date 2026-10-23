@@ -54,7 +54,7 @@ final class EventCommerceController extends Controller
         $tickets = Ticket::query()
             ->where('event_id', $event->id)
             ->where('app_id', $this->context->id())
-            ->where('price', '>=', 0)
+            ->orderByRaw('price IS NULL')
             ->orderBy('price')
             ->get()
             ->each(function (Ticket $ticket) use ($salesClosed, $userId) {
@@ -435,8 +435,10 @@ final class EventCommerceController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
 
-                abort_if((bool) $ticket->curatorial_information_only, 403,
+                abort_if($ticket->informational_only, 403,
                     'Este ingresso é informativo e não pode ser comprado.');
+                abort_if($ticket->price === null, 403,
+                    'O valor deste ingresso ainda não foi confirmado.');
                 abort_if($ticket->limit_date && now()->greaterThan($ticket->limit_date), 422, "O lote {$ticket->name} não está mais disponível.");
 
                 $qty = (int) $requested['quantity'];

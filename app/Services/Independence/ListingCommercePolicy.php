@@ -13,6 +13,11 @@ final class ListingCommercePolicy
 {
     public function canSell(Event $event): bool
     {
+        if (data_get($event->extra_info, 'curation.ticket_checkout_enabled') === false
+            || data_get($event->extra_info, 'curation.sale_mode') === 'information_only') {
+            return false;
+        }
+
         $production = $event->production;
         $appId = (int) $event->app_id;
 
@@ -67,6 +72,12 @@ final class ListingCommercePolicy
      */
     public function allowsLegacyOrVerified(Event $event): bool
     {
+        // A curadoria e apenas uma ficha informativa, mesmo em cadastros legados.
+        if (data_get($event->extra_info, 'curation.ticket_checkout_enabled') === false
+            || data_get($event->extra_info, 'curation.sale_mode') === 'information_only') {
+            return false;
+        }
+
         $production = $event->production;
         if (! $production instanceof Production || (int) $production->app_id !== (int) $event->app_id) {
             return false;
