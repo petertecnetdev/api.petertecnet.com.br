@@ -1,0 +1,165 @@
+name: Administrator API — PHPUnit W03
+
+on:
+  push:
+    branches: [Independence]
+    paths:
+      - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/Feature/ApplicationAdmin*Test.php'
+      - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
+      - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
+      - 'app/Http/Middleware/EnsureApplicationAdmin.php'
+      - 'app/Providers/RouteServiceProvider.php'
+      - 'bootstrap/app.php'
+      - 'routes/application_admin.php'
+      - 'routes/api_v1.php'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/Feature/ApplicationAdmin*Test.php'
+      - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
+      - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
+      - 'app/Http/Middleware/EnsureApplicationAdmin.php'
+      - 'app/Providers/RouteServiceProvider.php'
+      - 'bootstrap/app.php'
+      - 'routes/application_admin.php'
+      - 'routes/api_v1.php'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regressao-w03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout do SHA real
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Preparar PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: mbstring, pdo_sqlite, gd
+          coverage: none
+
+      - name: Validar pré-requisitos e sintaxe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/w03-ci
+          git rev-parse HEAD | tee /tmp/w03-ci/sha.txt
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha || github.sha }}"
+          test -f artisan
+          test -f composer.json
+          if [[ ! -f tests/Feature/ApplicationAdminTenantBoundaryW03Test.php ]]; then
+            echo '::error::Teste W03 ausente na branch; não declarar CI verde.'
+            exit 1
+          fi
+          php -l tests/Feature/ApplicationAdminTenantBoundaryW03Test.php
+          composer validate --no-check-publish --no-check-lock
+
+      - name: Instalar dependências
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Preparar SQLite isolado
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > .env <<'EOF'
+          APP_NAME=PeterTecnetAPI
+          APP_ENV=testing
+          APP_KEY=base64:QWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY=
+          APP_DEBUG=false
+          APP_URL=http://localhost
+          LOG_CHANNEL=stderr
+          DB_CONNECTION=sqlite
+          DB_DATABASE=/tmp/administrator-w03.sqlite
+          CACHE_STORE=array
+          SESSION_DRIVER=array
+          QUEUE_CONNECTION=sync
+          MAIL_MAILER=array
+          JWT_SECRET=ci-only-jwt-secret-ci-only-jwt-secret
+          EOF
+          touch /tmp/administrator-w03.sqlite
+          php artisan config:clear
+          php artisan route:clear
+          php artisan migrate --force
+
+      - name: Auditar registro de rotas administrativas
+        id: rotas
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          php artisan route:list --json --path=api/v1/apps > /tmp/w03-ci/rotas.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          rotas = json.loads(Path('/tmp/w03-ci/rotas.json').read_text())
+          obrigatorias = {
+              ('GET', 'api/v1/apps/{application}/admin/context'),
+              ('GET', 'api/v1/apps/{application}/admin/audit'),
+              ('GET', 'api/v1/apps/{application}/admin/profiles'),
+              ('POST', 'api/v1/apps/{application}/admin/profiles'),
+              ('POST', 'api/v1/apps/{application}/admin/assignments'),
+          }
+          existentes = {
+              (metodo, rota.get('uri', ''))
+              for rota in rotas
+              for metodo in rota.get('method', '').split('|')
+          }
+          faltantes = sorted(obrigatorias - existentes)
+          for metodo, uri in faltantes:
+              print(f'::error::Rota administrativa não registrada: {metodo} {uri}')
+          if faltantes:
+              raise SystemExit(1)
+          print(f'Rotas administrativas confirmadas: {len(obrigatorias)}')
+          PY
+
+      - name: Executar PHPUnit oficial W03
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          php artisan test tests/Feature/ApplicationAdminTenantBoundaryW03Test.php             --log-junit=/tmp/w03-ci/phpunit-w03.xml 2>&1 | tee /tmp/w03-ci/phpunit-w03.log
+          status=${PIPESTATUS[0]}
+          set -e
+          printf '%s\n' "$status" > /tmp/w03-ci/phpunit-exit-code.txt
+          if (( status != 0 )); then
+            echo "::error::PHPUnit W03 falhou: exit $status"
+            exit "$status"
+          fi
+          test -s /tmp/w03-ci/phpunit-w03.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('/tmp/w03-ci/phpunit-w03.xml').getroot()
+          casos = root.findall('.//testcase')
+          alvo = 'ApplicationAdminTenantBoundaryW03Test'
+          if not casos or any(alvo not in (
+              caso.get('class', '') + caso.get('classname', '')
+          ) for caso in casos):
+              raise SystemExit('::error::JUnit não comprova execução exclusiva do W03.')
+          if root.findall('.//failure') or root.findall('.//error') or root.findall('.//skipped'):
+              raise SystemExit('::error::JUnit registra falha, erro ou teste ignorado.')
+          print(f'PHPUnit oficial W03: {len(casos)} testes executados, 0 falhas.')
+          PY
+
+      - name: Exigir gate de rotas após executar PHPUnit
+        if: always() && steps.rotas.outcome == 'failure'
+        run: |
+          echo '::error::Registro das rotas administrativas não aprovado.'
+          exit 1
+
+      - name: Publicar evidências por SHA
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: w03-phpunit-${{ github.event.pull_request.head.sha || github.sha }}
+          path: /tmp/w03-ci/
+          if-no-files-found: warn
+          retention-days: 14
