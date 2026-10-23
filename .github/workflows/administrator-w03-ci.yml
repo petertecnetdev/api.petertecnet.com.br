@@ -144,6 +144,12 @@ jobs:
               caso.get('class', '') + caso.get('classname', '')
           ) for caso in casos):
               raise SystemExit('::error::JUnit não comprova execução exclusiva do W03.')
+          # A aprovação não pode ser obtida removendo a regressão de segurança.
+          if len(casos) < 18:
+              raise SystemExit(f'::error::Suíte W03 incompleta: {len(casos)} testes; mínimo 18.')
+          obrigatorio = 'test_administrador_principal_da_cutinapp_nao_e_root_do_ecossistema'
+          if not any(obrigatorio in caso.get('name', '') for caso in casos):
+              raise SystemExit('::error::Teste P0 root global vs owner local ausente do JUnit W03.')
           if root.findall('.//failure') or root.findall('.//error') or root.findall('.//skipped'):
               raise SystemExit('::error::JUnit registra falha, erro ou teste ignorado.')
           print(f'PHPUnit oficial W03: {len(casos)} testes executados, 0 falhas.')
