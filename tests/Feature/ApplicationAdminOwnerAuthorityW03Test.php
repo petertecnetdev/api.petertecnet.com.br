@@ -246,6 +246,50 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
     }
 
+    /**
+     * A redução do perfil deve revogar leitura operacional imediatamente,
+     * mesmo com o mesmo JWT e sem invalidar outras permissões legítimas.
+     * Evita reaproveitar cache de grants ao consultar o painel de workers.
+     */
+    public function test_retirada_de_operations_view_revoga_acesso_a_workers_com_mesmo_jwt(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-revogado-workers-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Leitura temporária de automações W03',
+            'permissions' => ['operations.view', 'dashboard.view'],
+        ]);
+        $administracao->assign($cutinapp->id, $root, $leitor->email, $perfil->id);
+        $token = JWTAuth::fromUser($leitor);
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+
+        // A mesma sessão deve observar a revogação sem refresh ou novo login.
+        $administracao->updateProfile($cutinapp->id, $perfil->id, $root, [
+            'permissions' => ['dashboard.view'],
+        ]);
+
+        $this->assertTrue($administracao->hasAccess($leitor, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'dashboard.view'));
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.permissions', ['dashboard.view']);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
