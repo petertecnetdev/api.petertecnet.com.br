@@ -5,6 +5,7 @@ on:
     branches: [Independence]
     paths:
       - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/ci/*w03_junit*.py'
       - 'tests/Feature/ApplicationAdmin*Test.php'
       - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
       - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
@@ -17,6 +18,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/administrator-w03-ci.yml'
+      - 'tests/ci/*w03_junit*.py'
       - 'tests/Feature/ApplicationAdmin*Test.php'
       - 'app/Domain/Platform/Services/ApplicationAdmin*.php'
       - 'app/Domain/Platform/Services/ApplicationOwnerAuthorityService.php'
@@ -62,6 +64,13 @@ jobs:
           fi
           php -l tests/Feature/ApplicationAdminTenantBoundaryW03Test.php
           composer validate --no-check-publish --no-check-lock
+
+      - name: Autotestes de integridade JUnit W03
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile tests/ci/w03_junit_gate.py tests/ci/test_w03_junit_gate.py
+          python3 -m unittest discover -s tests/ci -p 'test_w03_junit_gate.py' -v
 
       - name: Instalar dependências
         run: composer install --no-interaction --prefer-dist --no-progress
@@ -135,25 +144,7 @@ jobs:
             exit "$status"
           fi
           test -s /tmp/w03-ci/phpunit-w03.xml
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          root = ET.parse('/tmp/w03-ci/phpunit-w03.xml').getroot()
-          casos = root.findall('.//testcase')
-          alvo = 'ApplicationAdminTenantBoundaryW03Test'
-          if not casos or any(alvo not in (
-              caso.get('class', '') + caso.get('classname', '')
-          ) for caso in casos):
-              raise SystemExit('::error::JUnit não comprova execução exclusiva do W03.')
-          # A aprovação não pode ser obtida removendo a regressão de segurança.
-          if len(casos) < 18:
-              raise SystemExit(f'::error::Suíte W03 incompleta: {len(casos)} testes; mínimo 18.')
-          obrigatorio = 'test_administrador_principal_da_cutinapp_nao_e_root_do_ecossistema'
-          if not any(obrigatorio in caso.get('name', '') for caso in casos):
-              raise SystemExit('::error::Teste P0 root global vs owner local ausente do JUnit W03.')
-          if root.findall('.//failure') or root.findall('.//error') or root.findall('.//skipped'):
-              raise SystemExit('::error::JUnit registra falha, erro ou teste ignorado.')
-          print(f'PHPUnit oficial W03: {len(casos)} testes executados, 0 falhas.')
-          PY
+          python3 tests/ci/w03_junit_gate.py /tmp/w03-ci/phpunit-w03.xml
 
       - name: Exigir gate de rotas após executar PHPUnit
         if: always() && steps.rotas.outcome == 'failure'
