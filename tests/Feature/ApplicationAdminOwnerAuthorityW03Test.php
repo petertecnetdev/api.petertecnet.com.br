@@ -10,6 +10,7 @@ use App\Models\ApplicationOwner;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
+use Tymon\JWTAuth\Facades\JWTAuth;
 
 /**
  * Contrato de propriedade por aplicação: um vínculo local nunca autoriza
@@ -175,6 +176,74 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($anterior));
         $this->assertFalse($administracao->isRoot($novo));
         $this->assertDatabaseCount('application_owners', 2);
+    }
+
+    /**
+     * A permissão de leitura operacional não autoriza configurar nem disparar
+     * workers. Os dois endpoints devem negar antes de qualquer efeito colateral.
+     */
+    public function test_leitor_operacional_nao_configura_nem_despacha_worker_por_http(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-operacoes-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Somente leitura operacional W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $administracao->assign($cutinapp->id, $root, $leitor->email, $perfil->id);
+
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $leitor, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($leitor),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->putJson('/api/v1/apps/cutinapp/admin/automations/workers/events_discover', [
+            'enabled' => true,
+            'interval_minutes' => 5,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/automations/workers/events_discover/dispatch', [], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+    }
+
+    /**
+     * O app da rota prevalece sobre query e cabeçalhos enviados pelo cliente.
+     * Um leitor da Cutinapp não pode consultar workers de outro aplicativo.
+     */
+    public function test_leitor_operacional_nao_consulta_workers_cross_app_com_app_id_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $externo = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-cross-app-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Leitura isolada W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $administracao->assign($cutinapp->id, $root, $leitor->email, $perfil->id);
+
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertFalse($administracao->hasAccess($leitor, $externo->id));
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations?app_id='.$cutinapp->id, [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($leitor),
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
     }
 
     private function vincular(int $applicationId, User $usuario): void
