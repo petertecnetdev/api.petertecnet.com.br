@@ -16,6 +16,44 @@ Route::prefix('v1/apps/{application}')
     ->group(function () {
         Route::prefix('admin')->middleware(EnsureApplicationAdmin::class)->group(function () {
             Route::get('/context', [ApplicationAdminController::class, 'context']);
+            Route::get('/independence/claims', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':moderation.view');
+            Route::patch('/independence/claims/{claimId}', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'review'])
+                ->whereNumber('claimId')
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:15,1']);
+            Route::delete('/independence/grants/{grantId}', [\App\Http\Controllers\Api\Independence\OwnershipClaimAdminController::class, 'revoke'])
+                ->whereNumber('grantId')
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', 'throttle:10,1']);
+
+            Route::get('/event-discovery/sources', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':moderation.view');
+            Route::post('/event-discovery/sources', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'store'])
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', EnsureApplicationAdmin::class.':events.manage', 'throttle:10,1']);
+            Route::patch('/event-discovery/sources/{sourceId}', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoverySourceController::class, 'update'])
+                ->whereNumber('sourceId')
+                ->middleware([EnsureApplicationAdmin::class.':moderation.manage', EnsureApplicationAdmin::class.':events.manage', 'throttle:15,1']);
+
+            // Descoberta: revisão de evidências e criação controlada de rascunhos.
+            Route::get('/event-discovery/candidates', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoveryReviewController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':moderation.view');
+            Route::patch('/event-discovery/candidates/{candidateId}', [\App\Domain\EventDiscovery\Http\Controllers\EventDiscoveryReviewController::class, 'review'])
+                ->whereNumber('candidateId')
+                ->middleware([
+                    EnsureApplicationAdmin::class.':moderation.manage',
+                    EnsureApplicationAdmin::class.':events.manage',
+                    'throttle:15,1',
+                ]);
+
+            // Automação por aplicação: permissões do backend, nunca do frontend.
+            Route::get('/automations', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'index'])
+                ->middleware(EnsureApplicationAdmin::class.':operations.view');
+            Route::put('/automations/workers/{key}', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'configure'])
+                ->where('key', '[a-z0-9_]+')
+                ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:20,1']);
+            Route::post('/automations/workers/{key}/dispatch', [\App\Domain\Automation\Http\Controllers\ApplicationAutomationController::class, 'dispatchWorker'])
+                ->where('key', '[a-z0-9_]+')
+                ->middleware([EnsureApplicationAdmin::class.':admin.access.manage', 'throttle:6,1']);
+
             Route::get('/overview', [ApplicationAdminController::class, 'overview'])
                 ->middleware(EnsureApplicationAdmin::class.':dashboard.view');
             Route::get('/permissions', [ApplicationAdminController::class, 'permissionCatalog']);

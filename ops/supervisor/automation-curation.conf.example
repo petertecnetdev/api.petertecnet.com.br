@@ -1,0 +1,18 @@
+[program:petertecnet-curation]
+directory=/var/www/api.petertecnet.com.br
+command=/usr/bin/php artisan queue:work redis --queue=curation --sleep=2 --tries=3 --timeout=60 --max-time=3600
+user=petertecnet
+numprocs=1
+process_name=%(program_name)s
+autostart=true
+autorestart=true
+startsecs=5
+startretries=10
+stopsignal=TERM
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=120
+redirect_stderr=true
+stdout_logfile=/var/log/supervisor/petertecnet-curation.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=4

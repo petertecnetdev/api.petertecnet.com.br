@@ -51,6 +51,8 @@ final class EventTicketController extends Controller
             'sales_cutoff_offset_minutes' => 'sometimes|nullable|integer|min:0|max:525600',
             'limit_date' => 'sometimes|nullable|date',
             'description' => 'sometimes|nullable|string|max:5000',
+            // Transição explícita, nunca automática na aprovação da reivindicação.
+            'activate_curatorial_ticket' => 'sometimes|boolean',
         ]);
 
         return response()->json([

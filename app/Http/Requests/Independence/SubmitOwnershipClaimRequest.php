@@ -44,7 +44,7 @@ final class SubmitOwnershipClaimRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'entity_type' => ['required', Rule::in(['production', 'event'])],
+            'entity_type' => ['required', Rule::in(['production', 'event', 'artist'])],
             'entity_id' => ['required', 'integer', 'min:1'],
             'name' => ['required', 'string', 'min:2', 'max:160'],
             'email' => ['required', 'email:rfc', 'max:254'],

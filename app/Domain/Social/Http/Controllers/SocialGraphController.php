@@ -38,6 +38,9 @@ final class SocialGraphController extends Controller
         if(!$artist->reference_visible)$artist->makeHidden(['origin_type','origin_label']);
         $artist->setAttribute('followers_count',$this->followersCount('artist',$artist->id));
         $artist->setAttribute('is_following',$this->isFollowing($request,'artist',$artist->id));
+        // Public claimability mirrors OwnershipClaimIntakeController: these flags do not grant access.
+        // The artist model already stores ownership via user_id/claimed_at (no new schema required).
+        $artist->setAttribute('ownership_status', ! $artist->user_id && ! $artist->claimed_at ? 'unclaimed' : 'verified');
 
         $upcomingQuery=$this->artistEvents($artist->id,true);
         $pastQuery=$this->artistEvents($artist->id,false);

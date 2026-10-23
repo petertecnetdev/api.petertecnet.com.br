@@ -61,6 +61,22 @@ class EventPassController extends Controller
         ], $status);
     }
 
+    public function operableEvents(Request $request)
+    {
+        $data = $request->validate([
+            'q' => ['nullable', 'string', 'max:120'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        return response()->json([
+            'events' => $this->passes->operableEvents(
+                $request->user(),
+                $data['q'] ?? null,
+                (int) ($data['per_page'] ?? 100),
+            ),
+        ]);
+    }
+
     public function eventStats(Request $request, int $eventId)
     {
         return response()->json($this->passes->eventStats($request->user(), $eventId));

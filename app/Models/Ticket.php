@@ -16,15 +16,21 @@ class Ticket extends Model
     protected $fillable = [
         'app_id','app_slug','event_id','name','type','price','limit_date','sales_cutoff_mode',
         'sales_cutoff_offset_minutes','ticket_type','quantity','max_per_user','description',
+        'curatorial_information_only','curatorial_source_url','curatorial_price_observed_at','curatorial_bundle_size',
     ];
     protected $casts = [
         'price'=>'decimal:2',
         'quantity'=>'integer',
+        'curatorial_information_only'=>'boolean',
+        'curatorial_price_observed_at'=>'date:Y-m-d',
+        'curatorial_bundle_size'=>'integer',
         'max_per_user'=>'integer',
         'limit_date'=>'datetime',
         'sales_cutoff_offset_minutes'=>'integer',
+        'extras'=>'array',
     ];
-    protected $appends = ['remaining','available','expired'];
+    protected $hidden = ['curatorial_source_url'];
+    protected $appends = ['remaining','available','expired','informational_only','price_known'];
     protected $table = 'tickets';
 
     protected static function booted(): void
@@ -70,14 +76,35 @@ class Ticket extends Model
         return (bool) ($event && $event->hasEnded());
     }
 
+    public function getInformationalOnlyAttribute(): bool
+    {
+        return (bool) $this->curatorial_information_only
+            || (bool) data_get($this->extras, 'curation_information_only', false);
+    }
+
+    public function getPriceKnownAttribute(): bool
+    {
+        return ! $this->informational_only
+            || ($this->price !== null && (bool) data_get($this->extras, 'price_known', true));
+    }
+
     public function getRemainingAttribute(): int
     {
+        if ($this->informational_only) return 0;
         $total=max(0,(int)$this->quantity); if(!$this->exists) return $total;
         $issued=EventPass::query()->where('ticket_id',$this->id)->whereNotIn('status',['cancelled','refunded','charged_back'])->count();
         $reserved=(int)DB::table('inventory_reservations')->where('ticket_id',$this->id)->whereNull('released_at')->where('expires_at','>',now())->sum('quantity');
         return max(0,$total-$issued-$reserved);
     }
 
-    public function getAvailableAttribute(): bool { return !$this->expired && $this->remaining>0; }
+    public function getAvailableAttribute(): bool
+    {
+        // Respeita bloqueios impostos pelo catalogo alem do tipo de ingresso.
+        if (array_key_exists('available', $this->attributes) && $this->attributes['available'] === false) {
+            return false;
+        }
+
+        return ! $this->informational_only && ! $this->expired && $this->remaining > 0;
+    }
     public function application(){return $this->belongsTo(Application::class,'app_id');} public function event(){return $this->belongsTo(Event::class);} public function passes(){return $this->hasMany(EventPass::class,'ticket_id');}
 }

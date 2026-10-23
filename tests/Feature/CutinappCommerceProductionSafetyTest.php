@@ -21,9 +21,11 @@ class CutinappCommerceProductionSafetyTest extends TestCase
     {
         [, $event, $ticket] = $this->paidEventFixture('legacy-null-privacy');
 
-        DB::table('events')
-            ->where('id', $event['id'])
-            ->update(['is_private' => null]);
+        // Bases novas usam NOT NULL, enquanto fichas antigas podiam ter NULL.
+        // O modelo deve interpretar NULL como público sem tentar violar o schema.
+        $legacy = \App\Models\Event::query()->findOrFail($event['id']);
+        $legacy->setRawAttributes([...$legacy->getAttributes(), 'is_private' => null]);
+        $this->assertFalse($legacy->salesClosed());
 
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
             ->assertOk()
@@ -47,7 +49,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('payment_config.available', true)
             ->assertJsonPath('payment_config.producer_connected', false)
             ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
-            ->assertJsonPath('payment_config.methods', ['pix'])
+            ->assertJsonPath('payment_config.methods', ['pix', 'boleto'])
             ->assertJsonPath('payment_config.payout_ready', false)
             ->assertJsonPath('payment_config.payout_setup_required', true);
 
@@ -110,6 +112,23 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->assertJsonPath('payment_config.payout_setup_required', true)
             ->assertJsonPath('payment_config.sales_readiness.ready', true)
             ->assertJsonPath('payment_config.sales_readiness.payout', false);
+    }
+
+    public function test_unconfigured_primary_asaas_never_silently_switches_to_mercadopago(): void
+    {
+        config()->set('services.finance.payment_primary_provider', 'asaas');
+        config()->set('services.finance.payment_fallback_provider', '');
+        config()->set('services.asaas.api_key', '');
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.mercadopago.access_token', 'configured-but-not-selected');
+
+        [, $event] = $this->paidEventFixture('asaas-fail-closed');
+
+        $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
+            ->assertOk()
+            ->assertJsonPath('payment_config.available', false)
+            ->assertJsonPath('payment_config.provider', null)
+            ->assertJsonPath('payment_config.methods', []);
     }
 
     public function test_pix_expiration_matches_inventory_reservation_and_uses_platform_collection_even_with_legacy_mercado_pago_account(): void
@@ -216,7 +235,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $catalog
             ->assertJsonPath('payment_config.producer_connected', false)
             ->assertJsonPath('payment_config.settlement_mode', 'platform_collection')
-            ->assertJsonPath('payment_config.methods', ['pix'])
+            ->assertJsonPath('payment_config.methods', ['pix', 'boleto'])
             ->assertJsonPath('payment_config.public_key', '');
 
         config()->set('services.mercadopago.public_key', 'APP_USR-platform-public-key');
@@ -224,7 +243,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->getJson('/api/cutinapp/events/public/' . $event['slug'] . '/commerce')
             ->assertOk()
             ->assertJsonPath('payment_config.available', true)
-            ->assertJsonPath('payment_config.methods', ['pix', 'card'])
+            ->assertJsonPath('payment_config.methods', ['pix', 'boleto', 'card'])
             ->assertJsonPath('payment_config.public_key', 'APP_USR-platform-public-key');
     }
 

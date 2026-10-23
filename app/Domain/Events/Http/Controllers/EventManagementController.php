@@ -11,6 +11,7 @@ use App\Models\EventSchedule;
 use App\Models\Production;
 use App\Models\Ticket;
 use App\Models\User;
+use App\Services\Independence\ScopedEntityGrant;
 use App\Services\MerchantPaymentAccountService;
 use App\Support\ApplicationContext;
 use Illuminate\Http\Request;
@@ -54,7 +55,8 @@ final class EventManagementController extends Controller
                     ->orWhereHas('production', fn ($q) => $q
                         ->where('app_id', $appId)
                         ->where('user_id', $user->id)
-                    );
+                    )
+                    ->orWhereIn('id', app(ScopedEntityGrant::class)->idsForUser($appId, 'event', (int) $user->id));
             });
 
         if ($isPicker) {
@@ -134,7 +136,7 @@ final class EventManagementController extends Controller
 
     public function show(Request $request,int $id)
     {
-        $event=$this->ownedEvent($id,$request->user());$appId=$this->context->id();
+        $event=$this->ownedEvent($id,$request->user(), true);$appId=$this->context->id();
         $event->load(['production:id,app_id,name,slug,user_id,app_slug','creator:id,first_name,last_name,user_name,avatar','artists:id,app_id,slug,stage_name']);
         $event->loadCount(['tickets'=>fn($q)=>$q->where('app_id',$appId)]);
         $this->attachSellableTicketCounts(collect([$event]));
@@ -184,7 +186,7 @@ final class EventManagementController extends Controller
 
     public function update(Request $request,int $id)
     {
-        $event = $this->ownedEvent($id, $request->user());
+        $event = $this->ownedEvent($id, $request->user(), true);
         $this->normalizeInput($request);
         $data = $request->validate($this->rules(false), $this->messages(), $this->attributes());
 
@@ -634,7 +636,7 @@ final class EventManagementController extends Controller
         if ($errors) throw ValidationException::withMessages($errors);
     }
     private function ownedProduction(int $id,User $user):Production{$production=Production::query()->where('app_id',$this->context->id())->findOrFail($id);abort_unless(($user->hasProfile('Administrador')||strtolower(trim((string)$user->email))==='petertecnet@gmail.com')||(int)$production->user_id===(int)$user->id,403,'Você não pode gerenciar esta organização.');return$production;}
-    private function ownedEvent(int $id, User $user): Event
+    private function ownedEvent(int $id, User $user, bool $allowClaimantEditor = false): Event
     {
         $event = Event::query()
             ->where('app_id', $this->context->id())
@@ -648,7 +650,10 @@ final class EventManagementController extends Controller
         }
 
         abort_unless($event->production && (int) $event->production->app_id === $this->context->id(), 404, 'Evento não encontrado neste contexto.');
-        abort_unless($admin || (int) $event->production->user_id === (int) $user->id, 403, 'Você não pode gerenciar este evento.');
+        $scopedEditor = $allowClaimantEditor
+            && app(ScopedEntityGrant::class)->canManage($this->context->id(), 'event', (int) $event->id, (int) $user->id);
+        abort_unless($admin || (int) $event->production->user_id === (int) $user->id || $scopedEditor,
+            403, 'Você não pode gerenciar este evento.');
 
         return $event;
     }

@@ -1,0 +1,47 @@
+name: Independence Curatorial Tickets
+
+on:
+  push:
+    branches: [Independence]
+    paths:
+      - 'app/Services/Independence/ListingCommercePolicy.php'
+      - 'app/Models/Ticket.php'
+      - 'app/Console/Commands/ImportIndependenceListings.php'
+      - 'app/Services/EventPassService.php'
+      - 'app/Domain/Commerce/Http/Controllers/EventCommerceController.php'
+      - 'app/Domain/Events/Services/EventTicketService.php'
+      - 'tests/Unit/CuratorialTicketAvailabilityTest.php'
+      - 'tests/Unit/IndependenceListingCommercePolicyTest.php'
+      - '.github/workflows/independence-curation-safety.yml'
+  workflow_dispatch:
+
+jobs:
+  focused-guards:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_sqlite
+          coverage: none
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction --no-scripts
+      - name: Validate syntax of modified PHP files
+        run: |
+          php -l app/Console/Commands/ImportIndependenceListings.php
+          php -l app/Services/Independence/ListingCommercePolicy.php
+          php -l app/Domain/Events/Services/EventTicketService.php
+          php -l app/Domain/Commerce/Http/Controllers/EventCommerceController.php
+          php -l app/Services/EventPassService.php
+          php -l app/Models/Ticket.php
+          php -l database/migrations/2026_10_17_230000_add_curatorial_ticket_offer_fields.php
+      - name: Validate focused commerce guard tests
+        env:
+          APP_ENV: testing
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ':memory:'
+        run: vendor/bin/phpunit --filter 'CuratorialTicketAvailabilityTest|IndependenceListingCommercePolicyTest' --no-coverage
