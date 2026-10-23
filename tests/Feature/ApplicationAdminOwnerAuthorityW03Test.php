@@ -125,6 +125,58 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_owners', 1);
     }
 
+    /**
+     * Recuperar a titularidade de um aplicativo não pode revogar a autoridade
+     * do proprietário anterior em outro aplicativo, nem concedê-la ao novo.
+     * O teste usa a mesma instância dos serviços para detectar cache obsoleto.
+     */
+    public function test_recuperacao_de_um_app_preserva_owner_de_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $anterior = $this->usuario('owner-multiapp-w03@example.test');
+        $novo = $this->usuario('owner-recuperacao-w03@example.test');
+        $autoridade = app(ApplicationOwnerAuthorityService::class);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $anterior);
+        $this->vincular($rasoio->id, $anterior);
+
+        $this->assertTrue($autoridade->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($autoridade->isOwner($anterior, $rasoio->id));
+
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $novo->id,
+                'bound_by_user_id' => $novo->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->assertFalse($autoridade->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($autoridade->isOwner($anterior, $rasoio->id));
+        $this->assertTrue($autoridade->isOwner($novo, $cutinapp->id));
+        $this->assertFalse($autoridade->isOwner($novo, $rasoio->id));
+
+        $this->assertFalse($administracao->hasAccess($anterior, $cutinapp->id));
+        $this->assertTrue($administracao->hasAccess($anterior, $rasoio->id));
+        $this->assertTrue($administracao->hasAccess($novo, $cutinapp->id));
+        $this->assertFalse($administracao->hasAccess($novo, $rasoio->id));
+        $this->assertTrue($administracao->hasPermission(
+            $anterior, $rasoio->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+        $this->assertFalse($administracao->hasPermission(
+            $novo, $rasoio->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $this->assertSame($anterior->id, $autoridade->ownerId($rasoio->id));
+        $this->assertSame($novo->id, $autoridade->ownerId($cutinapp->id));
+        $this->assertFalse($administracao->isRoot($anterior));
+        $this->assertFalse($administracao->isRoot($novo));
+        $this->assertDatabaseCount('application_owners', 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
