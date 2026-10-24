@@ -1313,6 +1313,82 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('data.owner_user_id', $novo->id);
     }
 
+    /**
+     * A permissão de auditoria não é autorização operacional. Mesmo quando
+     * o delegado pode consultar trilhas administrativas, ele não pode listar,
+     * reconfigurar ou disparar workers (inclusive com app_id forjado).
+     * Mantém o princípio de menor privilégio sem alterar events:discover.
+     */
+    public function test_auditor_nao_recebe_poderes_operacionais_sobre_workers(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-sem-operacoes-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Auditoria sem operações W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $vinculo = $administracao->assign(
+            $cutinapp->id, $root, $auditor->email, $perfil->id,
+        );
+
+        $this->assertTrue($administracao->hasPermission($auditor, $cutinapp->id, 'audit.view'));
+        $this->assertFalse($administracao->hasPermission($auditor, $cutinapp->id, 'operations.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $auditor, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        \Illuminate\Support\Facades\Queue::fake();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($auditor),
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        // Controle positivo: a auditoria do próprio aplicativo segue acessível.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/audit?app_id='.$rasoio->id,
+            $cabecalhos,
+        )->assertOk();
+
+        // O cabeçalho e a query não promovem audit.view a operações.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/automations?app_id='.$rasoio->id,
+            $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->putJson('/api/v1/apps/cutinapp/admin/automations/workers/events_discover', [
+            'enabled' => true,
+            'interval_minutes' => 5,
+            'app_id' => $rasoio->id,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/automations/workers/events_discover/dispatch',
+            ['app_id' => $rasoio->id],
+            $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculo->id,
+            'application_id' => $cutinapp->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+        $this->assertFalse($administracao->isRoot($auditor));
+        $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
