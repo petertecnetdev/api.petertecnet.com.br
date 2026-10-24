@@ -905,6 +905,93 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->hasAccess($colaborador, $rasoio->id));
     }
 
+    /**
+     * IDOR em assignment_id: um owner local não pode revogar a atribuição
+     * de outro aplicativo ao enviar o ID externo na rota da Cutinapp.
+     * A tentativa não deve gerar auditoria nem revogar o grant externo.
+     */
+    public function test_owner_local_nao_revoga_atribuicao_de_outro_app_por_id_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $local = $this->usuario('owner-revogacao-idor-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $colaboradorLocal = $this->usuario('colaborador-local-revogacao-w03@example.test');
+        $colaboradorExterno = $this->usuario('colaborador-externo-revogacao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+
+        $perfilLocal = $administracao->createProfile($cutinapp->id, $local, [
+            'name' => 'Leitura Cutinapp revogacao W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $perfilExterno = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Leitura Rasoio revogacao W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $vinculoLocal = $administracao->assign(
+            $cutinapp->id, $local, $colaboradorLocal->email, $perfilLocal->id,
+        );
+        $vinculoExterno = $administracao->assign(
+            $rasoio->id, $root, $colaboradorExterno->email, $perfilExterno->id,
+        );
+
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        $this->deleteJson(
+            '/api/v1/apps/cutinapp/admin/assignments/'.$vinculoExterno->id
+                .'?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [],
+            $cabecalhos,
+        )->assertNotFound();
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoExterno->id,
+            'application_id' => $rasoio->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')->count(),
+        );
+        $this->assertTrue($administracao->hasPermission(
+            $colaboradorExterno, $rasoio->id, 'dashboard.view',
+        ));
+
+        // Controle positivo: o mesmo owner pode revogar apenas o vínculo local.
+        $this->deleteJson(
+            '/api/v1/apps/cutinapp/admin/assignments/'.$vinculoLocal->id,
+            [],
+            $cabecalhos,
+        )
+            ->assertOk()
+            ->assertJsonPath('data.status', 'revoked');
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoLocal->id,
+            'application_id' => $cutinapp->id,
+            'status' => 'revoked',
+        ]);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoExterno->id,
+            'application_id' => $rasoio->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertFalse($administracao->hasPermission(
+            $colaboradorLocal, $cutinapp->id, 'dashboard.view',
+        ));
+        $this->assertTrue($administracao->hasPermission(
+            $colaboradorExterno, $rasoio->id, 'dashboard.view',
+        ));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
