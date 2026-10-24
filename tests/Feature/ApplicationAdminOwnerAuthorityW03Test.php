@@ -1519,6 +1519,97 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
     }
 
+    /**
+     * Revogar uma atribuição deve retirar imediatamente acesso e permissões
+     * do delegado, inclusive com JWT antigo e contexto de tenant forjado.
+     * A mesma identidade pode continuar autorizada em outro aplicativo.
+     */
+    public function test_revogacao_de_atribuicao_remove_acesso_com_jwt_antigo_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-revogacao-efetiva-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-revogacao-efetiva-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerLocal);
+
+        $perfilLocal = $administracao->createProfile($cutinapp->id, $ownerLocal, [
+            'name' => 'Auditoria revogavel por atribuicao W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilExterno = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Auditoria preservada apos revogacao W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $vinculoLocal = $administracao->assign(
+            $cutinapp->id, $ownerLocal, $auditor->email, $perfilLocal->id,
+        );
+        $vinculoExterno = $administracao->assign(
+            $rasoio->id, $root, $auditor->email, $perfilExterno->id,
+        );
+
+        $tokenAntigo = JWTAuth::fromUser($auditor);
+        $cabecalhosAuditor = ['Authorization' => 'Bearer '.$tokenAntigo];
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhosAuditor)->assertOk();
+        $this->getJson('/api/v1/apps/rasoio/admin/audit', $cabecalhosAuditor)->assertOk();
+
+        // Revogação real pela rota pública autorizada do proprietário local.
+        $this->deleteJson(
+            '/api/v1/apps/cutinapp/admin/assignments/'.$vinculoLocal->id,
+            [],
+            ['Authorization' => 'Bearer '.JWTAuth::fromUser($ownerLocal)],
+        )
+            ->assertOk()
+            ->assertJsonPath('data.status', 'revoked');
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoLocal->id,
+            'application_id' => $cutinapp->id,
+            'status' => 'revoked',
+        ]);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoExterno->id,
+            'application_id' => $rasoio->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertFalse($administracao->hasAccess($auditor, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission($auditor, $cutinapp->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($auditor, $rasoio->id, 'audit.view'));
+
+        $auditoriasAposRevogacao = \App\Models\ApplicationAdminAudit::query()->count();
+
+        // app_id, application_id e cabeçalho não ressuscitam a atribuição.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/audit?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [
+                'Authorization' => 'Bearer '.$tokenAntigo,
+                'X-Peter-App' => 'rasoio',
+            ],
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $cabecalhosAuditor)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        // O mesmo JWT conserva somente o grant legítimo do outro tenant.
+        $this->getJson('/api/v1/apps/rasoio/admin/audit', [
+            'Authorization' => 'Bearer '.$tokenAntigo,
+            'X-Peter-App' => 'cutinapp',
+        ])->assertOk();
+
+        $this->assertSame(
+            $auditoriasAposRevogacao,
+            \App\Models\ApplicationAdminAudit::query()->count(),
+        );
+        $this->assertFalse($administracao->isRoot($auditor));
+        $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
