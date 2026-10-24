@@ -1132,6 +1132,65 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         );
     }
 
+    /**
+     * O Owner de um único aplicativo não pode converter o root do ecossistema
+     * em colaborador delegado, mesmo variando a capitalização do e-mail.
+     * A recusa não deve criar grant nem auditoria; uma atribuição comum
+     * continua disponível apenas dentro do aplicativo do Owner local.
+     */
+    public function test_owner_local_nao_atribui_perfil_delegado_ao_root_global(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $local = $this->usuario('owner-sem-root-atribuicao-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $colaborador = $this->usuario('colaborador-legitimo-atribuicao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $local, [
+            'name' => 'Consulta sem autoridade global W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)
+            ->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/assignments', [
+            'email' => strtoupper(ApplicationAdminService::ROOT_ADMIN_EMAIL),
+            'profile_id' => $perfil->id,
+            'app_id' => $cutinapp->id,
+            'application_id' => $cutinapp->id,
+        ], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('email');
+
+        $this->assertDatabaseMissing('application_admin_assignments', [
+            'application_id' => $cutinapp->id,
+            'user_id' => $root->id,
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+        $this->assertTrue($administracao->isRoot($root));
+        $this->assertFalse($administracao->isRoot($local));
+
+        $vinculoLegitimo = $administracao->assign(
+            $cutinapp->id, $local, $colaborador->email, $perfil->id,
+        );
+        $this->assertSame($colaborador->id, $vinculoLegitimo->user_id);
+        $this->assertTrue($administracao->hasPermission(
+            $colaborador, $cutinapp->id, 'dashboard.view',
+        ));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
