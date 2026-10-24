@@ -1492,7 +1492,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertTrue($administracao->hasPermission($auditor, $cutinapp->id, 'dashboard.view'));
         $this->assertTrue($administracao->hasPermission($auditor, $rasoio->id, 'audit.view'));
 
-        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
 
         // A query e o cabeçalho não restauram uma permissão revogada.
         $this->getJson(
@@ -1513,7 +1513,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
 
         $this->assertSame(
             $auditoriasAntes,
-            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+            \App\Models\ApplicationAdminAudit::query()->count(),
         );
         $this->assertFalse($administracao->isRoot($auditor));
         $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
