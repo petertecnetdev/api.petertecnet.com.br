@@ -1191,6 +1191,59 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ));
     }
 
+    /**
+     * A permissão operations.view é apenas de leitura operacional. Um
+     * colaborador que consulta workers não pode enumerar os perfis e grants
+     * administrativos (inclusive rotas legadas de RBAC) do mesmo aplicativo.
+     * Protege a separação de privilégios consumida pelo Admin Center W4.
+     */
+    public function test_leitor_de_workers_nao_enumera_perfis_e_grants_administrativos(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-workers-sem-rbac-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Operacoes somente leitura W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $vinculo = $administracao->assign(
+            $cutinapp->id, $root, $leitor->email, $perfil->id,
+        );
+
+        $this->assertTrue($administracao->hasPermission($leitor, $cutinapp->id, 'operations.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $leitor, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($leitor),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        // Controle positivo: leitura operacional autorizada.
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $cabecalhos)
+            ->assertOk();
+
+        // Não confundir operations.view com admin.access.manage.
+        foreach (['profiles', 'assignments', 'role-profiles', 'role-assignments'] as $recurso) {
+            $this->getJson('/api/v1/apps/cutinapp/admin/'.$recurso, $cabecalhos)
+                ->assertForbidden()
+                ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        }
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculo->id,
+            'application_id' => $cutinapp->id,
+            'profile_id' => $perfil->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertFalse($administracao->isRoot($leitor));
+        $this->assertFalse($administracao->isOwner($leitor, $cutinapp->id));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
