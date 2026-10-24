@@ -557,6 +557,77 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
     }
 
+    /**
+     * O owner de uma aplicação não pode editar ou excluir perfis de outra,
+     * mesmo quando tenta forjar app_id/application_id no mesmo JWT.
+     * Verifica também que o bloqueio não altera o perfil nem sua auditoria.
+     */
+    public function test_owner_local_nao_altera_nem_exclui_perfil_de_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $local = $this->usuario('owner-perfis-mutacao-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+
+        $perfilExterno = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Perfil protegido Rasoio W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $perfilLocal = $administracao->createProfile($cutinapp->id, $local, [
+            'name' => 'Perfil local W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $auditoriasExternasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $rasoio->id)
+            ->count();
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $urlExterna = '/api/v1/apps/rasoio/admin/profiles/'.$perfilExterno->id
+            .'?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id;
+
+        $this->putJson($urlExterna, ['name' => 'Perfil invadido W03'], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->deleteJson($urlExterna, [], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilExterno->id,
+            'application_id' => $rasoio->id,
+            'name' => 'Perfil protegido Rasoio W03',
+        ]);
+        $this->assertSame(
+            $auditoriasExternasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $rasoio->id)
+                ->count(),
+        );
+
+        // Controle positivo: a operação legítima permanece restrita ao app.
+        $this->putJson(
+            '/api/v1/apps/cutinapp/admin/profiles/'.$perfilLocal->id,
+            ['name' => 'Perfil local atualizado W03'],
+            $cabecalhos,
+        )
+            ->assertOk()
+            ->assertJsonPath('data.application_id', $cutinapp->id);
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilLocal->id,
+            'application_id' => $cutinapp->id,
+            'name' => 'Perfil local atualizado W03',
+        ]);
+        $this->assertFalse($administracao->isRoot($local));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
