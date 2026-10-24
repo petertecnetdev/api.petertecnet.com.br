@@ -397,6 +397,63 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ));
     }
 
+
+    /**
+     * Um delegado com acesso legítimo a dois apps não pode misturar históricos
+     * de workers usando app_id/application_id na query. A aplicação da rota
+     * é a única fonte autorizada para filtrar o dashboard no servidor.
+     */
+    public function test_painel_operacional_nao_mistura_historicos_de_apps_autorizados(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-multiapp-historico-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        foreach ([$cutinapp, $rasoio] as $app) {
+            $perfil = $administracao->createProfile($app->id, $root, [
+                'name' => 'Consulta de automações '.$app->slug,
+                'permissions' => ['operations.view'],
+            ]);
+            $administracao->assign($app->id, $root, $leitor->email, $perfil->id);
+        }
+
+        foreach ([
+            [$cutinapp->id, 'cutinapp'],
+            [$rasoio->id, 'rasoio'],
+        ] as [$appId, $marcador]) {
+            \Illuminate\Support\Facades\DB::table('automation_worker_runs')->insert([
+                'app_id' => $appId,
+                'worker_key' => 'events_discover',
+                'status' => 'completed',
+                'result' => json_encode(['marker' => $marcador]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+
+        $token = JWTAuth::fromUser($leitor);
+
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/automations?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            ['Authorization' => 'Bearer '.$token, 'X-Peter-App' => 'cutinapp'],
+        )
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs')
+            ->assertJsonPath('data.recent_runs.0.result.marker', 'cutinapp');
+
+        $this->getJson(
+            '/api/v1/apps/rasoio/admin/automations?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id,
+            ['Authorization' => 'Bearer '.$token, 'X-Peter-App' => 'rasoio'],
+        )
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs')
+            ->assertJsonPath('data.recent_runs.0.result.marker', 'rasoio');
+
+        $this->assertFalse($administracao->isRoot($leitor));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
