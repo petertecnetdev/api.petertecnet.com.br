@@ -1453,6 +1453,72 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($auditor));
     }
 
+    /**
+     * Reduzir permissões de um perfil delegado deve invalidar imediatamente
+     * o acesso HTTP à auditoria, mesmo reutilizando o JWT anterior.
+     * A alteração local não pode retirar a permissão em outro aplicativo.
+     */
+    public function test_retirada_de_audit_view_revoga_leitura_http_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-revogacao-perfil-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Auditoria revogavel Cutinapp W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Auditoria preservada Rasoio W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $administracao->assign($cutinapp->id, $root, $auditor->email, $perfilCutinapp->id);
+        $administracao->assign($rasoio->id, $root, $auditor->email, $perfilRasoio->id);
+
+        $token = JWTAuth::fromUser($auditor);
+        $cabecalhos = ['Authorization' => 'Bearer '.$token];
+
+        // Controle positivo: ambos os aplicativos permitem a leitura inicialmente.
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhos)->assertOk();
+        $this->getJson('/api/v1/apps/rasoio/admin/audit', $cabecalhos)->assertOk();
+
+        $administracao->updateProfile($cutinapp->id, $perfilCutinapp->id, $root, [
+            'permissions' => ['dashboard.view'],
+        ]);
+
+        $this->assertFalse($administracao->hasPermission($auditor, $cutinapp->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($auditor, $cutinapp->id, 'dashboard.view'));
+        $this->assertTrue($administracao->hasPermission($auditor, $rasoio->id, 'audit.view'));
+
+        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+
+        // A query e o cabeçalho não restauram uma permissão revogada.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/audit?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [
+                'Authorization' => 'Bearer '.$token,
+                'X-Peter-App' => 'rasoio',
+            ],
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        // O mesmo JWT mantém o acesso autorizado no outro tenant.
+        $this->getJson('/api/v1/apps/rasoio/admin/audit', [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ])->assertOk();
+
+        $this->assertSame(
+            $auditoriasAntes,
+            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+        );
+        $this->assertFalse($administracao->isRoot($auditor));
+        $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
