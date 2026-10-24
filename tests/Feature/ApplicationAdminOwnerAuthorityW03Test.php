@@ -826,6 +826,85 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertNotContains('marcador_cutinapp_w03', $acoesRasoio);
     }
 
+    /**
+     * IDOR em profile_id: mesmo um owner legítimo de Cutinapp não pode
+     * associar a seu colaborador um perfil pertencente ao Rasoio.
+     * O app da rota governa a busca do perfil; query/body não substituem
+     * o vínculo persistido. Nenhum grant ou auditoria pode ser criado
+     * quando o identificador do perfil pertence a outro aplicativo.
+     */
+    public function test_owner_local_nao_atribui_perfil_de_outro_app_por_id_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $local = $this->usuario('owner-idor-perfil-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $colaborador = $this->usuario('colaborador-idor-perfil-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+
+        $perfilExterno = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Financeiro Rasoio W03',
+            'permissions' => ['finance.refund'],
+        ]);
+        $perfilLocal = $administracao->createProfile($cutinapp->id, $local, [
+            'name' => 'Consulta Cutinapp W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)
+            ->count();
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/assignments?app_id='.$rasoio->id
+                .'&application_id='.$rasoio->id,
+            [
+                'email' => $colaborador->email,
+                'profile_id' => $perfilExterno->id,
+                'app_id' => $rasoio->id,
+                'application_id' => $rasoio->id,
+            ],
+            $cabecalhos,
+        )->assertNotFound();
+
+        $this->assertDatabaseCount('application_admin_assignments', 0);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+        $this->assertFalse($administracao->hasAccess($colaborador, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission($colaborador, $cutinapp->id, 'finance.refund'));
+
+        // Controle positivo: o mesmo JWT atribui apenas o perfil do próprio app.
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/assignments',
+            ['email' => $colaborador->email, 'profile_id' => $perfilLocal->id],
+            $cabecalhos,
+        )
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $cutinapp->id)
+            ->assertJsonPath('data.profile_id', $perfilLocal->id);
+
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'application_id' => $cutinapp->id,
+            'user_id' => $colaborador->id,
+            'profile_id' => $perfilLocal->id,
+            'status' => 'active',
+        ]);
+        $this->assertDatabaseCount('application_admin_assignments', 1);
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'dashboard.view'));
+        $this->assertFalse($administracao->hasPermission($colaborador, $cutinapp->id, 'finance.refund'));
+        $this->assertFalse($administracao->hasAccess($colaborador, $rasoio->id));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
