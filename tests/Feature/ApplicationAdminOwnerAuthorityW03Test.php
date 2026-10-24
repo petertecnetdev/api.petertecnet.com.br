@@ -699,6 +699,72 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         );
     }
 
+    /**
+     * Um owner restrito à Cutinapp não pode alterar configuração nem colocar
+     * jobs na fila do Rasoio ao forjar app_id/application_id. O bloqueio deve
+     * ocorrer antes de persistência, enfileiramento ou execução do worker.
+     */
+    public function test_owner_local_nao_dispara_worker_de_outro_app_com_identificadores_forjados(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $local = $this->usuario('owner-worker-cross-app-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+        $this->assertTrue($administracao->isOwner($local, $cutinapp->id));
+        $this->assertFalse($administracao->isOwner($local, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($local));
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $baseExterna = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+        $forjado = '?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id;
+
+        $this->putJson($baseExterna.$forjado, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson($baseExterna.'/dispatch'.$forjado, [], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseMissing('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        // Controle positivo: a autorização local não deve ser revogada.
+        $this->putJson(
+            '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality',
+            ['enabled' => true, 'interval_minutes' => 30],
+            $cabecalhos,
+        )
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseMissing('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
