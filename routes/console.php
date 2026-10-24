@@ -16,6 +16,7 @@ use App\Jobs\DispatchNotificationCampaign;
 use App\Models\Application;
 use App\Models\NotificationCampaign;
 use App\Services\ApplicationRuntimeControlService;
+use App\Services\PaidTicketEmailRecoveryService;
 use App\Support\ApplicationContext;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -92,6 +93,20 @@ Artisan::command('commerce:recover-paid-ticket-fulfillment {--limit=25} {--sla-m
         $this->warn("{$result['failed']} fulfillment recovery attempt(s) still require attention.");
     }
 })->purpose('Revalidate paid orders beyond SLA and idempotently issue only missing event passes');
+
+Artisan::command('commerce:deliver-paid-ticket-emails {--limit=25} {--retry-after-minutes=15} {--application=}', function () {
+    $result = app(PaidTicketEmailRecoveryService::class)->run(
+        (int) $this->option('limit'),
+        (int) $this->option('retry-after-minutes'),
+        $this->option('application') ?: null,
+    );
+
+    $this->line(json_encode($result, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT));
+
+    if ($result['failed'] > 0) {
+        $this->warn('Alguns e-mails ainda não puderam ser enviados. Serão tentados novamente.');
+    }
+})->purpose('Reenviar comprovantes de ingresso pagos ainda não entregues, sem duplicar e-mails');
 
 Artisan::command('commerce:capture-payment-health', function () {
     $captured = 0;
@@ -179,6 +194,10 @@ Schedule::command('platform:reconcile-payments')
     ->withoutOverlapping(10)
     ->onOneServer();
 Schedule::command('commerce:recover-paid-ticket-fulfillment')
+    ->everyFiveMinutes()
+    ->withoutOverlapping(10)
+    ->onOneServer();
+Schedule::command('commerce:deliver-paid-ticket-emails --limit=5')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)
     ->onOneServer();

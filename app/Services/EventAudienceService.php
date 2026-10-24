@@ -140,57 +140,70 @@ class EventAudienceService
 
         $this->markInterested($appId, (int) $order->event_id, (int) $order->user_id);
 
+        $this->deliverPaidTicketEmail((int) $order->id);
+
+        app(ImportantEventService::class)->recordTicketPurchase($order);
+    }
+
+    /**
+     * Send the buyer's tickets once the whole paid order has been issued.
+     * The delivery effect prevents repeated sends across webhooks and recovery.
+     * A null result means the order is not yet eligible for an email.
+     */
+    public function deliverPaidTicketEmail(int $orderId): ?bool
+    {
+        $order = CommerceOrder::query()->with(['event.application', 'user', 'items'])->find($orderId);
+        if (! $order || $order->status !== 'paid' || ! $order->event || ! $order->user
+            || (int) $order->app_id !== (int) $order->event->app_id
+            || ! filter_var($order->user->email, FILTER_VALIDATE_EMAIL)) {
+            return null;
+        }
+
+        $ticketItems = $order->items->where('type', 'ticket');
+        $ticketQuantity = (int) $ticketItems->sum('quantity');
+        if ($ticketQuantity <= 0) {
+            return null;
+        }
+
         $passes = EventPass::query()
             ->where('event_id', $order->event_id)
             ->where('user_id', $order->user_id)
-            ->whereIn('commerce_order_item_id', $order->items->where('type', 'ticket')->pluck('id'))
+            ->whereIn('commerce_order_item_id', $ticketItems->pluck('id'))
             ->whereNotIn('status', ['cancelled', 'refunded', 'charged_back'])
             ->with('ticket')
             ->orderBy('id')
             ->get();
 
-        $delivery->run(
-            $appId,
-            'commerce_order',
-            (int) $order->id,
-            'buyer_ticket_notification',
-            function () use ($appId, $order, $ticketQuantity) {
-                app(AppNotificationService::class)->sendToUser($appId, (int) $order->user_id, [
-                    'type' => 'ticket_purchase_confirmed',
-                    'title' => 'Presença confirmada',
-                    'message' => 'Sua compra foi aprovada. Você tem '.$ticketQuantity.' '.($ticketQuantity === 1 ? 'ingresso' : 'ingressos').' para '.$order->event->title.'.',
-                    'reference_type' => 'event',
-                    'reference_id' => $order->event_id,
-                    'reference_url' => '/passes',
-                    'send_email' => false,
-                    'data' => ['event_id' => $order->event_id, 'order_id' => $order->id, 'ticket_count' => $ticketQuantity],
-                ]);
-            },
-            $deliveryContext
-        );
-
-        if ($passes->isNotEmpty() && $order->user->email) {
-            try {
-                $delivery->run(
-                    $appId,
-                    'commerce_order',
-                    (int) $order->id,
-                    'buyer_event_passes_email',
-                    function () use ($order, $passes) {
-                        Mail::to($order->user->email)->send(new EventPassesMail($order, $passes));
-                    },
-                    $deliveryContext
-                );
-            } catch (\Throwable $e) {
-                Log::error('Falha ao enviar ingressos por e-mail; entrega ficará pendente para nova reconciliação.', [
-                    'order_id' => $order->id,
-                    'user_id' => $order->user_id,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+        // Do not send an incomplete wallet or an email about revoked passes.
+        if ($passes->count() !== $ticketQuantity) {
+            return null;
         }
 
-        app(ImportantEventService::class)->recordTicketPurchase($order);
+        try {
+            return app(DeliveryEffectService::class)->run(
+                (int) $order->app_id,
+                'commerce_order',
+                (int) $order->id,
+                'buyer_event_passes_email',
+                function () use ($order, $passes): void {
+                    Mail::to($order->user->email)->send(new EventPassesMail($order, $passes));
+                },
+                [
+                    'order_id' => (int) $order->id,
+                    'event_id' => (int) $order->event_id,
+                    'user_id' => (int) $order->user_id,
+                    'ticket_count' => $ticketQuantity,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::error('Falha ao enviar ingressos por e-mail; entrega ficará pendente para nova reconciliação.', [
+                'order_id' => $order->id,
+                'app_id' => $order->app_id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
     }
 
     public function confirmCourtesy(EventPass $pass): void
