@@ -513,6 +513,50 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
     }
 
+    /**
+     * O endpoint de contexto é consumido pelo frontend administrativo.
+     * O mesmo JWT de owner local não pode obter contexto de outra aplicação
+     * manipulando a query ou o cabeçalho X-Peter-App.
+     *
+     * Este teste valida o limite HTTP sem mascarar o gate separado que
+     * exige is_root=false para proprietários locais não globais.
+     */
+    public function test_contexto_administrativo_do_owner_local_nao_vaza_para_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $local = $this->usuario('owner-contexto-isolado-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $local);
+        $this->assertTrue($administracao->isOwner($local, $cutinapp->id));
+        $this->assertFalse($administracao->isOwner($local, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($local));
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($local),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        // O identificador da query não deve redirecionar a autoridade local.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/context?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            $cabecalhos,
+        )
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true)
+            ->assertJsonPath('data.owner_user_id', $local->id);
+
+        // A aplicação da rota é o limite de autorização, não o header/query.
+        $this->getJson(
+            '/api/v1/apps/rasoio/admin/context?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id,
+            $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
