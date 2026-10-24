@@ -1716,6 +1716,78 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($proprietario));
     }
 
+    /**
+     * Reativar um colaborador após revogação exige uma nova concessão explícita.
+     * O vínculo é reutilizado sem duplicar grants, e permissões do perfil
+     * anterior não sobrevivem à troca, inclusive com o mesmo JWT.
+     */
+    public function test_reconcessao_explicita_reusa_vinculo_revogado_sem_ressuscitar_permissoes(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $colaborador = $this->usuario('reconcessao-segura-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfilAuditoria = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Auditoria temporaria reconcessao W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilPainel = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Painel apos reconcessao W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+
+        $vinculoOriginal = $administracao->assign(
+            $cutinapp->id, $root, $colaborador->email, $perfilAuditoria->id,
+        );
+        $cabecalhos = ['Authorization' => 'Bearer '.JWTAuth::fromUser($colaborador)];
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhos)->assertOk();
+
+        $administracao->revoke($cutinapp->id, $vinculoOriginal->id, $root);
+        $this->assertFalse($administracao->hasAccess($colaborador, $cutinapp->id));
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $vinculoRestaurado = $administracao->assign(
+            $cutinapp->id, $root, $colaborador->email, $perfilPainel->id,
+        );
+
+        $this->assertSame($vinculoOriginal->id, $vinculoRestaurado->id);
+        $this->assertDatabaseCount('application_admin_assignments', 1);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculoOriginal->id,
+            'application_id' => $cutinapp->id,
+            'profile_id' => $perfilPainel->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertFalse($administracao->hasPermission($colaborador, $cutinapp->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'dashboard.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $colaborador, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.permissions', ['dashboard.view'])
+            ->assertJsonPath('data.is_root', false)
+            ->assertJsonPath('data.is_owner', false);
+
+        $this->assertSame(2, \\App\\Models\\ApplicationAdminAudit::query()
+            ->where('application_id', $cutinapp->id)
+            ->where('action', 'admin_access_granted')
+            ->count());
+        $this->assertSame(1, \\App\\Models\\ApplicationAdminAudit::query()
+            ->where('application_id', $cutinapp->id)
+            ->where('action', 'admin_access_revoked')
+            ->count());
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
