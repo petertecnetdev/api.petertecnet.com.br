@@ -1024,7 +1024,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ));
         $this->assertFalse($administracao->isRoot($leitor));
 
-        $auditoriasAntes = Illuminate\Support\Facades\DB::table('application_admin_audits')
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
             ->where('application_id', $cutinapp->id)
             ->count();
         $cabecalhos = [
@@ -1051,7 +1051,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
         $this->assertSame(
             $auditoriasAntes,
-            Illuminate\Support\Facades\DB::table('application_admin_audits')
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
                 ->where('application_id', $cutinapp->id)
                 ->count(),
         );
