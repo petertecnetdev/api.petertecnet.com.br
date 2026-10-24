@@ -454,6 +454,65 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($leitor));
     }
 
+    /**
+     * O proprietário local pode criar perfis apenas no aplicativo da rota.
+     * app_id/application_id enviados pelo cliente e o cabeçalho de outro app
+     * não devem transformar sua titularidade local em autoridade global.
+     */
+    public function test_owner_local_nao_cria_perfil_em_outro_app_com_contexto_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-local-perfil-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerLocal);
+
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+        $this->assertFalse($administracao->isOwner($ownerLocal, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($ownerLocal));
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerLocal),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $dados = [
+            'name' => 'Perfil restrito W03',
+            'permissions' => ['operations.view'],
+        ];
+
+        $this->postJson(
+            '/api/v1/apps/rasoio/admin/profiles?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id,
+            $dados,
+            $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $rasoio->id,
+            'slug' => 'perfil-restrito-w03',
+        ]);
+
+        // Controle positivo: o mesmo JWT ainda administra somente seu app.
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/profiles?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            $dados,
+            $cabecalhos,
+        )
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $cutinapp->id);
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-restrito-w03',
+        ]);
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $rasoio->id,
+            'slug' => 'perfil-restrito-w03',
+        ]);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
