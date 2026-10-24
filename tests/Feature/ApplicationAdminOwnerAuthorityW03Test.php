@@ -1244,6 +1244,75 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isOwner($leitor, $cutinapp->id));
     }
 
+    /**
+     * O contexto HTTP consumido pelo Admin Center deve refletir imediatamente
+     * a troca persistida de titularidade, inclusive com JWT emitido antes dela.
+     * A revogação local não pode retirar a titularidade de outro aplicativo.
+     */
+    public function test_transferencia_de_owner_revoga_contexto_http_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $anterior = $this->usuario('owner-contexto-revogado-w03@example.test');
+        $novo = $this->usuario('novo-owner-contexto-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $anterior);
+        $this->vincular($rasoio->id, $anterior);
+
+        $tokenAntigo = JWTAuth::fromUser($anterior);
+        $cabecalhosCutinapp = [
+            'Authorization' => 'Bearer '.$tokenAntigo,
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $cabecalhosRasoio = [
+            'Authorization' => 'Bearer '.$tokenAntigo,
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $cabecalhosCutinapp)
+            ->assertOk()
+            ->assertJsonPath('data.is_owner', true);
+
+        // Reassociação administrativa de fixture; não cria endpoint público.
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $novo->id,
+                'bound_by_user_id' => $novo->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->assertFalse($administracao->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($administracao->isOwner($novo, $cutinapp->id));
+        $this->assertFalse($administracao->isRoot($novo));
+
+        // O JWT antigo não conserva o painel administrativo da Cutinapp.
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/context?app_id='.$rasoio->id,
+            $cabecalhosCutinapp,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        // O mesmo JWT ainda possui autoridade legítima no outro aplicativo.
+        $this->getJson('/api/v1/apps/rasoio/admin/context', $cabecalhosRasoio)
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true)
+            ->assertJsonPath('data.owner_user_id', $anterior->id);
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($novo),
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true)
+            ->assertJsonPath('data.owner_user_id', $novo->id);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
