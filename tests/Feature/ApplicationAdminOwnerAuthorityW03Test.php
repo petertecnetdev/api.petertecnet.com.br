@@ -1667,6 +1667,55 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($colaborador));
     }
 
+    /**
+     * O proprietário de uma aplicação não pode atribuir a si mesmo um perfil
+     * delegado. Isso preserva a identidade Owner e impede grants redundantes
+     * que poderiam sobreviver a uma futura transferência de titularidade.
+     * A recusa não deve produzir vínculo ou auditoria de concessão.
+     */
+    public function test_owner_local_nao_cria_atribuicao_delegada_para_si_mesmo(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $proprietario = $this->usuario('owner-sem-autodelegacao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $proprietario);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $proprietario, [
+            'name' => 'Consulta sem autodelegacao W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)
+            ->count();
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/assignments', [
+            'email' => strtoupper($proprietario->email),
+            'profile_id' => $perfil->id,
+        ], [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($proprietario),
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('email');
+
+        $this->assertDatabaseMissing('application_admin_assignments', [
+            'application_id' => $cutinapp->id,
+            'user_id' => $proprietario->id,
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+        $this->assertTrue($administracao->isOwner($proprietario, $cutinapp->id));
+        $this->assertTrue($administracao->hasPermission(
+            $proprietario, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+        $this->assertFalse($administracao->isRoot($proprietario));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
