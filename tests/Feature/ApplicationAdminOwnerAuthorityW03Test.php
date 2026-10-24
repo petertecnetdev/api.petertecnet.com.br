@@ -992,6 +992,77 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ));
     }
 
+    /**
+     * Um colaborador com acesso somente de leitura não pode usar o próprio
+     * JWT para trocar seu perfil por outro com privilégios financeiros.
+     * A API deve negar a autoelevação antes de criar grants ou auditoria.
+     */
+    public function test_colaborador_de_leitura_nao_autoatribui_perfil_financeiro_por_http(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $leitor = $this->usuario('leitor-autoelevacao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfilLeitura = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Leitura sem gestao W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $perfilFinanceiro = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Financeiro protegido W03',
+            'permissions' => ['finance.refund'],
+        ]);
+        $vinculo = $administracao->assign(
+            $cutinapp->id, $root, $leitor->email, $perfilLeitura->id,
+        );
+
+        $this->assertTrue($administracao->hasPermission(
+            $leitor, $cutinapp->id, 'dashboard.view',
+        ));
+        $this->assertFalse($administracao->hasPermission(
+            $leitor, $cutinapp->id, 'finance.refund',
+        ));
+        $this->assertFalse($administracao->isRoot($leitor));
+
+        $auditoriasAntes = Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)
+            ->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($leitor),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/assignments', [
+            'email' => $leitor->email,
+            'profile_id' => $perfilFinanceiro->id,
+            'app_id' => $cutinapp->id,
+            'application_id' => $cutinapp->id,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseCount('application_admin_assignments', 1);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculo->id,
+            'application_id' => $cutinapp->id,
+            'profile_id' => $perfilLeitura->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+        $this->assertTrue($administracao->hasPermission(
+            $leitor, $cutinapp->id, 'dashboard.view',
+        ));
+        $this->assertFalse($administracao->hasPermission(
+            $leitor, $cutinapp->id, 'finance.refund',
+        ));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
