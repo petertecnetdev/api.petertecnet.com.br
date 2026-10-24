@@ -1610,6 +1610,63 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
     }
 
+    /**
+     * Excluir um perfil com delegação ativa não pode retirar acesso de forma
+     * silenciosa: primeiro é necessário revogar o vínculo explicitamente.
+     * Após a revogação, o perfil pode ser excluído sem grants residuais.
+     */
+    public function test_exclusao_de_perfil_ativo_exige_revogacao_previa(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $proprietario = $this->usuario('owner-exclusao-segura-w03@example.test');
+        $colaborador = $this->usuario('colaborador-exclusao-segura-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $proprietario);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $proprietario, [
+            'name' => 'Auditoria protegida contra exclusao W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $atribuicao = $administracao->assign(
+            $cutinapp->id,
+            $proprietario,
+            $colaborador->email,
+            $perfil->id,
+        );
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'audit.view'));
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+
+        try {
+            $administracao->deleteProfile($cutinapp->id, $perfil->id, $proprietario);
+            $this->fail('Um perfil com atribuição ativa não pode ser excluído.');
+        } catch (\Illuminate\Validation\ValidationException $erro) {
+            $this->assertArrayHasKey('profile', $erro->errors());
+        }
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfil->id,
+            'application_id' => $cutinapp->id,
+        ]);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $atribuicao->id,
+            'application_id' => $cutinapp->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertSame($auditoriasAntes, \App\Models\ApplicationAdminAudit::query()->count());
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'audit.view'));
+
+        $administracao->revoke($cutinapp->id, $atribuicao->id, $proprietario);
+        $this->assertFalse($administracao->hasAccess($colaborador, $cutinapp->id));
+        $administracao->deleteProfile($cutinapp->id, $perfil->id, $proprietario);
+
+        $this->assertDatabaseMissing('application_admin_profiles', ['id' => $perfil->id]);
+        $this->assertDatabaseMissing('application_admin_assignments', ['id' => $atribuicao->id]);
+        $this->assertFalse($administracao->hasPermission($colaborador, $cutinapp->id, 'audit.view'));
+        $this->assertFalse($administracao->isRoot($colaborador));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
