@@ -339,6 +339,64 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($leitor));
     }
 
+    /**
+     * Um JWT emitido enquanto o usuário era owner não pode conservar poderes
+     * de escrita operacional depois de uma reassociação persistida do owner.
+     * Exercita a autorização HTTP, não somente os métodos do serviço.
+     */
+    public function test_troca_de_owner_revoga_mutacoes_de_workers_no_mesmo_jwt(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $anterior = $this->usuario('owner-worker-anterior-w03@example.test');
+        $atual = $this->usuario('owner-worker-atual-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $anterior);
+        $this->assertTrue($administracao->hasPermission(
+            $anterior, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $token = JWTAuth::fromUser($anterior);
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        // Simula recuperação administrativa já autorizada e persistida.
+        // Não introduz endpoint público de troca de titularidade.
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $atual->id,
+                'bound_by_user_id' => $atual->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->assertFalse($administracao->hasPermission(
+            $anterior, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $this->putJson('/api/v1/apps/cutinapp/admin/automations/workers/events_discover', [
+            'enabled' => false,
+            'interval_minutes' => 60,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/automations/workers/events_discover/dispatch', [], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertSame(
+            $atual->id,
+            app(ApplicationOwnerAuthorityService::class)->ownerId($cutinapp->id),
+        );
+        $this->assertTrue($administracao->hasPermission(
+            $atual, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
