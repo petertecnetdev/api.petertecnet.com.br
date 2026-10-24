@@ -628,6 +628,77 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($local));
     }
 
+    /**
+     * Um JWT emitido para o antigo proprietário não pode criar novos perfis
+     * depois de uma recuperação administrativa persistida. A revogação deve
+     * atingir somente o app transferido, preservando outro app de que ele
+     * continua sendo proprietário, sem nova autenticação.
+     */
+    public function test_transferencia_de_owner_revoga_criacao_de_perfil_sem_revogar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $anterior = $this->usuario('owner-transferencia-perfil-w03@example.test');
+        $atual = $this->usuario('novo-owner-transferencia-perfil-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $anterior);
+        $this->vincular($rasoio->id, $anterior);
+
+        $token = JWTAuth::fromUser($anterior);
+        $this->assertTrue($administracao->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($administracao->isOwner($anterior, $rasoio->id));
+
+        // Recuperação administrativa previamente autorizada, sem endpoint público.
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $atual->id,
+                'bound_by_user_id' => $atual->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->assertFalse($administracao->isOwner($anterior, $cutinapp->id));
+        $this->assertTrue($administracao->isOwner($anterior, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($anterior));
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles', [
+            'name' => 'Perfil negado apos transferencia W03',
+            'permissions' => ['operations.view'],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-negado-apos-transferencia-w03',
+        ]);
+
+        // Controle positivo com o mesmo token: não revogar outra aplicação.
+        $this->postJson('/api/v1/apps/rasoio/admin/profiles', [
+            'name' => 'Perfil legitimo apos transferencia W03',
+            'permissions' => ['operations.view'],
+        ], [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $rasoio->id);
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $rasoio->id,
+            'slug' => 'perfil-legitimo-apos-transferencia-w03',
+        ]);
+        $this->assertSame(
+            $atual->id,
+            app(ApplicationOwnerAuthorityService::class)->ownerId($cutinapp->id),
+        );
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
