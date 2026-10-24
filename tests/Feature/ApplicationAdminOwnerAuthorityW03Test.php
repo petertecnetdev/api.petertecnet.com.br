@@ -1788,6 +1788,60 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->count());
     }
 
+    /**
+     * O catálogo de permissões delegáveis não pode aceitar admin.access.manage
+     * por POST ou PUT. Uma tentativa inválida não pode persistir perfis,
+     * ampliar grants existentes nem produzir auditoria de alteração.
+     */
+    public function test_permissao_reservada_nao_pode_ser_injetada_em_perfil_por_http(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $proprietario = $this->usuario('owner-permissao-reservada-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $proprietario);
+        $perfil = $administracao->createProfile($cutinapp->id, $proprietario, [
+            'name' => 'Leitura delegavel W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()
+            ->where('application_id', $cutinapp->id)
+            ->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($proprietario),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles', [
+            'name' => 'Escalada indevida W03',
+            'permissions' => [ApplicationAdminService::ACCESS_MANAGE_PERMISSION],
+        ], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions');
+
+        $this->putJson('/api/v1/apps/cutinapp/admin/profiles/'.$perfil->id, [
+            'permissions' => ['dashboard.view', ApplicationAdminService::ACCESS_MANAGE_PERMISSION],
+        ], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('permissions');
+
+        $this->assertDatabaseCount('application_admin_profiles', 1);
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'name' => 'Escalada indevida W03',
+        ]);
+        $this->assertSame(['dashboard.view'], $perfil->fresh()->permissions);
+        $this->assertDatabaseCount('application_admin_assignments', 0);
+        $this->assertSame(
+            $auditoriasAntes,
+            \App\Models\ApplicationAdminAudit::query()
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+        $this->assertFalse($administracao->isRoot($proprietario));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
