@@ -1778,11 +1778,11 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('data.is_root', false)
             ->assertJsonPath('data.is_owner', false);
 
-        $this->assertSame(2, \\App\\Models\\ApplicationAdminAudit::query()
+        $this->assertSame(2, \App\Models\ApplicationAdminAudit::query()
             ->where('application_id', $cutinapp->id)
             ->where('action', 'admin_access_granted')
             ->count());
-        $this->assertSame(1, \\App\\Models\\ApplicationAdminAudit::query()
+        $this->assertSame(1, \App\Models\ApplicationAdminAudit::query()
             ->where('application_id', $cutinapp->id)
             ->where('action', 'admin_access_revoked')
             ->count());
