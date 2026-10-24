@@ -765,6 +765,67 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
     }
 
+    /**
+     * A revogação de audit.view em uma aplicação deve valer no mesmo JWT,
+     * sem revelar o histórico de outro app nem revogar um grant independente.
+     * O app_id informado pelo cliente não substitui o contexto da rota.
+     */
+    public function test_revogacao_de_auditoria_preserva_acesso_a_outro_app_com_mesmo_jwt(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-revogacao-cross-app-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Auditoria Cutinapp W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Auditoria Rasoio W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $vinculoCutinapp = $administracao->assign(
+            $cutinapp->id, $root, $auditor->email, $perfilCutinapp->id,
+        );
+        $administracao->assign($rasoio->id, $root, $auditor->email, $perfilRasoio->id);
+
+        $administracao->auditAction($cutinapp->id, $root, null, 'marcador_cutinapp_w03');
+        $administracao->auditAction($rasoio->id, $root, null, 'marcador_rasoio_w03');
+
+        $token = JWTAuth::fromUser($auditor);
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $auditoriaCutinapp = $this->getJson(
+            '/api/v1/apps/cutinapp/admin/audit?app_id='.$rasoio->id, $cabecalhos,
+        )->assertOk();
+        $acoesCutinapp = collect($auditoriaCutinapp->json('data.data'))->pluck('action')->all();
+        $this->assertContains('marcador_cutinapp_w03', $acoesCutinapp);
+        $this->assertNotContains('marcador_rasoio_w03', $acoesCutinapp);
+
+        $administracao->revoke($cutinapp->id, $vinculoCutinapp->id, $root);
+
+        $this->getJson(
+            '/api/v1/apps/cutinapp/admin/audit?app_id='.$rasoio->id, $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertFalse($administracao->hasPermission($auditor, $cutinapp->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($auditor, $rasoio->id, 'audit.view'));
+
+        $auditoriaRasoio = $this->getJson(
+            '/api/v1/apps/rasoio/admin/audit?app_id='.$cutinapp->id, $cabecalhos,
+        )->assertOk();
+        $acoesRasoio = collect($auditoriaRasoio->json('data.data'))->pluck('action')->all();
+        $this->assertContains('marcador_rasoio_w03', $acoesRasoio);
+        $this->assertNotContains('marcador_cutinapp_w03', $acoesRasoio);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
