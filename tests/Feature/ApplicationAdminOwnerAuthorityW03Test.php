@@ -1063,6 +1063,75 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ));
     }
 
+    /**
+     * Um perfil legado ou importado com permissão reservada não pode transformar
+     * um colaborador em Owner, mesmo que o grant tenha sido persistido no banco.
+     * O backend precisa ignorar o privilégio reservado e negar mutações.
+     */
+    public function test_perfil_legado_contaminado_nao_concede_gestao_reservada(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $delegado = $this->usuario('delegado-permissao-reservada-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $perfil = $administracao->createProfile($cutinapp->id, $root, [
+            'name' => 'Leitura com dado legado W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $administracao->assign($cutinapp->id, $root, $delegado->email, $perfil->id);
+
+        // Simula dado legado/importado fora da validação do formulário.
+        // Não concede acesso por endpoint nem altera regras de produção.
+        $perfil->forceFill([
+            'permissions' => [
+                'dashboard.view',
+                ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+            ],
+        ])->save();
+
+        $this->assertFalse($administracao->isRoot($delegado));
+        $this->assertFalse($administracao->isOwner($delegado, $cutinapp->id));
+        $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'dashboard.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $delegado, $cutinapp->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($delegado),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_root', false)
+            ->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.permissions', ['dashboard.view']);
+
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)
+            ->count();
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles', [
+            'name' => 'Escalada indevida W03',
+            'permissions' => ['finance.refund'],
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'name' => 'Escalada indevida W03',
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)
+                ->count(),
+        );
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
