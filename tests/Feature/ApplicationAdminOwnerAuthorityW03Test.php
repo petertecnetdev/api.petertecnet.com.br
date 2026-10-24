@@ -1443,7 +1443,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             }
 
             $this->assertSame(
-                \\App\\Models\\ApplicationAdminAudit::query()
+                \App\Models\ApplicationAdminAudit::query()
                     ->where('application_id', $appAutorizado->id)
                     ->count(),
                 (int) $resposta->json('data.total'),
