@@ -1389,6 +1389,70 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isOwner($auditor, $cutinapp->id));
     }
 
+    /**
+     * A leitura de auditoria deve ser isolada pela aplicação da rota, mesmo
+     * quando o mesmo delegado tem audit.view em dois aplicativos e tenta
+     * forjar app_id, application_id e X-Peter-App. O retorno paginado não
+     * pode incluir ações do outro tenant.
+     */
+    public function test_auditoria_multiapp_nao_expoe_registros_de_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-multiapp-isolado-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        foreach ([$cutinapp, $rasoio] as $app) {
+            $perfil = $administracao->createProfile($app->id, $root, [
+                'name' => 'Auditoria isolada '.$app->slug,
+                'permissions' => ['audit.view'],
+            ]);
+            $administracao->assign($app->id, $root, $auditor->email, $perfil->id);
+        }
+
+        $administracao->auditAction($cutinapp->id, $root, null, 'w03_auditoria_cutinapp');
+        $administracao->auditAction($rasoio->id, $root, null, 'w03_auditoria_rasoio');
+
+        $this->assertTrue($administracao->hasPermission($auditor, $cutinapp->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($auditor, $rasoio->id, 'audit.view'));
+
+        $token = JWTAuth::fromUser($auditor);
+
+        foreach ([
+            [$cutinapp, $rasoio, 'w03_auditoria_cutinapp', 'w03_auditoria_rasoio'],
+            [$rasoio, $cutinapp, 'w03_auditoria_rasoio', 'w03_auditoria_cutinapp'],
+        ] as [$appAutorizado, $appForjado, $acaoEsperada, $acaoProibida]) {
+            $resposta = $this->getJson(
+                '/api/v1/apps/'.$appAutorizado->slug.'/admin/audit'
+                .'?app_id='.$appForjado->id.'&application_id='.$appForjado->id.'&per_page=100',
+                [
+                    'Authorization' => 'Bearer '.$token,
+                    'X-Peter-App' => $appForjado->slug,
+                ],
+            )->assertOk();
+
+            $registros = $resposta->json('data.data');
+            $this->assertIsArray($registros);
+            $this->assertNotEmpty($registros);
+            $this->assertContains($acaoEsperada, array_column($registros, 'action'));
+            $this->assertNotContains($acaoProibida, array_column($registros, 'action'));
+
+            foreach ($registros as $registro) {
+                $this->assertSame($appAutorizado->id, (int) $registro['application_id']);
+            }
+
+            $this->assertSame(
+                \\App\\Models\\ApplicationAdminAudit::query()
+                    ->where('application_id', $appAutorizado->id)
+                    ->count(),
+                (int) $resposta->json('data.total'),
+            );
+        }
+
+        $this->assertFalse($administracao->isRoot($auditor));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
