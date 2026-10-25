@@ -2678,7 +2678,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->vincular($cutinapp->id, $anterior);
 
         config()->set('automation_workers.enabled', true);
-        \\Illuminate\\Support\\Facades\\Queue::fake();
+        \Illuminate\Support\Facades\Queue::fake();
 
         $worker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
         $headersAnterior = [
@@ -2719,7 +2719,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'enabled' => true,
         ]);
         $this->assertDatabaseCount('automation_worker_runs', 0);
-        \\Illuminate\\Support\\Facades\\Queue::assertNotPushed(\\App\\Jobs\\RunAutomationWorker::class);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
 
         $this->postJson($worker.'/dispatch', [], $headersSucessor)
             ->assertStatus(202)
@@ -2731,7 +2731,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'status' => 'queued',
         ]);
         $this->assertDatabaseCount('automation_worker_runs', 1);
-        \\Illuminate\\Support\\Facades\\Queue::assertPushed(\\App\\Jobs\\RunAutomationWorker::class, 1);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
     }
 
     private function vincular(int $applicationId, User $usuario): void
