@@ -2874,6 +2874,78 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
     }
 
+
+    /**
+     * Falha terminal libera nova tentativa, mas uma execução pendente continua
+     * bloqueando duplicatas. O histórico e a fila permanecem isolados por app.
+     */
+    public function test_worker_falhado_pode_ser_reexecutado_sem_duplicar_run_pendente(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-worker-retry-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $worker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+
+        $this->putJson($worker, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+
+        $primeiro = $this->postJson($worker.'/dispatch', [], $headers)
+            ->assertAccepted()
+            ->json('data.run_id');
+        $this->assertNotNull($primeiro);
+
+        \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $primeiro)
+            ->update([
+                'status' => 'failed',
+                'last_error' => 'RuntimeException',
+                'finished_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+        $segundo = $this->postJson($worker.'/dispatch', [], $headers)
+            ->assertAccepted()
+            ->json('data.run_id');
+        $this->assertNotSame((int) $primeiro, (int) $segundo);
+
+        $this->postJson($worker.'/dispatch', [], $headers)->assertStatus(409);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $primeiro,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'failed',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $segundo,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseMissing('automation_worker_runs', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+            ->assertOk()
+            ->assertJsonCount(2, 'data.recent_runs');
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
