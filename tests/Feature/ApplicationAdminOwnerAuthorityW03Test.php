@@ -2946,6 +2946,88 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonCount(2, 'data.recent_runs');
     }
 
+    /**
+     * O painel exibe somente as 30 execuções mais recentes. Uma execução
+     * antiga ainda em andamento não pode ser ignorada pelo servidor quando
+     * 31 execuções terminais posteriores a retiram dessa janela visual.
+     * Protege contra duplicidade mesmo que a interface mostre Executar.
+     */
+    public function test_execucao_pendente_antiga_fora_do_historico_visivel_bloqueia_novo_dispatch(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-worker-historico-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+
+        $pendente = \Illuminate\Support\Facades\DB::table('automation_worker_runs')->insertGetId([
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'running',
+            'started_at' => now()->subHour(),
+            'created_at' => now()->subHour(),
+            'updated_at' => now()->subHour(),
+        ]);
+
+        $terminais = [];
+        for ($indice = 0; $indice < 31; $indice++) {
+            $terminais[] = [
+                'app_id' => $cutinapp->id,
+                'worker_key' => 'discovery_quality',
+                'status' => 'completed',
+                'finished_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        \Illuminate\Support\Facades\DB::table('automation_worker_runs')->insert($terminais);
+
+        $painel = $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+            ->assertOk()
+            ->assertJsonCount(30, 'data.recent_runs');
+        $idsVisiveis = array_map('intval', array_column($painel->json('data.recent_runs'), 'id'));
+        $this->assertNotContains((int) $pendente, $idsVisiveis);
+
+        // O limite do dashboard jamais pode ser utilizado como autorização.
+        $this->postJson($workerCutinapp.'/dispatch', [], $headers)->assertStatus(409);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $pendente,
+            'app_id' => $cutinapp->id,
+            'status' => 'running',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 32);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        // Uma pendência da Cutinapp não bloqueia um app independente.
+        $this->postJson($workerRasoio.'/dispatch', [], $headers)->assertAccepted();
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 33);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
