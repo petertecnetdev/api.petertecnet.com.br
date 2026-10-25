@@ -2665,6 +2665,75 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonCount(1, 'data.recent_runs');
     }
 
+    /**
+     * Revogar a titularidade deve bloquear o dispatch mesmo quando o controle
+     * permanece habilitado. O novo owner pode continuar a operação legítima;
+     * o JWT antigo não cria runs nem jobs após a transferência persistida.
+     */
+    public function test_revogacao_de_owner_com_worker_habilitado_impede_dispatch_com_jwt_antigo(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $anterior = $this->usuario('owner-worker-revogado-w03@example.test');
+        $sucessor = $this->usuario('owner-worker-sucessor-w03@example.test');
+        $this->vincular($cutinapp->id, $anterior);
+
+        config()->set('automation_workers.enabled', true);
+        \\Illuminate\\Support\\Facades\\Queue::fake();
+
+        $worker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $headersAnterior = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($anterior),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $headersSucessor = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($sucessor),
+            'X-Peter-App' => 'cutinapp',
+        ];
+
+        $this->putJson($worker, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headersAnterior)->assertOk();
+
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $sucessor->id,
+                'bound_by_user_id' => $sucessor->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->assertFalse(app(ApplicationAdminService::class)->hasAccess($anterior, $cutinapp->id));
+        $this->assertTrue(app(ApplicationAdminService::class)->hasAccess($sucessor, $cutinapp->id));
+
+        $this->postJson($worker.'/dispatch?app_id='.$cutinapp->id, [
+            'application_id' => $cutinapp->id,
+        ], $headersAnterior)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \\Illuminate\\Support\\Facades\\Queue::assertNotPushed(\\App\\Jobs\\RunAutomationWorker::class);
+
+        $this->postJson($worker.'/dispatch', [], $headersSucessor)
+            ->assertStatus(202)
+            ->assertJsonStructure(['data' => ['run_id']]);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 1);
+        \\Illuminate\\Support\\Facades\\Queue::assertPushed(\\App\\Jobs\\RunAutomationWorker::class, 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
