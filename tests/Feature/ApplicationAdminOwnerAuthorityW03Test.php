@@ -1842,6 +1842,77 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($proprietario));
     }
 
+    /**
+     * Uma edição do perfil compartilhado deve revogar finance.refund de todos
+     * os delegados imediatamente, inclusive com JWT já emitido. A alteração
+     * não pode retirar a permissão legítima do mesmo usuário em outro app.
+     */
+    public function test_alteracao_de_perfil_compartilhado_revoga_reembolso_para_todos_os_delegados(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-perfil-compartilhado-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-perfil-compartilhado-rasoio-w03@example.test');
+        $primeiro = $this->usuario('delegado-financeiro-primeiro-w03@example.test');
+        $segundo = $this->usuario('delegado-financeiro-segundo-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $ownerCutinapp, [
+            'name' => 'Financeiro compartilhado W03',
+            'permissions' => ['finance.view', 'finance.refund'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $ownerRasoio, [
+            'name' => 'Reembolso Rasoio W03',
+            'permissions' => ['finance.refund'],
+        ]);
+
+        $administracao->assign($cutinapp->id, $ownerCutinapp, $primeiro->email, $perfilCutinapp->id);
+        $administracao->assign($cutinapp->id, $ownerCutinapp, $segundo->email, $perfilCutinapp->id);
+        $administracao->assign($rasoio->id, $ownerRasoio, $primeiro->email, $perfilRasoio->id);
+
+        $jwtPrimeiro = JWTAuth::fromUser($primeiro);
+        $jwtSegundo = JWTAuth::fromUser($segundo);
+
+        foreach ([$primeiro, $segundo] as $delegado) {
+            $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'finance.refund'));
+        }
+
+        $administracao->updateProfile($cutinapp->id, $perfilCutinapp->id, $ownerCutinapp, [
+            'permissions' => ['finance.view'],
+        ]);
+
+        foreach ([[$primeiro, $jwtPrimeiro], [$segundo, $jwtSegundo]] as [$delegado, $jwt]) {
+            $this->assertFalse($administracao->hasPermission($delegado, $cutinapp->id, 'finance.refund'));
+            $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'finance.view'));
+            $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+                'Authorization' => 'Bearer '.$jwt,
+                'X-Peter-App' => 'cutinapp',
+            ])
+                ->assertOk()
+                ->assertJsonPath('data.permissions', ['finance.view'])
+                ->assertJsonPath('data.is_root', false)
+                ->assertJsonPath('data.is_owner', false);
+        }
+
+        $this->assertTrue($administracao->hasPermission($primeiro, $rasoio->id, 'finance.refund'));
+        $this->getJson('/api/v1/apps/rasoio/admin/context', [
+            'Authorization' => 'Bearer '.$jwtPrimeiro,
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.permissions', ['finance.refund']);
+
+        $this->assertDatabaseCount('application_admin_assignments', 3);
+        $this->assertSame(['finance.view'], $perfilCutinapp->fresh()->permissions);
+        $this->assertSame(1, \\App\\Models\\ApplicationAdminAudit::query()
+            ->where('application_id', $cutinapp->id)
+            ->where('action', 'admin_profile_updated')
+            ->count());
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
