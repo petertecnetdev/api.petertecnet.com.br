@@ -2055,6 +2055,89 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($auditor));
     }
 
+    /**
+     * Ter autoridade de proprietário na Cutinapp e leitura operacional no
+     * Rasoio não permite promover o grant delegado do Rasoio a escrita.
+     * Impede confusão de contexto entre apps quando o mesmo JWT tem papéis
+     * diferentes; não deve criar controles nem enfileirar jobs no outro app.
+     */
+    public function test_owner_de_um_app_com_grant_de_leitura_em_outro_nao_muta_workers(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-misto-workers-w03@example.test');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerLocal);
+        $perfil = $administracao->createProfile($rasoio->id, $root, [
+            'name' => 'Consulta de workers Rasoio W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $administracao->assign($rasoio->id, $root, $ownerLocal->email, $perfil->id);
+
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+        $this->assertFalse($administracao->isOwner($ownerLocal, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($ownerLocal));
+        $this->assertTrue($administracao->hasPermission($ownerLocal, $rasoio->id, 'operations.view'));
+        $this->assertFalse($administracao->hasPermission(
+            $ownerLocal, $rasoio->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+        $token = JWTAuth::fromUser($ownerLocal);
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $urlExterna = '/api/v1/apps/rasoio/admin/automations';
+        $forjado = '?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id;
+
+        // Controle positivo: o grant de leitura do Rasoio permanece válido.
+        $this->getJson($urlExterna.$forjado, $cabecalhos)->assertOk();
+
+        $this->putJson($urlExterna.'/workers/discovery_quality'.$forjado, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+            'app_id' => $cutinapp->id,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson($urlExterna.'/workers/discovery_quality/dispatch'.$forjado, [
+            'application_id' => $cutinapp->id,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseMissing('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        // Controle positivo: a titularidade da Cutinapp não foi revogada.
+        $this->putJson('/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality', [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseMissing('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
