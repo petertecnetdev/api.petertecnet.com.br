@@ -2821,6 +2821,59 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * Mesmo quando a identidade administra dois apps, o servidor deve
+     * persistir a configuração no app da rota, nunca no app_id do cliente.
+     * Esta regressão usa um PUT válido (não apenas validação de erro).
+     */
+    public function test_atualizacao_valida_de_worker_ignora_app_ids_forjados_mesmo_com_owner_multiapp(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-worker-payload-multiapp-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        \Illuminate\Support\Facades\Queue::fake();
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $worker = '/admin/automations/workers/discovery_quality';
+
+        $this->putJson('/api/v1/apps/rasoio'.$worker, [
+            'enabled' => false,
+            'interval_minutes' => 60,
+        ], $headers)->assertOk();
+
+        $forjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+        $this->putJson('/api/v1/apps/cutinapp'.$worker.$forjado, [
+            'enabled' => true,
+            'interval_minutes' => 20,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true)
+            ->assertJsonPath('data.interval_minutes', 20);
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 20,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 60,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
