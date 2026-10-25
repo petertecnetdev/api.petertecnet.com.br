@@ -3028,6 +3028,83 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
     }
 
+    /**
+     * A identidade bootstrap/root do ecossistema não pode assumir implicitamente
+     * a administração de uma aplicação já vinculada a outro proprietário.
+     * O mesmo usuário continua autorizado em um segundo app sem proprietário,
+     * preservando o isolamento e a inicialização legítima por aplicação.
+     */
+    public function test_identidade_root_nao_toma_worker_de_app_com_owner_local(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-root-isolamento-w03@example.test');
+        $root = $this->usuario(ApplicationOwnerAuthorityService::BOOTSTRAP_OWNER_EMAIL);
+        $autoridade = app(ApplicationOwnerAuthorityService::class);
+        $this->vincular($cutinapp->id, $ownerLocal);
+
+        $this->assertFalse($autoridade->isOwner($root, $cutinapp->id));
+        $this->assertTrue($autoridade->isOwner($root, $rasoio->id));
+        $this->assertTrue(app(ApplicationAdminService::class)->isRoot($root));
+        $this->assertSame($ownerLocal->id, $autoridade->ownerId($cutinapp->id));
+        $this->assertSame($root->id, $autoridade->ownerId($rasoio->id));
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($root),
+            // Cabeçalho conflitante não pode substituir o app da rota.
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', $headers)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+            ->assertForbidden();
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+            'app_id' => $rasoio->id,
+        ], $headers)->assertForbidden();
+        $this->postJson($workerCutinapp.'/dispatch', [
+            'application_id' => $rasoio->id,
+        ], $headers)->assertForbidden();
+
+        $this->assertDatabaseMissing('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseMissing('automation_worker_runs', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations', $headers)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+        $this->postJson($workerRasoio.'/dispatch', [], $headers)->assertAccepted();
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 1);
+        $this->assertDatabaseCount('application_owners', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
