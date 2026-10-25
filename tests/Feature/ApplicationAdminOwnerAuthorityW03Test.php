@@ -2347,6 +2347,66 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertSame(['dashboard.view'], $perfil->fresh()->permissions);
     }
 
+    /**
+     * Mesmo um proprietário autorizado não pode cadastrar ou disparar um worker
+     * desconhecido. Com o executor global desativado, um worker conhecido e
+     * configurado também não deve gerar runs nem enfileirar jobs.
+     *
+     * Este contrato cobre a operação W03 sem alterar o worker events:discover
+     * sob ownership NP12.
+     */
+    public function test_worker_nao_registrado_e_dispatch_global_desativado_falham_sem_efeitos(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $owner = $this->usuario('owner-worker-failclosed-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+
+        \Illuminate\Support\Facades\Queue::fake();
+        config()->set('automation_workers.enabled', false);
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $base = '/api/v1/apps/cutinapp/admin/automations/workers/';
+
+        $this->putJson($base.'worker_nao_registrado_w03', [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('worker');
+
+        $this->postJson($base.'worker_nao_registrado_w03/dispatch', [], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('worker');
+
+        $this->assertDatabaseCount('automation_worker_controls', 0);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+
+        // Configuração válida não ignora a chave global de desativação.
+        $this->putJson($base.'discovery_quality', [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', true);
+
+        $this->postJson($base.'discovery_quality/dispatch', [], $cabecalhos)
+            ->assertStatus(409);
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 1);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
