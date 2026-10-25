@@ -3414,6 +3414,89 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->count());
     }
 
+    /**
+     * Uma execução bem-sucedida libera uma nova rodada do mesmo worker sem
+     * apagar resultado, timestamps ou histórico. Pendências de outro app
+     * continuam bloqueadas somente no próprio escopo.
+     */
+    public function test_worker_concluido_libera_nova_rodada_sem_apagar_historico_ou_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-worker-sucesso-retry-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$workerCutinapp, $workerRasoio] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $primeiro = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $pendenteRasoio = (int) $this->postJson($workerRasoio.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $finalizadoEm = now()->subMinute();
+        $resultado = json_encode(['processed' => 3, 'source' => 'w03']);
+        \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $primeiro)
+            ->update([
+                'status' => 'succeeded',
+                'result' => $resultado,
+                'finished_at' => $finalizadoEm,
+                'updated_at' => $finalizadoEm,
+            ]);
+
+        $segundo = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $this->assertNotSame($primeiro, $segundo);
+
+        // O novo run pendente não permite disparo duplicado em nenhum app.
+        $this->postJson($workerCutinapp.'/dispatch', [], $headers)->assertStatus(409);
+        $this->postJson($workerRasoio.'/dispatch', [], $headers)->assertStatus(409);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $primeiro,
+            'app_id' => $cutinapp->id,
+            'status' => 'succeeded',
+            'result' => $resultado,
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $segundo,
+            'app_id' => $cutinapp->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $pendenteRasoio,
+            'app_id' => $rasoio->id,
+            'status' => 'queued',
+        ]);
+        $this->assertNotNull(\Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $primeiro)->value('finished_at'));
+        $this->assertDatabaseCount('automation_worker_runs', 3);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+            ->assertOk()
+            ->assertJsonCount(2, 'data.recent_runs');
+        $this->getJson('/api/v1/apps/rasoio/admin/automations', $headers)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs');
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
