@@ -3257,6 +3257,85 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
     }
 
+    /**
+     * Entregas duplicadas da fila não podem ressuscitar execuções terminais
+     * nem apagar o resultado ou a falha de um aplicativo. O consumidor deve
+     * consultar o estado persistido antes de invocar qualquer handler.
+     */
+    public function test_reentrega_de_job_nao_ressuscita_execucoes_terminais_entre_apps(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-reentrega-terminal-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$workerCutinapp, $workerRasoio] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $sucessoId = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $falhaId = (int) $this->postJson($workerRasoio.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $this->assertNotSame($sucessoId, $falhaId);
+
+        $terminadoEm = now()->subMinutes(3);
+        \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $sucessoId)
+            ->update([
+                'status' => 'succeeded',
+                'result' => json_encode(['origin' => 'completed-once']),
+                'finished_at' => $terminadoEm,
+            ]);
+        \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $falhaId)
+            ->update([
+                'status' => 'failed',
+                'last_error' => \RuntimeException::class,
+                'finished_at' => $terminadoEm,
+            ]);
+
+        $sucessoAntes = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $sucessoId)->first();
+        $falhaAntes = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $falhaId)->first();
+
+        // Simula entrega duplicada e callback de falha atrasado do mesmo job.
+        (new \App\Jobs\RunAutomationWorker($sucessoId))->handle();
+        (new \App\Jobs\RunAutomationWorker($sucessoId))
+            ->failed(new \RuntimeException('erro tardio nao deve alterar sucesso'));
+        (new \App\Jobs\RunAutomationWorker($falhaId))->handle();
+
+        $sucessoDepois = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $sucessoId)->first();
+        $falhaDepois = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $falhaId)->first();
+
+        $this->assertSame('succeeded', $sucessoDepois->status);
+        $this->assertSame($sucessoAntes->result, $sucessoDepois->result);
+        $this->assertSame($sucessoAntes->finished_at, $sucessoDepois->finished_at);
+        $this->assertSame($sucessoAntes->last_error, $sucessoDepois->last_error);
+        $this->assertSame('failed', $falhaDepois->status);
+        $this->assertSame($falhaAntes->last_error, $falhaDepois->last_error);
+        $this->assertSame($falhaAntes->finished_at, $falhaDepois->finished_at);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
