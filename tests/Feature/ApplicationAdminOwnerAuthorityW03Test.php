@@ -1907,7 +1907,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
 
         $this->assertDatabaseCount('application_admin_assignments', 3);
         $this->assertSame(['finance.view'], $perfilCutinapp->fresh()->permissions);
-        $this->assertSame(1, \\App\\Models\\ApplicationAdminAudit::query()
+        $this->assertSame(1, \App\Models\ApplicationAdminAudit::query()
             ->where('application_id', $cutinapp->id)
             ->where('action', 'admin_profile_updated')
             ->count());
