@@ -2138,6 +2138,81 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
     }
 
+    /**
+     * Um proprietário local não pode enumerar perfis ou atribuições de outra
+     * aplicação. Mesmo com app_id/application_id e X-Peter-App forjados,
+     * a rota determina o tenant; a leitura cruzada deve falhar sem vazar dados.
+     */
+    public function test_listagens_de_perfis_e_atribuicoes_respeitam_escopo_da_rota(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-listagem-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-listagem-rasoio-w03@example.test');
+        $delegadoCutinapp = $this->usuario('delegado-listagem-cutinapp-w03@example.test');
+        $delegadoRasoio = $this->usuario('delegado-listagem-rasoio-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $ownerCutinapp, [
+            'name' => 'Consulta privada Cutinapp W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $ownerRasoio, [
+            'name' => 'Financeiro privado Rasoio W03',
+            'permissions' => ['finance.view'],
+        ]);
+        $vinculoCutinapp = $administracao->assign(
+            $cutinapp->id, $ownerCutinapp, $delegadoCutinapp->email, $perfilCutinapp->id,
+        );
+        $vinculoRasoio = $administracao->assign(
+            $rasoio->id, $ownerRasoio, $delegadoRasoio->email, $perfilRasoio->id,
+        );
+
+        foreach ([
+            [$cutinapp, $rasoio, $ownerCutinapp, $perfilCutinapp, $vinculoCutinapp],
+            [$rasoio, $cutinapp, $ownerRasoio, $perfilRasoio, $vinculoRasoio],
+        ] as [$app, $externo, $owner, $perfil, $vinculo]) {
+            $cabecalhos = [
+                'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+                'X-Peter-App' => $externo->slug,
+            ];
+            $query = '?app_id='.$externo->id.'&application_id='.$externo->id;
+            $base = '/api/v1/apps/'.$app->slug.'/admin/';
+
+            $perfis = $this->getJson($base.'profiles'.$query, $cabecalhos)
+                ->assertOk()
+                ->assertJsonCount(1, 'data');
+            $this->assertSame([$perfil->id], array_column($perfis->json('data'), 'id'));
+            $this->assertSame($app->id, (int) $perfis->json('data.0.application_id'));
+
+            $atribuicoes = $this->getJson($base.'assignments'.$query, $cabecalhos)
+                ->assertOk()
+                ->assertJsonCount(1, 'data');
+            $this->assertSame([$vinculo->id], array_column($atribuicoes->json('data'), 'id'));
+            $this->assertSame($app->id, (int) $atribuicoes->json('data.0.application_id'));
+
+            // Nem mesmo o owner de outro app consegue enumerar o tenant externo.
+            foreach (['profiles', 'assignments'] as $recurso) {
+                $this->getJson(
+                    '/api/v1/apps/'.$externo->slug.'/admin/'.$recurso
+                        .'?app_id='.$app->id.'&application_id='.$app->id,
+                    ['Authorization' => 'Bearer '.JWTAuth::fromUser($owner), 'X-Peter-App' => $app->slug],
+                )
+                    ->assertForbidden()
+                    ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+            }
+
+            $this->assertFalse($administracao->isRoot($owner));
+            $this->assertFalse($administracao->isOwner($owner, $externo->id));
+        }
+
+        $this->assertDatabaseCount('application_admin_profiles', 2);
+        $this->assertDatabaseCount('application_admin_assignments', 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
