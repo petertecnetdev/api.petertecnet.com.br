@@ -3105,6 +3105,82 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
     }
 
+    /**
+     * A desativação do worker deve ser revalidada pelo job no momento da
+     * execução, inclusive se o job já estava na fila. Uma revogação local
+     * não pode cancelar nem executar trabalhos de outra aplicação.
+     */
+    public function test_revogacao_de_worker_enfileirado_impede_execucao_tardia_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-revogacao-fila-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $cutinappWorker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $rasoioWorker = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$cutinappWorker, $rasoioWorker] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $runCutinapp = (int) $this->postJson($cutinappWorker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $runRasoio = (int) $this->postJson($rasoioWorker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $this->assertNotSame($runCutinapp, $runRasoio);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runCutinapp, 'app_id' => $cutinapp->id, 'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio, 'app_id' => $rasoio->id, 'status' => 'queued',
+        ]);
+
+        // A revogação ocorre após o enfileiramento, antes do consumo.
+        $this->putJson($cutinappWorker, [
+            'enabled' => false,
+            'interval_minutes' => 30,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $headers)->assertOk()->assertJsonPath('data.enabled', false);
+
+        (new \App\Jobs\RunAutomationWorker($runCutinapp))->handle();
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runCutinapp,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'skipped',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio,
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+        ]);
+
+        $this->postJson($cutinappWorker.'/dispatch', [], $headers)->assertStatus(409);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
