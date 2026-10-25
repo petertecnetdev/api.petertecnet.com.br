@@ -3586,6 +3586,65 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * Um HTTP 409 por execução já pendente não deve avançar o marcador usado
+     * pelo agendador. Caso contrário, uma tentativa recusada adiaria a
+     * próxima execução legítima sem criar job ou run.
+     */
+    public function test_dispatch_rejeitado_nao_avanca_marcador_de_agendamento(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $owner = $this->usuario('owner-marcador-dispatch-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $worker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+
+        $this->putJson($worker, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+
+        $runId = (int) $this->postJson($worker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $marcador = \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+            ->where('app_id', $cutinapp->id)
+            ->where('worker_key', 'discovery_quality')
+            ->value('last_dispatched_at');
+        $this->assertNotNull($marcador);
+
+        // Avança o relógio para detectar mutação indevida do timestamp:
+        // sem isso, duas requisições no mesmo segundo poderiam mascará-la.
+        $this->travel(10)->minutes();
+        try {
+            $this->postJson($worker.'/dispatch', [], $headers)
+                ->assertStatus(409);
+
+            $this->assertSame($marcador, \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+                ->where('app_id', $cutinapp->id)
+                ->where('worker_key', 'discovery_quality')
+                ->value('last_dispatched_at'));
+        } finally {
+            $this->travelBack();
+        }
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runId,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 1);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
