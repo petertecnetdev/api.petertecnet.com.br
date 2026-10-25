@@ -3464,9 +3464,10 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertAccepted()->json('data.run_id');
         $this->assertNotSame($primeiro, $segundo);
 
-        // O novo run pendente não permite disparo duplicado em nenhum app.
+        // O novo run pendente impede duplicidade na Cutinapp. A pendência
+        // do Rasoio é preservada sem gastar uma requisição extra sujeita ao
+        // rate limit global (throttle:6,1) da rota de disparo.
         $this->postJson($workerCutinapp.'/dispatch', [], $headers)->assertStatus(409);
-        $this->postJson($workerRasoio.'/dispatch', [], $headers)->assertStatus(409);
 
         $this->assertDatabaseHas('automation_worker_runs', [
             'id' => $primeiro,
