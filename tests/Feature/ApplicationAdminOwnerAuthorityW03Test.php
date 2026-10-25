@@ -2295,6 +2295,58 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($ownerCutinapp));
     }
 
+    /**
+     * Nenhuma rota administrativa pode devolver dados ou executar mutações
+     * sem JWT, mesmo quando a requisição forja identificadores de outro app.
+     * A autenticação precede a autorização e a lógica de negócio.
+     */
+    public function test_rotas_administrativas_exigem_jwt_antes_de_qualquer_mutacao(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-auth-obrigatoria-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $owner);
+        $perfil = $administracao->createProfile($cutinapp->id, $owner, [
+            'name' => 'Perfil privado autenticado W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+        $cabecalhos = ['X-Peter-App' => 'cutinapp'];
+        $base = '/api/v1/apps/cutinapp/admin/';
+        $forjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        foreach (['context', 'profiles', 'assignments', 'audit', 'automations'] as $recurso) {
+            $this->getJson($base.$recurso.$forjado, $cabecalhos)
+                ->assertUnauthorized();
+        }
+
+        $this->postJson($base.'profiles'.$forjado, [
+            'name' => 'Injecao sem autenticacao W03',
+            'permissions' => ['finance.refund'],
+        ], $cabecalhos)->assertUnauthorized();
+
+        $this->postJson($base.'assignments'.$forjado, [
+            'email' => 'intruso-auth-w03@example.test',
+            'profile_id' => $perfil->id,
+        ], $cabecalhos)->assertUnauthorized();
+
+        $this->putJson($base.'automations/workers/discovery_quality'.$forjado, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhos)->assertUnauthorized();
+
+        $this->assertDatabaseCount('application_admin_profiles', 1);
+        $this->assertDatabaseCount('application_admin_assignments', 0);
+        $this->assertDatabaseCount('automation_worker_controls', 0);
+        $this->assertSame(
+            $auditoriasAntes,
+            \App\Models\ApplicationAdminAudit::query()->count(),
+        );
+        $this->assertSame(['dashboard.view'], $perfil->fresh()->permissions);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
