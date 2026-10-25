@@ -2749,7 +2749,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->vincular($cutinapp->id, $anterior);
         $this->vincular($rasoio->id, $anterior);
         config()->set('automation_workers.enabled', true);
-        \\Illuminate\\Support\\Facades\\Queue::fake();
+        \Illuminate\Support\Facades\Queue::fake();
 
         $headersAnterior = [
             'Authorization' => 'Bearer '.JWTAuth::fromUser($anterior),
@@ -2759,6 +2759,8 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'Authorization' => 'Bearer '.JWTAuth::fromUser($sucessor),
             'X-Peter-App' => 'cutinapp',
         ];
+        $headersAnteriorRasoio = array_merge($headersAnterior, ['X-Peter-App' => 'rasoio']);
+        $headersSucessorRasoio = array_merge($headersSucessor, ['X-Peter-App' => 'rasoio']);
         $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
         $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
 
@@ -2769,7 +2771,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->putJson($workerRasoio, [
             'enabled' => true,
             'interval_minutes' => 45,
-        ], $headersAnterior)->assertOk();
+        ], $headersAnteriorRasoio)->assertOk();
 
         ApplicationOwner::query()
             ->where('application_id', $cutinapp->id)
@@ -2791,13 +2793,13 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->postJson($workerCutinapp.'/dispatch', [], $headersAnterior)
             ->assertForbidden()
             ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
-        $this->postJson($workerRasoio.'/dispatch', [], $headersSucessor)
+        $this->postJson($workerRasoio.'/dispatch', [], $headersSucessorRasoio)
             ->assertForbidden()
             ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
         $this->assertDatabaseCount('automation_worker_runs', 0);
-        \\Illuminate\\Support\\Facades\\Queue::assertNotPushed(\\App\\Jobs\\RunAutomationWorker::class);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
 
-        $this->postJson($workerRasoio.'/dispatch', [], $headersAnterior)
+        $this->postJson($workerRasoio.'/dispatch', [], $headersAnteriorRasoio)
             ->assertStatus(202)
             ->assertJsonStructure(['data' => ['run_id']]);
         $this->postJson($workerCutinapp.'/dispatch', [], $headersSucessor)
@@ -2816,7 +2818,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
         $this->assertDatabaseCount('automation_worker_runs', 2);
         $this->assertDatabaseCount('automation_worker_controls', 2);
-        \\Illuminate\\Support\\Facades\\Queue::assertPushed(\\App\\Jobs\\RunAutomationWorker::class, 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
     private function vincular(int $applicationId, User $usuario): void
