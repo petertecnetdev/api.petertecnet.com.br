@@ -3336,6 +3336,84 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * A redução de um perfil operacional compartilhado deve revogar leitura
+     * de workers para TODOS os delegados usando seus JWTs anteriores.
+     * A mudança não pode retirar o acesso legítimo em outra aplicação.
+     */
+    public function test_perfil_operacional_compartilhado_revoga_painel_de_todos_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-ops-compartilhado-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-ops-compartilhado-rasoio-w03@example.test');
+        $primeiro = $this->usuario('ops-compartilhado-primeiro-w03@example.test');
+        $segundo = $this->usuario('ops-compartilhado-segundo-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $ownerCutinapp, [
+            'name' => 'Operadores compartilhados Cutinapp W03',
+            'permissions' => ['operations.view', 'dashboard.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $ownerRasoio, [
+            'name' => 'Operador independente Rasoio W03',
+            'permissions' => ['operations.view'],
+        ]);
+
+        $administracao->assign($cutinapp->id, $ownerCutinapp, $primeiro->email, $perfilCutinapp->id);
+        $administracao->assign($cutinapp->id, $ownerCutinapp, $segundo->email, $perfilCutinapp->id);
+        $administracao->assign($rasoio->id, $ownerRasoio, $primeiro->email, $perfilRasoio->id);
+
+        $tokens = [
+            [$primeiro, JWTAuth::fromUser($primeiro)],
+            [$segundo, JWTAuth::fromUser($segundo)],
+        ];
+
+        foreach ($tokens as [$delegado, $token]) {
+            $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'operations.view'));
+            $this->getJson('/api/v1/apps/cutinapp/admin/automations', [
+                'Authorization' => 'Bearer '.$token,
+                'X-Peter-App' => 'cutinapp',
+            ])->assertOk();
+        }
+
+        $administracao->updateProfile($cutinapp->id, $perfilCutinapp->id, $ownerCutinapp, [
+            'permissions' => ['dashboard.view'],
+        ]);
+
+        foreach ($tokens as [$delegado, $token]) {
+            $this->assertFalse($administracao->hasPermission($delegado, $cutinapp->id, 'operations.view'));
+            $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'dashboard.view'));
+
+            $headers = [
+                'Authorization' => 'Bearer '.$token,
+                'X-Peter-App' => 'rasoio',
+            ];
+            $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+                ->assertForbidden()
+                ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+            $this->getJson('/api/v1/apps/cutinapp/admin/context', $headers)
+                ->assertOk()
+                ->assertJsonPath('data.permissions', ['dashboard.view'])
+                ->assertJsonPath('data.is_root', false);
+        }
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations', [
+            'Authorization' => 'Bearer '.$tokens[0][1],
+            'X-Peter-App' => 'cutinapp',
+        ])->assertOk();
+
+        $this->assertDatabaseCount('application_admin_assignments', 3);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        $this->assertSame(1, \App\Models\ApplicationAdminAudit::query()
+            ->where('application_id', $cutinapp->id)
+            ->where('action', 'admin_profile_updated')
+            ->count());
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
