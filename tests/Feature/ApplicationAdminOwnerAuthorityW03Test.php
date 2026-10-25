@@ -3498,6 +3498,94 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonCount(1, 'data.recent_runs');
     }
 
+    /**
+     * A troca de proprietário com jobs já enfileirados revoga imediatamente
+     * a leitura do histórico e as mutações do antigo titular. A fila já
+     * criada continua íntegra e o acesso dele a outro app é preservado.
+     * Cabeçalhos e app_id forjados não podem contornar o escopo da rota.
+     */
+    public function test_transferencia_com_runs_enfileirados_oculta_historico_do_owner_revogado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $anterior = $this->usuario('owner-fila-transferida-w03@example.test');
+        $sucessor = $this->usuario('sucessor-fila-transferida-w03@example.test');
+        $this->vincular($cutinapp->id, $anterior);
+        $this->vincular($rasoio->id, $anterior);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $tokenAntigo = JWTAuth::fromUser($anterior);
+        $headersAntigo = [
+            'Authorization' => 'Bearer '.$tokenAntigo,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $headersNovo = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($sucessor),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$workerCutinapp, $workerRasoio] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headersAntigo)->assertOk();
+        }
+
+        $runCutinapp = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headersAntigo)
+            ->assertAccepted()->json('data.run_id');
+        $runRasoio = (int) $this->postJson($workerRasoio.'/dispatch', [], $headersAntigo)
+            ->assertAccepted()->json('data.run_id');
+
+        ApplicationOwner::query()
+            ->where('application_id', $cutinapp->id)
+            ->firstOrFail()
+            ->forceFill([
+                'user_id' => $sucessor->id,
+                'bound_by_user_id' => $sucessor->id,
+                'bound_at' => now(),
+            ])->save();
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations?app_id='.$rasoio->id, $headersAntigo)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        $this->putJson($workerCutinapp, ['enabled' => false], $headersAntigo)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        $this->postJson($workerCutinapp.'/dispatch', [], $headersAntigo)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations?app_id='.$cutinapp->id, $headersAntigo)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs')
+            ->assertJsonPath('data.recent_runs.0.id', $runRasoio);
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations?app_id='.$rasoio->id, $headersNovo)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs')
+            ->assertJsonPath('data.recent_runs.0.id', $runCutinapp);
+        $this->getJson('/api/v1/apps/rasoio/admin/automations', $headersNovo)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runCutinapp,
+            'app_id' => $cutinapp->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio,
+            'app_id' => $rasoio->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
