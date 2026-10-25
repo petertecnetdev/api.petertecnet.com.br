@@ -2407,6 +2407,85 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
     }
 
+    /**
+     * O disparo manual usa exclusivamente o app da rota e exige controle
+     * habilitado nesse app. Requisições repetidas não podem enfileirar o
+     * mesmo worker duas vezes enquanto há uma execução pendente.
+     *
+     * A cobertura é do controle operacional genérico, não de events:discover.
+     */
+    public function test_dispatch_manual_respeita_controle_por_app_e_impede_execucao_duplicada(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-dispatch-isolado-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $token = JWTAuth::fromUser($owner);
+        $cabecalhosCutinapp = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $cabecalhosRasoio = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cabecalhosCutinapp)->assertOk();
+
+        $this->putJson($workerRasoio, [
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ], $cabecalhosRasoio)->assertOk();
+
+        // IDs forjados não substituem o app da rota nem o controle desativado.
+        $forjado = '?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id;
+        $this->postJson($workerRasoio.'/dispatch'.$forjado, [
+            'app_id' => $cutinapp->id,
+            'application_id' => $cutinapp->id,
+        ], $cabecalhosRasoio)->assertStatus(409);
+
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        $this->postJson($workerCutinapp.'/dispatch', [], $cabecalhosCutinapp)
+            ->assertStatus(202)
+            ->assertJsonStructure(['data' => ['run_id']]);
+
+        // A segunda requisição não cria outro run nem outro job.
+        $this->postJson($workerCutinapp.'/dispatch', [], $cabecalhosCutinapp)
+            ->assertStatus(409);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseMissing('automation_worker_runs', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 1);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations', $cabecalhosRasoio)
+            ->assertOk()
+            ->assertJsonCount(0, 'data.recent_runs');
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $cabecalhosCutinapp)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs');
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
