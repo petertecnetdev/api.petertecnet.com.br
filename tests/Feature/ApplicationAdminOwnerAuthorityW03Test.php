@@ -3181,6 +3181,82 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * Uma exceção do job não pode expor dados sensíveis no banco ou no
+     * dashboard. A falha encerra somente a execução do app correspondente,
+     * permitindo nova tentativa sem interromper o worker de outro app.
+     */
+    public function test_falha_de_worker_redige_erro_e_preserva_reexecucao_por_aplicacao(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-erro-redigido-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$workerCutinapp, $workerRasoio] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $falhaId = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $rasoioId = (int) $this->postJson($workerRasoio.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $segredo = 'segredo-api-nao-expor-w03';
+        (new \App\Jobs\RunAutomationWorker($falhaId))
+            ->failed(new \RuntimeException($segredo));
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $falhaId,
+            'app_id' => $cutinapp->id,
+            'status' => 'failed',
+            'last_error' => \RuntimeException::class,
+        ]);
+        $this->assertDatabaseMissing('automation_worker_runs', [
+            'id' => $falhaId,
+            'last_error' => $segredo,
+        ]);
+        $this->assertNotNull(\Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $falhaId)->value('finished_at'));
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/automations', $headers)
+            ->assertOk()
+            ->assertJsonPath('data.recent_runs.0.id', $falhaId)
+            ->assertJsonPath('data.recent_runs.0.error_type', \RuntimeException::class)
+            ->assertDontSee($segredo);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $rasoioId,
+            'app_id' => $rasoio->id,
+            'status' => 'queued',
+        ]);
+
+        $novaTentativa = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $this->assertNotSame($falhaId, $novaTentativa);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $novaTentativa,
+            'app_id' => $cutinapp->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 3);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
