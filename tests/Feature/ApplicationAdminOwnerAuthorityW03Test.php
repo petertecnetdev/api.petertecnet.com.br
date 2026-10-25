@@ -2213,6 +2213,88 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_assignments', 2);
     }
 
+    /**
+     * O identificador de um perfil deve ser único somente dentro do app.
+     * Uma tentativa de criar/renomear para slug já ocupado não pode mudar
+     * permissões, dados ou auditoria, mesmo com contexto externo forjado.
+     */
+    public function test_slug_de_perfil_e_unico_no_app_sem_bloquear_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-slug-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-slug-rasoio-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        $principal = $administracao->createProfile($cutinapp->id, $ownerCutinapp, [
+            'name' => 'Painel seguro Cutinapp W03',
+            'slug' => 'painel-seguro-w03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $secundario = $administracao->createProfile($cutinapp->id, $ownerCutinapp, [
+            'name' => 'Operacao isolada Cutinapp W03',
+            'slug' => 'operacao-isolada-w03',
+            'permissions' => ['operations.view'],
+        ]);
+        $externo = $administracao->createProfile($rasoio->id, $ownerRasoio, [
+            'name' => 'Painel seguro Rasoio W03',
+            'slug' => 'painel-seguro-w03',
+            'permissions' => ['finance.view'],
+        ]);
+
+        $this->assertSame($principal->slug, $externo->slug);
+        $this->assertNotSame($principal->application_id, $externo->application_id);
+
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $base = '/api/v1/apps/cutinapp/admin/profiles'
+            .'?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->postJson($base, [
+            'name' => 'Duplicado bloqueado W03',
+            'slug' => 'PAINEL SEGURO W03',
+            'permissions' => ['finance.refund'],
+        ], $cabecalhos)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name');
+
+        $this->putJson(
+            '/api/v1/apps/cutinapp/admin/profiles/'.$secundario->id
+                .'?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [
+                'name' => 'Tentativa de sobrescrita W03',
+                'slug' => 'painel-seguro-w03',
+                'permissions' => ['finance.refund'],
+            ],
+            $cabecalhos,
+        )
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors('name');
+
+        $this->assertDatabaseCount('application_admin_profiles', 3);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $principal->id,
+            'application_id' => $cutinapp->id,
+            'slug' => 'painel-seguro-w03',
+        ]);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $secundario->id,
+            'application_id' => $cutinapp->id,
+            'name' => 'Operacao isolada Cutinapp W03',
+            'slug' => 'operacao-isolada-w03',
+        ]);
+        $this->assertSame(['operations.view'], $secundario->fresh()->permissions);
+        $this->assertSame(['finance.view'], $externo->fresh()->permissions);
+        $this->assertSame($auditoriasAntes, \App\Models\ApplicationAdminAudit::query()->count());
+        $this->assertFalse($administracao->isRoot($ownerCutinapp));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
