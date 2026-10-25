@@ -2486,6 +2486,100 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonCount(1, 'data.recent_runs');
     }
 
+
+    /**
+     * Intervalos inválidos não podem modificar o controle já persistido.
+     * O app da rota prevalece sobre IDs e cabeçalhos forjados, inclusive
+     * quando a validação retorna 422. Limites válidos devem continuar aceitos.
+     */
+    public function test_intervalo_invalido_nao_altera_controle_de_worker_nem_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-intervalo-worker-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        \Illuminate\Support\Facades\Queue::fake();
+        $token = JWTAuth::fromUser($owner);
+        $cutinappHeaders = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $rasoioHeaders = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $cutinappWorker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $rasoioWorker = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($cutinappWorker, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $cutinappHeaders)->assertOk();
+
+        $this->putJson($rasoioWorker, [
+            'enabled' => false,
+            'interval_minutes' => 45,
+        ], $rasoioHeaders)->assertOk();
+
+        $forjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+        $cabecalhosForjados = [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        foreach ([4, 1441, '10.5', null] as $intervaloInvalido) {
+            $this->putJson($cutinappWorker.$forjado, [
+                'enabled' => false,
+                'interval_minutes' => $intervaloInvalido,
+            ], $cabecalhosForjados)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('interval_minutes');
+        }
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        foreach ([5, 1440] as $intervaloValido) {
+            $this->putJson($cutinappWorker, [
+                'enabled' => true,
+                'interval_minutes' => $intervaloValido,
+            ], $cutinappHeaders)
+                ->assertOk()
+                ->assertJsonPath('data.interval_minutes', $intervaloValido);
+        }
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 1440,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
