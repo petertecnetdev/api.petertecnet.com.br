@@ -1913,6 +1913,81 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->count());
     }
 
+    /**
+     * Repetir a mesma concessão administrativa (inclusive com capitalização
+     * diferente do e-mail) não pode criar grants duplicados ou alcançar outro
+     * aplicativo. O JWT do colaborador permanece limitado ao perfil delegado.
+     * Protege retentativas de UI/rede sem alterar a semântica de auditoria.
+     */
+    public function test_atribuicao_ativa_repetida_e_idempotente_por_aplicacao(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $proprietario = $this->usuario('owner-retentativa-w03@example.test');
+        $colaborador = $this->usuario('colaborador-retentativa-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $proprietario);
+        $perfil = $administracao->createProfile($cutinapp->id, $proprietario, [
+            'name' => 'Consulta por retentativa W03',
+            'permissions' => ['dashboard.view'],
+        ]);
+        $token = JWTAuth::fromUser($colaborador);
+        $cabecalhosOwner = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($proprietario),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $url = '/api/v1/apps/cutinapp/admin/assignments';
+        $dados = [
+            'email' => $colaborador->email,
+            'profile_id' => $perfil->id,
+        ];
+
+        $primeira = $this->postJson($url, $dados, $cabecalhosOwner)
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $cutinapp->id)
+            ->assertJsonPath('data.profile_id', $perfil->id);
+        $idOriginal = $primeira->json('data.id');
+
+        $this->postJson($url.'?app_id='.$rasoio->id, [
+            'email' => strtoupper($colaborador->email),
+            'profile_id' => $perfil->id,
+            'application_id' => $rasoio->id,
+        ], $cabecalhosOwner)
+            ->assertCreated()
+            ->assertJsonPath('data.id', $idOriginal)
+            ->assertJsonPath('data.application_id', $cutinapp->id)
+            ->assertJsonPath('data.profile_id', $perfil->id);
+
+        $this->assertDatabaseCount('application_admin_assignments', 1);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $idOriginal,
+            'application_id' => $cutinapp->id,
+            'user_id' => $colaborador->id,
+            'profile_id' => $perfil->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertFalse($administracao->isRoot($colaborador));
+        $this->assertFalse($administracao->isOwner($colaborador, $cutinapp->id));
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'dashboard.view'));
+        $this->assertFalse($administracao->hasPermission($colaborador, $cutinapp->id, 'finance.refund'));
+        $this->assertFalse($administracao->hasAccess($colaborador, $rasoio->id));
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.permissions', ['dashboard.view'])
+            ->assertJsonPath('data.is_root', false)
+            ->assertJsonPath('data.is_owner', false);
+        $this->getJson('/api/v1/apps/rasoio/admin/context', [
+            'Authorization' => 'Bearer '.$token,
+            'X-Peter-App' => 'cutinapp',
+        ])->assertForbidden()->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
