@@ -1988,6 +1988,73 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ])->assertForbidden()->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
     }
 
+    /**
+     * A paginação da auditoria deve manter o escopo da rota em todas as páginas,
+     * mesmo quando a mesma identidade possui acesso legítimo a dois apps.
+     * Query e cabeçalho forjados não podem alterar itens nem contagem total.
+     */
+    public function test_paginacao_de_auditoria_isola_aplicacoes_em_todas_as_paginas(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $root = $this->usuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $auditor = $this->usuario('auditor-paginacao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        foreach ([$cutinapp, $rasoio] as $app) {
+            $perfil = $administracao->createProfile($app->id, $root, [
+                'name' => 'Paginacao de auditoria '.$app->slug,
+                'permissions' => ['audit.view'],
+            ]);
+            $administracao->assign($app->id, $root, $auditor->email, $perfil->id);
+            for ($indice = 1; $indice <= 5; $indice++) {
+                $administracao->auditAction(
+                    $app->id, $root, null, 'w03_paginacao_'.$app->slug.'_'.$indice,
+                );
+            }
+        }
+
+        $token = JWTAuth::fromUser($auditor);
+        foreach ([[$cutinapp, $rasoio], [$rasoio, $cutinapp]] as [$app, $forjado]) {
+            $total = \App\Models\ApplicationAdminAudit::query()
+                ->where('application_id', $app->id)->count();
+            $idsVistos = [];
+
+            foreach ([1, 2, 3, 4] as $pagina) {
+                $resposta = $this->getJson(
+                    '/api/v1/apps/'.$app->slug.'/admin/audit'
+                    .'?page='.$pagina.'&per_page=2'
+                    .'&app_id='.$forjado->id.'&application_id='.$forjado->id,
+                    [
+                        'Authorization' => 'Bearer '.$token,
+                        'X-Peter-App' => $forjado->slug,
+                    ],
+                )->assertOk()
+                    ->assertJsonPath('data.current_page', $pagina)
+                    ->assertJsonPath('data.per_page', 2)
+                    ->assertJsonPath('data.total', $total);
+
+                $registros = $resposta->json('data.data');
+                $this->assertCount($pagina <= 3 ? 2 : 1, $registros);
+                foreach ($registros as $registro) {
+                    $this->assertSame($app->id, (int) $registro['application_id']);
+                    $this->assertNotContains($registro['id'], $idsVistos);
+                    $idsVistos[] = $registro['id'];
+                }
+            }
+
+            $this->assertCount($total, $idsVistos);
+            $this->getJson('/api/v1/apps/'.$app->slug.'/admin/audit?page=99&per_page=2', [
+                'Authorization' => 'Bearer '.$token,
+            ])
+                ->assertOk()
+                ->assertJsonPath('data.total', $total)
+                ->assertJsonPath('data.data', []);
+        }
+
+        $this->assertFalse($administracao->isRoot($auditor));
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
