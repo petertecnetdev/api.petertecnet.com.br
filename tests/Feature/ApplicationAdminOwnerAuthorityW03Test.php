@@ -3932,6 +3932,62 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * Uma execução pendente de um mesmo worker em outra aplicação não pode
+     * serializar indevidamente o dispatch local: o lock deve usar app_id + key.
+     * Dois owners distintos e JWTs distintos exercitam a rota HTTP real.
+     */
+    public function test_mesmo_worker_pendente_em_outro_app_nao_bloqueia_dispatch_local(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-fila-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-fila-rasoio-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headersCutinapp = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $headersRasoio = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headersCutinapp)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ], $headersRasoio)->assertOk();
+
+        $primeiro = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headersCutinapp)
+            ->assertAccepted()->json('data.run_id');
+        $segundo = (int) $this->postJson($workerRasoio.'/dispatch', [], $headersRasoio)
+            ->assertAccepted()->json('data.run_id');
+
+        $this->assertNotSame($primeiro, $segundo);
+        foreach ([[$primeiro, $cutinapp->id], [$segundo, $rasoio->id]] as [$runId, $appId]) {
+            $this->assertDatabaseHas('automation_worker_runs', [
+                'id' => $runId,
+                'app_id' => $appId,
+                'worker_key' => 'discovery_quality',
+                'status' => 'queued',
+            ]);
+        }
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
