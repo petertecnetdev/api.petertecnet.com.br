@@ -4073,6 +4073,85 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
     }
 
+    /**
+     * Uma execução descartada após desativação é terminal. A reativação
+     * autoriza uma NOVA execução, mas nunca ressuscita o job antigo entregue
+     * novamente pela fila. O worker do outro app permanece independente.
+     */
+    public function test_worker_pulado_pode_ser_reagendado_sem_ressuscitar_job_antigo(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-reagendamento-pulado-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $cutinappWorker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $rasoioWorker = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        foreach ([$cutinappWorker, $rasoioWorker] as $worker) {
+            $this->putJson($worker, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $antigo = (int) $this->postJson($cutinappWorker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $outroApp = (int) $this->postJson($rasoioWorker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $this->putJson($cutinappWorker, [
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+
+        (new \App\Jobs\RunAutomationWorker($antigo))->handle();
+        $terminadoEm = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $antigo)->value('finished_at');
+        $this->assertNotNull($terminadoEm);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $antigo,
+            'app_id' => $cutinapp->id,
+            'status' => 'skipped',
+        ]);
+
+        $this->putJson($cutinappWorker, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+            'app_id' => $rasoio->id,
+        ], $headers)->assertOk();
+
+        $novo = (int) $this->postJson($cutinappWorker.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $this->assertNotSame($antigo, $novo);
+
+        // Reentrega tardia não executa o job descartado após reativação.
+        (new \App\Jobs\RunAutomationWorker($antigo))->handle();
+        $this->assertSame($terminadoEm, \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+            ->where('id', $antigo)->value('finished_at'));
+        $this->postJson($cutinappWorker.'/dispatch', [], $headers)->assertStatus(409);
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $antigo, 'app_id' => $cutinapp->id, 'status' => 'skipped',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $novo, 'app_id' => $cutinapp->id, 'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $outroApp, 'app_id' => $rasoio->id, 'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 3);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
