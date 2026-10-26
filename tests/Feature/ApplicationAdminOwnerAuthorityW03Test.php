@@ -4653,4 +4653,56 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
     }
 
 
+
+    /**
+     * A revogação da sessão deve bloquear também superfícies de leitura RBAC.
+     * Um JWT antigo não pode obter contexto, perfis, atribuições ou auditoria
+     * manipulando o tenant; outra sessão válida continua funcional.
+     */
+    public function test_jwt_revogado_nao_le_contexto_perfis_atribuicoes_nem_auditoria_com_tenant_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $revogado = $this->usuario('owner-leitura-revogado-w03@example.test');
+        $valido = $this->usuario('owner-leitura-valido-w03@example.test');
+        $this->vincular($cutinapp->id, $revogado);
+        $this->vincular($rasoio->id, $valido);
+
+        $administracao = app(ApplicationAdminService::class);
+        $administracao->createProfile($cutinapp->id, $revogado, [
+            'name' => 'Perfil confidencial W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+
+        $jwtAntigo = JWTAuth::fromUser($revogado);
+        $jwtValido = JWTAuth::fromUser($valido);
+        $versao = max((int) $revogado->auth_version, 1);
+        User::query()->whereKey($revogado->id)
+            ->update(['auth_version' => $versao + 1]);
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$jwtAntigo,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $forjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+        foreach (['context', 'profiles', 'assignments', 'audit'] as $recurso) {
+            $this->getJson('/api/v1/apps/cutinapp/admin/'.$recurso.$forjado, $cabecalhos)
+                ->assertUnauthorized()
+                ->assertJsonPath('code', 'TOKEN_REVOKED');
+        }
+
+        $this->assertDatabaseCount('application_admin_profiles', 1);
+        $this->assertSame(
+            $auditoriasAntes,
+            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+        );
+
+        $this->getJson('/api/v1/apps/rasoio/admin/context', [
+            'Authorization' => 'Bearer '.$jwtValido,
+            'X-Peter-App' => 'rasoio',
+        ])->assertOk()->assertJsonPath('data.authorized', true);
+        $this->assertFalse($administracao->isRoot($revogado));
+    }
+
 }
