@@ -4321,4 +4321,87 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'password' => '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi',
         ]);
     }
+
+    /**
+     * Revogar um JWT precisa bloquear também PUT de configuração: negar apenas
+     * leitura e dispatch deixaria a conta revogada alterar jobs futuros.
+     * A revogação de um usuário não altera o controle de outra aplicação.
+     */
+    public function test_jwt_revogado_nao_reconfigura_controle_de_worker_nem_afeta_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-jwt-put-revogado-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-jwt-put-valido-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        config()->set('automation_workers.enabled', true);
+        \\Illuminate\\Support\\Facades\\Queue::fake();
+
+        $controle = app(\\App\\Domain\\Automation\\Services\\AutomationControlService::class);
+        $controle->configure($cutinapp->id, 'discovery_quality', true, 30, $ownerCutinapp->id);
+        $controle->configure($rasoio->id, 'discovery_quality', true, 45, $ownerRasoio->id);
+
+        $headersRevogados = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $headersValidos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+
+        // A versão muda no banco sem trocar o bearer apresentado ao endpoint.
+        $versaoAnterior = max((int) $ownerCutinapp->auth_version, 1);
+        User::query()->whereKey($ownerCutinapp->id)
+            ->update(['auth_version' => $versaoAnterior + 1]);
+
+        $this->putJson('/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality', [
+            'enabled' => false,
+            'interval_minutes' => 60,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $headersRevogados)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertSame($auditoriasAntes, \\App\\Models\\ApplicationAdminAudit::query()->count());
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \\Illuminate\\Support\\Facades\\Queue::assertNotPushed(\\App\\Jobs\\RunAutomationWorker::class);
+
+        // Um proprietário independente ainda pode administrar seu próprio app.
+        $this->putJson('/api/v1/apps/rasoio/admin/automations/workers/discovery_quality', [
+            'enabled' => false,
+            'interval_minutes' => 50,
+        ], $headersValidos)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', false);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 50,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ]);
+    }
+
 }
