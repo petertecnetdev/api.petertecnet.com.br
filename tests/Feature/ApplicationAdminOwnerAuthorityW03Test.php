@@ -3988,6 +3988,91 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * Strings como "false" não podem ser convertidas implicitamente para true
+     * pelo PHP e reabilitar um worker. Uma validação 422 deve ser atômica:
+     * controles, auditoria e filas de todos os aplicativos ficam intactos.
+     * O valor booleano representado por 0 deve continuar sendo aceito.
+     */
+    public function test_enabled_textual_invalido_nao_reconfigura_worker_nem_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-validacao-enabled-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ], $headers)->assertOk();
+
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+        $forjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        foreach (['false', 'off', [], null] as $valorInvalido) {
+            $this->putJson($workerCutinapp.$forjado, [
+                'enabled' => $valorInvalido,
+                'interval_minutes' => 60,
+                'app_id' => $rasoio->id,
+                'application_id' => $rasoio->id,
+            ], $headers)
+                ->assertUnprocessable()
+                ->assertJsonValidationErrors('enabled');
+        }
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertSame($auditoriasAntes, \App\Models\ApplicationAdminAudit::query()->count());
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        $this->putJson($workerRasoio, [
+            'enabled' => 0,
+            'interval_minutes' => 45,
+        ], $headers)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', false);
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ]);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
