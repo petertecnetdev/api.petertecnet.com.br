@@ -3739,6 +3739,92 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
     }
 
+    /**
+     * O proprietário de um app não pode desativar um controle de worker já
+     * existente em outro app. A recusa deve preservar os dois controles,
+     * mesmo com app_id/application_id e X-Peter-App conflitantes.
+     */
+    public function test_owner_nao_desativa_controle_existente_de_outro_app_com_app_id_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-controle-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-controle-rasoio-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headersCutinapp = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $headersRasoio = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headersCutinapp)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ], $headersRasoio)->assertOk();
+
+        $this->putJson($workerRasoio.'?app_id='.$cutinapp->id.'&application_id='.$cutinapp->id, [
+            'enabled' => false,
+            'interval_minutes' => 15,
+            'app_id' => $cutinapp->id,
+            'application_id' => $cutinapp->id,
+        ], $headersCutinapp)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->putJson($workerCutinapp.'?app_id='.$rasoio->id.'&application_id='.$rasoio->id, [
+            'enabled' => false,
+            'interval_minutes' => 15,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $headersRasoio)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        // O acesso legítimo continua funcional após as duas negativas.
+        $this->putJson($workerCutinapp, [
+            'enabled' => false,
+            'interval_minutes' => 30,
+        ], $headersCutinapp)
+            ->assertOk()
+            ->assertJsonPath('data.enabled', false);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 45,
+        ]);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
