@@ -5028,12 +5028,14 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $partes = explode('.', $tokenValido);
         $this->assertCount(3, $partes);
 
-        // Reutiliza o payload legítimo, mas troca o algoritmo por "none"
-        // e remove a assinatura, simulando confusão de algoritmo JWT.
+        // Reutiliza payload e assinatura legítimos, mas declara alg=none.
+        // A assinatura torna-se inválida após a troca do cabeçalho; manter
+        // três segmentos não vazios também testa a validação criptográfica,
+        // em vez de parar apenas na rejeição estrutural de token malformado.
         $cabecalhoSemAssinatura = rtrim(strtr(base64_encode(
             json_encode(['typ' => 'JWT', 'alg' => 'none'], JSON_THROW_ON_ERROR),
         ), '+/', '-_'), '=');
-        $tokenForjado = $cabecalhoSemAssinatura.'.'.$partes[1].'.';
+        $tokenForjado = $cabecalhoSemAssinatura.'.'.$partes[1].'.'.$partes[2];
 
         $headers = [
             'Authorization' => 'Bearer '.$tokenForjado,
