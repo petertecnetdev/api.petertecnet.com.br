@@ -4956,4 +4956,59 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ])->assertOk()->assertJsonPath('data.authorized', true);
     }
 
+
+    /**
+     * Uma assinatura JWT adulterada deve ser rejeitada antes da resolução
+     * do tenant, inclusive com app_id e X-Peter-App de outra aplicação.
+     * O token original segue válido e nenhuma tentativa inválida é auditada.
+     */
+    public function test_assinatura_jwt_adulterada_nao_autoriza_leitura_ou_criacao_de_perfil(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-assinatura-jwt-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        $jwt = JWTAuth::fromUser($owner);
+        $partes = explode('.', $jwt);
+        $this->assertCount(3, $partes);
+        $this->assertNotSame('', $partes[2]);
+        $partes[2] = ($partes[2][0] === 'A' ? 'B' : 'A').substr($partes[2], 1);
+        $jwtAdulterado = implode('.', $partes);
+        $this->assertNotSame($jwt, $jwtAdulterado);
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$jwtAdulterado,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $url = '/api/v1/apps/cutinapp/admin/profiles?app_id='.$rasoio->id
+            .'&application_id='.$rasoio->id;
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', $cabecalhos)
+            ->assertUnauthorized();
+
+        $this->postJson($url, [
+            'name' => 'Perfil assinatura adulterada W03',
+            'permissions' => ['finance.refund'],
+        ], $cabecalhos)->assertUnauthorized();
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        // Controle positivo: a mesma identidade com assinatura íntegra
+        // mantém apenas as permissões do aplicativo ao qual está vinculada.
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles', [
+            'name' => 'Perfil assinatura valida W03',
+            'permissions' => ['dashboard.view'],
+        ], [
+            'Authorization' => 'Bearer '.$jwt,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $cutinapp->id);
+
+        $this->assertDatabaseCount('application_admin_profiles', 1);
+        $this->assertDatabaseCount('application_admin_audits', 1);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+    }
 }
