@@ -4421,7 +4421,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
 
         $tokenRevogado = JWTAuth::fromUser($ownerRevogado);
         $tokenValido = JWTAuth::fromUser($ownerValido);
-        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
 
         $versaoAnterior = max((int) $ownerRevogado->auth_version, 1);
         User::query()->whereKey($ownerRevogado->id)
@@ -4444,7 +4444,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_profiles', 0);
         $this->assertSame(
             $auditoriasAntes,
-            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+            \App\Models\ApplicationAdminAudit::query()->count(),
         );
 
         // A revogação individual não deve negar o proprietário independente.
