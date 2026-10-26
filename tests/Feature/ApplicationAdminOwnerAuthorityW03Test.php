@@ -5133,16 +5133,26 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $owner = $this->usuario('owner-jwt-expirado-w03@example.test');
         $this->vincular($cutinapp->id, $owner);
 
-        // Emite um JWT real já vencido, sem adulterar sua assinatura.
-        $agora = \Illuminate\Support\Carbon::now();
-        try {
-            \Illuminate\Support\Carbon::setTestNow($agora->copy()->subHours(3));
-            $jwtExpirado = JWTAuth::fromUser($owner);
-        } finally {
-            \Illuminate\Support\Carbon::setTestNow();
-        }
-
-        $this->assertNotEmpty($jwtExpirado);
+        // Reassina o payload com a chave legítima do ambiente de testes.
+        // Alterar somente exp sem reassinar exercitaria a falha de assinatura,
+        // e congelar Carbon não garante o relógio interno da biblioteca JWT.
+        $jwtAtual = JWTAuth::fromUser($owner);
+        $partes = explode('.', $jwtAtual);
+        $this->assertCount(3, $partes);
+        $cabecalho = json_decode(base64_decode(strtr($partes[0], '-_', '+/'), true), true, 512, JSON_THROW_ON_ERROR);
+        $this->assertSame('HS256', $cabecalho['alg']);
+        $payload = json_decode(base64_decode(strtr($partes[1], '-_', '+/'), true), true, 512, JSON_THROW_ON_ERROR);
+        $payload['iat'] = now()->subHours(3)->timestamp;
+        $payload['nbf'] = now()->subHours(3)->timestamp;
+        $payload['exp'] = now()->subHours(2)->timestamp;
+        $payloadCodificado = rtrim(strtr(base64_encode(json_encode($payload, JSON_THROW_ON_ERROR)), '+/', '-_'), '=');
+        $segredo = (string) config('jwt.secret');
+        $this->assertNotEmpty($segredo);
+        $assinatura = rtrim(strtr(base64_encode(hash_hmac(
+            'sha256', $partes[0].'.'.$payloadCodificado, $segredo, true,
+        )), '+/', '-_'), '=');
+        $jwtExpirado = $partes[0].'.'.$payloadCodificado.'.'.$assinatura;
+        $this->assertNotSame($jwtAtual, $jwtExpirado);
         $cabecalhos = [
             'Authorization' => 'Bearer '.$jwtExpirado,
             'X-Peter-App' => 'rasoio',
@@ -5159,8 +5169,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_profiles', 0);
         $this->assertDatabaseCount('application_admin_audits', 0);
 
-        // Renovar a sessão restaura apenas a titularidade local legítima.
-        $jwtAtual = JWTAuth::fromUser($owner);
+        // O JWT atual permanece autorizado apenas no app legítimo.
         $this->getJson('/api/v1/apps/cutinapp/admin/context', [
             'Authorization' => 'Bearer '.$jwtAtual,
             'X-Peter-App' => 'cutinapp',
