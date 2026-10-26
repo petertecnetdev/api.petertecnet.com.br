@@ -4705,4 +4705,59 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($revogado));
     }
 
+
+    /**
+     * auth_version é propriedade da identidade, não da aplicação selecionada.
+     * A revogação do JWT de um owner multiapp deve negar ambas as rotas,
+     * mesmo quando o cliente troca o header e forja o app_id.
+     */
+    public function test_rotacao_de_jwt_de_owner_multiapp_revoga_todos_os_contextos(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $multiapp = $this->usuario('owner-multiapp-revogado-w03@example.test');
+        $outro = $this->usuario('owner-multiapp-independente-w03@example.test');
+
+        $this->vincular($cutinapp->id, $multiapp);
+        $this->vincular($rasoio->id, $multiapp);
+
+        $jwtAntigo = JWTAuth::fromUser($multiapp);
+        $jwtOutro = JWTAuth::fromUser($outro);
+        $versao = max((int) $multiapp->auth_version, 1);
+        User::query()->whereKey($multiapp->id)->update(['auth_version' => $versao + 1]);
+
+        foreach ([
+            ['cutinapp', $rasoio->id, 'rasoio'],
+            ['rasoio', $cutinapp->id, 'cutinapp'],
+        ] as [$slug, $idForjado, $headerForjado]) {
+            $this->getJson(
+                '/api/v1/apps/'.$slug.'/admin/context?app_id='.$idForjado
+                    .'&application_id='.$idForjado,
+                [
+                    'Authorization' => 'Bearer '.$jwtAntigo,
+                    'X-Peter-App' => $headerForjado,
+                ],
+            )->assertUnauthorized()->assertJsonPath('code', 'TOKEN_REVOKED');
+        }
+
+        $this->assertDatabaseCount('application_owners', 2);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        // O token antigo não pode recuperar acesso escolhendo outro aplicativo.
+        // O novo token deve continuar limitado às aplicações vinculadas.
+        $jwtNovo = JWTAuth::fromUser($multiapp->fresh());
+        foreach (['cutinapp', 'rasoio'] as $slug) {
+            $this->getJson('/api/v1/apps/'.$slug.'/admin/context', [
+                'Authorization' => 'Bearer '.$jwtNovo,
+                'X-Peter-App' => $slug,
+            ])->assertOk()->assertJsonPath('data.authorized', true);
+        }
+
+        // A rotação de uma identidade não revoga JWT de outro usuário.
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.$jwtOutro,
+            'X-Peter-App' => 'cutinapp',
+        ])->assertForbidden();
+    }
+
 }
