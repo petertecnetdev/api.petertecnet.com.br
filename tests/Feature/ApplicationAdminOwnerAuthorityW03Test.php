@@ -4231,6 +4231,75 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
     }
 
+    /**
+     * A rotação da versão de autenticação deve invalidar imediatamente
+     * o JWT antigo antes de qualquer leitura ou dispatch de worker.
+     * A revogação é individual: não derruba a fila de outro aplicativo
+     * administrado por um usuário com sessão válida.
+     */
+    public function test_rotacao_de_versao_jwt_revoga_operacao_sem_afetar_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-jwt-revogado-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-jwt-valido-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        // Configurar via serviço evita consumir o throttle HTTP de dispatch.
+        $controle = app(\App\Domain\Automation\Services\AutomationControlService::class);
+        $controle->configure($cutinapp->id, 'discovery_quality', true, 30, $ownerCutinapp->id);
+        $controle->configure($rasoio->id, 'discovery_quality', true, 30, $ownerRasoio->id);
+
+        $headersAntigos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $headersValidos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $painelCutinapp = '/api/v1/apps/cutinapp/admin/automations';
+        $dispatchCutinapp = $painelCutinapp.'/workers/discovery_quality/dispatch';
+        $dispatchRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality/dispatch';
+
+        $this->getJson($painelCutinapp, $headersAntigos)->assertOk();
+
+        // Simula revogação centralizada de todas as sessões anteriores.
+        $versaoAnterior = max((int) $ownerCutinapp->auth_version, 1);
+        User::query()->whereKey($ownerCutinapp->id)
+            ->update(['auth_version' => $versaoAnterior + 1]);
+
+        $this->getJson($painelCutinapp, $headersAntigos)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+        $this->postJson($dispatchCutinapp, [], $headersAntigos)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->assertDatabaseCount('automation_worker_runs', 0);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
+
+        $runRasoio = (int) $this->postJson($dispatchRasoio, [], $headersValidos)
+            ->assertAccepted()->json('data.run_id');
+
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio,
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseMissing('automation_worker_runs', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 1);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
