@@ -5120,4 +5120,55 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('data.is_owner', true);
         $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
     }
+
+    /**
+     * JWT emitido no passado deve expirar de fato, mesmo que o usuário
+     * continue sendo owner e o cliente falsifique o contexto do aplicativo.
+     * A sessão renovada deve continuar funcionando somente no app legítimo.
+     */
+    public function test_jwt_expirado_nao_autoriza_administracao_com_tenant_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-jwt-expirado-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        // Emite um JWT real já vencido, sem adulterar sua assinatura.
+        $agora = \Illuminate\Support\Carbon::now();
+        try {
+            \Illuminate\Support\Carbon::setTestNow($agora->copy()->subHours(3));
+            $jwtExpirado = JWTAuth::fromUser($owner);
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+
+        $this->assertNotEmpty($jwtExpirado);
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.$jwtExpirado,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $query = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit'.$query, $cabecalhos)
+            ->assertUnauthorized();
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles'.$query, [
+            'name' => 'Perfil JWT expirado W03',
+            'permissions' => ['finance.refund'],
+        ], $cabecalhos)->assertUnauthorized();
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        // Renovar a sessão restaura apenas a titularidade local legítima.
+        $jwtAtual = JWTAuth::fromUser($owner);
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.$jwtAtual,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true);
+
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+    }
 }
