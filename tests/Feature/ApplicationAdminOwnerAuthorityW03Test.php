@@ -4469,4 +4469,98 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_profiles', 1);
     }
 
+
+    /**
+     * A rotação da versão JWT precisa bloquear tanto concessão quanto
+     * revogação de perfis RBAC. IDs de outro app não podem alterar o tenant
+     * efetivo, e a sessão legítima de outro proprietário segue funcional.
+     */
+    public function test_jwt_revogado_nao_concede_nem_revoga_atribuicoes_com_tenant_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerRevogado = $this->usuario('owner-atribuicoes-revogado-w03@example.test');
+        $ownerValido = $this->usuario('owner-atribuicoes-valido-w03@example.test');
+        $colaborador = $this->usuario('colaborador-atribuicoes-w03@example.test');
+        $novoColaborador = $this->usuario('novo-colaborador-atribuicoes-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerRevogado);
+        $this->vincular($rasoio->id, $ownerValido);
+
+        $administracao = app(ApplicationAdminService::class);
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $ownerRevogado, [
+            'name' => 'Leitura Cutinapp revogacao JWT W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $ownerValido, [
+            'name' => 'Leitura Rasoio revogacao JWT W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $atribuicaoCutinapp = $administracao->assign(
+            $cutinapp->id, $ownerRevogado, $colaborador->email, $perfilCutinapp->id,
+        );
+        $atribuicaoRasoio = $administracao->assign(
+            $rasoio->id, $ownerValido, $colaborador->email, $perfilRasoio->id,
+        );
+
+        $jwtRevogado = JWTAuth::fromUser($ownerRevogado);
+        $jwtValido = JWTAuth::fromUser($ownerValido);
+        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $versaoAnterior = max((int) $ownerRevogado->auth_version, 1);
+        User::query()->whereKey($ownerRevogado->id)
+            ->update(['auth_version' => $versaoAnterior + 1]);
+
+        $headersRevogados = [
+            'Authorization' => 'Bearer '.$jwtRevogado,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $queryForjada = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/assignments'.$queryForjada, [
+            'email' => $novoColaborador->email,
+            'profile_id' => $perfilCutinapp->id,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $headersRevogados)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->deleteJson(
+            '/api/v1/apps/cutinapp/admin/assignments/'.$atribuicaoCutinapp->id.$queryForjada,
+            [],
+            $headersRevogados,
+        )
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->assertDatabaseCount('application_admin_assignments', 2);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $atribuicaoCutinapp->id,
+            'application_id' => $cutinapp->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $atribuicaoRasoio->id,
+            'application_id' => $rasoio->id,
+            'status' => 'active',
+            'revoked_at' => null,
+        ]);
+        $this->assertDatabaseMissing('application_admin_assignments', [
+            'application_id' => $cutinapp->id,
+            'user_id' => $novoColaborador->id,
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+        );
+
+        $this->getJson('/api/v1/apps/rasoio/admin/assignments', [
+            'Authorization' => 'Bearer '.$jwtValido,
+            'X-Peter-App' => 'cutinapp',
+        ])->assertOk();
+        $this->assertTrue($administracao->hasPermission($colaborador, $rasoio->id, 'audit.view'));
+        $this->assertTrue($administracao->hasPermission($colaborador, $cutinapp->id, 'audit.view'));
+        $this->assertFalse($administracao->isRoot($ownerRevogado));
+    }
+
 }
