@@ -4096,12 +4096,11 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $cutinappWorker = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
         $rasoioWorker = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
 
-        foreach ([$cutinappWorker, $rasoioWorker] as $worker) {
-            $this->putJson($worker, [
-                'enabled' => true,
-                'interval_minutes' => 30,
-            ], $headers)->assertOk();
-        }
+        // Precondições por serviço: preserva o throttle real das rotas
+        // HTTP sob teste (desativação, reativação e dispatch).
+        $controle = app(\App\Domain\Automation\Services\AutomationControlService::class);
+        $controle->configure($cutinapp->id, 'discovery_quality', true, 30, $owner->id);
+        $controle->configure($rasoio->id, 'discovery_quality', true, 30, $owner->id);
 
         $antigo = (int) $this->postJson($cutinappWorker.'/dispatch', [], $headers)
             ->assertAccepted()->json('data.run_id');
