@@ -3882,6 +3882,56 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('automation_worker_runs', 32);
     }
 
+    /**
+     * O lock operacional deve ser específico de (app_id, worker_key).
+     * Uma execução pendente de qualidade da descoberta não pode impedir
+     * um worker independente do mesmo aplicativo de entrar na fila.
+     * A validação usa apenas workers genéricos, sem alterar events:discover.
+     */
+    public function test_fila_pendente_de_um_worker_nao_bloqueia_outro_worker_do_mesmo_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $owner = $this->usuario('owner-workers-distintos-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $base = '/api/v1/apps/cutinapp/admin/automations/workers/';
+
+        foreach (['discovery_quality', 'catalog_quality'] as $key) {
+            $this->putJson($base.$key, [
+                'enabled' => true,
+                'interval_minutes' => 30,
+            ], $headers)->assertOk();
+        }
+
+        $primeiro = (int) $this->postJson($base.'discovery_quality/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $segundo = (int) $this->postJson($base.'catalog_quality/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $this->assertNotSame($primeiro, $segundo);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $primeiro,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $segundo,
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'catalog_quality',
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
