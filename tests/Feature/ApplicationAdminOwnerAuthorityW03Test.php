@@ -5064,4 +5064,60 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             ->assertJsonPath('data.is_owner', true);
         $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
     }
+
+    /**
+     * Um JWT com estrutura íntegra e HMAC válido para uma chave de terceiro
+     * não pode ser aceito pela API, mesmo que reutilize o payload de um owner.
+     * Isso protege contra substituição da chave de assinatura e confusão
+     * entre tenants, sem depender da rejeição de tokens malformados.
+     */
+    public function test_jwt_assinado_com_chave_externa_nao_autoriza_admin(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-chave-externa-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        $tokenValido = JWTAuth::fromUser($owner);
+        $partes = explode('.', $tokenValido);
+        $this->assertCount(3, $partes);
+
+        // Preserva cabeçalho e payload reais. A assinatura tem formato
+        // criptográfico correto, porém foi calculada com segredo alheio.
+        $assinaturaExterna = rtrim(strtr(base64_encode(hash_hmac(
+            'sha256',
+            $partes[0].'.'.$partes[1],
+            'segredo-externo-nao-autorizado-w03',
+            true,
+        )), '+/', '-_'), '=');
+        $tokenForjado = $partes[0].'.'.$partes[1].'.'.$assinaturaExterna;
+        $this->assertNotSame($tokenValido, $tokenForjado);
+
+        $headers = [
+            'Authorization' => 'Bearer '.$tokenForjado,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $query = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit'.$query, $headers)
+            ->assertUnauthorized();
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles'.$query, [
+            'name' => 'Perfil chave externa W03',
+            'permissions' => ['finance.refund'],
+        ], $headers)->assertUnauthorized();
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        // Controle positivo: a assinatura legítima continua autorizando
+        // somente o app de propriedade do usuário.
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.$tokenValido,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+    }
 }
