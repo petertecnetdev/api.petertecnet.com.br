@@ -4563,4 +4563,94 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse($administracao->isRoot($ownerRevogado));
     }
 
+
+    /**
+     * A rotação de auth_version deve impedir edição e exclusão de perfis
+     * mesmo quando o cliente tenta alterar o tenant pela query e cabeçalho.
+     * A negação não pode modificar perfis nem gerar auditoria de mutação.
+     */
+    public function test_jwt_revogado_nao_edita_nem_exclui_perfil_e_preserva_outro_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerRevogado = $this->usuario('owner-edicao-token-revogado-w03@example.test');
+        $ownerValido = $this->usuario('owner-edicao-token-valido-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerRevogado);
+        $this->vincular($rasoio->id, $ownerValido);
+
+        $administracao = app(ApplicationAdminService::class);
+        $perfilCutinapp = $administracao->createProfile($cutinapp->id, $ownerRevogado, [
+            'name' => 'Perfil preservado apos revogacao W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $perfilRasoio = $administracao->createProfile($rasoio->id, $ownerValido, [
+            'name' => 'Perfil independente Rasoio W03',
+            'permissions' => ['operations.view'],
+        ]);
+
+        $jwtRevogado = JWTAuth::fromUser($ownerRevogado);
+        $jwtValido = JWTAuth::fromUser($ownerValido);
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+        $versaoAnterior = max((int) $ownerRevogado->auth_version, 1);
+        User::query()->whereKey($ownerRevogado->id)
+            ->update(['auth_version' => $versaoAnterior + 1]);
+
+        $urlForjada = '/api/v1/apps/cutinapp/admin/profiles/'.$perfilCutinapp->id
+            .'?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+        $headersRevogados = [
+            'Authorization' => 'Bearer '.$jwtRevogado,
+            'X-Peter-App' => 'rasoio',
+        ];
+
+        $this->putJson($urlForjada, [
+            'name' => 'Perfil indevidamente editado W03',
+            'permissions' => ['finance.refund'],
+        ], $headersRevogados)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->deleteJson($urlForjada, [], $headersRevogados)
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilCutinapp->id,
+            'application_id' => $cutinapp->id,
+            'name' => 'Perfil preservado apos revogacao W03',
+        ]);
+        $this->assertSame(['audit.view'], $perfilCutinapp->fresh()->permissions);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilRasoio->id,
+            'application_id' => $rasoio->id,
+            'name' => 'Perfil independente Rasoio W03',
+        ]);
+        $this->assertDatabaseCount('application_admin_profiles', 2);
+        $this->assertSame(
+            $auditoriasAntes,
+            \App\Models\ApplicationAdminAudit::query()->count(),
+        );
+
+        // Controle positivo: o proprietário do outro app segue autorizado.
+        $this->putJson('/api/v1/apps/rasoio/admin/profiles/'.$perfilRasoio->id, [
+            'name' => 'Perfil Rasoio atualizado legitimamente W03',
+        ], [
+            'Authorization' => 'Bearer '.$jwtValido,
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.application_id', $rasoio->id);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilRasoio->id,
+            'application_id' => $rasoio->id,
+            'name' => 'Perfil Rasoio atualizado legitimamente W03',
+        ]);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfilCutinapp->id,
+            'application_id' => $cutinapp->id,
+            'name' => 'Perfil preservado apos revogacao W03',
+        ]);
+        $this->assertFalse($administracao->isRoot($ownerRevogado));
+    }
+
+
 }
