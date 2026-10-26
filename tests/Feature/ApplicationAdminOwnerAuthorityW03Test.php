@@ -4404,4 +4404,69 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
     }
 
+
+    /**
+     * A revogação da sessão deve proteger também o cadastro de perfis RBAC.
+     * Um bearer antigo não pode usar IDs forjados para criar privilégios,
+     * enquanto o JWT válido de outro proprietário segue restrito ao seu app.
+     */
+    public function test_jwt_revogado_nao_cria_perfil_administrativo_com_app_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerRevogado = $this->usuario('owner-perfil-token-revogado-w03@example.test');
+        $ownerValido = $this->usuario('owner-perfil-token-valido-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerRevogado);
+        $this->vincular($rasoio->id, $ownerValido);
+
+        $tokenRevogado = JWTAuth::fromUser($ownerRevogado);
+        $tokenValido = JWTAuth::fromUser($ownerValido);
+        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+
+        $versaoAnterior = max((int) $ownerRevogado->auth_version, 1);
+        User::query()->whereKey($ownerRevogado->id)
+            ->update(['auth_version' => $versaoAnterior + 1]);
+
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/profiles?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [
+                'name' => 'Perfil negado por token revogado W03',
+                'permissions' => ['finance.refund'],
+            ],
+            [
+                'Authorization' => 'Bearer '.$tokenRevogado,
+                'X-Peter-App' => 'rasoio',
+            ],
+        )
+            ->assertUnauthorized()
+            ->assertJsonPath('code', 'TOKEN_REVOKED');
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertSame(
+            $auditoriasAntes,
+            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+        );
+
+        // A revogação individual não deve negar o proprietário independente.
+        $this->postJson('/api/v1/apps/rasoio/admin/profiles', [
+            'name' => 'Perfil valido de outro app W03',
+            'permissions' => ['operations.view'],
+        ], [
+            'Authorization' => 'Bearer '.$tokenValido,
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $rasoio->id);
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $rasoio->id,
+            'slug' => 'perfil-valido-de-outro-app-w03',
+        ]);
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-negado-por-token-revogado-w03',
+        ]);
+        $this->assertDatabaseCount('application_admin_profiles', 1);
+    }
+
 }
