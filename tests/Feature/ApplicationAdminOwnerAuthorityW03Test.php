@@ -4337,9 +4337,9 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->vincular($rasoio->id, $ownerRasoio);
 
         config()->set('automation_workers.enabled', true);
-        \\Illuminate\\Support\\Facades\\Queue::fake();
+        \Illuminate\Support\Facades\Queue::fake();
 
-        $controle = app(\\App\\Domain\\Automation\\Services\\AutomationControlService::class);
+        $controle = app(\App\Domain\Automation\Services\AutomationControlService::class);
         $controle->configure($cutinapp->id, 'discovery_quality', true, 30, $ownerCutinapp->id);
         $controle->configure($rasoio->id, 'discovery_quality', true, 45, $ownerRasoio->id);
 
@@ -4351,7 +4351,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
             'X-Peter-App' => 'rasoio',
         ];
-        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
 
         // A versão muda no banco sem trocar o bearer apresentado ao endpoint.
         $versaoAnterior = max((int) $ownerCutinapp->auth_version, 1);
@@ -4379,9 +4379,9 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'enabled' => true,
             'interval_minutes' => 45,
         ]);
-        $this->assertSame($auditoriasAntes, \\App\\Models\\ApplicationAdminAudit::query()->count());
+        $this->assertSame($auditoriasAntes, \App\Models\ApplicationAdminAudit::query()->count());
         $this->assertDatabaseCount('automation_worker_runs', 0);
-        \\Illuminate\\Support\\Facades\\Queue::assertNotPushed(\\App\\Jobs\\RunAutomationWorker::class);
+        \Illuminate\Support\Facades\Queue::assertNotPushed(\App\Jobs\RunAutomationWorker::class);
 
         // Um proprietário independente ainda pode administrar seu próprio app.
         $this->putJson('/api/v1/apps/rasoio/admin/automations/workers/discovery_quality', [
