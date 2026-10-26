@@ -4504,7 +4504,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
 
         $jwtRevogado = JWTAuth::fromUser($ownerRevogado);
         $jwtValido = JWTAuth::fromUser($ownerValido);
-        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
         $versaoAnterior = max((int) $ownerRevogado->auth_version, 1);
         User::query()->whereKey($ownerRevogado->id)
             ->update(['auth_version' => $versaoAnterior + 1]);
@@ -4551,7 +4551,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
         $this->assertSame(
             $auditoriasAntes,
-            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+            \App\Models\ApplicationAdminAudit::query()->count(),
         );
 
         $this->getJson('/api/v1/apps/rasoio/admin/assignments', [
