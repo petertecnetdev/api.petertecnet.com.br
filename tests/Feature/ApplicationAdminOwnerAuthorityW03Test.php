@@ -5011,4 +5011,55 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_audits', 1);
         $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
     }
+
+    /**
+     * JWT com algoritmo "none" não pode herdar a identidade do owner.
+     * A verificação de assinatura precede a resolução de aplicação,
+     * inclusive quando o cliente falsifica app_id e X-Peter-App.
+     */
+    public function test_jwt_alg_none_nao_contorna_autorizacao_administrativa(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-jwt-alg-none-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+
+        $tokenValido = JWTAuth::fromUser($owner);
+        $partes = explode('.', $tokenValido);
+        $this->assertCount(3, $partes);
+
+        // Reutiliza o payload legítimo, mas troca o algoritmo por "none"
+        // e remove a assinatura, simulando confusão de algoritmo JWT.
+        $cabecalhoSemAssinatura = rtrim(strtr(base64_encode(
+            json_encode(['typ' => 'JWT', 'alg' => 'none'], JSON_THROW_ON_ERROR),
+        ), '+/', '-_'), '=');
+        $tokenForjado = $cabecalhoSemAssinatura.'.'.$partes[1].'.';
+
+        $headers = [
+            'Authorization' => 'Bearer '.$tokenForjado,
+            'X-Peter-App' => 'rasoio',
+        ];
+        $query = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit'.$query, $headers)
+            ->assertUnauthorized();
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles'.$query, [
+            'name' => 'Perfil JWT alg none W03',
+            'permissions' => ['finance.refund'],
+        ], $headers)->assertUnauthorized();
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        // O token original não pode perder sua autoridade local legítima.
+        $this->getJson('/api/v1/apps/cutinapp/admin/context', [
+            'Authorization' => 'Bearer '.$tokenValido,
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertOk()
+            ->assertJsonPath('data.authorized', true)
+            ->assertJsonPath('data.is_owner', true);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+    }
 }
