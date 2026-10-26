@@ -4897,4 +4897,63 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_audits', 2);
     }
 
+
+    /**
+     * O root do ecossistema não herda leitura do painel de um aplicativo
+     * com proprietário local. Query e cabeçalho de outro tenant não podem
+     * expor contexto, perfis, grants, auditoria ou histórico de workers.
+     */
+    public function test_root_global_nao_le_dados_administrativos_de_app_com_owner_local(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-auditoria-isolada-w03@example.test');
+        $root = $this->usuario(ApplicationOwnerAuthorityService::BOOTSTRAP_OWNER_EMAIL);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerLocal);
+        $administracao->createProfile($cutinapp->id, $ownerLocal, [
+            'name' => 'Perfil privado da Cutinapp W03',
+            'permissions' => ['audit.view'],
+        ]);
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
+
+        $this->assertTrue($administracao->isRoot($root));
+        $this->assertFalse($administracao->isOwner($root, $cutinapp->id));
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+
+        $headersRoot = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($root),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $tenantForjado = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+        foreach (['context', 'profiles', 'assignments', 'audit', 'automations'] as $recurso) {
+            $this->getJson(
+                '/api/v1/apps/cutinapp/admin/'.$recurso.$tenantForjado,
+                $headersRoot,
+            )
+                ->assertForbidden()
+                ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+        }
+
+        $this->assertSame(
+            $auditoriasAntes,
+            \App\Models\ApplicationAdminAudit::query()->count(),
+        );
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-privado-da-cutinapp-w03',
+        ]);
+
+        $this->getJson('/api/v1/apps/cutinapp/admin/audit', [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerLocal),
+            'X-Peter-App' => 'cutinapp',
+        ])->assertOk();
+
+        $this->getJson('/api/v1/apps/rasoio/admin/context', [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($root),
+            'X-Peter-App' => 'rasoio',
+        ])->assertOk()->assertJsonPath('data.authorized', true);
+    }
+
 }
