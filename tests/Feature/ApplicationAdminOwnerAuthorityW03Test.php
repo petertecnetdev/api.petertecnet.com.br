@@ -4151,6 +4151,86 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
     }
 
+
+    /**
+     * O kill switch global deve impedir a execução de jobs já enfileirados
+     * em todas as aplicações. Reativá-lo não pode ressuscitar jobs descartados,
+     * mas deve permitir uma nova execução explícita no app autorizado.
+     */
+    public function test_kill_switch_global_descarta_filas_sem_ressuscitar_jobs_apos_reativacao(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerCutinapp = $this->usuario('owner-killswitch-cutinapp-w03@example.test');
+        $ownerRasoio = $this->usuario('owner-killswitch-rasoio-w03@example.test');
+        $this->vincular($cutinapp->id, $ownerCutinapp);
+        $this->vincular($rasoio->id, $ownerRasoio);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        // Configuração por serviço evita gastar o throttle das rotas de dispatch.
+        $controle = app(\App\Domain\Automation\Services\AutomationControlService::class);
+        $controle->configure($cutinapp->id, 'discovery_quality', true, 30, $ownerCutinapp->id);
+        $controle->configure($rasoio->id, 'discovery_quality', true, 30, $ownerRasoio->id);
+
+        $headersCutinapp = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerCutinapp),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $headersRasoio = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerRasoio),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $rotaCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality/dispatch';
+        $rotaRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality/dispatch';
+
+        $runCutinapp = (int) $this->postJson($rotaCutinapp, [], $headersCutinapp)
+            ->assertAccepted()->json('data.run_id');
+        $runRasoio = (int) $this->postJson($rotaRasoio, [], $headersRasoio)
+            ->assertAccepted()->json('data.run_id');
+
+        config()->set('automation_workers.enabled', false);
+        foreach ([$runCutinapp, $runRasoio] as $runId) {
+            (new \App\Jobs\RunAutomationWorker($runId))->handle();
+        }
+
+        $conclusoes = [];
+        foreach ([[$runCutinapp, $cutinapp->id], [$runRasoio, $rasoio->id]] as [$runId, $appId]) {
+            $this->assertDatabaseHas('automation_worker_runs', [
+                'id' => $runId,
+                'app_id' => $appId,
+                'status' => 'skipped',
+            ]);
+            $conclusoes[$runId] = \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+                ->where('id', $runId)->value('finished_at');
+            $this->assertNotNull($conclusoes[$runId]);
+        }
+
+        config()->set('automation_workers.enabled', true);
+        foreach ([$runCutinapp, $runRasoio] as $runId) {
+            (new \App\Jobs\RunAutomationWorker($runId))->handle();
+            $this->assertSame($conclusoes[$runId], \Illuminate\Support\Facades\DB::table('automation_worker_runs')
+                ->where('id', $runId)->value('finished_at'));
+        }
+
+        $novoRun = (int) $this->postJson($rotaCutinapp, [], $headersCutinapp)
+            ->assertAccepted()->json('data.run_id');
+        $this->assertNotSame($runCutinapp, $novoRun);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $novoRun,
+            'app_id' => $cutinapp->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio,
+            'app_id' => $rasoio->id,
+            'status' => 'skipped',
+        ]);
+        $this->assertDatabaseCount('automation_worker_runs', 3);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 3);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
