@@ -3645,6 +3645,100 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 1);
     }
 
+    /**
+     * Reconfigurar o intervalo de um worker já enfileirado não deve alterar
+     * last_dispatched_at: o agendador depende do horário do disparo real,
+     * não da última edição administrativa. O controle do outro app não muda.
+     */
+    public function test_reconfiguracao_de_intervalo_nao_antecipa_marcador_nem_duplica_fila(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-reconfiguracao-marcador-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        config()->set('automation_workers.enabled', true);
+        \Illuminate\Support\Facades\Queue::fake();
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $workerCutinapp = '/api/v1/apps/cutinapp/admin/automations/workers/discovery_quality';
+        $workerRasoio = '/api/v1/apps/rasoio/admin/automations/workers/discovery_quality';
+
+        $this->putJson($workerCutinapp, [
+            'enabled' => true,
+            'interval_minutes' => 30,
+        ], $headers)->assertOk();
+        $this->putJson($workerRasoio, [
+            'enabled' => true,
+            'interval_minutes' => 60,
+        ], $headers)->assertOk();
+
+        $runCutinapp = (int) $this->postJson($workerCutinapp.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+        $runRasoio = (int) $this->postJson($workerRasoio.'/dispatch', [], $headers)
+            ->assertAccepted()->json('data.run_id');
+
+        $marcadorCutinapp = \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+            ->where('app_id', $cutinapp->id)->where('worker_key', 'discovery_quality')
+            ->value('last_dispatched_at');
+        $marcadorRasoio = \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+            ->where('app_id', $rasoio->id)->where('worker_key', 'discovery_quality')
+            ->value('last_dispatched_at');
+        $this->assertNotNull($marcadorCutinapp);
+        $this->assertNotNull($marcadorRasoio);
+
+        $this->travel(10)->minutes();
+        try {
+            // Cabeçalho Rasoio não deve redirecionar a mutação da rota Cutinapp.
+            $this->putJson($workerCutinapp.'?app_id='.$rasoio->id, [
+                'enabled' => true,
+                'interval_minutes' => 15,
+                'app_id' => $rasoio->id,
+            ], $headers)
+                ->assertOk()
+                ->assertJsonPath('data.interval_minutes', 15);
+
+            $this->assertSame($marcadorCutinapp, \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+                ->where('app_id', $cutinapp->id)->where('worker_key', 'discovery_quality')
+                ->value('last_dispatched_at'));
+            $this->assertSame($marcadorRasoio, \Illuminate\Support\Facades\DB::table('automation_worker_controls')
+                ->where('app_id', $rasoio->id)->where('worker_key', 'discovery_quality')
+                ->value('last_dispatched_at'));
+        } finally {
+            $this->travelBack();
+        }
+
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $cutinapp->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 15,
+        ]);
+        $this->assertDatabaseHas('automation_worker_controls', [
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'enabled' => true,
+            'interval_minutes' => 60,
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runCutinapp,
+            'app_id' => $cutinapp->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseHas('automation_worker_runs', [
+            'id' => $runRasoio,
+            'app_id' => $rasoio->id,
+            'status' => 'queued',
+        ]);
+        $this->assertDatabaseCount('automation_worker_controls', 2);
+        $this->assertDatabaseCount('automation_worker_runs', 2);
+        \Illuminate\Support\Facades\Queue::assertPushed(\App\Jobs\RunAutomationWorker::class, 2);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
