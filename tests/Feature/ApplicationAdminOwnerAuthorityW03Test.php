@@ -4820,4 +4820,81 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
     }
 
+
+    /**
+     * A identidade root global não pode contornar um proprietário local já
+     * vinculado. O tenant vem da rota validada, não do header ou da query.
+     * Controle positivo: o root administra app sem owner local e o owner
+     * local permanece autorizado apenas na sua própria aplicação.
+     */
+    public function test_root_global_nao_cria_perfil_em_app_com_owner_local_mesmo_com_tenant_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $ownerLocal = $this->usuario('owner-protegido-root-w03@example.test');
+        $root = $this->usuario(ApplicationOwnerAuthorityService::BOOTSTRAP_OWNER_EMAIL);
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $ownerLocal);
+
+        $this->assertTrue($administracao->isRoot($root));
+        $this->assertFalse($administracao->isOwner($root, $cutinapp->id));
+        $this->assertTrue($administracao->isOwner($root, $rasoio->id));
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+        $this->assertFalse($administracao->isRoot($ownerLocal));
+
+        $this->postJson(
+            '/api/v1/apps/cutinapp/admin/profiles?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            [
+                'name' => 'Perfil root indevido W03',
+                'permissions' => ['admin.access.manage'],
+                'app_id' => $rasoio->id,
+            ],
+            [
+                'Authorization' => 'Bearer '.JWTAuth::fromUser($root),
+                'X-Peter-App' => 'rasoio',
+            ],
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        $this->postJson('/api/v1/apps/rasoio/admin/profiles', [
+            'name' => 'Perfil root permitido W03',
+            'permissions' => ['operations.view'],
+        ], [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($root),
+            'X-Peter-App' => 'rasoio',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $rasoio->id);
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/profiles', [
+            'name' => 'Perfil owner permitido W03',
+            'permissions' => ['operations.view'],
+        ], [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ownerLocal),
+            'X-Peter-App' => 'cutinapp',
+        ])
+            ->assertCreated()
+            ->assertJsonPath('data.application_id', $cutinapp->id);
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $rasoio->id,
+            'slug' => 'perfil-root-permitido-w03',
+        ]);
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-owner-permitido-w03',
+        ]);
+        $this->assertDatabaseMissing('application_admin_profiles', [
+            'application_id' => $cutinapp->id,
+            'slug' => 'perfil-root-indevido-w03',
+        ]);
+        $this->assertDatabaseCount('application_admin_profiles', 2);
+        $this->assertDatabaseCount('application_admin_audits', 2);
+    }
+
 }
