@@ -3825,6 +3825,63 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ]);
     }
 
+    /**
+     * O histórico operacional deve manter somente as 30 execuções mais
+     * recentes DO aplicativo da rota, ordenadas por id decrescente.
+     * Uma aplicação com execução mais nova não pode contaminar a janela
+     * quando app_id/application_id e X-Peter-App apontam para ela.
+     */
+    public function test_janela_de_trinta_execucoes_preserva_ordem_e_isolamento_multiapp(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-paginacao-workers-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        $idsCutinapp = [];
+        for ($indice = 0; $indice < 31; $indice++) {
+            $idsCutinapp[] = (int) \Illuminate\Support\Facades\DB::table('automation_worker_runs')->insertGetId([
+                'app_id' => $cutinapp->id,
+                'worker_key' => 'discovery_quality',
+                'status' => 'completed',
+                'result' => json_encode(['sequencia' => $indice]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+        $idRasoio = (int) \Illuminate\Support\Facades\DB::table('automation_worker_runs')->insertGetId([
+            'app_id' => $rasoio->id,
+            'worker_key' => 'discovery_quality',
+            'status' => 'completed',
+            'result' => json_encode(['sequencia' => 'externa']),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $headers = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($owner),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $painel = $this->getJson(
+            '/api/v1/apps/cutinapp/admin/automations?app_id='.$rasoio->id.'&application_id='.$rasoio->id,
+            $headers,
+        )->assertOk()->assertJsonCount(30, 'data.recent_runs');
+
+        $idsVisiveis = array_map('intval', array_column($painel->json('data.recent_runs'), 'id'));
+        $this->assertSame(array_reverse(array_slice($idsCutinapp, 1)), $idsVisiveis);
+        $this->assertNotContains($idsCutinapp[0], $idsVisiveis);
+        $this->assertNotContains($idRasoio, $idsVisiveis);
+        $this->assertSame(30, count(array_unique($idsVisiveis)));
+
+        $this->getJson('/api/v1/apps/rasoio/admin/automations?app_id='.$cutinapp->id, $headers)
+            ->assertOk()
+            ->assertJsonCount(1, 'data.recent_runs')
+            ->assertJsonPath('data.recent_runs.0.id', $idRasoio)
+            ->assertJsonPath('data.recent_runs.0.result.sequencia', 'externa');
+        $this->assertDatabaseCount('automation_worker_runs', 32);
+    }
+
     private function vincular(int $applicationId, User $usuario): void
     {
         ApplicationOwner::query()->create([
