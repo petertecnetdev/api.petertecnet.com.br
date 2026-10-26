@@ -4673,7 +4673,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
             'name' => 'Perfil confidencial W03',
             'permissions' => ['audit.view'],
         ]);
-        $auditoriasAntes = \\App\\Models\\ApplicationAdminAudit::query()->count();
+        $auditoriasAntes = \App\Models\ApplicationAdminAudit::query()->count();
 
         $jwtAntigo = JWTAuth::fromUser($revogado);
         $jwtValido = JWTAuth::fromUser($valido);
@@ -4695,7 +4695,7 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertDatabaseCount('application_admin_profiles', 1);
         $this->assertSame(
             $auditoriasAntes,
-            \\App\\Models\\ApplicationAdminAudit::query()->count(),
+            \App\Models\ApplicationAdminAudit::query()->count(),
         );
 
         $this->getJson('/api/v1/apps/rasoio/admin/context', [
