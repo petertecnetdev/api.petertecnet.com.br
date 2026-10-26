@@ -4760,4 +4760,64 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         ])->assertForbidden();
     }
 
+
+    /**
+     * A versão da identidade é global: um JWT revogado não pode criar perfis
+     * em nenhum dos aplicativos do mesmo proprietário, mesmo com tenant forjado.
+     * Um token novo continua autorizado apenas nos aplicativos vinculados.
+     */
+    public function test_jwt_revogado_de_owner_multiapp_nao_cria_perfis_em_nenhum_app(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-multiapp-perfil-revogado-w03@example.test');
+        $this->vincular($cutinapp->id, $owner);
+        $this->vincular($rasoio->id, $owner);
+
+        $jwtAntigo = JWTAuth::fromUser($owner);
+        $versao = max((int) $owner->auth_version, 1);
+        User::query()->whereKey($owner->id)->update(['auth_version' => $versao + 1]);
+
+        foreach ([
+            ['cutinapp', $rasoio->id, 'rasoio'],
+            ['rasoio', $cutinapp->id, 'cutinapp'],
+        ] as [$slug, $idForjado, $headerForjado]) {
+            $this->postJson(
+                '/api/v1/apps/'.$slug.'/admin/profiles?app_id='.$idForjado,
+                [
+                    'name' => 'Perfil indevido '.$slug,
+                    'permissions' => ['dashboard.view'],
+                    'application_id' => $idForjado,
+                ],
+                [
+                    'Authorization' => 'Bearer '.$jwtAntigo,
+                    'X-Peter-App' => $headerForjado,
+                ],
+            )->assertUnauthorized()->assertJsonPath('code', 'TOKEN_REVOKED');
+        }
+
+        $this->assertDatabaseCount('application_admin_profiles', 0);
+        $this->assertDatabaseCount('application_admin_audits', 0);
+
+        $jwtNovo = JWTAuth::fromUser($owner->fresh());
+        foreach ([
+            ['cutinapp', $cutinapp->id],
+            ['rasoio', $rasoio->id],
+        ] as [$slug, $applicationId]) {
+            $this->postJson('/api/v1/apps/'.$slug.'/admin/profiles', [
+                'name' => 'Perfil autorizado '.$slug,
+                'permissions' => ['dashboard.view'],
+            ], [
+                'Authorization' => 'Bearer '.$jwtNovo,
+                'X-Peter-App' => $slug,
+            ])
+                ->assertCreated()
+                ->assertJsonPath('data.application_id', $applicationId);
+        }
+
+        $this->assertDatabaseCount('application_admin_profiles', 2);
+        $this->assertDatabaseCount('application_admin_audits', 2);
+        $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
+    }
+
 }
