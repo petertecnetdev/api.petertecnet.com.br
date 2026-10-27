@@ -5180,4 +5180,66 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
 
         $this->assertFalse(app(ApplicationAdminService::class)->isRoot($owner));
     }
+
+    /**
+     * Um colaborador com permissão operacional não pode editar nem excluir
+     * o próprio perfil para obter poderes financeiros ou administrativos.
+     * As tentativas HTTP negadas não devem produzir alterações nem auditoria.
+     */
+    public function test_delegado_nao_edita_nem_exclui_o_proprio_perfil_para_escalar_privilegios(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $owner = $this->usuario('owner-perfil-autoelevacao-w03@example.test');
+        $delegado = $this->usuario('delegado-perfil-autoelevacao-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $owner);
+        $perfil = $administracao->createProfile($cutinapp->id, $owner, [
+            'name' => 'Leitura operacional protegida W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $vinculo = $administracao->assign($cutinapp->id, $owner, $delegado->email, $perfil->id);
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')
+            ->where('application_id', $cutinapp->id)->count();
+
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($delegado),
+            'X-Peter-App' => 'cutinapp',
+        ];
+        $url = '/api/v1/apps/cutinapp/admin/profiles/'.$perfil->id;
+
+        $this->putJson($url, [
+            'name' => 'Perfil elevado indevidamente W03',
+            'permissions' => ['operations.view', 'finance.refund'],
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->deleteJson($url, [], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->assertDatabaseHas('application_admin_profiles', [
+            'id' => $perfil->id,
+            'application_id' => $cutinapp->id,
+            'name' => 'Leitura operacional protegida W03',
+        ]);
+        $this->assertSame(['operations.view'], $perfil->fresh()->permissions);
+        $this->assertDatabaseHas('application_admin_assignments', [
+            'id' => $vinculo->id,
+            'application_id' => $cutinapp->id,
+            'profile_id' => $perfil->id,
+            'status' => 'active',
+        ]);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')
+                ->where('application_id', $cutinapp->id)->count(),
+        );
+        $this->assertFalse($administracao->isRoot($delegado));
+        $this->assertFalse($administracao->isOwner($delegado, $cutinapp->id));
+        $this->assertFalse($administracao->hasPermission($delegado, $cutinapp->id, 'finance.refund'));
+        $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'operations.view'));
+    }
+
 }
