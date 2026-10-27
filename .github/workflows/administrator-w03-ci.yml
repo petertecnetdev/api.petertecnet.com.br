@@ -137,7 +137,8 @@ jobs:
           set -euo pipefail
           # Este teste deve passar independentemente da regressão P0 de
           # ApplicationAdminService::context(); não altera o gate W03 existente.
-          php artisan test tests/Feature/ApplicationAdminOwnerAuthorityW03Test.php 2>&1 | tee /tmp/w03-ci/owner-authority-w03.log
+          php -l tests/Feature/ApplicationAdminJwtTemporalClaimsW03Test.php
+          php artisan test tests/Feature/ApplicationAdminOwnerAuthorityW03Test.php tests/Feature/ApplicationAdminJwtTemporalClaimsW03Test.php 2>&1 | tee /tmp/w03-ci/owner-authority-w03.log
 
       - name: Auditar registro de rotas administrativas
         id: rotas
