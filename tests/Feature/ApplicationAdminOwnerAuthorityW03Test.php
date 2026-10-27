@@ -5242,4 +5242,78 @@ final class ApplicationAdminOwnerAuthorityW03Test extends TestCase
         $this->assertTrue($administracao->hasPermission($delegado, $cutinapp->id, 'operations.view'));
     }
 
+
+    /**
+     * Um delegado não pode revogar o acesso de outro colaborador nem trocar
+     * seu perfil por um financeiro, mesmo forjando identificadores de app.
+     * A negação deve ocorrer antes de qualquer gravação ou auditoria.
+     */
+    public function test_delegado_nao_revoga_nem_eleva_outro_colaborador_com_tenant_forjado(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $rasoio = $this->applicationFixture('rasoio');
+        $owner = $this->usuario('owner-protecao-equipe-w03@example.test');
+        $ator = $this->usuario('delegado-ator-equipe-w03@example.test');
+        $alvo = $this->usuario('delegado-alvo-equipe-w03@example.test');
+        $administracao = app(ApplicationAdminService::class);
+
+        $this->vincular($cutinapp->id, $owner);
+        $perfilLeitura = $administracao->createProfile($cutinapp->id, $owner, [
+            'name' => 'Operações somente leitura equipe W03',
+            'permissions' => ['operations.view'],
+        ]);
+        $perfilFinanceiro = $administracao->createProfile($cutinapp->id, $owner, [
+            'name' => 'Financeiro protegido equipe W03',
+            'permissions' => ['finance.refund'],
+        ]);
+        $vinculoAtor = $administracao->assign(
+            $cutinapp->id, $owner, $ator->email, $perfilLeitura->id,
+        );
+        $vinculoAlvo = $administracao->assign(
+            $cutinapp->id, $owner, $alvo->email, $perfilLeitura->id,
+        );
+        $auditoriasAntes = \Illuminate\Support\Facades\DB::table('application_admin_audits')->count();
+        $cabecalhos = [
+            'Authorization' => 'Bearer '.JWTAuth::fromUser($ator),
+            'X-Peter-App' => 'rasoio',
+        ];
+        $queryForjada = '?app_id='.$rasoio->id.'&application_id='.$rasoio->id;
+
+        $this->deleteJson(
+            '/api/v1/apps/cutinapp/admin/assignments/'.$vinculoAlvo->id.$queryForjada,
+            [],
+            $cabecalhos,
+        )
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        $this->postJson('/api/v1/apps/cutinapp/admin/assignments'.$queryForjada, [
+            'email' => $alvo->email,
+            'profile_id' => $perfilFinanceiro->id,
+            'app_id' => $rasoio->id,
+            'application_id' => $rasoio->id,
+        ], $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+
+        foreach ([$vinculoAtor, $vinculoAlvo] as $vinculo) {
+            $this->assertDatabaseHas('application_admin_assignments', [
+                'id' => $vinculo->id,
+                'application_id' => $cutinapp->id,
+                'profile_id' => $perfilLeitura->id,
+                'status' => 'active',
+                'revoked_at' => null,
+            ]);
+        }
+        $this->assertDatabaseCount('application_admin_assignments', 2);
+        $this->assertSame(
+            $auditoriasAntes,
+            \Illuminate\Support\Facades\DB::table('application_admin_audits')->count(),
+        );
+        $this->assertTrue($administracao->hasPermission($alvo, $cutinapp->id, 'operations.view'));
+        $this->assertFalse($administracao->hasPermission($alvo, $cutinapp->id, 'finance.refund'));
+        $this->assertFalse($administracao->hasAccess($ator, $rasoio->id));
+        $this->assertFalse($administracao->isRoot($ator));
+    }
+
 }
