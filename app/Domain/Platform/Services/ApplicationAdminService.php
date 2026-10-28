@@ -102,7 +102,7 @@ class ApplicationAdminService
         if ($this->isOwner($user, $applicationId)) {
             return [
                 'authorized' => true,
-                'is_root' => true,
+                'is_root' => $this->isRoot($user),
                 'is_owner' => true,
                 'authority_level' => 'owner',
                 'scope' => 'global_application',
