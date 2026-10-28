@@ -320,16 +320,22 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 $this->assertSame('pix', $payload['payment_method_id']);
                 return true;
             })
-            ->andReturn([
-                'id' => 987654321,
-                'status' => 'pending',
-                'fee_details' => [],
-                'point_of_interaction' => ['transaction_data' => [
-                    'transaction_id' => 'pix-resumed-transaction',
-                    'qr_code' => '000201-resumed-pix',
-                    'qr_code_base64' => 'dGVzdA==',
-                ]],
-            ]);
+            ->andReturnUsing(static function (string $token, array $payload, string $idempotencyKey): array {
+                return [
+                    'id' => 987654321,
+                    'status' => 'pending',
+                    'external_reference' => $payload['external_reference'],
+                    'payment_method_id' => $payload['payment_method_id'],
+                    'transaction_amount' => $payload['transaction_amount'],
+                    'metadata' => $payload['metadata'],
+                    'fee_details' => [],
+                    'point_of_interaction' => ['transaction_data' => [
+                        'transaction_id' => 'pix-resumed-transaction',
+                        'qr_code' => '000201-resumed-pix',
+                        'qr_code_base64' => 'dGVzdA==',
+                    ]],
+                ];
+            });
         $this->app->instance(MercadoPagoService::class, $second);
 
         $this->withHeaders($headers)
