@@ -4,10 +4,14 @@ declare(strict_types=1);
 
 namespace Tests\Unit\Independence;
 
+use App\Domain\Commerce\Services\CommerceOrderPaymentRetryService;
+use App\Models\CommerceOrder;
+use App\Models\CommercePayment;
 use App\Models\Event;
 use App\Models\Production;
 use App\Services\Independence\ListingCommercePolicy;
 use PHPUnit\Framework\TestCase;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 final class ListingCommerceCompatibilityTest extends TestCase
 {
@@ -62,6 +66,54 @@ final class ListingCommerceCompatibilityTest extends TestCase
         $event->forceFill(['app_id' => 0]);
 
         self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($event));
+    }
+
+    private function retryFixture(int $eventAppId = 1, int $productionAppId = 1, int $paymentAppId = 1, string $paymentStatus = 'failed'): CommerceOrder
+    {
+        $order = new CommerceOrder();
+        $order->forceFill(['id' => 70, 'app_id' => 1, 'production_id' => 80, 'status' => 'pending']);
+        $event = new Event();
+        $event->forceFill(['app_id' => $eventAppId, 'production_id' => 80, 'kind' => 'commercial']);
+        $production = new Production();
+        $production->forceFill(['app_id' => $productionAppId]);
+        $payment = new CommercePayment();
+        $payment->forceFill(['app_id' => $paymentAppId, 'order_id' => 70, 'status' => $paymentStatus]);
+        $order->setRelation('event', $event);
+        $order->setRelation('production', $production);
+        $order->setRelation('payments', collect([$payment]));
+
+        return $order;
+    }
+
+    public function test_retry_rejects_pending_order_with_paid_payment_before_any_provider_call(): void
+    {
+        $method = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertRetrySafety');
+        try {
+            $method->invoke(null, $this->retryFixture(paymentStatus: 'paid'), 1);
+            self::fail('Uma cobrança já paga nunca pode gerar uma nova tentativa.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
+    }
+
+    public function test_retry_rejects_cross_app_event_production_and_payment(): void
+    {
+        $method = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertRetrySafety');
+        foreach ([
+            $this->retryFixture(eventAppId: 2),
+            $this->retryFixture(productionAppId: 2),
+            $this->retryFixture(paymentAppId: 2),
+        ] as $order) {
+            try {
+                $method->invoke(null, $order, 1);
+                self::fail('A divergência de aplicação deve impedir retry.');
+            } catch (HttpException $exception) {
+                self::assertContains($exception->getStatusCode(), [403, 409]);
+            }
+        }
+
+        $method->invoke(null, $this->retryFixture(), 1);
+        self::assertTrue(true);
     }
 
     public function test_cross_application_record_never_allows_checkout(): void

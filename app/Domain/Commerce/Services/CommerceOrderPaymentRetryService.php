@@ -5,6 +5,7 @@ namespace App\Domain\Commerce\Services;
 use App\Models\CommerceOrder;
 use App\Models\CommercePayment;
 use App\Models\User;
+use App\Services\Independence\ListingCommercePolicy;
 use App\Services\AsaasPaymentService;
 use App\Services\CommercePaymentSettlementService;
 use App\Services\MerchantPaymentAccountService;
@@ -36,6 +37,11 @@ final class CommerceOrderPaymentRetryService
                 ->with(['event', 'production', 'payments'])
                 ->lockForUpdate()
                 ->firstOrFail();
+
+            // Nunca iniciar outra cobrança com tenant divergente ou pagamento já confirmado.
+            // A reconciliação financeira pertence ao SettlementService e exige handoff.
+            self::assertRetrySafety($order, (int) $this->context->id());
+            app(ListingCommercePolicy::class)->assertLegacyOrVerified($order->event);
 
             if ($order->status === 'paid') {
                 throw new HttpException(409, 'Este pedido já está pago.');
@@ -91,6 +97,31 @@ final class CommerceOrderPaymentRetryService
         }
 
         return $this->retryMercadoPagoPix($order, $user, (int) $retryAttempt);
+    }
+
+    private static function assertRetrySafety(CommerceOrder $order, int $appId): void
+    {
+        if ($appId < 1
+            || (int) $order->app_id !== $appId
+            || ! $order->event
+            || ! $order->production
+            || (int) $order->event->app_id !== $appId
+            || (int) $order->production->app_id !== $appId
+            || (int) $order->event->production_id !== (int) $order->production_id) {
+            throw new HttpException(403, 'O pedido não pertence a esta aplicação ou produção.');
+        }
+
+        foreach ($order->payments as $payment) {
+            if ((int) $payment->app_id !== $appId
+                || (int) $payment->order_id !== (int) $order->id) {
+                throw new HttpException(409, 'As tentativas de pagamento deste pedido exigem verificação.');
+            }
+
+            if (strtolower((string) $payment->status) === 'paid') {
+                // Pending + paid deve ser conciliado, jamais gerar POST adicional.
+                throw new HttpException(409, 'Pagamento já confirmado. Aguarde a conciliação do pedido.');
+            }
+        }
     }
 
     public function retryPix(string $publicId, User $user): array
