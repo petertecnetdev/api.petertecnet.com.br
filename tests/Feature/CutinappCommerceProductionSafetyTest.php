@@ -353,6 +353,57 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $order->id, 'released_at' => null]);
     }
 
+    public function test_pix_retry_rejects_remote_payment_from_another_order_without_persisting_it(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('platform.applications.cutinapp.commerce.platform_fee_percent', 8);
+        config()->set('services.mercadopago.access_token', 'platform-access-token');
+
+        [$producer, $event, $ticket, $productionId] = $this->paidEventFixture('pix-cross-order-retry');
+        $this->verifyFinancialRecipient($producer, $productionId);
+
+        $first = Mockery::mock(MercadoPagoService::class);
+        $first->shouldReceive('createPayment')->once()->andThrow(new \RuntimeException('timeout simulado'));
+        $this->app->instance(MercadoPagoService::class, $first);
+
+        $buyer = $this->user('Comprador Pix Isolado', 'buyer-pix-isolated@cutinapp.test');
+        $headers = $this->headersFor($buyer);
+        $failed = $this->withHeaders($headers)
+            ->postJson('/api/cutinapp/checkout', [
+                'event_id' => $event['id'],
+                'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                'payment_method' => 'pix',
+            ])
+            ->assertStatus(502)
+            ->assertJsonPath('retryable', true);
+
+        $publicId = (string) $failed->json('order_public_id');
+        $orderId = DB::table('commerce_orders')->where('public_id', $publicId)->value('id');
+        $this->assertNotNull($orderId);
+
+        $second = Mockery::mock(MercadoPagoService::class);
+        $second->shouldReceive('createPayment')->once()
+            ->andReturnUsing(static function (string $token, array $payload, string $key): array {
+                return [
+                    'id' => 987654322,
+                    'status' => 'pending',
+                    'external_reference' => 'outro-pedido',
+                    'payment_method_id' => $payload['payment_method_id'],
+                    'transaction_amount' => $payload['transaction_amount'],
+                    'metadata' => $payload['metadata'],
+                ];
+            });
+        $this->app->instance(MercadoPagoService::class, $second);
+
+        $this->withHeaders($headers)
+            ->postJson('/api/v1/apps/cutinapp/commerce/orders/' . $publicId . '/payment/retry', ['payment_method' => 'pix'])
+            ->assertStatus(409);
+
+        $this->assertDatabaseMissing('commerce_payments', ['order_id' => $orderId]);
+        $this->assertDatabaseHas('commerce_orders', ['id' => $orderId, 'status' => 'pending']);
+        $this->assertDatabaseHas('inventory_reservations', ['order_id' => $orderId, 'released_at' => null]);
+    }
+
     private function verifyFinancialRecipient(User $producer, int $productionId): void
     {
         $cpf = '52998224725';
