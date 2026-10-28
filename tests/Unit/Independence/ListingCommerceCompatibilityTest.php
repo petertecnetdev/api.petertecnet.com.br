@@ -180,4 +180,53 @@ final class ListingCommerceCompatibilityTest extends TestCase
             }
         }
     }
+
+    public function test_mercadopago_pix_retry_rejects_remote_payment_from_other_order_app_or_amount(): void
+    {
+        $order = $this->retryFixture();
+        $order->forceFill(['public_id' => 'order_70', 'total' => 129.90]);
+        $remote = [
+            'id' => 123456789,
+            'external_reference' => 'order_70',
+            'payment_method_id' => 'pix',
+            'transaction_amount' => 129.90,
+            'status' => 'pending',
+            'metadata' => [
+                'application_id' => 1,
+                'order_id' => 70,
+                'order_public_id' => 'order_70',
+                'organization_id' => 80,
+            ],
+        ];
+        $guard = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertMercadoPagoPixPaymentMatches');
+        $guard->invoke(null, $remote, $order);
+        self::assertTrue(true);
+
+        $invalid = [
+            ['id' => null],
+            ['id' => 'not-an-id'],
+            ['external_reference' => 'order_other'],
+            ['external_reference' => null],
+            ['payment_method_id' => 'credit_card'],
+            ['payment_method_id' => null],
+            ['transaction_amount' => 129.91],
+            ['transaction_amount' => null],
+            ['transaction_amount' => INF],
+            ['status' => null],
+            ['metadata' => []],
+            ['metadata' => array_replace($remote['metadata'], ['application_id' => 2])],
+            ['metadata' => array_replace($remote['metadata'], ['order_id' => 71])],
+            ['metadata' => array_replace($remote['metadata'], ['order_public_id' => 'other'])],
+            ['metadata' => array_replace($remote['metadata'], ['organization_id' => 81])],
+        ];
+
+        foreach ($invalid as $changes) {
+            try {
+                $guard->invoke(null, array_replace($remote, $changes), $order);
+                self::fail('PIX remoto divergente foi aceito: ' . json_encode($changes));
+            } catch (HttpException $exception) {
+                self::assertSame(409, $exception->getStatusCode());
+            }
+        }
+    }
 }

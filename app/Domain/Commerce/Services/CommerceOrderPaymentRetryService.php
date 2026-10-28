@@ -165,6 +165,37 @@ final class CommerceOrderPaymentRetryService
         }
     }
 
+    /**
+     * O retorno do POST Pix não pode associar ao pedido uma cobrança remota
+     * de outro comprador, aplicação ou valor. Validar antes de gravar efeitos.
+     */
+    private static function assertMercadoPagoPixPaymentMatches(array $remote, CommerceOrder $order): void
+    {
+        $id = $remote['id'] ?? null;
+        $amount = $remote['transaction_amount'] ?? null;
+        $remoteAmount = is_numeric($amount) ? (float) $amount : NAN;
+        $metadata = $remote['metadata'] ?? null;
+
+        if ((! is_int($id) && ! is_string($id))
+            || ! ctype_digit((string) $id)
+            || (int) $id < 1
+            || ! is_string($remote['external_reference'] ?? null)
+            || $remote['external_reference'] !== (string) $order->public_id
+            || ! is_string($remote['payment_method_id'] ?? null)
+            || strtolower($remote['payment_method_id']) !== 'pix'
+            || ! is_string($remote['status'] ?? null)
+            || trim($remote['status']) === ''
+            || ! is_finite($remoteAmount)
+            || (int) round($remoteAmount * 100) !== (int) round((float) $order->total * 100)
+            || ! is_array($metadata)
+            || (string) ($metadata['application_id'] ?? '') !== (string) $order->app_id
+            || (string) ($metadata['order_id'] ?? '') !== (string) $order->id
+            || (string) ($metadata['order_public_id'] ?? '') !== (string) $order->public_id
+            || (string) ($metadata['organization_id'] ?? '') !== (string) $order->production_id) {
+            throw new HttpException(409, 'O PIX retornado pelo provedor exige verificação antes da retomada.');
+        }
+    }
+
     public function retryPix(string $publicId, User $user): array
     {
         return $this->retry($publicId, $user, ['payment_method' => 'pix']);
@@ -344,6 +375,8 @@ final class CommerceOrderPaymentRetryService
             report($exception);
             throw new HttpException(503, 'O provedor de PIX não respondeu. O pedido continua reservado; tente novamente.');
         }
+
+        self::assertMercadoPagoPixPaymentMatches($remote, $order);
 
         $transaction = data_get($remote, 'point_of_interaction.transaction_data', []);
         $providerFee = collect($remote['fee_details'] ?? [])->sum(fn ($fee) => (float) ($fee['amount'] ?? 0));
