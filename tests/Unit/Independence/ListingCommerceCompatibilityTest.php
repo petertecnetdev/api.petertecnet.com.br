@@ -120,4 +120,64 @@ final class ListingCommerceCompatibilityTest extends TestCase
     {
         self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($this->pair(null, null, 2)));
     }
+
+    public function test_retry_never_reuses_an_existing_payment_with_a_different_method(): void
+    {
+        $payment = new CommercePayment();
+        $payment->forceFill(['method' => 'card', 'status' => 'pending']);
+        $guard = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertExistingPaymentMethod');
+
+        try {
+            $guard->invoke(null, $payment, 'pix');
+            self::fail('Uma cobrança de cartão não pode ser apresentada como PIX.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
+
+        $guard->invoke(null, $payment, 'card');
+        self::assertTrue(true);
+    }
+
+    public function test_asaas_retry_accepts_only_matching_remote_payment_identity(): void
+    {
+        $guard = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertAsaasPaymentMatches');
+        $remote = [
+            'id' => 'pay_123',
+            'customer' => 'cus_123',
+            'billingType' => 'PIX',
+            'value' => 129.90,
+            'externalReference' => 'order_123',
+            'status' => 'PENDING',
+        ];
+
+        foreach (['pix' => 'PIX', 'card' => 'CREDIT_CARD', 'boleto' => 'BOLETO'] as $method => $billingType) {
+            $guard->invoke(null, array_replace($remote, ['billingType' => $billingType]), 'cus_123', $method, 129.90, 'order_123');
+            self::assertTrue(true);
+        }
+
+        $invalid = [
+            ['id' => ''],
+            ['id' => []],
+            ['customer' => 'cus_other'],
+            ['customer' => []],
+            ['billingType' => 'CREDIT_CARD'],
+            ['billingType' => null],
+            ['externalReference' => 'order_other'],
+            ['externalReference' => []],
+            ['value' => 129.91],
+            ['value' => 'invalid'],
+            ['value' => null],
+            ['value' => INF],
+            ['deleted' => true],
+        ];
+
+        foreach ($invalid as $changes) {
+            try {
+                $guard->invoke(null, array_replace($remote, $changes), 'cus_123', 'pix', 129.90, 'order_123');
+                self::fail('O Asaas retornou uma cobrança divergente: ' . json_encode($changes));
+            } catch (HttpException $exception) {
+                self::assertSame(409, $exception->getStatusCode());
+            }
+        }
+    }
 }

@@ -69,6 +69,9 @@ final class CommerceOrderPaymentRetryService
                 ->first(fn ($payment) => ! in_array(strtolower((string) $payment->status), $terminalStatuses, true));
 
             if ($existing) {
+                // Não apresentar uma cobrança de outra modalidade como retomada válida.
+                self::assertExistingPaymentMethod($existing, $method);
+
                 return [$order, $existing, null];
             }
 
@@ -121,6 +124,44 @@ final class CommerceOrderPaymentRetryService
                 // Pending + paid deve ser conciliado, jamais gerar POST adicional.
                 throw new HttpException(409, 'Pagamento já confirmado. Aguarde a conciliação do pedido.');
             }
+        }
+    }
+
+    private static function assertExistingPaymentMethod(CommercePayment $payment, string $method): void
+    {
+        if (strtolower((string) $payment->method) !== $method) {
+            throw new HttpException(409, 'A tentativa existente usa outra forma de pagamento.');
+        }
+    }
+
+    /**
+     * Uma cobrança recuperada por referência não comprova, sozinha, que pertence
+     * ao pedido. Validar a identidade remota antes de persistir ou liquidar.
+     */
+    private static function assertAsaasPaymentMatches(
+        array $remote,
+        string $customerId,
+        string $method,
+        float $amount,
+        string $externalReference,
+    ): void {
+        $expectedBillingType = match ($method) {
+            'pix' => 'PIX',
+            'card' => 'CREDIT_CARD',
+            'boleto' => 'BOLETO',
+            default => throw new HttpException(422, 'Forma de pagamento inválida.'),
+        };
+
+        $value = $remote['value'] ?? null;
+        $remoteAmount = is_numeric($value) ? (float) $value : NAN;
+        if (! is_string($remote['id'] ?? null) || trim($remote['id']) === ''
+            || ! is_string($remote['customer'] ?? null) || trim($remote['customer']) !== $customerId
+            || ! is_string($remote['billingType'] ?? null) || strtoupper(trim($remote['billingType'])) !== $expectedBillingType
+            || ! is_string($remote['externalReference'] ?? null) || trim($remote['externalReference']) !== $externalReference
+            || ! is_finite($remoteAmount)
+            || (int) round($remoteAmount * 100) !== (int) round($amount * 100)
+            || ! empty($remote['deleted'])) {
+            throw new HttpException(409, 'A cobrança retornada pelo Asaas exige verificação antes da retomada.');
         }
     }
 
@@ -180,12 +221,16 @@ final class CommerceOrderPaymentRetryService
                 $successUrl,
             );
 
-            $providerId = trim((string) ($remote['id'] ?? ''));
-            if ($providerId === '') {
-                throw new \RuntimeException('O Asaas não retornou o identificador da cobrança.');
-            }
+            self::assertAsaasPaymentMatches(
+                $remote,
+                $customerId,
+                $method,
+                (float) $order->total,
+                (string) $order->public_id,
+            );
+            $providerId = trim((string) $remote['id']);
 
-            $remoteValue = is_numeric($remote['value'] ?? null) ? (float) $remote['value'] : (float) $order->total;
+            $remoteValue = (float) $remote['value'];
             $remoteNet = is_numeric($remote['netValue'] ?? null) ? (float) $remote['netValue'] : null;
             $providerFee = $remoteNet !== null ? max(0, round($remoteValue - $remoteNet, 2)) : 0.0;
             $pix = is_array($remote['_pix'] ?? null) ? $remote['_pix'] : [];
