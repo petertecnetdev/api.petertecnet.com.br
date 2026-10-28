@@ -277,10 +277,16 @@ final class CommerceOrderPaymentRetryService
                 throw new HttpException(409, 'A identidade da cobrança Asaas mudou durante a consulta.');
             }
 
-            if ($method === 'pix') {
-                $remote['_pix'] = $this->asaas->getPixQrCode((string) $remote['id']);
-            } elseif ($method === 'boleto') {
-                $remote['_boleto'] = $this->asaas->getBoletoIdentification((string) $remote['id']);
+            // A indisponibilidade do QR/linha digitável não deve impedir
+            // a conciliação de uma cobrança já confirmada pelo provedor.
+            try {
+                if ($method === 'pix') {
+                    $remote['_pix'] = $this->asaas->getPixQrCode((string) $remote['id']);
+                } elseif ($method === 'boleto') {
+                    $remote['_boleto'] = $this->asaas->getBoletoIdentification((string) $remote['id']);
+                }
+            } catch (Throwable $exception) {
+                report($exception);
             }
 
             $providerId = trim((string) $remote['id']);
