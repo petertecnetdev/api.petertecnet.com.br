@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Domain\Commerce\Services\CommerceOrderPaymentRetryService;
 use App\Models\Application;
 use App\Models\User;
 use App\Services\MercadoPagoService;
@@ -9,6 +10,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Mockery;
 use Tests\TestCase;
 use Tymon\JWTAuth\Facades\JWTAuth;
@@ -402,6 +404,44 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->assertDatabaseMissing('commerce_payments', ['order_id' => $orderId]);
         $this->assertDatabaseHas('commerce_orders', ['id' => $orderId, 'status' => 'pending']);
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $orderId, 'released_at' => null]);
+    }
+
+    public function test_asaas_retry_provider_boundary_rejects_inconclusive_get_without_post(): void
+    {
+        config()->set('services.asaas.api_key', 'test-asaas-key');
+        Http::fake(['*' => Http::response(['errors' => []], 503)]);
+
+        $service = app(CommerceOrderPaymentRetryService::class);
+        $method = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'findUniqueAsaasRecoveryCandidate');
+
+        try {
+            $method->invoke($service, 'pedido-teste-asaas');
+            $this->fail('GET 503 não pode permitir criação de cobrança.');
+        } catch (\RuntimeException $exception) {
+            $this->assertNotSame('', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
+    public function test_asaas_retry_provider_boundary_rejects_empty_get_without_post(): void
+    {
+        config()->set('services.asaas.api_key', 'test-asaas-key');
+        Http::fake(['*' => Http::response(['data' => [], 'hasMore' => false], 200)]);
+
+        $service = app(CommerceOrderPaymentRetryService::class);
+        $method = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'findUniqueAsaasRecoveryCandidate');
+
+        try {
+            $method->invoke($service, 'pedido-teste-asaas');
+            $this->fail('Busca vazia não autoriza nova cobrança sem handoff financeiro.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
     }
 
     private function verifyFinancialRecipient(User $producer, int $productionId): void

@@ -201,6 +201,24 @@ final class CommerceOrderPaymentRetryService
         return $this->retry($publicId, $user, ['payment_method' => 'pix']);
     }
 
+    /**
+     * Retomada Asaas é exclusivamente recuperação até o serviço financeiro
+     * oferecer busca paginada conclusiva e criação idempotente sob handoff.
+     * Consulta inconclusiva, vazia ou ambígua jamais autoriza POST /payments.
+     */
+    private function findUniqueAsaasRecoveryCandidate(string $externalReference): array
+    {
+        $payments = $this->asaas->listPaymentsByExternalReference($externalReference);
+
+        if (count($payments) !== 1
+            || ! is_string($payments[0]['id'] ?? null)
+            || trim($payments[0]['id']) === '') {
+            throw new HttpException(409, 'A cobrança Asaas exige conciliação antes de uma nova tentativa.');
+        }
+
+        return $payments[0];
+    }
+
     private function retryAsaas(
         CommerceOrder $order,
         User $user,
@@ -220,6 +238,9 @@ final class CommerceOrderPaymentRetryService
             ?: (string) ($user->email ?? 'Pagador');
 
         try {
+            // Primeiro consultar cobranças existentes; GET falho não pode iniciar POST.
+            $candidate = $this->findUniqueAsaasRecoveryCandidate((string) $order->public_id);
+
             $customer = $this->asaas->findOrCreateCustomer(
                 (int) $user->id,
                 $name,
@@ -233,25 +254,17 @@ final class CommerceOrderPaymentRetryService
                 throw new \RuntimeException('O Asaas não retornou o identificador do pagador.');
             }
 
-            $dueDate = $method === 'boleto'
-                ? $order->expires_at->copy()->timezone('America/Sao_Paulo')->toDateString()
-                : now('America/Sao_Paulo')->toDateString();
-
-            $applicationUrl = rtrim((string) ($this->context->application()->url ?: config('app.url')), '/');
-            $successUrl = $applicationUrl
-                . '/checkout/' . rawurlencode((string) ($order->event->slug ?? ''))
-                . '?payment_return=asaas&order=' . rawurlencode((string) $order->public_id);
-
-            $remote = $this->asaas->createOrRecoverPayment(
+            self::assertAsaasPaymentMatches(
+                $candidate,
                 $customerId,
                 $method,
                 (float) $order->total,
-                $dueDate,
                 (string) $order->public_id,
-                ($this->context->application()->name ?: 'Peter Tecnet') . ' - ' . ($order->event->title ?? 'Pedido'),
-                $successUrl,
             );
 
+            // Não chamar createOrRecoverPayment: a implementação atual pode
+            // criar cobrança após GET inconclusivo. Somente GET por ID exato.
+            $remote = $this->asaas->getPayment(trim($candidate['id']));
             self::assertAsaasPaymentMatches(
                 $remote,
                 $customerId,
@@ -259,6 +272,17 @@ final class CommerceOrderPaymentRetryService
                 (float) $order->total,
                 (string) $order->public_id,
             );
+
+            if (trim((string) $remote['id']) !== trim($candidate['id'])) {
+                throw new HttpException(409, 'A identidade da cobrança Asaas mudou durante a consulta.');
+            }
+
+            if ($method === 'pix') {
+                $remote['_pix'] = $this->asaas->getPixQrCode((string) $remote['id']);
+            } elseif ($method === 'boleto') {
+                $remote['_boleto'] = $this->asaas->getBoletoIdentification((string) $remote['id']);
+            }
+
             $providerId = trim((string) $remote['id']);
 
             $remoteValue = (float) $remote['value'];
@@ -267,7 +291,10 @@ final class CommerceOrderPaymentRetryService
             $pix = is_array($remote['_pix'] ?? null) ? $remote['_pix'] : [];
             $boleto = is_array($remote['_boleto'] ?? null) ? $remote['_boleto'] : [];
             $localStatus = $this->asaas->normalizeLocalStatus($remote);
-            $idempotencyKey = 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
+            $historicalKey = trim((string) data_get($order->metadata, 'provider_payment_idempotency_key', ''));
+            $idempotencyKey = $retryAttempt === 1
+                ? ($historicalKey !== '' ? $historicalKey : 'commerce-order-' . $order->public_id)
+                : 'commerce-order-' . $order->public_id . '-retry-' . $retryAttempt;
 
             $payment = CommercePayment::query()->updateOrCreate(
                 [
