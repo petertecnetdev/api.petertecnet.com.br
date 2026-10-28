@@ -79,7 +79,11 @@ final class ListingCommercePolicy
         }
 
         $production = $event->production;
-        if (! $production instanceof Production || (int) $production->app_id !== (int) $event->app_id) {
+        $appId = (int) $event->app_id;
+        if (! $production instanceof Production
+            || $appId < 1
+            || (int) $production->app_id !== $appId
+            || $event->isCommunity()) {
             return false;
         }
         if ($event->ownership_status === null && $production->ownership_status === null) {

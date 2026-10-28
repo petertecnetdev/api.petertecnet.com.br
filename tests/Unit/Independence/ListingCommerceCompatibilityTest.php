@@ -46,6 +46,24 @@ final class ListingCommerceCompatibilityTest extends TestCase
         self::assertFalse($policy->canSell($event));
     }
 
+    public function test_legacy_community_meeting_never_enables_checkout(): void
+    {
+        $event = $this->pair(null, null);
+        $event->forceFill(['kind' => 'community']);
+
+        $policy = new ListingCommercePolicy();
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+        self::assertFalse($policy->canSell($event));
+    }
+
+    public function test_legacy_record_without_valid_application_never_enables_checkout(): void
+    {
+        $event = $this->pair(null, null, 0);
+        $event->forceFill(['app_id' => 0]);
+
+        self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($event));
+    }
+
     public function test_cross_application_record_never_allows_checkout(): void
     {
         self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($this->pair(null, null, 2)));
