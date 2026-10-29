@@ -37,18 +37,28 @@ class CutinappSocialGraphTest extends TestCase
         ])->assertCreated()->assertJsonPath('artist.app_id', $app->id)->json('artist');
 
         $artistTwo = $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/artists', [
-            'stage_name' => 'Luna Live', 'genres' => ['Live'],
+            'artist_type' => 'band', 'stage_name' => 'Luna Live', 'genres' => ['Live'],
         ])->assertCreated()->json('artist');
 
         $this->withHeaders($producerHeaders)->putJson('/api/cutinapp/artists/' . $artistOne['id'], ['bio' => 'Biografia atualizada.'])
             ->assertOk()->assertJsonPath('artist.bio', 'Biografia atualizada.');
 
-        $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', [
+        // Perfil solo pertence à conta: o convite exige aceite, mesmo quando o produtor é o artista.
+        $invitationId = $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', [
             'artist_id' => $artistOne['id'], 'participation_type' => 'atração principal', 'is_headliner' => true, 'sort_order' => 1,
-        ])->assertOk();
+        ])->assertOk()->assertJsonPath('participation_status', 'pending')->json('invitation_id');
+        $token = DB::table('artist_invitations')->where('id', $invitationId)->value('token');
+        $this->withHeaders($producerHeaders)->putJson('/api/v1/apps/cutinapp/artist-invitations/' . $token . '/response', [
+            'decision' => 'accept',
+        ])->assertOk()->assertJsonPath('status', 'confirmed');
+        $this->assertDatabaseHas('event_artist', [
+            'app_id' => $app->id, 'event_id' => $event['id'], 'artist_id' => $artistOne['id'], 'status' => 'confirmed',
+        ]);
+
+        // A segunda formação é gerenciada, não um segundo perfil solo da mesma conta.
         $this->withHeaders($producerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', [
             'artist_id' => $artistTwo['id'], 'participation_type' => 'abertura', 'sort_order' => 2,
-        ])->assertOk()->assertJsonCount(2, 'artists');
+        ])->assertOk()->assertJsonPath('participation_status', 'confirmed')->assertJsonCount(2, 'artists');
 
         $this->withHeaders($participantHeaders)->postJson('/api/cutinapp/follow', ['target_type' => 'artist', 'target_id' => $artistOne['id']])->assertOk()->assertJsonPath('following', true);
         $this->withHeaders($participantHeaders)->postJson('/api/cutinapp/follow', ['target_type' => 'production', 'target_id' => $production['id']])->assertOk()->assertJsonPath('following', true);
@@ -181,10 +191,17 @@ class CutinappSocialGraphTest extends TestCase
             'verification_status'=>'account_linked',
         ]);
 
-        $this->withHeaders($headers)->postJson('/api/cutinapp/events/'.$event['id'].'/artists',[
+        $invitationId=$this->withHeaders($headers)->postJson('/api/cutinapp/events/'.$event['id'].'/artists',[
             'artist_id'=>$artist->id,
             'participation_type'=>'show',
-        ])->assertOk();
+        ])->assertOk()->assertJsonPath('participation_status','pending')->json('invitation_id');
+        $token=DB::table('artist_invitations')->where('id',$invitationId)->value('token');
+        $this->withHeaders($headers)->putJson('/api/v1/apps/cutinapp/artist-invitations/'.$token.'/response',[
+            'decision'=>'accept',
+        ])->assertOk()->assertJsonPath('status','confirmed');
+        $this->assertDatabaseHas('event_artist',[
+            'app_id'=>$app->id,'event_id'=>$event['id'],'artist_id'=>$artist->id,'status'=>'confirmed',
+        ]);
         $this->withHeaders($headers)->postJson('/api/cutinapp/courtesies',[
             'event_id'=>$event['id'],
             'name'=>'Cortesia',
