@@ -556,6 +556,18 @@ class CutinappCommerceProductionSafetyTest extends TestCase
             ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
             ->assertOk();
 
+        // Esta fixture representa um organizador legado com proveniência
+        // identificada, não uma importação curatorial com campos nulos.
+        // Autoria coincidente, isoladamente, não autoriza novas vendas.
+        DB::table('establishments')->where('id', $productionId)->update([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+        ]);
+        DB::table('events')->where('id', $event['id'])->update([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+        ]);
+
         return [$producer, $event, $ticket, $productionId];
     }
 
