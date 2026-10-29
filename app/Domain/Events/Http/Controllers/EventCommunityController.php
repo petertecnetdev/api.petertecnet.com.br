@@ -3,6 +3,7 @@
 namespace App\Domain\Events\Http\Controllers;
 
 use App\Http\Controllers\Controller;
+use App\Domain\Platform\Services\ApplicationAdminService;
 use App\Models\Event;
 use App\Models\EventPass;
 use App\Models\User;
@@ -18,6 +19,7 @@ final class EventCommunityController extends Controller
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly AppNotificationService $notifications,
+        private readonly ApplicationAdminService $administrators,
     ) {}
 
     public function publicCommunity(Request $request, string $slug)
@@ -40,7 +42,7 @@ final class EventCommunityController extends Controller
         $liked=collect();
         if($user){$all=$ids->merge($replies->flatten(1)->pluck('id'))->filter()->values();if($all->isNotEmpty())$liked=DB::table('event_post_likes')->where('app_id',$appId)->where('user_id',$user->id)->whereIn('post_id',$all)->pluck('post_id');}
         $eventOwnerId = (int) ($event->created_by_user_id ?: ($event->production?->user_id ?? 0));
-        $isAdmin = $user?->hasProfile('Administrador') ?? false;
+        $isAdmin = $user !== null && $this->administrators->hasPermission($user, $appId, 'events.manage');
         $canDelete = static fn (object $post) => $user
             && ((int) $post->user_id === (int) $user->id || $isAdmin || ($eventOwnerId > 0 && $eventOwnerId === (int) $user->id));
 
@@ -84,7 +86,14 @@ final class EventCommunityController extends Controller
     public function deletePost(Request $request,int $postId)
     {
         $user=$request->user();$appId=$this->context->id();$post=DB::table('event_posts')->where('app_id',$appId)->where('id',$postId)->first();abort_unless($post,404,'Publicação não encontrada.');
-        $event=$post->event_id?Event::with('production')->where('app_id',$appId)->find($post->event_id):null;$can=(int)$post->user_id===(int)$user->id||$user->hasProfile('Administrador')||($event?->production&&(int)$event->production->user_id===(int)$user->id);abort_unless($can,403,'Você não tem permissão para remover esta publicação.');
+        $event = $post->event_id
+            ? Event::with('production')->where('app_id', $appId)->find($post->event_id)
+            : null;
+        $isAdmin = $this->administrators->hasPermission($user, $appId, 'events.manage');
+        $can = (int) $post->user_id === (int) $user->id
+            || $isAdmin
+            || ($event?->production && (int) $event->production->user_id === (int) $user->id);
+        abort_unless($can, 403, 'Você não tem permissão para remover esta publicação.');
         DB::table('event_posts')->where('app_id',$appId)->where(fn($q)=>$q->where('id',$postId)->orWhere('parent_id',$postId))->update(['status'=>'hidden','updated_at'=>now()]);return response()->json(['message'=>'Publicação removida.']);
     }
 
