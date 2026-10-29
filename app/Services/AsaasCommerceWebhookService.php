@@ -244,21 +244,19 @@ final class AsaasCommerceWebhookService
 
     private function startReceipt(string $eventId, string $eventType, array $safePayload): bool
     {
-        DB::table('financial_webhook_events')->insertOrIgnore([
+        // A chave única (provider, event_id) é a reserva atômica. A leitura
+        // posterior de processed_at NÃO reserva a linha: dois callbacks podem
+        // observar NULL simultaneamente e ambos liquidar o mesmo pagamento.
+        // Um recibo pendente de tentativa anterior permanece bloqueado para
+        // reconciliação explícita; não reexecutar efeitos financeiros no escuro.
+        return DB::table('financial_webhook_events')->insertOrIgnore([
             'provider' => 'asaas',
             'event_id' => $eventId,
             'event_type' => $eventType,
             'payload' => json_encode($safePayload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
-
-        $receipt = DB::table('financial_webhook_events')
-            ->where('provider', 'asaas')
-            ->where('event_id', $eventId)
-            ->first();
-
-        return (bool) ($receipt && ! $receipt->processed_at);
+        ]) === 1;
     }
 
     private function finishReceipt(string $eventId): void
