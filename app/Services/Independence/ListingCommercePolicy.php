@@ -87,7 +87,16 @@ final class ListingCommercePolicy
             return false;
         }
         if ($event->ownership_status === null && $production->ownership_status === null) {
-            return true;
+            // NULL/NULL não comprova legado: fichas curatoriais podem ter
+            // sido importadas sem marcadores de titularidade.
+            // Só manter a compatibilidade para autoria legada identificável,
+            // sem origem curatorial ou verificação pendente/rejeitada.
+            return in_array($event->listing_source, [null, 'legacy_organizer'], true)
+                && in_array($production->listing_source, [null, 'legacy_organizer'], true)
+                && in_array($event->verification_status, [null, 'legacy_owner_record'], true)
+                && in_array($production->verification_status, [null, 'legacy_owner_record'], true)
+                && (int) $event->created_by_user_id > 0
+                && (int) $event->created_by_user_id === (int) $production->user_id;
         }
 
         return $this->canSell($event);

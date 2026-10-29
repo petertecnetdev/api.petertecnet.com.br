@@ -18,9 +18,9 @@ final class ListingCommerceCompatibilityTest extends TestCase
     private function pair(?string $eventOwnership, ?string $productionOwnership, int $appId = 1): Event
     {
         $event = new Event();
-        $event->forceFill(['app_id' => 1, 'kind' => 'commercial', 'ownership_status' => $eventOwnership]);
+        $event->forceFill(['app_id' => 1, 'kind' => 'commercial', 'created_by_user_id' => 42, 'ownership_status' => $eventOwnership]);
         $production = new Production();
-        $production->forceFill(['app_id' => $appId, 'ownership_status' => $productionOwnership]);
+        $production->forceFill(['app_id' => $appId, 'user_id' => 42, 'ownership_status' => $productionOwnership]);
         $event->setRelation('production', $production);
 
         return $event;
@@ -28,7 +28,58 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
     public function test_legacy_producer_and_events_without_markers_preserve_checkout(): void
     {
-        self::assertTrue((new ListingCommercePolicy())->allowsLegacyOrVerified($this->pair(null, null)));
+        $policy = new ListingCommercePolicy();
+        $event = $this->pair(null, null);
+        self::assertTrue($policy->allowsLegacyOrVerified($event));
+
+        $event->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
+        $event->production->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
+        self::assertTrue($policy->allowsLegacyOrVerified($event));
+    }
+
+    public function test_curated_origin_without_extra_info_is_never_mistaken_for_legacy(): void
+    {
+        $policy = new ListingCommercePolicy();
+
+        foreach (['event', 'production'] as $entity) {
+            foreach (['curated', 'public_source_only'] as $source) {
+                $event = $this->pair(null, null);
+                $target = $entity === 'event' ? $event : $event->production;
+                $target->forceFill(['listing_source' => $source]);
+                self::assertFalse($policy->allowsLegacyOrVerified($event), "$entity: $source");
+            }
+        }
+    }
+
+    public function test_pending_or_rejected_verification_without_curation_flags_is_denied(): void
+    {
+        $policy = new ListingCommercePolicy();
+
+        foreach (['event', 'production'] as $entity) {
+            foreach (['pending', 'pending_claim', 'rejected', 'public_source_only', 'manual_approved'] as $status) {
+                $event = $this->pair(null, null);
+                $target = $entity === 'event' ? $event : $event->production;
+                $target->forceFill(['verification_status' => $status]);
+                self::assertFalse($policy->allowsLegacyOrVerified($event), "$entity: $status");
+            }
+        }
+    }
+
+    public function test_null_ownership_requires_real_matching_legacy_actors(): void
+    {
+        $policy = new ListingCommercePolicy();
+
+        $event = $this->pair(null, null);
+        $event->forceFill(['created_by_user_id' => null]);
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+
+        $event = $this->pair(null, null);
+        $event->production->forceFill(['user_id' => null]);
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+
+        $event = $this->pair(null, null);
+        $event->forceFill(['created_by_user_id' => 43]);
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
     }
 
     public function test_unclaimed_event_or_production_never_enables_checkout(): void
