@@ -63,9 +63,25 @@ final class PublicItemUnclaimedHttpTest extends TestCase
 
         $url = '/api/v1/apps/cutinapp/events/public/'.$event->slug.'/items/'.$item->id;
 
-        // Registros anteriores à Independence continuam vendáveis.
+        // Ownership NULL/NULL não comprova legado: uma importação curatorial
+        // incompleta continua pública, mas não anuncia venda disponível.
         $this->assertNull($event->ownership_status);
         $this->assertNull($production->ownership_status);
+        $this->getJson($url)
+            ->assertOk()
+            ->assertJsonPath('item.available', false)
+            ->assertJsonPath('item.remaining', 4);
+
+        // Apenas um registro legado com proveniência persistida nas DUAS
+        // entidades conserva a disponibilidade comercial pré-Independence.
+        DB::table('establishments')->where('id', $production->id)->update([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+        ]);
+        DB::table('events')->where('id', $event->id)->update([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+        ]);
         $this->getJson($url)
             ->assertOk()
             ->assertJsonPath('item.available', true)
