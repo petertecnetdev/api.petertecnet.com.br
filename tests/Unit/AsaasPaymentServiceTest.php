@@ -228,6 +228,54 @@ class AsaasPaymentServiceTest extends TestCase
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
     }
 
+    public function test_malformed_deleted_flag_blocks_duplicate_payment_creation(): void
+    {
+        Http::fake(['*' => Http::response([
+            'data' => [[
+                'id' => 'pay_ambiguous_deleted',
+                'externalReference' => 'ORDER-DELETED-AMBIGUOUS',
+                'deleted' => 'false',
+                'billingType' => 'PIX',
+                'status' => 'PENDING',
+            ]],
+            'hasMore' => false,
+        ], 200)]);
+
+        try {
+            app(AsaasPaymentService::class)->createOrRecoverPayment(
+                'cus_123', 'pix', 20.00, '2026-10-30', 'ORDER-DELETED-AMBIGUOUS', 'Teste'
+            );
+            $this->fail('Indicador deleted malformado não pode permitir novo POST /payments.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('exclusão Asaas inconclusivo', $exception->getMessage());
+        }
+
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_boolean_false_deleted_flag_recovers_existing_payment_without_post(): void
+    {
+        Http::fake(['*' => Http::response([
+            'data' => [[
+                'id' => 'pay_active_boolean',
+                'externalReference' => 'ORDER-DELETED-BOOLEAN',
+                'deleted' => false,
+                'billingType' => 'CREDIT_CARD',
+                'status' => 'PENDING',
+            ]],
+            'hasMore' => false,
+        ], 200)]);
+
+        $payment = app(AsaasPaymentService::class)->createOrRecoverPayment(
+            'cus_123', 'card', 20.00, '2026-10-30', 'ORDER-DELETED-BOOLEAN', 'Teste'
+        );
+
+        $this->assertSame('pay_active_boolean', $payment['id']);
+        Http::assertSentCount(1);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
     public function test_existing_payment_is_recovered_without_post(): void
     {
         Http::fake(['*' => Http::response([

@@ -258,7 +258,17 @@ final class AsaasPaymentService
     private function firstPayment(array $filters): ?array
     {
         $payments = $this->listAll('/payments', $filters, 'Não foi possível consultar cobranças anteriores no Asaas.');
-        $active = array_values(array_filter($payments, static fn (array $payment): bool => empty($payment['deleted'])));
+        // O Asaas devolve booleano em deleted. Um valor textual ou numérico
+        // não comprova exclusão e jamais pode autorizar novo POST /payments.
+        foreach ($payments as $payment) {
+            if (array_key_exists('deleted', $payment) && ! is_bool($payment['deleted'])) {
+                throw new RuntimeException('Indicador de exclusão Asaas inconclusivo; operação bloqueada.');
+            }
+        }
+        $active = array_values(array_filter(
+            $payments,
+            static fn (array $payment): bool => ($payment['deleted'] ?? false) === false
+        ));
         if (count($active) > 1) {
             throw new RuntimeException('Consulta ambígua de cobranças no Asaas; operação bloqueada.');
         }
