@@ -326,6 +326,8 @@ final class AsaasPaymentService
         $offset = 0;
         $results = [];
         $seen = [];
+        $totalCount = null;
+        $totalCountDeclared = null;
 
         for ($page = 0; $page < 25; $page++) {
             $response = $this->successfulJson(
@@ -337,6 +339,23 @@ final class AsaasPaymentService
                 || ! array_is_list($response['data'])
                 || ! array_key_exists('hasMore', $response) || ! is_bool($response['hasMore'])) {
                 throw new RuntimeException('Paginação Asaas inconclusiva; operação bloqueada.');
+            }
+
+            // hasMore=false sozinho não prova que a listagem está completa:
+            // se o provedor informar totalCount, ele deve ser inteiro,
+            // consistente entre páginas e compatível com os registros lidos.
+            // Uma consulta truncada nunca autoriza novo POST financeiro.
+            $declared = array_key_exists('totalCount', $response);
+            if ($totalCountDeclared !== null && $totalCountDeclared !== $declared) {
+                throw new RuntimeException('Total de registros Asaas inconsistente entre páginas; operação bloqueada.');
+            }
+            $totalCountDeclared = $declared;
+            if ($declared) {
+                if (! is_int($response['totalCount']) || $response['totalCount'] < 0
+                    || ($totalCount !== null && $totalCount !== $response['totalCount'])) {
+                    throw new RuntimeException('Total de registros Asaas inválido ou divergente; operação bloqueada.');
+                }
+                $totalCount = $response['totalCount'];
             }
 
             foreach ($response['data'] as $item) {
@@ -361,7 +380,13 @@ final class AsaasPaymentService
             }
 
             if ($response['hasMore'] === false) {
+                if ($totalCount !== null && count($results) !== $totalCount) {
+                    throw new RuntimeException('Listagem Asaas incompleta segundo totalCount; operação bloqueada.');
+                }
                 return $results;
+            }
+            if ($totalCount !== null && count($results) >= $totalCount) {
+                throw new RuntimeException('Paginação Asaas contradiz totalCount; operação bloqueada.');
             }
             if ($response['data'] === []) {
                 throw new RuntimeException('Asaas indicou próxima página vazia; operação bloqueada.');
