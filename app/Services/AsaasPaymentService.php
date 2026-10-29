@@ -201,10 +201,15 @@ final class AsaasPaymentService
 
     public function normalizeLocalStatus(array $remote): string
     {
-        $status = strtoupper(trim((string) ($remote['status'] ?? 'PENDING')));
-        $billingType = strtoupper(trim((string) ($remote['billingType'] ?? '')));
+        $remoteStatus = $remote['status'] ?? null;
+        $remoteBillingType = $remote['billingType'] ?? null;
+        $status = is_string($remoteStatus) ? strtoupper(trim($remoteStatus)) : '';
+        $billingType = is_string($remoteBillingType) ? strtoupper(trim($remoteBillingType)) : '';
 
-        if ($status === 'RECEIVED') {
+        // Um evento RECEIVED sem modalidade financeira reconhecida não
+        // comprova liquidação: impedir confirmação de pedido e emissão de QR
+        // por payload parcial, mesmo em reenvios do webhook.
+        if ($status === 'RECEIVED' && in_array($billingType, ['PIX', 'CREDIT_CARD', 'BOLETO'], true)) {
             return 'paid';
         }
 
