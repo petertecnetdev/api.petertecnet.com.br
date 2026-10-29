@@ -18,9 +18,9 @@ final class ListingCommerceCompatibilityTest extends TestCase
     private function pair(?string $eventOwnership, ?string $productionOwnership, int $appId = 1): Event
     {
         $event = new Event();
-        $event->forceFill(['app_id' => 1, 'kind' => 'commercial', 'created_by_user_id' => 42, 'ownership_status' => $eventOwnership]);
+        $event->forceFill(['id' => 20, 'app_id' => 1, 'production_id' => 10, 'kind' => 'commercial', 'created_by_user_id' => 42, 'ownership_status' => $eventOwnership]);
         $production = new Production();
-        $production->forceFill(['app_id' => $appId, 'user_id' => 42, 'ownership_status' => $productionOwnership]);
+        $production->forceFill(['id' => 10, 'app_id' => $appId, 'user_id' => 42, 'ownership_status' => $productionOwnership]);
         $event->setRelation('production', $production);
 
         return $event;
@@ -69,8 +69,21 @@ final class ListingCommerceCompatibilityTest extends TestCase
     {
         $policy = new ListingCommercePolicy();
 
+        // O controller legado de eventos comerciais não preenchia sempre
+        // created_by_user_id; produção com dono e vínculo persistido é aceita.
         $event = $this->pair(null, null);
         $event->forceFill(['created_by_user_id' => null]);
+        self::assertTrue($policy->allowsLegacyOrVerified($event));
+
+        $event->forceFill(['production_id' => 11]);
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+
+        $event = $this->pair(null, null);
+        $event->forceFill(['created_by_user_id' => null, 'source_url' => 'https://example.test/curation']);
+        self::assertFalse($policy->allowsLegacyOrVerified($event));
+
+        $event = $this->pair(null, null);
+        $event->production->forceFill(['source_url' => 'https://example.test/production']);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
 
         $event = $this->pair(null, null);

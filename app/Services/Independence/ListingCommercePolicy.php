@@ -95,8 +95,19 @@ final class ListingCommercePolicy
                 && in_array($production->listing_source, [null, 'legacy_organizer'], true)
                 && in_array($event->verification_status, [null, 'legacy_owner_record'], true)
                 && in_array($production->verification_status, [null, 'legacy_owner_record'], true)
-                && (int) $event->created_by_user_id > 0
-                && (int) $event->created_by_user_id === (int) $production->user_id;
+                && $event->source_url === null
+                && $production->source_url === null
+                && (int) $production->user_id > 0
+                && (
+                    // O fluxo comercial anterior à Independence gravava o dono
+                    // na produção, mas nem sempre no evento. Exigir o vínculo
+                    // persistido nesse caso, sem aceitar uma origem externa.
+                    ($event->created_by_user_id === null
+                        && (int) $event->production_id > 0
+                        && (int) $event->production_id === (int) $production->id)
+                    || ((int) $event->created_by_user_id > 0
+                        && (int) $event->created_by_user_id === (int) $production->user_id)
+                );
         }
 
         return $this->canSell($event);
