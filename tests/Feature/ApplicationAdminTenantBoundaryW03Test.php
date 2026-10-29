@@ -755,6 +755,58 @@ final class ApplicationAdminTenantBoundaryW03Test extends TestCase
         ]);
     }
 
+    public function test_owner_local_com_delegacao_em_outro_app_nao_herda_poder_de_gerenciar_eventos(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $externo = $this->applicationFixture('rasoio');
+        $root = $this->criarUsuario(ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $ownerLocal = $this->criarUsuario('owner-local-delegado-w03@example.test');
+
+        ApplicationOwner::query()->create([
+            'application_id' => $cutinapp->id,
+            'user_id' => $ownerLocal->id,
+            'bootstrap_email' => ApplicationAdminService::ROOT_ADMIN_EMAIL,
+            'bound_at' => now(),
+            'bound_by_user_id' => $ownerLocal->id,
+        ]);
+
+        $administracao = app(ApplicationAdminService::class);
+        $perfil = $administracao->createProfile($externo->id, $root, [
+            'name' => 'Consulta de eventos externa',
+            'permissions' => ['events.view'],
+        ]);
+        $administracao->assign($externo->id, $root, $ownerLocal->email, $perfil->id);
+
+        // A autoridade de owner não atravessa aplicações quando o mesmo usuário
+        // recebe uma delegação limitada em outro produto do ecossistema.
+        $this->assertTrue($administracao->isOwner($ownerLocal, $cutinapp->id));
+        $this->assertFalse($administracao->isOwner($ownerLocal, $externo->id));
+        $this->assertFalse($administracao->isRoot($ownerLocal));
+        $this->assertTrue($administracao->hasPermission($ownerLocal, $cutinapp->id, 'events.manage'));
+        $this->assertTrue($administracao->hasPermission($ownerLocal, $externo->id, 'events.view'));
+        $this->assertFalse($administracao->hasPermission($ownerLocal, $externo->id, 'events.manage'));
+        $this->assertFalse($administracao->hasPermission(
+            $ownerLocal, $externo->id, ApplicationAdminService::ACCESS_MANAGE_PERMISSION,
+        ));
+
+        $contexto = $administracao->context($ownerLocal, $externo->id);
+        $this->assertTrue($contexto['authorized']);
+        $this->assertFalse($contexto['is_owner']);
+        $this->assertFalse($contexto['is_root']);
+        $this->assertSame('delegated_admin', $contexto['authority_level']);
+        $this->assertSame(['events.view'], $contexto['permissions']);
+
+        $cabecalhos = $this->cabecalhos($ownerLocal, 'cutinapp');
+        $this->getJson('/api/v1/apps/rasoio/admin/context?app_id='.$cutinapp->id, $cabecalhos)
+            ->assertOk()
+            ->assertJsonPath('data.is_owner', false)
+            ->assertJsonPath('data.is_root', false)
+            ->assertJsonPath('data.authority_level', 'delegated_admin');
+        $this->getJson('/api/v1/apps/rasoio/admin/profiles', $cabecalhos)
+            ->assertForbidden()
+            ->assertJsonPath('code', 'APPLICATION_ADMIN_FORBIDDEN');
+    }
+
     private function cabecalhos(User $usuario, string $app): array
     {
         return [
