@@ -112,7 +112,7 @@ final class AsaasPaymentService
 
         $existing = $this->firstPayment(['externalReference' => $externalReference]);
         if ($existing) {
-            $this->assertPaymentIdentity($existing, $customerId, $billingType, $value);
+            $this->assertPaymentIdentity($existing, $customerId, $billingType, $value, $externalReference);
 
             return $this->decoratePayment($existing);
         }
@@ -148,7 +148,7 @@ final class AsaasPaymentService
         } catch (ConnectionException $exception) {
             $recovered = $this->firstPayment(['externalReference' => $externalReference]);
             if ($recovered) {
-                $this->assertPaymentIdentity($recovered, $customerId, $billingType, $value);
+                $this->assertPaymentIdentity($recovered, $customerId, $billingType, $value, $externalReference);
 
                 return $this->decoratePayment($recovered);
             }
@@ -156,7 +156,7 @@ final class AsaasPaymentService
             throw $exception;
         }
 
-        $this->assertPaymentIdentity($remote, $customerId, $billingType, $value);
+        $this->assertPaymentIdentity($remote, $customerId, $billingType, $value, $externalReference);
 
         return $this->decoratePayment($remote);
     }
@@ -233,6 +233,7 @@ final class AsaasPaymentService
         string $customerId,
         string $billingType,
         float $value,
+        string $externalReference,
     ): void {
         // Uma resposta parcial não comprova identidade financeira, mesmo
         // quando a referência externa coincide. Rejeitar campos ausentes
@@ -240,6 +241,11 @@ final class AsaasPaymentService
         $remoteCustomer = $payment['customer'] ?? null;
         $remoteBillingType = $payment['billingType'] ?? null;
         $remoteValue = $payment['value'] ?? null;
+        $remoteReference = $payment['externalReference'] ?? null;
+
+        if (! is_string($remoteReference) || $remoteReference !== $externalReference) {
+            throw new RuntimeException('Referência da cobrança Asaas ausente ou divergente; operação bloqueada.');
+        }
 
         if (! is_string($remoteCustomer) || trim($remoteCustomer) === ''
             || trim($remoteCustomer) !== trim($customerId)
