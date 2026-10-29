@@ -141,6 +141,44 @@ class AsaasPaymentServiceTest extends TestCase
         ]));
     }
 
+    public function test_received_without_valid_billing_type_cannot_confirm_pix_or_issue_passes(): void
+    {
+        $service = app(AsaasPaymentService::class);
+
+        foreach ([
+            ['status' => 'RECEIVED'],
+            ['status' => 'RECEIVED', 'billingType' => null],
+            ['status' => 'RECEIVED', 'billingType' => ''],
+            ['status' => 'RECEIVED', 'billingType' => 'UNKNOWN'],
+            ['status' => 'RECEIVED', 'billingType' => []],
+            ['status' => ['RECEIVED'], 'billingType' => 'PIX'],
+        ] as $remote) {
+            $this->assertSame('pending', $service->normalizeLocalStatus($remote));
+        }
+
+        $this->assertSame('pending', $service->normalizeLocalStatus([
+            'status' => 'CONFIRMED',
+            'billingType' => 'PIX',
+        ]));
+    }
+
+    public function test_received_with_recognized_payment_method_remains_payable(): void
+    {
+        $service = app(AsaasPaymentService::class);
+
+        foreach (['PIX', 'CREDIT_CARD', 'BOLETO'] as $billingType) {
+            $this->assertSame('paid', $service->normalizeLocalStatus([
+                'status' => 'RECEIVED',
+                'billingType' => $billingType,
+            ]));
+        }
+
+        $this->assertSame('paid', $service->normalizeLocalStatus([
+            'status' => 'CONFIRMED',
+            'billingType' => 'CREDIT_CARD',
+        ]));
+    }
+
     public function test_inconclusive_customer_get_never_creates_customer(): void
     {
         foreach ([Http::response(['errors' => []], 503), Http::response(['data' => []], 200)] as $reply) {
