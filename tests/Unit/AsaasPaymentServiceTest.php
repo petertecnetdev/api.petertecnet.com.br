@@ -289,4 +289,88 @@ class AsaasPaymentServiceTest extends TestCase
         $this->assertSame('pay_existing', $payment['id']);
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
     }
+
+    public function test_recovered_charge_with_wrong_customer_method_or_amount_is_blocked_without_post(): void
+    {
+        foreach ([
+            ['customer' => 'cus_other'],
+            ['billingType' => 'BOLETO'],
+            ['value' => 29.99],
+        ] as $divergence) {
+            Http::fake(['*' => Http::response([
+                'data' => [array_merge([
+                    'id' => 'pay_mismatch',
+                    'externalReference' => 'ORDER-IDENTITY',
+                    'customer' => 'cus_expected',
+                    'billingType' => 'PIX',
+                    'value' => 20.00,
+                    'status' => 'PENDING',
+                ], $divergence)],
+                'hasMore' => false,
+            ], 200)]);
+
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-IDENTITY', 'Teste'
+                );
+                $this->fail('Cobrança remota de outro pagador, modalidade ou valor não pode ser reutilizada.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('divergente', $exception->getMessage());
+            }
+
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+        }
+    }
+
+    public function test_successful_post_with_wrong_remote_amount_is_rejected(): void
+    {
+        Http::fake(function (Request $request) {
+            if ($request->method() === 'GET') {
+                return Http::response(['data' => [], 'hasMore' => false], 200);
+            }
+
+            return Http::response([
+                'id' => 'pay_wrong_value',
+                'externalReference' => 'ORDER-POST-MISMATCH',
+                'customer' => 'cus_expected',
+                'billingType' => 'PIX',
+                'value' => 99.99,
+                'status' => 'PENDING',
+            ], 201);
+        });
+
+        try {
+            app(AsaasPaymentService::class)->createOrRecoverPayment(
+                'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-POST-MISMATCH', 'Teste'
+            );
+            $this->fail('Retorno remoto com valor divergente não pode ser aceito como cobrança do pedido.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('divergente', $exception->getMessage());
+        }
+
+        Http::assertSentCount(2);
+    }
+
+    public function test_recovered_charge_with_matching_customer_method_and_amount_is_reused(): void
+    {
+        Http::fake(['*' => Http::response([
+            'data' => [[
+                'id' => 'pay_verified',
+                'externalReference' => 'ORDER-VERIFIED',
+                'customer' => 'cus_expected',
+                'billingType' => 'PIX',
+                'value' => 20.00,
+                'status' => 'PENDING',
+            ]],
+            'hasMore' => false,
+        ], 200)]);
+
+        $payment = app(AsaasPaymentService::class)->createOrRecoverPayment(
+            'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-VERIFIED', 'Teste'
+        );
+
+        $this->assertSame('pay_verified', $payment['id']);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
 }
