@@ -417,7 +417,7 @@ class CutinappCommerceProductionSafetyTest extends TestCase
                 return Http::response(['id' => 'pay_existing', 'customer' => null], 200);
             }
             return Http::response([
-                'data' => [['id' => 'pay_existing', 'customer' => 'cus_existing']],
+                'data' => [['id' => 'pay_existing', 'customer' => 'cus_existing', 'externalReference' => 'order-existing-asaas']],
                 'hasMore' => false,
             ], 200);
         });
