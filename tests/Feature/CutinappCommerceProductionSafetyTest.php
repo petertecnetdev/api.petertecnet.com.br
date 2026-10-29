@@ -482,6 +482,37 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         ]);
     }
 
+    public function test_curatorial_source_without_extra_flags_blocks_http_checkout_and_passes(): void
+    {
+        config()->set('platform.applications.cutinapp.commerce.allow_platform_collection', true);
+        config()->set('services.finance.payment_primary_provider', 'mercadopago');
+        config()->set('services.mercadopago.access_token', 'test-payment-token');
+
+        foreach (['event', 'production'] as $entity) {
+            [, $event, $ticket, $productionId] = $this->paidEventFixture('curatorial-no-flags-' . $entity);
+
+            // Simula importação incompleta: ownership e extra_info permanecem
+            // nulos, mas a origem pública da ficha foi identificada.
+            if ($entity === 'event') {
+                DB::table('events')->where('id', $event['id'])->update(['listing_source' => 'curated']);
+            } else {
+                DB::table('establishments')->where('id', $productionId)->update(['listing_source' => 'curated']);
+            }
+
+            $buyer = $this->user('Comprador Curadoria', 'buyer-curatorial-' . $entity . '@cutinapp.test');
+            $this->withHeaders($this->headersFor($buyer))
+                ->postJson('/api/cutinapp/checkout', [
+                    'event_id' => $event['id'],
+                    'tickets' => [['id' => $ticket['id'], 'quantity' => 1]],
+                    'payment_method' => 'pix',
+                ])
+                ->assertStatus(403);
+
+            $this->assertDatabaseMissing('commerce_orders', ['event_id' => $event['id']]);
+            $this->assertDatabaseMissing('event_passes', ['event_id' => $event['id']]);
+        }
+    }
+
     private function paidEventFixture(string $suffix): array
     {
         $producer = $this->user('Produtor', "producer-{$suffix}@cutinapp.test");
