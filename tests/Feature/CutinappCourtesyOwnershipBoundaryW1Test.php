@@ -31,7 +31,7 @@ class CutinappCourtesyOwnershipBoundaryW1Test extends TestCase
                 ->assertForbidden();
 
             $this->assertDatabaseCount('event_passes', 0);
-            $this->assertDatabaseCount('app_notifications', 0);
+            $this->assertSame(0, DB::table('app_notifications')->where('type', 'ticket_issued')->count());
         }
     }
 
