@@ -9,6 +9,7 @@ use App\Models\EventPass;
 use App\Models\Ticket;
 use App\Models\User;
 use App\Support\ApplicationContext;
+use App\Services\Independence\ListingCommercePolicy;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -19,6 +20,7 @@ final class EventPassService
     public function __construct(
         private readonly ApplicationContext $context,
         private readonly ApplicationAdminService $applicationAdmin,
+        private readonly ListingCommercePolicy $commercePolicy,
     )
     {
     }
@@ -63,6 +65,10 @@ final class EventPassService
             );
             abort_if((bool) $ticket->curatorial_information_only, 403,
                 'Ingresso curatorial disponível apenas para consulta.');
+            // A retirada gratuita também emite passe/QR: aplicar a mesma
+            // titularidade comercial do checkout antes de qualquer criação.
+            // O bloqueio não altera passes pagos já emitidos ou a carteira.
+            $this->commercePolicy->assertLegacyOrVerified($event);
             abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if(
                 $ticket->limit_date && now()->greaterThan($ticket->limit_date),
