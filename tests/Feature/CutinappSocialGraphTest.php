@@ -70,7 +70,7 @@ class CutinappSocialGraphTest extends TestCase
         $this->assertDatabaseMissing('follows', ['user_id' => $participant->id, 'target_type' => 'artist', 'target_id' => $artistOne['id']]);
     }
 
-    public function test_artist_link_does_not_grant_event_admin_and_other_app_targets_are_rejected(): void
+    public function test_artist_owned_by_another_user_cannot_be_linked_without_consent_or_grant_event_admin(): void
     {
         $owner = $this->user('Owner', 'owner-social@cutinapp.test');
         $artistUser = $this->user('Artist User', 'artist-user@cutinapp.test');
@@ -85,7 +85,14 @@ class CutinappSocialGraphTest extends TestCase
         ])->assertCreated()->json('event');
 
         $artist = Artist::create(['app_id' => $app->id, 'user_id' => $artistUser->id, 'slug' => 'artist-user', 'stage_name' => 'Artist User', 'is_published' => true]);
-        $this->withHeaders($ownerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', ['artist_id' => $artist->id, 'participation_type' => 'show'])->assertOk();
+        // O dono do evento não pode vincular unilateralmente um artista de outra conta.
+        // A recusa preserva o consentimento do artista e não cria vínculo no line-up.
+        $this->withHeaders($ownerHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', ['artist_id' => $artist->id, 'participation_type' => 'show'])->assertForbidden();
+        $this->assertDatabaseMissing('event_artist', [
+            'app_id' => $app->id,
+            'event_id' => $event['id'],
+            'artist_id' => $artist->id,
+        ]);
 
         $this->withHeaders($artistHeaders)->postJson('/api/cutinapp/events/' . $event['id'], ['title' => 'Tentativa indevida'])->assertForbidden();
         $this->withHeaders($artistHeaders)->postJson('/api/cutinapp/events/' . $event['id'] . '/artists', ['artist_id' => $artist->id, 'participation_type' => 'show'])->assertForbidden();
