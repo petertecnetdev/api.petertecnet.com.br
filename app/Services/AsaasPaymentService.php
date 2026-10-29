@@ -53,7 +53,11 @@ final class AsaasPaymentService
         }
 
         $existing = $this->firstCustomer(['externalReference' => $reference]);
-        if ($existing && preg_replace('/\D+/', '', (string) ($existing['cpfCnpj'] ?? '')) === $document) {
+        if ($existing) {
+            if (preg_replace('/\D+/', '', (string) ($existing['cpfCnpj'] ?? '')) !== $document) {
+                throw new RuntimeException('Identidade do pagador divergente no Asaas; operação bloqueada.');
+            }
+
             return $existing;
         }
 
@@ -165,16 +169,8 @@ final class AsaasPaymentService
     {
         $this->assertConfigured();
 
-        $response = $this->successfulJson(
-            $this->request()->get('/payments', [
-                'externalReference' => $externalReference,
-                'limit' => 20,
-                'offset' => 0,
-            ]),
-            'Não foi possível consultar as cobranças no Asaas.'
-        );
-
-        return array_values(array_filter((array) ($response['data'] ?? []), 'is_array'));
+        return $this->listAll('/payments', ['externalReference' => $externalReference],
+            'Não foi possível consultar as cobranças no Asaas.');
     }
 
     public function getPixQrCode(string $paymentId): array
@@ -251,40 +247,78 @@ final class AsaasPaymentService
 
     private function firstCustomer(array $filters): ?array
     {
-        try {
-            $response = $this->successfulJson(
-                $this->request()->get('/customers', array_merge($filters, ['limit' => 1, 'offset' => 0])),
-                'Não foi possível consultar o pagador no Asaas.'
-            );
-        } catch (RuntimeException|ConnectionException $exception) {
-            report($exception);
-            return null;
+        $customers = $this->listAll('/customers', $filters, 'Não foi possível consultar o pagador no Asaas.');
+        if (count($customers) > 1) {
+            throw new RuntimeException('Consulta ambígua de clientes no Asaas; operação bloqueada.');
         }
 
-        $customer = data_get($response, 'data.0');
-
-        return is_array($customer) ? $customer : null;
+        return $customers[0] ?? null;
     }
 
     private function firstPayment(array $filters): ?array
     {
-        try {
+        $payments = $this->listAll('/payments', $filters, 'Não foi possível consultar cobranças anteriores no Asaas.');
+        $active = array_values(array_filter($payments, static fn (array $payment): bool => empty($payment['deleted'])));
+        if (count($active) > 1) {
+            throw new RuntimeException('Consulta ambígua de cobranças no Asaas; operação bloqueada.');
+        }
+
+        return $active[0] ?? null;
+    }
+
+    /**
+     * Nunca confundir uma consulta parcial/malformada com ausência de cobrança.
+     * Em especial, hasMore=true impede aceitar apenas a primeira página.
+     */
+    private function listAll(string $endpoint, array $filters, string $message): array
+    {
+        $offset = 0;
+        $results = [];
+        $seen = [];
+
+        for ($page = 0; $page < 25; $page++) {
             $response = $this->successfulJson(
-                $this->request()->get('/payments', array_merge($filters, ['limit' => 10, 'offset' => 0])),
-                'Não foi possível consultar cobranças anteriores no Asaas.'
+                $this->request()->get($endpoint, array_merge($filters, ['limit' => 20, 'offset' => $offset])),
+                $message
             );
-        } catch (RuntimeException|ConnectionException $exception) {
-            report($exception);
-            return null;
-        }
 
-        foreach ((array) ($response['data'] ?? []) as $payment) {
-            if (is_array($payment) && empty($payment['deleted'])) {
-                return $payment;
+            if (! isset($response['data']) || ! is_array($response['data'])
+                || ! array_is_list($response['data'])
+                || ! array_key_exists('hasMore', $response) || ! is_bool($response['hasMore'])) {
+                throw new RuntimeException('Paginação Asaas inconclusiva; operação bloqueada.');
             }
+
+            foreach ($response['data'] as $item) {
+                if (! is_array($item) || ! is_string($item['id'] ?? null) || trim($item['id']) === '') {
+                    throw new RuntimeException('Registro remoto Asaas inválido; operação bloqueada.');
+                }
+                if (isset($seen[$item['id']])) {
+                    throw new RuntimeException('Registro Asaas duplicado entre páginas; operação bloqueada.');
+                }
+                if (isset($filters['externalReference'])
+                    && (! is_string($item['externalReference'] ?? null)
+                        || $item['externalReference'] !== $filters['externalReference'])) {
+                    throw new RuntimeException('Referência remota Asaas divergente; operação bloqueada.');
+                }
+                if (isset($filters['cpfCnpj'])
+                    && preg_replace('/\D+/', '', (string) ($item['cpfCnpj'] ?? '')) !== $filters['cpfCnpj']) {
+                    throw new RuntimeException('Documento remoto Asaas divergente; operação bloqueada.');
+                }
+
+                $seen[$item['id']] = true;
+                $results[] = $item;
+            }
+
+            if ($response['hasMore'] === false) {
+                return $results;
+            }
+            if ($response['data'] === []) {
+                throw new RuntimeException('Asaas indicou próxima página vazia; operação bloqueada.');
+            }
+            $offset += count($response['data']);
         }
 
-        return null;
+        throw new RuntimeException('Limite de páginas Asaas excedido; operação bloqueada.');
     }
 
     private function request(): PendingRequest

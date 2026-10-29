@@ -22,7 +22,7 @@ class AsaasPaymentServiceTest extends TestCase
     {
         Http::fake(function (Request $request) {
             if ($request->method() === 'GET' && str_contains($request->url(), '/customers')) {
-                return Http::response(['data' => []], 200);
+                return Http::response(['data' => [], 'hasMore' => false], 200);
             }
 
             if ($request->method() === 'POST' && str_ends_with($request->url(), '/customers')) {
@@ -64,7 +64,7 @@ class AsaasPaymentServiceTest extends TestCase
     {
         Http::fake(function (Request $request) {
             if ($request->method() === 'GET' && str_contains($request->url(), '/payments?')) {
-                return Http::response(['data' => []], 200);
+                return Http::response(['data' => [], 'hasMore' => false], 200);
             }
 
             if ($request->method() === 'POST' && str_ends_with($request->url(), '/payments')) {
@@ -138,5 +138,107 @@ class AsaasPaymentServiceTest extends TestCase
             'status' => 'CHARGEBACK_REQUESTED',
             'billingType' => 'CREDIT_CARD',
         ]));
+    }
+
+    public function test_inconclusive_customer_get_never_creates_customer(): void
+    {
+        foreach ([Http::response(['errors' => []], 503), Http::response(['data' => []], 200)] as $reply) {
+            Http::fake(['*' => $reply]);
+            try {
+                app(AsaasPaymentService::class)->findOrCreateCustomer(44, 'Comprador', '12345678901');
+                $this->fail('GET inconclusivo não autoriza POST /customers.');
+            } catch (\RuntimeException $exception) {
+                $this->assertNotEmpty($exception->getMessage());
+            }
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+        }
+    }
+
+    public function test_timeout_customer_get_never_creates_customer(): void
+    {
+        Http::fake(function (Request $request) {
+            throw new \Illuminate\Http\Client\ConnectionException('Timeout GET /customers');
+        });
+        try {
+            app(AsaasPaymentService::class)->findOrCreateCustomer(44, 'Comprador', '12345678901');
+            $this->fail('Timeout não autoriza POST.');
+        } catch (\Illuminate\Http\Client\ConnectionException $exception) {
+            $this->assertNotEmpty($exception->getMessage());
+        }
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_inconclusive_payment_get_never_creates_payment(): void
+    {
+        foreach ([Http::response(['errors' => []], 503), Http::response('invalid-json', 200)] as $reply) {
+            Http::fake(['*' => $reply]);
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_123', 'pix', 20.00, '2026-10-30', 'ORDER-FAIL', 'Teste'
+                );
+                $this->fail('GET inconclusivo não autoriza POST /payments.');
+            } catch (\RuntimeException $exception) {
+                $this->assertNotEmpty($exception->getMessage());
+            }
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+        }
+    }
+
+    public function test_payment_has_more_is_exhausted_before_reconciliation(): void
+    {
+        $first = array_map(
+            static fn (int $i): array => ['id' => 'pay_' . $i, 'externalReference' => 'ORDER-PAGED'],
+            range(1, 20)
+        );
+        Http::fake(function (Request $request) use ($first) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            return Http::response((int) ($query['offset'] ?? -1) === 0
+                ? ['data' => $first, 'hasMore' => true]
+                : ['data' => [['id' => 'pay_21', 'externalReference' => 'ORDER-PAGED']], 'hasMore' => false], 200);
+        });
+
+        $payments = app(AsaasPaymentService::class)->listPaymentsByExternalReference('ORDER-PAGED');
+        $this->assertCount(21, $payments);
+        $this->assertSame('pay_21', $payments[20]['id']);
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_duplicate_between_pages_blocks_payment_creation(): void
+    {
+        $first = array_map(
+            static fn (int $i): array => ['id' => 'pay_' . $i, 'externalReference' => 'ORDER-DUP'],
+            range(1, 20)
+        );
+        Http::fake(function (Request $request) use ($first) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            return Http::response((int) ($query['offset'] ?? -1) === 0
+                ? ['data' => $first, 'hasMore' => true]
+                : ['data' => [['id' => 'pay_1', 'externalReference' => 'ORDER-DUP']], 'hasMore' => false], 200);
+        });
+
+        try {
+            app(AsaasPaymentService::class)->createOrRecoverPayment(
+                'cus_123', 'pix', 20.00, '2026-10-30', 'ORDER-DUP', 'Teste'
+            );
+            $this->fail('Duplicidade entre páginas não pode iniciar cobrança.');
+        } catch (\RuntimeException $exception) {
+            $this->assertNotEmpty($exception->getMessage());
+        }
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_existing_payment_is_recovered_without_post(): void
+    {
+        Http::fake(['*' => Http::response([
+            'data' => [['id' => 'pay_existing', 'externalReference' => 'ORDER-EXIST',
+                'billingType' => 'CREDIT_CARD', 'status' => 'PENDING']],
+            'hasMore' => false,
+        ], 200)]);
+        $payment = app(AsaasPaymentService::class)->createOrRecoverPayment(
+            'cus_123', 'card', 20.00, '2026-10-30', 'ORDER-EXIST', 'Teste'
+        );
+        $this->assertSame('pay_existing', $payment['id']);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
     }
 }
