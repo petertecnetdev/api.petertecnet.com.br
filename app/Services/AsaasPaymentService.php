@@ -234,17 +234,21 @@ final class AsaasPaymentService
         string $billingType,
         float $value,
     ): void {
+        // Uma resposta parcial não comprova identidade financeira, mesmo
+        // quando a referência externa coincide. Rejeitar campos ausentes
+        // tanto na recuperação GET quanto no retorno de POST/timeout.
+        $remoteCustomer = $payment['customer'] ?? null;
+        $remoteBillingType = $payment['billingType'] ?? null;
         $remoteValue = $payment['value'] ?? null;
-        if ((array_key_exists('customer', $payment)
-                && (! is_string($payment['customer']) || trim($payment['customer']) !== trim($customerId)))
-            || (array_key_exists('billingType', $payment)
-                && (! is_string($payment['billingType'])
-                    || strtoupper(trim($payment['billingType'])) !== $billingType))
-            || (array_key_exists('value', $payment)
-                && (! is_numeric($remoteValue)
-                    || ! is_finite((float) $remoteValue)
-                    || (int) round((float) $remoteValue * 100) !== (int) round($value * 100)))) {
-            throw new RuntimeException('Identidade ou valor da cobrança Asaas divergente; operação bloqueada.');
+
+        if (! is_string($remoteCustomer) || trim($remoteCustomer) === ''
+            || trim($remoteCustomer) !== trim($customerId)
+            || ! is_string($remoteBillingType) || trim($remoteBillingType) === ''
+            || strtoupper(trim($remoteBillingType)) !== $billingType
+            || ! is_numeric($remoteValue)
+            || ! is_finite((float) $remoteValue)
+            || (int) round((float) $remoteValue * 100) !== (int) round($value * 100)) {
+            throw new RuntimeException('Identidade ou valor da cobrança Asaas ausente, inválido ou divergente; operação bloqueada.');
         }
     }
 

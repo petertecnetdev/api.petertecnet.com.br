@@ -70,6 +70,7 @@ class AsaasPaymentServiceTest extends TestCase
             if ($request->method() === 'POST' && str_ends_with($request->url(), '/payments')) {
                 return Http::response([
                     'id' => 'pay_asaas_pix_1',
+                    'customer' => 'cus_asaas_123',
                     'status' => 'PENDING',
                     'billingType' => 'PIX',
                     'value' => 25.50,
@@ -260,6 +261,8 @@ class AsaasPaymentServiceTest extends TestCase
             'data' => [[
                 'id' => 'pay_active_boolean',
                 'externalReference' => 'ORDER-DELETED-BOOLEAN',
+                'customer' => 'cus_123',
+                'value' => 20.00,
                 'deleted' => false,
                 'billingType' => 'CREDIT_CARD',
                 'status' => 'PENDING',
@@ -280,6 +283,7 @@ class AsaasPaymentServiceTest extends TestCase
     {
         Http::fake(['*' => Http::response([
             'data' => [['id' => 'pay_existing', 'externalReference' => 'ORDER-EXIST',
+                'customer' => 'cus_123', 'value' => 20.00,
                 'billingType' => 'CREDIT_CARD', 'status' => 'PENDING']],
             'hasMore' => false,
         ], 200)]);
@@ -371,6 +375,74 @@ class AsaasPaymentServiceTest extends TestCase
 
         $this->assertSame('pay_verified', $payment['id']);
         Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_missing_remote_payment_identity_blocks_get_recovery_without_post(): void
+    {
+        foreach (['customer', 'billingType', 'value'] as $missingField) {
+            $payment = [
+                'id' => 'pay_incomplete',
+                'externalReference' => 'ORDER-INCOMPLETE-GET',
+                'customer' => 'cus_expected',
+                'billingType' => 'PIX',
+                'value' => 20.00,
+                'status' => 'PENDING',
+            ];
+            unset($payment[$missingField]);
+
+            Http::fake(['*' => Http::response([
+                'data' => [$payment],
+                'hasMore' => false,
+            ], 200)]);
+
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-INCOMPLETE-GET', 'Teste'
+                );
+                $this->fail('Campo remoto ausente não pode autorizar reutilização nem POST.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('ausente', $exception->getMessage());
+            }
+
+            Http::assertSentCount(1);
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+        }
+    }
+
+    public function test_missing_remote_payment_identity_blocks_post_response(): void
+    {
+        foreach (['customer', 'billingType', 'value'] as $missingField) {
+            $payment = [
+                'id' => 'pay_incomplete_post',
+                'externalReference' => 'ORDER-INCOMPLETE-POST',
+                'customer' => 'cus_expected',
+                'billingType' => 'PIX',
+                'value' => 20.00,
+                'status' => 'PENDING',
+            ];
+            unset($payment[$missingField]);
+
+            Http::fake(function (Request $request) use ($payment) {
+                if ($request->method() === 'GET') {
+                    return Http::response(['data' => [], 'hasMore' => false], 200);
+                }
+
+                return Http::response($payment, 201);
+            });
+
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-INCOMPLETE-POST', 'Teste'
+                );
+                $this->fail('POST com identidade remota incompleta não pode ser aceito.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('ausente', $exception->getMessage());
+            }
+
+            Http::assertSentCount(2);
+            Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+                && str_ends_with($request->url(), '/payments'));
+        }
     }
 
 }
