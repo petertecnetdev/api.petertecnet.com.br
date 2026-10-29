@@ -445,4 +445,41 @@ class AsaasPaymentServiceTest extends TestCase
         }
     }
 
+
+    public function test_post_with_missing_or_divergent_remote_reference_is_rejected_without_retry(): void
+    {
+        foreach ([null, 'ORDER-OTHER'] as $remoteReference) {
+            $payment = [
+                'id' => 'pay_wrong_reference',
+                'customer' => 'cus_expected',
+                'billingType' => 'PIX',
+                'value' => 20.00,
+                'status' => 'PENDING',
+            ];
+            if ($remoteReference !== null) {
+                $payment['externalReference'] = $remoteReference;
+            }
+
+            Http::fake(function (Request $request) use ($payment) {
+                if ($request->method() === 'GET') {
+                    return Http::response(['data' => [], 'hasMore' => false], 200);
+                }
+
+                return Http::response($payment, 201);
+            });
+
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-EXPECTED', 'Teste'
+                );
+                $this->fail('POST com referência remota ausente ou divergente não pode ser associado ao pedido.');
+            } catch (\\RuntimeException $exception) {
+                $this->assertStringContainsString('Referência da cobrança Asaas', $exception->getMessage());
+            }
+
+            Http::assertSentCount(2);
+            Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+                && str_ends_with($request->url(), '/payments'));
+        }
+    }
 }
