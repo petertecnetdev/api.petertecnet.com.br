@@ -2,7 +2,7 @@ name: API CI
 
 on:
   push:
-    branches: [main, staging, develop, 'refactor/**', 'fix/**']
+    branches: [main, staging, develop, Independence, 'refactor/**', 'fix/**']
   pull_request:
     branches: [main, staging, develop]
   workflow_dispatch:
