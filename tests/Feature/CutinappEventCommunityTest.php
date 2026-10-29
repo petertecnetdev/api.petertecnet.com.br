@@ -195,6 +195,97 @@ class CutinappEventCommunityTest extends TestCase
         $this->assertDatabaseHas('event_posts', ['id' => $postId, 'status' => 'hidden']);
     }
 
+
+    public function test_moderacao_de_encontro_sem_producao_alinha_can_delete_e_delete_sem_privilegio_externo(): void
+    {
+        $cutinapp = $this->applicationFixture('cutinapp');
+        $externo = $this->applicationFixture('rasoio');
+        $root = $this->user('Root Encontro', ApplicationAdminService::ROOT_ADMIN_EMAIL);
+        $creator = $this->user('Criador Encontro', 'creator-meetup@cutinapp.test');
+        $author = $this->user('Autor Encontro', 'author-meetup@cutinapp.test');
+        $outsider = $this->user('Visitante Encontro', 'outsider-meetup@cutinapp.test');
+        $delegated = $this->user('Delegado Externo', 'delegate-meetup@cutinapp.test');
+        $admins = app(ApplicationAdminService::class);
+
+        $externalProfile = $admins->createProfile($externo->id, $root, [
+            'name' => 'Moderador externo de encontros',
+            'permissions' => ['events.manage'],
+        ]);
+        $admins->assign($externo->id, $root, $delegated->email, $externalProfile->id);
+        $this->assertTrue($admins->hasPermission($delegated, $externo->id, 'events.manage'));
+        $this->assertFalse($admins->hasPermission($delegated, $cutinapp->id, 'events.manage'));
+
+        $creatorHeaders = $this->headersFor($creator);
+        $event = $this->withHeaders($creatorHeaders)->postJson('/api/cutinapp/events', [
+            'kind' => 'community',
+            'title' => 'Encontro no Parque',
+            'description' => 'Encontro comunitário para validar moderação de publicações.',
+            'address' => 'Parque Central, 1',
+            'city' => 'Goiânia',
+            'uf' => 'GO',
+            'start_date' => now()->addDays(4)->format('Y-m-d H:i:s'),
+            'end_date' => now()->addDays(4)->addHours(2)->format('Y-m-d H:i:s'),
+        ])->assertCreated()
+            ->assertJsonPath('event.kind', 'community')
+            ->assertJsonPath('event.production_id', null)
+            ->assertJsonPath('event.created_by_user_id', $creator->id)
+            ->assertJsonPath('event.is_published', false)
+            ->json('event');
+
+        $this->withHeaders($creatorHeaders)
+            ->postJson('/api/cutinapp/events/' . $event['id'] . '/publish')
+            ->assertOk()->assertJsonPath('event.is_published', true);
+
+        $authorHeaders = $this->headersFor($author);
+        $postIds = [];
+        foreach (['Primeira publicação', 'Segunda publicação', 'Terceira publicação'] as $body) {
+            $postIds[] = $this->withHeaders($authorHeaders)
+                ->postJson('/api/cutinapp/events/' . $event['id'] . '/community', ['body' => $body])
+                ->assertCreated()->json('post_id');
+        }
+
+        $url = '/api/cutinapp/events/public/' . $event['slug'] . '/community';
+        $postFor = function (User $viewer, int $postId) use ($url): array {
+            $community = $this->getJson($url, $this->headersFor($viewer))->assertOk();
+            $post = collect($community->json('posts.data'))->firstWhere('id', $postId);
+            $this->assertNotNull($post);
+            return $post;
+        };
+
+        $this->assertTrue((bool) $postFor($creator, $postIds[0])['can_delete']);
+        $this->assertTrue((bool) $postFor($author, $postIds[1])['can_delete']);
+        $this->assertFalse((bool) $postFor($outsider, $postIds[0])['can_delete']);
+        $this->assertFalse((bool) $postFor($delegated, $postIds[0])['can_delete']);
+
+        $this->withHeaders($this->headersFor($outsider))
+            ->deleteJson('/api/cutinapp/community/' . $postIds[0])->assertForbidden();
+        $this->withHeaders($this->headersFor($delegated))
+            ->deleteJson('/api/cutinapp/community/' . $postIds[0])->assertForbidden();
+        $this->assertDatabaseHas('event_posts', ['id' => $postIds[0], 'status' => 'published']);
+
+        $this->withHeaders($creatorHeaders)
+            ->deleteJson('/api/cutinapp/community/' . $postIds[0])->assertOk();
+        $this->withHeaders($authorHeaders)
+            ->deleteJson('/api/cutinapp/community/' . $postIds[1])->assertOk();
+
+        $localProfile = $admins->createProfile($cutinapp->id, $root, [
+            'name' => 'Moderador local de encontros',
+            'permissions' => ['events.manage'],
+        ]);
+        $admins->assign($cutinapp->id, $root, $delegated->email, $localProfile->id);
+        $this->assertTrue((bool) $postFor($delegated, $postIds[2])['can_delete']);
+        $this->withHeaders($this->headersFor($delegated))
+            ->deleteJson('/api/cutinapp/community/' . $postIds[2])->assertOk();
+
+        foreach ($postIds as $postId) {
+            $this->assertDatabaseHas('event_posts', [
+                'app_id' => $cutinapp->id,
+                'id' => $postId,
+                'status' => 'hidden',
+            ]);
+        }
+    }
+
     private function headersFor(User $user): array
     {
         return [
