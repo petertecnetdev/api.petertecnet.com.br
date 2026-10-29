@@ -481,4 +481,81 @@ class AsaasPaymentServiceTest extends TestCase
                 && str_ends_with($request->url(), '/payments'));
         }
     }
+
+    public function test_inconsistent_or_invalid_total_count_never_creates_duplicate_payment(): void
+    {
+        foreach ([
+            ['data' => [], 'hasMore' => false, 'totalCount' => 1],
+            ['data' => [], 'hasMore' => false, 'totalCount' => '0'],
+            ['data' => [], 'hasMore' => true, 'totalCount' => 0],
+        ] as $listing) {
+            Http::fake(['*' => Http::response($listing, 200)]);
+
+            try {
+                app(AsaasPaymentService::class)->createOrRecoverPayment(
+                    'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-TOTAL-INVALID', 'Teste'
+                );
+                $this->fail('GET Asaas contraditório não pode autorizar novo POST.');
+            } catch (\RuntimeException $exception) {
+                $this->assertStringContainsString('Asaas', $exception->getMessage());
+            }
+
+            Http::assertSentCount(1);
+            Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+        }
+    }
+
+    public function test_total_count_changed_between_pages_blocks_payment_creation(): void
+    {
+        $first = array_map(
+            static fn (int $i): array => ['id' => 'pay_' . $i, 'externalReference' => 'ORDER-TOTAL-PAGED'],
+            range(1, 20)
+        );
+        Http::fake(function (Request $request) use ($first) {
+            parse_str((string) parse_url($request->url(), PHP_URL_QUERY), $query);
+            return Http::response((int) ($query['offset'] ?? -1) === 0
+                ? ['data' => $first, 'hasMore' => true, 'totalCount' => 21]
+                : ['data' => [['id' => 'pay_21', 'externalReference' => 'ORDER-TOTAL-PAGED']],
+                    'hasMore' => false, 'totalCount' => 22], 200);
+        });
+
+        try {
+            app(AsaasPaymentService::class)->createOrRecoverPayment(
+                'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-TOTAL-PAGED', 'Teste'
+            );
+            $this->fail('Mudança contraditória de totalCount não pode iniciar cobrança.');
+        } catch (\RuntimeException $exception) {
+            $this->assertStringContainsString('Total de registros Asaas', $exception->getMessage());
+        }
+
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn (Request $request): bool => $request->method() === 'POST');
+    }
+
+    public function test_consistent_empty_total_count_still_allows_legitimate_payment(): void
+    {
+        Http::fake(function (Request $request) {
+            if ($request->method() === 'GET') {
+                return Http::response(['data' => [], 'hasMore' => false, 'totalCount' => 0], 200);
+            }
+
+            return Http::response([
+                'id' => 'pay_total_empty',
+                'externalReference' => 'ORDER-TOTAL-EMPTY',
+                'customer' => 'cus_expected',
+                'billingType' => 'CREDIT_CARD',
+                'value' => 20.00,
+                'status' => 'PENDING',
+            ], 201);
+        });
+
+        $payment = app(AsaasPaymentService::class)->createOrRecoverPayment(
+            'cus_expected', 'card', 20.00, '2026-10-30', 'ORDER-TOTAL-EMPTY', 'Teste'
+        );
+
+        $this->assertSame('pay_total_empty', $payment['id']);
+        Http::assertSentCount(2);
+        Http::assertSent(fn (Request $request): bool => $request->method() === 'POST'
+            && str_ends_with($request->url(), '/payments'));
+    }
 }
