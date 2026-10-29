@@ -66,9 +66,9 @@ final class ListingCommercePolicy
     }
 
     /**
-     * Legacy records have NULL ownership markers and retain the pre-existing
-     * commerce rules. Once either entity enters the Independence flow, only
-     * explicit verified ownership may enable new sales.
+     * NULL ownership markers alone do not prove a legacy organizer record.
+     * Only explicitly identified legacy records retain compatibility for new
+     * sales; all other records require verified ownership and commerce gates.
      */
     public function allowsLegacyOrVerified(Event $event): bool
     {
@@ -87,14 +87,13 @@ final class ListingCommercePolicy
             return false;
         }
         if ($event->ownership_status === null && $production->ownership_status === null) {
-            // NULL/NULL não comprova legado: fichas curatoriais podem ter
-            // sido importadas sem marcadores de titularidade.
-            // Só manter a compatibilidade para autoria legada identificável,
-            // sem origem curatorial ou verificação pendente/rejeitada.
-            return in_array($event->listing_source, [null, 'legacy_organizer'], true)
-                && in_array($production->listing_source, [null, 'legacy_organizer'], true)
-                && in_array($event->verification_status, [null, 'legacy_owner_record'], true)
-                && in_array($production->verification_status, [null, 'legacy_owner_record'], true)
+            // NULL/NULL também ocorre em importações curatoriais incompletas.
+            // Autoria aparente, mesmo coincidente, não prova origem legada.
+            // Exigir proveniência legada explícita nas DUAS entidades.
+            return $event->listing_source === 'legacy_organizer'
+                && $production->listing_source === 'legacy_organizer'
+                && $event->verification_status === 'legacy_owner_record'
+                && $production->verification_status === 'legacy_owner_record'
                 && $event->source_url === null
                 && $production->source_url === null
                 && (int) $production->user_id > 0

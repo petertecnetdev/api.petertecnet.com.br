@@ -26,15 +26,57 @@ final class ListingCommerceCompatibilityTest extends TestCase
         return $event;
     }
 
-    public function test_legacy_producer_and_events_without_markers_preserve_checkout(): void
+    private function provenLegacyPair(int $productionAppId = 1): Event
     {
-        $policy = new ListingCommercePolicy();
-        $event = $this->pair(null, null);
-        self::assertTrue($policy->allowsLegacyOrVerified($event));
-
+        $event = $this->pair(null, null, $productionAppId);
         $event->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
         $event->production->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
-        self::assertTrue($policy->allowsLegacyOrVerified($event));
+
+        return $event;
+    }
+
+    public function test_only_proven_legacy_producer_and_events_preserve_checkout(): void
+    {
+        $policy = new ListingCommercePolicy();
+        self::assertFalse($policy->allowsLegacyOrVerified($this->pair(null, null)));
+        self::assertTrue($policy->allowsLegacyOrVerified($this->provenLegacyPair()));
+
+        $event = $this->pair(null, null);
+        $event->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
+        self::assertFalse($policy->allowsLegacyOrVerified($event), 'Proveniência só do evento não basta.');
+
+        $event = $this->pair(null, null);
+        $event->production->forceFill(['listing_source' => 'legacy_organizer', 'verification_status' => 'legacy_owner_record']);
+        self::assertFalse($policy->allowsLegacyOrVerified($event), 'Proveniência só da produção não basta.');
+    }
+
+    public function test_curatorial_import_with_null_provenance_and_apparent_legacy_author_is_denied(): void
+    {
+        $policy = new ListingCommercePolicy();
+
+        foreach ([42, null] as $apparentCreator) {
+            // Importação incompleta pode copiar o ID do organizador ou deixar
+            // o autor do evento nulo; ambos parecem um registro pré-Independence.
+            $event = $this->pair(null, null);
+            $event->forceFill([
+                'created_by_user_id' => $apparentCreator,
+                'listing_source' => null,
+                'verification_status' => null,
+                'source_url' => null,
+                'extra_info' => null,
+            ]);
+            $event->production->forceFill([
+                'user_id' => 42,
+                'listing_source' => null,
+                'verification_status' => null,
+                'source_url' => null,
+            ]);
+
+            self::assertFalse(
+                $policy->allowsLegacyOrVerified($event),
+                'Importação sem proveniência não comprova legado: ' . var_export($apparentCreator, true)
+            );
+        }
     }
 
     public function test_curated_origin_without_extra_info_is_never_mistaken_for_legacy(): void
@@ -43,7 +85,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
         foreach (['event', 'production'] as $entity) {
             foreach (['curated', 'public_source_only'] as $source) {
-                $event = $this->pair(null, null);
+                $event = $this->provenLegacyPair();
                 $target = $entity === 'event' ? $event : $event->production;
                 $target->forceFill(['listing_source' => $source]);
                 self::assertFalse($policy->allowsLegacyOrVerified($event), "$entity: $source");
@@ -57,7 +99,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
         foreach (['event', 'production'] as $entity) {
             foreach (['pending', 'pending_claim', 'rejected', 'public_source_only', 'manual_approved'] as $status) {
-                $event = $this->pair(null, null);
+                $event = $this->provenLegacyPair();
                 $target = $entity === 'event' ? $event : $event->production;
                 $target->forceFill(['verification_status' => $status]);
                 self::assertFalse($policy->allowsLegacyOrVerified($event), "$entity: $status");
@@ -71,26 +113,26 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
         // O controller legado de eventos comerciais não preenchia sempre
         // created_by_user_id; produção com dono e vínculo persistido é aceita.
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->forceFill(['created_by_user_id' => null]);
         self::assertTrue($policy->allowsLegacyOrVerified($event));
 
         $event->forceFill(['production_id' => 11]);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
 
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->forceFill(['created_by_user_id' => null, 'source_url' => 'https://example.test/curation']);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
 
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->production->forceFill(['source_url' => 'https://example.test/production']);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
 
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->production->forceFill(['user_id' => null]);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
 
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->forceFill(['created_by_user_id' => 43]);
         self::assertFalse($policy->allowsLegacyOrVerified($event));
     }
@@ -105,7 +147,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
     public function test_legacy_event_with_curatorial_metadata_cannot_sell(): void
     {
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->forceFill(['extra_info' => [
             'curation' => ['sale_mode' => 'information_only', 'ticket_checkout_enabled' => false],
         ]]);
@@ -116,7 +158,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
     public function test_legacy_community_meeting_never_enables_checkout(): void
     {
-        $event = $this->pair(null, null);
+        $event = $this->provenLegacyPair();
         $event->forceFill(['kind' => 'community']);
 
         $policy = new ListingCommercePolicy();
@@ -126,7 +168,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
     public function test_legacy_record_without_valid_application_never_enables_checkout(): void
     {
-        $event = $this->pair(null, null, 0);
+        $event = $this->provenLegacyPair(0);
         $event->forceFill(['app_id' => 0]);
 
         self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($event));
@@ -182,7 +224,7 @@ final class ListingCommerceCompatibilityTest extends TestCase
 
     public function test_cross_application_record_never_allows_checkout(): void
     {
-        self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($this->pair(null, null, 2)));
+        self::assertFalse((new ListingCommercePolicy())->allowsLegacyOrVerified($this->provenLegacyPair(2)));
     }
 
     public function test_retry_never_reuses_an_existing_payment_with_a_different_method(): void
