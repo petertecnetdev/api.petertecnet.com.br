@@ -63,13 +63,13 @@ final class EventPassService
                 422,
                 'Este evento já foi encerrado. Não é mais possível emitir ingressos.'
             );
-            abort_if((bool) $ticket->curatorial_information_only, 403,
+            abort_if((bool) $ticket->informational_only, 403,
                 'Ingresso curatorial disponível apenas para consulta.');
             // A retirada gratuita também emite passe/QR: aplicar a mesma
             // titularidade comercial do checkout antes de qualquer criação.
             // O bloqueio não altera passes pagos já emitidos ou a carteira.
             $this->commercePolicy->assertLegacyOrVerified($event);
-            abort_if((float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
+            abort_if($ticket->price === null || (float) $ticket->price > 0, 422, 'Este ingresso não é uma cortesia gratuita.');
             abort_if(
                 $ticket->limit_date && now()->greaterThan($ticket->limit_date),
                 422,
