@@ -39,7 +39,25 @@ final class ListingCommercePublicItemAvailabilityW01Test extends TestCase
     {
         $policy = new ListingCommercePolicy();
 
-        self::assertTrue($policy->allowsLegacyOrVerified($this->eventWithProduction(null, null)));
+        // Proibir fichas sem proveniência documentada, inclusive com ownership NULL.
+        self::assertFalse($policy->allowsLegacyOrVerified($this->eventWithProduction(null, null)));
+
+        // Proveniência legada explícita, vínculo e mesmo proprietário são necessários.
+        $legacy = $this->eventWithProduction(null, null);
+        $legacy->forceFill([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+            'created_by_user_id' => 17,
+        ]);
+        $legacy->production->forceFill([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+            'user_id' => 17,
+        ]);
+        self::assertTrue($policy->allowsLegacyOrVerified($legacy));
+        $legacy->production->user_id = 18;
+        self::assertFalse($policy->allowsLegacyOrVerified($legacy));
+
         self::assertFalse($policy->allowsLegacyOrVerified($this->eventWithProduction('unclaimed', 'unclaimed')));
         self::assertFalse($policy->allowsLegacyOrVerified($this->eventWithProduction('verified', 'pending_claim')));
         self::assertFalse($policy->allowsLegacyOrVerified($this->eventWithProduction(null, null, 2)));

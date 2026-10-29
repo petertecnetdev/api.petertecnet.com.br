@@ -45,9 +45,27 @@ final class ListingCommerceEventItemMutationW01Test extends TestCase
         self::assertFalse($policy->allowsLegacyOrVerified(
             $this->eventWithProduction(null, null, 2)
         ));
-        self::assertTrue($policy->allowsLegacyOrVerified(
+        // NULL/NULL não demonstra que o evento foi cadastrado por um organizador legítimo.
+        self::assertFalse($policy->allowsLegacyOrVerified(
             $this->eventWithProduction(null, null)
         ));
+
+        // Proveniência legada explícita, vínculo e mesmo proprietário são necessários.
+        $legacy = $this->eventWithProduction(null, null);
+        $legacy->forceFill([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+            'created_by_user_id' => 17,
+        ]);
+        $legacy->production->forceFill([
+            'listing_source' => 'legacy_organizer',
+            'verification_status' => 'legacy_owner_record',
+            'user_id' => 17,
+        ]);
+        self::assertTrue($policy->allowsLegacyOrVerified($legacy));
+        $legacy->production->user_id = 18;
+        self::assertFalse($policy->allowsLegacyOrVerified($legacy));
+
     }
 
     public function test_endpoint_verifica_autorizacao_antes_de_gravar_item(): void
