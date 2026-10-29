@@ -167,7 +167,10 @@ class Event extends Model
 
     public function salesClosed(?Carbon $at = null): bool
     {
-        return $this->hasEnded($at) || ! $this->is_published || $this->is_cancelled || $this->is_private;
+        // Ingressos da curadoria podem ser cadastrados, mas nunca comercializados.
+        $informational = data_get($this->extra_info, 'curation.sale_mode') === 'information_only'
+            || data_get($this->extra_info, 'curation.ticket_checkout_enabled') === false;
+        return $informational || $this->hasEnded($at) || ! $this->is_published || $this->is_cancelled || $this->is_private;
     }
 
     public function allowedActions(?Carbon $at = null): array
@@ -176,7 +179,7 @@ class Event extends Model
         $public = $this->is_published && ! $this->is_cancelled && ! $this->is_private;
         $curatorial = data_get($this->extra_info, 'curation.ticket_checkout_enabled') === false
             || data_get($this->extra_info, 'curation.sale_mode') === 'information_only';
-        $salesOpen = $public && $status !== 'past' && ! $curatorial;
+        $salesOpen = $public && $status !== 'past' && ! $this->salesClosed($at) && ! $curatorial;
 
         $community = $this->isCommunity();
 

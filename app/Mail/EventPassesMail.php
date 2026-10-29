@@ -26,7 +26,7 @@ class EventPassesMail extends Mailable
             $application?->url
         );
         $applicationName = $mailBrand['name'];
-        $frontendUrl = rtrim((string) ($application?->url ?: config('app.frontend_url', config('app.url'))), '/');
+        $frontendUrl = rtrim((string) ($mailBrand['app_url'] ?: config('app.frontend_url', config('app.url'))), '/');
         $eventPassesPath = trim((string) data_get($application?->runtime_settings ?? [], 'routes.event_passes', '/passes'));
 
         if ($eventPassesPath === ''
@@ -36,12 +36,15 @@ class EventPassesMail extends Mailable
         }
 
         $passesUrl = $frontendUrl.'/'.ltrim($eventPassesPath, '/');
+        $eventSlug = trim((string) ($event?->slug ?? ''));
+        $eventUrl = $eventSlug !== '' ? $frontendUrl.'/event/'.rawurlencode($eventSlug) : null;
 
         $mail = $this->subject('Seus ingressos para '.$eventTitle.' | '.$applicationName)
             ->view('emails.event-passes')
             ->with([
                 'frontendUrl' => $frontendUrl,
                 'passesUrl' => $passesUrl,
+                'eventUrl' => $eventUrl,
                 'applicationName' => $applicationName,
                 'mailBrand' => $mailBrand,
             ]);
