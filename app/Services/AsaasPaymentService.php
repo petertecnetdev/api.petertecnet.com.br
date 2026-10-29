@@ -103,17 +103,19 @@ final class AsaasPaymentService
     ): array {
         $this->assertConfigured();
 
-        $existing = $this->firstPayment(['externalReference' => $externalReference]);
-        if ($existing) {
-            return $this->decoratePayment($existing);
-        }
-
         $billingType = match (strtolower($method)) {
             'pix' => 'PIX',
             'card' => 'CREDIT_CARD',
             'boleto' => 'BOLETO',
             default => throw new RuntimeException('Forma de pagamento não suportada pelo Asaas.'),
         };
+
+        $existing = $this->firstPayment(['externalReference' => $externalReference]);
+        if ($existing) {
+            $this->assertPaymentIdentity($existing, $customerId, $billingType, $value);
+
+            return $this->decoratePayment($existing);
+        }
 
         $payload = [
             'customer' => $customerId,
@@ -146,11 +148,15 @@ final class AsaasPaymentService
         } catch (ConnectionException $exception) {
             $recovered = $this->firstPayment(['externalReference' => $externalReference]);
             if ($recovered) {
+                $this->assertPaymentIdentity($recovered, $customerId, $billingType, $value);
+
                 return $this->decoratePayment($recovered);
             }
 
             throw $exception;
         }
+
+        $this->assertPaymentIdentity($remote, $customerId, $billingType, $value);
 
         return $this->decoratePayment($remote);
     }
@@ -215,6 +221,31 @@ final class AsaasPaymentService
             'OVERDUE', 'DELETED', 'CANCELED', 'CANCELLED' => 'failed',
             default => 'pending',
         };
+    }
+
+    /**
+     * Uma referência externa coincidente não prova que a cobrança pertence
+     * ao comprador, modalidade ou valor do pedido. Rejeitar divergências
+     * explícitas antes de reutilizar ou persistir a resposta do provedor.
+     */
+    private function assertPaymentIdentity(
+        array $payment,
+        string $customerId,
+        string $billingType,
+        float $value,
+    ): void {
+        $remoteValue = $payment['value'] ?? null;
+        if ((array_key_exists('customer', $payment)
+                && (! is_string($payment['customer']) || trim($payment['customer']) !== trim($customerId)))
+            || (array_key_exists('billingType', $payment)
+                && (! is_string($payment['billingType'])
+                    || strtoupper(trim($payment['billingType'])) !== $billingType))
+            || (array_key_exists('value', $payment)
+                && (! is_numeric($remoteValue)
+                    || ! is_finite((float) $remoteValue)
+                    || (int) round((float) $remoteValue * 100) !== (int) round($value * 100)))) {
+            throw new RuntimeException('Identidade ou valor da cobrança Asaas divergente; operação bloqueada.');
+        }
     }
 
     private function decoratePayment(array $remote): array
