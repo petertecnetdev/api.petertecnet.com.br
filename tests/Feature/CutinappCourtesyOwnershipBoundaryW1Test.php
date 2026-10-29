@@ -62,6 +62,35 @@ class CutinappCourtesyOwnershipBoundaryW1Test extends TestCase
         $this->assertDatabaseHas('event_passes', ['event_id' => $eventId, 'user_id' => $participant->id]);
     }
 
+    public function test_informational_ticket_flags_and_unknown_price_never_issue_qr_even_on_legacy_event(): void
+    {
+        [$owner, $participant, $productionId, $eventId, $ticketId] = $this->fixture('informational');
+        $this->setProvenance($productionId, $eventId, null, 'legacy_organizer', 'legacy_owner_record', $owner->id);
+
+        DB::table('tickets')->where('id', $ticketId)->update(['curatorial_information_only' => true]);
+        $this->withHeaders($this->headersFor($participant))
+            ->postJson('/api/cutinapp/passes/claim/'.$ticketId)
+            ->assertForbidden();
+
+        DB::table('tickets')->where('id', $ticketId)->update([
+            'curatorial_information_only' => false,
+            'extras' => json_encode(['curation_information_only' => true], JSON_THROW_ON_ERROR),
+        ]);
+        $this->withHeaders($this->headersFor($participant))
+            ->postJson('/api/cutinapp/passes/claim/'.$ticketId)
+            ->assertForbidden();
+
+        DB::table('tickets')->where('id', $ticketId)->update([
+            'extras' => json_encode([], JSON_THROW_ON_ERROR),
+            'price' => null,
+        ]);
+        $this->withHeaders($this->headersFor($participant))
+            ->postJson('/api/cutinapp/passes/claim/'.$ticketId)
+            ->assertStatus(422);
+
+        $this->assertDatabaseCount('event_passes', 0);
+    }
+
     public function test_cross_app_production_never_issues_courtesy(): void
     {
         [$owner, $participant, $productionId, $eventId, $ticketId] = $this->fixture('crossapp');
