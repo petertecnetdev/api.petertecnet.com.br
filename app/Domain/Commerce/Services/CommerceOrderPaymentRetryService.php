@@ -219,6 +219,24 @@ final class CommerceOrderPaymentRetryService
         return $payments[0];
     }
 
+    /**
+     * Não criar clientes durante a retomada: a identidade do pagador remoto
+     * deve ser estável entre a listagem e a consulta por ID.
+     */
+    private static function assertAsaasRecoveryCustomer(array $candidate, array $remote): string
+    {
+        $listedCustomer = $candidate['customer'] ?? null;
+        $fetchedCustomer = $remote['customer'] ?? null;
+
+        if (! is_string($listedCustomer) || trim($listedCustomer) === ''
+            || ! is_string($fetchedCustomer)
+            || trim($listedCustomer) !== trim($fetchedCustomer)) {
+            throw new HttpException(409, 'A identidade do pagador Asaas exige conciliação antes da retomada.');
+        }
+
+        return trim($listedCustomer);
+    }
+
     private function retryAsaas(
         CommerceOrder $order,
         User $user,
@@ -232,27 +250,16 @@ final class CommerceOrderPaymentRetryService
             throw new HttpException(422, 'Informe o CPF ou CNPJ do pagador para retomar o pagamento.');
         }
 
-        $name = trim((string) ($data['payer_name'] ?? ''))
-            ?: trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? ''))
-            ?: (string) ($user->name ?? '')
-            ?: (string) ($user->email ?? 'Pagador');
-
         try {
-            // Primeiro consultar cobranças existentes; GET falho não pode iniciar POST.
+            // Recuperação é somente leitura. findOrCreateCustomer pode emitir
+            // POST /customers quando um GET falha ou retorna dados incompletos.
+            // O customer deve ser o MESMO nas duas consultas da cobrança.
             $candidate = $this->findUniqueAsaasRecoveryCandidate((string) $order->public_id);
 
-            $customer = $this->asaas->findOrCreateCustomer(
-                (int) $user->id,
-                $name,
-                $document,
-                $data['payer_email'] ?? $user->email ?? null,
-                $user->phone ?? null,
-            );
-
-            $customerId = trim((string) ($customer['id'] ?? ''));
-            if ($customerId === '') {
-                throw new \RuntimeException('O Asaas não retornou o identificador do pagador.');
-            }
+            // Não chamar createOrRecoverPayment: pode criar uma nova cobrança
+            // após GET inconclusivo. Consultar exclusivamente o ID encontrado.
+            $remote = $this->asaas->getPayment(trim($candidate['id']));
+            $customerId = self::assertAsaasRecoveryCustomer($candidate, $remote);
 
             self::assertAsaasPaymentMatches(
                 $candidate,
@@ -261,10 +268,6 @@ final class CommerceOrderPaymentRetryService
                 (float) $order->total,
                 (string) $order->public_id,
             );
-
-            // Não chamar createOrRecoverPayment: a implementação atual pode
-            // criar cobrança após GET inconclusivo. Somente GET por ID exato.
-            $remote = $this->asaas->getPayment(trim($candidate['id']));
             self::assertAsaasPaymentMatches(
                 $remote,
                 $customerId,

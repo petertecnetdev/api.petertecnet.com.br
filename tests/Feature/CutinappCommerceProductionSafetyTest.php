@@ -406,6 +406,41 @@ class CutinappCommerceProductionSafetyTest extends TestCase
         $this->assertDatabaseHas('inventory_reservations', ['order_id' => $orderId, 'released_at' => null]);
     }
 
+    public function test_asaas_retry_with_existing_payment_and_inconsistent_customer_never_creates_customer(): void
+    {
+        config()->set('services.asaas.api_key', 'test-asaas-key');
+        Http::fake(function ($request) {
+            if (str_contains($request->url(), '/customers')) {
+                return Http::response(['data' => []], 200);
+            }
+            if (str_contains($request->url(), '/payments/')) {
+                return Http::response(['id' => 'pay_existing', 'customer' => null], 200);
+            }
+            return Http::response([
+                'data' => [['id' => 'pay_existing', 'customer' => 'cus_existing']],
+                'hasMore' => false,
+            ], 200);
+        });
+
+        $order = new \App\Models\CommerceOrder();
+        $order->forceFill(['public_id' => 'order-existing-asaas', 'total' => 20.00]);
+        $buyer = new User();
+        $buyer->forceFill(['id' => 42, 'cpf' => '52998224725', 'email' => 'buyer@cutinapp.test']);
+
+        $service = app(CommerceOrderPaymentRetryService::class);
+        $method = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'retryAsaas');
+
+        try {
+            $method->invoke($service, $order, $buyer, ['payer_cpf_cnpj' => '52998224725'], 'pix', 1, []);
+            $this->fail('GET com customer inconsistente deve bloquear a retomada.');
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpException $exception) {
+            $this->assertSame(409, $exception->getStatusCode());
+        }
+
+        Http::assertSentCount(2);
+        Http::assertNotSent(fn ($request) => $request->method() === 'POST');
+    }
+
     public function test_asaas_retry_provider_boundary_rejects_inconclusive_get_without_post(): void
     {
         config()->set('services.asaas.api_key', 'test-asaas-key');

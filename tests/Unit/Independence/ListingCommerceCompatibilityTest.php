@@ -287,6 +287,29 @@ final class ListingCommerceCompatibilityTest extends TestCase
         }
     }
 
+    public function test_asaas_recovery_requires_matching_nonempty_customer_in_both_get_responses(): void
+    {
+        $guard = new \ReflectionMethod(CommerceOrderPaymentRetryService::class, 'assertAsaasRecoveryCustomer');
+        $candidate = ['id' => 'pay_123', 'customer' => 'cus_123'];
+        self::assertSame('cus_123', $guard->invoke(null, $candidate, $candidate));
+
+        foreach ([null, '', [], 'cus_other'] as $customer) {
+            try {
+                $guard->invoke(null, $candidate, ['id' => 'pay_123', 'customer' => $customer]);
+                self::fail('Identidade remota ausente ou divergente não autoriza conciliação.');
+            } catch (HttpException $exception) {
+                self::assertSame(409, $exception->getStatusCode());
+            }
+        }
+
+        try {
+            $guard->invoke(null, ['id' => 'pay_123', 'customer' => null], $candidate);
+            self::fail('Listagem sem customer não comprova identidade.');
+        } catch (HttpException $exception) {
+            self::assertSame(409, $exception->getStatusCode());
+        }
+    }
+
     public function test_mercadopago_pix_retry_rejects_remote_payment_from_other_order_app_or_amount(): void
     {
         $order = $this->retryFixture();
