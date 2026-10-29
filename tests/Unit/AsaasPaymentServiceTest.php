@@ -445,7 +445,6 @@ class AsaasPaymentServiceTest extends TestCase
         }
     }
 
-
     public function test_post_with_missing_or_divergent_remote_reference_is_rejected_without_retry(): void
     {
         foreach ([null, 'ORDER-OTHER'] as $remoteReference) {
@@ -473,7 +472,7 @@ class AsaasPaymentServiceTest extends TestCase
                     'cus_expected', 'pix', 20.00, '2026-10-30', 'ORDER-EXPECTED', 'Teste'
                 );
                 $this->fail('POST com referência remota ausente ou divergente não pode ser associado ao pedido.');
-            } catch (\\RuntimeException $exception) {
+            } catch (\RuntimeException $exception) {
                 $this->assertStringContainsString('Referência da cobrança Asaas', $exception->getMessage());
             }
 
