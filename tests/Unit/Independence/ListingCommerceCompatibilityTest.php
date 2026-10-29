@@ -274,6 +274,9 @@ final class ListingCommerceCompatibilityTest extends TestCase
             ['value' => 'invalid'],
             ['value' => null],
             ['value' => INF],
+            ['status' => null],
+            ['status' => ''],
+            ['status' => []],
             ['deleted' => true],
         ];
 

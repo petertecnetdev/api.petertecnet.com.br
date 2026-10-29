@@ -158,6 +158,7 @@ final class CommerceOrderPaymentRetryService
             || ! is_string($remote['customer'] ?? null) || trim($remote['customer']) !== $customerId
             || ! is_string($remote['billingType'] ?? null) || strtoupper(trim($remote['billingType'])) !== $expectedBillingType
             || ! is_string($remote['externalReference'] ?? null) || trim($remote['externalReference']) !== $externalReference
+            || ! is_string($remote['status'] ?? null) || trim($remote['status']) === ''
             || ! is_finite($remoteAmount)
             || (int) round($remoteAmount * 100) !== (int) round($amount * 100)
             || ! empty($remote['deleted'])) {
