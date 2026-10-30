@@ -187,10 +187,9 @@ final class CommercePaymentSettlementService
      */
     private function canFulfillTicketOrder(CommerceOrder $order): bool
     {
+        // Mesmo pedidos apenas de itens/consumo pertencem ao evento:
+        // a reclassificação informativa bloqueia TODA venda, não só QR.
         $ticketLines = $order->items->where('type', 'ticket');
-        if ($ticketLines->isEmpty()) {
-            return true;
-        }
 
         $appId = (int) $order->app_id;
         $event = Event::query()->where('app_id', $appId)
